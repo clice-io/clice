@@ -1,0 +1,87 @@
+{
+  "id": "hover/templates/03_deduced_class_arguments",
+  "topic": "hover",
+  "subtopic": "templates",
+  "title": "Deduced class arguments",
+  "summary": "A variable whose class template arguments are deduced shows them, while the class name beside it shows the template alone",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#435"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace ctad_arguments {\n\ntemplate <typename T> struct Box {\n  Box(T);\n};\n\nBox picked(42);\n\n}\n",
+      "markers": [
+        {
+          "name": "ctad_type",
+          "begin": 77,
+          "end": 77,
+          "range": false
+        },
+        {
+          "name": "ctad_var",
+          "begin": 81,
+          "end": 81,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "ctad_type",
+          "marker": "ctad_type",
+          "value": {
+            "wrong": "the class name of a declaration with deduced arguments shows the primary template, not Box<int> (clangd#435)",
+            "hover": {
+              "markdown": "### struct `Box`\n\n---\n```cpp\n// In namespace ctad_arguments\ntemplate <typename T> struct Box {}\n```",
+              "range": {
+                "$place": "⟦Box⟧ picked(42);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 3
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "ctad_var",
+          "marker": "ctad_var",
+          "value": {
+            "wrong": "the aka repeats the same type, only qualified with its namespace",
+            "hover": {
+              "markdown": "### variable `picked`\n\n---\nType: `Box<int> (aka ctad_arguments::Box<int>)`\n\n---\n```cpp\n// In namespace ctad_arguments\nBox picked(42)\n```",
+              "range": {
+                "$place": "Box ⟦picked⟧(42);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "id": "format/range/01_format_range",
+  "topic": "format",
+  "subtopic": "range",
+  "title": "Format a selection",
+  "summary": "Formatting a selection reformats only the lines it touches",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int    first(   int   a ) {return a;}\nint    second(   int   b ) {return b;}\nint    third(   int   c ) {return    c;}\n",
+      "markers": [
+        {
+          "name": "whole_line",
+          "begin": 38,
+          "end": 76,
+          "range": true
+        },
+        {
+          "name": "inside",
+          "begin": 104,
+          "end": 116,
+          "range": true
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "whole_line",
+          "marker": "whole_line",
+          "value": {
+            "formatting": " int    first(   int   a ) {return a;}\n-int    second(   int   b ) {return b;}\n+int second(int b) { return b; }\n int    third(   int   c ) {return    c;}"
+          }
+        },
+        {
+          "label": "inside",
+          "marker": "inside",
+          "value": {
+            "formatting": " int    first(   int   a ) {return a;}\n int    second(   int   b ) {return b;}\n-int    third(   int   c ) {return    c;}\n+int third(int c) { return c; }"
+          }
+        }
+      ]
+    }
+  ]
+}

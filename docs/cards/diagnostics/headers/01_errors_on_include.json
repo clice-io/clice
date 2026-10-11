@@ -1,0 +1,217 @@
+{
+  "id": "diagnostics/headers/01_errors_on_include",
+  "topic": "diagnostics",
+  "subtopic": "headers",
+  "title": "Errors in included headers",
+  "summary": "An error inside an included header shows on the line that includes it",
+  "prose": "The first error of each included header is reported on its `#include` line, with a note at the place in the header where it occurred. The header's other errors belong to the header and show when it is opened.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "bad.h",
+      "text": "int one = undefined_one;\nint two = undefined_two;\n",
+      "markers": []
+    },
+    {
+      "path": "body.cpp",
+      "text": "int a;\nint b;\n#include \"bad.h\"\nint c = undeclared_main;\n",
+      "markers": []
+    },
+    {
+      "path": "pre.cpp",
+      "text": "#include \"bad.h\"\nint c = undeclared_main;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "body.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"bad.h\"⟧",
+                  "path": "body.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 16
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In included file: use of undeclared identifier 'undefined_one'",
+                "source": "clang",
+                "code": "err_undeclared_var_use",
+                "related": [
+                  {
+                    "at": {
+                      "$place": "bad.h │ int one = ⟦undefined_one⟧;",
+                      "path": "bad.h",
+                      "range": {
+                        "start": {
+                          "line": 0,
+                          "character": 10
+                        },
+                        "end": {
+                          "line": 0,
+                          "character": 23
+                        }
+                      }
+                    },
+                    "message": "error occurred here"
+                  }
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int c = ⟦undeclared_main⟧;",
+                  "path": "body.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 23
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'undeclared_main'",
+                "source": "clang",
+                "code": "err_undeclared_var_use",
+                "related": []
+              }
+            ]
+          }
+        },
+        {
+          "label": "pre.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"bad.h\"⟧",
+                  "path": "pre.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 16
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In included file: use of undeclared identifier 'undefined_one'",
+                "source": "clang",
+                "code": "err_undeclared_var_use",
+                "related": [
+                  {
+                    "at": {
+                      "$place": "bad.h │ int one = ⟦undefined_one⟧;",
+                      "path": "bad.h",
+                      "range": {
+                        "start": {
+                          "line": 0,
+                          "character": 10
+                        },
+                        "end": {
+                          "line": 0,
+                          "character": 23
+                        }
+                      }
+                    },
+                    "message": "error occurred here"
+                  }
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int c = ⟦undeclared_main⟧;",
+                  "path": "pre.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 23
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'undeclared_main'",
+                "source": "clang",
+                "code": "err_undeclared_var_use",
+                "related": []
+              }
+            ]
+          }
+        },
+        {
+          "label": "bad.h",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "int one = ⟦undefined_one⟧;",
+                  "path": "bad.h",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 23
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'undefined_one'",
+                "source": "clang",
+                "code": "err_undeclared_var_use",
+                "related": []
+              },
+              {
+                "at": {
+                  "$place": "int two = ⟦undefined_two⟧;",
+                  "path": "bad.h",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 23
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'undefined_two'",
+                "source": "clang",
+                "code": "err_undeclared_var_use",
+                "related": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

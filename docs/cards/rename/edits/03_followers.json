@@ -1,0 +1,97 @@
+{
+  "id": "rename/edits/03_followers",
+  "topic": "rename",
+  "subtopic": "edits",
+  "title": "What a rename follows",
+  "summary": "Renaming a class renames its constructors and destructor, a template its specializations, a virtual function its overrides",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n    Shape() : sides(0) {}\n    explicit Shape(int n) : sides(n) {}\n    ~Shape() {}\n    virtual int area() const { return 0; }\n    int sides;\n};\n\nstruct Square : Shape {\n    Square() : Shape(4) {}\n    int area() const override { return 1; }\n};\n\ntemplate <typename T> struct Box { T value; };\ntemplate <> struct Box<bool> { bool flag; };\n\nint main() {\n    Shape s(3);\n    Square q;\n    Box<int> b{1};\n    Box<bool> f{true};\n    return s.area() + q.area() + b.value + f.flag;\n}\n",
+      "markers": [
+        {
+          "name": "class",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "virtual",
+          "begin": 113,
+          "end": 113,
+          "range": false
+        },
+        {
+          "name": "constructor",
+          "begin": 187,
+          "end": 187,
+          "range": false
+        },
+        {
+          "name": "template",
+          "begin": 287,
+          "end": 287,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "class",
+          "marker": "class",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.cpp": "-struct Shape {\n-    Shape() : sides(0) {}\n-    explicit Shape(int n) : sides(n) {}\n-    ~Shape() {}\n+struct Polygon {\n+    Polygon() : sides(0) {}\n+    explicit Polygon(int n) : sides(n) {}\n+    ~Polygon() {}\n     virtual int area() const { return 0; }\n     int sides;\n };\n\n-struct Square : Shape {\n-    Square() : Shape(4) {}\n+struct Square : Polygon {\n+    Square() : Polygon(4) {}\n     int area() const override { return 1; }\n };\n…\n\n int main() {\n-    Shape s(3);\n+    Polygon s(3);\n     Square q;\n     Box<int> b{1};"
+              },
+              "compiles": true
+            }
+          }
+        },
+        {
+          "label": "constructor",
+          "marker": "constructor",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.cpp": " };\n\n-struct Square : Shape {\n-    Square() : Shape(4) {}\n+struct Tile : Shape {\n+    Tile() : Shape(4) {}\n     int area() const override { return 1; }\n };\n…\n int main() {\n     Shape s(3);\n-    Square q;\n+    Tile q;\n     Box<int> b{1};\n     Box<bool> f{true};"
+              },
+              "compiles": true
+            }
+          }
+        },
+        {
+          "label": "virtual",
+          "marker": "virtual",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.cpp": "     explicit Shape(int n) : sides(n) {}\n     ~Shape() {}\n-    virtual int area() const { return 0; }\n+    virtual int surface() const { return 0; }\n     int sides;\n };\n…\n struct Square : Shape {\n     Square() : Shape(4) {}\n-    int area() const override { return 1; }\n+    int surface() const override { return 1; }\n };\n\n…\n     Box<int> b{1};\n     Box<bool> f{true};\n-    return s.area() + q.area() + b.value + f.flag;\n+    return s.surface() + q.surface() + b.value + f.flag;\n }"
+              },
+              "compiles": true
+            }
+          }
+        },
+        {
+          "label": "template",
+          "marker": "template",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.cpp": " };\n\n-template <typename T> struct Box { T value; };\n-template <> struct Box<bool> { bool flag; };\n+template <typename T> struct Holder { T value; };\n+template <> struct Holder<bool> { bool flag; };\n\n int main() {\n     Shape s(3);\n     Square q;\n-    Box<int> b{1};\n-    Box<bool> f{true};\n+    Holder<int> b{1};\n+    Holder<bool> f{true};\n     return s.area() + q.area() + b.value + f.flag;\n }"
+              },
+              "compiles": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

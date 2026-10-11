@@ -1,0 +1,251 @@
+{
+  "id": "semantic_tokens/preamble/01_inactive_preamble",
+  "topic": "semantic_tokens",
+  "subtopic": "preamble",
+  "title": "Inactive preamble regions",
+  "summary": "Untaken branches among the leading directives dim the same way",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define KEEP 1\n#if 0\n#define DEAD 2\n#endif\n\nint after = KEEP;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦#define⟧ KEEP 1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#define ⟦KEEP⟧ 1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "#define KEEP ⟦1⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#if⟧ 0",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#if ⟦0⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#define⟧ DEAD 2",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "directive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "#define ⟦DEAD⟧ 2",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "definition",
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "#define DEAD ⟦2⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "number",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ after = KEEP;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦after⟧ = KEEP;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int after = ⟦KEEP⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "macro"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "id": "hover/templates/01_template_parameters",
+  "topic": "hover",
+  "subtopic": "templates",
+  "title": "Template parameters",
+  "summary": "A template parameter shows its kind, a type, a template or a value, with its default",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace parameter_kinds {\ntemplate <typename Value = long> void accept_type();\n\ntemplate <template <typename> class Container>\nvoid accept_template();\n\ntemplate <long Count = 8> void accept_value();\n}\n",
+      "markers": [
+        {
+          "name": "type_param",
+          "begin": 47,
+          "end": 47,
+          "range": false
+        },
+        {
+          "name": "template_template_param",
+          "begin": 118,
+          "end": 118,
+          "range": false
+        },
+        {
+          "name": "non_type_param",
+          "begin": 169,
+          "end": 169,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type_param",
+          "marker": "type_param",
+          "value": {
+            "hover": {
+              "markdown": "### type `Value`\n\n---\nType: `typename`\n\n---\n```cpp\n// In accept_type\ntypename Value = long\n```",
+              "range": {
+                "$place": "template <typename ⟦Value⟧ = long> void accept_type();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 24
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "template_template_param",
+          "marker": "template_template_param",
+          "value": {
+            "hover": {
+              "markdown": "### type `Container`\n\n---\nType: `template <typename> class`\n\n---\n```cpp\n// In accept_template\ntemplate <typename> class Container\n```",
+              "range": {
+                "$place": "template <template <typename> class ⟦Container⟧>",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 36
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 45
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "non_type_param",
+          "marker": "non_type_param",
+          "value": {
+            "hover": {
+              "markdown": "### variable `Count`\n\n---\nType: `long`\n\n---\n```cpp\n// In accept_value\nlong Count = 8\n```",
+              "range": {
+                "$place": "template <long ⟦Count⟧ = 8> void accept_value();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

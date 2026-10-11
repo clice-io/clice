@@ -1,0 +1,123 @@
+{
+  "id": "navigation/declaration/04_extern_variables",
+  "topic": "navigation",
+  "subtopic": "declaration",
+  "title": "`extern` variable",
+  "summary": "External variable uses navigate to their declaration",
+  "prose": "A use of an `extern` variable offers the `extern` declaration and\nthe defining declaration together, so the header-side declaration is\nalways reachable from a use.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "extern int log_level;\n\nint log_level = 0;\n\nint read_level() {\n    return log_level;\n}\n",
+      "markers": [
+        {
+          "name": "decl",
+          "begin": 11,
+          "end": 11,
+          "range": false
+        },
+        {
+          "name": "def",
+          "begin": 27,
+          "end": 27,
+          "range": false
+        },
+        {
+          "name": "use",
+          "begin": 73,
+          "end": 73,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "decl",
+          "marker": "decl",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int ⟦log_level⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "def",
+          "marker": "def",
+          "value": {
+            "declaration": [
+              {
+                "$place": "extern int ⟦log_level⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "declaration": [
+              {
+                "$place": "extern int ⟦log_level⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦log_level⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

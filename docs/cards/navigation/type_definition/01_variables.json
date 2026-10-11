@@ -1,0 +1,94 @@
+{
+  "id": "navigation/type_definition/01_variables",
+  "topic": "navigation",
+  "subtopic": "type_definition",
+  "title": "Variables and parameters",
+  "summary": "Go-to-type-definition on a local variable or a parameter reaches the definition of its type",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {};\n\nWidget make_widget();\n\nint probe(Widget param) {\n    Widget local = make_widget();\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "type",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "param",
+          "begin": 59,
+          "end": 59,
+          "range": false
+        },
+        {
+          "name": "local",
+          "begin": 79,
+          "end": 79,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "type_definition": []
+          }
+        },
+        {
+          "label": "param",
+          "marker": "param",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "local",
+          "marker": "local",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

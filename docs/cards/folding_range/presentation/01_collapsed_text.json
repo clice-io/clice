@@ -1,0 +1,69 @@
+{
+  "id": "folding_range/presentation/01_collapsed_text",
+  "topic": "folding_range",
+  "subtopic": "presentation",
+  "title": "Collapsed text",
+  "summary": "A folded range shows a placeholder, such as `{...}` for a body, while the line it starts on stays visible",
+  "prose": "> **Client support**: VS Code does not show `collapsedText` yet\n> ([vscode#70794](https://github.com/microsoft/vscode/issues/70794)); Neovim\n> does. A client that ignores it still folds, without the placeholder.",
+  "status": "supported",
+  "issues": [
+    "clangd#2667"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Config {\n    int width;\n    int height;\n};\n\nint process_data(const Config& cfg) {\n    return cfg.width * cfg.height;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "struct",
+                "at": {
+                  "$place": "struct Config ⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": "int process_data(const Config& cfg) ⟦{ … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 36
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

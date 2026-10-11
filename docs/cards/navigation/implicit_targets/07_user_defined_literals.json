@@ -1,0 +1,53 @@
+{
+  "id": "navigation/implicit_targets/07_user_defined_literals",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "User-defined literals",
+  "summary": "A literal suffix navigates to its literal operator",
+  "prose": "Go-to-definition on the suffix of a user-defined literal reaches the\n`operator\"\"` it calls.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Duration {\n    unsigned long long ticks;\n};\n\nDuration operator\"\"_ms(unsigned long long value);\n\nvoid use() {\n    Duration d = 500_ms;\n}\n",
+      "markers": [
+        {
+          "name": "suffix",
+          "begin": 136,
+          "end": 136,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "suffix",
+          "marker": "suffix",
+          "value": {
+            "definition": [
+              {
+                "$place": "Duration ⟦operator\"\"_ms⟧(unsigned long long value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 22
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

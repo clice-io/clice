@@ -1,0 +1,112 @@
+{
+  "id": "semantic_tokens/lexical/07_declarator_operators",
+  "topic": "semantic_tokens",
+  "subtopic": "lexical",
+  "title": "Declarator vs operator disambiguation",
+  "summary": "Declarator and expression operators do not receive distinct token kinds yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1421"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int value = 1;\nint* pointer = &value;\nint& reference = value;\nint product = value * value;\nint masked = value & 1;\n",
+      "markers": [
+        {
+          "name": "pointer_declarator",
+          "begin": 18,
+          "end": 18,
+          "range": false
+        },
+        {
+          "name": "address_of",
+          "begin": 30,
+          "end": 30,
+          "range": false
+        },
+        {
+          "name": "reference_declarator",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        },
+        {
+          "name": "multiply",
+          "begin": 82,
+          "end": 82,
+          "range": false
+        },
+        {
+          "name": "bitwise_and",
+          "begin": 110,
+          "end": 110,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pointer_declarator",
+          "marker": "pointer_declarator",
+          "value": {
+            "wrong": "a declarator's * or & should be colored, apart from the operator (clangd#1421)",
+            "semantic_token": {
+              "text": "*",
+              "type": "none"
+            }
+          }
+        },
+        {
+          "label": "address_of",
+          "marker": "address_of",
+          "value": {
+            "wrong": "an operator should be colored as an operator, apart from a declarator (clangd#1421)",
+            "semantic_token": {
+              "text": "&",
+              "type": "none"
+            }
+          }
+        },
+        {
+          "label": "reference_declarator",
+          "marker": "reference_declarator",
+          "value": {
+            "wrong": "a declarator's * or & should be colored, apart from the operator (clangd#1421)",
+            "semantic_token": {
+              "text": "&",
+              "type": "none"
+            }
+          }
+        },
+        {
+          "label": "multiply",
+          "marker": "multiply",
+          "value": {
+            "wrong": "an operator should be colored as an operator, apart from a declarator (clangd#1421)",
+            "semantic_token": {
+              "text": "*",
+              "type": "none"
+            }
+          }
+        },
+        {
+          "label": "bitwise_and",
+          "marker": "bitwise_and",
+          "value": {
+            "wrong": "an operator should be colored as an operator, apart from a declarator (clangd#1421)",
+            "semantic_token": {
+              "text": "&",
+              "type": "none"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

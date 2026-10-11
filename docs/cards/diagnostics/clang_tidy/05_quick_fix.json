@@ -1,0 +1,83 @@
+{
+  "id": "diagnostics/clang_tidy/05_quick_fix",
+  "topic": "diagnostics",
+  "subtopic": "clang_tidy",
+  "title": "Fixes as quick fixes",
+  "summary": "A finding that carries a fix offers it as a quick fix",
+  "prose": "The fix a check attaches to its finding is offered among the quick fixes at the finding; applying it clears the finding.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,modernize-use-nullptr\"\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int* p = 0;\n",
+      "markers": [
+        {
+          "name": "finding",
+          "begin": 9,
+          "end": 9,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "before",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "int* p = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 10
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "use nullptr",
+                "source": "clang-tidy",
+                "code": "modernize-use-nullptr"
+              }
+            ]
+          }
+        },
+        {
+          "label": "fixes",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "quickfix",
+                "title": "change '0' to 'nullptr'",
+                "edits": {
+                  "main.cpp": "-int* p = 0;\n+int* p = nullptr;"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "after",
+          "value": {
+            "diagnostics": []
+          }
+        }
+      ]
+    }
+  ]
+}

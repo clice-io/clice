@@ -1,0 +1,143 @@
+{
+  "id": "inlay_hints/type_hints/07_auto_parameters",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "`auto` parameters",
+  "summary": "A template with exactly one instantiation reveals the deduced type",
+  "prose": "A second instantiation makes the deduction ambiguous and drops the hint, and a pack and the parameters after it never hint. A template body hints once across instantiations deducing the same type.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int twice(auto x) {\n    return x + x;\n}\n\nint result = twice(21);\n\nint measure(auto x) {\n    return 1;\n}\n\nint a = measure(1);\nint b = measure(2.0);\n\nint spread(auto first, auto... rest, auto last) {\n    return 0;\n}\n\nint c = spread<void*, char, float>(nullptr, 'x', 2.0f, 3);\n\ntemplate <typename T>\nvoid body() {\n    auto var = 42;\n}\n\ntemplate void body<int>();\ntemplate void body<float>();\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "int twice(auto x⟨: int⟩) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 19
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "int result = twice(⟨x:⟩21);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 23
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "int a = measure(⟨x:⟩1);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 19
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "int b = measure(⟨x:⟩2.0);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 21
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "int spread(auto first⟨: void *⟩, auto... rest, auto last) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 49
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "int c = spread<void*, char, float>(⟨first:⟩nullptr, 'x', 2.0f, ⟨last:⟩3);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 58
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto var⟨: int⟩ = 42;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 18
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

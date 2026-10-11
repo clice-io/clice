@@ -1,0 +1,87 @@
+{
+  "id": "code_actions/constructor/07_move_only_fields",
+  "topic": "code_actions",
+  "subtopic": "constructor",
+  "title": "Move-only fields",
+  "summary": "A field whose class moves but does not copy is taken by value and moved from, and an rvalue reference field binds its argument through `std::move`",
+  "prose": "The file gains `#include <utility>` when nothing declares `std::move` before the class. A class that neither copies nor moves gets no constructor.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Handle {\n    Handle(Handle&&) = default;\n};\n\nstruct Owner {\n    Handle handle;\n    int&& pending;\n    int count;\n};\n\nstruct Lock {\n    Lock(const Lock&) = delete;\n};\n\nstruct Pinned {\n    Lock lock;\n    int count;\n};\n\ntemplate <class T>\nstruct Slot {\n    Slot(Slot&&) = default;\n    Slot(const Slot&) = delete;\n};\n\ntemplate <class T>\nstruct Holder {\n    Slot<T> slot;\n    int count;\n};\n",
+      "markers": [
+        {
+          "name": "owner",
+          "begin": 59,
+          "end": 59,
+          "range": false
+        },
+        {
+          "name": "pinned",
+          "begin": 181,
+          "end": 181,
+          "range": false
+        },
+        {
+          "name": "holder",
+          "begin": 347,
+          "end": 347,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "utility",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class T>\nT&& move(T& value);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "owner",
+          "marker": "owner",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.generateMemberwiseConstructor",
+                "title": "Generate a memberwise constructor for 'Owner'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "+#include <utility>\n struct Handle {\n     Handle(Handle&&) = default;\n…\n     int&& pending;\n     int count;\n+    Owner(Handle handle, int&& pending, int count) : handle(std::move(handle)), pending(std::move(pending)), count(count) {}\n };\n"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "pinned",
+          "marker": "pinned",
+          "value": {
+            "code_actions": []
+          }
+        },
+        {
+          "label": "holder",
+          "marker": "holder",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.generateMemberwiseConstructor",
+                "title": "Generate a memberwise constructor for 'Holder'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "+#include <utility>\n struct Handle {\n     Handle(Handle&&) = default;\n…\n     Slot<T> slot;\n     int count;\n+    Holder(Slot<T> slot, int count) : slot(std::move(slot)), count(count) {}\n };"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

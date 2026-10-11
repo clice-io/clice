@@ -1,0 +1,161 @@
+{
+  "id": "semantic_tokens/modifiers/02_static",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Static",
+  "summary": "Static members and locals carry the static modifier",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Counter {\n    static int total;\n    static void bump();\n    int current;\n};\n\nvoid count() {\n    static int calls = 0;\n    Counter::bump();\n    Counter::total = calls;\n}\n",
+      "markers": [
+        {
+          "name": "total_decl",
+          "begin": 32,
+          "end": 32,
+          "range": false
+        },
+        {
+          "name": "bump_decl",
+          "begin": 55,
+          "end": 55,
+          "range": false
+        },
+        {
+          "name": "current",
+          "begin": 71,
+          "end": 71,
+          "range": false
+        },
+        {
+          "name": "calls_def",
+          "begin": 114,
+          "end": 114,
+          "range": false
+        },
+        {
+          "name": "bump_use",
+          "begin": 138,
+          "end": 138,
+          "range": false
+        },
+        {
+          "name": "total_use",
+          "begin": 159,
+          "end": 159,
+          "range": false
+        },
+        {
+          "name": "calls_use",
+          "begin": 167,
+          "end": 167,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "total_decl",
+          "marker": "total_decl",
+          "value": {
+            "semantic_token": {
+              "text": "total",
+              "type": "variable",
+              "modifiers": [
+                "declaration",
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "bump_decl",
+          "marker": "bump_decl",
+          "value": {
+            "semantic_token": {
+              "text": "bump",
+              "type": "method",
+              "modifiers": [
+                "declaration",
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "current",
+          "marker": "current",
+          "value": {
+            "semantic_token": {
+              "text": "current",
+              "type": "field",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "calls_def",
+          "marker": "calls_def",
+          "value": {
+            "semantic_token": {
+              "text": "calls",
+              "type": "variable",
+              "modifiers": [
+                "definition",
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "bump_use",
+          "marker": "bump_use",
+          "value": {
+            "semantic_token": {
+              "text": "bump",
+              "type": "method",
+              "modifiers": [
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "total_use",
+          "marker": "total_use",
+          "value": {
+            "semantic_token": {
+              "text": "total",
+              "type": "variable",
+              "modifiers": [
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "calls_use",
+          "marker": "calls_use",
+          "value": {
+            "semantic_token": {
+              "text": "calls",
+              "type": "variable",
+              "modifiers": [
+                "static"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

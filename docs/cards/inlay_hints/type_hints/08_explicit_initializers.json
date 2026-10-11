@@ -1,0 +1,104 @@
+{
+  "id": "inlay_hints/type_hints/08_explicit_initializers",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Explicitly spelled initializers",
+  "summary": "A type the initializer already spells, in a cast or a functional cast, is still hinted",
+  "prose": "",
+  "status": "partial",
+  "issues": [
+    "clangd#1749"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int compute();\n\nvoid use() {\n    auto widened = static_cast<long>(compute());\n    auto braced = int{42};\n    auto plain = compute();\n}\n",
+      "markers": [
+        {
+          "name": "spelled",
+          "begin": 33,
+          "end": 104,
+          "range": true
+        },
+        {
+          "name": "deduced",
+          "begin": 109,
+          "end": 132,
+          "range": true
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "spelled",
+          "marker": "spelled",
+          "value": {
+            "wrong": "the cast on the right already spells the type, which needs no hint (clangd#1749)",
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto widened⟨: long⟩ = static_cast<long>(compute());",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 48
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto braced⟨: int⟩ = int{42};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 26
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "deduced",
+          "marker": "deduced",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto plain⟨: int⟩ = compute();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 27
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

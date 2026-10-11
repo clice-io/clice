@@ -1,0 +1,133 @@
+{
+  "id": "semantic_tokens/references/05_dependent_names",
+  "topic": "semantic_tokens",
+  "subtopic": "references",
+  "title": "Dependent names",
+  "summary": "Dependent names resolve through known primary templates",
+  "prose": "Dependent members of a known template (`Box<T>`) resolve to the primary\ntemplate's declarations and keep their kinds. Members of a bare template\nparameter have no candidate declaration and currently get no token;\nheuristic coloring for such names remains open.",
+  "status": "partial",
+  "issues": [
+    "clangd#154",
+    "clangd#297"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Box {\n    using value_type = int;\n    static void reset();\n    int size() const;\n};\n\ntemplate <typename T>\nvoid resolved(Box<T> box) {\n    typename Box<T>::value_type item;\n    Box<T>::reset();\n    box.size();\n}\n\ntemplate <typename T>\nvoid unresolved(T value) {\n    typename T::value_type item;\n    T::reset();\n    value.size();\n}\n",
+      "markers": [
+        {
+          "name": "value_type_use",
+          "begin": 185,
+          "end": 185,
+          "range": false
+        },
+        {
+          "name": "reset_use",
+          "begin": 214,
+          "end": 214,
+          "range": false
+        },
+        {
+          "name": "size_use",
+          "begin": 231,
+          "end": 231,
+          "range": false
+        },
+        {
+          "name": "value_type_use2",
+          "begin": 307,
+          "end": 307,
+          "range": false
+        },
+        {
+          "name": "reset_use2",
+          "begin": 331,
+          "end": 331,
+          "range": false
+        },
+        {
+          "name": "size_use2",
+          "begin": 350,
+          "end": 350,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "value_type_use",
+          "marker": "value_type_use",
+          "value": {
+            "semantic_token": {
+              "text": "value_type",
+              "type": "type"
+            }
+          }
+        },
+        {
+          "label": "reset_use",
+          "marker": "reset_use",
+          "value": {
+            "semantic_token": {
+              "text": "reset",
+              "type": "method",
+              "modifiers": [
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "size_use",
+          "marker": "size_use",
+          "value": {
+            "semantic_token": {
+              "text": "size",
+              "type": "method",
+              "modifiers": [
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "value_type_use2",
+          "marker": "value_type_use2",
+          "value": {
+            "wrong": "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)",
+            "semantic_token": {
+              "text": "value_type",
+              "type": "none"
+            }
+          }
+        },
+        {
+          "label": "reset_use2",
+          "marker": "reset_use2",
+          "value": {
+            "wrong": "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)",
+            "semantic_token": {
+              "text": "reset",
+              "type": "none"
+            }
+          }
+        },
+        {
+          "label": "size_use2",
+          "marker": "size_use2",
+          "value": {
+            "wrong": "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)",
+            "semantic_token": {
+              "text": "size",
+              "type": "none"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

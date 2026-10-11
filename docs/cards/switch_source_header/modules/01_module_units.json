@@ -1,0 +1,79 @@
+{
+  "id": "switch_source_header/modules/01_module_units",
+  "topic": "switch_source_header",
+  "subtopic": "modules",
+  "title": "Module interface and implementations",
+  "summary": "A module interface unit pairs with the units implementing its module, and each of them with the interface",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "import shapes;\n\nint total(int width, int height) {\n    return area(width, height) + perimeter(width, height);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "shapes.cpp",
+      "text": "module shapes;\n\nint area(int width, int height) {\n    return width * height;\n}\n\nint perimeter(int width, int height) {\n    return 2 * (width + height);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "shapes.cppm",
+      "text": "export module shapes;\n\nexport int area(int width, int height);\nexport int perimeter(int width, int height);\n",
+      "markers": []
+    },
+    {
+      "path": "shapes_debug.cpp",
+      "text": "module shapes;\n\nint debug_area() {\n    return area(1, 1);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "shapes.cppm",
+          "value": {
+            "counterparts": {
+              "preferred": "shapes.cpp",
+              "candidates": [
+                {
+                  "path": "shapes.cpp",
+                  "reasons": [
+                    "defines 2 of 2 declarations",
+                    "same name",
+                    "implements module shapes"
+                  ]
+                },
+                {
+                  "path": "shapes_debug.cpp",
+                  "reasons": [
+                    "implements module shapes"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "shapes_debug.cpp",
+          "value": {
+            "counterparts": {
+              "preferred": "shapes.cppm",
+              "candidates": [
+                {
+                  "path": "shapes.cppm",
+                  "reasons": [
+                    "interface of module shapes"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

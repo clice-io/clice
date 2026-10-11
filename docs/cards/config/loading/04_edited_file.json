@@ -1,0 +1,89 @@
+{
+  "id": "config/loading/04_edited_file",
+  "topic": "config",
+  "subtopic": "loading",
+  "title": "Changes need a restart",
+  "summary": "clice reads `clice.toml` when the server starts, so an edit applies at the next start",
+  "prose": "The rule's macro changes while the server runs, and `main.cpp` keeps the error until the server is started again.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "clice.toml",
+      "text": "[[rules]]\npatterns = [\"**/*.cpp\"]\nappend = [\"-DUNRELATED\"]\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int value() {\n    return FROM_TOML;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "before",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦FROM_TOML⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 20
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'FROM_TOML'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        },
+        {
+          "label": "edited",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦FROM_TOML⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 20
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'FROM_TOML'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        },
+        {
+          "label": "restarted",
+          "value": {
+            "diagnostics": []
+          }
+        }
+      ]
+    }
+  ]
+}

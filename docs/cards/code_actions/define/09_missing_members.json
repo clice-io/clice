@@ -1,0 +1,49 @@
+{
+  "id": "code_actions/define/09_missing_members",
+  "topic": "code_actions",
+  "subtopic": "define",
+  "title": "Define all missing members",
+  "summary": "On the class name, every member function without a definition is defined at once, in declaration order",
+  "prose": "Members that already have a definition, pure virtuals and defaulted members are left alone.",
+  "status": "supported",
+  "issues": [
+    "clangd#445"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    Widget();\n    ~Widget() = default;\n    virtual int size() const = 0;\n    void reset();\n    void grow(int by);\n    int id() const { return 0; }\n};\n\nvoid Widget::reset() {\n}\n",
+      "markers": [
+        {
+          "name": "all",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "all",
+          "marker": "all",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.missing",
+                "title": "Define missing members of 'Widget'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " void Widget::reset() {\n }\n+\n+Widget::Widget() {\n+}\n+\n+void Widget::grow(int by) {\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

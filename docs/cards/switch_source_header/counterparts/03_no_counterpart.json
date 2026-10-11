@@ -1,0 +1,50 @@
+{
+  "id": "switch_source_header/counterparts/03_no_counterpart",
+  "topic": "switch_source_header",
+  "subtopic": "counterparts",
+  "title": "Files without a counterpart",
+  "summary": "A header that defines everything it declares, and a `.def` fragment, have no counterpart",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "colors.def",
+      "text": "COLOR(red)\nCOLOR(green)\nCOLOR(blue)\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"math.h\"\n\nenum class Color {\n#define COLOR(name) name,\n#include \"colors.def\"\n#undef COLOR\n};\n\nint twice_square(int value) {\n    return twice(square(value));\n}\n",
+      "markers": []
+    },
+    {
+      "path": "math.h",
+      "text": "#pragma once\n\ninline int square(int value) {\n    return value * value;\n}\n\ninline int twice(int value) {\n    return 2 * value;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "math.h",
+          "value": {
+            "counterparts": {
+              "candidates": []
+            }
+          }
+        },
+        {
+          "label": "colors.def",
+          "value": {
+            "counterparts": {
+              "candidates": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

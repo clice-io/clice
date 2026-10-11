@@ -1,0 +1,175 @@
+{
+  "id": "code_actions/define/06_special_members",
+  "topic": "code_actions",
+  "subtopic": "define",
+  "title": "Constructors, destructors and operators",
+  "summary": "Special member functions are defined under the class name they are spelled with",
+  "prose": "Conversion functions and operators keep their full spelling.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Meter {};\n\nstruct S {\n    S();\n    explicit S(int value);\n    ~S();\n    S& operator=(const S& other);\n    operator Meter() const;\n};\n",
+      "markers": [
+        {
+          "name": "ctor",
+          "begin": 33,
+          "end": 33,
+          "range": false
+        },
+        {
+          "name": "explicit_ctor",
+          "begin": 51,
+          "end": 51,
+          "range": false
+        },
+        {
+          "name": "dtor",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        },
+        {
+          "name": "assign",
+          "begin": 82,
+          "end": 82,
+          "range": false
+        },
+        {
+          "name": "conversion",
+          "begin": 113,
+          "end": 113,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "ctor",
+          "marker": "ctor",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define 'S' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n struct S {\n-    S();\n+    S() {}\n     explicit S(int value);\n     ~S();"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'S::S' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     operator Meter() const;\n };\n+\n+S::S() {\n+}"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "explicit_ctor",
+          "marker": "explicit_ctor",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define 'S' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " struct S {\n     S();\n-    explicit S(int value);\n+    explicit S(int value) {}\n     ~S();\n     S& operator=(const S& other);"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'S::S' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     operator Meter() const;\n };\n+\n+S::S(int value) {\n+}"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "dtor",
+          "marker": "dtor",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define '~S' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     S();\n     explicit S(int value);\n-    ~S();\n+    ~S() {}\n     S& operator=(const S& other);\n     operator Meter() const;"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'S::~S' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     operator Meter() const;\n };\n+\n+S::~S() {\n+}"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "assign",
+          "marker": "assign",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define 'operator=' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     explicit S(int value);\n     ~S();\n-    S& operator=(const S& other);\n+    S& operator=(const S& other) {}\n     operator Meter() const;\n };"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'S::operator=' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     operator Meter() const;\n };\n+\n+S& S::operator=(const S& other) {\n+}"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "conversion",
+          "marker": "conversion",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define 'operator Meter' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     ~S();\n     S& operator=(const S& other);\n-    operator Meter() const;\n+    operator Meter() const {}\n };"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'S::operator Meter' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     operator Meter() const;\n };\n+\n+S::operator Meter() const {\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

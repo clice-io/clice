@@ -1,0 +1,52 @@
+{
+  "id": "workspace_symbol/scopes/02_enumerators",
+  "topic": "workspace_symbol",
+  "subtopic": "scopes",
+  "title": "Scoped enumerator lookup",
+  "summary": "An enum qualifies its enumerators like any other container",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#931"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "enum Color { Red, Green };\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "Color::Red",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "Color::Red",
+                "kind": "EnumMember",
+                "at": {
+                  "$place": "main.cpp │ enum Color { ⟦Red⟧, Green };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 16
+                    }
+                  }
+                },
+                "container": "Color"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

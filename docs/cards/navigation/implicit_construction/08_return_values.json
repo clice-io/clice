@@ -1,0 +1,53 @@
+{
+  "id": "navigation/implicit_construction/08_return_values",
+  "topic": "navigation",
+  "subtopic": "implicit_construction",
+  "title": "Return value implicit construction",
+  "summary": "A braced return value navigates to the selected constructor",
+  "prose": "A braced `return {args}` implicitly constructs the function's return\ntype; go-to-definition on the brace reaches the selected constructor.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    Widget(int w, int h);\n};\n\nWidget create() {\n    return {800, 600};\n}\n",
+      "markers": [
+        {
+          "name": "ret_brace",
+          "begin": 75,
+          "end": 75,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "ret_brace",
+          "marker": "ret_brace",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦Widget⟧(int w, int h);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

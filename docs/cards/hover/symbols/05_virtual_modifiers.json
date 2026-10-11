@@ -1,0 +1,144 @@
+{
+  "id": "hover/symbols/05_virtual_modifiers",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Virtual methods",
+  "summary": "A method's definition reads `virtual`, `override` or `final` as written, so an override written without them gives no sign it is virtual",
+  "prose": "",
+  "status": "partial",
+  "issues": [
+    "clangd#2474"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    virtual void draw() = 0;\n};\n\nstruct Circle : Base {\n    void draw() override;\n};\n\nstruct Dot final : Circle {\n    void draw() final;\n};\n\nstruct Square : Base {\n    void draw();\n};\n",
+      "markers": [
+        {
+          "name": "pure_virtual",
+          "begin": 33,
+          "end": 33,
+          "range": false
+        },
+        {
+          "name": "override_method",
+          "begin": 81,
+          "end": 81,
+          "range": false
+        },
+        {
+          "name": "final_method",
+          "begin": 139,
+          "end": 139,
+          "range": false
+        },
+        {
+          "name": "implicit_override",
+          "begin": 189,
+          "end": 189,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pure_virtual",
+          "marker": "pure_virtual",
+          "value": {
+            "hover": {
+              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Base\npublic: virtual void draw() = 0\n```",
+              "range": {
+                "$place": "virtual void ⟦draw⟧() = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "override_method",
+          "marker": "override_method",
+          "value": {
+            "hover": {
+              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Circle\npublic: void draw() override\n```",
+              "range": {
+                "$place": "void ⟦draw⟧() override;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "final_method",
+          "marker": "final_method",
+          "value": {
+            "hover": {
+              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Dot\npublic: void draw() final\n```",
+              "range": {
+                "$place": "void ⟦draw⟧() final;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "implicit_override",
+          "marker": "implicit_override",
+          "value": {
+            "wrong": "draw overrides Base::draw, but without the override keyword the card gives no sign it is virtual (clangd#2474)",
+            "hover": {
+              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Square\npublic: void draw()\n```",
+              "range": {
+                "$place": "void ⟦draw⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

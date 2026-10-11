@@ -1,0 +1,91 @@
+{
+  "id": "navigation/definition/05_include_directives",
+  "topic": "navigation",
+  "subtopic": "definition",
+  "title": "Go-to-definition on `#include` directives",
+  "summary": "Go-to-definition on an include opens the referenced file",
+  "prose": "Leading includes and ordinary includes later in the file behave alike.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "extra.h",
+      "text": "inline int spacing() {\n    return 2;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"panel.h\"\n\nint build() {\n    return dimension();\n}\n\n#include \"extra.h\"\n\nint total() {\n    return build() + spacing();\n}\n",
+      "markers": [
+        {
+          "name": "preamble_include",
+          "begin": 9,
+          "end": 9,
+          "range": false
+        },
+        {
+          "name": "late_include",
+          "begin": 70,
+          "end": 70,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "panel.h",
+      "text": "#pragma once\n\nint dimension();\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "preamble_include",
+          "marker": "preamble_include",
+          "value": {
+            "definition": [
+              {
+                "$place": "panel.h │ ⟦⟧#pragma once",
+                "path": "panel.h",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 0
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "late_include",
+          "marker": "late_include",
+          "value": {
+            "definition": [
+              {
+                "$place": "extra.h │ ⟦⟧inline int spacing() {",
+                "path": "extra.h",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 0
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

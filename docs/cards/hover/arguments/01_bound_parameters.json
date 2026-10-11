@@ -1,0 +1,112 @@
+{
+  "id": "hover/arguments/01_bound_parameters",
+  "topic": "hover",
+  "subtopic": "arguments",
+  "title": "Call arguments",
+  "summary": "An argument at a call shows the parameter it is passed as",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace parameter_binding {\nvoid resize(long height, long& previous, long flags = 0);\n\nvoid apply() {\n    long height = 720;\n    long previous = 0;\n    resize(height, previous, 2);\n}\n}\n",
+      "markers": [
+        {
+          "name": "by_name",
+          "begin": 161,
+          "end": 161,
+          "range": false
+        },
+        {
+          "name": "by_ref",
+          "begin": 169,
+          "end": 169,
+          "range": false
+        },
+        {
+          "name": "literal",
+          "begin": 179,
+          "end": 179,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "by_name",
+          "marker": "by_name",
+          "value": {
+            "hover": {
+              "markdown": "### variable `height`\n\n---\nType: `long`\nValue = `720 (0x2d0)`\nPassed as height\n\n---\n```cpp\n// In apply\nlong height = 720\n```",
+              "range": {
+                "$place": "resize(⟦height⟧, previous, 2);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "by_ref",
+          "marker": "by_ref",
+          "value": {
+            "hover": {
+              "markdown": "### variable `previous`\n\n---\nType: `long`\nValue = `0`\nPassed by reference as previous\n\n---\n```cpp\n// In apply\nlong previous = 0\n```",
+              "range": {
+                "$place": "resize(height, ⟦previous⟧, 2);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 27
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "literal",
+          "marker": "literal",
+          "value": {
+            "hover": {
+              "markdown": "### `literal`\n\n---\nPassed as flags (converted to long)",
+              "range": {
+                "$place": "resize(height, previous, ⟦2⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 29
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 30
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

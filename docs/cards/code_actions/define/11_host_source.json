@@ -1,0 +1,150 @@
+{
+  "id": "code_actions/define/11_host_source",
+  "topic": "code_actions",
+  "subtopic": "define",
+  "title": "Define in the host source",
+  "summary": "In a header, a member can also be defined in the source file the header is compiled with",
+  "prose": "The definition is fully qualified and joins the class's other definitions in that file; members already defined in some source file are not offered again. Templates, inline functions and functions other files cannot see stay in the header; any other function defined there out of the class is marked `inline`.",
+  "status": "supported",
+  "issues": [
+    "clangd#445"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"widget.h\"\n\nnamespace ns {\nvoid Widget::done() {\n}\n}\n\nint main() {\n    ns::Widget w(1);\n    return w.id();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "widget.h",
+      "text": "#pragma once\n\nnamespace ns {\nclass Widget {\npublic:\n    Widget(int id);\n    int id() const;\n    template <class T>\n    void visit(T& visitor);\n    inline void touch() {}\n    void done();\nprivate:\n    int id_;\n};\n}\n",
+      "markers": [
+        {
+          "name": "cls",
+          "begin": 35,
+          "end": 35,
+          "range": false
+        },
+        {
+          "name": "id",
+          "begin": 80,
+          "end": 80,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "inspect",
+          "value": {
+            "cls": {
+              "code_actions": [
+                {
+                  "kind": "refactor.rewrite.define.missing",
+                  "title": "Define missing members of 'Widget'",
+                  "compiles": true,
+                  "edits": {
+                    "widget.h": "     int id_;\n };\n+\n+inline Widget::Widget(int id) {\n }\n+\n+inline int Widget::id() const {\n+}\n+\n+template <class T>\n+void Widget::visit(T& visitor) {\n+}\n+\n+inline void Widget::done() {\n+}\n+\n+}"
+                  }
+                },
+                {
+                  "kind": "refactor.rewrite.define.missing",
+                  "title": "Define missing members of 'Widget'",
+                  "host": [
+                    "ns::Widget::Widget(int id) {\n}\n",
+                    "int ns::Widget::id() const {\n}\n",
+                    "void ns::Widget::done() {\n}\n"
+                  ]
+                }
+              ]
+            },
+            "id": {
+              "code_actions": [
+                {
+                  "kind": "refactor.rewrite.define.inline",
+                  "title": "Define 'id' inline",
+                  "compiles": true,
+                  "edits": {
+                    "widget.h": " public:\n     Widget(int id);\n-    int id() const;\n+    int id() const {}\n     template <class T>\n     void visit(T& visitor);"
+                  }
+                },
+                {
+                  "kind": "refactor.rewrite.define.outOfLine",
+                  "title": "Define 'Widget::id' out of line",
+                  "compiles": true,
+                  "edits": {
+                    "widget.h": "     int id_;\n };\n+\n+inline int Widget::id() const {\n }\n+\n+}"
+                  }
+                },
+                {
+                  "kind": "refactor.rewrite.define.outOfLine",
+                  "title": "Define 'ns::Widget::id'",
+                  "host": [
+                    "int ns::Widget::id() const {\n}\n"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "server",
+          "value": {
+            "cls": {
+              "code_actions": [
+                {
+                  "kind": "refactor.rewrite.define.missing",
+                  "title": "Define missing members of 'Widget'",
+                  "compiles": true,
+                  "edits": {
+                    "widget.h": "     int id_;\n };\n+\n+inline Widget::Widget(int id) {\n }\n+\n+inline int Widget::id() const {\n+}\n+\n+template <class T>\n+void Widget::visit(T& visitor) {\n+}\n+\n+}"
+                  }
+                },
+                {
+                  "kind": "refactor.rewrite.define.missing",
+                  "title": "Define missing members of 'Widget' in main.cpp",
+                  "compiles": true,
+                  "edits": {
+                    "main.cpp": " void Widget::done() {\n }\n+\n+ns::Widget::Widget(int id) {\n }\n\n+int ns::Widget::id() const {\n+}\n+\n+}\n+\n int main() {\n     ns::Widget w(1);"
+                  }
+                }
+              ]
+            },
+            "id": {
+              "code_actions": [
+                {
+                  "kind": "refactor.rewrite.define.inline",
+                  "title": "Define 'id' inline",
+                  "compiles": true,
+                  "edits": {
+                    "widget.h": " public:\n     Widget(int id);\n-    int id() const;\n+    int id() const {}\n     template <class T>\n     void visit(T& visitor);"
+                  }
+                },
+                {
+                  "kind": "refactor.rewrite.define.outOfLine",
+                  "title": "Define 'Widget::id' out of line",
+                  "compiles": true,
+                  "edits": {
+                    "widget.h": "     int id_;\n };\n+\n+inline int Widget::id() const {\n }\n+\n+}"
+                  }
+                },
+                {
+                  "kind": "refactor.rewrite.define.outOfLine",
+                  "title": "Define 'ns::Widget::id' in main.cpp",
+                  "compiles": true,
+                  "edits": {
+                    "main.cpp": " void Widget::done() {\n }\n+\n+int ns::Widget::id() const {\n }\n\n+}\n+\n int main() {\n     ns::Widget w(1);"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

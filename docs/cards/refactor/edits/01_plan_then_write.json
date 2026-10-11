@@ -1,0 +1,71 @@
+{
+  "id": "refactor/edits/01_plan_then_write",
+  "topic": "refactor",
+  "subtopic": "edits",
+  "title": "Plan, then write",
+  "summary": "A dry run lists the edits without writing them, and a run without it rewrites the files",
+  "prose": "`--dry-run` answers with every name the rename would change, file by file, and\nwith the places it leaves alone for you to check: the body of `CALL` spells\n`compute`, but the index cannot tell what a macro body names. Without\n`--dry-run` the files are rewritten. Renaming a class renames its constructors\nwith it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "lib.h",
+      "text": "#pragma once\n\nint compute(int x);\n\nstruct Widget {\n    Widget();\n    int value;\n};\n\n#define CALL compute(1)\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"lib.h\"\n\nint compute(int x) { return x; }\n\nWidget::Widget() : value(0) {}\n\nint use() { return compute(2) + CALL; }\n\nint main() {\n    Widget w;\n    return use() + w.value;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "other.cpp",
+      "text": "#include \"lib.h\"\n\nint again() { return compute(3); }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "plans without writing",
+      "blocks": [
+        {
+          "label": "$ clice index --workers 2",
+          "value": {
+            "stdout": "Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice refactor rename --symbol compute --to evaluate --dry-run",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"applied\": false,\n    \"renames\": [\n      {\n        \"line\": null,\n        \"locator\": \"compute\",\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"symbol\": \"#0129094638d1b328\",\n        \"newName\": \"evaluate\",\n        \"edits\": 4,\n        \"conflicts\": [],\n        \"warnings\": [],\n        \"error\": null,\n        \"candidates\": null\n      }\n    ],\n    \"files\": [\n      {\n        \"file\": \"${WS}/lib.h\",\n        \"edits\": [\n          {\n            \"line\": 3,\n            \"column\": 5,\n            \"name\": \"compute\",\n            \"newName\": \"evaluate\",\n            \"heuristic\": false\n          }\n        ]\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"edits\": [\n          {\n            \"line\": 3,\n            \"column\": 5,\n            \"name\": \"compute\",\n            \"newName\": \"evaluate\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 7,\n            \"column\": 20,\n            \"name\": \"compute\",\n            \"newName\": \"evaluate\",\n            \"heuristic\": false\n          }\n        ]\n      },\n      {\n        \"file\": \"${WS}/other.cpp\",\n        \"edits\": [\n          {\n            \"line\": 3,\n            \"column\": 22,\n            \"name\": \"compute\",\n            \"newName\": \"evaluate\",\n            \"heuristic\": false\n          }\n        ]\n      }\n    ],\n    \"unconfirmed\": [\n      {\n        \"file\": \"${WS}/lib.h\",\n        \"line\": 10,\n        \"column\": 14,\n        \"name\": \"compute\",\n        \"reason\": \"inside a preprocessor directive, which the index does not resolve\",\n        \"text\": \"#define CALL compute(1)\"\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 7,\n        \"column\": 33,\n        \"name\": \"compute\",\n        \"reason\": \"the name is written here as `CALL`\",\n        \"text\": \"int use() { return compute(2) + CALL; }\"\n      }\n    ],\n    \"conflicts\": [],\n    \"stale\": []\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "writes the edits",
+      "blocks": [
+        {
+          "label": "$ clice index --workers 2",
+          "value": {
+            "stdout": "Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice refactor rename --symbol Widget --to Gadget",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"applied\": true,\n    \"renames\": [\n      {\n        \"line\": null,\n        \"locator\": \"Widget\",\n        \"name\": \"Widget\",\n        \"kind\": \"Struct\",\n        \"symbol\": \"#5b52580eb5b8875a\",\n        \"newName\": \"Gadget\",\n        \"edits\": 5,\n        \"conflicts\": [],\n        \"warnings\": [],\n        \"error\": null,\n        \"candidates\": null\n      }\n    ],\n    \"files\": [\n      {\n        \"file\": \"${WS}/lib.h\",\n        \"edits\": [\n          {\n            \"line\": 5,\n            \"column\": 8,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 6,\n            \"column\": 5,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          }\n        ]\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"edits\": [\n          {\n            \"line\": 5,\n            \"column\": 1,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 5,\n            \"column\": 9,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 10,\n            \"column\": 5,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          }\n        ]\n      }\n    ],\n    \"unconfirmed\": [],\n    \"conflicts\": [],\n    \"stale\": []\n  },\n  \"stale\": []\n}",
+            "exit": 0,
+            "files": {
+              "lib.h": " int compute(int x);\n\n-struct Widget {\n-    Widget();\n+struct Gadget {\n+    Gadget();\n     int value;\n };",
+              "main.cpp": " int compute(int x) { return x; }\n\n-Widget::Widget() : value(0) {}\n+Gadget::Gadget() : value(0) {}\n\n int use() { return compute(2) + CALL; }\n\n int main() {\n-    Widget w;\n+    Gadget w;\n     return use() + w.value;\n }"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

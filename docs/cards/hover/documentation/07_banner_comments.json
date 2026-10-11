@@ -1,0 +1,57 @@
+{
+  "id": "hover/documentation/07_banner_comments",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Banner comments",
+  "summary": "A section banner above a declaration shows as its documentation, even with a blank line between",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#974"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace banners {\n// ==== Section Banner ====\n\nvoid foo();\n}\n",
+      "markers": [
+        {
+          "name": "after_banner",
+          "begin": 54,
+          "end": 54,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "after_banner",
+          "marker": "after_banner",
+          "value": {
+            "wrong": "a banner separated by a blank line shows as the function's documentation (clangd#974)",
+            "hover": {
+              "markdown": "### function `foo`\n\n---\n→ `void`\n==== Section Banner ====\n\n---\n```cpp\n// In namespace banners\nvoid foo()\n```",
+              "range": {
+                "$place": "void ⟦foo⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

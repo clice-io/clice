@@ -1,0 +1,66 @@
+{
+  "id": "code_actions/include/02_project_header",
+  "topic": "code_actions",
+  "subtopic": "include",
+  "title": "Include for a project symbol",
+  "summary": "A name declared in a project header the file does not include offers that header, spelled relative to the file",
+  "prose": "The candidates come from the project index: `lib.h` is known because another source file includes it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "lib.h",
+      "text": "#pragma once\n\nint helper(int x);\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int main() {\n    return helper(1);\n}\n",
+      "markers": [
+        {
+          "name": "helper",
+          "begin": 24,
+          "end": 24,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "other.cpp",
+      "text": "#include \"lib.h\"\n\nint helper(int x) {\n    return x;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "inspect",
+          "value": {
+            "helper": {
+              "code_actions": []
+            }
+          }
+        },
+        {
+          "label": "server",
+          "value": {
+            "helper": {
+              "code_actions": [
+                {
+                  "kind": "quickfix",
+                  "title": "Add #include \"lib.h\"",
+                  "compiles": true,
+                  "edits": {
+                    "main.cpp": "+#include \"lib.h\"\n int main() {\n     return helper(1);"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

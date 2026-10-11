@@ -1,0 +1,254 @@
+{
+  "id": "semantic_tokens/declarations/03_types",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Types",
+  "summary": "Type definitions and references keep their respective type kinds",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "class Widget {};\nstruct Point {};\nunion Storage {\n    int i;\n    float f;\n};\nenum Flags { FlagA };\nenum class Mode { Fast };\n\ntypedef Point PointAlias;\nusing WidgetAlias = Widget;\n\nWidget* make_widget();\nPointAlias origin;\nMode current = Mode::Fast;\n",
+      "markers": [
+        {
+          "name": "Widget_def",
+          "begin": 6,
+          "end": 6,
+          "range": false
+        },
+        {
+          "name": "Point_def",
+          "begin": 24,
+          "end": 24,
+          "range": false
+        },
+        {
+          "name": "Storage",
+          "begin": 40,
+          "end": 40,
+          "range": false
+        },
+        {
+          "name": "Flags",
+          "begin": 82,
+          "end": 82,
+          "range": false
+        },
+        {
+          "name": "Mode_def",
+          "begin": 110,
+          "end": 110,
+          "range": false
+        },
+        {
+          "name": "Point_use",
+          "begin": 134,
+          "end": 134,
+          "range": false
+        },
+        {
+          "name": "PointAlias_def",
+          "begin": 140,
+          "end": 140,
+          "range": false
+        },
+        {
+          "name": "WidgetAlias",
+          "begin": 158,
+          "end": 158,
+          "range": false
+        },
+        {
+          "name": "Widget_use",
+          "begin": 172,
+          "end": 172,
+          "range": false
+        },
+        {
+          "name": "Widget_use2",
+          "begin": 181,
+          "end": 181,
+          "range": false
+        },
+        {
+          "name": "PointAlias_use",
+          "begin": 204,
+          "end": 204,
+          "range": false
+        },
+        {
+          "name": "Mode_use",
+          "begin": 223,
+          "end": 223,
+          "range": false
+        },
+        {
+          "name": "Mode_use2",
+          "begin": 238,
+          "end": 238,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "Widget_def",
+          "marker": "Widget_def",
+          "value": {
+            "semantic_token": {
+              "text": "Widget",
+              "type": "class",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Point_def",
+          "marker": "Point_def",
+          "value": {
+            "semantic_token": {
+              "text": "Point",
+              "type": "struct",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Storage",
+          "marker": "Storage",
+          "value": {
+            "semantic_token": {
+              "text": "Storage",
+              "type": "union",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Flags",
+          "marker": "Flags",
+          "value": {
+            "semantic_token": {
+              "text": "Flags",
+              "type": "enum",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Mode_def",
+          "marker": "Mode_def",
+          "value": {
+            "semantic_token": {
+              "text": "Mode",
+              "type": "enum",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Point_use",
+          "marker": "Point_use",
+          "value": {
+            "semantic_token": {
+              "text": "Point",
+              "type": "struct"
+            }
+          }
+        },
+        {
+          "label": "PointAlias_def",
+          "marker": "PointAlias_def",
+          "value": {
+            "semantic_token": {
+              "text": "PointAlias",
+              "type": "type",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "WidgetAlias",
+          "marker": "WidgetAlias",
+          "value": {
+            "semantic_token": {
+              "text": "WidgetAlias",
+              "type": "type",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Widget_use",
+          "marker": "Widget_use",
+          "value": {
+            "semantic_token": {
+              "text": "Widget",
+              "type": "class"
+            }
+          }
+        },
+        {
+          "label": "Widget_use2",
+          "marker": "Widget_use2",
+          "value": {
+            "semantic_token": {
+              "text": "Widget",
+              "type": "class"
+            }
+          }
+        },
+        {
+          "label": "PointAlias_use",
+          "marker": "PointAlias_use",
+          "value": {
+            "semantic_token": {
+              "text": "PointAlias",
+              "type": "type"
+            }
+          }
+        },
+        {
+          "label": "Mode_use",
+          "marker": "Mode_use",
+          "value": {
+            "semantic_token": {
+              "text": "Mode",
+              "type": "enum"
+            }
+          }
+        },
+        {
+          "label": "Mode_use2",
+          "marker": "Mode_use2",
+          "value": {
+            "semantic_token": {
+              "text": "Mode",
+              "type": "enum"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

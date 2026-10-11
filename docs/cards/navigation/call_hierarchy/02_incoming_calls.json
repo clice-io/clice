@@ -1,0 +1,142 @@
+{
+  "id": "navigation/call_hierarchy/02_incoming_calls",
+  "topic": "navigation",
+  "subtopic": "call_hierarchy",
+  "title": "Incoming calls",
+  "summary": "Incoming calls list every caller of a function, and a caller that invokes it more than once contributes each call site",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int helper(int v) {\n    return v;\n}\n\nint alpha() {\n    return helper(1);\n}\n\nint beta() {\n    return helper(2) + helper(3);\n}\n",
+      "markers": [
+        {
+          "name": "target",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "target",
+          "marker": "target",
+          "value": {
+            "call_hierarchy": [
+              {
+                "name": "helper",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦helper⟧(int v) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 10
+                    }
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "alpha",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦alpha⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 9
+                    }
+                  }
+                },
+                "sites": [
+                  {
+                    "$place": "return ⟦helper⟧(1);",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 5,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 5,
+                        "character": 17
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "beta",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦beta⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 8
+                    }
+                  }
+                },
+                "sites": [
+                  {
+                    "$place": "return ⟦helper⟧(2) + helper(3);",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 9,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 9,
+                        "character": 17
+                      }
+                    }
+                  },
+                  {
+                    "$place": "return helper(2) + ⟦helper⟧(3);",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 9,
+                        "character": 23
+                      },
+                      "end": {
+                        "line": 9,
+                        "character": 29
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": []
+          }
+        }
+      ]
+    }
+  ]
+}

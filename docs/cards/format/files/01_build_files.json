@@ -1,0 +1,66 @@
+{
+  "id": "format/files/01_build_files",
+  "topic": "format",
+  "subtopic": "files",
+  "title": "Format the build's files",
+  "summary": "Without paths, the build's sources and the headers they include are formatted; vendored and system headers are left alone",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\n",
+      "markers": []
+    },
+    {
+      "path": "app.cpp",
+      "text": "#include \"lib.h\"\n#include \"vendor/vendored.h\"\n#include <system.h>\n\nint   run(){return scale(vendored(1),installed(2));}\n",
+      "markers": []
+    },
+    {
+      "path": "clice.toml",
+      "text": "[[rules]]\npatterns = [\"vendor/**\"]\nformat = false\n",
+      "markers": []
+    },
+    {
+      "path": "lib.h",
+      "text": "#pragma once\nint   scale(int value,int factor){return value*factor;}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"lib.h\"\n\nint   main(){return scale(2,3);}\n",
+      "markers": []
+    },
+    {
+      "path": "sys/system.h",
+      "text": "#pragma once\nint   installed(int value){return value-1;}\n",
+      "markers": []
+    },
+    {
+      "path": "vendor/vendored.h",
+      "text": "#pragma once\nint   vendored(int value){return value+1;}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice format",
+          "value": {
+            "stdout": "Formatted 3 files in #s.",
+            "exit": 0,
+            "files": {
+              "app.cpp": " #include <system.h>\n\n-int   run(){return scale(vendored(1),installed(2));}\n+int run() { return scale(vendored(1), installed(2)); }",
+              "lib.h": " #pragma once\n-int   scale(int value,int factor){return value*factor;}\n+int scale(int value, int factor) { return value * factor; }",
+              "main.cpp": " #include \"lib.h\"\n\n-int   main(){return scale(2,3);}\n+int main() { return scale(2, 3); }"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

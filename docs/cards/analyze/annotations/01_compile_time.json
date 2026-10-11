@@ -1,0 +1,81 @@
+{
+  "id": "analyze/annotations/01_compile_time",
+  "topic": "analyze",
+  "subtopic": "annotations",
+  "title": "Weighing by compile time",
+  "summary": "An annotation file weighs each translation unit by what rebuilding it costs, here seconds of compile time",
+  "prose": "core/fast.h is included by app/main.cpp alone, but partitioned into modules\nevery source imports core, directly or through util's interface: an edit to\nit rebuilds three units instead of one.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app/main.cpp",
+      "text": "#include \"core/fast.h\"\n#include \"util/clock.h\"\n\nint main() {\n    Clock clock{};\n    return fast() + clock.name.n;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "compile_time.json",
+      "text": "{ \"name\": \"compile_time\", \"unit\": \"s\", \"values\": { \"app/main.cpp\": 10 } }\n",
+      "markers": []
+    },
+    {
+      "path": "core/fast.h",
+      "text": "#pragma once\n\ninline int fast() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "core/str.cpp",
+      "text": "#include \"core/str.h\"\n\nint length(const Str& s) {\n    return s.n;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "core/str.h",
+      "text": "#pragma once\n\nstruct Str {\n    int n;\n};\n\nint length(const Str& s);\n",
+      "markers": []
+    },
+    {
+      "path": "util/clock.cpp",
+      "text": "#include \"util/clock.h\"\n\nint clock_size(const Clock& clock) {\n    return length(clock.name);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "util/clock.h",
+      "text": "#pragma once\n#include \"core/str.h\"\n\nstruct Clock {\n    Str name;\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 3 translation units in #s: 6 file shards (# KB), 8 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice analyze modules --view impact",
+          "value": {
+            "stdout": "[\n  {\n    \"path\": \"core/fast.h\",\n    \"baseline\": 1,\n    \"partitioned\": 3,\n    \"churn\": null,\n    \"internal\": false\n  },\n  {\n    \"path\": \"core/str.h\",\n    \"baseline\": 3,\n    \"partitioned\": 3,\n    \"churn\": null,\n    \"internal\": false\n  },\n  {\n    \"path\": \"util/clock.h\",\n    \"baseline\": 2,\n    \"partitioned\": 2,\n    \"churn\": null,\n    \"internal\": false\n  }\n]",
+            "stderr": [
+              "warning: no churn annotation: Process git ended with exit code 128"
+            ],
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice analyze modules --view impact --annotation compile_time.json",
+          "value": {
+            "stdout": "[\n  {\n    \"path\": \"core/fast.h\",\n    \"baseline\": 10,\n    \"partitioned\": 12,\n    \"churn\": null,\n    \"internal\": false\n  },\n  {\n    \"path\": \"core/str.h\",\n    \"baseline\": 12,\n    \"partitioned\": 12,\n    \"churn\": null,\n    \"internal\": false\n  },\n  {\n    \"path\": \"util/clock.h\",\n    \"baseline\": 11,\n    \"partitioned\": 11,\n    \"churn\": null,\n    \"internal\": false\n  }\n]",
+            "stderr": [
+              "warning: no churn annotation: Process git ended with exit code 128"
+            ],
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "id": "code_actions/formatting/01_project_style",
+  "topic": "code_actions",
+  "subtopic": "formatting",
+  "title": "Project formatting style",
+  "summary": "Generated code follows the clang-format style that applies to the file",
+  "prose": "Without a `.clang-format` above the file, or with `DisableFormat`, the text keeps the layout shown in the other examples.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n  int scale(int factor = 1) const;\n};\n\nenum class Color { Red, Green, Blue };\n\nint paint(Color color) {\n  switch (color) {\n  case Color::Red:\n    return 1;\n  }\n  return 0;\n}\n",
+      "markers": [
+        {
+          "name": "scale",
+          "begin": 21,
+          "end": 21,
+          "range": false
+        },
+        {
+          "name": "cases",
+          "begin": 121,
+          "end": 121,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "scale",
+          "marker": "scale",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define 'scale' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " struct Shape {\n-  int scale(int factor = 1) const;\n+  int scale(int factor = 1) const {}\n };\n"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'Shape::scale' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " };\n\n+int Shape::scale(int factor) const {}\n+\n enum class Color { Red, Green, Blue };\n"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "cases",
+          "marker": "cases",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.populateSwitch",
+                "title": "Add 2 missing enum cases to switch",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "   case Color::Red:\n     return 1;\n+  case Color::Green:\n+  case Color::Blue:\n+    break;\n   }\n   return 0;"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

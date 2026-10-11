@@ -1,0 +1,43 @@
+{
+  "id": "signature_help/call_contexts/10_macros",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Function-like macros",
+  "summary": "A function-like macro's arguments get no signature help yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#795"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int fail(const char* message);\n\n#define CHECK(cond, msg) ((cond) ? 0 : fail(msg))\n\nint verified = CHECK(1 > 0, \"positive\");\n",
+      "markers": [
+        {
+          "name": "condition",
+          "begin": 104,
+          "end": 104,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "condition",
+          "marker": "condition",
+          "value": {
+            "wrong": "a function-like macro shows no parameters (clangd#795)",
+            "signature_help": {
+              "signatures": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

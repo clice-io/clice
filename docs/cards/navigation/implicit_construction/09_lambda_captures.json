@@ -1,0 +1,39 @@
+{
+  "id": "navigation/implicit_construction/09_lambda_captures",
+  "topic": "navigation",
+  "subtopic": "implicit_construction",
+  "title": "Lambda init-capture",
+  "summary": "A lambda init-capture does not navigate to its move constructor yet",
+  "prose": "Go-to-definition on the `=` of a lambda init-capture does not reach the\nconstructor that builds the captured value.",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    Widget(int v);\n    Widget(Widget&& other);\n};\n\nvoid use(Widget w) {\n    auto f = [x = static_cast<Widget&&>(w)] {};\n}\n",
+      "markers": [
+        {
+          "name": "capture",
+          "begin": 104,
+          "end": 104,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "capture",
+          "marker": "capture",
+          "value": {
+            "wrong": "should reach Widget(Widget&&), the constructor building the capture",
+            "definition": []
+          }
+        }
+      ]
+    }
+  ]
+}

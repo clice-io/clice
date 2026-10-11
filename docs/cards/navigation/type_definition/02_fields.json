@@ -1,0 +1,107 @@
+{
+  "id": "navigation/type_definition/02_fields",
+  "topic": "navigation",
+  "subtopic": "type_definition",
+  "title": "Class and struct fields",
+  "summary": "Go-to-type-definition on a field access reaches the definition of the field's type",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Logger {};\n\nclass Store {};\n\nstruct App {\n    Logger logger;\n    Store store;\n};\n\nint use(App& app) {\n    app.logger;\n    app.store;\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "type",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "class_type",
+          "begin": 25,
+          "end": 25,
+          "range": false
+        },
+        {
+          "name": "field",
+          "begin": 117,
+          "end": 117,
+          "range": false
+        },
+        {
+          "name": "class_field",
+          "begin": 133,
+          "end": 133,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "type_definition": []
+          }
+        },
+        {
+          "label": "class_type",
+          "marker": "class_type",
+          "value": {
+            "type_definition": []
+          }
+        },
+        {
+          "label": "field",
+          "marker": "field",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Logger⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "class_field",
+          "marker": "class_field",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "class ⟦Store⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

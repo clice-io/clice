@@ -1,0 +1,61 @@
+{
+  "id": "signature_help/call_contexts/04_nested_calls",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Nested calls",
+  "summary": "Inside a nested call the help follows the innermost call around the cursor",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int inner(int a);\nint outer(int b, int c);\n\nint main() {\n    outer(inner(1), 2);\n}\n",
+      "markers": [
+        {
+          "name": "deep",
+          "begin": 73,
+          "end": 73,
+          "range": false
+        },
+        {
+          "name": "shallow",
+          "begin": 77,
+          "end": 77,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "deep",
+          "marker": "deep",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "inner(⟦int a⟧) -> int"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "shallow",
+          "marker": "shallow",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "outer(int b, ⟦int c⟧) -> int"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "id": "navigation/implicit_construction/05_member_initializers",
+  "topic": "navigation",
+  "subtopic": "implicit_construction",
+  "title": "Member initializer list",
+  "summary": "Member-initializer parentheses navigate to the selected base or member constructor",
+  "prose": "The base and member constructors run by an initializer list are reached\nfrom the opening parenthesis of each initializer. The initializer name\nitself resolves to the base type or the member, so navigation to the\nconstructor goes through the parenthesis.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    Base(int x);\n};\n\nstruct Logger {\n    Logger(int level);\n};\n\nstruct App : Base {\n    Logger logger;\n    App() : Base(42), logger(1) {}\n};\n",
+      "markers": [
+        {
+          "name": "base_init",
+          "begin": 129,
+          "end": 129,
+          "range": false
+        },
+        {
+          "name": "base_paren",
+          "begin": 133,
+          "end": 133,
+          "range": false
+        },
+        {
+          "name": "member_init",
+          "begin": 139,
+          "end": 139,
+          "range": false
+        },
+        {
+          "name": "member_paren",
+          "begin": 145,
+          "end": 145,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "base_init",
+          "marker": "base_init",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Base⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "base_paren",
+          "marker": "base_paren",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦Base⟧(int x);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 8
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "member_init",
+          "marker": "member_init",
+          "value": {
+            "definition": [
+              {
+                "$place": "Logger ⟦logger⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "member_paren",
+          "marker": "member_paren",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦Logger⟧(int level);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

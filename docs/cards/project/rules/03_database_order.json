@@ -1,0 +1,51 @@
+{
+  "id": "project/rules/03_database_order",
+  "topic": "project",
+  "subtopic": "rules",
+  "title": "Databases in priority order",
+  "summary": "A file several databases list takes its command from the first one, and the others stay on offer as contexts",
+  "prose": "Database `a` lists `main.cpp` with `-DFROM_A`; database `b` lists it with `-DFROM_B` and also lists `other.cpp`. `main.cpp` compiles with the command from `a` and can be switched to the one from `b`, while `other.cpp` takes its command from `b`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "clice.toml",
+      "text": "[[rules]]\ncompile_commands = [\"a\", \"b\"]\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#ifndef FROM_A\n#error missing FROM_A\n#endif\nint main() { return 0; }\n",
+      "markers": []
+    },
+    {
+      "path": "other.cpp",
+      "text": "#ifndef FROM_B\n#error missing FROM_B\n#endif\nint other() { return 0; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "contexts": [
+              {
+                "label": "-DFROM_A",
+                "description": "${WS}",
+                "host": "main.cpp"
+              },
+              {
+                "label": "-DFROM_B",
+                "description": "${WS}",
+                "host": "main.cpp"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

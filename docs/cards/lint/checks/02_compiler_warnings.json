@@ -1,0 +1,36 @@
+{
+  "id": "lint/checks/02_compiler_warnings",
+  "topic": "lint",
+  "subtopic": "checks",
+  "title": "Compiler warnings as findings",
+  "summary": "A warning the build enables is a finding only when the checks name it",
+  "prose": "The compiler warnings a unit's command enables are findings when `Checks` lists their `clang-diagnostic-<flag>` name, reported under that name. The others stay out of the report.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,clang-diagnostic-unused-variable\"\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int scale(int value) {\n    int unused;\n    {\n        int value = 2;\n        return value;\n    }\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice lint --workers 2",
+          "value": {
+            "stdout": "${WS}/main.cpp:2:9: warning: unused variable 'unused' [clang-diagnostic-unused-variable]\nLinted 1 translation unit in #s: 1 finding.",
+            "exit": 1
+          }
+        }
+      ]
+    }
+  ]
+}

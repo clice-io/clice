@@ -1,0 +1,87 @@
+{
+  "id": "hover/aliases/02_alias_targets",
+  "topic": "hover",
+  "subtopic": "aliases",
+  "title": "Aliases of structs",
+  "summary": "An alias names the struct it stands for, but does not show its members yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2020"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace aliases {\n\nstruct Widget {\n    int id;\n    double value;\n};\n\nusing Handle = Widget;\n\ntypedef Widget Widget_t;\n\n}\n",
+      "markers": [
+        {
+          "name": "alias_using",
+          "begin": 80,
+          "end": 80,
+          "range": false
+        },
+        {
+          "name": "alias_typedef",
+          "begin": 113,
+          "end": 113,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "alias_using",
+          "marker": "alias_using",
+          "value": {
+            "wrong": "an alias of a struct does not show the struct's members (clangd#2020)",
+            "hover": {
+              "markdown": "### type `Handle`\n\n---\nType: `struct aliases::Widget`\n\n---\n```cpp\n// In namespace aliases\nusing Handle = Widget\n```",
+              "range": {
+                "$place": "using ⟦Handle⟧ = Widget;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "alias_typedef",
+          "marker": "alias_typedef",
+          "value": {
+            "wrong": "an alias of a struct does not show the struct's members (clangd#2020)",
+            "hover": {
+              "markdown": "### type `Widget_t`\n\n---\nType: `struct aliases::Widget`\n\n---\n```cpp\n// In namespace aliases\ntypedef Widget Widget_t\n```",
+              "range": {
+                "$place": "typedef Widget ⟦Widget_t⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 23
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

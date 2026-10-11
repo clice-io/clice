@@ -1,0 +1,111 @@
+{
+  "id": "semantic_tokens/declarations/09_structured_bindings",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Structured bindings",
+  "summary": "Structured binding names receive variable tokens at definition and use",
+  "prose": "The opening `[` deliberately carries no token; only the binding names\nthemselves are highlighted.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Pair {\n    int first, second;\n};\n\nvoid unpack() {\n    auto [a, b] = Pair{1, 2};\n    int sum = a + b;\n}\n",
+      "markers": [
+        {
+          "name": "bracket",
+          "begin": 66,
+          "end": 66,
+          "range": false
+        },
+        {
+          "name": "a_def",
+          "begin": 67,
+          "end": 67,
+          "range": false
+        },
+        {
+          "name": "b_def",
+          "begin": 70,
+          "end": 70,
+          "range": false
+        },
+        {
+          "name": "a_use",
+          "begin": 101,
+          "end": 101,
+          "range": false
+        },
+        {
+          "name": "b_use",
+          "begin": 105,
+          "end": 105,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "bracket",
+          "marker": "bracket",
+          "value": {
+            "semantic_token": {
+              "text": "[",
+              "type": "none"
+            }
+          }
+        },
+        {
+          "label": "a_def",
+          "marker": "a_def",
+          "value": {
+            "semantic_token": {
+              "text": "a",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "b_def",
+          "marker": "b_def",
+          "value": {
+            "semantic_token": {
+              "text": "b",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "a_use",
+          "marker": "a_use",
+          "value": {
+            "semantic_token": {
+              "text": "a",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "b_use",
+          "marker": "b_use",
+          "value": {
+            "semantic_token": {
+              "text": "b",
+              "type": "variable"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

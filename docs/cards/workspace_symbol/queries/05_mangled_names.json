@@ -1,0 +1,31 @@
+{
+  "id": "workspace_symbol/queries/05_mangled_names",
+  "topic": "workspace_symbol",
+  "subtopic": "queries",
+  "title": "Search by mangled (linker) name",
+  "summary": "Mangled linker names do not resolve to their source functions yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void process(int value);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "_Z7processi",
+          "value": {
+            "wrong": "should find process(int), the function the mangled name names",
+            "workspace_symbols": []
+          }
+        }
+      ]
+    }
+  ]
+}

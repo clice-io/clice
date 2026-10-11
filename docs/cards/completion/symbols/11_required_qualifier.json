@@ -1,0 +1,121 @@
+{
+  "id": "completion/symbols/11_required_qualifier",
+  "topic": "completion",
+  "subtopic": "symbols",
+  "title": "Required qualifier",
+  "summary": "An enumerator the bare name does not reach completes with the qualifier it needs, matched against its bare name",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "enum class Color { Red, Green };\n\nnamespace ns {\nenum Fruit { Apple, Banana };\n}\n\nvoid paint(Color c);\n\nvoid bar(Color c) {\n    Color d = Re;\n    paint(Gre);\n    ns::Fruit f = App;\n    switch (c) {\n    case Re:\n        break;\n    }\n}\n",
+      "markers": [
+        {
+          "name": "initializer",
+          "begin": 140,
+          "end": 140,
+          "range": false
+        },
+        {
+          "name": "argument",
+          "begin": 155,
+          "end": 155,
+          "range": false
+        },
+        {
+          "name": "namespace_enum",
+          "begin": 179,
+          "end": 179,
+          "range": false
+        },
+        {
+          "name": "case_label",
+          "begin": 209,
+          "end": 209,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "initializer",
+          "marker": "initializer",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Color::Red",
+                  "kind": "EnumMember",
+                  "detail": "Color",
+                  "filter": "Red"
+                },
+                {
+                  "label": "reinterpret_cast",
+                  "kind": "Keyword"
+                },
+                {
+                  "label": "requires",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "argument",
+          "marker": "argument",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Color::Green",
+                  "kind": "EnumMember",
+                  "detail": "Color",
+                  "filter": "Green"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "namespace_enum",
+          "marker": "namespace_enum",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "ns::Apple",
+                  "kind": "EnumMember",
+                  "detail": "ns::Fruit",
+                  "filter": "Apple"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "case_label",
+          "marker": "case_label",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Color::Red",
+                  "kind": "EnumMember",
+                  "detail": "Color",
+                  "filter": "Red"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

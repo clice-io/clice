@@ -1,0 +1,56 @@
+{
+  "id": "analyze/dependencies/01_directory_modules",
+  "topic": "analyze",
+  "subtopic": "dependencies",
+  "title": "Directory modules",
+  "summary": "Each directory is a module, and a file naming another module's entity makes the dependency",
+  "prose": "A header naming another module's entity is an interface edge, which would\nbecome an import of the module's interface; a source alone makes an\nimplementation edge. Outside a git repository the churn annotation is left\nout, with a warning.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app/main.cpp",
+      "text": "#include \"util/clock.h\"\n\nint main() {\n    Clock clock{};\n    return clock.size();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "core/str.cpp",
+      "text": "#include \"core/str.h\"\n\nint length(const Str& s) {\n    return s.n;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "core/str.h",
+      "text": "#pragma once\n\nstruct Str {\n    int n;\n};\n\nint length(const Str& s);\n",
+      "markers": []
+    },
+    {
+      "path": "util/clock.h",
+      "text": "#pragma once\n#include \"core/str.h\"\n\nstruct Clock {\n    Str name;\n\n    int size() const {\n        return length(name);\n    }\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 2 translation units in #s: 4 file shards (# KB), 7 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice analyze modules",
+          "value": {
+            "stdout": "{\n  \"annotations\": [],\n  \"files\": 4,\n  \"modules\": [\n    {\n      \"name\": \"util\",\n      \"headers\": 1,\n      \"sources\": 0,\n      \"lines\": 11,\n      \"layer\": 1\n    },\n    {\n      \"name\": \"app\",\n      \"headers\": 0,\n      \"sources\": 1,\n      \"lines\": 7,\n      \"layer\": 0\n    },\n    {\n      \"name\": \"core\",\n      \"headers\": 1,\n      \"sources\": 1,\n      \"lines\": 14,\n      \"layer\": 0\n    }\n  ],\n  \"edges\": [\n    {\n      \"from\": \"util\",\n      \"to\": \"core\",\n      \"interfaceEntities\": 2,\n      \"implementationEntities\": 0,\n      \"sample\": [\n        \"length\",\n        \"Str\"\n      ]\n    },\n    {\n      \"from\": \"app\",\n      \"to\": \"util\",\n      \"interfaceEntities\": 0,\n      \"implementationEntities\": 2,\n      \"sample\": [\n        \"Clock::size\",\n        \"Clock\"\n      ]\n    }\n  ],\n  \"cycles\": [],\n  \"cyclicModules\": 0,\n  \"partitionCycles\": [],\n  \"internalHeaders\": 0,\n  \"deepestChain\": [\n    \"util\",\n    \"core\"\n  ],\n  \"totals\": {\n    \"baseline\": 5,\n    \"partitioned\": 5\n  },\n  \"hotspots\": [\n    {\n      \"path\": \"core/str.h\",\n      \"baseline\": 2,\n      \"partitioned\": 2,\n      \"churn\": null,\n      \"internal\": false\n    },\n    {\n      \"path\": \"util/clock.h\",\n      \"baseline\": 1,\n      \"partitioned\": 1,\n      \"churn\": null,\n      \"internal\": false\n    }\n  ],\n  \"moves\": [],\n  \"splits\": [],\n  \"obstacles\": {\n    \"variantHeaders\": 0,\n    \"contextMacros\": 0,\n    \"borrowedMacros\": 0,\n    \"internalUses\": 0,\n    \"crossModuleRedeclarations\": 0,\n    \"foreignDeclarations\": 0,\n    \"splitDefinitions\": 0,\n    \"duplicateDefinitions\": 0,\n    \"configuringMacros\": 0,\n    \"implicitProviders\": 0,\n    \"specializations\": 0\n  }\n}",
+            "stderr": [
+              "warning: no churn annotation: Process git ended with exit code 128"
+            ],
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

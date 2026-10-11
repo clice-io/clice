@@ -1,0 +1,83 @@
+{
+  "id": "navigation/references/03_implicit_construction",
+  "topic": "navigation",
+  "subtopic": "references",
+  "title": "Implicit constructor and destructor calls",
+  "summary": "Find references on a constructor reports only its explicit sites; an object definition that implicitly invokes the constructor or its destructor is not included",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Blob {\n    Blob();\n    ~Blob();\n};\n\nvoid use() {\n    Blob b;\n}\n",
+      "markers": [
+        {
+          "name": "constructor",
+          "begin": 18,
+          "end": 18,
+          "range": false
+        },
+        {
+          "name": "destructor",
+          "begin": 30,
+          "end": 30,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "constructor",
+          "marker": "constructor",
+          "value": {
+            "wrong": "Blob b; runs the constructor, so it should be among the references",
+            "references": [
+              {
+                "$place": "⟦Blob⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 8
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "destructor",
+          "marker": "destructor",
+          "value": {
+            "wrong": "Blob b; runs the destructor at the end of its scope, so it should be among the references",
+            "references": [
+              {
+                "$place": "⟦~Blob⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

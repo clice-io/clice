@@ -1,0 +1,60 @@
+{
+  "id": "semantic_tokens/declarations/08_labels",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Labels",
+  "summary": "Labels and their `goto` references receive label tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void retry(bool again) {\n    goto done;\ndone:\n    if (again) {\n        goto done;\n    }\n}\n",
+      "markers": [
+        {
+          "name": "done_use",
+          "begin": 34,
+          "end": 34,
+          "range": false
+        },
+        {
+          "name": "done_def",
+          "begin": 40,
+          "end": 40,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "done_use",
+          "marker": "done_use",
+          "value": {
+            "semantic_token": {
+              "text": "done",
+              "type": "label"
+            }
+          }
+        },
+        {
+          "label": "done_def",
+          "marker": "done_def",
+          "value": {
+            "semantic_token": {
+              "text": "done",
+              "type": "label",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

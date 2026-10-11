@@ -1,0 +1,142 @@
+{
+  "id": "navigation/projects/02_module_partition",
+  "topic": "navigation",
+  "subtopic": "projects",
+  "title": "Module partitions",
+  "summary": "A call into a module lands on the partition exporting the function",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "import shapes;\n\ndouble probe(const shapes::Circle& circle) {\n    return shapes::area(circle);\n}\n",
+      "markers": [
+        {
+          "name": "call",
+          "begin": 80,
+          "end": 80,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "src/circle.cppm",
+      "text": "export module shapes:circle;\n\nexport namespace shapes {\n\nstruct Circle {\n    double radius;\n};\n\ndouble area(const Circle& circle);\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "src/circle_impl.cpp",
+      "text": "module shapes;\n\nnamespace shapes {\n\ndouble area(const Circle& circle) {\n    return 3.14159 * circle.radius * circle.radius;\n}\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "src/shapes.cppm",
+      "text": "export module shapes;\n\nexport import :circle;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "call",
+          "marker": "call",
+          "value": {
+            "definition": [
+              {
+                "$place": "src/circle_impl.cpp │ double ⟦area⟧(const Circle& circle) {",
+                "path": "src/circle_impl.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 11
+                  }
+                }
+              }
+            ],
+            "declaration": [
+              {
+                "$place": "src/circle.cppm │ double ⟦area⟧(const Circle& circle);",
+                "path": "src/circle.cppm",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "src/circle_impl.cpp │ double ⟦area⟧(const Circle& circle) {",
+                "path": "src/circle_impl.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 11
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "return shapes::⟦area⟧(circle);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 23
+                  }
+                }
+              },
+              {
+                "$place": "src/circle.cppm │ double ⟦area⟧(const Circle& circle);",
+                "path": "src/circle.cppm",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "src/circle_impl.cpp │ double ⟦area⟧(const Circle& circle) {",
+                "path": "src/circle_impl.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

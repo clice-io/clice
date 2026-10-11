@@ -1,0 +1,86 @@
+{
+  "id": "hover/expressions/01_literals",
+  "topic": "hover",
+  "subtopic": "expressions",
+  "title": "Literals",
+  "summary": "A string literal shows its type and size, while a number shows nothing yet",
+  "prose": "The size counts the terminating null; the string's length is not shown.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1016",
+    "clangd#1669"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace literals {\n\nconst char *greeting = \"hello\";\n\nauto count = 42;\nauto ratio = 3.14;\n\n}\n",
+      "markers": [
+        {
+          "name": "string",
+          "begin": 45,
+          "end": 45,
+          "range": false
+        },
+        {
+          "name": "integer",
+          "begin": 68,
+          "end": 68,
+          "range": false
+        },
+        {
+          "name": "floating",
+          "begin": 85,
+          "end": 85,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "string",
+          "marker": "string",
+          "value": {
+            "wrong": "the size in bytes counts the terminator, and the string's length is not shown (clangd#1016)",
+            "hover": {
+              "markdown": "### `string-literal`\n\n---\nType: `const char[6]`\nSize: 6 bytes",
+              "range": {
+                "$place": "const char *greeting = ⟦\"hello\"⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 30
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "integer",
+          "marker": "integer",
+          "value": {
+            "wrong": "a numeric literal has no card, where its type and value could show (clangd#1669)",
+            "hover": {}
+          }
+        },
+        {
+          "label": "floating",
+          "marker": "floating",
+          "value": {
+            "wrong": "a numeric literal has no card, where its type and value could show (clangd#1669)",
+            "hover": {}
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "id": "compile/flags/01_forced_include",
+  "topic": "compile",
+  "subtopic": "flags",
+  "title": "Forced includes",
+  "summary": "Headers a command forces in with `-include` work like the ones a file includes itself",
+  "prose": "Build systems force headers in for configuration macros and precompiled headers. Their macros hover and navigate, and editing them reaches every file they are forced into.",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "force.h",
+      "text": "#define FORCED 1\n",
+      "markers": []
+    },
+    {
+      "path": "header.h",
+      "text": "inline int header() {\n    return FORCED;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"header.h\"\n\nint main() {\n    return header();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "other.cpp",
+      "text": "int other() {\n    return FORCED;\n}\n",
+      "markers": [
+        {
+          "name": "forced",
+          "begin": 25,
+          "end": 25,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "hover",
+      "blocks": [
+        {
+          "label": "forced",
+          "marker": "forced",
+          "value": {
+            "hover": {
+              "markdown": "### macro `FORCED`\n\n---\n```cpp\n#define FORCED 1\n\n// Expands to\n1\n```",
+              "range": {
+                "$place": "return ⟦FORCED⟧;",
+                "path": "other.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "navigation",
+      "blocks": [
+        {
+          "label": "forced",
+          "marker": "forced",
+          "value": {
+            "definition": [
+              {
+                "$place": "force.h │ #define ⟦FORCED⟧ 1",
+                "path": "force.h",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 14
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "edits pay no import scan",
+      "blocks": [
+        {
+          "label": "other",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "other",
+                "kind": "Function",
+                "at": {
+                  "$place": "other.cpp │ int ⟦other⟧() {",
+                  "path": "other.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 9
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "forced header edit",
+      "blocks": [
+        {
+          "label": "renamed",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"header.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 19
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In included file: use of undeclared identifier 'FORCED'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        },
+        {
+          "label": "failed",
+          "value": {
+            "wrong": "a change to a header forced in with -include sends the header itself to be indexed, which fails for want of a command of its own",
+            "value": [
+              "force.h"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "navigation/implicit_targets/08_implicit_conversions",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "Implicit conversion operators",
+  "summary": "Conversion contexts do not navigate to the invoked conversion operator yet",
+  "prose": "Go-to-definition from a context that runs a user-defined conversion, a\ncondition or `!`, does not reach the conversion operator.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1931"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Guard {\n    explicit operator bool() const;\n};\n\nvoid use(Guard g) {\n    if (g) {}\n    bool ok = !g;\n}\n",
+      "markers": [
+        {
+          "name": "condition",
+          "begin": 82,
+          "end": 82,
+          "range": false
+        },
+        {
+          "name": "negation",
+          "begin": 103,
+          "end": 103,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "condition",
+          "marker": "condition",
+          "value": {
+            "wrong": "should reach Guard::operator bool, which the condition calls (clangd#1931)",
+            "definition": []
+          }
+        },
+        {
+          "label": "negation",
+          "marker": "negation",
+          "value": {
+            "wrong": "should reach Guard::operator bool, which ! calls (clangd#1931)",
+            "definition": []
+          }
+        }
+      ]
+    }
+  ]
+}

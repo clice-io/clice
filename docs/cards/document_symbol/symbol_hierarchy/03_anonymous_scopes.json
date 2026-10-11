@@ -1,0 +1,777 @@
+{
+  "id": "document_symbol/symbol_hierarchy/03_anonymous_scopes",
+  "topic": "document_symbol",
+  "subtopic": "symbol_hierarchy",
+  "title": "Anonymous and inline scopes",
+  "summary": "Anonymous namespaces, structs and unions group their members under a placeholder name, and an inline namespace keeps its own node",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace {\n\nint hidden_counter = 0;\n\n}  // namespace\n\nstatic union {\n    int global_int;\n    float global_float;\n};\n\nnamespace misc {\n\ninline namespace v1 {\n\nint versioned();\n\n}  // namespace v1\n\nstruct Outer {\n    struct {\n        int anonymous_member;\n    };\n\n    union {\n        int as_int;\n        float as_float;\n    };\n};\n\n}  // namespace misc\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "(anonymous namespace)",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦{⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 11
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "hidden_counter",
+                    "kind": "Variable",
+                    "at": {
+                      "$place": "int ⟦hidden_counter⟧ = 0;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 18
+                        }
+                      }
+                    },
+                    "detail": "int"
+                  }
+                ]
+              },
+              {
+                "name": "(anonymous union)",
+                "kind": "Class",
+                "at": {
+                  "$place": "static ⟦union⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "union",
+                "children": [
+                  {
+                    "name": "global_int",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "int ⟦global_int⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 7,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 7,
+                          "character": 18
+                        }
+                      }
+                    },
+                    "detail": "int"
+                  },
+                  {
+                    "name": "global_float",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "float ⟦global_float⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 10
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 22
+                        }
+                      }
+                    },
+                    "detail": "float"
+                  }
+                ]
+              },
+              {
+                "name": "misc",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦misc⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 14
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "v1",
+                    "kind": "Namespace",
+                    "at": {
+                      "$place": "inline namespace ⟦v1⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 17
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 19
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "versioned",
+                        "kind": "Function",
+                        "at": {
+                          "$place": "int ⟦versioned⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 13
+                            }
+                          }
+                        },
+                        "detail": "int ()"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Outer",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Outer⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 19,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 19,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "detail": "struct",
+                    "children": [
+                      {
+                        "name": "(anonymous struct)",
+                        "kind": "Struct",
+                        "at": {
+                          "$place": "⟦struct⟧ {",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 20,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 20,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "detail": "struct",
+                        "children": [
+                          {
+                            "name": "anonymous_member",
+                            "kind": "Field",
+                            "at": {
+                              "$place": "int ⟦anonymous_member⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 21,
+                                  "character": 12
+                                },
+                                "end": {
+                                  "line": 21,
+                                  "character": 28
+                                }
+                              }
+                            },
+                            "detail": "int"
+                          }
+                        ]
+                      },
+                      {
+                        "name": "(anonymous union)",
+                        "kind": "Class",
+                        "at": {
+                          "$place": "⟦union⟧ {",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 24,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 24,
+                              "character": 9
+                            }
+                          }
+                        },
+                        "detail": "union",
+                        "children": [
+                          {
+                            "name": "as_int",
+                            "kind": "Field",
+                            "at": {
+                              "$place": "int ⟦as_int⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 25,
+                                  "character": 12
+                                },
+                                "end": {
+                                  "line": 25,
+                                  "character": 18
+                                }
+                              }
+                            },
+                            "detail": "int"
+                          },
+                          {
+                            "name": "as_float",
+                            "kind": "Field",
+                            "at": {
+                              "$place": "float ⟦as_float⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 26,
+                                  "character": 14
+                                },
+                                "end": {
+                                  "line": 26,
+                                  "character": 22
+                                }
+                              }
+                            },
+                            "detail": "float"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "(anonymous namespace)",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦{⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 11
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦namespace { … }⟧ (5 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "hidden_counter",
+                    "kind": "Variable",
+                    "at": {
+                      "$place": "int ⟦hidden_counter⟧ = 0;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 18
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦int hidden_counter = 0⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 22
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "(anonymous union)",
+                "kind": "Class",
+                "at": {
+                  "$place": "static ⟦union⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 12
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "static ⟦union { … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "global_int",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "int ⟦global_int⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 7,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 7,
+                          "character": 18
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦int global_int⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 7,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 7,
+                          "character": 18
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "global_float",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "float ⟦global_float⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 10
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 22
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦float global_float⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 22
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "misc",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦misc⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 14
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦namespace misc { … }⟧ (20 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 30,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "v1",
+                    "kind": "Namespace",
+                    "at": {
+                      "$place": "inline namespace ⟦v1⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 17
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 19
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦inline namespace v1 { … }⟧ (5 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 17,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "versioned",
+                        "kind": "Function",
+                        "at": {
+                          "$place": "int ⟦versioned⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 13
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦int versioned()⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 0
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 15
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Outer",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Outer⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 19,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 19,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦struct Outer { … }⟧ (10 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 19,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "(anonymous struct)",
+                        "kind": "Struct",
+                        "at": {
+                          "$place": "⟦struct⟧ {",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 20,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 20,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦struct { … }⟧ (3 lines)",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 20,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 22,
+                              "character": 5
+                            }
+                          }
+                        },
+                        "children": [
+                          {
+                            "name": "anonymous_member",
+                            "kind": "Field",
+                            "at": {
+                              "$place": "int ⟦anonymous_member⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 21,
+                                  "character": 12
+                                },
+                                "end": {
+                                  "line": 21,
+                                  "character": 28
+                                }
+                              }
+                            },
+                            "range": {
+                              "$place": "⟦int anonymous_member⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 21,
+                                  "character": 8
+                                },
+                                "end": {
+                                  "line": 21,
+                                  "character": 28
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "name": "(anonymous union)",
+                        "kind": "Class",
+                        "at": {
+                          "$place": "⟦union⟧ {",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 24,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 24,
+                              "character": 9
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦union { … }⟧ (4 lines)",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 24,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 27,
+                              "character": 5
+                            }
+                          }
+                        },
+                        "children": [
+                          {
+                            "name": "as_int",
+                            "kind": "Field",
+                            "at": {
+                              "$place": "int ⟦as_int⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 25,
+                                  "character": 12
+                                },
+                                "end": {
+                                  "line": 25,
+                                  "character": 18
+                                }
+                              }
+                            },
+                            "range": {
+                              "$place": "⟦int as_int⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 25,
+                                  "character": 8
+                                },
+                                "end": {
+                                  "line": 25,
+                                  "character": 18
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "name": "as_float",
+                            "kind": "Field",
+                            "at": {
+                              "$place": "float ⟦as_float⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 26,
+                                  "character": 14
+                                },
+                                "end": {
+                                  "line": 26,
+                                  "character": 22
+                                }
+                              }
+                            },
+                            "range": {
+                              "$place": "⟦float as_float⟧;",
+                              "path": "main.cpp",
+                              "range": {
+                                "start": {
+                                  "line": 26,
+                                  "character": 8
+                                },
+                                "end": {
+                                  "line": 26,
+                                  "character": 22
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

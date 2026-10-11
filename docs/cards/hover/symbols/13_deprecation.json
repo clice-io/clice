@@ -1,0 +1,85 @@
+{
+  "id": "hover/symbols/13_deprecation",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Deprecated symbols",
+  "summary": "A deprecated function's card does not say it is deprecated yet",
+  "prose": "The message of `[[deprecated]]` tells what to use instead; the card shows\nneither the deprecation nor the message.",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "[[deprecated(\"use open_v2\")]] void open_v1();\n\nvoid open_v2();\n\nvoid reopen() {\n    open_v1();\n}\n",
+      "markers": [
+        {
+          "name": "declaration",
+          "begin": 35,
+          "end": 35,
+          "range": false
+        },
+        {
+          "name": "call",
+          "begin": 84,
+          "end": 84,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "declaration",
+          "marker": "declaration",
+          "value": {
+            "wrong": "the card does not say the function is deprecated, nor what to use instead",
+            "hover": {
+              "markdown": "### function `open_v1`\n\n---\n→ `void`\n\n---\n```cpp\nvoid open_v1()\n```",
+              "range": {
+                "$place": "[[deprecated(\"use open_v2\")]] void ⟦open_v1⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 35
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 42
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "call",
+          "marker": "call",
+          "value": {
+            "wrong": "the card does not say the function is deprecated, nor what to use instead",
+            "hover": {
+              "markdown": "### function `open_v1`\n\n---\n→ `void`\n\n---\n```cpp\nvoid open_v1()\n```",
+              "range": {
+                "$place": "⟦open_v1⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

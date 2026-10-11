@@ -1,0 +1,67 @@
+{
+  "id": "project/rules/05_relative_patterns",
+  "topic": "project",
+  "subtopic": "rules",
+  "title": "Patterns start at clice.toml",
+  "summary": "A relative pattern matches paths under the directory of the clice.toml that declares it",
+  "prose": "The rule appends `-DFEATURE` to the files under `src/`: `src/main.cpp` compiles, while `other.cpp`, beside clice.toml, misses the macro.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "clice.toml",
+      "text": "[[rules]]\npatterns = [\"src/**\"]\nappend = [\"-DFEATURE\"]\n",
+      "markers": []
+    },
+    {
+      "path": "other.cpp",
+      "text": "#ifndef FEATURE\n#error missing FEATURE\n#endif\nint other() { return 0; }\n",
+      "markers": []
+    },
+    {
+      "path": "src/main.cpp",
+      "text": "#ifndef FEATURE\n#error missing FEATURE\n#endif\nint main() { return 0; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "src/main.cpp",
+          "value": {
+            "errors": []
+          }
+        },
+        {
+          "label": "other.cpp",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "#⟦error⟧ missing FEATURE",
+                  "path": "other.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 1
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 6
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "missing FEATURE",
+                "source": "clang",
+                "code": "err_pp_hash_error"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "id": "navigation/macros/04_macro_references",
+  "topic": "navigation",
+  "subtopic": "macros",
+  "title": "Macro references",
+  "summary": "Macro reference searches include expansions, conditional tests and undefinitions",
+  "prose": "Each `#define` of a name is its own symbol, so a redefinition after\n`#undef` collects only its own uses.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define FEATURE 1\n\nint on = FEATURE;\n\n#ifdef FEATURE\nint guarded = 1;\n#endif\n\n#ifndef FEATURE\nint missing = 0;\n#endif\n\n#undef FEATURE\n\n#define FEATURE 2\n\nint again = FEATURE;\n",
+      "markers": [
+        {
+          "name": "first",
+          "begin": 8,
+          "end": 8,
+          "range": false
+        },
+        {
+          "name": "second",
+          "begin": 143,
+          "end": 143,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "first",
+          "marker": "first",
+          "value": {
+            "definition": [
+              {
+                "$place": "#define ⟦FEATURE⟧ 1",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 15
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "#define ⟦FEATURE⟧ 1",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "int on = ⟦FEATURE⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "#ifdef ⟦FEATURE⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 14
+                  }
+                }
+              },
+              {
+                "$place": "#ifndef ⟦FEATURE⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "#undef ⟦FEATURE⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 14
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "second",
+          "marker": "second",
+          "value": {
+            "definition": [
+              {
+                "$place": "#define ⟦FEATURE⟧ 2",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 15
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "#define ⟦FEATURE⟧ 2",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 15
+                  }
+                }
+              },
+              {
+                "$place": "int again = ⟦FEATURE⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 16,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 19
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

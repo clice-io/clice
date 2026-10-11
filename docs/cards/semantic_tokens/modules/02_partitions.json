@@ -1,0 +1,196 @@
+{
+  "id": "semantic_tokens/modules/02_partitions",
+  "topic": "semantic_tokens",
+  "subtopic": "modules",
+  "title": "Module partitions",
+  "summary": "Module declarations tokenize partition names",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "export module demo.core:part;\n\nexport int partition_value = 1;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦export⟧ module demo.core:part;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "export ⟦module⟧ demo.core:part;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "export module ⟦demo⟧.core:part;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "module",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "export module demo.⟦core⟧:part;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 23
+                    }
+                  }
+                },
+                "type": "module",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "export module demo.core:⟦part⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "module",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦export⟧ int partition_value = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "export ⟦int⟧ partition_value = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "export int ⟦partition_value⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 26
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "export int partition_value = ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 29
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 30
+                    }
+                  }
+                },
+                "type": "number"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

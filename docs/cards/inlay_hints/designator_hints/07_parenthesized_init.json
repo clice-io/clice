@@ -1,0 +1,33 @@
+{
+  "id": "inlay_hints/designator_hints/07_parenthesized_init",
+  "topic": "inlay_hints",
+  "subtopic": "designator_hints",
+  "title": "Parenthesized aggregate initialization",
+  "summary": "C++20 `Point(1, 2)` gets no hints yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2540"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Point {\n    int x;\n    int y;\n};\n\nPoint p(1, 2);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "wrong": "parenthesized aggregate initialization should show .x= and .y= as braces do (clangd#2540)",
+            "inlay_hints": []
+          }
+        }
+      ]
+    }
+  ]
+}

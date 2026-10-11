@@ -1,0 +1,758 @@
+{
+  "id": "document_symbol/symbol_ranges/01_selection_ranges",
+  "topic": "document_symbol",
+  "subtopic": "symbol_ranges",
+  "title": "Names and extents",
+  "summary": "A symbol's extent covers its whole declaration, and its name the whole written name, `~Widget`, `operator==` and `operator bool` included",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace members {\n\nstruct Widget {\n    Widget();\n    explicit Widget(int size);\n    ~Widget();\n\n    Widget& operator=(const Widget& other);\n    bool operator==(const Widget& other) const;\n    operator bool() const;\n\n    static int instances();\n\n    int size;\n    unsigned bits : 3;\n    const char* name = \"widget\";\n};\n\nWidget::Widget(int size) : size(size), bits(0) {}\n\nint Widget::instances() {\n    return 0;\n}\n\n}  // namespace members\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "members",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦members⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 17
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Widget",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Widget⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "detail": "struct",
+                    "children": [
+                      {
+                        "name": "Widget",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦Widget⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "detail": "()"
+                      },
+                      {
+                        "name": "Widget",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "explicit ⟦Widget⟧(int size);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 13
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 19
+                            }
+                          }
+                        },
+                        "detail": "(int)"
+                      },
+                      {
+                        "name": "~Widget",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦~Widget⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 5,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 5,
+                              "character": 11
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "operator=",
+                        "kind": "Operator",
+                        "at": {
+                          "$place": "Widget& ⟦operator=⟧(const Widget& other);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 7,
+                              "character": 12
+                            },
+                            "end": {
+                              "line": 7,
+                              "character": 21
+                            }
+                          }
+                        },
+                        "detail": "Widget &(const Widget &)"
+                      },
+                      {
+                        "name": "operator==",
+                        "kind": "Operator",
+                        "at": {
+                          "$place": "bool ⟦operator==⟧(const Widget& other) const;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 8,
+                              "character": 9
+                            },
+                            "end": {
+                              "line": 8,
+                              "character": 19
+                            }
+                          }
+                        },
+                        "detail": "bool (const Widget &) const"
+                      },
+                      {
+                        "name": "operator bool",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦operator bool⟧() const;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 9,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 9,
+                              "character": 17
+                            }
+                          }
+                        },
+                        "detail": "bool () const"
+                      },
+                      {
+                        "name": "instances",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "static int ⟦instances⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 15
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 24
+                            }
+                          }
+                        },
+                        "detail": "int ()"
+                      },
+                      {
+                        "name": "size",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "int ⟦size⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 12
+                            }
+                          }
+                        },
+                        "detail": "int"
+                      },
+                      {
+                        "name": "bits",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "unsigned ⟦bits⟧ : 3;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 14,
+                              "character": 13
+                            },
+                            "end": {
+                              "line": 14,
+                              "character": 17
+                            }
+                          }
+                        },
+                        "detail": "unsigned int"
+                      },
+                      {
+                        "name": "name",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "const char* ⟦name⟧ = \"widget\";",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 16
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 20
+                            }
+                          }
+                        },
+                        "detail": "const char *"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Widget::Widget",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "Widget::⟦Widget⟧(int size) : size(size), bits(0) {}",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 18,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 18,
+                          "character": 14
+                        }
+                      }
+                    },
+                    "detail": "(int)"
+                  },
+                  {
+                    "name": "Widget::instances",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "int Widget::⟦instances⟧() {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 20,
+                          "character": 12
+                        },
+                        "end": {
+                          "line": 20,
+                          "character": 21
+                        }
+                      }
+                    },
+                    "detail": "int ()"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "members",
+                "kind": "Namespace",
+                "at": {
+                  "$place": "namespace ⟦members⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 17
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦namespace members { … }⟧ (25 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Widget",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "struct ⟦Widget⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 7
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦struct Widget { … }⟧ (15 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 16,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "Widget",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦Widget⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦Widget()⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 12
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "Widget",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "explicit ⟦Widget⟧(int size);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 13
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 19
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦explicit Widget(int size)⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 4,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 4,
+                              "character": 29
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "~Widget",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦~Widget⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 5,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 5,
+                              "character": 11
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦~Widget()⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 5,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 5,
+                              "character": 13
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "operator=",
+                        "kind": "Operator",
+                        "at": {
+                          "$place": "Widget& ⟦operator=⟧(const Widget& other);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 7,
+                              "character": 12
+                            },
+                            "end": {
+                              "line": 7,
+                              "character": 21
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦Widget& operator=(const Widget& other)⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 7,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 7,
+                              "character": 42
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "operator==",
+                        "kind": "Operator",
+                        "at": {
+                          "$place": "bool ⟦operator==⟧(const Widget& other) const;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 8,
+                              "character": 9
+                            },
+                            "end": {
+                              "line": 8,
+                              "character": 19
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦bool operator==(const Widget& other) const⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 8,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 8,
+                              "character": 46
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "operator bool",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦operator bool⟧() const;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 9,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 9,
+                              "character": 17
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦operator bool() const⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 9,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 9,
+                              "character": 25
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "instances",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "static int ⟦instances⟧();",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 15
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 24
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦static int instances()⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 26
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "size",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "int ⟦size⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 12
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦int size⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 13,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 13,
+                              "character": 12
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "bits",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "unsigned ⟦bits⟧ : 3;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 14,
+                              "character": 13
+                            },
+                            "end": {
+                              "line": 14,
+                              "character": 17
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦unsigned bits : 3⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 14,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 14,
+                              "character": 21
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "name",
+                        "kind": "Field",
+                        "at": {
+                          "$place": "const char* ⟦name⟧ = \"widget\";",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 16
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 20
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦const char* name = \"widget\"⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 15,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 15,
+                              "character": 31
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Widget::Widget",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "Widget::⟦Widget⟧(int size) : size(size), bits(0) {}",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 18,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 18,
+                          "character": 14
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦Widget::Widget(int size) : size(size), bits(0) {}⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 18,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 18,
+                          "character": 49
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "Widget::instances",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "int Widget::⟦instances⟧() {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 20,
+                          "character": 12
+                        },
+                        "end": {
+                          "line": 20,
+                          "character": 21
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦int Widget::instances() { … }⟧ (3 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 20,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 22,
+                          "character": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

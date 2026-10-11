@@ -1,0 +1,46 @@
+{
+  "id": "lint/findings/01_header_findings_merge",
+  "topic": "lint",
+  "subtopic": "findings",
+  "title": "Header findings reported once",
+  "summary": "A header is checked in every unit that includes it, and its findings are reported once",
+  "prose": "Each translation unit checks the headers it includes, as clang-tidy does, so a finding in a shared header comes from every unit that includes it. The report merges them into one line and lists every finding by file and position.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,bugprone-integer-division\"\n",
+      "markers": []
+    },
+    {
+      "path": "average.cpp",
+      "text": "#include \"ratio.h\"\n\ndouble average(int sum, int count) {\n    return sum / count;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "progress.cpp",
+      "text": "#include \"ratio.h\"\n\ndouble progress() {\n    return ratio(1, 2);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "ratio.h",
+      "text": "#pragma once\n\ninline double ratio(int done, int total) {\n    return done / total;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice lint --workers 2",
+          "value": {
+            "stdout": "${WS}/average.cpp:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]\n${WS}/ratio.h:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]\nLinted 2 translation units in #s: 2 findings.",
+            "exit": 1
+          }
+        }
+      ]
+    }
+  ]
+}

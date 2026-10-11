@@ -1,0 +1,51 @@
+{
+  "id": "format/style/01_nearest_style",
+  "topic": "format",
+  "subtopic": "style",
+  "title": "Nearest style file",
+  "summary": "Each file takes the style of the .clang-format nearest above it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\n",
+      "markers": []
+    },
+    {
+      "path": "legacy/.clang-format",
+      "text": "BasedOnStyle: LLVM\nIndentWidth: 8\nAllowShortFunctionsOnASingleLine: None\n",
+      "markers": []
+    },
+    {
+      "path": "legacy/old.cpp",
+      "text": "int    add(   int   a  ,  int   b  ) {\nreturn   a+b ;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int    add(   int   a  ,  int   b  ) {\nreturn   a+b ;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "formatting": "-int    add(   int   a  ,  int   b  ) {\n-return   a+b ;\n-}\n+int add(int a, int b) { return a + b; }"
+          }
+        },
+        {
+          "label": "legacy/old.cpp",
+          "value": {
+            "formatting": "-int    add(   int   a  ,  int   b  ) {\n-return   a+b ;\n+int add(int a, int b) {\n+        return a + b;\n }"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "hover/macros/04_command_line",
+  "topic": "hover",
+  "subtopic": "macros",
+  "title": "Command-line macros",
+  "summary": "A macro defined with `-D` shows the `#define` it amounts to",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int cli = FROM_CLI;\n",
+      "markers": [
+        {
+          "name": "cli_use",
+          "begin": 10,
+          "end": 10,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "cli_use",
+          "marker": "cli_use",
+          "value": {
+            "hover": {
+              "markdown": "### macro `FROM_CLI`\n\n---\n```cpp\n#define FROM_CLI 7\n\n// Expands to\n7\n```",
+              "range": {
+                "$place": "int cli = ⟦FROM_CLI⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 18
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

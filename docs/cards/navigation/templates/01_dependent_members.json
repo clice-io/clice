@@ -1,0 +1,81 @@
+{
+  "id": "navigation/templates/01_dependent_members",
+  "topic": "navigation",
+  "subtopic": "templates",
+  "title": "Dependent member navigation",
+  "summary": "Inside a template that is never instantiated, a member accessed on an object of a dependent type resolves to the member declared on the corresponding class template",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Sink {\n    void push(T value);\n};\n\ntemplate <typename T>\nvoid drain(Sink<T>& sink, T value) {\n    sink.push(value);\n}\n",
+      "markers": [
+        {
+          "name": "member_decl",
+          "begin": 45,
+          "end": 45,
+          "range": false
+        },
+        {
+          "name": "member_call",
+          "begin": 132,
+          "end": 132,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member_decl",
+          "marker": "member_decl",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦push⟧(T value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "member_call",
+          "marker": "member_call",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦push⟧(T value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "id": "navigation/deduced_types/03_decltype",
+  "topic": "navigation",
+  "subtopic": "deduced_types",
+  "title": "`decltype` type navigation",
+  "summary": "Go-to-definition on `decltype` reaches the type its operand names, through any `decltype` that type was itself declared with",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {};\n\nWidget global;\n\ndecltype(global) copy = global;\ndecltype(copy) again = copy;\n\nauto make() -> decltype(global);\n",
+      "markers": [
+        {
+          "name": "operand",
+          "begin": 39,
+          "end": 39,
+          "range": false
+        },
+        {
+          "name": "nested",
+          "begin": 71,
+          "end": 71,
+          "range": false
+        },
+        {
+          "name": "trailing",
+          "begin": 116,
+          "end": 116,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "operand",
+          "marker": "operand",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "nested",
+          "marker": "nested",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "trailing",
+          "marker": "trailing",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

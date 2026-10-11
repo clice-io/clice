@@ -1,0 +1,59 @@
+{
+  "id": "completion/member_access/07_inaccessible_members",
+  "topic": "completion",
+  "subtopic": "member_access",
+  "title": "Inaccessible members",
+  "summary": "Private and protected members are not offered where they cannot be used",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "class Account {\n    int secret;\n\nprotected:\n    int audit;\n\npublic:\n    int balance;\n};\n\nvoid bar(Account account) {\n    int v = account.;\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 137,
+          "end": 137,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Account",
+                  "kind": "Class"
+                },
+                {
+                  "label": "balance",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "operator=(…) +2 overloads",
+                  "kind": "Method"
+                },
+                {
+                  "label": "~Account()",
+                  "kind": "Method",
+                  "detail": "void"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

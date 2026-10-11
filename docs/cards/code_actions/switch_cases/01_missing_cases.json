@@ -1,0 +1,49 @@
+{
+  "id": "code_actions/switch_cases/01_missing_cases",
+  "topic": "code_actions",
+  "subtopic": "switch_cases",
+  "title": "Missing enum cases",
+  "summary": "A switch over an enum receives the enumerators it does not handle, followed by a `break`",
+  "prose": "Enumerators sharing a handled value are considered covered.",
+  "status": "supported",
+  "issues": [
+    "clangd#807"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "enum class Color { Red, Green, Blue, Azure = Blue };\n\nint paint(Color color) {\n    switch (color) {\n    case Color::Red:\n        return 1;\n    }\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "sw",
+          "begin": 83,
+          "end": 83,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "sw",
+          "marker": "sw",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.populateSwitch",
+                "title": "Add 2 missing enum cases to switch",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     case Color::Red:\n         return 1;\n+    case Color::Green:\n+    case Color::Blue:\n+        break;\n     }\n     return 0;"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

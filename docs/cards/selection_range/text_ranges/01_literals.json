@@ -1,0 +1,375 @@
+{
+  "id": "selection_range/text_ranges/01_literals",
+  "topic": "selection_range",
+  "subtopic": "text_ranges",
+  "title": "String and character literals",
+  "summary": "The text of a string or character literal is selected without its quotes before with them",
+  "prose": "An encoding prefix, a raw string's delimiter and a user-defined suffix\nstay outside the text.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "using size = decltype(sizeof(0));\n\nstruct Tag {};\n\nTag operator\"\"_tag(const char*, size);\n\nconst char* plain = \"plain text\";\nconst char8_t* prefixed = u8\"prefixed text\";\nconst char* raw = R\"delim(raw text)delim\";\nTag tagged = \"tagged text\"_tag;\nchar letter = 'x';\n",
+      "markers": [
+        {
+          "name": "plain",
+          "begin": 118,
+          "end": 118,
+          "range": false
+        },
+        {
+          "name": "prefixed",
+          "begin": 163,
+          "end": 163,
+          "range": false
+        },
+        {
+          "name": "raw",
+          "begin": 200,
+          "end": 200,
+          "range": false
+        },
+        {
+          "name": "suffix",
+          "begin": 234,
+          "end": 234,
+          "range": false
+        },
+        {
+          "name": "char",
+          "begin": 260,
+          "end": 260,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "plain",
+          "marker": "plain",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "const char* plain = \"⟦plain text⟧\";",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 21
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 31
+                  }
+                }
+              },
+              {
+                "$place": "const char* plain = ⟦\"plain text\"⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 32
+                  }
+                }
+              },
+              {
+                "$place": "⟦const char* plain = \"plain text\"⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 32
+                  }
+                }
+              },
+              {
+                "$place": "⟦const char* plain = \"plain text\";⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 33
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "prefixed",
+          "marker": "prefixed",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "const char8_t* prefixed = u8\"⟦prefixed text⟧\";",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 29
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 42
+                  }
+                }
+              },
+              {
+                "$place": "const char8_t* prefixed = ⟦u8\"prefixed text\"⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 26
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 43
+                  }
+                }
+              },
+              {
+                "$place": "⟦const char8_t* prefixed = u8\"prefixed text\"⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 43
+                  }
+                }
+              },
+              {
+                "$place": "⟦const char8_t* prefixed = u8\"prefixed text\";⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 44
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "raw",
+          "marker": "raw",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "const char* raw = R\"delim(⟦raw text⟧)delim\";",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 26
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 34
+                  }
+                }
+              },
+              {
+                "$place": "const char* raw = ⟦R\"delim(raw text)delim\"⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 41
+                  }
+                }
+              },
+              {
+                "$place": "⟦const char* raw = R\"delim(raw text)delim\"⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 41
+                  }
+                }
+              },
+              {
+                "$place": "⟦const char* raw = R\"delim(raw text)delim\";⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 42
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "suffix",
+          "marker": "suffix",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "Tag tagged = \"⟦tagged text⟧\"_tag;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 25
+                  }
+                }
+              },
+              {
+                "$place": "Tag tagged = ⟦\"tagged text\"_tag⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 30
+                  }
+                }
+              },
+              {
+                "$place": "⟦Tag tagged = \"tagged text\"_tag⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 30
+                  }
+                }
+              },
+              {
+                "$place": "⟦Tag tagged = \"tagged text\"_tag;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 31
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "char",
+          "marker": "char",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "char letter = '⟦x⟧';",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "char letter = ⟦'x'⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 17
+                  }
+                }
+              },
+              {
+                "$place": "⟦char letter = 'x'⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 17
+                  }
+                }
+              },
+              {
+                "$place": "⟦char letter = 'x';⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

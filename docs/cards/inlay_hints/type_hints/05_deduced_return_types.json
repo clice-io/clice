@@ -1,0 +1,111 @@
+{
+  "id": "inlay_hints/type_hints/05_deduced_return_types",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Deduced return types",
+  "summary": "Deduced return types appear as `-> T` after the parameter list",
+  "prose": "A declaration hints once a later definition supplies the deduction, while one without a definition stays silent. A written trailing return type needs no hint.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "auto answer() {\n    return 42;\n}\n\nauto& ref_answer() {\n    static int storage = 0;\n    return storage;\n}\n\nauto declared(int x);\nauto deducible(int x);\n\nauto deducible(int x) {\n    return x + 1;\n}\n\nauto spelled() -> int;\nauto pointer() -> auto* {\n    return \"text\";\n}\n\nstruct Convertible {\n    operator auto() {\n        return 42;\n    }\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto answer()⟨-> int⟩ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto& ref_answer()⟨-> int &⟩ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 20
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto deducible(int x)⟨-> int⟩;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 22
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto deducible(int x)⟨-> int⟩ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 23
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "operator auto()⟨-> int⟩ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "id": "modules/exports/01_export_forms",
+  "topic": "modules",
+  "subtopic": "exports",
+  "title": "Export blocks and namespaces",
+  "summary": "An `export { … }` block exports every declaration inside it, and `export namespace` every member of the namespace",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "block.cppm",
+      "text": "export module Block;\n\nexport {\n    int alpha() {\n        return 1;\n    }\n\n    namespace ns {\n\n    int gamma() {\n        return 3;\n    }\n\n    }  // namespace ns\n}\n\nexport namespace math {\n\nint add(int a, int b) {\n    return a + b;\n}\n\n}  // namespace math\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "import Block;\n\nint main() {\n    return alpha() + ns::gamma() + math::add(1, 2);\n}\n",
+      "markers": [
+        {
+          "name": "block",
+          "begin": 39,
+          "end": 39,
+          "range": false
+        },
+        {
+          "name": "block_namespace",
+          "begin": 53,
+          "end": 53,
+          "range": false
+        },
+        {
+          "name": "namespace",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "block",
+          "marker": "block",
+          "value": {
+            "hover": {
+              "markdown": "### function `alpha`\n\n---\n→ `int`\n\n---\n```cpp\nexport int alpha()\n```",
+              "range": {
+                "$place": "return ⟦alpha⟧() + ns::gamma() + math::add(1, 2);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "block_namespace",
+          "marker": "block_namespace",
+          "value": {
+            "hover": {
+              "markdown": "### function `gamma`\n\n---\n→ `int`\n\n---\n```cpp\n// In namespace ns\nexport int gamma()\n```",
+              "range": {
+                "$place": "return alpha() + ns::⟦gamma⟧() + math::add(1, 2);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 25
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 30
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "namespace",
+          "marker": "namespace",
+          "value": {
+            "hover": {
+              "markdown": "### function `add`\n\n---\n→ `int`\nParameters:\n- `int a`\n- `int b`\n\n---\n```cpp\n// In namespace math\nexport int add(int a, int b)\n```",
+              "range": {
+                "$place": "return alpha() + ns::gamma() + math::⟦add⟧(1, 2);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 41
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 44
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

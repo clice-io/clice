@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/constructor/02_existing_constructor",
+  "topic": "code_actions",
+  "subtopic": "constructor",
+  "title": "Existing constructor not duplicated",
+  "summary": "No constructor is generated when the class already declares one taking as many arguments as it has fields",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Point {\n    Point(int x, int y);\n    int x;\n    int y;\n};\n",
+      "markers": [
+        {
+          "name": "point",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "point",
+          "marker": "point",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.missing",
+                "title": "Define missing members of 'Point'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     int y;\n };\n+\n+Point::Point(int x, int y) {\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

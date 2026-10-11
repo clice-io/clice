@@ -1,0 +1,345 @@
+{
+  "id": "hover/deduced_types/01_auto",
+  "topic": "hover",
+  "subtopic": "deduced_types",
+  "title": "auto",
+  "summary": "Hovering `auto` shows the type it stands for, or that it is not deduced yet in a template",
+  "prose": "",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace placeholder_types {\nstruct Result {};\nstruct Dimensions {\n    long rows;\n    long columns;\n};\ntemplate <typename T> struct Holder {};\n\nvoid locals() {\n    long source = 0;\n    auto first = 4L;\n    const auto second = 5L;\n    auto& third = source;\n    auto* fourth = &source;\n    auto fifth = &source;\n    auto sixth = [](long value) { return value; };\n    auto seventh = Holder<long>{};\n    auto [rows, columns] = Dimensions{};\n}\n\nauto explicit_result() -> long {\n    return 6;\n}\n\nauto inferred_result() {\n    return Result{};\n}\n\ntemplate <typename T> void pending() {\n    auto value = T{};\n}\n}\n",
+      "markers": [
+        {
+          "name": "simple",
+          "begin": 186,
+          "end": 186,
+          "range": false
+        },
+        {
+          "name": "const",
+          "begin": 213,
+          "end": 213,
+          "range": false
+        },
+        {
+          "name": "ref",
+          "begin": 235,
+          "end": 235,
+          "range": false
+        },
+        {
+          "name": "ptr",
+          "begin": 261,
+          "end": 261,
+          "range": false
+        },
+        {
+          "name": "from_pointer",
+          "begin": 289,
+          "end": 289,
+          "range": false
+        },
+        {
+          "name": "lambda",
+          "begin": 315,
+          "end": 315,
+          "range": false
+        },
+        {
+          "name": "instantiation",
+          "begin": 366,
+          "end": 366,
+          "range": false
+        },
+        {
+          "name": "structured",
+          "begin": 401,
+          "end": 401,
+          "range": false
+        },
+        {
+          "name": "trailing_return",
+          "begin": 441,
+          "end": 441,
+          "range": false
+        },
+        {
+          "name": "fn_return",
+          "begin": 491,
+          "end": 491,
+          "range": false
+        },
+        {
+          "name": "undeduced",
+          "begin": 583,
+          "end": 583,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "simple",
+          "marker": "simple",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "range": {
+                "$place": "⟦auto⟧ first = 4L;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "const",
+          "marker": "const",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "range": {
+                "$place": "const ⟦auto⟧ second = 5L;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "ref",
+          "marker": "ref",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "range": {
+                "$place": "⟦auto⟧& third = source;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "ptr",
+          "marker": "ptr",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "range": {
+                "$place": "⟦auto⟧* fourth = &source;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "from_pointer",
+          "marker": "from_pointer",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nlong *\n```",
+              "range": {
+                "$place": "⟦auto⟧ fifth = &source;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "lambda",
+          "marker": "lambda",
+          "value": {
+            "wrong": "the closure type prints as class(lambda)",
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nclass(lambda)\n```",
+              "range": {
+                "$place": "⟦auto⟧ sixth = [](long value) { return value; };",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "instantiation",
+          "marker": "instantiation",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nHolder<long>\n```",
+              "range": {
+                "$place": "⟦auto⟧ seventh = Holder<long>{};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 16,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "structured",
+          "marker": "structured",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nDimensions\n```",
+              "range": {
+                "$place": "⟦auto⟧ [rows, columns] = Dimensions{};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 17,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "trailing_return",
+          "marker": "trailing_return",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "range": {
+                "$place": "⟦auto⟧ explicit_result() -> long {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 20,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 20,
+                    "character": 4
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "fn_return",
+          "marker": "fn_return",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nResult\n```",
+              "range": {
+                "$place": "⟦auto⟧ inferred_result() {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 24,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 24,
+                    "character": 4
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "undeduced",
+          "marker": "undeduced",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\n/* not deduced */\n```",
+              "range": {
+                "$place": "⟦auto⟧ value = T{};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 29,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 29,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

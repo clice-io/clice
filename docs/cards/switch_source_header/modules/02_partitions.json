@@ -1,0 +1,79 @@
+{
+  "id": "switch_source_header/modules/02_partitions",
+  "topic": "switch_source_header",
+  "subtopic": "modules",
+  "title": "Partition beside its implementation",
+  "summary": "An internal partition and the implementation unit of the same name defining its declarations switch to each other directly",
+  "prose": "The implementation unit also lists the primary interface of its module,\nafter the partition.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "api.cpp",
+      "text": "module lib;\n\nimport :api;\n\nint lookup(int key) {\n    return key * 2;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "api.cppm",
+      "text": "module lib:api;\n\nint lookup(int key);\n",
+      "markers": []
+    },
+    {
+      "path": "lib.cppm",
+      "text": "export module lib;\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "module lib;\n\nimport :api;\n\nint run() {\n    return lookup(1);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "api.cppm",
+          "value": {
+            "counterparts": {
+              "preferred": "api.cpp",
+              "candidates": [
+                {
+                  "path": "api.cpp",
+                  "reasons": [
+                    "defines 1 of 1 declaration",
+                    "same name"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "api.cpp",
+          "value": {
+            "counterparts": {
+              "preferred": "api.cppm",
+              "candidates": [
+                {
+                  "path": "api.cppm",
+                  "reasons": [
+                    "declares 1 of 1 definition",
+                    "same name"
+                  ]
+                },
+                {
+                  "path": "lib.cppm",
+                  "reasons": [
+                    "interface of module lib"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

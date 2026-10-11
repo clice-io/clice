@@ -1,0 +1,101 @@
+{
+  "id": "semantic_tokens/modifiers/01_declaration_definition",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Declaration vs definition",
+  "summary": "Declaration and definition modifiers distinguish the two sites",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int measure(int value);\n\nint measure(int value) {\n    return value;\n}\n\nstruct Sensor;\n\nstruct Sensor {};\n",
+      "markers": [
+        {
+          "name": "measure_decl",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        },
+        {
+          "name": "measure_def",
+          "begin": 29,
+          "end": 29,
+          "range": false
+        },
+        {
+          "name": "Sensor_decl",
+          "begin": 78,
+          "end": 78,
+          "range": false
+        },
+        {
+          "name": "Sensor_def",
+          "begin": 94,
+          "end": 94,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "measure_decl",
+          "marker": "measure_decl",
+          "value": {
+            "semantic_token": {
+              "text": "measure",
+              "type": "function",
+              "modifiers": [
+                "declaration"
+              ]
+            }
+          }
+        },
+        {
+          "label": "measure_def",
+          "marker": "measure_def",
+          "value": {
+            "semantic_token": {
+              "text": "measure",
+              "type": "function",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Sensor_decl",
+          "marker": "Sensor_decl",
+          "value": {
+            "semantic_token": {
+              "text": "Sensor",
+              "type": "struct",
+              "modifiers": [
+                "declaration"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Sensor_def",
+          "marker": "Sensor_def",
+          "value": {
+            "semantic_token": {
+              "text": "Sensor",
+              "type": "struct",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

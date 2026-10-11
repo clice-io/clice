@@ -1,0 +1,286 @@
+{
+  "id": "hover/deduced_types/02_decltype",
+  "topic": "hover",
+  "subtopic": "deduced_types",
+  "title": "decltype",
+  "summary": "Hovering `decltype` shows the type it yields, the reference a parenthesized name adds included",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace declared_types {\nlong source = 0;\n\nvoid locals() {\n    long value = 1;\n    const long constant = 2;\n    long& reference = value;\n    decltype(auto) first = 3L;\n    decltype(auto) second = constant;\n    decltype(auto) third = reference;\n    decltype(value) fourth = value;\n    decltype((value)) fifth = value;\n    decltype(static_cast<long&&>(value)) sixth = static_cast<long&&>(value);\n}\n\ndecltype(source) copy = source;\n\ntemplate <typename T> decltype(auto) pending() {\n    return T{};\n}\n\ntemplate <typename T> struct Member {\n    using type = decltype(T::value);\n};\n}\n",
+      "markers": [
+        {
+          "name": "value",
+          "begin": 143,
+          "end": 143,
+          "range": false
+        },
+        {
+          "name": "const",
+          "begin": 174,
+          "end": 174,
+          "range": false
+        },
+        {
+          "name": "ref",
+          "begin": 212,
+          "end": 212,
+          "range": false
+        },
+        {
+          "name": "of_lvalue",
+          "begin": 250,
+          "end": 250,
+          "range": false
+        },
+        {
+          "name": "of_paren",
+          "begin": 286,
+          "end": 286,
+          "range": false
+        },
+        {
+          "name": "of_rvalue",
+          "begin": 323,
+          "end": 323,
+          "range": false
+        },
+        {
+          "name": "var_type",
+          "begin": 416,
+          "end": 416,
+          "range": false
+        },
+        {
+          "name": "undeduced",
+          "begin": 454,
+          "end": 454,
+          "range": false
+        },
+        {
+          "name": "dependent",
+          "begin": 555,
+          "end": 555,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "value",
+          "marker": "value",
+          "value": {
+            "hover": {
+              "markdown": "### type `decltype`\n\n---\n```cpp\nlong\n```",
+              "range": {
+                "$place": "⟦decltype⟧(auto) first = 3L;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "const",
+          "marker": "const",
+          "value": {
+            "hover": {
+              "markdown": "### type `decltype`\n\n---\n```cpp\nconst long\n```",
+              "range": {
+                "$place": "⟦decltype⟧(auto) second = constant;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "ref",
+          "marker": "ref",
+          "value": {
+            "hover": {
+              "markdown": "### type `decltype`\n\n---\n```cpp\nlong &\n```",
+              "range": {
+                "$place": "⟦decltype⟧(auto) third = reference;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "of_lvalue",
+          "marker": "of_lvalue",
+          "value": {
+            "hover": {
+              "markdown": "### type `decltype`\n\n---\n```cpp\nlong\n```",
+              "range": {
+                "$place": "⟦decltype⟧(value) fourth = value;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "of_paren",
+          "marker": "of_paren",
+          "value": {
+            "hover": {
+              "markdown": "### type `decltype`\n\n---\n```cpp\nlong &\n```",
+              "range": {
+                "$place": "⟦decltype⟧((value)) fifth = value;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "of_rvalue",
+          "marker": "of_rvalue",
+          "value": {
+            "hover": {
+              "markdown": "### type `decltype`\n\n---\n```cpp\nlong &&\n```",
+              "range": {
+                "$place": "⟦decltype⟧(static_cast<long&&>(value)) sixth = static_cast<long&&>(value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "var_type",
+          "marker": "var_type",
+          "value": {
+            "hover": {
+              "markdown": "### variable `copy`\n\n---\nType: `long`\n\n---\n```cpp\n// In namespace declared_types\ndecltype(source) copy = source\n```",
+              "range": {
+                "$place": "decltype(source) ⟦copy⟧ = source;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "undeduced",
+          "marker": "undeduced",
+          "value": {
+            "hover": {
+              "markdown": "### type `decltype`\n\n---\n```cpp\n/* not deduced */\n```",
+              "range": {
+                "$place": "template <typename T> ⟦decltype⟧(auto) pending() {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 17,
+                    "character": 22
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 30
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "dependent",
+          "marker": "dependent",
+          "value": {
+            "hover": {
+              "markdown": "### type `decltype`\n\n---\n```cpp\n<dependent type>\n```",
+              "range": {
+                "$place": "using type = ⟦decltype⟧(T::value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 22,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 22,
+                    "character": 25
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

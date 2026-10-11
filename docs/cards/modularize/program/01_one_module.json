@@ -1,0 +1,62 @@
+{
+  "id": "modularize/program/01_one_module",
+  "topic": "modularize",
+  "subtopic": "program",
+  "title": "Rewrite a program module",
+  "summary": "A directory of the program becomes a named module: its header a partition, its source an implementation unit, and the files including the header import the module",
+  "prose": "The header goes; the partition `app.core:text` takes its place, and the\nprimary interface `app/core/module.cppm` re-exports it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app/core/text.cpp",
+      "text": "#include \"core/text.h\"\n\nint core::Text::size() const {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "app/core/text.h",
+      "text": "#pragma once\n\nnamespace core {\n\nstruct Text {\n    int size() const;\n};\n\n}  // namespace core\n",
+      "markers": []
+    },
+    {
+      "path": "app/main.cpp",
+      "text": "#include \"core/text.h\"\n\nint main() {\n    return core::Text{}.size();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "partition.json",
+      "text": "{\n  \"modules\": [{ \"name\": \"app.core\", \"files\": [\"app/core/**\"], \"rewrite\": true }]\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 2 translation units in #s: 3 file shards (# KB), 4 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice modularize --scope \"app/**\" --partition partition.json --out wrap",
+          "value": {
+            "stdout": "{\n  \"wrapping\": {\n    \"stdSources\": [],\n    \"modules\": [],\n    \"mirrors\": [],\n    \"prelude\": \"prelude.h\",\n    \"warnings\": []\n  },\n  \"rewriting\": {\n    \"modules\": [\n      {\n        \"name\": \"app.core\",\n        \"primary\": \"app/core/module.cppm\",\n        \"interfaces\": [\n          \"app/core/text.cppm\"\n        ],\n        \"partitions\": [],\n        \"sources\": [\n          \"app/core/text.cpp\"\n        ],\n        \"imports\": []\n      }\n    ],\n    \"importers\": [\n      \"app/main.cpp\"\n    ],\n    \"macros\": [],\n    \"removed\": [\n      \"app/core/text.h\"\n    ],\n    \"moved\": [],\n    \"warnings\": []\n  }\n}",
+            "exit": 0,
+            "files": {
+              "app/core/module.cppm": "+export module app.core;\n+\n+export import :text;",
+              "app/core/text.cpp": "-#include \"core/text.h\"\n+module;\n\n+#include \"wrap/prelude.h\"\n+\n+module app.core;\n+\n int core::Text::size() const {\n     return 1;",
+              "app/core/text.cppm": "+module;\n+\n+#include \"wrap/prelude.h\"\n+\n+export module app.core:text;\n+\n+export {\n+\n+namespace core {\n+\n+struct Text {\n+    int size() const;\n+};\n+\n+}  // namespace core\n+}",
+              "app/core/text.h": "(removed)",
+              "app/main.cpp": "-#include \"core/text.h\"\n+#include \"wrap/prelude.h\"\n+import app.core;\n\n int main() {",
+              "wrap/.modularize": "+prelude.h",
+              "wrap/prelude.h": "+#pragma once\n+"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

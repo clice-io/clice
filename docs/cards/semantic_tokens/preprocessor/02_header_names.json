@@ -1,0 +1,209 @@
+{
+  "id": "semantic_tokens/preprocessor/02_header_names",
+  "topic": "semantic_tokens",
+  "subtopic": "preprocessor",
+  "title": "Header names",
+  "summary": "Quoted and angled header names receive header tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "inc/angled.h",
+      "text": "#pragma once\n\ninline int angled_helper() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"inc/angled.h\"\n#include <angled.h>\n# include \"inc/angled.h\"\n\nint after_includes = 0;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦#include⟧ \"inc/angled.h\"",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#include ⟦\"inc/angled.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 23
+                    }
+                  }
+                },
+                "type": "header"
+              },
+              {
+                "at": {
+                  "$place": "⟦#include⟧ <angled.h>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#include ⟦<angled.h>⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "header"
+              },
+              {
+                "at": {
+                  "$place": "⟦#⟧ include \"inc/angled.h\"",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 1
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "# ⟦include⟧ \"inc/angled.h\"",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "# include ⟦\"inc/angled.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "header"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ after_includes = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦after_includes⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int after_includes = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "number"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "id": "project/rules/01_default_command",
+  "topic": "project",
+  "subtopic": "rules",
+  "title": "Files without a database",
+  "summary": "Files a rule matches compile with its default command, and files created later join the index",
+  "prose": "`src/main.cpp` compiles under the rule's command, with no note that the command was guessed. A file created while the server runs compiles the same way at once and is indexed at the next look at the disk.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "clice.toml",
+      "text": "[[rules]]\npatterns = [\"src/**\"]\ndefault_command = \"clang++ -std=c++20 -DFEATURE\"\n",
+      "markers": []
+    },
+    {
+      "path": "src/main.cpp",
+      "text": "#ifndef FEATURE\n#error missing FEATURE\n#endif\nint main() { return 0; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default command compiles files",
+      "blocks": [
+        {
+          "label": "src/main.cpp",
+          "value": {
+            "diagnostics": []
+          }
+        },
+        {
+          "label": "src/later.cpp",
+          "value": {
+            "diagnostics": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "new files join the index",
+      "blocks": [
+        {
+          "label": "symbols",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "later_entry",
+                "kind": "Function",
+                "at": {
+                  "$place": "src/later.cpp │ int ⟦later_entry⟧() { return 1; }",
+                  "path": "src/later.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 15
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

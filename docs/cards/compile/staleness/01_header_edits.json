@@ -1,0 +1,337 @@
+{
+  "id": "compile/staleness/01_header_edits",
+  "topic": "compile",
+  "subtopic": "staleness",
+  "title": "Changes outside the editor",
+  "summary": "A header changed on disk reaches the files that include it at their next request, saved or not",
+  "prose": "Checkouts, generators and other tools rewrite headers behind the editor's back. The next request about an including file compiles it against the new text, wherever the header sits in its includes, while a rewrite of the same bytes costs nothing.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "base.h",
+      "text": "#pragma once\n\ninline int base() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "late.h",
+      "text": "#pragma once\n\ninline int late() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"pre.h\"\n\nint main() {\n    return pre();\n}\n\n#include \"late.h\"\n\nint tail() {\n    return late();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "other.cpp",
+      "text": "#include \"pre.h\"\n\nint other() {\n    return pre();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "pre.h",
+      "text": "#pragma once\n\n#include \"base.h\"\n\nstruct Widget {\n    int alpha_member;\n};\n\ninline int pre() {\n    return base();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "precompiled header edit",
+      "blocks": [
+        {
+          "label": "renamed",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "return ⟦pre⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'pre'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "transitive header edit",
+      "blocks": [
+        {
+          "label": "broken",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"pre.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 16
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In included file: non-void function 'base' should return a value",
+                "source": "clang",
+                "code": "warn_return_missing_expr"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "body header edit",
+      "blocks": [
+        {
+          "label": "renamed",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "return ⟦late⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 15
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'late'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "both edits compile once",
+      "blocks": [
+        {
+          "label": "renamed",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "return ⟦pre⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'pre'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              },
+              {
+                "at": {
+                  "$place": "return ⟦late⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 15
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'late'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "shared header edit",
+      "blocks": [
+        {
+          "label": "renamed",
+          "value": {
+            "main": [
+              {
+                "at": {
+                  "$place": "return ⟦pre⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'pre'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ],
+            "other": [
+              {
+                "at": {
+                  "$place": "return ⟦pre⟧();",
+                  "path": "other.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'pre'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "same bytes are no change",
+      "blocks": [
+        {
+          "label": "member",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Widget",
+                  "kind": "Class"
+                },
+                {
+                  "label": "alpha_member",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "operator=(…) +2 overloads",
+                  "kind": "Method"
+                },
+                {
+                  "label": "~Widget()",
+                  "kind": "Method",
+                  "detail": "void"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "backdated edit",
+      "blocks": [
+        {
+          "label": "renamed",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "return ⟦pre⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'pre'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "saved at once",
+      "blocks": [
+        {
+          "label": "renamed",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "return ⟦pre⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'pre'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "format/document/04_include_sorting",
+  "topic": "format",
+  "subtopic": "document",
+  "title": "Includes sorted",
+  "summary": "Formatting also sorts each block of includes, as the style asks",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\n",
+      "markers": []
+    },
+    {
+      "path": "alpha.h",
+      "text": "#pragma once\ninline int alpha = 1;\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"zeta.h\"\n#include \"alpha.h\"\n#include \"mid.h\"\n\nint  total = alpha + mid + zeta;\n",
+      "markers": []
+    },
+    {
+      "path": "mid.h",
+      "text": "#pragma once\ninline int mid = 2;\n",
+      "markers": []
+    },
+    {
+      "path": "zeta.h",
+      "text": "#pragma once\ninline int zeta = 3;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "formatting": "-#include \"zeta.h\"\n #include \"alpha.h\"\n #include \"mid.h\"\n+#include \"zeta.h\"\n\n-int  total = alpha + mid + zeta;\n+int total = alpha + mid + zeta;"
+          }
+        }
+      ]
+    }
+  ]
+}

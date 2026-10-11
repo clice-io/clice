@@ -1,0 +1,123 @@
+{
+  "id": "navigation/declaration/03_static_members",
+  "topic": "navigation",
+  "subtopic": "declaration",
+  "title": "Static data member",
+  "summary": "Static member uses navigate to the in-class declaration",
+  "prose": "A static data member is declared inside the class and defined out of\nline; go-to-declaration on a use offers the in-class declaration\nalongside the definition.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Config {\n    static int timeout;\n};\n\nint Config::timeout = 30;\n\nint read_config() {\n    return Config::timeout;\n}\n",
+      "markers": [
+        {
+          "name": "decl",
+          "begin": 31,
+          "end": 31,
+          "range": false
+        },
+        {
+          "name": "def",
+          "begin": 56,
+          "end": 56,
+          "range": false
+        },
+        {
+          "name": "use",
+          "begin": 110,
+          "end": 110,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "decl",
+          "marker": "decl",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int Config::⟦timeout⟧ = 30;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "def",
+          "marker": "def",
+          "value": {
+            "declaration": [
+              {
+                "$place": "static int ⟦timeout⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 22
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "declaration": [
+              {
+                "$place": "static int ⟦timeout⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 22
+                  }
+                }
+              },
+              {
+                "$place": "int Config::⟦timeout⟧ = 30;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

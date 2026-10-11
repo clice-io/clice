@@ -1,0 +1,50 @@
+{
+  "id": "completion/symbols/01_unqualified_lookup",
+  "topic": "completion",
+  "subtopic": "symbols",
+  "title": "Fuzzy unqualified lookup",
+  "summary": "Strong prefix matches survive, while weak subsequence matches and members of namespaces not in scope do not",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace A {\n\nvoid fooooo();\n\n}\n\nstruct X {\n    void operator()() {}\n};\n\nvoid bar() {\n    X functor;\n    auto folded = [](int x) {\n    };\n    fo;\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 145,
+          "end": 145,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "folded(int x)",
+                  "kind": "Variable",
+                  "detail": "void"
+                },
+                {
+                  "label": "for",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "id": "compile/languages/01_assembler",
+  "topic": "compile",
+  "subtopic": "languages",
+  "title": "Assembler sources",
+  "summary": "Preprocessed assembler files open in the editor and join the index",
+  "prose": "",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "compile_commands.json",
+      "text": "[\n  {\n    \"directory\": \"${WS}\",\n    \"file\": \"${WS}/entry.S\",\n    \"arguments\": [\"clang\", \"-c\", \"${WS}/entry.S\", \"-o\", \"entry.o\"]\n  }\n]\n",
+      "markers": []
+    },
+    {
+      "path": "entry.S",
+      "text": "#define SIZE 8\n# Copyright 2003 Pavel Machek <pavel@suse.cz\n.text\n# Hooray, we are in long mode\nentry:\n    .quad SIZE\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "open",
+      "blocks": [
+        {
+          "label": "diagnostics",
+          "value": {
+            "wrong": "an assembler source is parsed as C after preprocessing: its comment and directive lines, which the build accepts, show errors",
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "⟦#⟧ Copyright 2003 Pavel Machek <pavel@suse.cz",
+                  "path": "entry.S",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 1
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "expected identifier or '('",
+                "source": "clang",
+                "code": "err_expected_either"
+              },
+              {
+                "at": {
+                  "$place": "⟦.⟧text",
+                  "path": "entry.S",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 1
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "expected identifier or '('",
+                "source": "clang",
+                "code": "err_expected_either"
+              }
+            ]
+          }
+        },
+        {
+          "label": "size",
+          "value": {
+            "hover": {
+              "markdown": "### macro `SIZE`\n\n---\n```cpp\n#define SIZE 8\n\n// Expands to\n8\n```",
+              "range": {
+                "$place": ".quad ⟦SIZE⟧",
+                "path": "entry.S",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "index",
+      "blocks": [
+        {
+          "label": "$ clice index --workers 1",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

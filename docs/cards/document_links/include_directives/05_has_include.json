@@ -1,0 +1,70 @@
+{
+  "id": "document_links/include_directives/05_has_include",
+  "topic": "document_links",
+  "subtopic": "include_directives",
+  "title": "`__has_include`",
+  "summary": "The checked path links to the file it probes",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "header_c.h",
+      "text": "#pragma once\n\nint c = 3;\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#if __has_include(\"header_c.h\")\n#include \"header_c.h\"\n#endif\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#if __has_include(⟦\"header_c.h\"⟧)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 30
+                    }
+                  }
+                },
+                "target": "header_c.h"
+              },
+              {
+                "at": {
+                  "$place": "#include ⟦\"header_c.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 21
+                    }
+                  }
+                },
+                "target": "header_c.h"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

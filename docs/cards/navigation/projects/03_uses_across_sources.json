@@ -1,0 +1,151 @@
+{
+  "id": "navigation/projects/03_uses_across_sources",
+  "topic": "navigation",
+  "subtopic": "projects",
+  "title": "Uses across sources",
+  "summary": "Find references gathers the uses in every source of the project, not only in the current file",
+  "prose": "A function defined in one source and called from a sibling lists both call\nsites, together with its declaration in the shared header.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "lib.cpp",
+      "text": "#include \"shared.h\"\n\nint compute(int value) {\n    return value * 2;\n}\n\nint again(int value) {\n    return compute(value) + 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"shared.h\"\n\nint run(int value) {\n    return compute(value);\n}\n",
+      "markers": [
+        {
+          "name": "use",
+          "begin": 53,
+          "end": 53,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "shared.h",
+      "text": "#pragma once\n\nint compute(int value);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "definition": [
+              {
+                "$place": "lib.cpp │ int ⟦compute⟧(int value) {",
+                "path": "lib.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 11
+                  }
+                }
+              }
+            ],
+            "declaration": [
+              {
+                "$place": "lib.cpp │ int ⟦compute⟧(int value) {",
+                "path": "lib.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "shared.h │ int ⟦compute⟧(int value);",
+                "path": "shared.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 11
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "lib.cpp │ int ⟦compute⟧(int value) {",
+                "path": "lib.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "lib.cpp │ return ⟦compute⟧(value) + 1;",
+                "path": "lib.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 18
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦compute⟧(value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 18
+                  }
+                }
+              },
+              {
+                "$place": "shared.h │ int ⟦compute⟧(int value);",
+                "path": "shared.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

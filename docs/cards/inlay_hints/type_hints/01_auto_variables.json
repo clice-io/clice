@@ -1,0 +1,79 @@
+{
+  "id": "inlay_hints/type_hints/01_auto_variables",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Deduced `auto` variables",
+  "summary": "The hint shows the full variable type, qualifiers included",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int make();\n\nvoid use() {\n    auto value = make();\n    const auto& ref = value;\n    auto* ptr = &value;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto value⟨: int⟩ = make();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 24
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "const auto& ref⟨: const int &⟩ = value;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 28
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto* ptr⟨: int *⟩ = &value;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 23
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

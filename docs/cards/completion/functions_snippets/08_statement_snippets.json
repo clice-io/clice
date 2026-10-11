@@ -1,0 +1,151 @@
+{
+  "id": "completion/functions_snippets/08_statement_snippets",
+  "topic": "completion",
+  "subtopic": "functions_snippets",
+  "title": "Statement keywords",
+  "summary": "Statement keywords complete as keywords; the option inserts the whole statement with a placeholder for each part",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void bar() {\n    whi;\n    fo;\n    retu;\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 20,
+          "end": 20,
+          "range": false
+        },
+        {
+          "name": "variants",
+          "begin": 28,
+          "end": 28,
+          "range": false
+        },
+        {
+          "name": "no_placeholders",
+          "begin": 38,
+          "end": 38,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "while",
+                  "kind": "Keyword",
+                  "insert": "while"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "variants",
+          "marker": "variants",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "for",
+                  "kind": "Keyword",
+                  "insert": "for"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "no_placeholders",
+          "marker": "no_placeholders",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "return",
+                  "kind": "Keyword",
+                  "insert": "return"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "code_completion": {
+          "enable_keyword_snippet": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "while (condition) { statements }",
+                  "kind": "Snippet",
+                  "insert": "while (${1:condition}) {\n${2:statements}\n}",
+                  "snippet": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "variants",
+          "marker": "variants",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "for (init-statement; condition; inc-expression) { statements }",
+                  "kind": "Snippet",
+                  "insert": "for (${1:init-statement}; ${2:condition}; ${3:inc-expression}) {\n${4:statements}\n}",
+                  "snippet": true
+                },
+                {
+                  "label": "for (range-declaration : range-expression) { statements }",
+                  "kind": "Snippet",
+                  "insert": "for (${1:range-declaration} : ${2:range-expression}) {\n${3:statements}\n}",
+                  "snippet": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "no_placeholders",
+          "marker": "no_placeholders",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "return;",
+                  "kind": "Snippet",
+                  "insert": "return;"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

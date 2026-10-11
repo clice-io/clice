@@ -1,0 +1,83 @@
+{
+  "id": "hover/arguments/03_conversions",
+  "topic": "hover",
+  "subtopic": "arguments",
+  "title": "Implicit conversions",
+  "summary": "An argument converted on its way to the parameter names the type it is converted to",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace implicit_conversion {\n\nstruct Wrapper {\n  Wrapper(int value);\n};\n\nvoid take_float(float x);\nvoid take_wrapper(Wrapper w);\n\nvoid demo() {\n  int n = 0;\n  take_float(n);\n  take_wrapper(n);\n}\n\n}\n",
+      "markers": [
+        {
+          "name": "arithmetic",
+          "begin": 173,
+          "end": 173,
+          "range": false
+        },
+        {
+          "name": "user_defined",
+          "begin": 192,
+          "end": 192,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "arithmetic",
+          "marker": "arithmetic",
+          "value": {
+            "hover": {
+              "markdown": "### variable `n`\n\n---\nType: `int`\nValue = `0`\nPassed as x (converted to float)\n\n---\n```cpp\n// In demo\nint n = 0\n```",
+              "range": {
+                "$place": "take_float(⟦n⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "user_defined",
+          "marker": "user_defined",
+          "value": {
+            "hover": {
+              "markdown": "### variable `n`\n\n---\nType: `int`\nValue = `0`\nPassed as w (converted to Wrapper)\n\n---\n```cpp\n// In demo\nint n = 0\n```",
+              "range": {
+                "$place": "take_wrapper(⟦n⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

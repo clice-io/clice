@@ -1,0 +1,242 @@
+{
+  "id": "semantic_tokens/declarations/06_templates",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Templates",
+  "summary": "Template parameters receive type or variable kinds, and a declared template carries `templated`",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T, int N>\nstruct Array {\n    T data[N];\n};\n\ntemplate <typename T>\nT identity(T value);\n\ntemplate <typename T>\nT identity(T value) {\n    return value;\n}\n\nArray<int, 4> arr;\nint result = identity(3);\n",
+      "markers": [
+        {
+          "name": "T_def",
+          "begin": 19,
+          "end": 19,
+          "range": false
+        },
+        {
+          "name": "N_def",
+          "begin": 26,
+          "end": 26,
+          "range": false
+        },
+        {
+          "name": "Array_def",
+          "begin": 36,
+          "end": 36,
+          "range": false
+        },
+        {
+          "name": "T_use",
+          "begin": 48,
+          "end": 48,
+          "range": false
+        },
+        {
+          "name": "N_use",
+          "begin": 55,
+          "end": 55,
+          "range": false
+        },
+        {
+          "name": "identity_decl",
+          "begin": 87,
+          "end": 87,
+          "range": false
+        },
+        {
+          "name": "T_def2",
+          "begin": 126,
+          "end": 126,
+          "range": false
+        },
+        {
+          "name": "T_use2",
+          "begin": 129,
+          "end": 129,
+          "range": false
+        },
+        {
+          "name": "identity_def",
+          "begin": 131,
+          "end": 131,
+          "range": false
+        },
+        {
+          "name": "T_use3",
+          "begin": 140,
+          "end": 140,
+          "range": false
+        },
+        {
+          "name": "Array_use",
+          "begin": 172,
+          "end": 172,
+          "range": false
+        },
+        {
+          "name": "identity_use",
+          "begin": 204,
+          "end": 204,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "T_def",
+          "marker": "T_def",
+          "value": {
+            "semantic_token": {
+              "text": "T",
+              "type": "type",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "N_def",
+          "marker": "N_def",
+          "value": {
+            "semantic_token": {
+              "text": "N",
+              "type": "variable",
+              "modifiers": [
+                "definition",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Array_def",
+          "marker": "Array_def",
+          "value": {
+            "semantic_token": {
+              "text": "Array",
+              "type": "struct",
+              "modifiers": [
+                "definition",
+                "templated"
+              ]
+            }
+          }
+        },
+        {
+          "label": "T_use",
+          "marker": "T_use",
+          "value": {
+            "semantic_token": {
+              "text": "T",
+              "type": "type"
+            }
+          }
+        },
+        {
+          "label": "N_use",
+          "marker": "N_use",
+          "value": {
+            "semantic_token": {
+              "text": "N",
+              "type": "variable",
+              "modifiers": [
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "identity_decl",
+          "marker": "identity_decl",
+          "value": {
+            "semantic_token": {
+              "text": "identity",
+              "type": "function",
+              "modifiers": [
+                "declaration",
+                "templated"
+              ]
+            }
+          }
+        },
+        {
+          "label": "T_def2",
+          "marker": "T_def2",
+          "value": {
+            "semantic_token": {
+              "text": "T",
+              "type": "type",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "T_use2",
+          "marker": "T_use2",
+          "value": {
+            "semantic_token": {
+              "text": "T",
+              "type": "type"
+            }
+          }
+        },
+        {
+          "label": "identity_def",
+          "marker": "identity_def",
+          "value": {
+            "semantic_token": {
+              "text": "identity",
+              "type": "function",
+              "modifiers": [
+                "definition",
+                "templated"
+              ]
+            }
+          }
+        },
+        {
+          "label": "T_use3",
+          "marker": "T_use3",
+          "value": {
+            "semantic_token": {
+              "text": "T",
+              "type": "type"
+            }
+          }
+        },
+        {
+          "label": "Array_use",
+          "marker": "Array_use",
+          "value": {
+            "semantic_token": {
+              "text": "Array",
+              "type": "struct"
+            }
+          }
+        },
+        {
+          "label": "identity_use",
+          "marker": "identity_use",
+          "value": {
+            "semantic_token": {
+              "text": "identity",
+              "type": "function"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

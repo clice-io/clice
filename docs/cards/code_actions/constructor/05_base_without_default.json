@@ -1,0 +1,38 @@
+{
+  "id": "code_actions/constructor/05_base_without_default",
+  "topic": "code_actions",
+  "subtopic": "constructor",
+  "title": "Base without a default constructor",
+  "summary": "No constructor is generated when a base class needs its own initializer, since the memberwise one initializes fields alone",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    Base(int id);\n};\n\nstruct Derived : Base {\n    int x;\n};\n",
+      "markers": [
+        {
+          "name": "derived",
+          "begin": 43,
+          "end": 43,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "derived",
+          "marker": "derived",
+          "value": {
+            "code_actions": []
+          }
+        }
+      ]
+    }
+  ]
+}

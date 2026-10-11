@@ -1,0 +1,110 @@
+{
+  "id": "semantic_tokens/lexical/05_literal_affixes",
+  "topic": "semantic_tokens",
+  "subtopic": "lexical",
+  "title": "Literal prefixes and suffixes",
+  "summary": "Literal prefixes and suffixes do not receive tokens of their own yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "using size_type = decltype(sizeof(0));\nconstexpr size_type operator\"\"_kb(unsigned long long n) {\n    return n * 1024;\n}\n\nauto wide = L\"wide string\";\nauto utf8 = u8\"utf-8 string\";\nauto hex = 0xFF;\nauto binary = 0b1010;\nauto unsigned_suffix = 42u;\nauto float_suffix = 3.14f;\nauto separators = 1'000'000;\nauto udl = 4_kb;\n",
+      "markers": [
+        {
+          "name": "wide_prefix",
+          "begin": 133,
+          "end": 133,
+          "range": false
+        },
+        {
+          "name": "utf8_prefix",
+          "begin": 161,
+          "end": 161,
+          "range": false
+        },
+        {
+          "name": "unsigned_suffix",
+          "begin": 243,
+          "end": 243,
+          "range": false
+        },
+        {
+          "name": "float_suffix",
+          "begin": 270,
+          "end": 270,
+          "range": false
+        },
+        {
+          "name": "literal_operator_suffix",
+          "begin": 314,
+          "end": 314,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "wide_prefix",
+          "marker": "wide_prefix",
+          "value": {
+            "wrong": "the encoding prefix should be a token of its own",
+            "semantic_token": {
+              "text": "L\"wide string\"",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "label": "utf8_prefix",
+          "marker": "utf8_prefix",
+          "value": {
+            "wrong": "the encoding prefix should be a token of its own",
+            "semantic_token": {
+              "text": "u8\"utf-8 string\"",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "label": "unsigned_suffix",
+          "marker": "unsigned_suffix",
+          "value": {
+            "wrong": "the suffix should be a token of its own",
+            "semantic_token": {
+              "text": "42u",
+              "type": "number"
+            }
+          }
+        },
+        {
+          "label": "float_suffix",
+          "marker": "float_suffix",
+          "value": {
+            "wrong": "the suffix should be a token of its own",
+            "semantic_token": {
+              "text": "3.14f",
+              "type": "number"
+            }
+          }
+        },
+        {
+          "label": "literal_operator_suffix",
+          "marker": "literal_operator_suffix",
+          "value": {
+            "wrong": "the suffix should be a token of its own",
+            "semantic_token": {
+              "text": "4_kb",
+              "type": "number"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

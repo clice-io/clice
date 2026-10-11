@@ -1,0 +1,41 @@
+{
+  "id": "navigation/implementation/03_non_virtual",
+  "topic": "navigation",
+  "subtopic": "implementation",
+  "title": "Non-virtual function",
+  "summary": "Non-virtual declarations do not navigate to out-of-line definitions yet",
+  "prose": "Go-to-implementation on a non-virtual function declaration does not reach\nits out-of-line definition and returns nothing.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#854"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    void draw();\n};\n\nvoid Widget::draw() {}\n",
+      "markers": [
+        {
+          "name": "method",
+          "begin": 25,
+          "end": 25,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "method",
+          "marker": "method",
+          "value": {
+            "wrong": "go to implementation should reach the out-of-line definition (clangd#854)",
+            "implementation": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "id": "semantic_tokens/declarations/07_concepts",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Concepts",
+  "summary": "Concept definitions and constraint uses receive concept tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nconcept Small = sizeof(T) <= 4;\n\ntemplate <Small T>\nvoid use_small(T value);\n\ntemplate <typename T>\n    requires Small<T>\nvoid require_small(T value);\n",
+      "markers": [
+        {
+          "name": "Small_def",
+          "begin": 30,
+          "end": 30,
+          "range": false
+        },
+        {
+          "name": "Small_use",
+          "begin": 65,
+          "end": 65,
+          "range": false
+        },
+        {
+          "name": "Small_use2",
+          "begin": 135,
+          "end": 135,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "Small_def",
+          "marker": "Small_def",
+          "value": {
+            "semantic_token": {
+              "text": "Small",
+              "type": "concept",
+              "modifiers": [
+                "definition",
+                "templated"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Small_use",
+          "marker": "Small_use",
+          "value": {
+            "semantic_token": {
+              "text": "Small",
+              "type": "concept",
+              "modifiers": [
+                "templated"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Small_use2",
+          "marker": "Small_use2",
+          "value": {
+            "semantic_token": {
+              "text": "Small",
+              "type": "concept",
+              "modifiers": [
+                "templated"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

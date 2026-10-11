@@ -1,0 +1,165 @@
+{
+  "id": "semantic_tokens/declarations/02_namespaces",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Namespaces",
+  "summary": "Namespace definitions, references, nesting and aliases receive namespace tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace demo {\nnamespace inner {\nint value = 1;\n}\n}\n\nnamespace demo::inner::more {}\n\nnamespace alias = demo::inner;\n\nint use_alias = alias::value;\n",
+      "markers": [
+        {
+          "name": "demo_def",
+          "begin": 10,
+          "end": 10,
+          "range": false
+        },
+        {
+          "name": "inner_def",
+          "begin": 27,
+          "end": 27,
+          "range": false
+        },
+        {
+          "name": "more",
+          "begin": 78,
+          "end": 78,
+          "range": false
+        },
+        {
+          "name": "alias_def",
+          "begin": 97,
+          "end": 97,
+          "range": false
+        },
+        {
+          "name": "demo_use",
+          "begin": 105,
+          "end": 105,
+          "range": false
+        },
+        {
+          "name": "inner_use",
+          "begin": 111,
+          "end": 111,
+          "range": false
+        },
+        {
+          "name": "alias_use",
+          "begin": 135,
+          "end": 135,
+          "range": false
+        },
+        {
+          "name": "value",
+          "begin": 142,
+          "end": 142,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "demo_def",
+          "marker": "demo_def",
+          "value": {
+            "semantic_token": {
+              "text": "demo",
+              "type": "namespace",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "inner_def",
+          "marker": "inner_def",
+          "value": {
+            "semantic_token": {
+              "text": "inner",
+              "type": "namespace",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "more",
+          "marker": "more",
+          "value": {
+            "semantic_token": {
+              "text": "more",
+              "type": "namespace",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "alias_def",
+          "marker": "alias_def",
+          "value": {
+            "semantic_token": {
+              "text": "alias",
+              "type": "namespace",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "demo_use",
+          "marker": "demo_use",
+          "value": {
+            "semantic_token": {
+              "text": "demo",
+              "type": "namespace"
+            }
+          }
+        },
+        {
+          "label": "inner_use",
+          "marker": "inner_use",
+          "value": {
+            "semantic_token": {
+              "text": "inner",
+              "type": "namespace"
+            }
+          }
+        },
+        {
+          "label": "alias_use",
+          "marker": "alias_use",
+          "value": {
+            "semantic_token": {
+              "text": "alias",
+              "type": "namespace"
+            }
+          }
+        },
+        {
+          "label": "value",
+          "marker": "value",
+          "value": {
+            "semantic_token": {
+              "text": "value",
+              "type": "variable"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

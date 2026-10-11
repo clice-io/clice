@@ -1,0 +1,196 @@
+{
+  "id": "document_symbol/symbol_detail/04_base_classes",
+  "topic": "document_symbol",
+  "subtopic": "symbol_detail",
+  "title": "Base classes",
+  "summary": "A derived class's detail does not name its base classes yet",
+  "prose": "",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {};\n\nstruct Circle : Shape {\n    double radius;\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "wrong": "Circle's detail does not name its base class Shape",
+            "document_symbols": [
+              {
+                "name": "Shape",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Shape⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "struct"
+              },
+              {
+                "name": "Circle",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Circle⟧ : Shape {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "struct",
+                "children": [
+                  {
+                    "name": "radius",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "double ⟦radius⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 3,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 3,
+                          "character": 17
+                        }
+                      }
+                    },
+                    "detail": "double"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "Shape",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Shape⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 12
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦struct Shape {}⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Circle",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Circle⟧ : Shape {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 13
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦struct Circle : Shape { … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "radius",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "double ⟦radius⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 3,
+                          "character": 11
+                        },
+                        "end": {
+                          "line": 3,
+                          "character": 17
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦double radius⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 3,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 3,
+                          "character": 17
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

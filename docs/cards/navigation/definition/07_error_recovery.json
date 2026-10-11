@@ -1,0 +1,39 @@
+{
+  "id": "navigation/definition/07_error_recovery",
+  "topic": "navigation",
+  "subtopic": "definition",
+  "title": "Unresolved variable types",
+  "summary": "A variable whose type does not resolve can not be navigated to from its uses yet",
+  "prose": "Go-to-definition on a later use of the variable returns nothing, although\nits declaration is right there.",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "Unresolved handle;\n\nvoid read() {\n    (void) handle;\n}\n",
+      "markers": [
+        {
+          "name": "use",
+          "begin": 45,
+          "end": 45,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "wrong": "should reach the declaration of handle, whose type alone fails to resolve",
+            "definition": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "id": "navigation/references/07_enclosing_functions",
+  "topic": "navigation",
+  "subtopic": "references",
+  "title": "Reference enclosing context",
+  "summary": "Each reference is reported as a bare location; the name of the function that encloses it is not attached, so results carry no context beyond the file and line",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#177"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int shared_value = 0;\n\nint reader() {\n    return shared_value;\n}\n\nint writer() {\n    shared_value = 1;\n    return shared_value;\n}\n",
+      "markers": [
+        {
+          "name": "variable",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "wrong": "each reference should name the function it lies in (clangd#177)",
+            "references": [
+              {
+                "$place": "int ⟦shared_value⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦shared_value⟧; @+3",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 23
+                  }
+                }
+              },
+              {
+                "$place": "⟦shared_value⟧ = 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦shared_value⟧; @+8",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 23
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

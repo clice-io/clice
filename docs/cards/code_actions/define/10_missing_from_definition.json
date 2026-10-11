@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/define/10_missing_from_definition",
+  "topic": "code_actions",
+  "subtopic": "define",
+  "title": "Missing members from a definition",
+  "summary": "Inside an out-of-line definition, the class's remaining undefined members are offered too",
+  "prose": "This is how a source file completes a class declared elsewhere: the definitions join the ones already there.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Parser {\n    void parse();\n    void reset();\n    bool done() const;\n};\n\nvoid Parser::parse() {\n}\n",
+      "markers": [
+        {
+          "name": "parse",
+          "begin": 92,
+          "end": 92,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "parse",
+          "marker": "parse",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.missing",
+                "title": "Define missing members of 'Parser'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " void Parser::parse() {\n }\n+\n+void Parser::reset() {\n+}\n+\n+bool Parser::done() const {\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,283 @@
+{
+  "id": "folding_range/lists/01_multiline_lists",
+  "topic": "folding_range",
+  "subtopic": "lists",
+  "title": "Multi-line lists",
+  "summary": "Multiline parameter, argument, initializer and capture lists form folding ranges",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void configure(\n    int width,\n    int height,\n    bool fullscreen\n);\n\nint compute(int a, int b, int c);\n\nvoid demo() {\n    int values[] = {\n        1,\n        2,\n        3\n    };\n\n    int result = compute(\n        values[0],\n        values[1],\n        values[2]\n    );\n\n    auto sum = [\n        first = values[0],\n        second = values[1]\n    ] {\n        return first + second;\n    };\n\n    auto scale = [](\n        int base,\n        int factor\n    ) {\n        return base * factor;\n    };\n\n    result += sum() + scale(result, 2);\n}\n\nint accumulate(\n    int start,\n    int step,\n    int count\n) {\n    return start + step * count;\n}\n\nvoid log_all(\n    const char* format,\n    ...\n);\n\nstruct Rect {\n    Rect(int w, int h);\n};\n\nRect area(\n    10,\n    20\n);\n\nRect brace_area{\n    30,\n    40\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "functionParams",
+                "at": {
+                  "$place": "void configure⟦( … )⟧ (5 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": "void demo() ⟦{ … }⟧ (29 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 36,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "initializer",
+                "at": {
+                  "$place": "int values[] = ⟦{ … }⟧ (5 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "functionCall",
+                "at": {
+                  "$place": "int result = compute⟦( … )⟧ (5 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
+                "kind": "lambdaCapture",
+                "at": {
+                  "$place": "auto sum = ⟦[ … ]⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "[...]"
+              },
+              {
+                "kind": "compoundStmt",
+                "at": {
+                  "$place": "] ⟦{ … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 24,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 26,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "functionParams",
+                "at": {
+                  "$place": "auto scale = []⟦( … )⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
+                "kind": "compoundStmt",
+                "at": {
+                  "$place": ") ⟦{ … }⟧ (3 lines) @32",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 33,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "functionParams",
+                "at": {
+                  "$place": "int accumulate⟦( … )⟧ (5 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 42,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": ") ⟦{ … }⟧ (3 lines) @43",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 42,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 44,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "functionParams",
+                "at": {
+                  "$place": "void log_all⟦( … )⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 46,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 49,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
+                "kind": "struct",
+                "at": {
+                  "$place": "struct Rect ⟦{ … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 51,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 53,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "functionCall",
+                "at": {
+                  "$place": "Rect area⟦( … )⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 55,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 58,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
+                "kind": "initializer",
+                "at": {
+                  "$place": "Rect brace_area⟦{ … }⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 60,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 63,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

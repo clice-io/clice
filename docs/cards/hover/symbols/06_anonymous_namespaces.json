@@ -1,0 +1,87 @@
+{
+  "id": "hover/symbols/06_anonymous_namespaces",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Anonymous namespaces",
+  "summary": "The scope of a card leaves anonymous namespaces out",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#436"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace {\nint hidden = 1;\n}\n\nnamespace outer {\nnamespace {\nint nested = 2;\n}\n}\n\nint sum = hidden + outer::nested;\n",
+      "markers": [
+        {
+          "name": "anon_var",
+          "begin": 19,
+          "end": 19,
+          "range": false
+        },
+        {
+          "name": "nested_anon_var",
+          "begin": 68,
+          "end": 68,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "anon_var",
+          "marker": "anon_var",
+          "value": {
+            "wrong": "the scope line leaves out the anonymous namespace (clangd#436)",
+            "hover": {
+              "markdown": "### variable `hidden`\n\n---\nType: `int`\nValue = `1`\n\n---\n```cpp\nint hidden = 1\n```",
+              "range": {
+                "$place": "int ⟦hidden⟧ = 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "nested_anon_var",
+          "marker": "nested_anon_var",
+          "value": {
+            "wrong": "the scope line leaves out the anonymous namespace (clangd#436)",
+            "hover": {
+              "markdown": "### variable `nested`\n\n---\nType: `int`\nValue = `2`\n\n---\n```cpp\n// In namespace outer\nint nested = 2\n```",
+              "range": {
+                "$place": "int ⟦nested⟧ = 2;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

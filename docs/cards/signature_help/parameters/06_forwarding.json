@@ -1,0 +1,46 @@
+{
+  "id": "signature_help/parameters/06_forwarding",
+  "topic": "signature_help",
+  "subtopic": "parameters",
+  "title": "Forwarding functions",
+  "summary": "A call that forwards its arguments to a constructor shows the forwarding pack, not the constructor's parameters",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#517"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    Widget(int width, int height);\n};\n\ntemplate <typename T, typename... Args>\nT* make(Args&&... args) {\n    return new T(static_cast<Args&&>(args)...);\n}\n\nWidget* widget = make<Widget>(800, 600);\n",
+      "markers": [
+        {
+          "name": "forwarded",
+          "begin": 202,
+          "end": 202,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "forwarded",
+          "marker": "forwarded",
+          "value": {
+            "wrong": "shows the forwarding pack instead of Widget's width and height (clangd#517)",
+            "signature_help": {
+              "signatures": [
+                "make(⟦Args &&...args⟧) -> T *"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/switch_cases/02_before_default",
+  "topic": "code_actions",
+  "subtopic": "switch_cases",
+  "title": "Cases before the default",
+  "summary": "With a `default` present, the missing cases go right before it and fall through into it, keeping the behavior",
+  "prose": "The action is offered from anywhere inside the switch.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "enum class Level { Low, Mid, High };\n\nint rank(Level level) {\n    switch (level) {\n    case Level::Low:\n        return 0;\n    default:\n        return 1;\n    }\n}\n",
+      "markers": [
+        {
+          "name": "inside",
+          "begin": 119,
+          "end": 119,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "inside",
+          "marker": "inside",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.populateSwitch",
+                "title": "Add 2 missing enum cases to switch",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     case Level::Low:\n         return 0;\n+    case Level::Mid:\n+    case Level::High:\n     default:\n         return 1;"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

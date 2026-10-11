@@ -1,0 +1,42 @@
+{
+  "id": "contexts/hosts/02_multiple_entries",
+  "topic": "contexts",
+  "subtopic": "hosts",
+  "title": "Files built several ways",
+  "summary": "A source the database lists under several commands offers each one as a context",
+  "prose": "When a build compiles one file more than once, for example once per configuration, every command is a context the editor can switch between, labeled by its flags.",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#ifdef CONFIG_A\nint config_value() {\n    return 1;\n}\n#endif\n\n#ifdef CONFIG_B\nint config_value() {\n    return 2;\n}\n#endif\n\nint main() {\n    return config_value();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "wrong": "each label lists every -D, -O, -std and -g flag of its command, the shared -std=c++20 included, rather than only the flags that set the commands apart",
+            "contexts": [
+              {
+                "label": "-std=c++20 -DCONFIG_A",
+                "description": "${WS}",
+                "host": "main.cpp"
+              },
+              {
+                "label": "-std=c++20 -DCONFIG_B",
+                "description": "${WS}",
+                "host": "main.cpp"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

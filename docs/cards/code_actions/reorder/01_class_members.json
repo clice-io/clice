@@ -1,0 +1,69 @@
+{
+  "id": "code_actions/reorder/01_class_members",
+  "topic": "code_actions",
+  "subtopic": "reorder",
+  "title": "Reorder definitions by declaration",
+  "summary": "The out-of-line definitions of a class's members are reordered to follow the declaration order in the class",
+  "prose": "Each definition moves with the comment block directly above it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Parser {\n    void first();\n    void second();\n    void third();\n};\n\n/// Parses the tail.\nvoid Parser::third() {\n}\n\nvoid Parser::first() {\n}\n\n// The middle one.\nvoid Parser::second() {\n}\n",
+      "markers": [
+        {
+          "name": "cls",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "second",
+          "begin": 180,
+          "end": 180,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "cls",
+          "marker": "cls",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.reorderDefinitions",
+                "title": "Reorder definitions of 'Parser' by declaration order",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " };\n\n-/// Parses the tail.\n-void Parser::third() {\n-}\n-\n void Parser::first() {\n }\n…\n void Parser::second() {\n }\n+\n+/// Parses the tail.\n+void Parser::third() {\n+}"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "second",
+          "marker": "second",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.reorderDefinitions",
+                "title": "Reorder definitions of 'Parser' by declaration order",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " };\n\n-/// Parses the tail.\n-void Parser::third() {\n-}\n-\n void Parser::first() {\n }\n…\n void Parser::second() {\n }\n+\n+/// Parses the tail.\n+void Parser::third() {\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

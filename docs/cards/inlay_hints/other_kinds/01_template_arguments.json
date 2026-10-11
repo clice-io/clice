@@ -1,0 +1,50 @@
+{
+  "id": "inlay_hints/other_kinds/01_template_arguments",
+  "topic": "inlay_hints",
+  "subtopic": "other_kinds",
+  "title": "Template argument names",
+  "summary": "An explicit template argument at a call site does not show the template parameter it binds yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2583"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T, typename U>\nT convert(U val);\n\nfloat converted = convert<float>(42);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "wrong": "should also name the template parameter the explicit argument binds, T: before float (clangd#2583)",
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "float converted = convert<float>(⟨val:⟩42);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 37
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "id": "code_actions/define/07_free_function",
+  "topic": "code_actions",
+  "subtopic": "define",
+  "title": "Free function declaration",
+  "summary": "A declared free function is defined right after its declaration, in the same namespace",
+  "prose": "The name needs no qualifier inside the namespace; the return type is spelled for that scope.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace ns {\nstruct Config {};\nConfig load(const char* path);\n}\n\nint compute(int x);\n",
+      "markers": [
+        {
+          "name": "load",
+          "begin": 40,
+          "end": 40,
+          "range": false
+        },
+        {
+          "name": "global",
+          "begin": 71,
+          "end": 71,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "load",
+          "marker": "load",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'load' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " struct Config {};\n Config load(const char* path);\n+\n+Config load(const char* path) {\n }\n\n+}\n+\n int compute(int x);"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "global",
+          "marker": "global",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'compute' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n int compute(int x);\n+\n+int compute(int x) {\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

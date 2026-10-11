@@ -1,0 +1,67 @@
+{
+  "id": "navigation/implicit_targets/09_casts",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "Cast conversion navigation",
+  "summary": "Constructing casts navigate to the selected constructor",
+  "prose": "A `static_cast` that runs a user-defined conversion operator does not yet\nreach that operator.",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Meters {\n    explicit operator double() const;\n};\n\nstruct Foo {\n    explicit Foo(int value);\n};\n\nvoid use(Meters m) {\n    double d = static_cast<double>(m);\n    Foo f = static_cast<Foo>(42);\n}\n",
+      "markers": [
+        {
+          "name": "cast_conv",
+          "begin": 140,
+          "end": 140,
+          "range": false
+        },
+        {
+          "name": "cast_ctor",
+          "begin": 176,
+          "end": 176,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "cast_conv",
+          "marker": "cast_conv",
+          "value": {
+            "wrong": "should reach Meters::operator double, the conversion the cast runs",
+            "definition": []
+          }
+        },
+        {
+          "label": "cast_ctor",
+          "marker": "cast_ctor",
+          "value": {
+            "definition": [
+              {
+                "$place": "explicit ⟦Foo⟧(int value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 16
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

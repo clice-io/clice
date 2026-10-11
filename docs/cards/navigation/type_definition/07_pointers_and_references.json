@@ -1,0 +1,374 @@
+{
+  "id": "navigation/type_definition/07_pointers_and_references",
+  "topic": "navigation",
+  "subtopic": "type_definition",
+  "title": "Pointers, references and arrays",
+  "summary": "Go-to-type-definition looks through pointers, references and arrays to the definition of the element type",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    int value;\n};\n\nusing WidgetPointer = Widget*;\n\nstruct Holder {\n    Widget* pointer;\n    Widget& reference;\n};\n\nint probe(const Widget& ref, Widget* ptr, Widget&& moved,\n          Widget batch[]) {\n    Widget items[2];\n    const Widget* view = ptr;\n    return ref.value + ptr->value + items[0].value +\n           moved.value + view->value + batch[0].value;\n}\n",
+      "markers": [
+        {
+          "name": "type",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "pointer_alias",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        },
+        {
+          "name": "field_pointer",
+          "begin": 95,
+          "end": 95,
+          "range": false
+        },
+        {
+          "name": "field_reference",
+          "begin": 116,
+          "end": 116,
+          "range": false
+        },
+        {
+          "name": "const_reference",
+          "begin": 155,
+          "end": 155,
+          "range": false
+        },
+        {
+          "name": "pointer",
+          "begin": 168,
+          "end": 168,
+          "range": false
+        },
+        {
+          "name": "rvalue",
+          "begin": 182,
+          "end": 182,
+          "range": false
+        },
+        {
+          "name": "array_parameter",
+          "begin": 206,
+          "end": 206,
+          "range": false
+        },
+        {
+          "name": "array",
+          "begin": 228,
+          "end": 228,
+          "range": false
+        },
+        {
+          "name": "pointer_to_const",
+          "begin": 256,
+          "end": 256,
+          "range": false
+        },
+        {
+          "name": "use_reference",
+          "begin": 279,
+          "end": 279,
+          "range": false
+        },
+        {
+          "name": "use_pointer",
+          "begin": 291,
+          "end": 291,
+          "range": false
+        },
+        {
+          "name": "use_array",
+          "begin": 304,
+          "end": 304,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "type_definition": []
+          }
+        },
+        {
+          "label": "pointer_alias",
+          "marker": "pointer_alias",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "field_pointer",
+          "marker": "field_pointer",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "field_reference",
+          "marker": "field_reference",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "const_reference",
+          "marker": "const_reference",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "pointer",
+          "marker": "pointer",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "rvalue",
+          "marker": "rvalue",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "array_parameter",
+          "marker": "array_parameter",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "array",
+          "marker": "array",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "pointer_to_const",
+          "marker": "pointer_to_const",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use_reference",
+          "marker": "use_reference",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use_pointer",
+          "marker": "use_pointer",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use_array",
+          "marker": "use_array",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

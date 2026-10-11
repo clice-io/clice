@@ -1,0 +1,89 @@
+{
+  "id": "switch_source_header/layouts/01_split_directories",
+  "topic": "switch_source_header",
+  "subtopic": "layouts",
+  "title": "Headers apart from sources",
+  "summary": "A header under `include/` finds its source under `src/`, ahead of another file of the same name that defines none of its declarations",
+  "prose": "Away from the header's own directory, a file of the same name counts\nonly when one of the two includes the other — `tools/shape.cpp` includes\nnothing and is no counterpart — and of those only the nearest:\n`src/legacy/shape.cpp` lies a directory deeper than `src/shape.cpp`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "include/geometry/shape.h",
+      "text": "#pragma once\n\nint shape_area(int width, int height);\nint shape_perimeter(int width, int height);\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"include/geometry/shape.h\"\n\nint total(int width, int height) {\n    return shape_area(width, height) + shape_perimeter(width, height);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "src/legacy/shape.cpp",
+      "text": "#include \"../../include/geometry/shape.h\"\n\nint legacy_area(int width, int height) {\n    return shape_area(height, width);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "src/shape.cpp",
+      "text": "#include \"../include/geometry/shape.h\"\n\nint shape_area(int width, int height) {\n    return width * height;\n}\n\nint shape_perimeter(int width, int height) {\n    return 2 * (width + height);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "tests/shape.cpp",
+      "text": "#include \"../include/geometry/shape.h\"\n\nint check_shape() {\n    return shape_area(2, 3) == 6 ? 0 : 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "tools/shape.cpp",
+      "text": "int draw_shape(int sides) {\n    return sides * 2;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "include/geometry/shape.h",
+          "value": {
+            "counterparts": {
+              "preferred": "src/shape.cpp",
+              "candidates": [
+                {
+                  "path": "src/shape.cpp",
+                  "reasons": [
+                    "defines 2 of 2 declarations",
+                    "same name"
+                  ]
+                },
+                {
+                  "path": "tests/shape.cpp",
+                  "reasons": [
+                    "same name"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "src/shape.cpp",
+          "value": {
+            "counterparts": {
+              "preferred": "include/geometry/shape.h",
+              "candidates": [
+                {
+                  "path": "include/geometry/shape.h",
+                  "reasons": [
+                    "declares 2 of 2 definitions",
+                    "same name"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

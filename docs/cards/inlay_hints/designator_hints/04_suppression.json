@@ -1,0 +1,47 @@
+{
+  "id": "inlay_hints/designator_hints/04_suppression",
+  "topic": "inlay_hints",
+  "subtopic": "designator_hints",
+  "title": "Designator suppression",
+  "summary": "Written designators and `/*name=*/` comments keep their inits bare",
+  "prose": "Mixing written designators with positional initializers is a C99 extension clang accepts with a warning; only the bare `4` needs a hint.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Point {\n    int a;\n    int b;\n    int c;\n    int d;\n    int e;\n};\n\nPoint p{/*a=*/1, .c = 2, /* .d = */ 3, 4};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "Point p{/*a=*/1, .c = 2, /* .d = */ 3, ⟨.e=⟩4};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 42
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

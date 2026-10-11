@@ -1,0 +1,271 @@
+{
+  "id": "navigation/macros/02_generated_names",
+  "topic": "navigation",
+  "subtopic": "macros",
+  "title": "Macro-generated names",
+  "summary": "A name a macro creates resolves to the invocation that creates it",
+  "prose": "A use of a name assembled by token paste, or spelled in the macro's body,\nreaches the invocation, and the invocation's own name resolves to the\nmacro. A token inside the macro's body has no meaning until an expansion\ngives it one, so navigation on it answers nothing.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define DEFINE_COUNTER int counter_value = 0; int next_value()\n\n#define MAKE_FLAG(name) bool flag_##name = false\n\nDEFINE_COUNTER {\n    return counter_value + 1;\n}\n\nMAKE_FLAG(verbose);\n\nbool read_flag() {\n    return flag_verbose;\n}\n",
+      "markers": [
+        {
+          "name": "body_name",
+          "begin": 27,
+          "end": 27,
+          "range": false
+        },
+        {
+          "name": "counter_site",
+          "begin": 114,
+          "end": 114,
+          "range": false
+        },
+        {
+          "name": "counter_use",
+          "begin": 142,
+          "end": 142,
+          "range": false
+        },
+        {
+          "name": "flag_site",
+          "begin": 164,
+          "end": 164,
+          "range": false
+        },
+        {
+          "name": "flag_use",
+          "begin": 215,
+          "end": 215,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "body_name",
+          "marker": "body_name",
+          "value": {
+            "definition": [],
+            "references": []
+          }
+        },
+        {
+          "label": "counter_site",
+          "marker": "counter_site",
+          "value": {
+            "definition": [
+              {
+                "$place": "#define ⟦DEFINE_COUNTER⟧ int counter_value = 0; int next_value()",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 22
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "#define ⟦DEFINE_COUNTER⟧ int counter_value = 0; int next_value()",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 22
+                  }
+                }
+              },
+              {
+                "$place": "⟦DEFINE_COUNTER⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 14
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "counter_use",
+          "marker": "counter_use",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦DEFINE_COUNTER⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 14
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "⟦DEFINE_COUNTER⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 14
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦counter_value⟧ + 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 24
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "flag_site",
+          "marker": "flag_site",
+          "value": {
+            "definition": [
+              {
+                "$place": "#define ⟦MAKE_FLAG⟧(name) bool flag_##name = false",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 17
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "#define ⟦MAKE_FLAG⟧(name) bool flag_##name = false",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 17
+                  }
+                }
+              },
+              {
+                "$place": "⟦MAKE_FLAG⟧(verbose);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "flag_use",
+          "marker": "flag_use",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦MAKE_FLAG⟧(verbose);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 9
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "⟦MAKE_FLAG⟧(verbose);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦flag_verbose⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 23
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

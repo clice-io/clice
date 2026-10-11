@@ -1,0 +1,141 @@
+{
+  "id": "hover/modules/02_export_status",
+  "topic": "hover",
+  "subtopic": "modules",
+  "title": "Exported declarations",
+  "summary": "A declaration of a module interface reads `export` when the module exports it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "export module shapes;\n\nexport int area(int side) {\n    return side * side;\n}\n\nexport {\n    struct Square {\n        int side;\n    };\n}\n\nint perimeter(int side) {\n    return side * 4;\n}\n",
+      "markers": [
+        {
+          "name": "exported_fn",
+          "begin": 34,
+          "end": 34,
+          "range": false
+        },
+        {
+          "name": "exported_struct",
+          "begin": 98,
+          "end": 98,
+          "range": false
+        },
+        {
+          "name": "member",
+          "begin": 119,
+          "end": 119,
+          "range": false
+        },
+        {
+          "name": "internal_fn",
+          "begin": 139,
+          "end": 139,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "exported_fn",
+          "marker": "exported_fn",
+          "value": {
+            "hover": {
+              "markdown": "### function `area`\n\n---\n→ `int`\nParameters:\n- `int side`\n\n---\n```cpp\nexport int area(int side)\n```",
+              "range": {
+                "$place": "export int ⟦area⟧(int side) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "exported_struct",
+          "marker": "exported_struct",
+          "value": {
+            "hover": {
+              "markdown": "### struct `Square`\n\n---\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\nexport struct Square {\n  int side;\n}\n```",
+              "range": {
+                "$place": "struct ⟦Square⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "hover": {
+              "markdown": "### field `side`\n\n---\nType: `int`\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Square\npublic: int side\n```",
+              "range": {
+                "$place": "int ⟦side⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "internal_fn",
+          "marker": "internal_fn",
+          "value": {
+            "hover": {
+              "markdown": "### function `perimeter`\n\n---\n→ `int`\nParameters:\n- `int side`\n\n---\n```cpp\nint perimeter(int side)\n```",
+              "range": {
+                "$place": "int ⟦perimeter⟧(int side) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

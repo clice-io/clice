@@ -1,0 +1,71 @@
+{
+  "id": "inlay_hints/parameter_hints/01_argument_names",
+  "topic": "inlay_hints",
+  "subtopic": "parameter_hints",
+  "title": "Argument names",
+  "summary": "A literal argument shows the name of the parameter it binds to",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int resize(int width, int height, bool keep_ratio);\n\nint frame() {\n    int small = resize(320, 240, true);\n    int large = resize(1920, 1080, false);\n    return resize(small, large, true);\n}\n",
+      "markers": [
+        {
+          "name": "calls",
+          "begin": 71,
+          "end": 149,
+          "range": true
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "calls",
+          "marker": "calls",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "int small = resize(⟨width:⟩320, ⟨height:⟩240, ⟨keep_ratio:⟩true);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 39
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "int large = resize(⟨width:⟩1920, ⟨height:⟩1080, ⟨keep_ratio:⟩false);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 42
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

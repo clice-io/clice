@@ -1,0 +1,60 @@
+{
+  "id": "semantic_tokens/preamble/02_preamble_macros",
+  "topic": "semantic_tokens",
+  "subtopic": "preamble",
+  "title": "Macro definition and expansion",
+  "summary": "A macro's definition and its expansions receive macro tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define SQUARE(x) ((x) * (x))\n\n[[maybe_unused]] static int squared = SQUARE(4);\n",
+      "markers": [
+        {
+          "name": "definition",
+          "begin": 8,
+          "end": 8,
+          "range": false
+        },
+        {
+          "name": "expansion",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "definition",
+          "marker": "definition",
+          "value": {
+            "semantic_token": {
+              "text": "SQUARE",
+              "type": "macro",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "expansion",
+          "marker": "expansion",
+          "value": {
+            "semantic_token": {
+              "text": "SQUARE",
+              "type": "macro"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

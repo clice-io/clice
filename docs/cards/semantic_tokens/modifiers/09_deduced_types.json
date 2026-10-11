@@ -1,0 +1,76 @@
+{
+  "id": "semantic_tokens/modifiers/09_deduced_types",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Deduced types",
+  "summary": "`auto` and `decltype` do not carry the deduced modifier yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Point {};\n\nauto deduced_int = 1;\nauto origin = Point{};\ndecltype(deduced_int) same_type = 2;\n",
+      "markers": [
+        {
+          "name": "auto",
+          "begin": 18,
+          "end": 18,
+          "range": false
+        },
+        {
+          "name": "auto_class",
+          "begin": 40,
+          "end": 40,
+          "range": false
+        },
+        {
+          "name": "decltype",
+          "begin": 63,
+          "end": 63,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "auto",
+          "marker": "auto",
+          "value": {
+            "wrong": "should carry the deduced modifier",
+            "semantic_token": {
+              "text": "auto",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "auto_class",
+          "marker": "auto_class",
+          "value": {
+            "wrong": "should be colored as the type it deduces, with the deduced modifier",
+            "semantic_token": {
+              "text": "auto",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "decltype",
+          "marker": "decltype",
+          "value": {
+            "wrong": "should carry the deduced modifier",
+            "semantic_token": {
+              "text": "decltype",
+              "type": "keyword"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

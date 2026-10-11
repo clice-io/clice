@@ -1,0 +1,353 @@
+{
+  "id": "document_highlight/symbols/03_macros",
+  "topic": "document_highlight",
+  "subtopic": "symbols",
+  "title": "Macro names and arguments",
+  "summary": "A macro highlights at its definition, its expansions, the conditionals testing it and its `#undef`",
+  "prose": "A name written in a macro argument highlights where it is written; a name the macro's replacement spells highlights the whole invocation. A macro used in another macro's replacement highlights neither there nor at that macro's invocations.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define LIMIT 10\n#define CLAMP(v) ((v) > LIMIT ? LIMIT : (v))\n#define RESET_TOTAL total = 0\n\nint total;\n\nint clamp_total() {\n#ifdef LIMIT\n    total = CLAMP(total);\n#endif\n    RESET_TOTAL;\n    return LIMIT;\n}\n\n#undef LIMIT\n",
+      "markers": [
+        {
+          "name": "macro_def",
+          "begin": 8,
+          "end": 8,
+          "range": false
+        },
+        {
+          "name": "total",
+          "begin": 97,
+          "end": 97,
+          "range": false
+        },
+        {
+          "name": "arg",
+          "begin": 156,
+          "end": 156,
+          "range": false
+        },
+        {
+          "name": "macro_use",
+          "begin": 199,
+          "end": 199,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "macro_def",
+          "marker": "macro_def",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "#define ⟦LIMIT⟧ 10",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "#ifdef ⟦LIMIT⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 12
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "return ⟦LIMIT⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 16
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "#undef ⟦LIMIT⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 12
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        },
+        {
+          "label": "total",
+          "marker": "total",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "int ⟦total⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "⟦total⟧ = CLAMP(total);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "write"
+              },
+              {
+                "at": {
+                  "$place": "total = CLAMP(⟦total⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 23
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "⟦RESET_TOTAL⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 15
+                    }
+                  }
+                },
+                "kind": "write"
+              }
+            ]
+          }
+        },
+        {
+          "label": "arg",
+          "marker": "arg",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "int ⟦total⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "⟦total⟧ = CLAMP(total);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 9
+                    }
+                  }
+                },
+                "kind": "write"
+              },
+              {
+                "at": {
+                  "$place": "total = CLAMP(⟦total⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 23
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "⟦RESET_TOTAL⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 15
+                    }
+                  }
+                },
+                "kind": "write"
+              }
+            ]
+          }
+        },
+        {
+          "label": "macro_use",
+          "marker": "macro_use",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "#define ⟦LIMIT⟧ 10",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "#ifdef ⟦LIMIT⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 12
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "return ⟦LIMIT⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 16
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "#undef ⟦LIMIT⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 12
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

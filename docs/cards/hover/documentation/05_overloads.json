@@ -1,0 +1,86 @@
+{
+  "id": "hover/documentation/05_overloads",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Overloads",
+  "summary": "An overload without a comment does not show the documentation of the overload before it",
+  "prose": "",
+  "status": "partial",
+  "issues": [
+    "clangd#2506"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace overloads {\n/// Opens a file.\nvoid open(const char* path);\nvoid open(const char* path, int flags);\n}\n",
+      "markers": [
+        {
+          "name": "first",
+          "begin": 45,
+          "end": 45,
+          "range": false
+        },
+        {
+          "name": "second",
+          "begin": 74,
+          "end": 74,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "first",
+          "marker": "first",
+          "value": {
+            "hover": {
+              "markdown": "### function `open`\n\n---\n→ `void`\nParameters:\n- `const char * path`\n\nOpens a file.\n\n---\n```cpp\n// In namespace overloads\nvoid open(const char *path)\n```",
+              "range": {
+                "$place": "void ⟦open⟧(const char* path);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "second",
+          "marker": "second",
+          "value": {
+            "wrong": "the second overload shows no description, where the first one's applies (clangd#2506)",
+            "hover": {
+              "markdown": "### function `open`\n\n---\n→ `void`\nParameters:\n- `const char * path`\n- `int flags`\n\n---\n```cpp\n// In namespace overloads\nvoid open(const char *path, int flags)\n```",
+              "range": {
+                "$place": "void ⟦open⟧(const char* path, int flags);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

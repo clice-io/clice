@@ -1,0 +1,93 @@
+{
+  "id": "modules/imports/04_reexport",
+  "topic": "modules",
+  "subtopic": "imports",
+  "title": "Re-exported modules",
+  "summary": "A module that re-exports another with `export import` gives its importers the names of both",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "core.cppm",
+      "text": "export module Core;\n\nexport int core_fn() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "import Wrapper;\n\nint main() {\n    return core_fn() + wrap_fn();\n}\n",
+      "markers": [
+        {
+          "name": "reexported",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        },
+        {
+          "name": "own",
+          "begin": 53,
+          "end": 53,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "wrapper.cppm",
+      "text": "export module Wrapper;\nexport import Core;\n\nexport int wrap_fn() {\n    return core_fn() + 10;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "reexported",
+          "marker": "reexported",
+          "value": {
+            "hover": {
+              "markdown": "### function `core_fn`\n\n---\n→ `int`\n\n---\n```cpp\nexport int core_fn()\n```",
+              "range": {
+                "$place": "return ⟦core_fn⟧() + wrap_fn();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 18
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "own",
+          "marker": "own",
+          "value": {
+            "hover": {
+              "markdown": "### function `wrap_fn`\n\n---\n→ `int`\n\n---\n```cpp\nexport int wrap_fn()\n```",
+              "range": {
+                "$place": "return core_fn() + ⟦wrap_fn⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 30
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

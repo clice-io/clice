@@ -1,0 +1,56 @@
+{
+  "id": "hover/variables/04_long_initializers",
+  "topic": "hover",
+  "subtopic": "variables",
+  "title": "Long initializers",
+  "summary": "A long initializer is left out of the definition, and the value shows its first elements",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#710"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define DUPLICATE_FOUR(x) x, x, x, x\n#define DUPLICATE_256(x) DUPLICATE_FOUR(DUPLICATE_FOUR(DUPLICATE_FOUR(DUPLICATE_FOUR(x))))\nint values[] = {DUPLICATE_256(3)};\n",
+      "markers": [
+        {
+          "name": "big_initializer",
+          "begin": 135,
+          "end": 135,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "big_initializer",
+          "marker": "big_initializer",
+          "value": {
+            "hover": {
+              "markdown": "### variable `values`\n\n---\nType: `int[256]`\nValue = `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`\n\n---\n```cpp\nint values[]\n```",
+              "range": {
+                "$place": "int ⟦values⟧[] = {DUPLICATE_256(3)};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

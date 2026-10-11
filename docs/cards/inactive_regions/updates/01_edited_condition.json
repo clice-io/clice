@@ -1,0 +1,66 @@
+{
+  "id": "inactive_regions/updates/01_edited_condition",
+  "topic": "inactive_regions",
+  "subtopic": "updates",
+  "title": "Editing a condition",
+  "summary": "Editing the macro a condition tests moves the dimming to the branch now skipped, before the file is saved",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define FEATURE 0\n\nint base();\n\n#if FEATURE\nint feature_on();\n#else\nint feature_off();\n#endif\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "before",
+          "value": {
+            "inactive_lines": [
+              {
+                "$place": "⟦int feature_on();⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "after",
+          "value": {
+            "inactive_lines": [
+              {
+                "$place": "⟦int feature_off();⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

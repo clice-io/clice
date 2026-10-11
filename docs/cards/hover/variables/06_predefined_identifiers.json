@@ -1,0 +1,83 @@
+{
+  "id": "hover/variables/06_predefined_identifiers",
+  "topic": "hover",
+  "subtopic": "variables",
+  "title": "**func**",
+  "summary": "Hovering `__func__` shows the name of the function it is in, when the function is not a template",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace predefined {\n\nvoid current() {\n    const char* name = __func__;\n}\n\ntemplate <int N>\nvoid generic() {\n    const char* name = __func__;\n}\n\n}\n",
+      "markers": [
+        {
+          "name": "func_name",
+          "begin": 67,
+          "end": 67,
+          "range": false
+        },
+        {
+          "name": "func_dependent",
+          "begin": 137,
+          "end": 137,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "func_name",
+          "marker": "func_name",
+          "value": {
+            "hover": {
+              "markdown": "### variable `__func__`\n\n---\nType: `const char[8]`\nValue = `\"current\"`\nName of the current function (predefined variable)",
+              "range": {
+                "$place": "const char* name = ⟦__func__⟧; @+0",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 31
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "func_dependent",
+          "marker": "func_dependent",
+          "value": {
+            "hover": {
+              "markdown": "### variable `__func__`\n\n---\nType: `const char[]`\nName of the current function (predefined variable)",
+              "range": {
+                "$place": "const char* name = ⟦__func__⟧; @+0",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 31
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "id": "hover/documentation/12_gtk_doc",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "GTK-Doc comments",
+  "summary": "GTK-Doc's name line, parameter entries and annotations show as written",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2662"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "typedef struct _GtkWidget GtkWidget;\n\n/**\n * gtk_widget_show:\n * @widget: (transfer none): a #GtkWidget\n *\n * Flags a widget to be displayed.\n */\nvoid gtk_widget_show(GtkWidget *widget);\n",
+      "markers": [
+        {
+          "name": "documented",
+          "begin": 151,
+          "end": 151,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "documented",
+          "marker": "documented",
+          "value": {
+            "wrong": "GTK-Doc's name line, @widget and its annotations show as written (clangd#2662)",
+            "hover": {
+              "markdown": "### function `gtk_widget_show`\n\n---\n→ `void`\nParameters:\n- `GtkWidget * widget (aka struct _GtkWidget *)`\n\ngtk_widget_show:\n@widget: (transfer none): a #GtkWidget\nFlags a widget to be displayed.\n\n---\n```cpp\nvoid gtk_widget_show(GtkWidget *widget)\n```",
+              "range": {
+                "$place": "void ⟦gtk_widget_show⟧(GtkWidget *widget);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

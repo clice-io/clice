@@ -1,0 +1,70 @@
+{
+  "id": "document_links/embed_directives/02_has_embed",
+  "topic": "document_links",
+  "subtopic": "embed_directives",
+  "title": "`__has_embed`",
+  "summary": "The checked path links to the probed resource",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "data.bin",
+      "text": "clice",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#if __has_embed(\"data.bin\")\nconst char first_byte[] = {\n#embed \"data.bin\" limit(1)\n};\n#endif\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#if __has_embed(⟦\"data.bin\"⟧)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 26
+                    }
+                  }
+                },
+                "target": "data.bin"
+              },
+              {
+                "at": {
+                  "$place": "#embed ⟦\"data.bin\"⟧ limit(1)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 17
+                    }
+                  }
+                },
+                "target": "data.bin"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

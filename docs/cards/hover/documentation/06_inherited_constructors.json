@@ -1,0 +1,57 @@
+{
+  "id": "hover/documentation/06_inherited_constructors",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Inherited constructors",
+  "summary": "The name in `using Base::Base` shows the implicit move constructor, not the constructors it inherits",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1936"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace inherited_ctor {\nstruct Base {\n    /// Constructs from a value.\n    Base(int value);\n};\nstruct Derived : Base {\n    using Base::Base;\n};\n}\n",
+      "markers": [
+        {
+          "name": "inherited_ctor",
+          "begin": 138,
+          "end": 138,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "inherited_ctor",
+          "marker": "inherited_ctor",
+          "value": {
+            "wrong": "names Base's implicit move constructor instead of the inherited Base(int) and its documentation (clangd#1936)",
+            "hover": {
+              "markdown": "### method `Base`\n\n---\nParameters:\n- `Base &&`\n\n---\n```cpp\n// In Base\npublic: inline constexpr Base(Base &&)\n```",
+              "range": {
+                "$place": "using Base::⟦Base⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

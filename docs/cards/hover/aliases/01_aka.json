@@ -1,0 +1,139 @@
+{
+  "id": "hover/aliases/01_aka",
+  "topic": "hover",
+  "subtopic": "aliases",
+  "title": "Type aliases",
+  "summary": "A type spelled through an alias shows what it stands for, as `Alias (aka int)`",
+  "prose": "With `show_aka = false` the card keeps the alias alone.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace aka_desugar {\n\nusing Handle = int;\nusing Alias = Handle;\n\nHandle direct = 0;\n\nAlias chained = 0;\n\n}\n",
+      "markers": [
+        {
+          "name": "alias",
+          "begin": 75,
+          "end": 75,
+          "range": false
+        },
+        {
+          "name": "alias_chain",
+          "begin": 94,
+          "end": 94,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "alias",
+          "marker": "alias",
+          "value": {
+            "hover": {
+              "markdown": "### variable `direct`\n\n---\nType: `Handle (aka int)`\nValue = `0`\n\n---\n```cpp\n// In namespace aka_desugar\nHandle direct = 0\n```",
+              "range": {
+                "$place": "Handle ⟦direct⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "alias_chain",
+          "marker": "alias_chain",
+          "value": {
+            "hover": {
+              "markdown": "### variable `chained`\n\n---\nType: `Alias (aka int)`\nValue = `0`\n\n---\n```cpp\n// In namespace aka_desugar\nAlias chained = 0\n```",
+              "range": {
+                "$place": "Alias ⟦chained⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "hover": {
+          "show_aka": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "alias",
+          "marker": "alias",
+          "value": {
+            "hover": {
+              "markdown": "### variable `direct`\n\n---\nType: `Handle`\nValue = `0`\n\n---\n```cpp\n// In namespace aka_desugar\nHandle direct = 0\n```",
+              "range": {
+                "$place": "Handle ⟦direct⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "alias_chain",
+          "marker": "alias_chain",
+          "value": {
+            "hover": {
+              "markdown": "### variable `chained`\n\n---\nType: `Alias`\nValue = `0`\n\n---\n```cpp\n// In namespace aka_desugar\nAlias chained = 0\n```",
+              "range": {
+                "$place": "Alias ⟦chained⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

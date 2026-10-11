@@ -1,0 +1,39 @@
+{
+  "id": "format/rewrite/01_format_in_place",
+  "topic": "format",
+  "subtopic": "rewrite",
+  "title": "Format in place",
+  "summary": "Without --check every file of the build is rewritten to its style",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int  main( ) { return 0 ; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice format",
+          "value": {
+            "stdout": "Formatted 1 file in #s.",
+            "exit": 0,
+            "files": {
+              "main.cpp": "-int  main( ) { return 0 ; }\n+int main() { return 0; }"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

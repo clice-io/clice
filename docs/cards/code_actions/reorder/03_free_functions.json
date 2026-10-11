@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/reorder/03_free_functions",
+  "topic": "code_actions",
+  "subtopic": "reorder",
+  "title": "Free functions by declaration order",
+  "summary": "From a free function's definition, the definitions of the functions declared alongside it are reordered as declared",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int alpha();\nint beta();\nint gamma();\n\nint gamma() {\n    return 3;\n}\n\nint alpha() {\n    return 1;\n}\n\nint beta() {\n    return 2;\n}\n",
+      "markers": [
+        {
+          "name": "alpha",
+          "begin": 74,
+          "end": 74,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "alpha",
+          "marker": "alpha",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.reorderDefinitions",
+                "title": "Reorder definitions by declaration order",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " int gamma();\n\n-int gamma() {\n-    return 3;\n-}\n-\n int alpha() {\n     return 1;\n…\n     return 2;\n }\n+\n+int gamma() {\n+    return 3;\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "id": "navigation/implicit_targets/11_coroutine_keywords",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "`co_await` / `co_yield` / `co_return`",
+  "summary": "`co_yield` navigates to its promise method, while other coroutine keywords do not",
+  "prose": "Go-to-definition on `co_yield` reaches the promise's `yield_value`. The\n`co_await` and `co_return` keywords do not yet reach the awaiter's or\npromise's methods.",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace std {\ntemplate <typename Ret, typename...>\nstruct coroutine_traits {\n    using promise_type = typename Ret::promise_type;\n};\ntemplate <typename = void>\nstruct coroutine_handle {\n    coroutine_handle() = default;\n    template <typename Promise>\n    coroutine_handle(coroutine_handle<Promise>) noexcept;\n    static coroutine_handle from_address(void*) noexcept;\n};\nstruct suspend_never {\n    bool await_ready() const noexcept;\n    void await_suspend(coroutine_handle<>) const noexcept;\n    void await_resume() const noexcept;\n};\n}\n\nstruct Awaiter {\n    bool await_ready() const noexcept;\n    void await_suspend(std::coroutine_handle<>) const noexcept;\n    int await_resume() const noexcept;\n};\n\nstruct Task {\n    struct promise_type {\n        Task get_return_object();\n        std::suspend_never initial_suspend();\n        std::suspend_never final_suspend() noexcept;\n        Awaiter yield_value(int value);\n        void return_value(int value);\n        void unhandled_exception();\n    };\n};\n\nTask example() {\n    co_await Awaiter{};\n    co_yield 1;\n    co_return 2;\n}\n",
+      "markers": [
+        {
+          "name": "co_await_kw",
+          "begin": 1022,
+          "end": 1022,
+          "range": false
+        },
+        {
+          "name": "co_yield_kw",
+          "begin": 1046,
+          "end": 1046,
+          "range": false
+        },
+        {
+          "name": "co_return_kw",
+          "begin": 1062,
+          "end": 1062,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "co_await_kw",
+          "marker": "co_await_kw",
+          "value": {
+            "wrong": "should reach the awaiter's methods the expression calls",
+            "definition": []
+          }
+        },
+        {
+          "label": "co_yield_kw",
+          "marker": "co_yield_kw",
+          "value": {
+            "definition": [
+              {
+                "$place": "Awaiter ⟦yield_value⟧(int value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 30,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 30,
+                    "character": 27
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "co_return_kw",
+          "marker": "co_return_kw",
+          "value": {
+            "wrong": "should reach the promise's return_value, which co_return calls",
+            "definition": []
+          }
+        }
+      ]
+    }
+  ]
+}

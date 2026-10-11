@@ -1,0 +1,141 @@
+{
+  "id": "hover/variables/02_constant_values",
+  "topic": "hover",
+  "subtopic": "variables",
+  "title": "Constant values",
+  "summary": "A variable or enumerator whose value is known at compile time shows it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace evaluated_context {\nconstexpr long cube(long value) {\n    return value * value * value;\n}\nlong from_call = cube(3);\n\nlong from_size = sizeof(double);\n\nenum class State { Offline = -2, Online = 6 };\nState selected = State::Online;\n\ntemplate <long Left, long Right> struct Product {\n    static constexpr long value = Left * Right;\n};\nlong from_member = Product<4, 5>::value;\n}\n",
+      "markers": [
+        {
+          "name": "constexpr_call",
+          "begin": 105,
+          "end": 105,
+          "range": false
+        },
+        {
+          "name": "sizeof",
+          "begin": 132,
+          "end": 132,
+          "range": false
+        },
+        {
+          "name": "enumerator",
+          "begin": 232,
+          "end": 232,
+          "range": false
+        },
+        {
+          "name": "static_member",
+          "begin": 347,
+          "end": 347,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "constexpr_call",
+          "marker": "constexpr_call",
+          "value": {
+            "hover": {
+              "markdown": "### variable `from_call`\n\n---\nType: `long`\nValue = `27 (0x1b)`\n\n---\n```cpp\n// In namespace evaluated_context\nlong from_call = cube(3)\n```",
+              "range": {
+                "$place": "long ⟦from_call⟧ = cube(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "sizeof",
+          "marker": "sizeof",
+          "value": {
+            "hover": {
+              "markdown": "### variable `from_size`\n\n---\nType: `long`\nValue = `8`\n\n---\n```cpp\n// In namespace evaluated_context\nlong from_size = sizeof(double)\n```",
+              "range": {
+                "$place": "long ⟦from_size⟧ = sizeof(double);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "enumerator",
+          "marker": "enumerator",
+          "value": {
+            "hover": {
+              "markdown": "### enumerator `Online`\n\n---\nType: `enum evaluated_context::State`\nValue = `6`\n\n---\n```cpp\n// In State\nOnline = 6\n```",
+              "range": {
+                "$place": "State selected = State::⟦Online⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 24
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 30
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "static_member",
+          "marker": "static_member",
+          "value": {
+            "hover": {
+              "markdown": "### variable `from_member`\n\n---\nType: `long`\nValue = `20 (0x14)`\n\n---\n```cpp\n// In namespace evaluated_context\nlong from_member = Product<4, 5>::value\n```",
+              "range": {
+                "$place": "long ⟦from_member⟧ = Product<4, 5>::value;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

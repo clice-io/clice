@@ -1,0 +1,39 @@
+{
+  "id": "navigation/implicit_targets/10_range_for",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "Range-based for",
+  "summary": "The range-for colon does not navigate to `begin()` or `end()` yet",
+  "prose": "Go-to-definition on the `:` of a range-based for does not reach the\n`begin()` or `end()` chosen for the range.",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Iterator {\n    int operator*() const;\n    Iterator& operator++();\n    bool operator!=(const Iterator& other) const;\n};\n\nstruct Range {\n    Iterator begin();\n    Iterator end();\n};\n\nvoid use(Range r) {\n    for (int x : r) {}\n}\n",
+      "markers": [
+        {
+          "name": "colon",
+          "begin": 223,
+          "end": 223,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "colon",
+          "marker": "colon",
+          "value": {
+            "wrong": "should reach Range::begin and Range::end, which the loop calls",
+            "definition": []
+          }
+        }
+      ]
+    }
+  ]
+}

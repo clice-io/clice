@@ -1,0 +1,85 @@
+{
+  "id": "folding_range/sections/01_access_specifiers",
+  "topic": "folding_range",
+  "subtopic": "sections",
+  "title": "Access-specifier sections",
+  "summary": "Access-specifier regions within a class form folding ranges",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#1455"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "class Widget {\npublic:\n    void draw();\n    void resize();\nprivate:\n    int width;\n    int height;\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "class",
+                "at": {
+                  "$place": "class Widget ⟦{ … }⟧ (8 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "accessSpecifier",
+                "at": {
+                  "$place": "public:⟦ … ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "accessSpecifier",
+                "at": {
+                  "$place": "private:⟦ … ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 0
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

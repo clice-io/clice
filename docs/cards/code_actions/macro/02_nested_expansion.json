@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/macro/02_nested_expansion",
+  "topic": "code_actions",
+  "subtopic": "macro",
+  "title": "Nested macros expand fully",
+  "summary": "A macro whose body invokes other macros expands to the final tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define TWICE(x) ((x) + (x))\n#define QUAD(x) TWICE(TWICE(x))\n\nint f(int n) {\n    return QUAD(n);\n}\n",
+      "markers": [
+        {
+          "name": "quad",
+          "begin": 88,
+          "end": 88,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "quad",
+          "marker": "quad",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.inline.macro",
+                "title": "Expand macro 'QUAD'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n int f(int n) {\n-    return QUAD(n);\n+    return ((((n) + (n))) + (((n) + (n))));\n }"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

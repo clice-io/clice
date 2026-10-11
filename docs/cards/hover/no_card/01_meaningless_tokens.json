@@ -1,0 +1,51 @@
+{
+  "id": "hover/no_card/01_meaningless_tokens",
+  "topic": "hover",
+  "subtopic": "no_card",
+  "title": "Nothing to show",
+  "summary": "A builtin type keyword or the inside of an empty body shows no card",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace negatives {\n\nint counter = 0;\n\nvoid noop() {}\n\n}\n",
+      "markers": [
+        {
+          "name": "builtin_type",
+          "begin": 23,
+          "end": 23,
+          "range": false
+        },
+        {
+          "name": "empty_braces",
+          "begin": 54,
+          "end": 54,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "builtin_type",
+          "marker": "builtin_type",
+          "value": {
+            "hover": {}
+          }
+        },
+        {
+          "label": "empty_braces",
+          "marker": "empty_braces",
+          "value": {
+            "hover": {}
+          }
+        }
+      ]
+    }
+  ]
+}

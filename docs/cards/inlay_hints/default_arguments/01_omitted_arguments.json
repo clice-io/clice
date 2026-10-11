@@ -1,0 +1,167 @@
+{
+  "id": "inlay_hints/default_arguments/01_omitted_arguments",
+  "topic": "inlay_hints",
+  "subtopic": "default_arguments",
+  "title": "Omitted default arguments",
+  "summary": "A call relying on default arguments shows what it omitted, each name linking to its parameter",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void log(int level, bool flush = true, int repeat = 1);\n\nvoid use() {\n    log(2);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "log(⟨level:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 11
+                    }
+                  }
+                },
+                "hints": [
+                  {
+                    "label": "level:",
+                    "links": [
+                      {
+                        "value": "level",
+                        "target": {
+                          "$place": "void log(int ⟦level⟧, bool flush = true, int repeat = 1);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 0,
+                              "character": 13
+                            },
+                            "end": {
+                              "line": 0,
+                              "character": 18
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "inlay_hints": {
+          "default_arguments": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "log(⟨level:⟩2⟨, flush: true, repeat: 1⟩);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 11
+                    }
+                  }
+                },
+                "hints": [
+                  {
+                    "label": "level:",
+                    "links": [
+                      {
+                        "value": "level",
+                        "target": {
+                          "$place": "void log(int ⟦level⟧, bool flush = true, int repeat = 1);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 0,
+                              "character": 13
+                            },
+                            "end": {
+                              "line": 0,
+                              "character": 18
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "label": ", flush: true, repeat: 1",
+                    "links": [
+                      {
+                        "value": "flush",
+                        "target": {
+                          "$place": "void log(int level, bool ⟦flush⟧ = true, int repeat = 1);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 0,
+                              "character": 25
+                            },
+                            "end": {
+                              "line": 0,
+                              "character": 30
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "value": "repeat",
+                        "target": {
+                          "$place": "void log(int level, bool flush = true, int ⟦repeat⟧ = 1);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 0,
+                              "character": 43
+                            },
+                            "end": {
+                              "line": 0,
+                              "character": 49
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

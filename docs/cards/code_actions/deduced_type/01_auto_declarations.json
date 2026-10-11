@@ -1,0 +1,91 @@
+{
+  "id": "code_actions/deduced_type/01_auto_declarations",
+  "topic": "code_actions",
+  "subtopic": "deduced_type",
+  "title": "Spelled-out auto types",
+  "summary": "An auto declaration offers to replace auto with the type it deduced",
+  "prose": "Qualifiers and declarators such as `const`, `&` and `*` stay where they are.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace fleet {\nstruct Truck {\n    struct Load {};\n};\nTruck::Load unload();\n}\n\nint weigh() {\n    auto tonnes = 12;\n    const auto& cargo = fleet::unload();\n    auto* heaviest = &tonnes;\n    return tonnes;\n}\n",
+      "markers": [
+        {
+          "name": "number",
+          "begin": 99,
+          "end": 99,
+          "range": false
+        },
+        {
+          "name": "reference",
+          "begin": 127,
+          "end": 127,
+          "range": false
+        },
+        {
+          "name": "pointer",
+          "begin": 162,
+          "end": 162,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "number",
+          "marker": "number",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'int'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n int weigh() {\n-    auto tonnes = 12;\n+    int tonnes = 12;\n     const auto& cargo = fleet::unload();\n     auto* heaviest = &tonnes;"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "reference",
+          "marker": "reference",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'fleet::Truck::Load'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " int weigh() {\n     auto tonnes = 12;\n-    const auto& cargo = fleet::unload();\n+    const fleet::Truck::Load& cargo = fleet::unload();\n     auto* heaviest = &tonnes;\n     return tonnes;"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "pointer",
+          "marker": "pointer",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'int'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     auto tonnes = 12;\n     const auto& cargo = fleet::unload();\n-    auto* heaviest = &tonnes;\n+    int* heaviest = &tonnes;\n     return tonnes;\n }"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

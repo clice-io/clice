@@ -1,0 +1,137 @@
+{
+  "id": "folding_range/modules/01_module_blocks",
+  "topic": "folding_range",
+  "subtopic": "modules",
+  "title": "Module fragments and export blocks",
+  "summary": "The global and private module fragments and `export` blocks form folding ranges",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "module;\n\n#define GMF_A 1\n#define GMF_B 2\n\nexport module demo;\n\nexport {\n    int first(int value) {\n        return value;\n    }\n    int second(int value);\n}\n\nexport namespace ns {\n    int third(int value);\n}\n\nmodule :private;\n\nint second(int value) {\n    return value;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "moduleFragment",
+                "at": {
+                  "$place": "module;⟦ … ⟧ (6 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "export",
+                "at": {
+                  "$place": "export ⟦{ … }⟧ (6 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": "int first(int value) ⟦{ … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "namespace",
+                "at": {
+                  "$place": "export namespace ns ⟦{ … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "moduleFragment",
+                "at": {
+                  "$place": "module :private;⟦ … ⟧ (6 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": "int second(int value) ⟦{ … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

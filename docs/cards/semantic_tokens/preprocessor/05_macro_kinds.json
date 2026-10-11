@@ -1,0 +1,61 @@
+{
+  "id": "semantic_tokens/preprocessor/05_macro_kinds",
+  "topic": "semantic_tokens",
+  "subtopic": "preprocessor",
+  "title": "Object-like vs function-like macros",
+  "summary": "Object-like and function-like macros do not receive distinct token kinds yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2649"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define MAX_SIZE 1024\n#define CHECK(x) ((x) ? 1 : 0)\n\nint checked = CHECK(MAX_SIZE);\n",
+      "markers": [
+        {
+          "name": "function_like",
+          "begin": 68,
+          "end": 68,
+          "range": false
+        },
+        {
+          "name": "object_like",
+          "begin": 74,
+          "end": 74,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "function_like",
+          "marker": "function_like",
+          "value": {
+            "wrong": "object-like and function-like macros should be told apart (clangd#2649)",
+            "semantic_token": {
+              "text": "CHECK",
+              "type": "macro"
+            }
+          }
+        },
+        {
+          "label": "object_like",
+          "marker": "object_like",
+          "value": {
+            "wrong": "object-like and function-like macros should be told apart (clangd#2649)",
+            "semantic_token": {
+              "text": "MAX_SIZE",
+              "type": "macro"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

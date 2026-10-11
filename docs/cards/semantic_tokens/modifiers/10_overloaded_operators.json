@@ -1,0 +1,62 @@
+{
+  "id": "semantic_tokens/modifiers/10_overloaded_operators",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "User-defined operators",
+  "summary": "A call to an overloaded operator is an operator token with the `userDefined` modifier",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#1521"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Vec {\n    Vec operator+(const Vec& other) const;\n};\n\nVec add(Vec a, Vec b) {\n    return a + b;\n}\n\nint add(int a, int b) {\n    return a + b;\n}\n",
+      "markers": [
+        {
+          "name": "overloaded",
+          "begin": 97,
+          "end": 97,
+          "range": false
+        },
+        {
+          "name": "builtin",
+          "begin": 142,
+          "end": 142,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "overloaded",
+          "marker": "overloaded",
+          "value": {
+            "semantic_token": {
+              "text": "+",
+              "type": "operator",
+              "modifiers": [
+                "userDefined"
+              ]
+            }
+          }
+        },
+        {
+          "label": "builtin",
+          "marker": "builtin",
+          "value": {
+            "semantic_token": {
+              "text": "+",
+              "type": "none"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

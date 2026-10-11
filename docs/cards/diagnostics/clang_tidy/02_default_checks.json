@@ -1,0 +1,55 @@
+{
+  "id": "diagnostics/clang_tidy/02_default_checks",
+  "topic": "diagnostics",
+  "subtopic": "clang_tidy",
+  "title": "Without a configuration file",
+  "summary": "Without a `.clang-tidy`, a small set of checks runs",
+  "prose": "A project with no `.clang-tidy` still gets a few checks that rarely misfire, such as unused declarations, which an editor shows faded.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace geometry {}\n\nnamespace geo = geometry;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "⟦namespace geo = geometry; … ⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 0
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "namespace alias decl 'geo' is unused",
+                "source": "clang-tidy",
+                "code": "misc-unused-alias-decls",
+                "link": "https://clang.llvm.org/extra/clang-tidy/checks/misc/unused-alias-decls.html",
+                "tags": [
+                  "Unnecessary"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "id": "navigation/definition/02_partition_import",
+  "topic": "navigation",
+  "subtopic": "definition",
+  "title": "Partition imports",
+  "summary": "A name a partition exports resolves into that partition, and so does the partition's name in its import",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "catalog.cppm",
+      "text": "export module catalog;\n\nexport import :items;\n",
+      "markers": [
+        {
+          "name": "partition",
+          "begin": 39,
+          "end": 39,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "catalog_items.cppm",
+      "text": "export module catalog:items;\n\nexport int entries() {\n    return 3;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "import catalog;\n\nint total() {\n    return entries();\n}\n",
+      "markers": [
+        {
+          "name": "use",
+          "begin": 42,
+          "end": 42,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "partition",
+          "marker": "partition",
+          "value": {
+            "definition": [
+              {
+                "$place": "catalog_items.cppm │ export module ⟦catalog:items⟧;",
+                "path": "catalog_items.cppm",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 27
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "definition": [
+              {
+                "$place": "catalog_items.cppm │ export int ⟦entries⟧() {",
+                "path": "catalog_items.cppm",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

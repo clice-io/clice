@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/fix/01_compiler_fix",
+  "topic": "code_actions",
+  "subtopic": "fix",
+  "title": "Compiler fix",
+  "summary": "A fix the compiler attaches to its diagnostic is offered as a quick fix",
+  "prose": "The title spells out a single edit.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int answer() {\n    return 42\n}\n",
+      "markers": [
+        {
+          "name": "semicolon",
+          "begin": 28,
+          "end": 28,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "semicolon",
+          "marker": "semicolon",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "quickfix",
+                "title": "insert ';'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " int answer() {\n-    return 42\n+    return 42;\n }"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

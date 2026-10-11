@@ -1,0 +1,82 @@
+{
+  "id": "format/files/02_named_paths",
+  "topic": "format",
+  "subtopic": "files",
+  "title": "Format named paths",
+  "summary": "A named file is formatted whether or not the build knows it; a named directory narrows the build's files to those under it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\n",
+      "markers": []
+    },
+    {
+      "path": "clice.toml",
+      "text": "[[rules]]\npatterns = [\"vendor/**\"]\nformat = false\n",
+      "markers": []
+    },
+    {
+      "path": "scratch.cpp",
+      "text": "int   draft(){return 1;}\n",
+      "markers": []
+    },
+    {
+      "path": "src/engine.cpp",
+      "text": "#include \"engine.h\"\n#include \"../vendor/vendored.h\"\n\nint   step(int value){return vendored(value)+1;}\n",
+      "markers": []
+    },
+    {
+      "path": "src/engine.h",
+      "text": "#pragma once\nint   step(int value);\n",
+      "markers": []
+    },
+    {
+      "path": "tools/tool.cpp",
+      "text": "int   main(){return 0;}\n",
+      "markers": []
+    },
+    {
+      "path": "vendor/vendored.h",
+      "text": "#pragma once\nint   vendored(int value){return value*2;}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice format scratch.cpp",
+          "value": {
+            "stdout": "Formatted 1 file in #s.",
+            "exit": 0,
+            "files": {
+              "scratch.cpp": "-int   draft(){return 1;}\n+int draft() { return 1; }"
+            }
+          }
+        },
+        {
+          "label": "$ clice format src",
+          "value": {
+            "stdout": "Formatted 2 files in #s.",
+            "exit": 0,
+            "files": {
+              "src/engine.cpp": " #include \"../vendor/vendored.h\"\n\n-int   step(int value){return vendored(value)+1;}\n+int step(int value) { return vendored(value) + 1; }",
+              "src/engine.h": " #pragma once\n-int   step(int value);\n+int step(int value);"
+            }
+          }
+        },
+        {
+          "label": "$ clice format vendor",
+          "value": {
+            "stdout": "No files to format under ${WS}.",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

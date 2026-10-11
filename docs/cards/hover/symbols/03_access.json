@@ -1,0 +1,112 @@
+{
+  "id": "hover/symbols/03_access",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Access",
+  "summary": "A member's definition reads its `public`, `protected` or `private` access",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "class Account {\npublic:\n    int balance;\n\nprotected:\n    int limit;\n\nprivate:\n    int pin;\n};\n",
+      "markers": [
+        {
+          "name": "public_field",
+          "begin": 35,
+          "end": 35,
+          "range": false
+        },
+        {
+          "name": "protected_field",
+          "begin": 64,
+          "end": 64,
+          "range": false
+        },
+        {
+          "name": "private_field",
+          "begin": 87,
+          "end": 87,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "public_field",
+          "marker": "public_field",
+          "value": {
+            "hover": {
+              "markdown": "### field `balance`\n\n---\nType: `int`\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Account\npublic: int balance\n```",
+              "range": {
+                "$place": "int ⟦balance⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "protected_field",
+          "marker": "protected_field",
+          "value": {
+            "hover": {
+              "markdown": "### field `limit`\n\n---\nType: `int`\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Account\nprotected: int limit\n```",
+              "range": {
+                "$place": "int ⟦limit⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "private_field",
+          "marker": "private_field",
+          "value": {
+            "hover": {
+              "markdown": "### field `pin`\n\n---\nType: `int`\nOffset: 8 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Account\nprivate: int pin\n```",
+              "range": {
+                "$place": "int ⟦pin⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

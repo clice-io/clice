@@ -1,0 +1,549 @@
+{
+  "id": "semantic_tokens/preprocessor/01_directives",
+  "topic": "semantic_tokens",
+  "subtopic": "preprocessor",
+  "title": "Preprocessor directives",
+  "summary": "Directives keep their directive kind, and the code of an untaken branch keeps its lexical kinds",
+  "prose": "Pragma arguments other than numbers stay plain.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int before_conditional = 0;\n\n#if 0\nint disabled_branch;\n#else\nint enabled_branch = 1;\n#endif\n\n#define FLAG\n#ifdef FLAG\nint flagged = 2;\n#endif\n\n#pragma pack(1)\n\n#\n#define STRINGIZE(x) #x\nconst char* stringized = STRINGIZE(abc);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦int⟧ before_conditional = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦before_conditional⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int before_conditional = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 26
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#if⟧ 0",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#if ⟦0⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ disabled_branch;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int ⟦disabled_branch;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#else⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ enabled_branch = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦enabled_branch⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int enabled_branch = ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧ @7",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦#define⟧ FLAG",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#define ⟦FLAG⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#ifdef⟧ FLAG",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#ifdef ⟦FLAG⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "macro"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ flagged = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦flagged⟧ = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int flagged = ⟦2⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧ @12",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦#pragma⟧ pack(1)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#pragma pack(⟦1⟧)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 1
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦#define⟧ STRINGIZE(x) #x",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#define ⟦STRINGIZE⟧(x) #x",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦const⟧ char* stringized = STRINGIZE(abc);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "const ⟦char⟧* stringized = STRINGIZE(abc);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "const char* ⟦stringized⟧ = STRINGIZE(abc);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "readonly"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "const char* stringized = ⟦STRINGIZE⟧(abc);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 34
+                    }
+                  }
+                },
+                "type": "macro"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

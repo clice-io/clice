@@ -1,0 +1,214 @@
+{
+  "id": "inlay_hints/links/02_type_links",
+  "topic": "inlay_hints",
+  "subtopic": "links",
+  "title": "Clickable type names",
+  "summary": "Each type name in a type hint links to its declaration: clicking it goes to the definition, hovering it shows the type's card",
+  "prose": "A class declared ahead of its definition links to that declaration, from which go-to-definition reaches the definition. Template arguments link one by one; builtin types and punctuation stay plain text.",
+  "status": "supported",
+  "issues": [
+    "clangd#1535"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"widget.h\"\n\ntemplate <typename T, typename U>\nstruct Pair {};\n\nPair<Widget, Gadget> make_pair();\nconst Widget* find(int id);\n\nvoid use() {\n    auto pair = make_pair();\n    auto found = find(1);\n    resize(2);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "widget.h",
+      "text": "#pragma once\n\nstruct Widget;\n\nstruct Widget {\n    int id;\n};\n\nstruct Gadget {};\n\nvoid resize(int width);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto pair⟨: Pair<Widget, Gadget>⟩ = make_pair();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 28
+                    }
+                  }
+                },
+                "hints": [
+                  {
+                    "label": ": Pair<Widget, Gadget>",
+                    "links": [
+                      {
+                        "value": "Pair",
+                        "target": {
+                          "$place": "struct ⟦Pair⟧ {};",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 3,
+                              "character": 7
+                            },
+                            "end": {
+                              "line": 3,
+                              "character": 11
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "value": "Widget",
+                        "target": {
+                          "$place": "widget.h │ struct ⟦Widget⟧;",
+                          "path": "widget.h",
+                          "range": {
+                            "start": {
+                              "line": 2,
+                              "character": 7
+                            },
+                            "end": {
+                              "line": 2,
+                              "character": 13
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "value": "Gadget",
+                        "target": {
+                          "$place": "widget.h │ struct ⟦Gadget⟧ {};",
+                          "path": "widget.h",
+                          "range": {
+                            "start": {
+                              "line": 8,
+                              "character": 7
+                            },
+                            "end": {
+                              "line": 8,
+                              "character": 13
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "line": {
+                  "$place": "auto found⟨: const Widget *⟩ = find(⟨id:⟩1);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 25
+                    }
+                  }
+                },
+                "hints": [
+                  {
+                    "label": ": const Widget *",
+                    "links": [
+                      {
+                        "value": "Widget",
+                        "target": {
+                          "$place": "widget.h │ struct ⟦Widget⟧;",
+                          "path": "widget.h",
+                          "range": {
+                            "start": {
+                              "line": 2,
+                              "character": 7
+                            },
+                            "end": {
+                              "line": 2,
+                              "character": 13
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "label": "id:",
+                    "links": [
+                      {
+                        "value": "id",
+                        "target": {
+                          "$place": "const Widget* find(int ⟦id⟧);",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 6,
+                              "character": 23
+                            },
+                            "end": {
+                              "line": 6,
+                              "character": 25
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "line": {
+                  "$place": "resize(⟨width:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 14
+                    }
+                  }
+                },
+                "hints": [
+                  {
+                    "label": "width:",
+                    "links": [
+                      {
+                        "value": "width",
+                        "target": {
+                          "$place": "widget.h │ void resize(int ⟦width⟧);",
+                          "path": "widget.h",
+                          "range": {
+                            "start": {
+                              "line": 10,
+                              "character": 16
+                            },
+                            "end": {
+                              "line": 10,
+                              "character": 21
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

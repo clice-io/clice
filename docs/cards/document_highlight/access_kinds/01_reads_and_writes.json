@@ -1,0 +1,189 @@
+{
+  "id": "document_highlight/access_kinds/01_reads_and_writes",
+  "topic": "document_highlight",
+  "subtopic": "access_kinds",
+  "title": "Reads and writes",
+  "summary": "Every use of a variable is highlighted, assignments as writes and other uses as reads",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int countdown(int start) {\n    int remaining = start;\n    while (remaining > 0) {\n        remaining = remaining - 1;\n    }\n    return remaining + start;\n}\n",
+      "markers": [
+        {
+          "name": "local",
+          "begin": 134,
+          "end": 134,
+          "range": false
+        },
+        {
+          "name": "parameter",
+          "begin": 146,
+          "end": 146,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "local",
+          "marker": "local",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "int ⟦remaining⟧ = start;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 17
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "while (⟦remaining⟧ > 0) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 20
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "⟦remaining⟧ = remaining - 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 17
+                    }
+                  }
+                },
+                "kind": "write"
+              },
+              {
+                "at": {
+                  "$place": "remaining = ⟦remaining⟧ - 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 29
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "return ⟦remaining⟧ + start;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 20
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        },
+        {
+          "label": "parameter",
+          "marker": "parameter",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "int countdown(int ⟦start⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 23
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "int remaining = ⟦start⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 25
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "return remaining + ⟦start⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 28
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

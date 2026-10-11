@@ -1,0 +1,63 @@
+{
+  "id": "inlay_hints/type_hints/10_scopes",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Scope suppression",
+  "summary": "Namespace qualifiers drop from hints; class scopes stay",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace outer {\nnamespace inner {\n\nstruct S1 {};\nS1 make_s1();\nauto x = make_s1();\n\nstruct S2 {\n    template <typename T>\n    struct Nested {};\n};\n\nS2::Nested<int> make_nested();\nauto y = make_nested();\n\n}  // namespace inner\n}  // namespace outer\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto x⟨: S1⟩ = make_s1();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 19
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto y⟨: S2::Nested<int>⟩ = make_nested();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 23
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

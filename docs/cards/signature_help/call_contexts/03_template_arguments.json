@@ -1,0 +1,46 @@
+{
+  "id": "signature_help/call_contexts/03_template_arguments",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Template argument lists",
+  "summary": "Template parameters show as the signature, a class template ending in its kind instead of a return type",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#299",
+    "clangd#1387"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T, typename U>\nstruct Pair {};\n\nPair<int,  double> p;\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 61,
+          "end": 61,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "Pair<typename T, ⟦typename U⟧> -> struct"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

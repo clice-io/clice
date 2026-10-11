@@ -1,0 +1,112 @@
+{
+  "id": "hover/arguments/02_pass_modes",
+  "topic": "hover",
+  "subtopic": "arguments",
+  "title": "Pass modes",
+  "summary": "An argument's card says whether it is passed by value, by reference or by const reference",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace argument_transfer {\nvoid consume(long value);\nvoid mutate(long& value);\nvoid observe(const long& value);\n\nvoid apply() {\n    long count = 1;\n    consume(count);\n    mutate(count);\n    observe(count);\n}\n}\n",
+      "markers": [
+        {
+          "name": "value",
+          "begin": 163,
+          "end": 163,
+          "range": false
+        },
+        {
+          "name": "ref",
+          "begin": 182,
+          "end": 182,
+          "range": false
+        },
+        {
+          "name": "const_ref",
+          "begin": 202,
+          "end": 202,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "value",
+          "marker": "value",
+          "value": {
+            "hover": {
+              "markdown": "### variable `count`\n\n---\nType: `long`\nValue = `1`\nPassed as value\n\n---\n```cpp\n// In apply\nlong count = 1\n```",
+              "range": {
+                "$place": "consume(⟦count⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "ref",
+          "marker": "ref",
+          "value": {
+            "hover": {
+              "markdown": "### variable `count`\n\n---\nType: `long`\nValue = `1`\nPassed by reference as value\n\n---\n```cpp\n// In apply\nlong count = 1\n```",
+              "range": {
+                "$place": "mutate(⟦count⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "const_ref",
+          "marker": "const_ref",
+          "value": {
+            "hover": {
+              "markdown": "### variable `count`\n\n---\nType: `long`\nValue = `1`\nPassed by const reference as value\n\n---\n```cpp\n// In apply\nlong count = 1\n```",
+              "range": {
+                "$place": "observe(⟦count⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

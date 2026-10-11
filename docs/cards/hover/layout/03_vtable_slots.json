@@ -1,0 +1,87 @@
+{
+  "id": "hover/layout/03_vtable_slots",
+  "topic": "hover",
+  "subtopic": "layout",
+  "title": "Vtable slots",
+  "summary": "A virtual method does not show its slot in the vtable yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1771"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n    virtual void draw();\n    virtual void move();\n};\n",
+      "markers": [
+        {
+          "name": "first_virtual",
+          "begin": 34,
+          "end": 34,
+          "range": false
+        },
+        {
+          "name": "second_virtual",
+          "begin": 59,
+          "end": 59,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "first_virtual",
+          "marker": "first_virtual",
+          "value": {
+            "wrong": "the card does not show the method's vtable slot (clangd#1771)",
+            "hover": {
+              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Shape\npublic: virtual void draw()\n```",
+              "range": {
+                "$place": "virtual void ⟦draw⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "second_virtual",
+          "marker": "second_virtual",
+          "value": {
+            "wrong": "the card does not show the method's vtable slot (clangd#1771)",
+            "hover": {
+              "markdown": "### method `move`\n\n---\n→ `void`\n\n---\n```cpp\n// In Shape\npublic: virtual void move()\n```",
+              "range": {
+                "$place": "virtual void ⟦move⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "id": "query/freshness/01_withheld_rows",
+  "topic": "query",
+  "subtopic": "freshness",
+  "title": "Files changed since indexing",
+  "summary": "Answers leave out what the index holds for files changed on disk since it was built, and name those files in `stale`",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "a.h",
+      "text": "#pragma once\nint add(int a, int b);\nstruct Animal { virtual ~Animal() = default; };\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"a.h\"\nint add(int a, int b) { return a + b; }\nstruct Dog : Animal {};\nint compute() { return add(1, 2); }\nint main() { return compute(); }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method definition --symbol compute",
+          "value": {
+            "stdout": "{\n  \"error\": \"symbol not found\",\n  \"stale\": [\n    \"${WS}/main.cpp\"\n  ]\n}",
+            "exit": 1
+          }
+        },
+        {
+          "label": "$ clice query --method definition --symbol new.cpp:1:5",
+          "value": {
+            "stdout": "{\n  \"error\": \"symbol not found\",\n  \"stale\": [\n    \"${WS}/new.cpp\"\n  ]\n}",
+            "exit": 1
+          }
+        },
+        {
+          "label": "$ clice query --method documentSymbols --path main.cpp",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"symbols\": []\n  },\n  \"stale\": [\n    \"${WS}/main.cpp\"\n  ]\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method documentSymbols --path a.h",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"~Animal\",\n        \"kind\": \"Method\",\n        \"startLine\": 3,\n        \"endLine\": 3,\n        \"symbol\": \"#2dbb9112f1fa26ec\"\n      },\n      {\n        \"name\": \"Animal\",\n        \"kind\": \"Struct\",\n        \"startLine\": 3,\n        \"endLine\": 3,\n        \"symbol\": \"#a1654fc0dd5efb6c\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method counterparts --path a.h",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"file\": \"${WS}/a.h\",\n    \"candidates\": [],\n    \"preferred\": null\n  },\n  \"stale\": [\n    \"${WS}/main.cpp\"\n  ]\n}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "id": "inlay_hints/parameter_hints/08_function_objects",
+  "topic": "inlay_hints",
+  "subtopic": "parameter_hints",
+  "title": "Function pointers and call operators",
+  "summary": "Indirect calls still name their parameters",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#1734",
+    "clangd#1742"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Callback {\n    void operator()(int status, int detail) const;\n};\n\nvoid (*handler)(int status, const char* message);\n\nvoid use() {\n    Callback cb;\n    cb(1, 2);\n    cb.operator()(3, 4);\n    handler(0, \"ok\");\n    auto cmp = [](int lhs, int rhs) { return lhs < rhs; };\n    cmp(1, 2);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "cb(⟨status:⟩1, ⟨detail:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 13
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "cb.operator()(⟨status:⟩3, ⟨detail:⟩4);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 24
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "handler(⟨status:⟩0, ⟨message:⟩\"ok\");",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 21
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto cmp⟨: (lambda)⟩ = [](int lhs, int rhs)⟨-> bool⟩ { return lhs < rhs; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 58
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "cmp(⟨lhs:⟩1, ⟨rhs:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 14
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

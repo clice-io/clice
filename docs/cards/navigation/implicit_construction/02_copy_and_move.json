@@ -1,0 +1,81 @@
+{
+  "id": "navigation/implicit_construction/02_copy_and_move",
+  "topic": "navigation",
+  "subtopic": "implicit_construction",
+  "title": "Copy/move construction and assignment",
+  "summary": "Assignment `=` navigates to the assignment operator, while copy and move initialization do not",
+  "prose": "Go-to-definition on the `=` of an assignment reaches the assignment\noperator. The `=` that introduces a copy- or move-initialization\n(`T b = a;`) is initialization syntax rather than an operator call and is\nnot yet resolved.",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    Widget(int v);\n    Widget(const Widget& other);\n    Widget(Widget&& other);\n    Widget& operator=(const Widget& other);\n};\n\nvoid copies(Widget a) {\n    Widget b = a;\n    Widget c = static_cast<Widget&&>(a);\n    b = c;\n}\n",
+      "markers": [
+        {
+          "name": "copy_eq",
+          "begin": 181,
+          "end": 181,
+          "range": false
+        },
+        {
+          "name": "move_eq",
+          "begin": 199,
+          "end": 199,
+          "range": false
+        },
+        {
+          "name": "assign_eq",
+          "begin": 233,
+          "end": 233,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "copy_eq",
+          "marker": "copy_eq",
+          "value": {
+            "wrong": "should reach Widget(const Widget&), the copy constructor the initialization runs",
+            "definition": []
+          }
+        },
+        {
+          "label": "move_eq",
+          "marker": "move_eq",
+          "value": {
+            "wrong": "should reach Widget(Widget&&), the move constructor the initialization runs",
+            "definition": []
+          }
+        },
+        {
+          "label": "assign_eq",
+          "marker": "assign_eq",
+          "value": {
+            "definition": [
+              {
+                "$place": "Widget& ⟦operator=⟧(const Widget& other);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 21
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

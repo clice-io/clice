@@ -1,0 +1,207 @@
+{
+  "id": "navigation/declaration/05_redeclarations",
+  "topic": "navigation",
+  "subtopic": "declaration",
+  "title": "Multiple declarations",
+  "summary": "A use navigates to every declaration site",
+  "prose": "When a function is declared in several places, go-to-declaration on a use\nlists every declaration, not only the nearest one.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int clamp(int value);\nint clamp(int value);\n\nint clamp(int value) {\n    return value < 0 ? 0 : value;\n}\n\nint hold(int value) {\n    return clamp(value);\n}\n",
+      "markers": [
+        {
+          "name": "first_decl",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        },
+        {
+          "name": "second_decl",
+          "begin": 26,
+          "end": 26,
+          "range": false
+        },
+        {
+          "name": "def",
+          "begin": 49,
+          "end": 49,
+          "range": false
+        },
+        {
+          "name": "use",
+          "begin": 138,
+          "end": 138,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "first_decl",
+          "marker": "first_decl",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int ⟦clamp⟧(int value); @+1",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦clamp⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "second_decl",
+          "marker": "second_decl",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int ⟦clamp⟧(int value); @-1",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦clamp⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "def",
+          "marker": "def",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int ⟦clamp⟧(int value); @-3",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦clamp⟧(int value); @-2",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int ⟦clamp⟧(int value); @-8",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦clamp⟧(int value); @-7",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦clamp⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

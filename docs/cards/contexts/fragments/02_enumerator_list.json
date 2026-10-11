@@ -1,0 +1,100 @@
+{
+  "id": "contexts/fragments/02_enumerator_list",
+  "topic": "contexts",
+  "subtopic": "fragments",
+  "title": "X-macro lists",
+  "summary": "A list of macro calls compiles where its includer first expands it",
+  "prose": "`errors.def` is an X-macro list: `codes.cpp` includes it once to declare the enumerators and once to name them. Opened on its own, it compiles inside the enum, so its entries show as enumerators.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "codes.cpp",
+      "text": "enum class Code {\n#define ERROR(name, value) name = value,\n#include \"errors.def\"\n#undef ERROR\n};\n\nconst char* text(Code c) {\n    switch (c) {\n#define ERROR(name, value) \\\n    case Code::name: return #name;\n#include \"errors.def\"\n#undef ERROR\n    }\n    return \"\";\n}\n",
+      "markers": []
+    },
+    {
+      "path": "errors.def",
+      "text": "ERROR(NotFound, 404)\nERROR(Forbidden, 403)\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "diagnostics",
+          "value": {
+            "diagnostics": []
+          }
+        },
+        {
+          "label": "symbols",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "NotFound",
+                "kind": "EnumMember",
+                "at": {
+                  "$place": "ERROR(⟦NotFound⟧, 404)",
+                  "path": "errors.def",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 14
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Forbidden",
+                "kind": "EnumMember",
+                "at": {
+                  "$place": "ERROR(⟦Forbidden⟧, 403)",
+                  "path": "errors.def",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 15
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "hover",
+          "value": {
+            "hover": {
+              "markdown": "### enumerator `NotFound`\n\n---\nType: `enum Code`\nValue = `404`\n\n---\n```cpp\n// In Code\nNotFound = 404\n```",
+              "range": {
+                "$place": "ERROR(⟦NotFound⟧, 404)",
+                "path": "errors.def",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

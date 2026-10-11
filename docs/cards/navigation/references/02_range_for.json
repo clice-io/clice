@@ -1,0 +1,56 @@
+{
+  "id": "navigation/references/02_range_for",
+  "topic": "navigation",
+  "subtopic": "references",
+  "title": "Range-for references",
+  "summary": "Find references on `begin` reports only its own declaration; the range-based for loop that implicitly calls it is not included among the references",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1081"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Iterator {\n    int operator*() const;\n    Iterator& operator++();\n    bool operator!=(const Iterator& other) const;\n};\n\nstruct Range {\n    Iterator begin();\n    Iterator end();\n};\n\nvoid use(Range r) {\n    for (int x : r) {\n    }\n}\n",
+      "markers": [
+        {
+          "name": "begin",
+          "begin": 155,
+          "end": 155,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "begin",
+          "marker": "begin",
+          "value": {
+            "wrong": "the range-based for calls begin, so it should be among the references (clangd#1081)",
+            "references": [
+              {
+                "$place": "Iterator ⟦begin⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

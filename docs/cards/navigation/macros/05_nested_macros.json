@@ -1,0 +1,72 @@
+{
+  "id": "navigation/macros/05_nested_macros",
+  "topic": "navigation",
+  "subtopic": "macros",
+  "title": "Nested macro references",
+  "summary": "Find references on a macro does not include the mentions of it written inside the bodies of other macro definitions",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#346"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define WIDTH 100\n\n#define AREA (WIDTH * WIDTH)\n\nint total = AREA;\n",
+      "markers": [
+        {
+          "name": "width",
+          "begin": 8,
+          "end": 8,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "width",
+          "marker": "width",
+          "value": {
+            "wrong": "the two WIDTH in the body of AREA should be among the references (clangd#346)",
+            "definition": [
+              {
+                "$place": "#define ⟦WIDTH⟧ 100",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "#define ⟦WIDTH⟧ 100",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

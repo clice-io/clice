@@ -1,0 +1,46 @@
+{
+  "id": "completion/functions_snippets/02_function_candidates",
+  "topic": "completion",
+  "subtopic": "functions_snippets",
+  "title": "Signature and return type",
+  "summary": "The parameter list and the return type ride along with a function's name",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "double foooo(int x, float y);\n\nint x = fo;\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "foooo(int x, float y)",
+                  "kind": "Function",
+                  "detail": "double"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

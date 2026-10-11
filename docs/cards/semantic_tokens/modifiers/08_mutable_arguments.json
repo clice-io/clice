@@ -1,0 +1,77 @@
+{
+  "id": "semantic_tokens/modifiers/08_mutable_arguments",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Mutable arguments",
+  "summary": "An argument passed by mutable reference or pointer does not carry a modifier yet",
+  "prose": "",
+  "status": "partial",
+  "issues": [
+    "clangd#839"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void modify(int& out);\nvoid modify_through(int* out);\nvoid inspect(const int& in);\n\nvoid run() {\n    int value = 0;\n    modify(value);\n    modify_through(&value);\n    inspect(value);\n}\n",
+      "markers": [
+        {
+          "name": "by_reference",
+          "begin": 127,
+          "end": 127,
+          "range": false
+        },
+        {
+          "name": "by_pointer",
+          "begin": 155,
+          "end": 155,
+          "range": false
+        },
+        {
+          "name": "by_const_reference",
+          "begin": 175,
+          "end": 175,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "by_reference",
+          "marker": "by_reference",
+          "value": {
+            "wrong": "an argument bound to a mutable reference should carry the usedAsMutableReference modifier (clangd#839)",
+            "semantic_token": {
+              "text": "value",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "by_pointer",
+          "marker": "by_pointer",
+          "value": {
+            "wrong": "an argument passed as a mutable pointer should carry the usedAsMutablePointer modifier (clangd#839)",
+            "semantic_token": {
+              "text": "value",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "by_const_reference",
+          "marker": "by_const_reference",
+          "value": {
+            "semantic_token": {
+              "text": "value",
+              "type": "variable"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

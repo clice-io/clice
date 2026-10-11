@@ -1,0 +1,75 @@
+{
+  "id": "document_links/include_directives/01_header_paths",
+  "topic": "document_links",
+  "subtopic": "include_directives",
+  "title": "Quoted and angled includes",
+  "summary": "Each include links its header name to the file it resolves to",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "gauge.h",
+      "text": "#pragma once\n\ninline int gauge_level() {\n    return 3;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"gauge.h\"\n#include <panel/dial.h>\n\nint show() {\n    return gauge_level() + dial_angle();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "panel/dial.h",
+      "text": "#pragma once\n\ninline int dial_angle() {\n    return 90;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"gauge.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 18
+                    }
+                  }
+                },
+                "target": "gauge.h"
+              },
+              {
+                "at": {
+                  "$place": "#include ⟦<panel/dial.h>⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 23
+                    }
+                  }
+                },
+                "target": "panel/dial.h"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

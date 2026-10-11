@@ -1,0 +1,163 @@
+{
+  "id": "folding_range/runs/02_includes",
+  "topic": "folding_range",
+  "subtopic": "runs",
+  "title": "Include runs",
+  "summary": "Consecutive include directives fold as one run below the first include",
+  "prose": "A blank line, a comment line or another directive ends the run; includes\ninside a conditional branch fold within it, whether or not the branch is\ntaken.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "alpha.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "beta.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "delta.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "gamma.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"alpha.h\"\n#include \"beta.h\"\n#include \"gamma.h\"\n\n#include \"delta.h\"\n\n#include \"alpha.h\"\n// a comment line ends the run\n#include \"beta.h\"\n#define HEADER \"delta.h\"\n#include \"gamma.h\"\n#include HEADER\n\n#ifdef WINDOWS_BACKEND\n#include \"windows_api.h\"\n#include \"windows_io.h\"\n#else\n#include \"posix_api.h\"\n#include \"posix_io.h\"\n#endif\n",
+      "markers": []
+    },
+    {
+      "path": "posix_api.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "posix_io.h",
+      "text": "#pragma once\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "imports",
+                "at": {
+                  "$place": "#include \"alpha.h\"⟦ … #include \"gamma.h\"⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 18
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "imports",
+                "at": {
+                  "$place": "#include \"gamma.h\"⟦ … #include HEADER⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#ifdef WINDOWS_BACKEND⟦ … ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "imports",
+                "at": {
+                  "$place": "#include \"windows_api.h\"⟦ … #include \"windows_io.h\"⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 23
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#else⟦ … ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "imports",
+                "at": {
+                  "$place": "#include \"posix_api.h\"⟦ … #include \"posix_io.h\"⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

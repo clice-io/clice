@@ -1,0 +1,238 @@
+{
+  "id": "semantic_tokens/modifiers/03_readonly",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Readonly",
+  "summary": "Const values and methods, plus enum members, carry the readonly modifier",
+  "prose": "Readonly is currently value-based: a pointer to const counts as\nreadonly even though the pointer itself can change.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "enum class Level { High };\n\nconst int limit = 10;\nconstexpr int bound = 4;\n\nstruct Gauge {\n    int read() const;\n    void write(int value);\n};\n\nvoid probe(const int& in, const int* pointee_const, int* const self_const) {\n    Gauge gauge;\n    gauge.read();\n    gauge.write(limit);\n}\n",
+      "markers": [
+        {
+          "name": "High",
+          "begin": 19,
+          "end": 19,
+          "range": false
+        },
+        {
+          "name": "limit_def",
+          "begin": 38,
+          "end": 38,
+          "range": false
+        },
+        {
+          "name": "bound",
+          "begin": 64,
+          "end": 64,
+          "range": false
+        },
+        {
+          "name": "read_decl",
+          "begin": 99,
+          "end": 99,
+          "range": false
+        },
+        {
+          "name": "write_decl",
+          "begin": 122,
+          "end": 122,
+          "range": false
+        },
+        {
+          "name": "in",
+          "begin": 166,
+          "end": 166,
+          "range": false
+        },
+        {
+          "name": "pointee_const",
+          "begin": 181,
+          "end": 181,
+          "range": false
+        },
+        {
+          "name": "self_const",
+          "begin": 207,
+          "end": 207,
+          "range": false
+        },
+        {
+          "name": "read_use",
+          "begin": 248,
+          "end": 248,
+          "range": false
+        },
+        {
+          "name": "write_use",
+          "begin": 266,
+          "end": 266,
+          "range": false
+        },
+        {
+          "name": "limit_use",
+          "begin": 272,
+          "end": 272,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "High",
+          "marker": "High",
+          "value": {
+            "semantic_token": {
+              "text": "High",
+              "type": "enumMember",
+              "modifiers": [
+                "definition",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "limit_def",
+          "marker": "limit_def",
+          "value": {
+            "semantic_token": {
+              "text": "limit",
+              "type": "variable",
+              "modifiers": [
+                "definition",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "bound",
+          "marker": "bound",
+          "value": {
+            "semantic_token": {
+              "text": "bound",
+              "type": "variable",
+              "modifiers": [
+                "definition",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "read_decl",
+          "marker": "read_decl",
+          "value": {
+            "semantic_token": {
+              "text": "read",
+              "type": "method",
+              "modifiers": [
+                "declaration",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "write_decl",
+          "marker": "write_decl",
+          "value": {
+            "semantic_token": {
+              "text": "write",
+              "type": "method",
+              "modifiers": [
+                "declaration"
+              ]
+            }
+          }
+        },
+        {
+          "label": "in",
+          "marker": "in",
+          "value": {
+            "semantic_token": {
+              "text": "in",
+              "type": "parameter",
+              "modifiers": [
+                "definition",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "pointee_const",
+          "marker": "pointee_const",
+          "value": {
+            "semantic_token": {
+              "text": "pointee_const",
+              "type": "parameter",
+              "modifiers": [
+                "definition",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "self_const",
+          "marker": "self_const",
+          "value": {
+            "semantic_token": {
+              "text": "self_const",
+              "type": "parameter",
+              "modifiers": [
+                "definition",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "read_use",
+          "marker": "read_use",
+          "value": {
+            "semantic_token": {
+              "text": "read",
+              "type": "method",
+              "modifiers": [
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "write_use",
+          "marker": "write_use",
+          "value": {
+            "semantic_token": {
+              "text": "write",
+              "type": "method"
+            }
+          }
+        },
+        {
+          "label": "limit_use",
+          "marker": "limit_use",
+          "value": {
+            "semantic_token": {
+              "text": "limit",
+              "type": "variable",
+              "modifiers": [
+                "readonly"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

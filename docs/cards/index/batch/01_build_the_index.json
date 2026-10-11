@@ -1,0 +1,51 @@
+{
+  "id": "index/batch/01_build_the_index",
+  "topic": "index",
+  "subtopic": "batch",
+  "title": "Build the index",
+  "summary": "Index every translation unit of the build, so an editor session starts warm",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app/main.cpp",
+      "text": "#include \"shapes/circle.h\"\n\nint main() {\n    const shapes::Circle circle(2.0);\n    const shapes::Shape& shape = circle;\n    return static_cast<int>(shape.measure() + circle.circumference());\n}\n",
+      "markers": []
+    },
+    {
+      "path": "include/shapes/circle.h",
+      "text": "#pragma once\n\n#include \"shapes/shape.h\"\n\nnamespace shapes {\n\nclass Circle : public Shape {\npublic:\n    explicit Circle(double radius) : radius(radius) {}\n\n    double measure() const override;\n\n    double circumference() const;\n\n    double radius;\n};\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "include/shapes/shape.h",
+      "text": "#pragma once\n\nnamespace shapes {\n\nclass Shape {\npublic:\n    virtual ~Shape() = default;\n\n    virtual double measure() const = 0;\n};\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "src/circle.cpp",
+      "text": "#include \"shapes/circle.h\"\n\nnamespace shapes {\n\ndouble Circle::measure() const {\n    return 3.14159 * radius * radius;\n}\n\ndouble Circle::circumference() const {\n    return 2 * 3.14159 * radius;\n}\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "test/circle_test.cpp",
+      "text": "#include \"shapes/circle.h\"\n\nint main() {\n    return shapes::Circle(1.0).measure() > 3 ? 0 : 1;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 3 translation units in #s: 5 file shards (# KB), 10 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

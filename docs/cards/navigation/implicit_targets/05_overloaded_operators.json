@@ -1,0 +1,137 @@
+{
+  "id": "navigation/implicit_targets/05_overloaded_operators",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "Overloaded operators",
+  "summary": "An overloaded operator token navigates to its definition",
+  "prose": "Go-to-definition on an overloaded operator token reaches the operator's\ndefinition. The binary, subscript, call and arrow operators (`+`, `[]`,\n`()`, `->`) are all resolved.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Iterator {\n    int value;\n};\n\nstruct Vec {\n    Vec operator+(const Vec& other) const;\n    int operator[](int index) const;\n    int operator()(int a, int b) const;\n    Iterator* operator->();\n};\n\nvoid use(Vec a, Vec b) {\n    Vec c = a + b;\n    int e = a[0];\n    int f = a(1, 2);\n    a->value;\n}\n",
+      "markers": [
+        {
+          "name": "plus",
+          "begin": 241,
+          "end": 241,
+          "range": false
+        },
+        {
+          "name": "subscript",
+          "begin": 259,
+          "end": 259,
+          "range": false
+        },
+        {
+          "name": "call",
+          "begin": 277,
+          "end": 277,
+          "range": false
+        },
+        {
+          "name": "arrow",
+          "begin": 290,
+          "end": 290,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "plus",
+          "marker": "plus",
+          "value": {
+            "definition": [
+              {
+                "$place": "Vec ⟦operator+⟧(const Vec& other) const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "subscript",
+          "marker": "subscript",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦operator[]⟧(int index) const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "call",
+          "marker": "call",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦operator()⟧(int a, int b) const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "arrow",
+          "marker": "arrow",
+          "value": {
+            "definition": [
+              {
+                "$place": "Iterator* ⟦operator->⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 24
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

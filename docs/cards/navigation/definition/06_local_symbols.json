@@ -1,0 +1,81 @@
+{
+  "id": "navigation/definition/06_local_symbols",
+  "topic": "navigation",
+  "subtopic": "definition",
+  "title": "Local symbol navigation",
+  "summary": "Go-to-definition on a local variable or parameter jumps to its declaration inside the function body",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int accumulate(int base) {\n    int total = base;\n    total = total + base;\n    return total;\n}\n",
+      "markers": [
+        {
+          "name": "local_use",
+          "begin": 61,
+          "end": 61,
+          "range": false
+        },
+        {
+          "name": "param_use",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "local_use",
+          "marker": "local_use",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦total⟧ = base;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "param_use",
+          "marker": "param_use",
+          "value": {
+            "definition": [
+              {
+                "$place": "int accumulate(int ⟦base⟧) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 23
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

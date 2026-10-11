@@ -1,0 +1,53 @@
+{
+  "id": "navigation/implicit_construction/03_deduced_class_templates",
+  "topic": "navigation",
+  "subtopic": "implicit_construction",
+  "title": "CTAD",
+  "summary": "A CTAD construction navigates to the deduced specialization's constructor",
+  "prose": "When class template argument deduction picks a specialization, go-to-\ndefinition on the constructor call reaches the constructor that was\nselected, not merely the class template.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Box {\n    Box(T input) : value(input) {}\n    T value;\n};\n\ntemplate <typename T>\nBox(T) -> Box<T>;\n\nvoid use() {\n    Box b(7);\n}\n",
+      "markers": [
+        {
+          "name": "ctad_paren",
+          "begin": 150,
+          "end": 150,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "ctad_paren",
+          "marker": "ctad_paren",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦Box⟧(T input) : value(input) {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 7
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

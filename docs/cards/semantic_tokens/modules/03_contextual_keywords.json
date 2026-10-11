@@ -1,0 +1,117 @@
+{
+  "id": "semantic_tokens/modules/03_contextual_keywords",
+  "topic": "semantic_tokens",
+  "subtopic": "modules",
+  "title": "`module` and `import` as identifiers",
+  "summary": "Contextual keywords keep their semantic kinds outside module declarations",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void f() {\n    struct module {};\n    struct module m;\n    int import = 1;\n    int module = 2;\n}\n",
+      "markers": [
+        {
+          "name": "module_def",
+          "begin": 22,
+          "end": 22,
+          "range": false
+        },
+        {
+          "name": "module_use",
+          "begin": 44,
+          "end": 44,
+          "range": false
+        },
+        {
+          "name": "m",
+          "begin": 51,
+          "end": 51,
+          "range": false
+        },
+        {
+          "name": "import",
+          "begin": 62,
+          "end": 62,
+          "range": false
+        },
+        {
+          "name": "module_def2",
+          "begin": 82,
+          "end": 82,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "module_def",
+          "marker": "module_def",
+          "value": {
+            "semantic_token": {
+              "text": "module",
+              "type": "struct",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "module_use",
+          "marker": "module_use",
+          "value": {
+            "semantic_token": {
+              "text": "module",
+              "type": "struct"
+            }
+          }
+        },
+        {
+          "label": "m",
+          "marker": "m",
+          "value": {
+            "semantic_token": {
+              "text": "m",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "import",
+          "marker": "import",
+          "value": {
+            "semantic_token": {
+              "text": "import",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "module_def2",
+          "marker": "module_def2",
+          "value": {
+            "semantic_token": {
+              "text": "module",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

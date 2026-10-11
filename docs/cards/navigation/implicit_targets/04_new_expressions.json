@@ -1,0 +1,54 @@
+{
+  "id": "navigation/implicit_targets/04_new_expressions",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "`new` expression",
+  "summary": "`new` navigates to an overloaded allocation function but not the constructor",
+  "prose": "Go-to-definition on `new` reaches the class's overloaded `operator new`.\nThe constructor invoked by the same expression is not part of the reply.",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Pool {\n    Pool();\n    static void* operator new(decltype(sizeof(0)) size);\n};\n\nvoid make() {\n    Pool* p = new Pool();\n}\n",
+      "markers": [
+        {
+          "name": "new_kw",
+          "begin": 115,
+          "end": 115,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "new_kw",
+          "marker": "new_kw",
+          "value": {
+            "wrong": "should also reach Pool(), the constructor the expression runs",
+            "definition": [
+              {
+                "$place": "static void* ⟦operator new⟧(decltype(sizeof(0)) size);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 29
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

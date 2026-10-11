@@ -1,0 +1,86 @@
+{
+  "id": "hover/aliases/03_c_anonymous_structs",
+  "topic": "hover",
+  "subtopic": "aliases",
+  "title": "C anonymous struct typedefs",
+  "summary": "In C, a struct named only by its typedef shows under the typedef's name",
+  "prose": "The definition line still spells it `struct Point`, a name C does not\nknow for it.",
+  "status": "partial",
+  "issues": [
+    "clangd#2219"
+  ],
+  "files": [
+    {
+      "path": "main.c",
+      "text": "/// A 2-D point.\ntypedef struct {\n  int x, y;\n} Point;\n\nPoint origin = {.y = 2, .x = 1};\n",
+      "markers": [
+        {
+          "name": "typedef",
+          "begin": 48,
+          "end": 48,
+          "range": false
+        },
+        {
+          "name": "var",
+          "begin": 62,
+          "end": 62,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "typedef",
+          "marker": "typedef",
+          "value": {
+            "wrong": "the definition names a struct Point that does not exist: the struct is anonymous",
+            "hover": {
+              "markdown": "### type `Point`\n\n---\nType: `Point`\nA 2-D point.\n\n---\n```cpp\ntypedef struct Point Point\n```",
+              "range": {
+                "$place": "} ⟦Point⟧;",
+                "path": "main.c",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 2
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 7
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "var",
+          "marker": "var",
+          "value": {
+            "hover": {
+              "markdown": "### variable `origin`\n\n---\nType: `Point`\n\n---\n```cpp\nPoint origin = {.y = 2, .x = 1}\n```",
+              "range": {
+                "$place": "Point ⟦origin⟧ = {.y = 2, .x = 1};",
+                "path": "main.c",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

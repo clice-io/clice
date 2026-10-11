@@ -1,0 +1,43 @@
+{
+  "id": "signature_help/call_contexts/08_subscripts",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Subscript operators",
+  "summary": "An overloaded `operator[]` shows no signature help yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2472"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Table {\n    int operator[](int row);\n};\n\nint first(Table table) {\n    return table[0];\n}\n",
+      "markers": [
+        {
+          "name": "index",
+          "begin": 90,
+          "end": 90,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "index",
+          "marker": "index",
+          "value": {
+            "wrong": "an overloaded operator[] shows no signature (clangd#2472)",
+            "signature_help": {
+              "signatures": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

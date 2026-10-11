@@ -1,0 +1,81 @@
+{
+  "id": "navigation/implementation/02_sibling_overrides",
+  "topic": "navigation",
+  "subtopic": "implementation",
+  "title": "Sibling overrides",
+  "summary": "Implementation navigation lists every sibling override",
+  "prose": "Go-to-implementation on a virtual method lists every override across\nthe sibling derived classes.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n    virtual int area() = 0;\n};\n\nstruct Circle : Shape {\n    int area() override { return 1; }\n};\n\nstruct Square : Shape {\n    int area() override { return 2; }\n};\n\nstruct Triangle : Shape {\n    int area() override { return 3; }\n};\n",
+      "markers": [
+        {
+          "name": "base",
+          "begin": 31,
+          "end": 31,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "base",
+          "marker": "base",
+          "value": {
+            "implementation": [
+              {
+                "$place": "int ⟦area⟧() override { return 1; }",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦area⟧() override { return 2; }",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦area⟧() override { return 3; }",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

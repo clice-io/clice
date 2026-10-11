@@ -1,0 +1,88 @@
+{
+  "id": "navigation/modules/01_import_names",
+  "topic": "navigation",
+  "subtopic": "modules",
+  "title": "Module import navigation",
+  "summary": "Go-to-definition on the name in an `import` declaration opens the module interface unit that exports it, and uses of an imported symbol reach its definition in that unit",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#2310"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "import widget;\n\nint build() {\n    return area(2, 3);\n}\n",
+      "markers": [
+        {
+          "name": "module_name",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "imported_use",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "widget.cppm",
+      "text": "export module widget;\n\nexport int area(int width, int height) {\n    return width * height;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "module_name",
+          "marker": "module_name",
+          "value": {
+            "definition": [
+              {
+                "$place": "widget.cppm │ export module ⟦widget⟧;",
+                "path": "widget.cppm",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "imported_use",
+          "marker": "imported_use",
+          "value": {
+            "definition": [
+              {
+                "$place": "widget.cppm │ export int ⟦area⟧(int width, int height) {",
+                "path": "widget.cppm",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 15
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "id": "navigation/call_hierarchy/05_qualified_names",
+  "topic": "navigation",
+  "subtopic": "call_hierarchy",
+  "title": "Qualified name for member functions",
+  "summary": "A member function's call hierarchy item is produced, but its name field carries only the bare method name (`draw`), not the qualified `Circle::draw` that would tell it apart from a free function",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Circle {\n    void draw();\n};\n\nvoid Circle::draw() {}\n",
+      "markers": [
+        {
+          "name": "method",
+          "begin": 25,
+          "end": 25,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "method",
+          "marker": "method",
+          "value": {
+            "wrong": "the item should name Circle::draw, to tell the method from a free function",
+            "call_hierarchy": [
+              {
+                "name": "draw",
+                "kind": "Method",
+                "at": {
+                  "$place": "void Circle::⟦draw⟧() {}",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 17
+                    }
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [],
+            "outgoing_calls": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "id": "query/names/05_file_local_names",
+  "topic": "query",
+  "subtopic": "names",
+  "title": "File-local symbols",
+  "summary": "Symbols only one file can name, such as statics, locals and parameters, are found by name within that file with `path:`",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "a.cpp",
+      "text": "namespace {\nint helper(int rows) { return rows; }\n}\nint a() { int rows = 1; return helper(rows); }\n",
+      "markers": []
+    },
+    {
+      "path": "b.cpp",
+      "text": "static int rows = 2;\nint b() { return rows; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 2 translation units in #s: 2 file shards (# KB), 3 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method symbolSearch --symbol \"\\\"rows\\\"\"",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"symbols\": []\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method symbolSearch --symbol \"\\\"rows\\\" path:a.cpp\"",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 4,\n        \"container\": \"a\",\n        \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\"\n      },\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Parameter\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 2,\n        \"container\": \"helper\",\n        \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method symbolSearch --symbol \"\\\"rows\\\" path:b.cpp\"",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/b.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#91b81847324836ae path:${WS}/b.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method symbolSearch --symbol \"helper::rows path:a.cpp\"",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"rows\",\n        \"kind\": \"Parameter\",\n        \"file\": \"${WS}/a.cpp\",\n        \"line\": 2,\n        \"container\": \"helper\",\n        \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method definition --symbol \"a::rows path:a.cpp\"",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Variable\",\n    \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\",\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int rows = 1\"\n    }\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method definition --symbol \"\\\"rows\\\" path:a.cpp\"",
+          "value": {
+            "stdout": "{\n  \"error\": \"ambiguous: 2 symbols match; name one by the `symbol` of a candidate\",\n  \"candidates\": [\n    {\n      \"name\": \"rows\",\n      \"kind\": \"Variable\",\n      \"file\": \"${WS}/a.cpp\",\n      \"line\": 4,\n      \"container\": \"a\",\n      \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\"\n    },\n    {\n      \"name\": \"rows\",\n      \"kind\": \"Parameter\",\n      \"file\": \"${WS}/a.cpp\",\n      \"line\": 2,\n      \"container\": \"helper\",\n      \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\"\n    }\n  ],\n  \"stale\": []\n}",
+            "exit": 1
+          }
+        },
+        {
+          "label": "$ clice query --method definition --symbol \"#62144b44c2d7e570 path:${WS}/a.cpp\"",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Variable\",\n    \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\",\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int rows = 1\"\n    }\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method definition --symbol \"#c779df7ea50d8026 path:${WS}/a.cpp\"",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Parameter\",\n    \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\",\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 2,\n      \"endLine\": 2,\n      \"text\": \"int rows\"\n    }\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

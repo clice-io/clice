@@ -1,0 +1,165 @@
+{
+  "id": "navigation/definition/03_declaration_and_definition",
+  "topic": "navigation",
+  "subtopic": "definition",
+  "title": "Declaration and definition alternate",
+  "summary": "Navigation from a use reaches the definition, and from the declaration or the definition the other one",
+  "prose": "A function declared and defined apart answers each request at its\ndeclaration or definition with the other site. A function with no separate\ndeclaration answers with its definition everywhere.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int scale(int value);\n\nint scale(int value) {\n    return value * 2;\n}\n\nint apply(int value) {\n    return scale(value);\n}\n\nint twice(int value) {\n    return value + value;\n}\n\nint caller() {\n    return twice(21);\n}\n",
+      "markers": [
+        {
+          "name": "decl",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        },
+        {
+          "name": "def",
+          "begin": 27,
+          "end": 27,
+          "range": false
+        },
+        {
+          "name": "use",
+          "begin": 105,
+          "end": 105,
+          "range": false
+        },
+        {
+          "name": "inline_def",
+          "begin": 126,
+          "end": 126,
+          "range": false
+        },
+        {
+          "name": "inline_use",
+          "begin": 200,
+          "end": 200,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "decl",
+          "marker": "decl",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦scale⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "def",
+          "marker": "def",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦scale⟧(int value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦scale⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "inline_def",
+          "marker": "inline_def",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦twice⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "inline_use",
+          "marker": "inline_use",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦twice⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

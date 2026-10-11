@@ -1,0 +1,57 @@
+{
+  "id": "hover/arguments/04_record_arguments",
+  "topic": "hover",
+  "subtopic": "arguments",
+  "title": "Record arguments",
+  "summary": "A record passed to a call that is evaluated at compile time shows the call's value as its own",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1622"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace record_value_misleading {\n\nstruct Tag {};\n\nconstexpr int rank(Tag) {\n  return 7;\n}\n\nvoid demo() {\n  Tag t;\n  int r = rank(t);\n}\n\n}\n",
+      "markers": [
+        {
+          "name": "record_arg",
+          "begin": 132,
+          "end": 132,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "record_arg",
+          "marker": "record_arg",
+          "value": {
+            "wrong": "the card shows the call's value 7 as the variable's own (clangd#1622)",
+            "hover": {
+              "markdown": "### variable `t`\n\n---\nType: `Tag`\nValue = `7`\nPassed by value\n\n---\n```cpp\n// In demo\nTag t\n```",
+              "range": {
+                "$place": "int r = rank(⟦t⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "code_actions/include/03_no_include_yet",
+  "topic": "code_actions",
+  "subtopic": "include",
+  "title": "First include of a file",
+  "summary": "A file without includes receives the directive at its start, after a `#pragma once` when there is one",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#pragma once\n\nusing Strings = std::string;\n",
+      "markers": [
+        {
+          "name": "string",
+          "begin": 35,
+          "end": 35,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "string",
+      "text": "#pragma once\n\nnamespace std {\nclass string {};\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "string",
+          "marker": "string",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "quickfix",
+                "title": "Add #include <string>",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " #pragma once\n+#include <string>\n\n using Strings = std::string;"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

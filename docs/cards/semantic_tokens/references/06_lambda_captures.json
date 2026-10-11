@@ -1,0 +1,121 @@
+{
+  "id": "semantic_tokens/references/06_lambda_captures",
+  "topic": "semantic_tokens",
+  "subtopic": "references",
+  "title": "Lambda captures",
+  "summary": "By-copy and by-reference captures reference the captured variable; `this` stays a keyword",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct S {\n    int field;\n\n    int compute() {\n        int local = 1;\n        auto by_copy = [local, this] {\n            return local + this->field;\n        };\n        auto by_reference = [&local] {\n            return local;\n        };\n        return by_copy() + by_reference();\n    }\n};\n",
+      "markers": [
+        {
+          "name": "local_use",
+          "begin": 94,
+          "end": 94,
+          "range": false
+        },
+        {
+          "name": "this",
+          "begin": 101,
+          "end": 101,
+          "range": false
+        },
+        {
+          "name": "local_use2",
+          "begin": 128,
+          "end": 128,
+          "range": false
+        },
+        {
+          "name": "field",
+          "begin": 142,
+          "end": 142,
+          "range": false
+        },
+        {
+          "name": "local_use3",
+          "begin": 190,
+          "end": 190,
+          "range": false
+        },
+        {
+          "name": "local_use4",
+          "begin": 218,
+          "end": 218,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "local_use",
+          "marker": "local_use",
+          "value": {
+            "semantic_token": {
+              "text": "local",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "this",
+          "marker": "this",
+          "value": {
+            "semantic_token": {
+              "text": "this",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "local_use2",
+          "marker": "local_use2",
+          "value": {
+            "semantic_token": {
+              "text": "local",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "field",
+          "marker": "field",
+          "value": {
+            "semantic_token": {
+              "text": "field",
+              "type": "field"
+            }
+          }
+        },
+        {
+          "label": "local_use3",
+          "marker": "local_use3",
+          "value": {
+            "semantic_token": {
+              "text": "local",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "local_use4",
+          "marker": "local_use4",
+          "value": {
+            "semantic_token": {
+              "text": "local",
+              "type": "variable"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

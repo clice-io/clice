@@ -1,0 +1,75 @@
+{
+  "id": "semantic_tokens/references/01_member_initializers",
+  "topic": "semantic_tokens",
+  "subtopic": "references",
+  "title": "Member initializer lists",
+  "summary": "Member initializer lists highlight initialized names as fields",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#122"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    int width;\n    int height;\n\n    Widget(int w, int h) : width(w), height(h) {}\n};\n",
+      "markers": [
+        {
+          "name": "width",
+          "begin": 75,
+          "end": 75,
+          "range": false
+        },
+        {
+          "name": "w",
+          "begin": 81,
+          "end": 81,
+          "range": false
+        },
+        {
+          "name": "height",
+          "begin": 85,
+          "end": 85,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "width",
+          "marker": "width",
+          "value": {
+            "semantic_token": {
+              "text": "width",
+              "type": "field"
+            }
+          }
+        },
+        {
+          "label": "w",
+          "marker": "w",
+          "value": {
+            "semantic_token": {
+              "text": "w",
+              "type": "parameter"
+            }
+          }
+        },
+        {
+          "label": "height",
+          "marker": "height",
+          "value": {
+            "semantic_token": {
+              "text": "height",
+              "type": "field"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

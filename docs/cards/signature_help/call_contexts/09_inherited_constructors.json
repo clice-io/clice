@@ -1,0 +1,47 @@
+{
+  "id": "signature_help/call_contexts/09_inherited_constructors",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Inherited constructors",
+  "summary": "Constructors a class inherits are missing from its constructor list",
+  "prose": "Only the implicit copy and move constructors show, not the `Base(int, int)`\nthat `using Base::Base` brings in and the call actually uses.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1363"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    Base(int width, int height);\n};\n\nstruct Derived : Base {\n    using Base::Base;\n};\n\nDerived derived(1, 2);\n",
+      "markers": [
+        {
+          "name": "inherited",
+          "begin": 117,
+          "end": 117,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "inherited",
+          "marker": "inherited",
+          "value": {
+            "wrong": "the inherited Base(int, int) is missing: only the implicit copy and move constructors show (clangd#1363)",
+            "signature_help": {
+              "signatures": [
+                "Derived(⟦const Derived &⟧)",
+                "Derived(⟦Derived &&⟧)"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

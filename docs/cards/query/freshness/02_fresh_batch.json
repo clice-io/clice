@@ -1,0 +1,51 @@
+{
+  "id": "query/freshness/02_fresh_batch",
+  "topic": "query",
+  "subtopic": "freshness",
+  "title": "Refresh before answering",
+  "summary": "With `--fresh`, the index is brought up to date before the question is answered, and built if there is none yet",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "a.h",
+      "text": "#pragma once\nint add(int a, int b);\nstruct Animal { virtual ~Animal() = default; };\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"a.h\"\nint add(int a, int b) { return a + b; }\nstruct Dog : Animal {};\nint compute() { return add(1, 2); }\nint main() { return compute(); }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice query --method symbolSearch --symbol compute --fresh",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"container\": null,\n        \"symbol\": \"#81df9416985c4402\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stderr": [
+              "stderr: indexing 0/1 units, 0 failed",
+              "stderr: indexing 1/1 units, 0 failed"
+            ],
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method symbolSearch --symbol extra --fresh",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"extra\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#c9be3d07e9d6b64f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stderr": [
+              "stderr: indexing 0/1 units, 0 failed",
+              "stderr: indexing 1/1 units, 0 failed"
+            ],
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

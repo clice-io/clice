@@ -1,0 +1,81 @@
+{
+  "id": "navigation/implementation/01_override_chain",
+  "topic": "navigation",
+  "subtopic": "implementation",
+  "title": "Override chain",
+  "summary": "Implementation navigation follows an override chain one level at a time",
+  "prose": "Along a three-level override chain, go-to-implementation from each method\nreaches the override one level down — base to middle, middle to leaf.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    virtual void run() = 0;\n};\n\nstruct Middle : Base {\n    void run() override {}\n};\n\nstruct Leaf : Middle {\n    void run() override {}\n};\n",
+      "markers": [
+        {
+          "name": "base",
+          "begin": 31,
+          "end": 31,
+          "range": false
+        },
+        {
+          "name": "middle",
+          "begin": 78,
+          "end": 78,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "base",
+          "marker": "base",
+          "value": {
+            "implementation": [
+              {
+                "$place": "void ⟦run⟧() override {} @+4",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "middle",
+          "marker": "middle",
+          "value": {
+            "implementation": [
+              {
+                "$place": "void ⟦run⟧() override {} @+4",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

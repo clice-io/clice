@@ -1,0 +1,164 @@
+{
+  "id": "semantic_tokens/modifiers/04_virtual_abstract",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Virtual and abstract",
+  "summary": "Virtual methods and abstract classes carry virtual or abstract modifiers",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n    virtual int area();\n    virtual int perimeter() = 0;\n    virtual ~Shape();\n};\n\nstruct Square : Shape {\n    int perimeter() override;\n};\n\nint measure(Shape& shape) {\n    return shape.area() + shape.perimeter();\n}\n",
+      "markers": [
+        {
+          "name": "Shape",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "area_decl",
+          "begin": 31,
+          "end": 31,
+          "range": false
+        },
+        {
+          "name": "perimeter_decl",
+          "begin": 55,
+          "end": 55,
+          "range": false
+        },
+        {
+          "name": "Square",
+          "begin": 105,
+          "end": 105,
+          "range": false
+        },
+        {
+          "name": "perimeter_decl2",
+          "begin": 130,
+          "end": 130,
+          "range": false
+        },
+        {
+          "name": "area_use",
+          "begin": 201,
+          "end": 201,
+          "range": false
+        },
+        {
+          "name": "perimeter_use",
+          "begin": 216,
+          "end": 216,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "Shape",
+          "marker": "Shape",
+          "value": {
+            "semantic_token": {
+              "text": "Shape",
+              "type": "struct",
+              "modifiers": [
+                "definition",
+                "abstract"
+              ]
+            }
+          }
+        },
+        {
+          "label": "area_decl",
+          "marker": "area_decl",
+          "value": {
+            "semantic_token": {
+              "text": "area",
+              "type": "method",
+              "modifiers": [
+                "declaration",
+                "virtual"
+              ]
+            }
+          }
+        },
+        {
+          "label": "perimeter_decl",
+          "marker": "perimeter_decl",
+          "value": {
+            "semantic_token": {
+              "text": "perimeter",
+              "type": "method",
+              "modifiers": [
+                "declaration",
+                "abstract",
+                "virtual"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Square",
+          "marker": "Square",
+          "value": {
+            "semantic_token": {
+              "text": "Square",
+              "type": "struct",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "perimeter_decl2",
+          "marker": "perimeter_decl2",
+          "value": {
+            "semantic_token": {
+              "text": "perimeter",
+              "type": "method",
+              "modifiers": [
+                "declaration",
+                "virtual"
+              ]
+            }
+          }
+        },
+        {
+          "label": "area_use",
+          "marker": "area_use",
+          "value": {
+            "semantic_token": {
+              "text": "area",
+              "type": "method",
+              "modifiers": [
+                "virtual"
+              ]
+            }
+          }
+        },
+        {
+          "label": "perimeter_use",
+          "marker": "perimeter_use",
+          "value": {
+            "semantic_token": {
+              "text": "perimeter",
+              "type": "method",
+              "modifiers": [
+                "abstract",
+                "virtual"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

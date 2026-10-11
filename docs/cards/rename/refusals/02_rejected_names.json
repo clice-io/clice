@@ -1,0 +1,85 @@
+{
+  "id": "rename/refusals/02_rejected_names",
+  "topic": "rename",
+  "subtopic": "refusals",
+  "title": "New names refused",
+  "summary": "A new name that is no identifier, a keyword, taken in the same scope or a macro is refused with the reason; overloading a function or taking a reserved name is done with a warning",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define TWICE(v) ((v) * 2)\n\nstruct Point { int x; };\n\nint compute(int v) { return TWICE(v); }\ndouble other(double v) { return v; }\n\nint main() { return compute(1) + other(2.0); }\n",
+      "markers": [
+        {
+          "name": "compute",
+          "begin": 58,
+          "end": 58,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "1abc",
+          "value": {
+            "rename": {
+              "error": "cannot rename `compute`: `1abc` is not an identifier"
+            }
+          }
+        },
+        {
+          "label": "class",
+          "value": {
+            "rename": {
+              "error": "cannot rename `compute`: `class` is a keyword"
+            }
+          }
+        },
+        {
+          "label": "Point",
+          "value": {
+            "rename": {
+              "error": "cannot rename `compute`: `Point` is already declared in the same scope (${WS}/main.cpp:3)"
+            }
+          }
+        },
+        {
+          "label": "TWICE",
+          "value": {
+            "rename": {
+              "error": "cannot rename `compute`: `TWICE` is a macro (${WS}/main.cpp:1): it would expand in place of the new name"
+            }
+          }
+        },
+        {
+          "label": "other",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.cpp": " struct Point { int x; };\n\n-int compute(int v) { return TWICE(v); }\n+int other(int v) { return TWICE(v); }\n double other(double v) { return v; }\n\n-int main() { return compute(1) + other(2.0); }\n+int main() { return other(1) + other(2.0); }"
+              },
+              "notice": "Renaming `compute`:\n  `other` already names a function in the same scope (${WS}/main.cpp:6): the renamed function overloads it, which fails to build in C or when their parameters are the same"
+            }
+          }
+        },
+        {
+          "label": "_Compute",
+          "value": {
+            "rename": {
+              "edits": {
+                "main.cpp": " struct Point { int x; };\n\n-int compute(int v) { return TWICE(v); }\n+int _Compute(int v) { return TWICE(v); }\n double other(double v) { return v; }\n\n-int main() { return compute(1) + other(2.0); }\n+int main() { return _Compute(1) + other(2.0); }"
+              },
+              "notice": "Renaming `compute`:\n  `_Compute` is reserved for the implementation"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

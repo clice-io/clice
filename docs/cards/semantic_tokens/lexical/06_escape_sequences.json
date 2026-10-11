@@ -1,0 +1,59 @@
+{
+  "id": "semantic_tokens/lexical/06_escape_sequences",
+  "topic": "semantic_tokens",
+  "subtopic": "lexical",
+  "title": "Escape sequences",
+  "summary": "Escape sequences are not highlighted distinctly inside literals yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "const char* escaped = \"hello\\nworld\";\nchar hex_escape = '\\x41';\n",
+      "markers": [
+        {
+          "name": "newline",
+          "begin": 28,
+          "end": 28,
+          "range": false
+        },
+        {
+          "name": "hex",
+          "begin": 57,
+          "end": 57,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "newline",
+          "marker": "newline",
+          "value": {
+            "wrong": "the escape sequence should be a token of its own",
+            "semantic_token": {
+              "text": "\"hello\\nworld\"",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "label": "hex",
+          "marker": "hex",
+          "value": {
+            "wrong": "the escape sequence should be a token of its own",
+            "semantic_token": {
+              "text": "'\\x41'",
+              "type": "character"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

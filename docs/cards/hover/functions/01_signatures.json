@@ -1,0 +1,83 @@
+{
+  "id": "hover/functions/01_signatures",
+  "topic": "hover",
+  "subtopic": "functions",
+  "title": "Function signatures",
+  "summary": "A function's card lists its return type and each parameter with its name and default",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace function_signature {\n\nint add(int lhs, int rhs);\n\nvoid configure(int width, bool visible = true);\n\n}\n",
+      "markers": [
+        {
+          "name": "params",
+          "begin": 36,
+          "end": 36,
+          "range": false
+        },
+        {
+          "name": "defaults",
+          "begin": 65,
+          "end": 65,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "params",
+          "marker": "params",
+          "value": {
+            "hover": {
+              "markdown": "### function `add`\n\n---\n→ `int`\nParameters:\n- `int lhs`\n- `int rhs`\n\n---\n```cpp\n// In namespace function_signature\nint add(int lhs, int rhs)\n```",
+              "range": {
+                "$place": "int ⟦add⟧(int lhs, int rhs);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 7
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "defaults",
+          "marker": "defaults",
+          "value": {
+            "hover": {
+              "markdown": "### function `configure`\n\n---\n→ `void`\nParameters:\n- `int width`\n- `bool visible = true`\n\n---\n```cpp\n// In namespace function_signature\nvoid configure(int width, bool visible = true)\n```",
+              "range": {
+                "$place": "void ⟦configure⟧(int width, bool visible = true);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

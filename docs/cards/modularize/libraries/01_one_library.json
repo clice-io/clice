@@ -1,0 +1,55 @@
+{
+  "id": "modularize/libraries/01_one_library",
+  "topic": "modularize",
+  "subtopic": "libraries",
+  "title": "Wrap a library",
+  "summary": "A library's headers become a module interface unit that includes them and exports the names they declare, with the program's includes left as they are",
+  "prose": "The program still includes `<alpha/alpha.h>`: with `wrap/mirror/alpha`\nfirst on its include path the header reads empty, and `wrap/prelude.h`,\nforce-included, imports `alpha` and defines the macros its headers did.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app/main.cpp",
+      "text": "#include <alpha/alpha.h>\n\nint main() {\n    return alpha::Thing{ALPHA_VERSION}.v;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "partition.json",
+      "text": "{\n  \"modules\": [{ \"name\": \"alpha\", \"files\": [\"third/alpha/**\"] }]\n}\n",
+      "markers": []
+    },
+    {
+      "path": "third/alpha/alpha/alpha.h",
+      "text": "#pragma once\n\n#define ALPHA_VERSION 3\n\nnamespace alpha {\n\nstruct Thing {\n    int v;\n};\n\nint make(int v);\n\n}  // namespace alpha\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice modularize --scope \"app/**,third/**\" --partition partition.json --out wrap",
+          "value": {
+            "stdout": "{\n  \"wrapping\": {\n    \"stdSources\": [],\n    \"modules\": [\n      {\n        \"name\": \"alpha\",\n        \"source\": \"alpha.cppm\",\n        \"imports\": [],\n        \"includeRoots\": [\n          \"${WS}/third/alpha\"\n        ],\n        \"mirrors\": []\n      }\n    ],\n    \"mirrors\": [\n      \"mirror/alpha\"\n    ],\n    \"prelude\": \"prelude.h\",\n    \"warnings\": []\n  },\n  \"rewriting\": {\n    \"modules\": [],\n    \"importers\": [],\n    \"macros\": [],\n    \"removed\": [],\n    \"moved\": [],\n    \"warnings\": []\n  }\n}",
+            "exit": 0,
+            "files": {
+              "wrap/.modularize": "+mirror/alpha/alpha/alpha.h\n+alpha.cppm\n+alpha.macros.h\n+prelude.h",
+              "wrap/alpha.cppm": "+module;\n+\n+\n+#include <alpha/alpha.h>\n+\n+export module alpha;\n+\n+export namespace alpha {\n+using ::alpha::Thing;\n+using ::alpha::make;\n+}",
+              "wrap/alpha.macros.h": "+#pragma once\n+#define ALPHA_VERSION 3",
+              "wrap/mirror/alpha/alpha/alpha.h": "(created empty)",
+              "wrap/prelude.h": "+#pragma once\n+\n+import alpha;\n+#include \"alpha.macros.h\""
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "id": "modules/imports/01_imported_symbol",
+  "topic": "modules",
+  "subtopic": "imports",
+  "title": "Imported symbols",
+  "summary": "A name imported from a module reads its declaration on hover, in a file that imports the module",
+  "prose": "The importing file compiles against the module's interface, which clice\nbuilds when the file opens; nothing else needs to be open.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "defs.cppm",
+      "text": "export module Defs;\n\nexport int magic_number() {\n    return 42;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "import Defs;\n\nint main() {\n    return magic_number();\n}\n",
+      "markers": [
+        {
+          "name": "use",
+          "begin": 38,
+          "end": 38,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "hover": {
+              "markdown": "### function `magic_number`\n\n---\n→ `int`\n\n---\n```cpp\nexport int magic_number()\n```",
+              "range": {
+                "$place": "return ⟦magic_number⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 23
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

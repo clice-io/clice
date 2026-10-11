@@ -1,0 +1,237 @@
+{
+  "id": "document_highlight/modules/01_module_units",
+  "topic": "document_highlight",
+  "subtopic": "modules",
+  "title": "Module units",
+  "summary": "Highlights work in module units and on names imported from a module, the module name included",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "import shapes;\n\nint total() {\n    return area(1, 2) + area(3, 4);\n}\n",
+      "markers": [
+        {
+          "name": "module_import",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "area_use",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "shapes.cppm",
+      "text": "export module shapes;\n\nexport int area(int width, int height) {\n    int result = width * height;\n    result += 0;\n    return result;\n}\n",
+      "markers": [
+        {
+          "name": "module_decl",
+          "begin": 14,
+          "end": 14,
+          "range": false
+        },
+        {
+          "name": "area_decl",
+          "begin": 34,
+          "end": 34,
+          "range": false
+        },
+        {
+          "name": "result",
+          "begin": 72,
+          "end": 72,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "module_import",
+          "marker": "module_import",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "import ⟦shapes⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        },
+        {
+          "label": "area_use",
+          "marker": "area_use",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "return ⟦area⟧(1, 2) + area(3, 4);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 15
+                    }
+                  }
+                },
+                "kind": "read"
+              },
+              {
+                "at": {
+                  "$place": "return area(1, 2) + ⟦area⟧(3, 4);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 28
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        },
+        {
+          "label": "module_decl",
+          "marker": "module_decl",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "export module ⟦shapes⟧;",
+                  "path": "shapes.cppm",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 20
+                    }
+                  }
+                },
+                "kind": "text"
+              }
+            ]
+          }
+        },
+        {
+          "label": "area_decl",
+          "marker": "area_decl",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "export int ⟦area⟧(int width, int height) {",
+                  "path": "shapes.cppm",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 15
+                    }
+                  }
+                },
+                "kind": "text"
+              }
+            ]
+          }
+        },
+        {
+          "label": "result",
+          "marker": "result",
+          "value": {
+            "highlights": [
+              {
+                "at": {
+                  "$place": "int ⟦result⟧ = width * height;",
+                  "path": "shapes.cppm",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "⟦result⟧ += 0;",
+                  "path": "shapes.cppm",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 10
+                    }
+                  }
+                },
+                "kind": "write"
+              },
+              {
+                "at": {
+                  "$place": "return ⟦result⟧;",
+                  "path": "shapes.cppm",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 17
+                    }
+                  }
+                },
+                "kind": "read"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

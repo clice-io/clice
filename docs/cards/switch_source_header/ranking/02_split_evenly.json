@@ -1,0 +1,60 @@
+{
+  "id": "switch_source_header/ranking/02_split_evenly",
+  "topic": "switch_source_header",
+  "subtopic": "ranking",
+  "title": "No clear counterpart",
+  "summary": "When no candidate clearly outweighs the others, the editor lists them with their reasons to pick from",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "codec.h",
+      "text": "#pragma once\n\nint encode(int value);\nint decode(int value);\n",
+      "markers": []
+    },
+    {
+      "path": "decode.cpp",
+      "text": "#include \"codec.h\"\n\nint decode(int value) {\n    return value ^ 0x5a;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "encode.cpp",
+      "text": "#include \"codec.h\"\n\nint encode(int value) {\n    return value ^ 0x5a;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"codec.h\"\n\nint round_trip(int value) {\n    return decode(encode(value));\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "codec.h",
+          "value": {
+            "counterparts": {
+              "candidates": [
+                {
+                  "path": "decode.cpp",
+                  "reasons": [
+                    "defines 1 of 2 declarations"
+                  ]
+                },
+                {
+                  "path": "encode.cpp",
+                  "reasons": [
+                    "defines 1 of 2 declarations"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

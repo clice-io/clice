@@ -1,0 +1,81 @@
+{
+  "id": "navigation/deduced_types/06_dependent_auto",
+  "topic": "navigation",
+  "subtopic": "deduced_types",
+  "title": "`auto` in uninstantiated templates",
+  "summary": "Inside a template, an `auto` whose initializer depends on a template parameter reaches the type the initializer resolves to on the class template",
+  "prose": "A type that is the template parameter itself reaches the parameter, however\nthe template is instantiated.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Node {\n    T value;\n    Node* advance();\n};\n\ntemplate <typename T>\nvoid walk(Node<T>& node) {\n    auto next = node.advance();\n    auto value = node.value;\n}\n\nstruct Widget {};\n\nvoid drive(Node<Widget>& node) {\n    walk(node);\n}\n",
+      "markers": [
+        {
+          "name": "dependent_call",
+          "begin": 129,
+          "end": 129,
+          "range": false
+        },
+        {
+          "name": "dependent_member",
+          "begin": 161,
+          "end": 161,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "dependent_call",
+          "marker": "dependent_call",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Node⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "dependent_member",
+          "marker": "dependent_member",
+          "value": {
+            "definition": [
+              {
+                "$place": "template <typename ⟦T⟧> @-3",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 20
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

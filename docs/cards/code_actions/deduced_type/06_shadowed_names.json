@@ -1,0 +1,69 @@
+{
+  "id": "code_actions/deduced_type/06_shadowed_names",
+  "topic": "code_actions",
+  "subtopic": "deduced_type",
+  "title": "Names spelled for the scope",
+  "summary": "A name drops the enclosing namespaces only as far as the shorter name still finds the same type",
+  "prose": "A name hidden by a declaration closer to the expansion keeps its qualifier, and one hidden even when fully qualified starts from the global scope.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Global {};\nGlobal make_global();\n\nnamespace outer {\ntemplate <typename T>\nstruct Box {};\nstruct Item {};\nBox<Item> make_box();\n\nnamespace inner {\nstruct Item {};\nstruct Global {};\n\nvoid f() {\n    auto box = make_box();\n    auto global = ::make_global();\n}\n}  // namespace inner\n}  // namespace outer\n",
+      "markers": [
+        {
+          "name": "argument",
+          "begin": 203,
+          "end": 203,
+          "range": false
+        },
+        {
+          "name": "global",
+          "begin": 230,
+          "end": 230,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "argument",
+          "marker": "argument",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'Box<outer::Item>'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n void f() {\n-    auto box = make_box();\n+    Box<outer::Item> box = make_box();\n     auto global = ::make_global();\n }"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "global",
+          "marker": "global",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with '::Global'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " void f() {\n     auto box = make_box();\n-    auto global = ::make_global();\n+    ::Global global = ::make_global();\n }\n }  // namespace inner"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

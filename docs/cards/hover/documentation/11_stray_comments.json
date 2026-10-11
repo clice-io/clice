@@ -1,0 +1,57 @@
+{
+  "id": "hover/documentation/11_stray_comments",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Stray comments",
+  "summary": "A note separated from a declaration by a blank line shows as its documentation, and no option turns that off",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2148"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace suppression {\n// TODO: tidy this file up.\n\nint counter;\n}\n",
+      "markers": [
+        {
+          "name": "misattributed_note",
+          "begin": 57,
+          "end": 57,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "misattributed_note",
+          "marker": "misattributed_note",
+          "value": {
+            "wrong": "a stray note separated by a blank line shows as the variable's documentation (clangd#2148)",
+            "hover": {
+              "markdown": "### variable `counter`\n\n---\nType: `int`\nTODO: tidy this file up.\n\n---\n```cpp\n// In namespace suppression\nint counter\n```",
+              "range": {
+                "$place": "int ⟦counter⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

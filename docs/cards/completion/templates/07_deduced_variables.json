@@ -1,0 +1,351 @@
+{
+  "id": "completion/templates/07_deduced_variables",
+  "topic": "completion",
+  "subtopic": "templates",
+  "title": "Deduced variable members",
+  "summary": "A variable declared `auto` from a dependent initializer completes the members of the class it deduces to",
+  "prose": "`auto& row = rows[0]; row.` lists the members of `Vec<T>`. The declarator applies as in a real deduction: `const auto&` makes the object const, a by-value `auto` drops the initializer's const, `auto&&` and `decltype(auto)` keep it, and `auto*` takes the pointee. From a data member, `decltype(auto)` takes the type the member is declared with, or with parentheses the const reference the expression is.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Vec {\n    T& operator[](int index);\n    const T& operator[](int index) const;\n\n    void push_back(const T& value);\n    int size() const;\n};\n\ntemplate <typename T>\nstruct Grid {\n    Vec<T> cells;\n    Vec<T> spare[2];\n};\n\ntemplate <typename T>\nvoid bar(Vec<Vec<T>> rows,\n         const Vec<Vec<T>>& fixed,\n         Vec<Vec<T>*> pointers,\n         const Grid<T>& grid) {\n    auto& row = rows[0];\n    row.;\n    const auto& view = rows[0];\n    view.;\n    auto copy = fixed[0];\n    copy.;\n    auto&& forwarded = fixed[0];\n    forwarded.;\n    decltype(auto) exact = fixed[0];\n    exact.;\n    auto* pointer = pointers[0];\n    pointer->;\n    decltype(auto) declared = grid.cells;\n    declared.;\n    decltype(auto) named = (grid.cells);\n    named.;\n    auto decayed = grid.spare;\n    decayed->;\n}\n",
+      "markers": [
+        {
+          "name": "reference",
+          "begin": 430,
+          "end": 430,
+          "range": false
+        },
+        {
+          "name": "const_reference",
+          "begin": 473,
+          "end": 473,
+          "range": false
+        },
+        {
+          "name": "value",
+          "begin": 510,
+          "end": 510,
+          "range": false
+        },
+        {
+          "name": "forwarding",
+          "begin": 559,
+          "end": 559,
+          "range": false
+        },
+        {
+          "name": "decltype_auto",
+          "begin": 608,
+          "end": 608,
+          "range": false
+        },
+        {
+          "name": "pointer",
+          "begin": 656,
+          "end": 656,
+          "range": false
+        },
+        {
+          "name": "decltype_member",
+          "begin": 713,
+          "end": 713,
+          "range": false
+        },
+        {
+          "name": "decltype_parenthesized",
+          "begin": 766,
+          "end": 766,
+          "range": false
+        },
+        {
+          "name": "decayed_array",
+          "begin": 812,
+          "end": 812,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "reference",
+          "marker": "reference",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "T &"
+                },
+                {
+                  "label": "push_back(const T &value)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "const_reference",
+          "marker": "const_reference",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "const T &"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "value",
+          "marker": "value",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "T &"
+                },
+                {
+                  "label": "push_back(const T &value)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "forwarding",
+          "marker": "forwarding",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "const T &"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "decltype_auto",
+          "marker": "decltype_auto",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "const T &"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "pointer",
+          "marker": "pointer",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "T &"
+                },
+                {
+                  "label": "push_back(const T &value)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "decltype_member",
+          "marker": "decltype_member",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "T &"
+                },
+                {
+                  "label": "push_back(const T &value)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "decltype_parenthesized",
+          "marker": "decltype_parenthesized",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "const T &"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "decayed_array",
+          "marker": "decayed_array",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "const T &"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

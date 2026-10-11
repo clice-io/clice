@@ -1,0 +1,64 @@
+{
+  "id": "signature_help/parameters/03_parameter_packs",
+  "topic": "signature_help",
+  "subtopic": "parameters",
+  "title": "Parameter packs",
+  "summary": "A parameter pack shows as the template declares it, marked for its first argument only",
+  "prose": "",
+  "status": "partial",
+  "issues": [
+    "clangd#638"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename... Args>\nvoid emit(Args... args);\n\nint main() {\n    emit();\n    emit(1, 2);\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 76,
+          "end": 76,
+          "range": false
+        },
+        {
+          "name": "second",
+          "begin": 91,
+          "end": 91,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "emit(⟦Args ...args⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "second",
+          "marker": "second",
+          "value": {
+            "wrong": "the pack is not marked for its second argument (clangd#638)",
+            "signature_help": {
+              "signatures": [
+                "emit(Args ...args) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

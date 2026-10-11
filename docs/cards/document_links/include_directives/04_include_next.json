@@ -1,0 +1,107 @@
+{
+  "id": "document_links/include_directives/04_include_next",
+  "topic": "document_links",
+  "subtopic": "include_directives",
+  "title": "`#include_next`",
+  "summary": "`#include_next` and `__has_include_next` link to the next header of that name on the search path",
+  "prose": "Here `first/wrap.h` shadows `second/wrap.h`, and its `#include_next` reaches\nthe second copy.",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "first/wrap.h",
+      "text": "#pragma once\n\n#define WRAP_FIRST 1\n\n#if __has_include_next(<wrap.h>)\n#include_next <wrap.h>\n#endif\n",
+      "markers": [
+        {
+          "name": "next",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include <wrap.h>\n\nint use_wrap = WRAP_FIRST + WRAP_SECOND;\n",
+      "markers": []
+    },
+    {
+      "path": "second/wrap.h",
+      "text": "#pragma once\n\n#define WRAP_SECOND 2\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#include ⟦<wrap.h>⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 17
+                    }
+                  }
+                },
+                "target": "first/wrap.h"
+              }
+            ]
+          }
+        },
+        {
+          "label": "first/wrap.h",
+          "value": {
+            "wrong": "should link to second/wrap.h; the header opened on its own is compiled as the main file, where #include_next starts the search over",
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#if __has_include_next(⟦<wrap.h>⟧)",
+                  "path": "first/wrap.h",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 31
+                    }
+                  }
+                },
+                "target": "first/wrap.h"
+              },
+              {
+                "at": {
+                  "$place": "#include_next ⟦<wrap.h>⟧",
+                  "path": "first/wrap.h",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 22
+                    }
+                  }
+                },
+                "target": "first/wrap.h"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

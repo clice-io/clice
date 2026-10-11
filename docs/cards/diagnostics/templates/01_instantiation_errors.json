@@ -1,0 +1,109 @@
+{
+  "id": "diagnostics/templates/01_instantiation_errors",
+  "topic": "diagnostics",
+  "subtopic": "templates",
+  "title": "Errors in template instantiations",
+  "summary": "An error inside a template shows where the code asks for the instantiation",
+  "prose": "When a template fails for the arguments it is instantiated with, the error is reported on the code that requested the instantiation, not inside the template. Its notes lead through the chain of instantiations to the place in the template where it failed.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "box.h",
+      "text": "template <typename T>\nvoid touch(T t) {\n    t.member();\n}\n\ntemplate <typename T>\nstruct Box {\n    void put(T t) {\n        touch(t);\n    }\n};\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"box.h\"\n\nvoid fill() {\n    Box<int> ints;\n    ints.put(1);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "ints.⟦put⟧(1);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 12
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "In template: member reference base type 'int' is not a structure or union",
+                "source": "clang",
+                "code": "err_typecheck_member_reference_struct_union",
+                "related": [
+                  {
+                    "at": {
+                      "$place": "box.h │ t⟦.⟧member();",
+                      "path": "box.h",
+                      "range": {
+                        "start": {
+                          "line": 2,
+                          "character": 5
+                        },
+                        "end": {
+                          "line": 2,
+                          "character": 6
+                        }
+                      }
+                    },
+                    "message": "error occurred here"
+                  },
+                  {
+                    "at": {
+                      "$place": "box.h │ ⟦touch⟧(t);",
+                      "path": "box.h",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 8
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "message": "in instantiation of function template specialization 'touch<int>' requested here"
+                  },
+                  {
+                    "at": {
+                      "$place": "ints.⟦put⟧(1);",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 4,
+                          "character": 9
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 12
+                        }
+                      }
+                    },
+                    "message": "in instantiation of member function 'Box<int>::put' requested here"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

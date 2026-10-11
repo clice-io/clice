@@ -1,0 +1,76 @@
+{
+  "id": "switch_source_header/counterparts/01_header_and_source",
+  "topic": "switch_source_header",
+  "subtopic": "counterparts",
+  "title": "Header and source",
+  "summary": "A header pairs with the source defining its declarations, and the source with the header",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "lamp.cpp",
+      "text": "#include \"lamp.h\"\n\nstatic int level = 0;\n\nint lamp_brightness() {\n    return level;\n}\n\nvoid lamp_toggle() {\n    level = level == 0 ? 100 : 0;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "lamp.h",
+      "text": "#pragma once\n\nint lamp_brightness();\nvoid lamp_toggle();\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"lamp.h\"\n\nint main() {\n    lamp_toggle();\n    return lamp_brightness();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "lamp.cpp",
+          "value": {
+            "counterparts": {
+              "preferred": "lamp.h",
+              "candidates": [
+                {
+                  "path": "lamp.h",
+                  "reasons": [
+                    "declares 2 of 2 definitions",
+                    "same name"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "lamp.h",
+          "value": {
+            "counterparts": {
+              "preferred": "lamp.cpp",
+              "candidates": [
+                {
+                  "path": "lamp.cpp",
+                  "reasons": [
+                    "defines 2 of 2 declarations",
+                    "same name"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "main.cpp",
+          "value": {
+            "counterparts": {
+              "candidates": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

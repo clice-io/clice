@@ -1,0 +1,81 @@
+{
+  "id": "navigation/implicit_targets/06_rewritten_comparisons",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "C++20 rewritten operators",
+  "summary": "Rewritten comparisons navigate to the operator that implements them",
+  "prose": "For a comparison synthesized by the C++20 rewrite rules, go-to-definition\non the written operator reaches the operator that actually implements it:\n`!=` reaches `operator==`, and `>` reaches `operator<=>`.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace std {\nstruct strong_ordering {\n    int n;\n    constexpr operator int() const { return n; }\n    static const strong_ordering equal, greater, less;\n};\nconstexpr strong_ordering strong_ordering::equal = {0};\nconstexpr strong_ordering strong_ordering::greater = {1};\nconstexpr strong_ordering strong_ordering::less = {-1};\n}\n\nstruct S {\n    int value;\n    bool operator==(const S& other) const;\n    auto operator<=>(const S& other) const = default;\n};\n\nvoid use(S a, S b) {\n    bool ne = a != b;\n    bool gt = a > b;\n}\n",
+      "markers": [
+        {
+          "name": "neq",
+          "begin": 496,
+          "end": 496,
+          "range": false
+        },
+        {
+          "name": "gt",
+          "begin": 518,
+          "end": 518,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "neq",
+          "marker": "neq",
+          "value": {
+            "definition": [
+              {
+                "$place": "bool ⟦operator==⟧(const S& other) const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 19
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "gt",
+          "marker": "gt",
+          "value": {
+            "definition": [
+              {
+                "$place": "auto ⟦operator<=>⟧(const S& other) const = default;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 20
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

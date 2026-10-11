@@ -1,0 +1,85 @@
+{
+  "id": "code_actions/define/04_class_template_member",
+  "topic": "code_actions",
+  "subtopic": "define",
+  "title": "Class template member",
+  "summary": "The definition of a class template's member carries the template head and the template arguments in its qualifier",
+  "prose": "Default template arguments are not repeated on the head.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T, int N = 4>\nstruct Box {\n    T get() const;\n};\n\ntemplate <typename T>\nstruct Box<T*, 1> {\n    T* single();\n};\n",
+      "markers": [
+        {
+          "name": "get",
+          "begin": 52,
+          "end": 52,
+          "range": false
+        },
+        {
+          "name": "single",
+          "begin": 118,
+          "end": 118,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "get",
+          "marker": "get",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define 'get' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " template <typename T, int N = 4>\n struct Box {\n-    T get() const;\n+    T get() const {}\n };\n"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'Box<T, N>::get' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " };\n\n+template <typename T, int N>\n+T Box<T, N>::get() const {\n+}\n+\n template <typename T>\n struct Box<T*, 1> {"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "single",
+          "marker": "single",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define 'single' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " template <typename T>\n struct Box<T*, 1> {\n-    T* single();\n+    T* single() {}\n };"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'Box<T*, 1>::single' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     T* single();\n };\n+\n+template <typename T>\n+T* Box<T*, 1>::single() {\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

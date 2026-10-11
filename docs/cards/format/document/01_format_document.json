@@ -1,0 +1,35 @@
+{
+  "id": "format/document/01_format_document",
+  "topic": "format",
+  "subtopic": "document",
+  "title": "Format a document",
+  "summary": "Formatting a file lays all of it out in the style its .clang-format asks for",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\nIndentWidth: 4\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int    add(   int   a  ,  int   b  ) {\nreturn   a+b ;\n}\n\nstruct  Point{int x;int y;};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "formatting": "-int    add(   int   a  ,  int   b  ) {\n-return   a+b ;\n-}\n+int add(int a, int b) { return a + b; }\n\n-struct  Point{int x;int y;};\n+struct Point {\n+    int x;\n+    int y;\n+};"
+          }
+        }
+      ]
+    }
+  ]
+}

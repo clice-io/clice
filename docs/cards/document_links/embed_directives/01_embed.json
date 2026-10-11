@@ -1,0 +1,53 @@
+{
+  "id": "document_links/embed_directives/01_embed",
+  "topic": "document_links",
+  "subtopic": "embed_directives",
+  "title": "`#embed`",
+  "summary": "The resource path links to the embedded file",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "data.bin",
+      "text": "clice",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "const char data[] = {\n#embed \"data.bin\"\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#embed ⟦\"data.bin\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 17
+                    }
+                  }
+                },
+                "target": "data.bin"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

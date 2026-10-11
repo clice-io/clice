@@ -1,0 +1,81 @@
+{
+  "id": "diagnostics/clang_tidy/04_nolint",
+  "topic": "diagnostics",
+  "subtopic": "clang_tidy",
+  "title": "Silencing with NOLINT",
+  "summary": "`NOLINT` comments silence findings on their line, and compiler warnings too",
+  "prose": "`// NOLINT` silences its own line and `// NOLINTNEXTLINE` the next, for every check or the ones named in parentheses. While clang-tidy runs on the file, they silence compiler warnings on those lines as well.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,bugprone-integer-division\"\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "double first(int a, int b) { return a / b; } // NOLINT\n\n// NOLINTNEXTLINE(bugprone-integer-division)\ndouble second(int a, int b) { return a / b; }\n\ndouble third(int a, int b) { return a / b; }\n\nint quiet() { int unused; return 0; } // NOLINT\n\nint loud() { int unused; return 0; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "double third(int a, int b) { return ⟦a⟧ / b; }",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 36
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 37
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "result of integer division used in a floating point context; possible loss of precision",
+                "source": "clang-tidy",
+                "code": "bugprone-integer-division",
+                "link": "https://clang.llvm.org/extra/clang-tidy/checks/bugprone/integer-division.html",
+                "tags": []
+              },
+              {
+                "at": {
+                  "$place": "int loud() { int ⟦unused⟧; return 0; }",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 23
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "unused variable 'unused'",
+                "source": "clang",
+                "code": "warn_unused_variable",
+                "tags": [
+                  "Unnecessary"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

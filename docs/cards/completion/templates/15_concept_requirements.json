@@ -1,0 +1,52 @@
+{
+  "id": "completion/templates/15_concept_requirements",
+  "topic": "completion",
+  "subtopic": "templates",
+  "title": "Concept requirements",
+  "summary": "Inside a constrained template, the members the concept requires complete after a dot",
+  "prose": "They complete as bare names for now, without their parameter lists.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1103"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nconcept Shape = requires(T t) {\n    t.draw();\n    t.resize(int{}, int{});\n};\n\ntemplate <Shape T>\nvoid render(T& widget) {\n    widget.;\n}\n",
+      "markers": [
+        {
+          "name": "member",
+          "begin": 155,
+          "end": 155,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "wrong": "should complete as methods with their parameter lists, draw() and resize(int, int)",
+            "completion": {
+              "items": [
+                {
+                  "label": "draw",
+                  "kind": "Keyword"
+                },
+                {
+                  "label": "resize",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "id": "switch_source_header/counterparts/02_template_definitions",
+  "topic": "switch_source_header",
+  "subtopic": "counterparts",
+  "title": "Template definitions apart",
+  "summary": "A header and the `.tpp` file it includes for its template definitions switch to each other",
+  "prose": "",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"matrix.h\"\n\nint trace(Matrix<int>& matrix) {\n    return matrix.at(0, 0) + matrix.at(1, 1);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "matrix.h",
+      "text": "#pragma once\n\ntemplate <typename T>\nclass Matrix {\npublic:\n    T at(int row, int column) const;\n    void set(int row, int column, T value);\n\nprivate:\n    T cells[4] = {};\n};\n\n#include \"matrix.tpp\"\n",
+      "markers": []
+    },
+    {
+      "path": "matrix.tpp",
+      "text": "template <typename T>\nT Matrix<T>::at(int row, int column) const {\n    return cells[row * 2 + column];\n}\n\ntemplate <typename T>\nvoid Matrix<T>::set(int row, int column, T value) {\n    cells[row * 2 + column] = value;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "indexed",
+      "blocks": [
+        {
+          "label": "matrix.h",
+          "value": {
+            "counterparts": {
+              "preferred": "matrix.tpp",
+              "candidates": [
+                {
+                  "path": "matrix.tpp",
+                  "reasons": [
+                    "defines 2 of 2 declarations",
+                    "same name"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "matrix.tpp",
+          "value": {
+            "counterparts": {
+              "preferred": "matrix.h",
+              "candidates": [
+                {
+                  "path": "matrix.h",
+                  "reasons": [
+                    "declares 2 of 2 definitions",
+                    "same name"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "opened first",
+      "blocks": [
+        {
+          "label": "matrix.h",
+          "value": {
+            "wrong": "matrix.tpp should count as defining both declarations, as it does when main.cpp was closed while the index ran",
+            "counterparts": {
+              "preferred": "matrix.tpp",
+              "candidates": [
+                {
+                  "path": "matrix.tpp",
+                  "reasons": [
+                    "same name"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

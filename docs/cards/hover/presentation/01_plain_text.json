@@ -1,0 +1,191 @@
+{
+  "id": "hover/presentation/01_plain_text",
+  "topic": "hover",
+  "subtopic": "presentation",
+  "title": "Plain text cards",
+  "summary": "Cards are markdown, or plain text for editors that cannot show markdown",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "/// Computes the answer. Tests primality of `p`.\nconstexpr int answer(int p) {\n    return p + 41;\n}\n\nint value = answer(1);\n\nstruct Layout {\n    char first;\n    int second;\n};\n",
+      "markers": [
+        {
+          "name": "function",
+          "begin": 65,
+          "end": 65,
+          "range": false
+        },
+        {
+          "name": "variable",
+          "begin": 107,
+          "end": 107,
+          "range": false
+        },
+        {
+          "name": "field",
+          "begin": 169,
+          "end": 169,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "markdown": "### function `answer`\n\n---\n→ `int`\nParameters:\n- `int p`\n\nComputes the answer. Tests primality of `p`.\n\n---\n```cpp\nconstexpr int answer(int p)\n```",
+              "range": {
+                "$place": "constexpr int ⟦answer⟧(int p) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "hover": {
+              "markdown": "### variable `value`\n\n---\nType: `int`\nValue = `42 (0x2a)`\n\n---\n```cpp\nint value = answer(1)\n```",
+              "range": {
+                "$place": "int ⟦value⟧ = answer(1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "field",
+          "marker": "field",
+          "value": {
+            "hover": {
+              "markdown": "### field `second`\n\n---\nType: `int`\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Layout\npublic: int second\n```",
+              "range": {
+                "$place": "int ⟦second⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "hover": {
+          "parse_comment_as_markdown": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "markdown": "function answer\n\n→ int\nParameters:\n- int p\nComputes the answer. Tests primality of `p`.\n\nconstexpr int answer(int p)",
+              "range": {
+                "$place": "constexpr int ⟦answer⟧(int p) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "hover": {
+              "markdown": "variable value\n\nType: int\nValue = 42 (0x2a)\n\nint value = answer(1)",
+              "range": {
+                "$place": "int ⟦value⟧ = answer(1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "field",
+          "marker": "field",
+          "value": {
+            "hover": {
+              "markdown": "field second\n\nType: int\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes\n\n// In Layout\npublic: int second",
+              "range": {
+                "$place": "int ⟦second⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

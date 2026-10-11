@@ -1,0 +1,144 @@
+{
+  "id": "semantic_tokens/special_members/01_constructors_destructors",
+  "topic": "semantic_tokens",
+  "subtopic": "special_members",
+  "title": "Constructors and destructors",
+  "summary": "Constructors and destructors use method tokens with dedicated modifiers",
+  "prose": "A destructor name renders as two tokens: the `~` carries the method\nkind and the declaration/definition modifiers, the class name after it\nstays a reference to the class.",
+  "status": "supported",
+  "issues": [
+    "clangd#1509",
+    "clangd#2078",
+    "clangd#872"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Session {\n    Session();\n    ~Session();\n};\n\nSession::Session() {}\n\nSession::~Session() {}\n\nvoid destroy(Session* session) {\n    session->~Session();\n}\n",
+      "markers": [
+        {
+          "name": "Session_decl",
+          "begin": 21,
+          "end": 21,
+          "range": false
+        },
+        {
+          "name": "tilde_decl",
+          "begin": 36,
+          "end": 36,
+          "range": false
+        },
+        {
+          "name": "Session_use",
+          "begin": 37,
+          "end": 37,
+          "range": false
+        },
+        {
+          "name": "Session_def",
+          "begin": 61,
+          "end": 61,
+          "range": false
+        },
+        {
+          "name": "tilde_def",
+          "begin": 84,
+          "end": 84,
+          "range": false
+        },
+        {
+          "name": "tilde_use",
+          "begin": 145,
+          "end": 145,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "Session_decl",
+          "marker": "Session_decl",
+          "value": {
+            "semantic_token": {
+              "text": "Session",
+              "type": "method",
+              "modifiers": [
+                "declaration",
+                "constructorOrDestructor"
+              ]
+            }
+          }
+        },
+        {
+          "label": "tilde_decl",
+          "marker": "tilde_decl",
+          "value": {
+            "semantic_token": {
+              "text": "~",
+              "type": "method",
+              "modifiers": [
+                "declaration",
+                "constructorOrDestructor"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Session_use",
+          "marker": "Session_use",
+          "value": {
+            "semantic_token": {
+              "text": "Session",
+              "type": "struct"
+            }
+          }
+        },
+        {
+          "label": "Session_def",
+          "marker": "Session_def",
+          "value": {
+            "semantic_token": {
+              "text": "Session",
+              "type": "method",
+              "modifiers": [
+                "definition",
+                "constructorOrDestructor"
+              ]
+            }
+          }
+        },
+        {
+          "label": "tilde_def",
+          "marker": "tilde_def",
+          "value": {
+            "semantic_token": {
+              "text": "~",
+              "type": "method",
+              "modifiers": [
+                "definition",
+                "constructorOrDestructor"
+              ]
+            }
+          }
+        },
+        {
+          "label": "tilde_use",
+          "marker": "tilde_use",
+          "value": {
+            "semantic_token": {
+              "text": "~",
+              "type": "method",
+              "modifiers": [
+                "constructorOrDestructor"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

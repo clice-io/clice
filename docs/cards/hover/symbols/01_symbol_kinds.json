@@ -1,0 +1,257 @@
+{
+  "id": "hover/symbols/01_symbol_kinds",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Symbol kinds",
+  "summary": "The card's title names what the symbol is: namespace, struct, union, enum, enumerator, alias, field, function",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace kinds {\n\nstruct Point {\n    int x;\n};\n\nunion Packet {\n    int raw;\n};\n\nenum class Color {\n    Red,\n};\n\nusing Alias = Point;\n\nint length(Point p) {\n    return p.x;\n}\n\n}\n",
+      "markers": [
+        {
+          "name": "namespace",
+          "begin": 12,
+          "end": 12,
+          "range": false
+        },
+        {
+          "name": "struct",
+          "begin": 29,
+          "end": 29,
+          "range": false
+        },
+        {
+          "name": "field",
+          "begin": 42,
+          "end": 42,
+          "range": false
+        },
+        {
+          "name": "union",
+          "begin": 59,
+          "end": 59,
+          "range": false
+        },
+        {
+          "name": "enum",
+          "begin": 95,
+          "end": 95,
+          "range": false
+        },
+        {
+          "name": "enumerator",
+          "begin": 105,
+          "end": 105,
+          "range": false
+        },
+        {
+          "name": "typedef",
+          "begin": 122,
+          "end": 122,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 143,
+          "end": 143,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "namespace",
+          "marker": "namespace",
+          "value": {
+            "hover": {
+              "markdown": "### namespace `kinds`\n\n---\n```cpp\nnamespace kinds {}\n```",
+              "range": {
+                "$place": "namespace ⟦kinds⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "struct",
+          "marker": "struct",
+          "value": {
+            "hover": {
+              "markdown": "### struct `Point`\n\n---\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In namespace kinds\nstruct Point {\n  int x;\n}\n```",
+              "range": {
+                "$place": "struct ⟦Point⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "field",
+          "marker": "field",
+          "value": {
+            "hover": {
+              "markdown": "### field `x`\n\n---\nType: `int`\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Point\npublic: int x\n```",
+              "range": {
+                "$place": "int ⟦x⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "union",
+          "marker": "union",
+          "value": {
+            "hover": {
+              "markdown": "### union `Packet`\n\n---\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In namespace kinds\nunion Packet {\n  int raw;\n}\n```",
+              "range": {
+                "$place": "union ⟦Packet⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "enum",
+          "marker": "enum",
+          "value": {
+            "hover": {
+              "markdown": "### enum `Color`\n\n---\n```cpp\n// In namespace kinds\nenum class Color : int { Red = 0 }\n```",
+              "range": {
+                "$place": "enum class ⟦Color⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "enumerator",
+          "marker": "enumerator",
+          "value": {
+            "hover": {
+              "markdown": "### enumerator `Red`\n\n---\nType: `enum kinds::Color`\nValue = `0`\n\n---\n```cpp\n// In Color\nRed\n```",
+              "range": {
+                "$place": "⟦Red⟧,",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 7
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "typedef",
+          "marker": "typedef",
+          "value": {
+            "hover": {
+              "markdown": "### type `Alias`\n\n---\nType: `struct kinds::Point`\n\n---\n```cpp\n// In namespace kinds\nusing Alias = Point\n```",
+              "range": {
+                "$place": "using ⟦Alias⟧ = Point;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "markdown": "### function `length`\n\n---\n→ `int`\nParameters:\n- `Point p`\n\n---\n```cpp\n// In namespace kinds\nint length(Point p)\n```",
+              "range": {
+                "$place": "int ⟦length⟧(Point p) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 16,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

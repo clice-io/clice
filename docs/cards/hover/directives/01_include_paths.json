@@ -1,0 +1,59 @@
+{
+  "id": "hover/directives/01_include_paths",
+  "topic": "hover",
+  "subtopic": "directives",
+  "title": "Include directives",
+  "summary": "Hovering an `#include` shows the file it resolves to",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"own_header.h\"\n\nint use = own_header_value;\n",
+      "markers": [
+        {
+          "name": "include_path",
+          "begin": 15,
+          "end": 15,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "own_header.h",
+      "text": "#pragma once\n\ninline int own_header_value = 7;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "include_path",
+          "marker": "include_path",
+          "value": {
+            "hover": {
+              "markdown": "### `own_header.h`\n\n---\n```cpp\n${WS}/own_header.h\n```",
+              "range": {
+                "$place": "#include ⟦\"own_header.h\"⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 23
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

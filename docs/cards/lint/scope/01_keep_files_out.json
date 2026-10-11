@@ -1,0 +1,51 @@
+{
+  "id": "lint/scope/01_keep_files_out",
+  "topic": "lint",
+  "subtopic": "scope",
+  "title": "Keep files out of lint",
+  "summary": "A rule with lint = false keeps its files out of the report, headers and units alike",
+  "prose": "A vendored library is neither checked as a unit of its own nor reported where the project's units include it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,modernize-use-nullptr\"\n",
+      "markers": []
+    },
+    {
+      "path": "clice.toml",
+      "text": "[[rules]]\npatterns = [\"vendor/**\"]\nlint = false\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"vendor/lib.h\"\n\nint* own_default() {\n    return 0;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "vendor/lib.cpp",
+      "text": "#include \"lib.h\"\n\nint* lib_fallback() {\n    return 0;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "vendor/lib.h",
+      "text": "#pragma once\n\ninline int* lib_default() {\n    return 0;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice lint --workers 2",
+          "value": {
+            "stdout": "${WS}/main.cpp:4:12: warning: use nullptr [modernize-use-nullptr]\nLinted 1 translation unit in #s: 1 finding.",
+            "exit": 1
+          }
+        }
+      ]
+    }
+  ]
+}

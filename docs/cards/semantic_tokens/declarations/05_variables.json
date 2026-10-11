@@ -1,0 +1,259 @@
+{
+  "id": "semantic_tokens/declarations/05_variables",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Variables",
+  "summary": "Variable declarations and references keep their respective variable kinds",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Holder {\n    int field;\n    static int shared;\n};\n\nenum class State { Idle };\n\nint global_value = 1;\n\nvoid touch(int param) {\n    int local = param + global_value;\n    Holder h;\n    h.field = local;\n    Holder::shared = h.field;\n    State state = State::Idle;\n}\n",
+      "markers": [
+        {
+          "name": "field_def",
+          "begin": 24,
+          "end": 24,
+          "range": false
+        },
+        {
+          "name": "shared_decl",
+          "begin": 46,
+          "end": 46,
+          "range": false
+        },
+        {
+          "name": "Idle_def",
+          "begin": 77,
+          "end": 77,
+          "range": false
+        },
+        {
+          "name": "global_value_def",
+          "begin": 90,
+          "end": 90,
+          "range": false
+        },
+        {
+          "name": "param_def",
+          "begin": 124,
+          "end": 124,
+          "range": false
+        },
+        {
+          "name": "local_def",
+          "begin": 141,
+          "end": 141,
+          "range": false
+        },
+        {
+          "name": "param_use",
+          "begin": 149,
+          "end": 149,
+          "range": false
+        },
+        {
+          "name": "global_value_use",
+          "begin": 157,
+          "end": 157,
+          "range": false
+        },
+        {
+          "name": "field_use",
+          "begin": 191,
+          "end": 191,
+          "range": false
+        },
+        {
+          "name": "local_use",
+          "begin": 199,
+          "end": 199,
+          "range": false
+        },
+        {
+          "name": "shared_use",
+          "begin": 218,
+          "end": 218,
+          "range": false
+        },
+        {
+          "name": "field_use2",
+          "begin": 229,
+          "end": 229,
+          "range": false
+        },
+        {
+          "name": "Idle_use",
+          "begin": 261,
+          "end": 261,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "field_def",
+          "marker": "field_def",
+          "value": {
+            "semantic_token": {
+              "text": "field",
+              "type": "field",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "shared_decl",
+          "marker": "shared_decl",
+          "value": {
+            "semantic_token": {
+              "text": "shared",
+              "type": "variable",
+              "modifiers": [
+                "declaration",
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "Idle_def",
+          "marker": "Idle_def",
+          "value": {
+            "semantic_token": {
+              "text": "Idle",
+              "type": "enumMember",
+              "modifiers": [
+                "definition",
+                "readonly"
+              ]
+            }
+          }
+        },
+        {
+          "label": "global_value_def",
+          "marker": "global_value_def",
+          "value": {
+            "semantic_token": {
+              "text": "global_value",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "param_def",
+          "marker": "param_def",
+          "value": {
+            "semantic_token": {
+              "text": "param",
+              "type": "parameter",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "local_def",
+          "marker": "local_def",
+          "value": {
+            "semantic_token": {
+              "text": "local",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "param_use",
+          "marker": "param_use",
+          "value": {
+            "semantic_token": {
+              "text": "param",
+              "type": "parameter"
+            }
+          }
+        },
+        {
+          "label": "global_value_use",
+          "marker": "global_value_use",
+          "value": {
+            "semantic_token": {
+              "text": "global_value",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "field_use",
+          "marker": "field_use",
+          "value": {
+            "semantic_token": {
+              "text": "field",
+              "type": "field"
+            }
+          }
+        },
+        {
+          "label": "local_use",
+          "marker": "local_use",
+          "value": {
+            "semantic_token": {
+              "text": "local",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "shared_use",
+          "marker": "shared_use",
+          "value": {
+            "semantic_token": {
+              "text": "shared",
+              "type": "variable",
+              "modifiers": [
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "field_use2",
+          "marker": "field_use2",
+          "value": {
+            "semantic_token": {
+              "text": "field",
+              "type": "field"
+            }
+          }
+        },
+        {
+          "label": "Idle_use",
+          "marker": "Idle_use",
+          "value": {
+            "semantic_token": {
+              "text": "Idle",
+              "type": "enumMember",
+              "modifiers": [
+                "readonly"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

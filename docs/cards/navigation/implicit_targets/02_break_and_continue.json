@@ -1,0 +1,55 @@
+{
+  "id": "navigation/implicit_targets/02_break_and_continue",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "`break` / `continue`",
+  "summary": "`break` and `continue` do not navigate to their enclosing control statement yet",
+  "prose": "Go-to-definition on `break` or `continue` does not reach the head of the\nloop or switch it controls.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1921"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void loop() {\n    for (int i = 0; i < 10; i += 1) {\n        if (i == 5) break;\n        continue;\n    }\n}\n",
+      "markers": [
+        {
+          "name": "break",
+          "begin": 72,
+          "end": 72,
+          "range": false
+        },
+        {
+          "name": "continue",
+          "begin": 87,
+          "end": 87,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "break",
+          "marker": "break",
+          "value": {
+            "wrong": "should reach the loop it leaves (clangd#1921)",
+            "definition": []
+          }
+        },
+        {
+          "label": "continue",
+          "marker": "continue",
+          "value": {
+            "wrong": "should reach the loop it continues (clangd#1921)",
+            "definition": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "id": "switch_source_header/ranking/01_scattered_definitions",
+  "topic": "switch_source_header",
+  "subtopic": "ranking",
+  "title": "Definitions across several sources",
+  "summary": "When several sources define a header's declarations, the one defining clearly the most is taken directly and the others stay listed",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"text.h\"\n\nint process(char* text) {\n    return trim(text) + split(text) + join(text) + upper(text);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "text.h",
+      "text": "#pragma once\n\nint trim(char* text);\nint split(char* text);\nint join(char* text);\nint upper(char* text);\n",
+      "markers": []
+    },
+    {
+      "path": "text_case.cpp",
+      "text": "#include \"text.h\"\n\nint upper(char* text) {\n    return text[0] - 32;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "text_ops.cpp",
+      "text": "#include \"text.h\"\n\nint trim(char* text) {\n    return text[0];\n}\n\nint split(char* text) {\n    return text[1];\n}\n\nint join(char* text) {\n    return text[2];\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "text.h",
+          "value": {
+            "counterparts": {
+              "preferred": "text_ops.cpp",
+              "candidates": [
+                {
+                  "path": "text_ops.cpp",
+                  "reasons": [
+                    "defines 3 of 4 declarations"
+                  ]
+                },
+                {
+                  "path": "text_case.cpp",
+                  "reasons": [
+                    "defines 1 of 4 declarations"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "text_case.cpp",
+          "value": {
+            "counterparts": {
+              "preferred": "text.h",
+              "candidates": [
+                {
+                  "path": "text.h",
+                  "reasons": [
+                    "declares 1 of 1 definition"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

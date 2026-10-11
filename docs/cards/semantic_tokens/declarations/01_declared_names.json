@@ -1,0 +1,120 @@
+{
+  "id": "semantic_tokens/declarations/01_declared_names",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Declared names",
+  "summary": "Each declared name is colored by what it declares",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace orchard {\n\nstruct Tree {\n    int height;\n};\n\nint grow(Tree& tree, int amount);\n\n}\n",
+      "markers": [
+        {
+          "name": "ns",
+          "begin": 10,
+          "end": 10,
+          "range": false
+        },
+        {
+          "name": "type",
+          "begin": 28,
+          "end": 28,
+          "range": false
+        },
+        {
+          "name": "field",
+          "begin": 43,
+          "end": 43,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 59,
+          "end": 59,
+          "range": false
+        },
+        {
+          "name": "param",
+          "begin": 70,
+          "end": 70,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "ns",
+          "marker": "ns",
+          "value": {
+            "semantic_token": {
+              "text": "orchard",
+              "type": "namespace",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "semantic_token": {
+              "text": "Tree",
+              "type": "struct",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "field",
+          "marker": "field",
+          "value": {
+            "semantic_token": {
+              "text": "height",
+              "type": "field",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "semantic_token": {
+              "text": "grow",
+              "type": "function",
+              "modifiers": [
+                "declaration"
+              ]
+            }
+          }
+        },
+        {
+          "label": "param",
+          "marker": "param",
+          "value": {
+            "semantic_token": {
+              "text": "tree",
+              "type": "parameter",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

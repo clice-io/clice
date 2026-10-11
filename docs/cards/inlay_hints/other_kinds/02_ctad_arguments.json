@@ -1,0 +1,50 @@
+{
+  "id": "inlay_hints/other_kinds/02_ctad_arguments",
+  "topic": "inlay_hints",
+  "subtopic": "other_kinds",
+  "title": "Deduced class template arguments",
+  "summary": "A class template whose arguments a constructor call deduces does not show them yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2331"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename A, typename B>\nstruct Pair {\n    A first;\n    B second;\n    Pair(A a, B b);\n};\n\nPair pair(1, 2.5);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "wrong": "should show the deduced template arguments, <int, double> after pair (clangd#2331)",
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "Pair pair(⟨a:⟩1, ⟨b:⟩2.5);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 18
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

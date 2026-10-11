@@ -1,0 +1,95 @@
+{
+  "id": "navigation/call_hierarchy/04_signature_details",
+  "topic": "navigation",
+  "subtopic": "call_hierarchy",
+  "title": "Call hierarchy item details",
+  "summary": "A call hierarchy item carries only its name; the function signature is not attached in a detail field, so overloads are indistinguishable in the hierarchy",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int compute(int a, int b) {\n    return a + b;\n}\n\nint caller() {\n    return compute(1, 2);\n}\n",
+      "markers": [
+        {
+          "name": "function",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "wrong": "the item should show the signature beside the name, to tell overloads apart",
+            "call_hierarchy": [
+              {
+                "name": "compute",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦compute⟧(int a, int b) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 11
+                    }
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "caller",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦caller⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 10
+                    }
+                  }
+                },
+                "sites": [
+                  {
+                    "$place": "return ⟦compute⟧(1, 2);",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 5,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 5,
+                        "character": 18
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "id": "semantic_tokens/preprocessor/04_macro_expansions",
+  "topic": "semantic_tokens",
+  "subtopic": "preprocessor",
+  "title": "Expansion sites and arguments",
+  "summary": "Expansion names are macros, written arguments keep their semantics, definition bodies stay lexical",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int value = 1;\n\n#define ID(x) x\n#define CALL helper()\n\nvoid helper();\n\nint copied = ID(value);\n\nvoid run() {\n    CALL;\n}\n",
+      "markers": [
+        {
+          "name": "helper",
+          "begin": 45,
+          "end": 45,
+          "range": false
+        },
+        {
+          "name": "ID",
+          "begin": 84,
+          "end": 84,
+          "range": false
+        },
+        {
+          "name": "value",
+          "begin": 87,
+          "end": 87,
+          "range": false
+        },
+        {
+          "name": "CALL",
+          "begin": 113,
+          "end": 113,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "helper",
+          "marker": "helper",
+          "value": {
+            "semantic_token": {
+              "text": "helper",
+              "type": "none"
+            }
+          }
+        },
+        {
+          "label": "ID",
+          "marker": "ID",
+          "value": {
+            "semantic_token": {
+              "text": "ID",
+              "type": "macro"
+            }
+          }
+        },
+        {
+          "label": "value",
+          "marker": "value",
+          "value": {
+            "semantic_token": {
+              "text": "value",
+              "type": "variable"
+            }
+          }
+        },
+        {
+          "label": "CALL",
+          "marker": "CALL",
+          "value": {
+            "semantic_token": {
+              "text": "CALL",
+              "type": "macro"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

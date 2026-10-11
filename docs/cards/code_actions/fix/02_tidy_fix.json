@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/fix/02_tidy_fix",
+  "topic": "code_actions",
+  "subtopic": "fix",
+  "title": "clang-tidy fix",
+  "summary": "A clang-tidy finding's fix is offered as a quick fix",
+  "prose": "Without a `.clang-tidy` above the file, a small default set of checks runs.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace detail {\nint value;\n}\n\nusing detail::value;\n",
+      "markers": [
+        {
+          "name": "using",
+          "begin": 47,
+          "end": 47,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "using",
+          "marker": "using",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "quickfix",
+                "title": "remove the using",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " }\n\n-using detail::value;"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

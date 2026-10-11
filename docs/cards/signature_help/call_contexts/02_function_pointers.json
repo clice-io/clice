@@ -1,0 +1,43 @@
+{
+  "id": "signature_help/call_contexts/02_function_pointers",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Function pointer calls",
+  "summary": "A call through a function pointer shows the parameter names its type spells",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int main() {\n    void (*callback)(int code, double value) = nullptr;\n    callback(5, 1.5);\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 82,
+          "end": 82,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "(⟦int code⟧, double value) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

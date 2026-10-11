@@ -1,0 +1,40 @@
+{
+  "id": "diagnostics/clang_tidy/09_turned_off",
+  "topic": "diagnostics",
+  "subtopic": "clang_tidy",
+  "title": "Turning clang-tidy off",
+  "summary": "`clang_tidy = false` keeps clang-tidy off open files",
+  "prose": "With clang-tidy off, open files show only the compiler's diagnostics, whatever the `.clang-tidy` enables.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,bugprone-integer-division\"\n",
+      "markers": []
+    },
+    {
+      "path": "clice.toml",
+      "text": "[diagnostics]\nclang_tidy = false\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "double ratio(int total, int count) {\n    return total / count;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": []
+          }
+        }
+      ]
+    }
+  ]
+}

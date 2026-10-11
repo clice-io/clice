@@ -1,0 +1,88 @@
+{
+  "id": "hover/symbols/14_header_symbols",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Symbols from headers",
+  "summary": "A symbol declared in an included header shows its documentation and definition",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "geometry.h",
+      "text": "#pragma once\n\nnamespace geometry {\n\n/// A point in the plane.\nstruct Point {\n    int x;\n    int y;\n};\n\n/// Distance from the origin, in taxicab steps.\nint norm(Point p);\n\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"geometry.h\"\n\nint steps() {\n    geometry::Point corner{3, 4};\n    return geometry::norm(corner);\n}\n",
+      "markers": [
+        {
+          "name": "type",
+          "begin": 51,
+          "end": 51,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 92,
+          "end": 92,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "hover": {
+              "markdown": "### struct `Point`\n\n---\nA point in the plane.\n\n---\n```cpp\n// In namespace geometry\nstruct Point {\n  int x;\n  int y;\n}\n```",
+              "range": {
+                "$place": "geometry::⟦Point⟧ corner{3, 4};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "markdown": "### function `norm`\n\n---\n→ `int`\nParameters:\n- `Point p`\n\nDistance from the origin, in taxicab steps.\n\n---\n```cpp\n// In namespace geometry\nint norm(Point p)\n```",
+              "range": {
+                "$place": "return geometry::⟦norm⟧(corner);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 21
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 25
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

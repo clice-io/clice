@@ -1,0 +1,187 @@
+{
+  "id": "compile/encoding/02_line_endings",
+  "topic": "compile",
+  "subtopic": "encoding",
+  "title": "Windows line endings",
+  "summary": "Files whose lines end in CRLF answer at the same places as any other",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "h.h",
+      "text": "#pragma once\r\n\r\ninline int helper() {\r\n    return 1;\r\n}\r\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"h.h\"\r\n\r\nint main() {\r\n    return helper();\r\n}\r\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "helper",
+          "value": {
+            "hover": {
+              "markdown": "### function `helper`\n\n---\n→ `int`\n\n---\n```cpp\ninline int helper()\n```",
+              "range": {
+                "$place": "return ⟦helper⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "links",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"h.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 14
+                    }
+                  }
+                },
+                "target": "h.h"
+              }
+            ]
+          }
+        },
+        {
+          "label": "tokens",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦#include⟧ \"h.h\"",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#include ⟦\"h.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "header"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ main() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦main⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧ helper();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "return ⟦helper⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

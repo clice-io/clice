@@ -1,0 +1,210 @@
+{
+  "id": "contexts/fragments/01_class_body",
+  "topic": "contexts",
+  "subtopic": "fragments",
+  "title": "Class body fragments",
+  "summary": "A file included inside a class body compiles as part of that class",
+  "prose": "`body.inc` holds members that `rec.cpp` includes between the braces of `Record`. Opened on its own, it compiles inside the class, so it has no errors, lists its members, and hover and go-to-definition work on them.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "base.h",
+      "text": "#pragma once\nstruct Base {};\n",
+      "markers": []
+    },
+    {
+      "path": "body.inc",
+      "text": "int field_a;\nint field_b;\nint sum() const { return field_a + field_b; }\n",
+      "markers": []
+    },
+    {
+      "path": "rec.cpp",
+      "text": "#include \"base.h\"\n\nstruct Record : Base {\n#include \"body.inc\"\n};\n\nint main() {\n    Record r;\n    return r.sum();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "in the editor",
+      "blocks": [
+        {
+          "label": "diagnostics",
+          "value": {
+            "diagnostics": []
+          }
+        },
+        {
+          "label": "symbols",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "field_a",
+                "kind": "Field",
+                "at": {
+                  "$place": "int ⟦field_a⟧;",
+                  "path": "body.inc",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 11
+                    }
+                  }
+                }
+              },
+              {
+                "name": "field_b",
+                "kind": "Field",
+                "at": {
+                  "$place": "int ⟦field_b⟧;",
+                  "path": "body.inc",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 11
+                    }
+                  }
+                }
+              },
+              {
+                "name": "sum",
+                "kind": "Method",
+                "at": {
+                  "$place": "int ⟦sum⟧() const { return field_a + field_b; }",
+                  "path": "body.inc",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 7
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "hover",
+          "value": {
+            "hover": {
+              "markdown": "### field `field_a`\n\n---\nType: `int`\n\n---\n```cpp\n// In Record\npublic: int field_a\n```",
+              "range": {
+                "$place": "int sum() const { return ⟦field_a⟧ + field_b; }",
+                "path": "body.inc",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 25
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 32
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "definition",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦field_a⟧;",
+                "path": "body.inc",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "on the command line",
+      "blocks": [
+        {
+          "label": "symbols",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "field_a",
+                "kind": "Field",
+                "at": {
+                  "$place": "int ⟦field_a⟧;",
+                  "path": "body.inc",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 11
+                    }
+                  }
+                }
+              },
+              {
+                "name": "field_b",
+                "kind": "Field",
+                "at": {
+                  "$place": "int ⟦field_b⟧;",
+                  "path": "body.inc",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 11
+                    }
+                  }
+                }
+              },
+              {
+                "name": "sum",
+                "kind": "Method",
+                "at": {
+                  "$place": "int ⟦sum⟧() const { return field_a + field_b; }",
+                  "path": "body.inc",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 7
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

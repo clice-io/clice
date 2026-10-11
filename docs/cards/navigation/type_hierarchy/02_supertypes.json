@@ -1,0 +1,149 @@
+{
+  "id": "navigation/type_hierarchy/02_supertypes",
+  "topic": "navigation",
+  "subtopic": "type_hierarchy",
+  "title": "Supertypes",
+  "summary": "Supertypes list every direct base of a class, including each base of a multiple-inheritance derived type",
+  "prose": "A base written through an alias lists the class the alias names.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Alpha {};\n\nstruct Beta {};\n\nstruct Gamma : Alpha, Beta {};\n\nusing Base = Alpha;\n\nstruct Delta : Base {};\n",
+      "markers": [
+        {
+          "name": "derived",
+          "begin": 42,
+          "end": 42,
+          "range": false
+        },
+        {
+          "name": "alias_base",
+          "begin": 95,
+          "end": 95,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "derived",
+          "marker": "derived",
+          "value": {
+            "type_hierarchy": [
+              {
+                "name": "Gamma",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Gamma⟧ : Alpha, Beta {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 12
+                    }
+                  }
+                }
+              }
+            ],
+            "supertypes": [
+              {
+                "name": "Alpha",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Alpha⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 12
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Beta",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Beta⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 11
+                    }
+                  }
+                }
+              }
+            ],
+            "subtypes": []
+          }
+        },
+        {
+          "label": "alias_base",
+          "marker": "alias_base",
+          "value": {
+            "type_hierarchy": [
+              {
+                "name": "Delta",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Delta⟧ : Base {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 12
+                    }
+                  }
+                }
+              }
+            ],
+            "supertypes": [
+              {
+                "name": "Alpha",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Alpha⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 12
+                    }
+                  }
+                }
+              }
+            ],
+            "subtypes": []
+          }
+        }
+      ]
+    }
+  ]
+}

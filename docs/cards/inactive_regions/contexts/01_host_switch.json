@@ -1,0 +1,76 @@
+{
+  "id": "inactive_regions/contexts/01_host_switch",
+  "topic": "inactive_regions",
+  "subtopic": "contexts",
+  "title": "Switching the host",
+  "summary": "A header shows the branches its chosen host takes, and switching hosts updates the dimming at once",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "render.h",
+      "text": "#pragma once\n#if defined(USE_VULKAN)\ninline const char* backend() { return \"vk\"; }\n#elif defined(USE_METAL)\ninline const char* backend() { return \"mt\"; }\n#endif\n",
+      "markers": []
+    },
+    {
+      "path": "render_mt.cpp",
+      "text": "#include \"render.h\"\nint main() { return backend()[0]; }\n",
+      "markers": []
+    },
+    {
+      "path": "render_vk.cpp",
+      "text": "#include \"render.h\"\nint main() { return backend()[0]; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "vulkan host",
+          "value": {
+            "inactive_lines": [
+              {
+                "$place": "⟦inline const char* backend() { return \"mt\"; }⟧",
+                "path": "render.h",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 45
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "metal host",
+          "value": {
+            "inactive_lines": [
+              {
+                "$place": "⟦inline const char* backend() { return \"vk\"; }⟧",
+                "path": "render.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 45
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

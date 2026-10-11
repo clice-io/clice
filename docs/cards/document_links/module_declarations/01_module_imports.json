@@ -1,0 +1,97 @@
+{
+  "id": "document_links/module_declarations/01_module_imports",
+  "topic": "document_links",
+  "subtopic": "module_declarations",
+  "title": "Module targets",
+  "summary": "Each imported module name links to the file that declares the module",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app_part.cppm",
+      "text": "module app:part;\n\nint part_value() {\n    return 3;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "lib.cppm",
+      "text": "export module lib;\n\nexport int lib_value() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "lib_extra.cppm",
+      "text": "export module lib.extra;\n\nexport int extra_value() {\n    return 2;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cppm",
+      "text": "export module app;\n\nimport lib;\nimport :part;\nexport import lib.extra;\n\nexport int run() {\n    return lib_value() + part_value() + extra_value();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cppm",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "import ⟦lib⟧;",
+                  "path": "main.cppm",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 10
+                    }
+                  }
+                },
+                "target": "lib.cppm"
+              },
+              {
+                "at": {
+                  "$place": "import :⟦part⟧;",
+                  "path": "main.cppm",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 12
+                    }
+                  }
+                },
+                "target": "app_part.cppm"
+              },
+              {
+                "at": {
+                  "$place": "export import ⟦lib.extra⟧;",
+                  "path": "main.cppm",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 23
+                    }
+                  }
+                },
+                "target": "lib_extra.cppm"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

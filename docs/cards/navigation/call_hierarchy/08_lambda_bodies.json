@@ -1,0 +1,94 @@
+{
+  "id": "navigation/call_hierarchy/08_lambda_bodies",
+  "topic": "navigation",
+  "subtopic": "call_hierarchy",
+  "title": "Calls inside lambdas",
+  "summary": "A call written in a lambda body appears in the incoming calls of the function it invokes, attributed to the function that encloses the lambda",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void foo() {}\n\nvoid use() {\n    auto task = [] {\n        foo();\n    };\n    task();\n}\n",
+      "markers": [
+        {
+          "name": "foo",
+          "begin": 5,
+          "end": 5,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "foo",
+          "marker": "foo",
+          "value": {
+            "call_hierarchy": [
+              {
+                "name": "foo",
+                "kind": "Function",
+                "at": {
+                  "$place": "void ⟦foo⟧() {}",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 8
+                    }
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "use",
+                "kind": "Function",
+                "at": {
+                  "$place": "void ⟦use⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 8
+                    }
+                  }
+                },
+                "sites": [
+                  {
+                    "$place": "⟦foo⟧();",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 4,
+                        "character": 8
+                      },
+                      "end": {
+                        "line": 4,
+                        "character": 11
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": []
+          }
+        }
+      ]
+    }
+  ]
+}

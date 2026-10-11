@@ -1,0 +1,69 @@
+{
+  "id": "navigation/type_definition/04_smart_pointers",
+  "topic": "navigation",
+  "subtopic": "type_definition",
+  "title": "Smart-pointer pointee navigation",
+  "summary": "Go-to-type-definition on a smart-pointer variable reaches the wrapper type itself; unwrapping to the pointee type is not offered",
+  "prose": "",
+  "status": "partial",
+  "issues": [
+    "clangd#1026"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Ptr {\n    T* operator->();\n    T& operator*();\n    T* raw;\n};\n\nstruct Widget {};\n\nint use(Ptr<Widget> ptr) {\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "type",
+          "begin": 99,
+          "end": 99,
+          "range": false
+        },
+        {
+          "name": "ptr",
+          "begin": 131,
+          "end": 131,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "type_definition": []
+          }
+        },
+        {
+          "label": "ptr",
+          "marker": "ptr",
+          "value": {
+            "wrong": "should also offer Widget, the type the smart pointer points to (clangd#1026)",
+            "type_definition": [
+              {
+                "$place": "struct ⟦Ptr⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

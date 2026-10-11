@@ -1,0 +1,81 @@
+{
+  "id": "navigation/implicit_construction/01_constructor_calls",
+  "topic": "navigation",
+  "subtopic": "implicit_construction",
+  "title": "Constructor calls",
+  "summary": "Parentheses and braces navigate to the selected constructor",
+  "prose": "Go-to-definition on the opening parenthesis or brace of a constructor\ncall reaches the constructor overload resolution selected, for both the\n`T(args)` and `T{args}` forms.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    Widget(int w, int h);\n};\n\nvoid build() {\n    Widget a(800, 600);\n    Widget b{800, 600};\n}\n",
+      "markers": [
+        {
+          "name": "paren",
+          "begin": 73,
+          "end": 73,
+          "range": false
+        },
+        {
+          "name": "brace",
+          "begin": 97,
+          "end": 97,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "paren",
+          "marker": "paren",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦Widget⟧(int w, int h);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "brace",
+          "marker": "brace",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦Widget⟧(int w, int h);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

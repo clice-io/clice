@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/constructor/03_single_field",
+  "topic": "code_actions",
+  "subtopic": "constructor",
+  "title": "Single field is explicit",
+  "summary": "A one-field class gets an `explicit` constructor, placed under a `public:` label when the class ends in another section",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "class Handle {\n    int fd;\n};\n",
+      "markers": [
+        {
+          "name": "handle",
+          "begin": 6,
+          "end": 6,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "handle",
+          "marker": "handle",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.generateMemberwiseConstructor",
+                "title": "Generate a memberwise constructor for 'Handle'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " class Handle {\n     int fd;\n+public:\n+    explicit Handle(int fd) : fd(fd) {}\n };"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "id": "signature_help/call_contexts/01_constructors",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Constructors and aggregates",
+  "summary": "A constructor call lists the constructors without a return type, and braced aggregate initialization lists the fields",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#726",
+    "clangd#2541"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Point {\n    int x;\n    int y;\n};\n\nstruct Widget {\n    Widget(int a, double b);\n};\n\nint main() {\n    Point p{1, 2};\n    Widget w(3, 4.0);\n}\n",
+      "markers": [
+        {
+          "name": "aggregate",
+          "begin": 118,
+          "end": 118,
+          "range": false
+        },
+        {
+          "name": "ctor",
+          "begin": 135,
+          "end": 135,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "aggregate",
+          "marker": "aggregate",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "Point{int x, ⟦int y⟧}"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "ctor",
+          "marker": "ctor",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "Widget(⟦int a⟧, double b)",
+                "Widget(⟦const Widget &⟧)",
+                "Widget(⟦Widget &&⟧)"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

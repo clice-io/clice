@@ -1,0 +1,55 @@
+{
+  "id": "hover/macros/05_nested_arguments",
+  "topic": "hover",
+  "subtopic": "macros",
+  "title": "Macros in arguments",
+  "summary": "A macro inside another macro's arguments shows its definition, but no expansion",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int anchor = 0;\n\n#define ECHO(x) x\n#define INNER_VAL 99\n\nint nested = ECHO(INNER_VAL);\n",
+      "markers": [
+        {
+          "name": "nested_arg",
+          "begin": 75,
+          "end": 75,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "nested_arg",
+          "marker": "nested_arg",
+          "value": {
+            "wrong": "a macro inside another macro's arguments shows no expansion, 99 here",
+            "hover": {
+              "markdown": "### macro `INNER_VAL`\n\n---\n```cpp\n#define INNER_VAL 99\n```",
+              "range": {
+                "$place": "int nested = ECHO(⟦INNER_VAL⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 27
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

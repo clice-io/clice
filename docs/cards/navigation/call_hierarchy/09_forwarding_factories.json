@@ -1,0 +1,62 @@
+{
+  "id": "navigation/call_hierarchy/09_forwarding_factories",
+  "topic": "navigation",
+  "subtopic": "call_hierarchy",
+  "title": "Constructor calls through forwarding functions",
+  "summary": "Incoming calls of a constructor do not include the call sites that reach it through a perfect-forwarding factory",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2242"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T, typename... Args>\nT make(Args&&... args) {\n    return T(static_cast<Args&&>(args)...);\n}\n\nstruct Widget {\n    Widget(int w, int h);\n};\n\nWidget build() {\n    return make<Widget>(800, 600);\n}\n",
+      "markers": [
+        {
+          "name": "constructor",
+          "begin": 132,
+          "end": 132,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "constructor",
+          "marker": "constructor",
+          "value": {
+            "wrong": "build reaches the constructor through make<Widget>, so it should be among the incoming calls (clangd#2242)",
+            "call_hierarchy": [
+              {
+                "name": "Widget",
+                "kind": "Method",
+                "at": {
+                  "$place": "⟦Widget⟧(int w, int h);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 10
+                    }
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [],
+            "outgoing_calls": []
+          }
+        }
+      ]
+    }
+  ]
+}

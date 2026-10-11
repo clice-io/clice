@@ -1,0 +1,63 @@
+{
+  "id": "signature_help/call_contexts/07_new_expressions",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "New expression",
+  "summary": "A new-expression's constructor arguments drive signature help",
+  "prose": "Written with parentheses, it lists the constructors; written with braces, it\nshows nothing yet.",
+  "status": "partial",
+  "issues": [
+    "clangd#1967"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Node {\n    Node(int value, Node* next);\n};\n\nint main() {\n    Node* n = new Node(0, nullptr);\n    Node* m = new Node{0, nullptr};\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 87,
+          "end": 87,
+          "range": false
+        },
+        {
+          "name": "braces",
+          "begin": 123,
+          "end": 123,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "Node(⟦int value⟧, Node *next)",
+                "Node(⟦const Node &⟧)",
+                "Node(⟦Node &&⟧)"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "braces",
+          "marker": "braces",
+          "value": {
+            "wrong": "a braced new-expression shows no constructors (clangd#1967)",
+            "signature_help": {
+              "signatures": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

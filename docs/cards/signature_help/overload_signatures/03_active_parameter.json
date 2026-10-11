@@ -1,0 +1,43 @@
+{
+  "id": "signature_help/overload_signatures/03_active_parameter",
+  "topic": "signature_help",
+  "subtopic": "overload_signatures",
+  "title": "Active parameter",
+  "summary": "The parameter the argument under the cursor binds to is marked in the label",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void bar(int first, double second, char third);\n\nint main() {\n    bar(1, 2.0, 'c');\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 73,
+          "end": 73,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "bar(int first, ⟦double second⟧, char third) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

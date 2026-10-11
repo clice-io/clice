@@ -1,0 +1,58 @@
+{
+  "id": "diagnostics/clang_tidy/01_findings",
+  "topic": "diagnostics",
+  "subtopic": "clang_tidy",
+  "title": "clang-tidy findings",
+  "summary": "clang-tidy runs on open files with the checks the nearest `.clang-tidy` enables",
+  "prose": "Each finding names its check and links to the check's documentation. The checks come from the nearest `.clang-tidy` above the file, as `clang-tidy` itself reads it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,bugprone-integer-division\"\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "double ratio(int total, int count) {\n    return total / count;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦total⟧ / count;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 16
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "result of integer division used in a floating point context; possible loss of precision",
+                "source": "clang-tidy",
+                "code": "bugprone-integer-division",
+                "link": "https://clang.llvm.org/extra/clang-tidy/checks/bugprone/integer-division.html",
+                "tags": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

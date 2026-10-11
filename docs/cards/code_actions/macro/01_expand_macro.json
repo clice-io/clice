@@ -1,0 +1,93 @@
+{
+  "id": "code_actions/macro/01_expand_macro",
+  "topic": "code_actions",
+  "subtopic": "macro",
+  "title": "Expand a macro invocation",
+  "summary": "A macro invocation is replaced by the tokens it expands to",
+  "prose": "Arguments are substituted; the action is offered from the macro name or anywhere inside its arguments.",
+  "status": "supported",
+  "issues": [
+    "clangd#820"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define SQUARE(x) ((x) * (x))\n#define LIMIT 42\n\nint f(int n) {\n    return SQUARE(n + 1) + LIMIT;\n}\n",
+      "markers": [
+        {
+          "name": "name",
+          "begin": 74,
+          "end": 74,
+          "range": false
+        },
+        {
+          "name": "argument",
+          "begin": 85,
+          "end": 85,
+          "range": false
+        },
+        {
+          "name": "object",
+          "begin": 90,
+          "end": 90,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "name",
+          "marker": "name",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.inline.macro",
+                "title": "Expand macro 'SQUARE'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n int f(int n) {\n-    return SQUARE(n + 1) + LIMIT;\n+    return ((n + 1) * (n + 1)) + LIMIT;\n }"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "argument",
+          "marker": "argument",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.inline.macro",
+                "title": "Expand macro 'SQUARE'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n int f(int n) {\n-    return SQUARE(n + 1) + LIMIT;\n+    return ((n + 1) * (n + 1)) + LIMIT;\n }"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "object",
+          "marker": "object",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.inline.macro",
+                "title": "Expand macro 'LIMIT'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n int f(int n) {\n-    return SQUARE(n + 1) + LIMIT;\n+    return SQUARE(n + 1) + 42;\n }"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

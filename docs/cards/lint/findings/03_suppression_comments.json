@@ -1,0 +1,41 @@
+{
+  "id": "lint/findings/03_suppression_comments",
+  "topic": "lint",
+  "subtopic": "findings",
+  "title": "Suppression comments",
+  "summary": "NOLINT comments silence findings in headers as well as in the file being checked",
+  "prose": "`// NOLINT` silences its own line, `// NOLINTNEXTLINE` the next one, and `// NOLINTBEGIN` and `// NOLINTEND` everything between them, for every check or for the ones named in parentheses. They count in every file a unit reads, as clang-tidy reads them.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-tidy",
+      "text": "Checks: \"-*,modernize-use-nullptr\"\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"registry.h\"\n\n// NOLINTBEGIN\nint* fourth() { return 0; }\nint* fifth() { return 0; }\n// NOLINTEND\n\nint* sixth() { return 0; }\n",
+      "markers": []
+    },
+    {
+      "path": "registry.h",
+      "text": "#pragma once\n\ninline int* first() { return 0; }  // NOLINT(modernize-use-nullptr)\n\n// NOLINTNEXTLINE(modernize-use-nullptr)\ninline int* second() { return 0; }\n\ninline int* third() { return 0; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice lint --workers 2",
+          "value": {
+            "stdout": "${WS}/main.cpp:8:23: warning: use nullptr [modernize-use-nullptr]\n${WS}/registry.h:8:30: warning: use nullptr [modernize-use-nullptr]\nLinted 1 translation unit in #s: 2 findings.",
+            "exit": 1
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,385 @@
+{
+  "id": "navigation/macros/01_macro_arguments",
+  "topic": "navigation",
+  "subtopic": "macros",
+  "title": "Names in macro arguments",
+  "summary": "A name spelled in a macro argument navigates like a name written outside a macro",
+  "prose": "Definition and declaration alternate at its spelling, and a later use\nreaches the function the macro declares. The macro's own name, at its\ndefinition or an invocation, resolves to the macro.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define DECLARE_HOOK(name) int name(int value)\n\nDECLARE_HOOK(notify);\n\nDECLARE_HOOK(notify) {\n    return value + 1;\n}\n\nint trigger(int value) {\n    return notify(value);\n}\n",
+      "markers": [
+        {
+          "name": "macro_def_site",
+          "begin": 8,
+          "end": 8,
+          "range": false
+        },
+        {
+          "name": "macro_name_use",
+          "begin": 48,
+          "end": 48,
+          "range": false
+        },
+        {
+          "name": "macro_decl",
+          "begin": 61,
+          "end": 61,
+          "range": false
+        },
+        {
+          "name": "macro_def",
+          "begin": 84,
+          "end": 84,
+          "range": false
+        },
+        {
+          "name": "plain_use",
+          "begin": 155,
+          "end": 155,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "macro_def_site",
+          "marker": "macro_def_site",
+          "value": {
+            "definition": [
+              {
+                "$place": "#define ⟦DECLARE_HOOK⟧(name) int name(int value)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "#define ⟦DECLARE_HOOK⟧(name) int name(int value)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              },
+              {
+                "$place": "⟦DECLARE_HOOK⟧(notify);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "⟦DECLARE_HOOK⟧(notify) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "macro_name_use",
+          "marker": "macro_name_use",
+          "value": {
+            "definition": [
+              {
+                "$place": "#define ⟦DECLARE_HOOK⟧(name) int name(int value)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "#define ⟦DECLARE_HOOK⟧(name) int name(int value)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              },
+              {
+                "$place": "⟦DECLARE_HOOK⟧(notify);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "⟦DECLARE_HOOK⟧(notify) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "macro_decl",
+          "marker": "macro_decl",
+          "value": {
+            "definition": [
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦notify⟧(value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "macro_def",
+          "marker": "macro_def",
+          "value": {
+            "definition": [
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 19
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦notify⟧(value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "plain_use",
+          "marker": "plain_use",
+          "value": {
+            "definition": [
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              }
+            ],
+            "references": [
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "DECLARE_HOOK(⟦notify⟧) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦notify⟧(value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

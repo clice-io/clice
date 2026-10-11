@@ -1,0 +1,91 @@
+{
+  "id": "semantic_tokens/references/02_using_declarations",
+  "topic": "semantic_tokens",
+  "subtopic": "references",
+  "title": "Using declarations",
+  "summary": "The introduced name keeps its target's kind",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#2619"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace tools {\ninline int helper() {\n    return 1;\n}\nstruct Gadget {};\n}\n\nusing tools::helper;\nusing tools::Gadget;\n\nint used = helper();\nGadget gadget;\n",
+      "markers": [
+        {
+          "name": "helper_use",
+          "begin": 90,
+          "end": 90,
+          "range": false
+        },
+        {
+          "name": "Gadget_use",
+          "begin": 111,
+          "end": 111,
+          "range": false
+        },
+        {
+          "name": "helper_use2",
+          "begin": 131,
+          "end": 131,
+          "range": false
+        },
+        {
+          "name": "Gadget_use2",
+          "begin": 141,
+          "end": 141,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "helper_use",
+          "marker": "helper_use",
+          "value": {
+            "semantic_token": {
+              "text": "helper",
+              "type": "function"
+            }
+          }
+        },
+        {
+          "label": "Gadget_use",
+          "marker": "Gadget_use",
+          "value": {
+            "semantic_token": {
+              "text": "Gadget",
+              "type": "struct"
+            }
+          }
+        },
+        {
+          "label": "helper_use2",
+          "marker": "helper_use2",
+          "value": {
+            "semantic_token": {
+              "text": "helper",
+              "type": "function"
+            }
+          }
+        },
+        {
+          "label": "Gadget_use2",
+          "marker": "Gadget_use2",
+          "value": {
+            "semantic_token": {
+              "text": "Gadget",
+              "type": "struct"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

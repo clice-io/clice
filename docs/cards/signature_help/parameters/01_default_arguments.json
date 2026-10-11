@@ -1,0 +1,43 @@
+{
+  "id": "signature_help/parameters/01_default_arguments",
+  "topic": "signature_help",
+  "subtopic": "parameters",
+  "title": "Default arguments",
+  "summary": "Parameters with defaults show their default value in the label",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void configure(int width, int height = 100, bool visible = true);\n\nint main() {\n    configure(1);\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 94,
+          "end": 94,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "configure(⟦int width⟧, int height = 100, bool visible = true) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

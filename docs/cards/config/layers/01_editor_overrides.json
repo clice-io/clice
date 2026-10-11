@@ -1,0 +1,126 @@
+{
+  "id": "config/layers/01_editor_overrides",
+  "topic": "config",
+  "subtopic": "layers",
+  "title": "Editor settings over the file",
+  "summary": "Rules the editor sends replace the rules of `clice.toml`",
+  "prose": "`clice.toml` gives `main.cpp` the macro it uses, and the file compiles. An editor that sends its own `rules` in its settings replaces the file's rules rather than adding to them, so here the macro is gone.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "clice.toml",
+      "text": "[[rules]]\npatterns = [\"**/*.cpp\"]\nappend = [\"-DFROM_TOML\"]\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int value() {\n    return FROM_TOML;\n}\n\nint main() {\n    return value();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "rules from the file",
+      "blocks": [
+        {
+          "label": "symbols",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "value",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦value⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 9
+                    }
+                  }
+                }
+              },
+              {
+                "name": "main",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦main⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 8
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "hover",
+          "value": {
+            "hover": {
+              "markdown": "### function `main`\n\n---\n→ `int`\n\n---\n```cpp\nint main()\n```",
+              "range": {
+                "$place": "int ⟦main⟧() {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "rules from the editor",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦FROM_TOML⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 20
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'FROM_TOML'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

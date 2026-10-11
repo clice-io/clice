@@ -1,0 +1,69 @@
+{
+  "id": "code_actions/deduced_type/03_decltype",
+  "topic": "code_actions",
+  "subtopic": "deduced_type",
+  "title": "Expand decltype",
+  "summary": "A `decltype` specifier expands to the type it denotes, through any `decltype` that type was itself declared with",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int value();\n\nvoid f() {\n    decltype(value()) x = 0;\n    decltype(x) y = 0;\n}\n",
+      "markers": [
+        {
+          "name": "dt",
+          "begin": 29,
+          "end": 29,
+          "range": false
+        },
+        {
+          "name": "nested",
+          "begin": 58,
+          "end": 58,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "dt",
+          "marker": "dt",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'decltype(value())' with 'int'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n void f() {\n-    decltype(value()) x = 0;\n+    int x = 0;\n     decltype(x) y = 0;\n }"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "nested",
+          "marker": "nested",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'decltype(x)' with 'int'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " void f() {\n     decltype(value()) x = 0;\n-    decltype(x) y = 0;\n+    int y = 0;\n }"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

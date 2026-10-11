@@ -1,0 +1,86 @@
+{
+  "id": "hover/documentation/03_copydoc",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "@copydoc",
+  "summary": "A `@copydoc` command shows as written instead of the documentation it names",
+  "prose": "",
+  "status": "partial",
+  "issues": [
+    "clangd#1320"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace copydoc {\n/// Detailed documentation.\nvoid base_func();\n\n/// @copydoc base_func()\nvoid wrapper();\n}\n",
+      "markers": [
+        {
+          "name": "base",
+          "begin": 53,
+          "end": 53,
+          "range": false
+        },
+        {
+          "name": "wrapper",
+          "begin": 97,
+          "end": 97,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "base",
+          "marker": "base",
+          "value": {
+            "hover": {
+              "markdown": "### function `base_func`\n\n---\n→ `void`\nDetailed documentation.\n\n---\n```cpp\n// In namespace copydoc\nvoid base_func()\n```",
+              "range": {
+                "$place": "void ⟦base_func⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "wrapper",
+          "marker": "wrapper",
+          "value": {
+            "wrong": "the @copydoc tag shows as written instead of base_func's documentation (clangd#1320)",
+            "hover": {
+              "markdown": "### function `wrapper`\n\n---\n→ `void`\n@copydoc base_func()\n\n---\n```cpp\n// In namespace copydoc\nvoid wrapper()\n```",
+              "range": {
+                "$place": "void ⟦wrapper⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

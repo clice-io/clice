@@ -1,0 +1,171 @@
+{
+  "id": "hover/templates/04_concept_constraints",
+  "topic": "hover",
+  "subtopic": "templates",
+  "title": "Concept constraints",
+  "summary": "A concept and a constrained parameter show the constraint, but an `Addable auto` placeholder shows only the deduced type",
+  "prose": "",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace concept_constraints {\n\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; };\n\ntemplate <Addable U>\nvoid sum(U a, U b);\n\nauto flag = Addable<int>;\n\nAddable auto total = 1;\n\n}\n",
+      "markers": [
+        {
+          "name": "concept_name",
+          "begin": 110,
+          "end": 110,
+          "range": false
+        },
+        {
+          "name": "param_name",
+          "begin": 118,
+          "end": 118,
+          "range": false
+        },
+        {
+          "name": "concept_ref",
+          "begin": 154,
+          "end": 154,
+          "range": false
+        },
+        {
+          "name": "constrained_auto",
+          "begin": 177,
+          "end": 177,
+          "range": false
+        },
+        {
+          "name": "constrained_var",
+          "begin": 182,
+          "end": 182,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "concept_name",
+          "marker": "concept_name",
+          "value": {
+            "hover": {
+              "markdown": "### concept `Addable`\n\n---\n```cpp\n// In namespace concept_constraints\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```",
+              "range": {
+                "$place": "template <⟦Addable⟧ U>",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "param_name",
+          "marker": "param_name",
+          "value": {
+            "hover": {
+              "markdown": "### type `U`\n\n---\nType: `class`\n\n---\n```cpp\n// In sum\nAddable U\n```",
+              "range": {
+                "$place": "template <Addable ⟦U⟧>",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "concept_ref",
+          "marker": "concept_ref",
+          "value": {
+            "hover": {
+              "markdown": "### concept `Addable`\n\n---\nValue = `true`\n\n---\n```cpp\n// In namespace concept_constraints\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```",
+              "range": {
+                "$place": "auto flag = ⟦Addable⟧<int>;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "constrained_auto",
+          "marker": "constrained_auto",
+          "value": {
+            "wrong": "the placeholder drops its Addable constraint, showing only the deduced int",
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nint\n```",
+              "range": {
+                "$place": "Addable ⟦auto⟧ total = 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "constrained_var",
+          "marker": "constrained_var",
+          "value": {
+            "hover": {
+              "markdown": "### variable `total`\n\n---\nType: `int`\nValue = `1`\n\n---\n```cpp\n// In namespace concept_constraints\nAddable auto total = 1\n```",
+              "range": {
+                "$place": "Addable auto ⟦total⟧ = 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 18
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

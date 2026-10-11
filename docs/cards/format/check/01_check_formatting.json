@@ -1,0 +1,47 @@
+{
+  "id": "format/check/01_check_formatting",
+  "topic": "format",
+  "subtopic": "check",
+  "title": "Check formatting",
+  "summary": "With --check nothing is rewritten; each place clang-format would change is reported",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": ".clang-format",
+      "text": "BasedOnStyle: LLVM\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "int  main( ) { return 0 ; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice format --check",
+          "value": {
+            "stdout": "Checked 1 file in #s: 1 needs formatting.",
+            "stderr": [
+              "stderr: ${WS}/main.cpp:1:4: error: code should be clang-formatted [-Wclang-format-violations]",
+              "stderr: int  main( ) { return 0 ; }",
+              "stderr:    ^",
+              "stderr: ${WS}/main.cpp:1:11: error: code should be clang-formatted [-Wclang-format-violations]",
+              "stderr: int  main( ) { return 0 ; }",
+              "stderr:           ^",
+              "stderr: ${WS}/main.cpp:1:24: error: code should be clang-formatted [-Wclang-format-violations]",
+              "stderr: int  main( ) { return 0 ; }",
+              "stderr:                        ^"
+            ],
+            "exit": 1
+          }
+        }
+      ]
+    }
+  ]
+}

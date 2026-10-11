@@ -1,0 +1,57 @@
+{
+  "id": "navigation/references/05_dependent_calls",
+  "topic": "navigation",
+  "subtopic": "references",
+  "title": "Dependent template references",
+  "summary": "Find references on a member does not include dependent call sites in a template, even when the template is instantiated with the member's class",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#258",
+    "clangd#675"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct A {\n    void foo();\n};\n\ntemplate <typename T>\nvoid process(T& obj) {\n    obj.foo();\n}\n\nvoid run(A a) {\n    process(a);\n}\n",
+      "markers": [
+        {
+          "name": "member",
+          "begin": 20,
+          "end": 20,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "wrong": "obj.foo() calls foo once process is instantiated with A, so it should be among the references (clangd#258, clangd#675)",
+            "references": [
+              {
+                "$place": "void ⟦foo⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

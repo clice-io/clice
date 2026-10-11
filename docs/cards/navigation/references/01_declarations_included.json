@@ -1,0 +1,193 @@
+{
+  "id": "navigation/references/01_declarations_included",
+  "topic": "navigation",
+  "subtopic": "references",
+  "title": "Declarations among references",
+  "summary": "A reference query returns the declaration and the out-of-line definition together with every use, so the whole surface of a symbol is reachable from any one of its sites",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int scale(int value);\n\nint scale(int value) {\n    return value * 2;\n}\n\nint use() {\n    return scale(3);\n}\n",
+      "markers": [
+        {
+          "name": "decl",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        },
+        {
+          "name": "def",
+          "begin": 27,
+          "end": 27,
+          "range": false
+        },
+        {
+          "name": "use",
+          "begin": 94,
+          "end": 94,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "decl",
+          "marker": "decl",
+          "value": {
+            "references": [
+              {
+                "$place": "int ⟦scale⟧(int value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦scale⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦scale⟧(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 16
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "def",
+          "marker": "def",
+          "value": {
+            "references": [
+              {
+                "$place": "int ⟦scale⟧(int value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦scale⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦scale⟧(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 16
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "references": [
+              {
+                "$place": "int ⟦scale⟧(int value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦scale⟧(int value) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦scale⟧(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 16
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

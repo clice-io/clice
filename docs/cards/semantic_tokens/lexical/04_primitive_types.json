@@ -1,0 +1,153 @@
+{
+  "id": "semantic_tokens/lexical/04_primitive_types",
+  "topic": "semantic_tokens",
+  "subtopic": "lexical",
+  "title": "Primitive types",
+  "summary": "Built-in types use a distinct token kind instead of plain `keyword`",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int number = 0;\nfloat ratio = 0.5f;\nvoid act();\nunsigned long long wide_number = 0;\n__int128 extended_int = 0;\n_Float16 extended_float = 0;\n",
+      "markers": [
+        {
+          "name": "int",
+          "begin": 0,
+          "end": 0,
+          "range": false
+        },
+        {
+          "name": "float",
+          "begin": 16,
+          "end": 16,
+          "range": false
+        },
+        {
+          "name": "void",
+          "begin": 36,
+          "end": 36,
+          "range": false
+        },
+        {
+          "name": "unsigned",
+          "begin": 48,
+          "end": 48,
+          "range": false
+        },
+        {
+          "name": "long_use",
+          "begin": 57,
+          "end": 57,
+          "range": false
+        },
+        {
+          "name": "long_use2",
+          "begin": 62,
+          "end": 62,
+          "range": false
+        },
+        {
+          "name": "__int128",
+          "begin": 84,
+          "end": 84,
+          "range": false
+        },
+        {
+          "name": "_Float16",
+          "begin": 111,
+          "end": 111,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "int",
+          "marker": "int",
+          "value": {
+            "semantic_token": {
+              "text": "int",
+              "type": "primitive"
+            }
+          }
+        },
+        {
+          "label": "float",
+          "marker": "float",
+          "value": {
+            "semantic_token": {
+              "text": "float",
+              "type": "primitive"
+            }
+          }
+        },
+        {
+          "label": "void",
+          "marker": "void",
+          "value": {
+            "semantic_token": {
+              "text": "void",
+              "type": "primitive"
+            }
+          }
+        },
+        {
+          "label": "unsigned",
+          "marker": "unsigned",
+          "value": {
+            "semantic_token": {
+              "text": "unsigned",
+              "type": "primitive"
+            }
+          }
+        },
+        {
+          "label": "long_use",
+          "marker": "long_use",
+          "value": {
+            "semantic_token": {
+              "text": "long",
+              "type": "primitive"
+            }
+          }
+        },
+        {
+          "label": "long_use2",
+          "marker": "long_use2",
+          "value": {
+            "semantic_token": {
+              "text": "long",
+              "type": "primitive"
+            }
+          }
+        },
+        {
+          "label": "__int128",
+          "marker": "__int128",
+          "value": {
+            "semantic_token": {
+              "text": "__int128",
+              "type": "primitive"
+            }
+          }
+        },
+        {
+          "label": "_Float16",
+          "marker": "_Float16",
+          "value": {
+            "semantic_token": {
+              "text": "_Float16",
+              "type": "primitive"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

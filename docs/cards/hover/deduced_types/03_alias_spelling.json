@@ -1,0 +1,54 @@
+{
+  "id": "hover/deduced_types/03_alias_spelling",
+  "topic": "hover",
+  "subtopic": "deduced_types",
+  "title": "auto through an alias",
+  "summary": "An `auto` deduced from an alias keeps the alias's name beside what it stands for",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace sugared_auto {\n\nusing Inner = int;\nusing Outer = Inner;\n\nOuter make();\n\nvoid demo() {\n  auto value = make();\n}\n\n}\n",
+      "markers": [
+        {
+          "name": "auto",
+          "begin": 98,
+          "end": 98,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "auto",
+          "marker": "auto",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nOuter // aka: int\n```",
+              "range": {
+                "$place": "⟦auto⟧ value = make();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 2
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 6
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

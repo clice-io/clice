@@ -1,0 +1,52 @@
+{
+  "id": "completion/filtering/02_deprecated_tag",
+  "topic": "completion",
+  "subtopic": "filtering",
+  "title": "Deprecated tagging",
+  "summary": "A `[[deprecated]]` candidate is marked deprecated, its plain sibling is not",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "[[deprecated]] int old_thing(int x);\nint new_thing(int x);\n\nint z = thing;\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 73,
+          "end": 73,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "new_thing(int x)",
+                  "kind": "Function",
+                  "detail": "int"
+                },
+                {
+                  "label": "old_thing(int x)",
+                  "kind": "Function",
+                  "detail": "int",
+                  "deprecated": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

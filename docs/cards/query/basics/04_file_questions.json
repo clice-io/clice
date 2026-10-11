@@ -1,0 +1,78 @@
+{
+  "id": "query/basics/04_file_questions",
+  "topic": "query",
+  "subtopic": "basics",
+  "title": "Questions about files",
+  "summary": "List the project's files, what a file includes and what includes it, what a change to a header affects, and the source that goes with it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "a.h",
+      "text": "#pragma once\nint add(int a, int b);\nstruct Animal { virtual ~Animal() = default; };\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"a.h\"\nint add(int a, int b) { return a + b; }\nstruct Dog : Animal {};\nint compute() { return add(1, 2); }\nint main() { return compute(); }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method projectFiles",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"files\": [\n      {\n        \"path\": \"${WS}/main.cpp\",\n        \"kind\": \"source\",\n        \"moduleName\": null\n      },\n      {\n        \"path\": \"${WS}/a.h\",\n        \"kind\": \"header\",\n        \"moduleName\": null\n      }\n    ],\n    \"total\": 2\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method projectFiles --filter source",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"files\": [\n      {\n        \"path\": \"${WS}/main.cpp\",\n        \"kind\": \"source\",\n        \"moduleName\": null\n      }\n    ],\n    \"total\": 1\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method fileDeps --path main.cpp --direction includes",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"file\": \"${WS}/main.cpp\",\n    \"includes\": [\n      {\n        \"path\": \"${WS}/a.h\",\n        \"depth\": 1\n      }\n    ],\n    \"includers\": []\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method fileDeps --path a.h --direction includers",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"file\": \"${WS}/a.h\",\n    \"includes\": [],\n    \"includers\": [\n      {\n        \"path\": \"${WS}/main.cpp\",\n        \"depth\": 1\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method impactAnalysis --path a.h",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"directDependents\": [\n      \"${WS}/main.cpp\"\n    ],\n    \"transitiveDependents\": [],\n    \"affectedModules\": []\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice query --method counterparts --path a.h",
+          "value": {
+            "stdout": "{\n  \"result\": {\n    \"file\": \"${WS}/a.h\",\n    \"candidates\": [\n      {\n        \"path\": \"${WS}/main.cpp\",\n        \"reasons\": [\n          \"defines 1 of 1 declaration\"\n        ]\n      }\n    ],\n    \"preferred\": \"${WS}/main.cpp\"\n  },\n  \"stale\": []\n}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

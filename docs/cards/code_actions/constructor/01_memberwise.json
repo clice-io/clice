@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/constructor/01_memberwise",
+  "topic": "code_actions",
+  "subtopic": "constructor",
+  "title": "Memberwise constructor",
+  "summary": "A class receives a constructor taking every field in order, scalars by value and copyable classes by const reference",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Name {};\n\nstruct Record {\n    int id;\n    const Name name;\n    const char* label;\n    double* weight;\n};\n",
+      "markers": [
+        {
+          "name": "record",
+          "begin": 24,
+          "end": 24,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "record",
+          "marker": "record",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.generateMemberwiseConstructor",
+                "title": "Generate a memberwise constructor for 'Record'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     const char* label;\n     double* weight;\n+    Record(int id, const Name& name, const char* label, double* weight) : id(id), name(name), label(label), weight(weight) {}\n };"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

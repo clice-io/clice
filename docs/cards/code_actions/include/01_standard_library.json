@@ -1,0 +1,59 @@
+{
+  "id": "code_actions/include/01_standard_library",
+  "topic": "code_actions",
+  "subtopic": "include",
+  "title": "Standard library include",
+  "summary": "An unresolved standard library name offers the header declaring it, from the standard library mapping",
+  "prose": "The directive goes after the includes at the top of the file.",
+  "status": "supported",
+  "issues": [
+    "clangd#1017"
+  ],
+  "files": [
+    {
+      "path": "config.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"config.h\"\n\nvoid f() {\n    std::vector<int> values;\n}\n",
+      "markers": [
+        {
+          "name": "vector",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "vector",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class T>\nclass vector {};\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "vector",
+          "marker": "vector",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "quickfix",
+                "title": "Add #include <vector>",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " #include \"config.h\"\n+#include <vector>\n\n void f() {"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

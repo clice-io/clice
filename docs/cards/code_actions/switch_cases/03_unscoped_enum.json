@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/switch_cases/03_unscoped_enum",
+  "topic": "code_actions",
+  "subtopic": "switch_cases",
+  "title": "Unscoped enum in a namespace",
+  "summary": "Enumerators of an unscoped enum are qualified with the enum's namespace when the switch lies outside it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace io {\nenum Mode { Read, Write, Append };\n}\n\nvoid open(io::Mode mode) {\n    switch (mode) {\n    case io::Read:\n        break;\n    }\n}\n",
+      "markers": [
+        {
+          "name": "sw",
+          "begin": 84,
+          "end": 84,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "sw",
+          "marker": "sw",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.populateSwitch",
+                "title": "Add 2 missing enum cases to switch",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     case io::Read:\n         break;\n+    case io::Write:\n+    case io::Append:\n+        break;\n     }\n }"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

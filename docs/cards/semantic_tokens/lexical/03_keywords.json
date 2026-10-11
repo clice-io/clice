@@ -1,0 +1,121 @@
+{
+  "id": "semantic_tokens/lexical/03_keywords",
+  "topic": "semantic_tokens",
+  "subtopic": "lexical",
+  "title": "Keywords",
+  "summary": "Alternative operator spellings and contextual specifiers retain keyword tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "bool logic(bool a, bool b) {\n    return a and b or not a;\n}\n\nstruct Base {\n    virtual void act();\n    virtual ~Base();\n};\n\nstruct Leaf final : Base {\n    void act() override;\n};\n\nstruct Last : Base {\n    void act() final;\n};\n",
+      "markers": [
+        {
+          "name": "and",
+          "begin": 42,
+          "end": 42,
+          "range": false
+        },
+        {
+          "name": "or",
+          "begin": 48,
+          "end": 48,
+          "range": false
+        },
+        {
+          "name": "not",
+          "begin": 51,
+          "end": 51,
+          "range": false
+        },
+        {
+          "name": "final_use",
+          "begin": 136,
+          "end": 136,
+          "range": false
+        },
+        {
+          "name": "override",
+          "begin": 166,
+          "end": 166,
+          "range": false
+        },
+        {
+          "name": "final_use2",
+          "begin": 216,
+          "end": 216,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "and",
+          "marker": "and",
+          "value": {
+            "semantic_token": {
+              "text": "and",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "or",
+          "marker": "or",
+          "value": {
+            "semantic_token": {
+              "text": "or",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "not",
+          "marker": "not",
+          "value": {
+            "semantic_token": {
+              "text": "not",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "final_use",
+          "marker": "final_use",
+          "value": {
+            "semantic_token": {
+              "text": "final",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "override",
+          "marker": "override",
+          "value": {
+            "semantic_token": {
+              "text": "override",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "final_use2",
+          "marker": "final_use2",
+          "value": {
+            "semantic_token": {
+              "text": "final",
+              "type": "keyword"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

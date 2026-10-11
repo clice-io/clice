@@ -1,0 +1,63 @@
+{
+  "id": "inlay_hints/designator_hints/05_aggregates_only",
+  "topic": "inlay_hints",
+  "subtopic": "designator_hints",
+  "title": "Aggregates only",
+  "summary": "Constructor calls, copies and idiomatic zero-init produce no designators",
+  "prose": "A braced constructor call names the constructor's parameters instead, and the idiomatic `{}` zero-initializer stays quiet.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Constructible {\n    Constructible(int amount);\n};\n\nConstructible built{5};\n\nstruct Copyable {\n    int x;\n};\n\nCopyable original{1};\nCopyable duplicate{original};\n\nstruct Wide {\n    int fields[8];\n};\n\nWide zeroed{};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "Constructible built{⟨amount:⟩5};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 23
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "Copyable original{⟨.x=⟩1};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

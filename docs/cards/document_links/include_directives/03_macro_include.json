@@ -1,0 +1,55 @@
+{
+  "id": "document_links/include_directives/03_macro_include",
+  "topic": "document_links",
+  "subtopic": "include_directives",
+  "title": "Macro-expanded paths",
+  "summary": "`#include MACRO` links the macro name to the header it expands to",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#2375"
+  ],
+  "files": [
+    {
+      "path": "header_b.h",
+      "text": "#pragma once\n\nint b = 2;\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#define HEADER \"header_b.h\"\n#include HEADER\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#include ⟦HEADER⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 15
+                    }
+                  }
+                },
+                "target": "header_b.h"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

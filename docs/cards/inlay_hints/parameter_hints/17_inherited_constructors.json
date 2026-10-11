@@ -1,0 +1,33 @@
+{
+  "id": "inlay_hints/parameter_hints/17_inherited_constructors",
+  "topic": "inlay_hints",
+  "subtopic": "parameter_hints",
+  "title": "Inherited constructors",
+  "summary": "`using Base::Base` calls lose their parameter names",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1364"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    Base(int width);\n};\n\nstruct Derived : Base {\n    using Base::Base;\n};\n\nDerived d(7);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "wrong": "a call of an inherited constructor should name its parameter, width: before 7 (clangd#1364)",
+            "inlay_hints": []
+          }
+        }
+      ]
+    }
+  ]
+}

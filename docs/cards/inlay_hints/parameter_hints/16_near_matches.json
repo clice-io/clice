@@ -1,0 +1,50 @@
+{
+  "id": "inlay_hints/parameter_hints/16_near_matches",
+  "topic": "inlay_hints",
+  "subtopic": "parameter_hints",
+  "title": "Sloppy name matching",
+  "summary": "`aParam` does not yet suppress an argument spelled `param`",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2248"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void draw(int aParam);\n\nvoid use() {\n    int param = 3;\n    draw(param);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "wrong": "an argument named param, the parameter aParam without its prefix, needs no hint (clangd#2248)",
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "draw(⟨aParam:⟩param);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 16
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

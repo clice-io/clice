@@ -1,0 +1,141 @@
+{
+  "id": "hover/layout/01_field_layout",
+  "topic": "hover",
+  "subtopic": "layout",
+  "title": "Field layout",
+  "summary": "A field shows its offset, size and alignment, and the padding after it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Frame {\n    char kind;\n    long sequence;\n};\n\nstruct Options {\n    unsigned int enabled : 1;\n    unsigned int last : 1;\n};\n",
+      "markers": [
+        {
+          "name": "plain_field",
+          "begin": 26,
+          "end": 26,
+          "range": false
+        },
+        {
+          "name": "padded_field",
+          "begin": 44,
+          "end": 44,
+          "range": false
+        },
+        {
+          "name": "bitfield",
+          "begin": 90,
+          "end": 90,
+          "range": false
+        },
+        {
+          "name": "bitfield_padding",
+          "begin": 119,
+          "end": 119,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "plain_field",
+          "marker": "plain_field",
+          "value": {
+            "hover": {
+              "markdown": "### field `kind`\n\n---\nType: `char`\nOffset: 0 bytes\nSize: 1 byte (+7 bytes padding), alignment 1 byte\n\n---\n```cpp\n// In Frame\npublic: char kind\n```",
+              "range": {
+                "$place": "char ⟦kind⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "padded_field",
+          "marker": "padded_field",
+          "value": {
+            "hover": {
+              "markdown": "### field `sequence`\n\n---\nType: `long`\nOffset: 8 bytes\nSize: 8 bytes, alignment 8 bytes\n\n---\n```cpp\n// In Frame\npublic: long sequence\n```",
+              "range": {
+                "$place": "long ⟦sequence⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "bitfield",
+          "marker": "bitfield",
+          "value": {
+            "hover": {
+              "markdown": "### field `enabled`\n\n---\nType: `unsigned int`\nOffset: 0 bytes\nSize: 1 bit, alignment 4 bytes\n\n---\n```cpp\n// In Options\npublic: unsigned int enabled : 1\n```",
+              "range": {
+                "$place": "unsigned int ⟦enabled⟧ : 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 24
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "bitfield_padding",
+          "marker": "bitfield_padding",
+          "value": {
+            "hover": {
+              "markdown": "### field `last`\n\n---\nType: `unsigned int`\nOffset: 0 bytes and 1 bit\nSize: 1 bit (+30 bits padding), alignment 4 bytes\n\n---\n```cpp\n// In Options\npublic: unsigned int last : 1\n```",
+              "range": {
+                "$place": "unsigned int ⟦last⟧ : 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 21
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

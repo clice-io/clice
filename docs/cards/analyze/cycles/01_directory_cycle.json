@@ -1,0 +1,71 @@
+{
+  "id": "analyze/cycles/01_directory_cycle",
+  "topic": "analyze",
+  "subtopic": "cycles",
+  "title": "Directory cycles",
+  "summary": "Modules whose interfaces name each other form a cycle, listed with the lightest edges whose removal breaks it",
+  "prose": "Here util names two of core's entities and core one of util's, so the edge\nfrom core to util is the one to cut. core's source calls into feature, and\nfeature's header names core's Logger: a source makes an implementation\nedge, which closes no cycle.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app/main.cpp",
+      "text": "#include \"core/log.h\"\n\nint main() {\n    Logger logger{};\n    return logger.clock.size();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "core/log.h",
+      "text": "#pragma once\n#include \"util/clock.h\"\n\nstruct Logger {\n    Clock clock;\n};\n",
+      "markers": []
+    },
+    {
+      "path": "core/str.cpp",
+      "text": "#include \"core/str.h\"\n#include \"feature/hook.h\"\n\nint length(const Str& s) {\n    return s.n + hook(nullptr);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "core/str.h",
+      "text": "#pragma once\n\nstruct Str {\n    int n;\n};\n\nint length(const Str& s);\n",
+      "markers": []
+    },
+    {
+      "path": "feature/hook.cpp",
+      "text": "#include \"feature/hook.h\"\n#include \"core/log.h\"\n\nint hook(Logger* logger) {\n    return logger ? logger->clock.size() : 0;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "feature/hook.h",
+      "text": "#pragma once\n\nstruct Logger;\n\nint hook(Logger* logger);\n",
+      "markers": []
+    },
+    {
+      "path": "util/clock.h",
+      "text": "#pragma once\n#include \"core/str.h\"\n\nstruct Clock {\n    Str name;\n\n    int size() const {\n        return length(name);\n    }\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 3 translation units in #s: 7 file shards (# KB), 10 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice analyze modules",
+          "value": {
+            "stdout": "{\n  \"annotations\": [],\n  \"files\": 7,\n  \"modules\": [\n    {\n      \"name\": \"feature\",\n      \"headers\": 1,\n      \"sources\": 1,\n      \"lines\": 13,\n      \"layer\": 1\n    },\n    {\n      \"name\": \"app\",\n      \"headers\": 0,\n      \"sources\": 1,\n      \"lines\": 7,\n      \"layer\": 0\n    },\n    {\n      \"name\": \"core\",\n      \"headers\": 2,\n      \"sources\": 1,\n      \"lines\": 22,\n      \"layer\": 0\n    },\n    {\n      \"name\": \"util\",\n      \"headers\": 1,\n      \"sources\": 0,\n      \"lines\": 11,\n      \"layer\": 0\n    }\n  ],\n  \"edges\": [\n    {\n      \"from\": \"util\",\n      \"to\": \"core\",\n      \"interfaceEntities\": 2,\n      \"implementationEntities\": 0,\n      \"sample\": [\n        \"length\",\n        \"Str\"\n      ]\n    },\n    {\n      \"from\": \"feature\",\n      \"to\": \"core\",\n      \"interfaceEntities\": 1,\n      \"implementationEntities\": 1,\n      \"sample\": [\n        \"Logger\",\n        \"Logger::clock\"\n      ]\n    },\n    {\n      \"from\": \"core\",\n      \"to\": \"util\",\n      \"interfaceEntities\": 1,\n      \"implementationEntities\": 0,\n      \"sample\": [\n        \"Clock\"\n      ]\n    },\n    {\n      \"from\": \"app\",\n      \"to\": \"core\",\n      \"interfaceEntities\": 0,\n      \"implementationEntities\": 2,\n      \"sample\": [\n        \"Logger\",\n        \"Logger::clock\"\n      ]\n    },\n    {\n      \"from\": \"app\",\n      \"to\": \"util\",\n      \"interfaceEntities\": 0,\n      \"implementationEntities\": 1,\n      \"sample\": [\n        \"Clock::size\"\n      ]\n    },\n    {\n      \"from\": \"core\",\n      \"to\": \"feature\",\n      \"interfaceEntities\": 0,\n      \"implementationEntities\": 1,\n      \"sample\": [\n        \"hook\"\n      ]\n    },\n    {\n      \"from\": \"feature\",\n      \"to\": \"util\",\n      \"interfaceEntities\": 0,\n      \"implementationEntities\": 1,\n      \"sample\": [\n        \"Clock::size\"\n      ]\n    }\n  ],\n  \"cycles\": [\n    {\n      \"modules\": [\n        \"core\",\n        \"util\"\n      ],\n      \"cut\": [\n        {\n          \"from\": \"core\",\n          \"to\": \"util\",\n          \"entities\": 1,\n          \"sample\": [\n            \"Clock\"\n          ],\n          \"files\": [\n            \"core/log.h\"\n          ]\n        }\n      ]\n    }\n  ],\n  \"cyclicModules\": 2,\n  \"partitionCycles\": [],\n  \"internalHeaders\": 0,\n  \"deepestChain\": [\n    \"feature\",\n    \"core + util\"\n  ],\n  \"totals\": {\n    \"baseline\": 12,\n    \"partitioned\": 14\n  },\n  \"hotspots\": [\n    {\n      \"path\": \"core/log.h\",\n      \"baseline\": 2,\n      \"partitioned\": 3,\n      \"churn\": null,\n      \"internal\": false\n    },\n    {\n      \"path\": \"core/str.h\",\n      \"baseline\": 3,\n      \"partitioned\": 3,\n      \"churn\": null,\n      \"internal\": false\n    },\n    {\n      \"path\": \"util/clock.h\",\n      \"baseline\": 2,\n      \"partitioned\": 3,\n      \"churn\": null,\n      \"internal\": false\n    },\n    {\n      \"path\": \"feature/hook.h\",\n      \"baseline\": 2,\n      \"partitioned\": 2,\n      \"churn\": null,\n      \"internal\": false\n    }\n  ],\n  \"moves\": [\n    {\n      \"path\": \"core/str.h\",\n      \"from\": \"core\",\n      \"to\": \"util\",\n      \"with\": [\n        \"core/str.cpp\"\n      ],\n      \"entities\": 2,\n      \"cyclicAfter\": 0\n    }\n  ],\n  \"splits\": [],\n  \"obstacles\": {\n    \"variantHeaders\": 0,\n    \"contextMacros\": 0,\n    \"borrowedMacros\": 0,\n    \"internalUses\": 0,\n    \"crossModuleRedeclarations\": 1,\n    \"foreignDeclarations\": 0,\n    \"splitDefinitions\": 0,\n    \"duplicateDefinitions\": 0,\n    \"configuringMacros\": 0,\n    \"implicitProviders\": 0,\n    \"specializations\": 0\n  }\n}",
+            "stderr": [
+              "warning: no churn annotation: Process git ended with exit code 128"
+            ],
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

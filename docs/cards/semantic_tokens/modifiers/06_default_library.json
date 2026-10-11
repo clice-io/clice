@@ -1,0 +1,49 @@
+{
+  "id": "semantic_tokens/modifiers/06_default_library",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Default library",
+  "summary": "Symbols from system headers carry the default-library modifier",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int before_includes = 0;\n\n#include <syslib.h>\n\nint used = system_helper();\n",
+      "markers": [
+        {
+          "name": "system_helper",
+          "begin": 58,
+          "end": 58,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "sys/syslib.h",
+      "text": "#pragma once\n\ninline int system_helper() {\n    return 1;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "system_helper",
+          "marker": "system_helper",
+          "value": {
+            "semantic_token": {
+              "text": "system_helper",
+              "type": "function",
+              "modifiers": [
+                "defaultLibrary"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

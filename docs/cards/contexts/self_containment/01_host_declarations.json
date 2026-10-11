@@ -1,0 +1,99 @@
+{
+  "id": "contexts/self_containment/01_host_declarations",
+  "topic": "contexts",
+  "subtopic": "self_containment",
+  "title": "Headers that need their includer",
+  "summary": "A header that uses what its includer declares first still compiles, in the includer's context",
+  "prose": "`ruler.h` uses a type and a macro that `main.cpp` declares before including it, so the header does not compile on its own. clice finds that out and compiles it after what `main.cpp` declares, so it has no errors and hover works inside it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Meters {\n    double value;\n};\n\n#define SCALE 3\n\n#include \"ruler.h\"\n\nint main() {\n    return ruler_length().value > unit_length.value ? 0 : 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "ruler.h",
+      "text": "#pragma once\n\ninline Meters ruler_length() {\n    return Meters{SCALE * 0.5};\n}\n\ninline Meters unit_length{1.0};\n",
+      "markers": [
+        {
+          "name": "macro",
+          "begin": 63,
+          "end": 63,
+          "range": false
+        },
+        {
+          "name": "variable",
+          "begin": 94,
+          "end": 94,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "hover in the header",
+      "blocks": [
+        {
+          "label": "macro",
+          "marker": "macro",
+          "value": {
+            "hover": {
+              "markdown": "### macro `SCALE`\n\n---\n```cpp\n#define SCALE 3\n\n// Expands to\n3\n```",
+              "range": {
+                "$place": "return Meters{⟦SCALE⟧ * 0.5};",
+                "path": "ruler.h",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 23
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "hover": {
+              "markdown": "### variable `unit_length`\n\n---\nType: `Meters`\n\n---\n```cpp\nMeters unit_length{1.0}\n```",
+              "range": {
+                "$place": "inline Meters ⟦unit_length⟧{1.0};",
+                "path": "ruler.h",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 25
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the includer's context",
+      "blocks": [
+        {
+          "label": "ruler.h",
+          "value": {
+            "diagnostics": []
+          }
+        }
+      ]
+    }
+  ]
+}

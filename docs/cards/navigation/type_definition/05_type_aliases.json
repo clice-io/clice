@@ -1,0 +1,181 @@
+{
+  "id": "navigation/type_definition/05_type_aliases",
+  "topic": "navigation",
+  "subtopic": "type_definition",
+  "title": "Type aliases",
+  "summary": "Go-to-type-definition on a variable of an aliased type reaches the `using` or `typedef` declaration; it does not yet unwrap the alias to the underlying type's definition",
+  "prose": "",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Impl {};\n\nusing Handle = Impl;\n\ntypedef Impl LegacyHandle;\n\ntemplate <typename T>\nstruct Box {};\n\nusing Boxed = Box<int>;\n\nint use(Handle handle, LegacyHandle legacy, Boxed boxed) {\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "underlying",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "alias",
+          "begin": 23,
+          "end": 23,
+          "range": false
+        },
+        {
+          "name": "template_alias",
+          "begin": 111,
+          "end": 111,
+          "range": false
+        },
+        {
+          "name": "var",
+          "begin": 145,
+          "end": 145,
+          "range": false
+        },
+        {
+          "name": "legacy",
+          "begin": 166,
+          "end": 166,
+          "range": false
+        },
+        {
+          "name": "boxed",
+          "begin": 180,
+          "end": 180,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "underlying",
+          "marker": "underlying",
+          "value": {
+            "type_definition": []
+          }
+        },
+        {
+          "label": "alias",
+          "marker": "alias",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Impl⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "template_alias",
+          "marker": "template_alias",
+          "value": {
+            "type_definition": [
+              {
+                "$place": "struct ⟦Box⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "var",
+          "marker": "var",
+          "value": {
+            "wrong": "should reach Impl, the type the alias names",
+            "type_definition": [
+              {
+                "$place": "using ⟦Handle⟧ = Impl;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "legacy",
+          "marker": "legacy",
+          "value": {
+            "wrong": "should reach Impl, the type the typedef names",
+            "type_definition": [
+              {
+                "$place": "typedef Impl ⟦LegacyHandle⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 25
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "boxed",
+          "marker": "boxed",
+          "value": {
+            "wrong": "should reach Box, the template the alias names",
+            "type_definition": [
+              {
+                "$place": "using ⟦Boxed⟧ = Box<int>;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,292 @@
+{
+  "id": "semantic_tokens/lexical/01_comments",
+  "topic": "semantic_tokens",
+  "subtopic": "lexical",
+  "title": "Comments",
+  "summary": "Line, block and documentation comments receive comment tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "// A line comment.\n/* a one-line block comment */\n/*\n * a block comment\n * spanning several lines\n */\n/// a doc comment\nint after_comments = 0;\n\n/* first\nsecond */ int after_block = 1;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦// A line comment.⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "⟦/* a one-line block comment */⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 30
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "⟦/*⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 2
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "⟦ * a block comment⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "⟦ * spanning several lines⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "⟦ */⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "⟦/// a doc comment⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ after_comments = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦after_comments⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int after_comments = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦/* first⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "⟦second */⟧ int after_block = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "comment"
+              },
+              {
+                "at": {
+                  "$place": "second */ ⟦int⟧ after_block = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "second */ int ⟦after_block⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "second */ int after_block = ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 29
+                    }
+                  }
+                },
+                "type": "number"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

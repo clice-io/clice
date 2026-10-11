@@ -1,0 +1,123 @@
+{
+  "id": "navigation/declaration/06_signature_spelling",
+  "topic": "navigation",
+  "subtopic": "declaration",
+  "title": "Cosmetic signature differences",
+  "summary": "Parameter names, and a top-level `const` on a parameter, are not part of a function's type: the declaration and the definition below spell the same function differently, yet go-to-declaration still connects a use to the prototype",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int render(int width, const int height);\n\nint render(int w, int h) {\n    return w * h;\n}\n\nint use_render() {\n    return render(800, 600);\n}\n",
+      "markers": [
+        {
+          "name": "decl",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        },
+        {
+          "name": "def",
+          "begin": 46,
+          "end": 46,
+          "range": false
+        },
+        {
+          "name": "use",
+          "begin": 120,
+          "end": 120,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "decl",
+          "marker": "decl",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int ⟦render⟧(int w, int h) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "def",
+          "marker": "def",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int ⟦render⟧(int width, const int height);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "declaration": [
+              {
+                "$place": "int ⟦render⟧(int width, const int height);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 10
+                  }
+                }
+              },
+              {
+                "$place": "int ⟦render⟧(int w, int h) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

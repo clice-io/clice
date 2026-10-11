@@ -1,0 +1,43 @@
+{
+  "id": "signature_help/call_contexts/05_functors",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Functor calls",
+  "summary": "Calling an object shows its `operator()` overloads",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Adder {\n    int operator()(int a, int b);\n};\n\nint main() {\n    Adder add;\n    add(1, 2);\n}\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 89,
+          "end": 89,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "operator()(⟦int a⟧, int b) -> int"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

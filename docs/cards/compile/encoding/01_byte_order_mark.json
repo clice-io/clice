@@ -1,0 +1,148 @@
+{
+  "id": "compile/encoding/01_byte_order_mark",
+  "topic": "compile",
+  "subtopic": "encoding",
+  "title": "Byte order marks",
+  "summary": "Files saved as UTF-8 with a byte order mark work like any other",
+  "prose": "Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "a.h",
+      "text": "﻿int shared_fn();\n",
+      "markers": []
+    },
+    {
+      "path": "c.cpp",
+      "text": "﻿int user3() {\n    return 3;\n}\n\n#include \"a.h\"\n",
+      "markers": []
+    },
+    {
+      "path": "data.bin",
+      "text": "﻿AB",
+      "markers": []
+    },
+    {
+      "path": "embed.cpp",
+      "text": "constexpr unsigned char data[] = {\n#embed \"data.bin\"\n};\n\nstatic_assert(sizeof(data) == 5);\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "﻿#include \"types.h\"\n#include \"utils.h\"\n#include \"a.h\"\n\nint main() {\n    return get_x({1, 2}) + shared_fn();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "types.h",
+      "text": "#pragma once\n\nstruct Point {\n    int x;\n    int y;\n};\n",
+      "markers": []
+    },
+    {
+      "path": "utils.h",
+      "text": "inline int get_x(Point p) {\n    return p.x;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "first line",
+      "blocks": [
+        {
+          "label": "user3",
+          "value": {
+            "hover": {
+              "markdown": "### function `user3`\n\n---\n→ `int`\n\n---\n```cpp\nint user3()\n```",
+              "range": {
+                "$place": "int ⟦user3⟧() {",
+                "path": "c.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "navigation",
+      "blocks": [
+        {
+          "label": "shared_fn",
+          "value": {
+            "definition": [
+              {
+                "$place": "a.h │ int ⟦shared_fn⟧();",
+                "path": "a.h",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "user3",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "user3",
+                "kind": "Function",
+                "at": {
+                  "$place": "c.cpp │ int ⟦user3⟧() {",
+                  "path": "c.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 9
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "marked host keeps the context",
+      "blocks": [
+        {
+          "label": "utils.h",
+          "value": {
+            "contexts": [
+              {
+                "label": "main.cpp",
+                "description": "${WS}/main.cpp",
+                "host": "main.cpp"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "embedded data keeps the mark",
+      "blocks": []
+    }
+  ]
+}

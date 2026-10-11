@@ -1,0 +1,57 @@
+{
+  "id": "code_actions/define/01_method_out_of_line",
+  "topic": "code_actions",
+  "subtopic": "define",
+  "title": "Define a declared method",
+  "summary": "A method declaration offers an inline body and an out-of-line definition after its class",
+  "prose": "The out-of-line definition repeats the declaration with `S::` before the name and drops what belongs to the declaration alone, such as default arguments.",
+  "status": "supported",
+  "issues": [
+    "clangd#445"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct S {\n    int f(int x, int y = 3) const;\n};\n",
+      "markers": [
+        {
+          "name": "f",
+          "begin": 19,
+          "end": 19,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "f",
+          "marker": "f",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.define.inline",
+                "title": "Define 'f' inline",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " struct S {\n-    int f(int x, int y = 3) const;\n+    int f(int x, int y = 3) const {}\n };"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.define.outOfLine",
+                "title": "Define 'S::f' out of line",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     int f(int x, int y = 3) const;\n };\n+\n+int S::f(int x, int y) const {\n+}"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

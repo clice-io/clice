@@ -1,0 +1,65 @@
+{
+  "id": "inlay_hints/parameter_hints/12_macros",
+  "topic": "inlay_hints",
+  "subtopic": "parameter_hints",
+  "title": "Macros at call sites",
+  "summary": "Arguments spelled as macros hint; calls generated inside macro bodies do not",
+  "prose": "An object-like macro is one written argument. A macro covering several arguments has no place to anchor a hint, and code written as a macro argument keeps its hints.",
+  "status": "supported",
+  "issues": [
+    "clangd#2620"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void report(double value);\nvoid plot(double x, double y);\nint check(int status);\n\n#define PI 3.14\n#define CALL_REPORT() report(2.71)\n#define PAIR 1.0, 2.0\n#define ASSERT(expr) if(!(expr)) {}\n\nvoid use() {\n    report(PI);\n    CALL_REPORT();\n    plot(PAIR);\n    ASSERT(check(42) == 0);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "report(⟨value:⟩PI);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "ASSERT(check(⟨status:⟩42) == 0);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 27
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

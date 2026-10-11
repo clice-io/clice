@@ -1,0 +1,107 @@
+{
+  "id": "diagnostics/guidance/01_no_database",
+  "topic": "diagnostics",
+  "subtopic": "guidance",
+  "title": "No compilation database",
+  "summary": "A file no compilation database lists compiles with a guessed command and says so",
+  "prose": "Without a `compile_commands.json` entry, a file still compiles, with a command clice guesses. When that leaves an include unresolved, a warning at the top of the file explains why and links to the setup guide. Once the database lists the file, the warning goes, and the errors left are the code's own.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"config.h\"\n\nint main() {\n    return 0;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "without a database",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "⟦⟧#include \"config.h\"",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 0
+                    }
+                  }
+                },
+                "severity": "warning",
+                "message": "No compilation database entry for this file (compile command was synthesized from defaults), so some includes may not be found. Configure compile_commands.json for accurate diagnostics.",
+                "source": "clice",
+                "code": "inferred-compile-command",
+                "link": "https://docs.clice.io/clice/guide/quick-start#project-setup"
+              },
+              {
+                "at": {
+                  "$place": "#include ⟦\"config.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 19
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "'config.h' file not found",
+                "source": "clang",
+                "code": "err_pp_file_not_found"
+              }
+            ]
+          }
+        },
+        {
+          "label": "guidance",
+          "value": {
+            "value": [
+              "No compile_commands.json found in workspace ${WS}. Compile commands will be guessed; see https://docs.clice.io/clice/guide/quick-start#project-setup for setup."
+            ]
+          }
+        },
+        {
+          "label": "with a database",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"config.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 19
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "'config.h' file not found",
+                "source": "clang",
+                "code": "err_pp_file_not_found"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

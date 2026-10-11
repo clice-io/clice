@@ -1,0 +1,90 @@
+{
+  "id": "project/configurations/03_board_defaults",
+  "topic": "project",
+  "subtopic": "configurations",
+  "title": "One command per board",
+  "summary": "Tagged rules form a menu of build configurations, and a switch applies when the server starts again",
+  "prose": "Each board's rule gives its own default command, and `board-a` is the default configuration. Under it the header's `BOARD_B` branch is inactive; after switching to `board-b` and restarting, the `BOARD_A` branch is.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "clice.toml",
+      "text": "default_configuration = \"board-a\"\n\n[[rules]]\nconfiguration = \"board-a\"\npatterns = [\"src/**\", \"include/**\"]\ndefault_command = \"clang -std=c23 -DBOARD_A -Iinclude\"\n\n[[rules]]\nconfiguration = \"board-b\"\npatterns = [\"src/**\", \"include/**\"]\ndefault_command = \"clang -std=c23 -DBOARD_B -Iinclude\"\n",
+      "markers": []
+    },
+    {
+      "path": "include/board.h",
+      "text": "#pragma once\n#if defined(BOARD_A)\n#define BOARD_ID 1\n#endif\n#if defined(BOARD_B)\n#define BOARD_ID 2\n#endif\n",
+      "markers": []
+    },
+    {
+      "path": "src/main.c",
+      "text": "#include \"board.h\"\nint main(void) { return BOARD_ID; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "menu",
+          "value": {
+            "configurations": {
+              "menu": [
+                "board-a",
+                "board-b"
+              ],
+              "active": "board-a",
+              "selected": "",
+              "default": "board-a"
+            }
+          }
+        },
+        {
+          "label": "board-a",
+          "value": {
+            "inactive_lines": [
+              {
+                "$place": "⟦#define BOARD_ID 2⟧",
+                "path": "include/board.h",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "board-b",
+          "value": {
+            "inactive_lines": [
+              {
+                "$place": "⟦#define BOARD_ID 1⟧",
+                "path": "include/board.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

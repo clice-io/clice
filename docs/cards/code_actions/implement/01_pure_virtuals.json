@@ -1,0 +1,57 @@
+{
+  "id": "code_actions/implement/01_pure_virtuals",
+  "topic": "code_actions",
+  "subtopic": "implement",
+  "title": "Implement pure virtual methods",
+  "summary": "A class deriving from an abstract base receives an `override` declaration for each unimplemented pure virtual method",
+  "prose": "The declarations go at the end of the class body.",
+  "status": "supported",
+  "issues": [
+    "clangd#1037"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n    virtual ~Shape() = default;\n    virtual double area() const = 0;\n    virtual void scale(double factor) noexcept = 0;\n    virtual const char* name() const { return \"shape\"; }\n};\n\nstruct Circle : Shape {\n    double radius;\n};\n",
+      "markers": [
+        {
+          "name": "circle",
+          "begin": 204,
+          "end": 204,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "circle",
+          "marker": "circle",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.implementPureVirtuals",
+                "title": "Implement pure virtual methods of 'Circle'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " struct Circle : Shape {\n     double radius;\n+    double area() const override;\n+    void scale(double factor) noexcept override;\n };"
+                }
+              },
+              {
+                "kind": "refactor.rewrite.generateMemberwiseConstructor",
+                "title": "Generate a memberwise constructor for 'Circle'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " struct Circle : Shape {\n     double radius;\n+    explicit Circle(double radius) : radius(radius) {}\n };"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

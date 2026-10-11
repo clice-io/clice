@@ -1,0 +1,137 @@
+{
+  "id": "navigation/definition/01_declaration_only",
+  "topic": "navigation",
+  "subtopic": "definition",
+  "title": "Declaration-only symbols",
+  "summary": "A symbol with no definition in sight resolves to its declaration",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "extern int threshold;\n\nint probe(int value);\n\nstruct Screen {\n    static const int margin = 4;\n    virtual void refresh() = 0;\n};\n\nint watch(Screen& screen, int value) {\n    screen.refresh();\n    return probe(value) + threshold + Screen::margin;\n}\n",
+      "markers": [
+        {
+          "name": "method",
+          "begin": 181,
+          "end": 181,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 203,
+          "end": 203,
+          "range": false
+        },
+        {
+          "name": "variable",
+          "begin": 218,
+          "end": 218,
+          "range": false
+        },
+        {
+          "name": "constant",
+          "begin": 238,
+          "end": 238,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "method",
+          "marker": "method",
+          "value": {
+            "definition": [
+              {
+                "$place": "virtual void ⟦refresh⟧() = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 24
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "definition": [
+              {
+                "$place": "int ⟦probe⟧(int value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "definition": [
+              {
+                "$place": "extern int ⟦threshold⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 20
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "constant",
+          "marker": "constant",
+          "value": {
+            "definition": [
+              {
+                "$place": "static const int ⟦margin⟧ = 4;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 21
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 27
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

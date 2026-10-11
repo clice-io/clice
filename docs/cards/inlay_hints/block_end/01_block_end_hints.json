@@ -1,0 +1,247 @@
+{
+  "id": "inlay_hints/block_end/01_block_end_hints",
+  "topic": "inlay_hints",
+  "subtopic": "block_end",
+  "title": "Names after closing braces",
+  "summary": "After the closing brace of a block spanning lines, a hint names what the brace closes",
+  "prose": "Functions, types, namespaces and control flow get one; `if` and `while` show their condition when it is short, an `else if` chain shows as plain `// if`, and a label longer than 60 characters is dropped. A block on one line gets none.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace detail {\n\nstruct Widget {\n    int width;\n    int height;\n};\n\nint area(const Widget& widget) {\n    int total = 0;\n    while (total < widget.width) {\n        total += widget.height;\n    }\n    if (total > 10) {\n        total = 10;\n    } else if (total < 0) {\n        total = 0;\n    }\n    if (widget.width > widget.height && widget.height > 0 && total != widget.width) {\n        total += 1;\n    }\n    return total;\n}\n\nint tiny() { return 0; }\n\nint a_function_whose_name_alone_is_long_enough_to_pass_sixty_chars() {\n    return 0;\n}\n\n}\n\n",
+      "markers": [
+        {
+          "name": "struct_end",
+          "begin": 67,
+          "end": 70,
+          "range": true
+        },
+        {
+          "name": "while_end",
+          "begin": 194,
+          "end": 196,
+          "range": true
+        },
+        {
+          "name": "else_if_end",
+          "begin": 289,
+          "end": 291,
+          "range": true
+        },
+        {
+          "name": "long_condition_end",
+          "begin": 401,
+          "end": 403,
+          "range": true
+        },
+        {
+          "name": "function_end",
+          "begin": 421,
+          "end": 423,
+          "range": true
+        },
+        {
+          "name": "one_line_end",
+          "begin": 447,
+          "end": 449,
+          "range": true
+        },
+        {
+          "name": "long_name_end",
+          "begin": 535,
+          "end": 537,
+          "range": true
+        },
+        {
+          "name": "namespace_end",
+          "begin": 538,
+          "end": 540,
+          "range": true
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "inlay_hints": {
+          "block_end": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "struct_end",
+          "marker": "struct_end",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "};⟨// struct Widget⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 2
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "while_end",
+          "marker": "while_end",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// while total < width⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 5
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "else_if_end",
+          "marker": "else_if_end",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// if⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 5
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "long_condition_end",
+          "marker": "long_condition_end",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// if⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 19,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 5
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "function_end",
+          "marker": "function_end",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// area⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "one_line_end",
+          "marker": "one_line_end",
+          "value": {
+            "inlay_hints": []
+          }
+        },
+        {
+          "label": "long_name_end",
+          "marker": "long_name_end",
+          "value": {
+            "inlay_hints": []
+          }
+        },
+        {
+          "label": "namespace_end",
+          "marker": "namespace_end",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// namespace detail⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 29,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 29,
+                      "character": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

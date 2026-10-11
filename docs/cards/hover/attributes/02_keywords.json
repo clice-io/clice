@@ -1,0 +1,55 @@
+{
+  "id": "hover/attributes/02_keywords",
+  "topic": "hover",
+  "subtopic": "attributes",
+  "title": "Keywords",
+  "summary": "Hovering a keyword such as `const` or `virtual` shows nothing yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1862"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace keywords {\n\nconst int limit = 42;\n\nstruct Widget {\n    virtual void draw();\n};\n\n}\n",
+      "markers": [
+        {
+          "name": "const_kw",
+          "begin": 24,
+          "end": 24,
+          "range": false
+        },
+        {
+          "name": "virtual_kw",
+          "begin": 68,
+          "end": 68,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "const_kw",
+          "marker": "const_kw",
+          "value": {
+            "wrong": "a keyword has no card explaining it (clangd#1862)",
+            "hover": {}
+          }
+        },
+        {
+          "label": "virtual_kw",
+          "marker": "virtual_kw",
+          "value": {
+            "wrong": "a keyword has no card explaining it (clangd#1862)",
+            "hover": {}
+          }
+        }
+      ]
+    }
+  ]
+}

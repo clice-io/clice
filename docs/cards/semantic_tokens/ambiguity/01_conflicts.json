@@ -1,0 +1,95 @@
+{
+  "id": "semantic_tokens/ambiguity/01_conflicts",
+  "topic": "semantic_tokens",
+  "subtopic": "ambiguity",
+  "title": "Conflicting names",
+  "summary": "A name that means both a type and a function or variable renders as `conflict`",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace shop {\nstruct Widget {};\nvoid Widget();\n}\n\nnamespace mixed {\nstruct Thing {};\nint Thing;\n}\n\nusing shop::Widget;\nusing mixed::Thing;\n",
+      "markers": [
+        {
+          "name": "type",
+          "begin": 24,
+          "end": 24,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 40,
+          "end": 40,
+          "range": false
+        },
+        {
+          "name": "type_and_function",
+          "begin": 114,
+          "end": 114,
+          "range": false
+        },
+        {
+          "name": "type_and_variable",
+          "begin": 135,
+          "end": 135,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "semantic_token": {
+              "text": "Widget",
+              "type": "struct",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "semantic_token": {
+              "text": "Widget",
+              "type": "function",
+              "modifiers": [
+                "declaration"
+              ]
+            }
+          }
+        },
+        {
+          "label": "type_and_function",
+          "marker": "type_and_function",
+          "value": {
+            "semantic_token": {
+              "text": "Widget",
+              "type": "conflict"
+            }
+          }
+        },
+        {
+          "label": "type_and_variable",
+          "marker": "type_and_variable",
+          "value": {
+            "semantic_token": {
+              "text": "Thing",
+              "type": "conflict"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

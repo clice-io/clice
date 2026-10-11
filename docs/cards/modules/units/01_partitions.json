@@ -1,0 +1,128 @@
+{
+  "id": "modules/units/01_partitions",
+  "topic": "modules",
+  "subtopic": "units",
+  "title": "Module partitions",
+  "summary": "A module split into partitions gives its importers what every partition its primary interface re-exports declares",
+  "prose": "A partition imports a sibling by its partition name alone, `import :Types;`,\nand the primary interface uses what its partitions declare.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "core.cppm",
+      "text": "export module Sys:Core;\nimport :Types;\n\nexport Config make_config() {\n    return {42};\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "import Sys;\n\nint main() {\n    Config config = make_config();\n    return config.value;\n}\n",
+      "markers": [
+        {
+          "name": "type",
+          "begin": 30,
+          "end": 30,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 46,
+          "end": 46,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "sys.cppm",
+      "text": "export module Sys;\nexport import :Types;\nexport import :Core;\n\nexport int default_value() {\n    return make_config().value;\n}\n",
+      "markers": [
+        {
+          "name": "primary",
+          "begin": 103,
+          "end": 103,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "types.cppm",
+      "text": "export module Sys:Types;\n\nexport struct Config {\n    int value = 0;\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "hover": {
+              "markdown": "### struct `Config`\n\n---\n```cpp\nexport struct Config {\n  int value = 0;\n}\n```",
+              "range": {
+                "$place": "⟦Config⟧ config = make_config();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "markdown": "### function `make_config`\n\n---\n→ `Config`\n\n---\n```cpp\nexport Config make_config()\n```",
+              "range": {
+                "$place": "Config config = ⟦make_config⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 31
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "primary",
+          "marker": "primary",
+          "value": {
+            "hover": {
+              "markdown": "### function `make_config`\n\n---\n→ `Config`\n\n---\n```cpp\nexport Config make_config()\n```",
+              "range": {
+                "$place": "return ⟦make_config⟧().value;",
+                "path": "sys.cppm",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 22
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

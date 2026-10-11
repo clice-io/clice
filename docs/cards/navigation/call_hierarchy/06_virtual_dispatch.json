@@ -1,0 +1,129 @@
+{
+  "id": "navigation/call_hierarchy/06_virtual_dispatch",
+  "topic": "navigation",
+  "subtopic": "call_hierarchy",
+  "title": "Follow virtual dispatch",
+  "summary": "Incoming calls of a base virtual method do not include calls made through derived overrides; a call to an override is attributed only to that override, never to the base it overrides",
+  "prose": "",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    virtual void draw();\n};\n\nstruct Derived : Base {\n    void draw() override;\n};\n\nvoid call_derived(Derived& d) {\n    d.draw();\n}\n",
+      "markers": [
+        {
+          "name": "base",
+          "begin": 31,
+          "end": 31,
+          "range": false
+        },
+        {
+          "name": "override",
+          "begin": 76,
+          "end": 76,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "base",
+          "marker": "base",
+          "value": {
+            "wrong": "d.draw() may dispatch to Base::draw, so it should be among the incoming calls",
+            "call_hierarchy": [
+              {
+                "name": "draw",
+                "kind": "Method",
+                "at": {
+                  "$place": "virtual void ⟦draw⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [],
+            "outgoing_calls": []
+          }
+        },
+        {
+          "label": "override",
+          "marker": "override",
+          "value": {
+            "call_hierarchy": [
+              {
+                "name": "draw",
+                "kind": "Method",
+                "at": {
+                  "$place": "void ⟦draw⟧() override;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 13
+                    }
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "call_derived",
+                "kind": "Function",
+                "at": {
+                  "$place": "void ⟦call_derived⟧(Derived& d) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 17
+                    }
+                  }
+                },
+                "sites": [
+                  {
+                    "$place": "d.⟦draw⟧();",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 9,
+                        "character": 6
+                      },
+                      "end": {
+                        "line": 9,
+                        "character": 10
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": []
+          }
+        }
+      ]
+    }
+  ]
+}

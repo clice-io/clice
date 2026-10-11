@@ -1,0 +1,51 @@
+{
+  "id": "code_actions/switch_cases/04_complete_switch",
+  "topic": "code_actions",
+  "subtopic": "switch_cases",
+  "title": "Complete switch offers nothing",
+  "summary": "A switch handling every enumerator, or one over a non-enum value, offers no action",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "enum class Bit { Zero, One };\n\nint flip(Bit bit, int n) {\n    switch (bit) {\n    case Bit::Zero:\n        return 1;\n    case Bit::One:\n        return 0;\n    }\n    switch (n) {\n    case 0:\n        return 1;\n    }\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "complete",
+          "begin": 62,
+          "end": 62,
+          "range": false
+        },
+        {
+          "name": "integer",
+          "begin": 162,
+          "end": 162,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "complete",
+          "marker": "complete",
+          "value": {
+            "code_actions": []
+          }
+        },
+        {
+          "label": "integer",
+          "marker": "integer",
+          "value": {
+            "code_actions": []
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "id": "navigation/call_hierarchy/07_non_functions",
+  "topic": "navigation",
+  "subtopic": "call_hierarchy",
+  "title": "Non-function targets",
+  "summary": "Call hierarchy preparation returns nothing for variables and enum constants",
+  "prose": "Preparing a call hierarchy on a variable or an enum constant returns\nnothing; the request is offered only for functions and methods.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#1308"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int counter = 0;\n\nenum Mode {\n    Fast,\n    Slow,\n};\n\nint next() {\n    return counter++;\n}\n\nMode pick() {\n    return Fast;\n}\n",
+      "markers": [
+        {
+          "name": "variable",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        },
+        {
+          "name": "enumerator",
+          "begin": 34,
+          "end": 34,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "wrong": "a call hierarchy should open on a variable, with the functions using it (clangd#1308)",
+            "call_hierarchy": [],
+            "incoming_calls": [],
+            "outgoing_calls": []
+          }
+        },
+        {
+          "label": "enumerator",
+          "marker": "enumerator",
+          "value": {
+            "wrong": "a call hierarchy should open on an enumerator, with the functions using it (clangd#1308)",
+            "call_hierarchy": [],
+            "incoming_calls": [],
+            "outgoing_calls": []
+          }
+        }
+      ]
+    }
+  ]
+}

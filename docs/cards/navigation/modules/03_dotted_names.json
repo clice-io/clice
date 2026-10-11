@@ -1,0 +1,86 @@
+{
+  "id": "navigation/modules/03_dotted_names",
+  "topic": "navigation",
+  "subtopic": "modules",
+  "title": "Dot-separated module name",
+  "summary": "Every segment of a dotted module name navigates to its interface",
+  "prose": "Go-to-definition on any segment of a dot-separated module name reaches\nthe module's interface unit; the whole name is one reference.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app_core.cppm",
+      "text": "export module app.core;\n\nexport int value() {\n    return 1;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "import app.core;\n\nint run() {\n    return value();\n}\n",
+      "markers": [
+        {
+          "name": "seg_app",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "seg_core",
+          "begin": 11,
+          "end": 11,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "seg_app",
+          "marker": "seg_app",
+          "value": {
+            "definition": [
+              {
+                "$place": "app_core.cppm │ export module ⟦app.core⟧;",
+                "path": "app_core.cppm",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 22
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "seg_core",
+          "marker": "seg_core",
+          "value": {
+            "definition": [
+              {
+                "$place": "app_core.cppm │ export module ⟦app.core⟧;",
+                "path": "app_core.cppm",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 22
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

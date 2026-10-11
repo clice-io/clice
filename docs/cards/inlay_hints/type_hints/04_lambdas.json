@@ -1,0 +1,65 @@
+{
+  "id": "inlay_hints/type_hints/04_lambdas",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Lambdas",
+  "summary": "Variables, deduced return types, and init-captures all hint",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#1163"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int compute();\n\nvoid use() {\n    auto callback = [captured = compute()](int x) {\n        return x + captured;\n    };\n    auto bare = [] {\n        return 1.5;\n    };\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto callback⟨: (lambda)⟩ = [captured⟨: int⟩ = compute()](int x)⟨-> int⟩ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 51
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto bare⟨: (lambda)⟩ = []⟨-> double⟩ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 20
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

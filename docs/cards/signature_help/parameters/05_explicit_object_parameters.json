@@ -1,0 +1,46 @@
+{
+  "id": "signature_help/parameters/05_explicit_object_parameters",
+  "topic": "signature_help",
+  "subtopic": "parameters",
+  "title": "Explicit object parameters",
+  "summary": "A C++23 `this` parameter shows in the label and takes the first argument's mark",
+  "prose": "The object a member is called on is not an argument, yet the label lists\n`this Shape &self` and marks it while the cursor is on the argument for `dx`.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2284"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Shape {\n    void move(this Shape& self, int dx, int dy);\n};\n\nvoid slide(Shape shape) {\n    shape.move(1, 2);\n}\n",
+      "markers": [
+        {
+          "name": "first",
+          "begin": 109,
+          "end": 109,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "first",
+          "marker": "first",
+          "value": {
+            "wrong": "the object parameter is listed and marked, while the cursor is on the argument for dx (clangd#2284)",
+            "signature_help": {
+              "signatures": [
+                "move(⟦this Shape &self⟧, int dx, int dy) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

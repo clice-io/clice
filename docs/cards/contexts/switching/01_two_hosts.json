@@ -1,0 +1,185 @@
+{
+  "id": "contexts/switching/01_two_hosts",
+  "topic": "contexts",
+  "subtopic": "switching",
+  "title": "Choosing a header's host",
+  "summary": "A header that relies on its includer reads the way the chosen includer makes it",
+  "prose": "`shared.h` uses a macro that each source defines before including it. Both sources are contexts of the header: clice picks one, the editor can switch to the other, and hover then shows the type that host gives. The choice is kept across restarts until it is reset.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "int_host.cpp",
+      "text": "#define VALUE_TYPE int\n#include \"shared.h\"\n\nint main() {\n    return 0;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "real_host.cpp",
+      "text": "#define VALUE_TYPE float\n#include \"shared.h\"\n\nfloat real() {\n    return 0;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "shared.h",
+      "text": "#pragma once\n\nVALUE_TYPE get_value();\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "each host gives the header its own reading",
+      "blocks": [
+        {
+          "label": "automatic",
+          "value": {
+            "context": {
+              "context": {
+                "label": "int_host.cpp",
+                "description": "${WS}/int_host.cpp",
+                "host": "int_host.cpp"
+              },
+              "automatic": true
+            },
+            "hover": {
+              "markdown": "### function `get_value`\n\n---\n→ `int`\n\n---\n```cpp\nint get_value()\n```",
+              "range": {
+                "$place": "VALUE_TYPE ⟦get_value⟧();",
+                "path": "shared.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "real host",
+          "value": {
+            "context": {
+              "context": {
+                "label": "real_host.cpp",
+                "description": "${WS}/real_host.cpp",
+                "host": "real_host.cpp"
+              },
+              "automatic": false
+            },
+            "hover": {
+              "markdown": "### function `get_value`\n\n---\n→ `float`\n\n---\n```cpp\nfloat get_value()\n```",
+              "range": {
+                "$place": "VALUE_TYPE ⟦get_value⟧();",
+                "path": "shared.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "int host",
+          "value": {
+            "context": {
+              "context": {
+                "label": "int_host.cpp",
+                "description": "${WS}/int_host.cpp",
+                "host": "int_host.cpp"
+              },
+              "automatic": false
+            },
+            "hover": {
+              "markdown": "### function `get_value`\n\n---\n→ `int`\n\n---\n```cpp\nint get_value()\n```",
+              "range": {
+                "$place": "VALUE_TYPE ⟦get_value⟧();",
+                "path": "shared.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "reset",
+          "value": {
+            "context": {
+              "context": {
+                "label": "int_host.cpp",
+                "description": "${WS}/int_host.cpp",
+                "host": "int_host.cpp"
+              },
+              "automatic": true
+            },
+            "hover": {
+              "markdown": "### function `get_value`\n\n---\n→ `int`\n\n---\n```cpp\nint get_value()\n```",
+              "range": {
+                "$place": "VALUE_TYPE ⟦get_value⟧();",
+                "path": "shared.h",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a choice survives a restart",
+      "blocks": [
+        {
+          "label": "chosen",
+          "value": {
+            "current_context": {
+              "context": {
+                "label": "real_host.cpp",
+                "description": "${WS}/real_host.cpp",
+                "host": "real_host.cpp"
+              },
+              "automatic": false
+            }
+          }
+        },
+        {
+          "label": "reset",
+          "value": {
+            "current_context": {
+              "context": {
+                "label": "int_host.cpp",
+                "description": "${WS}/int_host.cpp",
+                "host": "int_host.cpp"
+              },
+              "automatic": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

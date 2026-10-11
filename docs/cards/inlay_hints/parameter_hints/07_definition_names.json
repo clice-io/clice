@@ -1,0 +1,79 @@
+{
+  "id": "inlay_hints/parameter_hints/07_definition_names",
+  "topic": "inlay_hints",
+  "subtopic": "parameter_hints",
+  "title": "Names from definitions",
+  "summary": "Unnamed declaration parameters take the definition's names; leading underscores strip",
+  "prose": "When both the declaration and the definition name a parameter, the declaration wins.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void resize(int, int);\n\nvoid fill(int _value, int __count);\n\nint scale(int good);\n\nvoid use() {\n    resize(800, 600);\n    fill(1, 2);\n    scale(7);\n}\n\nvoid resize(int width, int height) {}\n\nint scale(int bad) {\n    return bad;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "resize(⟨width:⟩800, ⟨height:⟩600);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 21
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "fill(⟨value:⟩1, ⟨count:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 15
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "scale(⟨good:⟩7);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 13
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

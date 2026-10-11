@@ -1,0 +1,67 @@
+{
+  "id": "navigation/templates/03_overload_candidates",
+  "topic": "navigation",
+  "subtopic": "templates",
+  "title": "Dependent overload candidates",
+  "summary": "A dependent call that may reach several overloads lists each of them",
+  "prose": "Every candidate answers on its own: the definition where it has one, its\ndeclaration where it has none.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void scale(int value);\n\nvoid scale(double value) {}\n\ntemplate <typename T>\nvoid apply(T value) {\n    scale(value);\n}\n",
+      "markers": [
+        {
+          "name": "call",
+          "begin": 101,
+          "end": 101,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "call",
+          "marker": "call",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦scale⟧(int value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 10
+                  }
+                }
+              },
+              {
+                "$place": "void ⟦scale⟧(double value) {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

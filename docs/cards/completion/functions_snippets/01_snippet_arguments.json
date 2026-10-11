@@ -1,0 +1,199 @@
+{
+  "id": "completion/functions_snippets/01_snippet_arguments",
+  "topic": "completion",
+  "subtopic": "functions_snippets",
+  "title": "Parameter placeholder snippets",
+  "summary": "Calls insert tab-stop placeholders per argument; a no-argument function stays plain text",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int foooo(int x, float y);\nvoid nothing_to_fill();\n\nstruct Foo {\n    int bazzzz(int a, int b);\n};\n\nvoid bar() {\n    Foo f;\n    fo;\n    no;\n    f.ba;\n}\n",
+      "markers": [
+        {
+          "name": "free_function",
+          "begin": 129,
+          "end": 129,
+          "range": false
+        },
+        {
+          "name": "no_arguments",
+          "begin": 137,
+          "end": 137,
+          "range": false
+        },
+        {
+          "name": "method",
+          "begin": 147,
+          "end": 147,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "free_function",
+          "marker": "free_function",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Foo",
+                  "kind": "Class",
+                  "insert": "Foo"
+                },
+                {
+                  "label": "foooo(int x, float y)",
+                  "kind": "Function",
+                  "detail": "int",
+                  "insert": "foooo"
+                },
+                {
+                  "label": "for",
+                  "kind": "Keyword",
+                  "insert": "for"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "no_arguments",
+          "marker": "no_arguments",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "noexcept",
+                  "kind": "Keyword",
+                  "insert": "noexcept"
+                },
+                {
+                  "label": "nothing_to_fill()",
+                  "kind": "Function",
+                  "detail": "void",
+                  "insert": "nothing_to_fill"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "method",
+          "marker": "method",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "bazzzz(int a, int b)",
+                  "kind": "Method",
+                  "detail": "int",
+                  "insert": "bazzzz"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "code_completion": {
+          "bundle_overloads": false,
+          "enable_function_arguments_snippet": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "free_function",
+          "marker": "free_function",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Foo",
+                  "kind": "Class",
+                  "insert": "Foo"
+                },
+                {
+                  "label": "Foo()",
+                  "kind": "Constructor",
+                  "insert": "Foo"
+                },
+                {
+                  "label": "Foo(Foo &&)",
+                  "kind": "Constructor",
+                  "insert": "Foo(${1:Foo &&})",
+                  "snippet": true
+                },
+                {
+                  "label": "Foo(const Foo &)",
+                  "kind": "Constructor",
+                  "insert": "Foo(${1:const Foo &})",
+                  "snippet": true
+                },
+                {
+                  "label": "foooo(int x, float y)",
+                  "kind": "Function",
+                  "detail": "int",
+                  "insert": "foooo(${1:int x}, ${2:float y})",
+                  "snippet": true
+                },
+                {
+                  "label": "for",
+                  "kind": "Keyword",
+                  "insert": "for"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "no_arguments",
+          "marker": "no_arguments",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "noexcept",
+                  "kind": "Keyword",
+                  "insert": "noexcept"
+                },
+                {
+                  "label": "nothing_to_fill()",
+                  "kind": "Function",
+                  "detail": "void",
+                  "insert": "nothing_to_fill"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "method",
+          "marker": "method",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "bazzzz(int a, int b)",
+                  "kind": "Method",
+                  "detail": "int",
+                  "insert": "bazzzz(${1:int a}, ${2:int b})",
+                  "snippet": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

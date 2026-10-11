@@ -1,0 +1,55 @@
+{
+  "id": "code_actions/fix/03_note_fixes",
+  "topic": "code_actions",
+  "subtopic": "fix",
+  "title": "Fixes from notes",
+  "summary": "Each note that carries a fix offers it as a quick fix, titled by the note",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int check(int x) {\n    if(x = 1) {\n        return 1;\n    }\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "assign",
+          "begin": 26,
+          "end": 26,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "assign",
+          "marker": "assign",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "quickfix",
+                "title": "place parentheses around the assignment to silence this warning",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " int check(int x) {\n-    if(x = 1) {\n+    if((x = 1)) {\n         return 1;\n     }"
+                }
+              },
+              {
+                "kind": "quickfix",
+                "title": "use '==' to turn this assignment into an equality comparison",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " int check(int x) {\n-    if(x = 1) {\n+    if(x == 1) {\n         return 1;\n     }"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

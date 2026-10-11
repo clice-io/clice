@@ -1,0 +1,62 @@
+{
+  "id": "code_actions/include/04_conditional_includes",
+  "topic": "code_actions",
+  "subtopic": "include",
+  "title": "Includes under conditionals",
+  "summary": "An include nested in a feature condition is not where a directive that must always apply goes: it follows the last one at the file's own level, or the include guard",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "config.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "feature.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#ifndef FIXTURE_GUARD_H\n#define FIXTURE_GUARD_H\n\n#include \"config.h\"\n\n#if FEATURE\n#include \"feature.h\"\n#endif\n\nusing Strings = std::string;\n\n#endif\n",
+      "markers": [
+        {
+          "name": "string",
+          "begin": 132,
+          "end": 132,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "string",
+      "text": "#pragma once\n\nnamespace std {\nclass string {};\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "string",
+          "marker": "string",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "quickfix",
+                "title": "Add #include <string>",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n #include \"config.h\"\n+#include <string>\n\n #if FEATURE"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

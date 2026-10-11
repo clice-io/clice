@@ -1,0 +1,178 @@
+{
+  "id": "navigation/modules/02_implementation_units",
+  "topic": "navigation",
+  "subtopic": "modules",
+  "title": "Module implementation units",
+  "summary": "The module name in an implementation unit navigates to the interface unit declaring the module",
+  "prose": "A use of an exported function reaches its definition in the implementation\nunit. The reverse direction, from the interface's module name to the units\nimplementing it, is not offered yet.",
+  "status": "partial",
+  "issues": [],
+  "files": [
+    {
+      "path": "iface.cppm",
+      "text": "export module store;\n\nexport int fetch(int key);\n",
+      "markers": [
+        {
+          "name": "iface_module_name",
+          "begin": 14,
+          "end": 14,
+          "range": false
+        },
+        {
+          "name": "iface_decl",
+          "begin": 33,
+          "end": 33,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "impl.cpp",
+      "text": "module store;\n\nint fetch(int key) {\n    return key * 2;\n}\n",
+      "markers": [
+        {
+          "name": "impl_module_name",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
+          "name": "impl_def",
+          "begin": 19,
+          "end": 19,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "main.cpp",
+      "text": "import store;\n\nint lookup(int key) {\n    return fetch(key);\n}\n",
+      "markers": [
+        {
+          "name": "use",
+          "begin": 48,
+          "end": 48,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "iface_module_name",
+          "marker": "iface_module_name",
+          "value": {
+            "wrong": "should lead to impl.cpp, the unit implementing the module, as the implementation unit's name leads here",
+            "definition": [
+              {
+                "$place": "export module ⟦store⟧;",
+                "path": "iface.cppm",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 19
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "iface_decl",
+          "marker": "iface_decl",
+          "value": {
+            "definition": [
+              {
+                "$place": "impl.cpp │ int ⟦fetch⟧(int key) {",
+                "path": "impl.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "impl_module_name",
+          "marker": "impl_module_name",
+          "value": {
+            "definition": [
+              {
+                "$place": "iface.cppm │ export module ⟦store⟧;",
+                "path": "iface.cppm",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 19
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "impl_def",
+          "marker": "impl_def",
+          "value": {
+            "definition": [
+              {
+                "$place": "iface.cppm │ export int ⟦fetch⟧(int key);",
+                "path": "iface.cppm",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 16
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "definition": [
+              {
+                "$place": "impl.cpp │ int ⟦fetch⟧(int key) {",
+                "path": "impl.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

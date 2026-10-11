@@ -1,0 +1,69 @@
+{
+  "id": "code_actions/deduced_type/02_auto_return",
+  "topic": "code_actions",
+  "subtopic": "deduced_type",
+  "title": "Deduced return type",
+  "summary": "A function's deduced `auto` return type expands to the deduced type, spelled for the function's scope",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace ns {\nstruct Config {};\nauto load() { return Config{}; }\n}\n\nauto make() { return ns::load(); }\n",
+      "markers": [
+        {
+          "name": "inside",
+          "begin": 33,
+          "end": 33,
+          "range": false
+        },
+        {
+          "name": "outside",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "inside",
+          "marker": "inside",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'Config'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " namespace ns {\n struct Config {};\n-auto load() { return Config{}; }\n+Config load() { return Config{}; }\n }\n"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "outside",
+          "marker": "outside",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'ns::Config'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " }\n\n-auto make() { return ns::load(); }\n+ns::Config make() { return ns::load(); }"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

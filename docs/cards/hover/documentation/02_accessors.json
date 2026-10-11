@@ -1,0 +1,83 @@
+{
+  "id": "hover/documentation/02_accessors",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Getters and setters",
+  "summary": "A trivial getter or setter without a comment of its own is described as accessing its field",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace generated_docs {\nstruct Meter {\n    long reading;\n    long getReading() { return reading; }\n    void setReading(long next) { reading = next; }\n};\n}\n",
+      "markers": [
+        {
+          "name": "getter",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        },
+        {
+          "name": "setter",
+          "begin": 111,
+          "end": 111,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "getter",
+          "marker": "getter",
+          "value": {
+            "hover": {
+              "markdown": "### method `getReading`\n\n---\n→ `long`\nTrivial accessor for `reading`.\n\n---\n```cpp\n// In Meter\npublic: long getReading()\n```",
+              "range": {
+                "$place": "long ⟦getReading⟧() { return reading; }",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "setter",
+          "marker": "setter",
+          "value": {
+            "hover": {
+              "markdown": "### method `setReading`\n\n---\n→ `void`\nParameters:\n- `long next`\n\nTrivial setter for `reading`.\n\n---\n```cpp\n// In Meter\npublic: void setReading(long next)\n```",
+              "range": {
+                "$place": "void ⟦setReading⟧(long next) { reading = next; }",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

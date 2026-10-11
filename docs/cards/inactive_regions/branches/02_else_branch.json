@@ -1,0 +1,45 @@
+{
+  "id": "inactive_regions/branches/02_else_branch",
+  "topic": "inactive_regions",
+  "subtopic": "branches",
+  "title": "Untaken branches",
+  "summary": "Lines of a branch the preprocessor skips are dimmed, an `#else` after a taken branch included",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define USE_A 1\nint x();\n#if USE_A\nint active();\n#else\nint dead();\n#endif\nint main() { return 0; }\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inactive_lines": [
+              {
+                "$place": "⟦int dead();⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 11
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

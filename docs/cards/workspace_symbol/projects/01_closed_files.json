@@ -1,0 +1,54 @@
+{
+  "id": "workspace_symbol/projects/01_closed_files",
+  "topic": "workspace_symbol",
+  "subtopic": "projects",
+  "title": "Search spans the whole project",
+  "summary": "Workspace symbol search returns hits from project files that are not open",
+  "prose": "The query finds a function in `other.cpp`, which stays closed while\n`main.cpp` is open: the background index answers for it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int local_anchor = 0;\n",
+      "markers": []
+    },
+    {
+      "path": "other.cpp",
+      "text": "void helper_elsewhere() {}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "helper_elsewhere",
+          "value": {
+            "workspace_symbols": [
+              {
+                "name": "helper_elsewhere",
+                "kind": "Function",
+                "at": {
+                  "$place": "other.cpp │ void ⟦helper_elsewhere⟧() {}",
+                  "path": "other.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "id": "code_actions/deduced_type/04_unnameable_types",
+  "topic": "code_actions",
+  "subtopic": "deduced_type",
+  "title": "Unnameable types stay auto",
+  "summary": "Lambdas, dependent types, structured bindings and types the declaration cannot name are not expanded",
+  "prose": "A type cannot be named where it is local to another function, a member type the declaration has no access to, or the type of `sizeof` with no standard name for it declared yet (MSVC compatibility declares `size_t` implicitly).",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nvoid g(T value) {\n    auto copy = value;\n}\n\nauto make_local() {\n    struct Local {};\n    return Local{};\n}\n\nstruct Pair {\n    int first;\n    int second;\n};\n\nclass Widget {\n    struct Handle {};\n\npublic:\n    static Handle open();\n};\n\nvoid f() {\n    auto callback = [] {};\n    auto local = make_local();\n    auto handle = Widget::open();\n    auto size = sizeof(int);\n    auto [first, second] = Pair{};\n}\n",
+      "markers": [
+        {
+          "name": "dependent",
+          "begin": 44,
+          "end": 44,
+          "range": false
+        },
+        {
+          "name": "lambda",
+          "begin": 270,
+          "end": 270,
+          "range": false
+        },
+        {
+          "name": "local",
+          "begin": 297,
+          "end": 297,
+          "range": false
+        },
+        {
+          "name": "private",
+          "begin": 328,
+          "end": 328,
+          "range": false
+        },
+        {
+          "name": "size",
+          "begin": 362,
+          "end": 362,
+          "range": false
+        },
+        {
+          "name": "binding",
+          "begin": 391,
+          "end": 391,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "dependent",
+          "marker": "dependent",
+          "value": {
+            "code_actions": []
+          }
+        },
+        {
+          "label": "lambda",
+          "marker": "lambda",
+          "value": {
+            "code_actions": []
+          }
+        },
+        {
+          "label": "local",
+          "marker": "local",
+          "value": {
+            "code_actions": []
+          }
+        },
+        {
+          "label": "private",
+          "marker": "private",
+          "value": {
+            "code_actions": []
+          }
+        },
+        {
+          "label": "size",
+          "marker": "size",
+          "value": {
+            "code_actions": []
+          }
+        },
+        {
+          "label": "binding",
+          "marker": "binding",
+          "value": {
+            "code_actions": []
+          }
+        }
+      ]
+    }
+  ]
+}

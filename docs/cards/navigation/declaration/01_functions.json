@@ -1,0 +1,123 @@
+{
+  "id": "navigation/declaration/01_functions",
+  "topic": "navigation",
+  "subtopic": "declaration",
+  "title": "Functions",
+  "summary": "Uses and out-of-line definitions navigate to the function prototype",
+  "prose": "Go-to-declaration reaches a function's prototype both from a call site\nand from the out-of-line definition — the two non-cursor sites the\nprototype alternates with.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    void draw();\n};\n\nvoid Widget::draw() {}\n\nvoid render(Widget& widget) {\n    widget.draw();\n}\n",
+      "markers": [
+        {
+          "name": "decl",
+          "begin": 25,
+          "end": 25,
+          "range": false
+        },
+        {
+          "name": "def",
+          "begin": 50,
+          "end": 50,
+          "range": false
+        },
+        {
+          "name": "use",
+          "begin": 102,
+          "end": 102,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "decl",
+          "marker": "decl",
+          "value": {
+            "declaration": [
+              {
+                "$place": "void Widget::⟦draw⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "def",
+          "marker": "def",
+          "value": {
+            "declaration": [
+              {
+                "$place": "void ⟦draw⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "use",
+          "marker": "use",
+          "value": {
+            "declaration": [
+              {
+                "$place": "void ⟦draw⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "void Widget::⟦draw⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

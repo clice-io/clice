@@ -1,0 +1,56 @@
+{
+  "id": "navigation/templates/02_explicit_specializations",
+  "topic": "navigation",
+  "subtopic": "templates",
+  "title": "Template specialization navigation",
+  "summary": "Go-to-definition on the name of an explicit specialization resolves to the specialization itself; stepping from it to the primary template it specializes is not offered",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#212"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Formatter {};\n\ntemplate <>\nstruct Formatter<int> {};\n",
+      "markers": [
+        {
+          "name": "specialization",
+          "begin": 63,
+          "end": 63,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "specialization",
+          "marker": "specialization",
+          "value": {
+            "wrong": "should reach the primary template it specializes (clangd#212)",
+            "definition": [
+              {
+                "$place": "struct ⟦Formatter⟧<int> {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 16
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

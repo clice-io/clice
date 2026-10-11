@@ -1,0 +1,95 @@
+{
+  "id": "modules/edits/03_unsaved_interface",
+  "topic": "modules",
+  "subtopic": "edits",
+  "title": "Interface edits reach importers",
+  "summary": "An importer sees what its module's interface declares once the interface is saved, not while the edit is unsaved",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "import math;\n\nint main() {\n    return add(1, 2);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "math.cppm",
+      "text": "export module math;\n\nexport int add(int a, int b) {\n    return a + b;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "unsaved",
+      "blocks": [
+        {
+          "label": "errors",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "return add(1, 2) + ⟦twice⟧(3);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 28
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'twice'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        },
+        {
+          "label": "hover",
+          "value": {
+            "hover": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "saved",
+      "blocks": [
+        {
+          "label": "errors",
+          "value": {
+            "errors": []
+          }
+        },
+        {
+          "label": "hover",
+          "value": {
+            "hover": {
+              "markdown": "### function `twice`\n\n---\n→ `int`\nParameters:\n- `int a`\n\n---\n```cpp\nexport int twice(int a)\n```",
+              "range": {
+                "$place": "return add(1, 2) + ⟦twice⟧(3);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 28
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

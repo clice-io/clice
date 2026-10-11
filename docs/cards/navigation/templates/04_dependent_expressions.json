@@ -1,0 +1,277 @@
+{
+  "id": "navigation/templates/04_dependent_expressions",
+  "topic": "navigation",
+  "subtopic": "templates",
+  "title": "Dependent expression members",
+  "summary": "A member accessed on what a dependent subscript, call or `auto` variable evaluates to resolves to the member declared on the class template",
+  "prose": "Where the call has a `const` overload, the constness of the object picks\nthe one it names; overloads that differ in their parameters are all\nlisted.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Vec {\n    T& operator[](int index);\n    const T& operator[](int index) const;\n    T& front();\n    const T& front() const;\n    void push(const T& value);\n    void take(int count);\n    void take(long count) const;\n    void pick();\n    template <typename U>\n    void pick() const;\n};\n\ntemplate <typename T>\nvoid drain(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed, T value) {\n    rows[0].push(value);\n    rows.front().push(value);\n    fixed.front();\n    rows.take(1);\n    rows.template pick<int>();\n    auto& row = rows[0];\n    row.push(value);\n    auto copy(rows[0]);\n    copy.push(value);\n}\n",
+      "markers": [
+        {
+          "name": "subscript",
+          "begin": 411,
+          "end": 411,
+          "range": false
+        },
+        {
+          "name": "overload",
+          "begin": 433,
+          "end": 433,
+          "range": false
+        },
+        {
+          "name": "call",
+          "begin": 441,
+          "end": 441,
+          "range": false
+        },
+        {
+          "name": "const_overload",
+          "begin": 464,
+          "end": 464,
+          "range": false
+        },
+        {
+          "name": "parameters",
+          "begin": 482,
+          "end": 482,
+          "range": false
+        },
+        {
+          "name": "template_overload",
+          "begin": 509,
+          "end": 509,
+          "range": false
+        },
+        {
+          "name": "deduced",
+          "begin": 555,
+          "end": 555,
+          "range": false
+        },
+        {
+          "name": "direct_init",
+          "begin": 601,
+          "end": 601,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "subscript",
+          "marker": "subscript",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦push⟧(const T& value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "overload",
+          "marker": "overload",
+          "value": {
+            "definition": [
+              {
+                "$place": "T& ⟦front⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "call",
+          "marker": "call",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦push⟧(const T& value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "const_overload",
+          "marker": "const_overload",
+          "value": {
+            "definition": [
+              {
+                "$place": "const T& ⟦front⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "parameters",
+          "marker": "parameters",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦take⟧(int count);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "void ⟦take⟧(long count) const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "template_overload",
+          "marker": "template_overload",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦pick⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "void ⟦pick⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "deduced",
+          "marker": "deduced",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦push⟧(const T& value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "direct_init",
+          "marker": "direct_init",
+          "value": {
+            "definition": [
+              {
+                "$place": "void ⟦push⟧(const T& value);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

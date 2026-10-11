@@ -1,0 +1,47 @@
+{
+  "id": "code_actions/implement/02_inheritance_chain",
+  "topic": "code_actions",
+  "subtopic": "implement",
+  "title": "Pure virtuals through a chain",
+  "summary": "Only the methods no class in the chain implemented are declared, and a `class` gets a `public:` label for them",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    virtual int a() = 0;\n    virtual int b() = 0;\n    virtual int c() = 0;\n};\n\nstruct Middle : Base {\n    int b() override { return 1; }\n};\n\nclass Leaf : public Middle {\n    int c() override { return 2; }\n};\n",
+      "markers": [
+        {
+          "name": "leaf",
+          "begin": 161,
+          "end": 161,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "leaf",
+          "marker": "leaf",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.implementPureVirtuals",
+                "title": "Implement pure virtual methods of 'Leaf'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " class Leaf : public Middle {\n     int c() override { return 2; }\n+public:\n+    int a() override;\n };"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

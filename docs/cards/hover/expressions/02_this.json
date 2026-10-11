@@ -1,0 +1,83 @@
+{
+  "id": "hover/expressions/02_this",
+  "topic": "hover",
+  "subtopic": "expressions",
+  "title": "this",
+  "summary": "Hovering `this` shows the type it points to, in a class and in a class template",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace this_hover {\n\nstruct Widget {\n    Widget* self() {\n        return this;\n    }\n};\n\ntemplate <typename T>\nstruct Box {\n    const Box* self() const {\n        return this;\n    }\n};\n\n}\n",
+      "markers": [
+        {
+          "name": "plain_this",
+          "begin": 78,
+          "end": 78,
+          "range": false
+        },
+        {
+          "name": "template_this",
+          "begin": 174,
+          "end": 174,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "plain_this",
+          "marker": "plain_this",
+          "value": {
+            "hover": {
+              "markdown": "### `this`\n\n---\n```cpp\nthis_hover::Widget *\n```",
+              "range": {
+                "$place": "return ⟦this⟧; @+0",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "template_this",
+          "marker": "template_this",
+          "value": {
+            "hover": {
+              "markdown": "### `this`\n\n---\n```cpp\nconst this_hover::Box<T> *\n```",
+              "range": {
+                "$place": "return ⟦this⟧; @+0",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

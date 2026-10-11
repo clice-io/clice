@@ -1,0 +1,81 @@
+{
+  "id": "navigation/implicit_construction/06_delegating_constructors",
+  "topic": "navigation",
+  "subtopic": "implicit_construction",
+  "title": "Delegating constructors",
+  "summary": "Delegating-constructor parentheses navigate to the target constructor",
+  "prose": "A delegating constructor's target is reached from the opening parenthesis\nof the delegated call. The constructor name itself resolves to the class\ntype, so navigation to the target constructor goes through the\nparenthesis.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    Widget(int w, int h);\n    Widget() : Widget(0, 0) {}\n};\n",
+      "markers": [
+        {
+          "name": "delegate",
+          "begin": 57,
+          "end": 57,
+          "range": false
+        },
+        {
+          "name": "delegate_paren",
+          "begin": 63,
+          "end": 63,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "delegate",
+          "marker": "delegate",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Widget⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 13
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "delegate_paren",
+          "marker": "delegate_paren",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦Widget⟧(int w, int h);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

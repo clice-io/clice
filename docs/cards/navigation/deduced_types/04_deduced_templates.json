@@ -1,0 +1,232 @@
+{
+  "id": "navigation/deduced_types/04_deduced_templates",
+  "topic": "navigation",
+  "subtopic": "deduced_types",
+  "title": "Deduced templates and aliases",
+  "summary": "An `auto` deduced as a template specialization reaches the template, or the explicit or partial specialization it selects; one deduced through an alias reaches the alias",
+  "prose": "A builtin type or a lambda's closure type has no declaration to reach, and\nthe `auto` of a `new` expression navigates nowhere. A macro spelling `auto`\nnavigates to the macro.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Box {};\n\ntemplate <>\nstruct Box<char> {};\n\ntemplate <typename T>\nstruct Box<T*> {};\n\nusing Handle = Box<long>;\n\nBox<int> make_box();\nBox<char> make_char_box();\nBox<int*> make_pointer_box();\nHandle make_handle();\n\n#define AUTO auto\n\nvoid use() {\n    auto plain = make_box();\n    auto chars = make_char_box();\n    auto pointers = make_pointer_box();\n    auto handle = make_handle();\n    auto count = 1;\n    auto callback = [] {};\n    Box<int>* allocated = new auto(make_box());\n    [copy = make_box()] {};\n    AUTO spelled = make_box();\n}\n",
+      "markers": [
+        {
+          "name": "primary",
+          "begin": 280,
+          "end": 280,
+          "range": false
+        },
+        {
+          "name": "explicit_specialization",
+          "begin": 309,
+          "end": 309,
+          "range": false
+        },
+        {
+          "name": "partial_specialization",
+          "begin": 343,
+          "end": 343,
+          "range": false
+        },
+        {
+          "name": "alias",
+          "begin": 383,
+          "end": 383,
+          "range": false
+        },
+        {
+          "name": "builtin",
+          "begin": 416,
+          "end": 416,
+          "range": false
+        },
+        {
+          "name": "closure",
+          "begin": 436,
+          "end": 436,
+          "range": false
+        },
+        {
+          "name": "new_expression",
+          "begin": 489,
+          "end": 489,
+          "range": false
+        },
+        {
+          "name": "init_capture",
+          "begin": 510,
+          "end": 510,
+          "range": false
+        },
+        {
+          "name": "macro",
+          "begin": 539,
+          "end": 539,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "primary",
+          "marker": "primary",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Box⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "explicit_specialization",
+          "marker": "explicit_specialization",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Box⟧<char> {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "partial_specialization",
+          "marker": "partial_specialization",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Box⟧<T*> {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 10
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "alias",
+          "marker": "alias",
+          "value": {
+            "definition": [
+              {
+                "$place": "using ⟦Handle⟧ = Box<long>;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 6
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "builtin",
+          "marker": "builtin",
+          "value": {
+            "definition": []
+          }
+        },
+        {
+          "label": "closure",
+          "marker": "closure",
+          "value": {
+            "definition": []
+          }
+        },
+        {
+          "label": "new_expression",
+          "marker": "new_expression",
+          "value": {
+            "definition": []
+          }
+        },
+        {
+          "label": "init_capture",
+          "marker": "init_capture",
+          "value": {
+            "definition": [
+              {
+                "$place": "[⟦copy⟧ = make_box()] {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 26,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 26,
+                    "character": 9
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "macro",
+          "marker": "macro",
+          "value": {
+            "definition": [
+              {
+                "$place": "#define ⟦AUTO⟧ auto",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 16,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "id": "inlay_hints/type_hints/03_structured_bindings",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Structured bindings",
+  "summary": "Each binding hints its canonical type; the aggregate itself stays bare",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Pair {\n    int first;\n    float second;\n};\n\nPair make();\n\nint array[2];\n\nvoid use() {\n    auto [a, b] = make();\n    auto [x, y] = array;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto [a⟨: int⟩, b⟨: float⟩] = make();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto [x⟨: int⟩, y⟨: int⟩] = array;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 24
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

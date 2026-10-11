@@ -1,0 +1,83 @@
+{
+  "id": "hover/symbols/04_definitions",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Definitions",
+  "summary": "The card shows the symbol's declaration as source, at its definition and at its uses",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace retry {\n\nconstexpr int max_retries = 3;\n\nint backoff(int attempt = 1) {\n    return attempt * max_retries;\n}\n\n}\n",
+      "markers": [
+        {
+          "name": "function_def",
+          "begin": 59,
+          "end": 59,
+          "range": false
+        },
+        {
+          "name": "var_ref",
+          "begin": 110,
+          "end": 110,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "function_def",
+          "marker": "function_def",
+          "value": {
+            "hover": {
+              "markdown": "### function `backoff`\n\n---\n→ `int`\nParameters:\n- `int attempt = 1`\n\n---\n```cpp\n// In namespace retry\nint backoff(int attempt = 1)\n```",
+              "range": {
+                "$place": "int ⟦backoff⟧(int attempt = 1) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "var_ref",
+          "marker": "var_ref",
+          "value": {
+            "hover": {
+              "markdown": "### variable `max_retries`\n\n---\nType: `const int`\nValue = `3`\n\n---\n```cpp\n// In namespace retry\nconstexpr int max_retries = 3\n```",
+              "range": {
+                "$place": "return attempt * ⟦max_retries⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 21
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 32
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

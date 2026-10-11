@@ -1,0 +1,98 @@
+{
+  "id": "navigation/references/06_access_kinds",
+  "topic": "navigation",
+  "subtopic": "references",
+  "title": "Read/write classification of references",
+  "summary": "The reference reply carries only locations, so a reader cannot tell a write from a read; annotating each result with its access kind is not offered",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2139"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int use() {\n    int x = 0;\n    int y = x + 1;\n    x = y;\n    return x;\n}\n",
+      "markers": [
+        {
+          "name": "variable",
+          "begin": 20,
+          "end": 20,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "wrong": "each reference should say whether it reads or writes x (clangd#2139)",
+            "references": [
+              {
+                "$place": "int ⟦x⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "int y = ⟦x⟧ + 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              },
+              {
+                "$place": "⟦x⟧ = y;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 5
+                  }
+                }
+              },
+              {
+                "$place": "return ⟦x⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 12
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

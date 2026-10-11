@@ -1,0 +1,39 @@
+{
+  "id": "navigation/implicit_targets/03_delete_expressions",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "`delete` expression",
+  "summary": "`delete` does not navigate to the invoked destructor yet",
+  "prose": "Go-to-definition on `delete` does not reach the destructor it runs.",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    ~Widget();\n};\n\nvoid dispose(Widget* widget) {\n    delete widget;\n}\n",
+      "markers": [
+        {
+          "name": "delete",
+          "begin": 70,
+          "end": 70,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "delete",
+          "marker": "delete",
+          "value": {
+            "wrong": "should reach Widget::~Widget, the destructor it runs",
+            "definition": []
+          }
+        }
+      ]
+    }
+  ]
+}

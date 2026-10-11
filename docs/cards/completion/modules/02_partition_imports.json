@@ -1,0 +1,212 @@
+{
+  "id": "completion/modules/02_partition_imports",
+  "topic": "completion",
+  "subtopic": "modules",
+  "title": "Partitions of the current module",
+  "summary": "In an implementation unit, the module's own partitions complete as `:partition`, while neither the module itself nor the partitions of other modules are offered",
+  "prose": "A statement that already ends in a semicolon keeps it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app.cppm",
+      "text": "export module app;\nexport import :core;\n",
+      "markers": []
+    },
+    {
+      "path": "core.cppm",
+      "text": "export module app:core;\nexport int core_value();\n",
+      "markers": []
+    },
+    {
+      "path": "detail.cppm",
+      "text": "module app:detail;\nint detail_value();\n",
+      "markers": []
+    },
+    {
+      "path": "lib.cppm",
+      "text": "export module lib;\nexport int lib_value();\n",
+      "markers": []
+    },
+    {
+      "path": "lib_part.cppm",
+      "text": "export module lib:part;\nexport int part_value();\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "module app;\nimport ;\nimport :;\nimport :co\n",
+      "markers": [
+        {
+          "name": "names",
+          "begin": 19,
+          "end": 19,
+          "range": false
+        },
+        {
+          "name": "partitions",
+          "begin": 29,
+          "end": 29,
+          "range": false
+        },
+        {
+          "name": "open",
+          "begin": 41,
+          "end": 41,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "names",
+          "marker": "names",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": ":core",
+                  "kind": "Module",
+                  "insert": ":core",
+                  "replace": {
+                    "$place": "import ⟦⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 7
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 7
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": ":detail",
+                  "kind": "Module",
+                  "insert": ":detail",
+                  "replace": {
+                    "$place": "import ⟦⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 7
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 7
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "lib",
+                  "kind": "Module",
+                  "insert": "lib",
+                  "replace": {
+                    "$place": "import ⟦⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 7
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 7
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "partitions",
+          "marker": "partitions",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": ":core",
+                  "kind": "Module",
+                  "insert": ":core",
+                  "replace": {
+                    "$place": "import ⟦:⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 2,
+                        "character": 7
+                      },
+                      "end": {
+                        "line": 2,
+                        "character": 8
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": ":detail",
+                  "kind": "Module",
+                  "insert": ":detail",
+                  "replace": {
+                    "$place": "import ⟦:⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 2,
+                        "character": 7
+                      },
+                      "end": {
+                        "line": 2,
+                        "character": 8
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "open",
+          "marker": "open",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": ":core",
+                  "kind": "Module",
+                  "insert": ":core;",
+                  "replace": {
+                    "$place": "import ⟦:co⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 3,
+                        "character": 7
+                      },
+                      "end": {
+                        "line": 3,
+                        "character": 10
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

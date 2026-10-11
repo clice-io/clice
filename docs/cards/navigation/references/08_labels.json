@@ -1,0 +1,67 @@
+{
+  "id": "navigation/references/08_labels",
+  "topic": "navigation",
+  "subtopic": "references",
+  "title": "Label and goto references",
+  "summary": "Find references on a label lists the label itself together with every `goto` that jumps to it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int loop(int failed) {\n    retry:\n    if (failed) {\n        goto retry;\n    }\n    return 0;\n}\n",
+      "markers": [
+        {
+          "name": "label",
+          "begin": 27,
+          "end": 27,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "label",
+          "marker": "label",
+          "value": {
+            "references": [
+              {
+                "$place": "⟦retry⟧:",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "goto ⟦retry⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

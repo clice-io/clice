@@ -1,0 +1,67 @@
+{
+  "id": "navigation/implicit_construction/07_inherited_constructors",
+  "topic": "navigation",
+  "subtopic": "implicit_construction",
+  "title": "Inherited constructors",
+  "summary": "An inherited-constructor declaration navigates to every imported base constructor",
+  "prose": "Go-to-definition on an inherited-constructor declaration\n(`using Base::Base;`) lists each constructor of the base it imports.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    Base(int x);\n    Base(int x, int y);\n};\n\nstruct Derived : Base {\n    using Base::Base;\n};\n",
+      "markers": [
+        {
+          "name": "inherit",
+          "begin": 99,
+          "end": 99,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "inherit",
+          "marker": "inherit",
+          "value": {
+            "definition": [
+              {
+                "$place": "⟦Base⟧(int x);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 8
+                  }
+                }
+              },
+              {
+                "$place": "⟦Base⟧(int x, int y);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 8
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

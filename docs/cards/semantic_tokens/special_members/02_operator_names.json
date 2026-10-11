@@ -1,0 +1,95 @@
+{
+  "id": "semantic_tokens/special_members/02_operator_names",
+  "topic": "semantic_tokens",
+  "subtopic": "special_members",
+  "title": "Operator names",
+  "summary": "An operator function's name keeps `operator` as a keyword, and each call to it is an operator token",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Value {\n    Value& operator=(const Value& other);\n    Value operator+(const Value& other) const;\n};\n\nvoid combine(Value a, Value b) {\n    a = b;\n    Value c = a + b;\n}\n",
+      "markers": [
+        {
+          "name": "operator_use",
+          "begin": 26,
+          "end": 26,
+          "range": false
+        },
+        {
+          "name": "operator_use2",
+          "begin": 67,
+          "end": 67,
+          "range": false
+        },
+        {
+          "name": "assign",
+          "begin": 147,
+          "end": 147,
+          "range": false
+        },
+        {
+          "name": "plus",
+          "begin": 168,
+          "end": 168,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "operator_use",
+          "marker": "operator_use",
+          "value": {
+            "semantic_token": {
+              "text": "operator",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "operator_use2",
+          "marker": "operator_use2",
+          "value": {
+            "semantic_token": {
+              "text": "operator",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "assign",
+          "marker": "assign",
+          "value": {
+            "semantic_token": {
+              "text": "=",
+              "type": "operator",
+              "modifiers": [
+                "userDefined"
+              ]
+            }
+          }
+        },
+        {
+          "label": "plus",
+          "marker": "plus",
+          "value": {
+            "semantic_token": {
+              "text": "+",
+              "type": "operator",
+              "modifiers": [
+                "userDefined"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

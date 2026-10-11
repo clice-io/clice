@@ -1,0 +1,89 @@
+{
+  "id": "hover/modules/01_module_names",
+  "topic": "hover",
+  "subtopic": "modules",
+  "title": "Module names",
+  "summary": "A module name shows the file of its interface unit, in an `import` and in the module declaration",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "import math;\n\nint twice() {\n    return double_it(1);\n}\n",
+      "markers": [
+        {
+          "name": "import_name",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "math.cppm",
+      "text": "export module math;\n\nexport int double_it(int value) {\n    return value * 2;\n}\n",
+      "markers": [
+        {
+          "name": "declared_name",
+          "begin": 14,
+          "end": 14,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "import_name",
+          "marker": "import_name",
+          "value": {
+            "hover": {
+              "markdown": "### module `math`\n\n---\n```cpp\n${WS}/math.cppm\n```",
+              "range": {
+                "$place": "import ⟦math⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "declared_name",
+          "marker": "declared_name",
+          "value": {
+            "hover": {
+              "markdown": "### module `math`\n\n---\n```cpp\n${WS}/math.cppm\n```",
+              "range": {
+                "$place": "export module ⟦math⟧;",
+                "path": "math.cppm",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 18
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

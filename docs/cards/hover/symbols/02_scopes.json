@@ -1,0 +1,112 @@
+{
+  "id": "hover/symbols/02_scopes",
+  "topic": "hover",
+  "subtopic": "symbols",
+  "title": "Scopes",
+  "summary": "The card says which namespace, class or function the symbol is declared in",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace app::detail {\n\nstruct Engine {\n    void tick() {\n        int count = 0;\n    }\n};\n\nint workers = 4;\n\n}\n\nint global = 1;\n",
+      "markers": [
+        {
+          "name": "method_local",
+          "begin": 73,
+          "end": 73,
+          "range": false
+        },
+        {
+          "name": "ns_var",
+          "begin": 99,
+          "end": 99,
+          "range": false
+        },
+        {
+          "name": "global_var",
+          "begin": 120,
+          "end": 120,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "method_local",
+          "marker": "method_local",
+          "value": {
+            "hover": {
+              "markdown": "### variable `count`\n\n---\nType: `int`\nValue = `0`\n\n---\n```cpp\n// In Engine::tick\nint count = 0\n```",
+              "range": {
+                "$place": "int ⟦count⟧ = 0;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "ns_var",
+          "marker": "ns_var",
+          "value": {
+            "hover": {
+              "markdown": "### variable `workers`\n\n---\nType: `int`\nValue = `4`\n\n---\n```cpp\n// In namespace app::detail\nint workers = 4\n```",
+              "range": {
+                "$place": "int ⟦workers⟧ = 4;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "global_var",
+          "marker": "global_var",
+          "value": {
+            "hover": {
+              "markdown": "### variable `global`\n\n---\nType: `int`\nValue = `1`\n\n---\n```cpp\nint global = 1\n```",
+              "range": {
+                "$place": "int ⟦global⟧ = 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

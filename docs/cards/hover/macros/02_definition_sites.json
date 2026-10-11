@@ -1,0 +1,170 @@
+{
+  "id": "hover/macros/02_definition_sites",
+  "topic": "hover",
+  "subtopic": "macros",
+  "title": "Every site of a macro",
+  "summary": "The definition, a use, `#ifdef`, `defined` and `#undef` all show the macro's `#define`",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int anchor = 0;\n\n#define LIMIT 64\n\nint use = LIMIT;\n\n#ifdef LIMIT\nint guarded = 1;\n#endif\n\n#if defined(LIMIT)\nint tested = 1;\n#endif\n\n#undef LIMIT\n",
+      "markers": [
+        {
+          "name": "define_site",
+          "begin": 25,
+          "end": 25,
+          "range": false
+        },
+        {
+          "name": "use_site",
+          "begin": 45,
+          "end": 45,
+          "range": false
+        },
+        {
+          "name": "ifdef_site",
+          "begin": 60,
+          "end": 60,
+          "range": false
+        },
+        {
+          "name": "defined_site",
+          "begin": 103,
+          "end": 103,
+          "range": false
+        },
+        {
+          "name": "undef_site",
+          "begin": 141,
+          "end": 141,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "define_site",
+          "marker": "define_site",
+          "value": {
+            "hover": {
+              "markdown": "### macro `LIMIT`\n\n---\n```cpp\n#define LIMIT 64\n```",
+              "range": {
+                "$place": "#define ⟦LIMIT⟧ 64",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "use_site",
+          "marker": "use_site",
+          "value": {
+            "hover": {
+              "markdown": "### macro `LIMIT`\n\n---\n```cpp\n#define LIMIT 64\n\n// Expands to\n64\n```",
+              "range": {
+                "$place": "int use = ⟦LIMIT⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "ifdef_site",
+          "marker": "ifdef_site",
+          "value": {
+            "hover": {
+              "markdown": "### macro `LIMIT`\n\n---\n```cpp\n#define LIMIT 64\n```",
+              "range": {
+                "$place": "#ifdef ⟦LIMIT⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "defined_site",
+          "marker": "defined_site",
+          "value": {
+            "hover": {
+              "markdown": "### macro `LIMIT`\n\n---\n```cpp\n#define LIMIT 64\n```",
+              "range": {
+                "$place": "#if defined(⟦LIMIT⟧)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 10,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 10,
+                    "character": 17
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "undef_site",
+          "marker": "undef_site",
+          "value": {
+            "hover": {
+              "markdown": "### macro `LIMIT`\n\n---\n```cpp\n#define LIMIT 64\n```",
+              "range": {
+                "$place": "#undef ⟦LIMIT⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 14,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

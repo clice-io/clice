@@ -1,0 +1,107 @@
+{
+  "id": "semantic_tokens/modifiers/07_scopes",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Scope modifiers",
+  "summary": "Symbols do not carry function, class, file or global scope modifiers yet",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#352"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int global_scope;\nstatic int file_scope;\n\nstruct Foo {\n    int class_scope;\n\n    void bar() {\n        int function_scope = 0;\n    }\n};\n",
+      "markers": [
+        {
+          "name": "global",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        },
+        {
+          "name": "in_file",
+          "begin": 29,
+          "end": 29,
+          "range": false
+        },
+        {
+          "name": "in_class",
+          "begin": 63,
+          "end": 63,
+          "range": false
+        },
+        {
+          "name": "in_function",
+          "begin": 106,
+          "end": 106,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "global",
+          "marker": "global",
+          "value": {
+            "wrong": "should carry the globalScope modifier (clangd#352)",
+            "semantic_token": {
+              "text": "global_scope",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "in_file",
+          "marker": "in_file",
+          "value": {
+            "wrong": "should carry the fileScope modifier (clangd#352)",
+            "semantic_token": {
+              "text": "file_scope",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "in_class",
+          "marker": "in_class",
+          "value": {
+            "wrong": "should carry the classScope modifier (clangd#352)",
+            "semantic_token": {
+              "text": "class_scope",
+              "type": "field",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "in_function",
+          "marker": "in_function",
+          "value": {
+            "wrong": "should carry the functionScope modifier (clangd#352)",
+            "semantic_token": {
+              "text": "function_scope",
+              "type": "variable",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

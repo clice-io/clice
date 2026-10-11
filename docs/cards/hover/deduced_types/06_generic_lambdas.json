@@ -1,0 +1,131 @@
+{
+  "id": "hover/deduced_types/06_generic_lambdas",
+  "topic": "hover",
+  "subtopic": "deduced_types",
+  "title": "Generic lambda parameters",
+  "summary": "A generic lambda's `auto` shows the type a call deduces, but its parameter and the parameter's members do not",
+  "prose": "Inside the body the parameter reads as `auto`, and `point.x` has no card.",
+  "status": "partial",
+  "issues": [
+    "clangd#493",
+    "clangd#1768"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace lambda_auto_params {\n\nstruct Point {\n    int x;\n    int y;\n};\n\nauto norm = [](auto point) {\n    return point.x + point.y;\n};\n\nint length = norm(Point{3, 4});\n\n}\n",
+      "markers": [
+        {
+          "name": "placeholder",
+          "begin": 88,
+          "end": 88,
+          "range": false
+        },
+        {
+          "name": "parameter",
+          "begin": 93,
+          "end": 93,
+          "range": false
+        },
+        {
+          "name": "parameter_use",
+          "begin": 113,
+          "end": 113,
+          "range": false
+        },
+        {
+          "name": "member_use",
+          "begin": 119,
+          "end": 119,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "placeholder",
+          "marker": "placeholder",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\nstruct lambda_auto_params::Point\n```",
+              "range": {
+                "$place": "auto norm = [](⟦auto⟧ point) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 15
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "parameter",
+          "marker": "parameter",
+          "value": {
+            "wrong": "the parameter's type shows as auto, not the Point the lambda is called with (clangd#493)",
+            "hover": {
+              "markdown": "### parameter `point`\n\n---\nType: `auto`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto point\n```",
+              "range": {
+                "$place": "auto norm = [](auto ⟦point⟧) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 25
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "parameter_use",
+          "marker": "parameter_use",
+          "value": {
+            "wrong": "the parameter's type shows as auto, not the Point the lambda is called with (clangd#493)",
+            "hover": {
+              "markdown": "### parameter `point`\n\n---\nType: `auto`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto point\n```",
+              "range": {
+                "$place": "return ⟦point⟧.x + point.y;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 16
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "member_use",
+          "marker": "member_use",
+          "value": {
+            "wrong": "a member of the parameter has no card inside the body (clangd#1768)",
+            "hover": {}
+          }
+        }
+      ]
+    }
+  ]
+}

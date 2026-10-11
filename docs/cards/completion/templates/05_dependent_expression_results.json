@@ -1,0 +1,301 @@
+{
+  "id": "completion/templates/05_dependent_expression_results",
+  "topic": "completion",
+  "subtopic": "templates",
+  "title": "Dependent expression results",
+  "summary": "A member access on what a subscript or a member call returns inside a template completes the members of the class it evaluates to",
+  "prose": "`rows[0].` on a `Vec<Vec<T>>` lists the members of `Vec<T>`, followed through the container's `reference` alias the way the standard containers declare it. Where a member has a `const` overload, the constness of the object picks the one called, a data member reached through a const object counting as const, and `->` on a returned iterator reaches the element.",
+  "status": "supported",
+  "issues": [
+    "clangd#443"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Allocator {\n    using value_type = T;\n};\n\ntemplate <typename A>\nstruct AllocatorTraits {\n    using value_type = typename A::value_type;\n    using pointer = value_type*;\n};\n\ntemplate <typename P>\nstruct Iterator {\n    P operator->() const;\n};\n\ntemplate <typename T, typename A = Allocator<T>>\nstruct Vec {\n    using value_type = T;\n    using reference = value_type&;\n    using const_reference = const value_type&;\n    using iterator = Iterator<typename AllocatorTraits<A>::pointer>;\n\n    reference operator[](int index);\n    const_reference operator[](int index) const;\n    reference front();\n    const_reference front() const;\n    iterator begin();\n\n    void push_back(const T& value);\n    int size() const;\n};\n\ntemplate <typename T>\nstruct Grid {\n    Vec<Vec<T>> rows;\n    mutable Vec<Vec<T>> cache;\n};\n\ntemplate <typename T>\nvoid bar(Vec<Vec<T>> rows, const Vec<Vec<T>>& fixed, const Grid<T>& grid) {\n    rows[0].;\n    rows.front().;\n    fixed[0].;\n    grid.rows.front().;\n    grid.cache.front().;\n    rows.begin()->;\n}\n",
+      "markers": [
+        {
+          "name": "subscript",
+          "begin": 944,
+          "end": 944,
+          "range": false
+        },
+        {
+          "name": "call",
+          "begin": 963,
+          "end": 963,
+          "range": false
+        },
+        {
+          "name": "const_object",
+          "begin": 978,
+          "end": 978,
+          "range": false
+        },
+        {
+          "name": "const_member",
+          "begin": 1002,
+          "end": 1002,
+          "range": false
+        },
+        {
+          "name": "mutable_member",
+          "begin": 1027,
+          "end": 1027,
+          "range": false
+        },
+        {
+          "name": "iterator",
+          "begin": 1047,
+          "end": 1047,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "subscript",
+          "marker": "subscript",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "begin()",
+                  "kind": "Method",
+                  "detail": "iterator"
+                },
+                {
+                  "label": "front()",
+                  "kind": "Method",
+                  "detail": "reference"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "reference"
+                },
+                {
+                  "label": "push_back(const T &value)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "call",
+          "marker": "call",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "begin()",
+                  "kind": "Method",
+                  "detail": "iterator"
+                },
+                {
+                  "label": "front()",
+                  "kind": "Method",
+                  "detail": "reference"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "reference"
+                },
+                {
+                  "label": "push_back(const T &value)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "const_object",
+          "marker": "const_object",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "front()",
+                  "kind": "Method",
+                  "detail": "const_reference"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "const_reference"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "const_member",
+          "marker": "const_member",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "front()",
+                  "kind": "Method",
+                  "detail": "const_reference"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "const_reference"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "mutable_member",
+          "marker": "mutable_member",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "begin()",
+                  "kind": "Method",
+                  "detail": "iterator"
+                },
+                {
+                  "label": "front()",
+                  "kind": "Method",
+                  "detail": "reference"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "reference"
+                },
+                {
+                  "label": "push_back(const T &value)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "iterator",
+          "marker": "iterator",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Vec",
+                  "kind": "Class"
+                },
+                {
+                  "label": "begin()",
+                  "kind": "Method",
+                  "detail": "iterator"
+                },
+                {
+                  "label": "front()",
+                  "kind": "Method",
+                  "detail": "reference"
+                },
+                {
+                  "label": "operator[](int index)",
+                  "kind": "Method",
+                  "detail": "reference"
+                },
+                {
+                  "label": "push_back(const T &value)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "size()",
+                  "kind": "Method",
+                  "detail": "int"
+                },
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

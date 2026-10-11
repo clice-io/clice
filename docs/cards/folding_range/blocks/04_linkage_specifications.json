@@ -1,0 +1,101 @@
+{
+  "id": "folding_range/blocks/04_linkage_specifications",
+  "topic": "folding_range",
+  "subtopic": "blocks",
+  "title": "Linkage specification blocks",
+  "summary": "`extern \"C\"` blocks form folding ranges, also behind the usual `__cplusplus` guards",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "extern \"C\" {\n\nint c_open(const char* path);\nint c_close(int handle);\n\n}\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\nint c_read(int handle);\nint c_write(int handle);\n\n#ifdef __cplusplus\n}\n#endif\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "folding_ranges": [
+              {
+                "kind": "linkageSpec",
+                "at": {
+                  "$place": "extern \"C\" ⟦{ … }⟧ (6 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#ifdef __cplusplus⟦ … ⟧ (3 lines) @8",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 0
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "linkageSpec",
+                "at": {
+                  "$place": "extern \"C\" ⟦{ … }⟧ (8 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 1
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "kind": "conditionDirective",
+                "at": {
+                  "$place": "#ifdef __cplusplus⟦ … ⟧ (3 lines) @15",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 0
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

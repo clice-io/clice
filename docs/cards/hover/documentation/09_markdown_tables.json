@@ -1,0 +1,57 @@
+{
+  "id": "hover/documentation/09_markdown_tables",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Markdown tables",
+  "summary": "A table in a comment runs together on one line",
+  "prose": "",
+  "status": "unsupported",
+  "issues": [
+    "clangd#2057"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace tables {\n/// | Column A | Column B |\n/// |----------|----------|\n/// | 1        | 2        |\nvoid table_fn();\n}\n",
+      "markers": [
+        {
+          "name": "table",
+          "begin": 108,
+          "end": 108,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "table",
+          "marker": "table",
+          "value": {
+            "wrong": "the table's rows run together on one line (clangd#2057)",
+            "hover": {
+              "markdown": "### function `table_fn`\n\n---\n→ `void`\n| Column A | Column B | |----------|----------| | 1 | 2 |\n\n---\n```cpp\n// In namespace tables\nvoid table_fn()\n```",
+              "range": {
+                "$place": "void ⟦table_fn⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

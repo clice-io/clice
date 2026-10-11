@@ -1,0 +1,76 @@
+{
+  "id": "completion/templates/14_generic_lambda_parameters",
+  "topic": "completion",
+  "subtopic": "templates",
+  "title": "Generic lambda parameters",
+  "summary": "An `auto` parameter of a lambda gets no member completion inside its body yet",
+  "prose": "The lambda is called with a `Point`, directly or through an algorithm, but its body is still a template when the completion runs.",
+  "status": "unsupported",
+  "issues": [
+    "clangd#493",
+    "clangd#1768"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Point {\n    int x;\n    int y;\n};\n\ntemplate <class It, class F>\nF for_each(It first, It last, F f) {\n    for (; first != last; ++first) {\n        f(*first);\n    }\n    return f;\n}\n\nvoid scale(Point* begin, Point* end) {\n    auto norm = [](auto p) { return p.; };\n    norm(Point{});\n    for_each(begin, end, [](auto& p) { p.; });\n    auto by = [](const auto& l, const auto& r) { return l. < r.x; };\n    by(*begin, *end);\n}\n",
+      "markers": [
+        {
+          "name": "called",
+          "begin": 263,
+          "end": 263,
+          "range": false
+        },
+        {
+          "name": "algorithm",
+          "begin": 328,
+          "end": 328,
+          "range": false
+        },
+        {
+          "name": "two_parameters",
+          "begin": 392,
+          "end": 392,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "called",
+          "marker": "called",
+          "value": {
+            "wrong": "should list the members of Point, the type the lambda is called with (clangd#493)",
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "algorithm",
+          "marker": "algorithm",
+          "value": {
+            "wrong": "should list the members of Point, the type the lambda is called with (clangd#493)",
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "two_parameters",
+          "marker": "two_parameters",
+          "value": {
+            "wrong": "should list the members of Point, the type the lambda is called with (clangd#493)",
+            "completion": {
+              "items": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

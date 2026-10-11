@@ -1,0 +1,44 @@
+{
+  "id": "signature_help/overload_signatures/01_overloads_by_arity",
+  "topic": "signature_help",
+  "subtopic": "overload_signatures",
+  "title": "Overloads by arity",
+  "summary": "Every overload is listed with the parameter under the cursor marked",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int blend(int base, int tint);\nint blend(int base, int tint, int alpha);\n\nint paint() {\n    return blend(10, 20);\n}\n",
+      "markers": [
+        {
+          "name": "second",
+          "begin": 109,
+          "end": 109,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "second",
+          "marker": "second",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "blend(int base, ⟦int tint⟧, int alpha) -> int",
+                "blend(int base, ⟦int tint⟧) -> int"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

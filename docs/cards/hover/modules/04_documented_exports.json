@@ -1,0 +1,88 @@
+{
+  "id": "hover/modules/04_documented_exports",
+  "topic": "hover",
+  "subtopic": "modules",
+  "title": "Documented exports",
+  "summary": "A symbol imported from a module shows the documentation written in its interface",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "import math;\n\nint main() {\n    Point origin{0, 0};\n    return add(origin.x, 1);\n}\n",
+      "markers": [
+        {
+          "name": "type",
+          "begin": 31,
+          "end": 31,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 62,
+          "end": 62,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "math.cppm",
+      "text": "export module math;\n\n/// Adds two numbers together.\nexport int add(int a, int b) {\n    return a + b;\n}\n\n/// A point on the plane.\nexport struct Point {\n    int x;\n    int y;\n};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "type",
+          "marker": "type",
+          "value": {
+            "hover": {
+              "markdown": "### struct `Point`\n\n---\nA point on the plane.\n\n---\n```cpp\nexport struct Point {\n  int x;\n  int y;\n}\n```",
+              "range": {
+                "$place": "⟦Point⟧ origin{0, 0};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 9
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "markdown": "### function `add`\n\n---\n→ `int`\nParameters:\n- `int a`\n- `int b`\n\nAdds two numbers together.\n\n---\n```cpp\nexport int add(int a, int b)\n```",
+              "range": {
+                "$place": "return ⟦add⟧(origin.x, 1);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 11
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

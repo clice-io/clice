@@ -1,0 +1,53 @@
+{
+  "id": "navigation/implicit_targets/01_override_and_final",
+  "topic": "navigation",
+  "subtopic": "implicit_targets",
+  "title": "`override` / `final`",
+  "summary": "`override` and `final` do not navigate to the overridden base method yet",
+  "prose": "Go-to-definition on the `override` or `final` specifier does not reach the\nbase class virtual method it overrides.",
+  "status": "unsupported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Base {\n    virtual void draw();\n    virtual void paint();\n};\n\nstruct Derived : Base {\n    void draw() override;\n    void paint() final;\n};\n",
+      "markers": [
+        {
+          "name": "override",
+          "begin": 109,
+          "end": 109,
+          "range": false
+        },
+        {
+          "name": "final",
+          "begin": 136,
+          "end": 136,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "override",
+          "marker": "override",
+          "value": {
+            "wrong": "should reach Base::draw, the method it overrides",
+            "definition": []
+          }
+        },
+        {
+          "label": "final",
+          "marker": "final",
+          "value": {
+            "wrong": "should reach Base::paint, the method it overrides",
+            "definition": []
+          }
+        }
+      ]
+    }
+  ]
+}

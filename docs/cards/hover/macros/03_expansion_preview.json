@@ -1,0 +1,54 @@
+{
+  "id": "hover/macros/03_expansion_preview",
+  "topic": "hover",
+  "subtopic": "macros",
+  "title": "Expansion preview",
+  "summary": "A use of a function-like macro shows what it expands to with its arguments",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int x = 1, y = 2;\n\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\n\nint z = MAX(x, y);\n",
+      "markers": [
+        {
+          "name": "expansion",
+          "begin": 70,
+          "end": 70,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "expansion",
+          "marker": "expansion",
+          "value": {
+            "hover": {
+              "markdown": "### macro `MAX`\n\n---\n```cpp\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\n\n// Expands to\n( ( x ) > ( y ) ? ( x ) : ( y ) )\n```",
+              "range": {
+                "$place": "int z = ⟦MAX⟧(x, y);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 11
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

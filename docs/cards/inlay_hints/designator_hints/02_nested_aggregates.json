@@ -1,0 +1,47 @@
+{
+  "id": "inlay_hints/designator_hints/02_nested_aggregates",
+  "topic": "inlay_hints",
+  "subtopic": "designator_hints",
+  "title": "Nested aggregates",
+  "summary": "Written braces recurse; omitted braces flatten into `.outer.inner=`",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Inner {\n    int x;\n    int y;\n};\n\nstruct Outer {\n    Inner a;\n    Inner b;\n};\n\nOuter o{{1, 2}, 3};\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "Outer o{⟨.a=⟩{⟨.x=⟩1, ⟨.y=⟩2}, ⟨.b.x=⟩3};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 19
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

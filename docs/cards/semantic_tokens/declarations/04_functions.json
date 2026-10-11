@@ -1,0 +1,153 @@
+{
+  "id": "semantic_tokens/declarations/04_functions",
+  "topic": "semantic_tokens",
+  "subtopic": "declarations",
+  "title": "Functions and methods",
+  "summary": "Function declarations, definitions and calls receive function tokens",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int twice(int value);\n\nint twice(int value) {\n    return value * 2;\n}\n\nstruct Machine {\n    void start();\n    static void reset();\n};\n\nvoid drive(Machine machine) {\n    machine.start();\n    Machine::reset();\n    int four = twice(2);\n}\n",
+      "markers": [
+        {
+          "name": "twice_decl",
+          "begin": 4,
+          "end": 4,
+          "range": false
+        },
+        {
+          "name": "twice_def",
+          "begin": 27,
+          "end": 27,
+          "range": false
+        },
+        {
+          "name": "start_decl",
+          "begin": 97,
+          "end": 97,
+          "range": false
+        },
+        {
+          "name": "reset_decl",
+          "begin": 122,
+          "end": 122,
+          "range": false
+        },
+        {
+          "name": "start_use",
+          "begin": 177,
+          "end": 177,
+          "range": false
+        },
+        {
+          "name": "reset_use",
+          "begin": 199,
+          "end": 199,
+          "range": false
+        },
+        {
+          "name": "twice_use",
+          "begin": 223,
+          "end": 223,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "twice_decl",
+          "marker": "twice_decl",
+          "value": {
+            "semantic_token": {
+              "text": "twice",
+              "type": "function",
+              "modifiers": [
+                "declaration"
+              ]
+            }
+          }
+        },
+        {
+          "label": "twice_def",
+          "marker": "twice_def",
+          "value": {
+            "semantic_token": {
+              "text": "twice",
+              "type": "function",
+              "modifiers": [
+                "definition"
+              ]
+            }
+          }
+        },
+        {
+          "label": "start_decl",
+          "marker": "start_decl",
+          "value": {
+            "semantic_token": {
+              "text": "start",
+              "type": "method",
+              "modifiers": [
+                "declaration"
+              ]
+            }
+          }
+        },
+        {
+          "label": "reset_decl",
+          "marker": "reset_decl",
+          "value": {
+            "semantic_token": {
+              "text": "reset",
+              "type": "method",
+              "modifiers": [
+                "declaration",
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "start_use",
+          "marker": "start_use",
+          "value": {
+            "semantic_token": {
+              "text": "start",
+              "type": "method"
+            }
+          }
+        },
+        {
+          "label": "reset_use",
+          "marker": "reset_use",
+          "value": {
+            "semantic_token": {
+              "text": "reset",
+              "type": "method",
+              "modifiers": [
+                "static"
+              ]
+            }
+          }
+        },
+        {
+          "label": "twice_use",
+          "marker": "twice_use",
+          "value": {
+            "semantic_token": {
+              "text": "twice",
+              "type": "function"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

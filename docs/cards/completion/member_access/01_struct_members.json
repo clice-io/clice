@@ -1,0 +1,69 @@
+{
+  "id": "completion/member_access/01_struct_members",
+  "topic": "completion",
+  "subtopic": "member_access",
+  "title": "Members after a dot",
+  "summary": "Completing after a dot lists the members of the object's class",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Thermostat {\n    int target;\n    int current;\n    void raise(int step);\n};\n\nint reading(Thermostat& unit) {\n    return unit.current;\n}\n",
+      "markers": [
+        {
+          "name": "member",
+          "begin": 131,
+          "end": 131,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Thermostat",
+                  "kind": "Class"
+                },
+                {
+                  "label": "current",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "operator=(…) +2 overloads",
+                  "kind": "Method"
+                },
+                {
+                  "label": "raise(int step)",
+                  "kind": "Method",
+                  "detail": "void"
+                },
+                {
+                  "label": "target",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "~Thermostat()",
+                  "kind": "Method",
+                  "detail": "void"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "id": "completion/symbols/08_enum_members",
+  "topic": "completion",
+  "subtopic": "symbols",
+  "title": "Enum members",
+  "summary": "A scoped enum lists its enumerators through `Type::`, an unscoped enumerator completes by its bare name",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "enum class Color { Red, Green, Blue };\n\nenum Fruit { Apple, Banana };\n\nvoid bar() {\n    Color c = Color::;\n    int f = App;\n}\n",
+      "markers": [
+        {
+          "name": "scoped",
+          "begin": 105,
+          "end": 105,
+          "range": false
+        },
+        {
+          "name": "unscoped",
+          "begin": 122,
+          "end": 122,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "scoped",
+          "marker": "scoped",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Blue",
+                  "kind": "EnumMember",
+                  "detail": "Color"
+                },
+                {
+                  "label": "Green",
+                  "kind": "EnumMember",
+                  "detail": "Color"
+                },
+                {
+                  "label": "Red",
+                  "kind": "EnumMember",
+                  "detail": "Color"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "unscoped",
+          "marker": "unscoped",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "Apple",
+                  "kind": "EnumMember",
+                  "detail": "Fruit"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

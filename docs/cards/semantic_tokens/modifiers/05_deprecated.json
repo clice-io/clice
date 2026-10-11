@@ -1,0 +1,64 @@
+{
+  "id": "semantic_tokens/modifiers/05_deprecated",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Deprecated",
+  "summary": "Deprecated declarations and uses carry the deprecated modifier",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "[[deprecated(\"use next_api\")]] void old_api();\nvoid next_api();\n\nvoid migrate() {\n    old_api();\n}\n",
+      "markers": [
+        {
+          "name": "old_api_decl",
+          "begin": 36,
+          "end": 36,
+          "range": false
+        },
+        {
+          "name": "old_api_use",
+          "begin": 86,
+          "end": 86,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "old_api_decl",
+          "marker": "old_api_decl",
+          "value": {
+            "semantic_token": {
+              "text": "old_api",
+              "type": "function",
+              "modifiers": [
+                "declaration",
+                "deprecated"
+              ]
+            }
+          }
+        },
+        {
+          "label": "old_api_use",
+          "marker": "old_api_use",
+          "value": {
+            "semantic_token": {
+              "text": "old_api",
+              "type": "function",
+              "modifiers": [
+                "deprecated"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

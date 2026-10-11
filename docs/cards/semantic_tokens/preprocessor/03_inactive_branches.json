@@ -1,0 +1,986 @@
+{
+  "id": "semantic_tokens/preprocessor/03_inactive_branches",
+  "topic": "semantic_tokens",
+  "subtopic": "preprocessor",
+  "title": "Untaken branches",
+  "summary": "Tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier",
+  "prose": "Text with no kind of its own becomes a plain `identifier` token, so even a\nlone `}` line dims.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int before = 0;\n\n#if 0\nint simple = 1;\nbare identifiers;\ncall(arg);\n\"string in dead code\";\n// comment inside\n#ifdef NESTED\nint deeper = 2;\n#endif\nint tail = 3;\n#endif\n\n#if defined(MISSING)\nfirst_branch;\n#elif 0\nelif_branch;\n#else\nint taken = 4;\n#endif\n\n#if 0\nvoid edge() {\n    inner(5);\n}\n#endif\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦int⟧ before = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦before⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int before = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#if⟧ 0 @3",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#if ⟦0⟧ @3",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ simple = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int ⟦simple⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int simple ⟦=⟧ 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int simple = ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "number",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int simple = 1⟦;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦bare⟧ identifiers;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "bare ⟦identifiers;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦call(arg);⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦\"string in dead code\"⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "string",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "\"string in dead code\"⟦;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦// comment inside⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#ifdef⟧ NESTED",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "#ifdef ⟦NESTED⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ deeper = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int ⟦deeper⟧ = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int deeper ⟦=⟧ 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int deeper = ⟦2⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "number",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int deeper = 2⟦;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧ @11",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ tail = 3;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int ⟦tail⟧ = 3;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int tail ⟦=⟧ 3;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int tail = ⟦3⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "number",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int tail = 3⟦;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧ @13",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦#if⟧ defined(MISSING)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦first_branch;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#elif⟧ 0",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#elif ⟦0⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦elif_branch;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#else⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ taken = 4;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 19,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦taken⟧ = 4;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 19,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int taken = ⟦4⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 19,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧ @21",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦#if⟧ 0 @23",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#if ⟦0⟧ @23",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦void⟧ edge() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "primitive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void ⟦edge()⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void edge() ⟦{⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦inner(⟧5);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 24,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "inner(⟦5⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 24,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "number",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "inner(5⟦);⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 24,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦}⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 25,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 25,
+                      "character": 1
+                    }
+                  }
+                },
+                "type": "identifier",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧ @27",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 26,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 26,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

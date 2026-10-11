@@ -1,0 +1,58 @@
+{
+  "id": "analyze/views/01_edge",
+  "topic": "analyze",
+  "subtopic": "views",
+  "title": "What an edge carries",
+  "summary": "The edge view lists every entity one module names of another, with the locator that names it, the header that owns it and each use",
+  "prose": "An entity is an interface use when a header of the naming module names it,\nas util/clock.h names both of these.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app/main.cpp",
+      "text": "#include \"util/clock.h\"\n\nint main() {\n    Clock clock{};\n    return clock.size();\n}\n",
+      "markers": []
+    },
+    {
+      "path": "core/str.cpp",
+      "text": "#include \"core/str.h\"\n\nint length(const Str& s) {\n    return s.n;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "core/str.h",
+      "text": "#pragma once\n\nstruct Str {\n    int n;\n};\n\nint length(const Str& s);\n",
+      "markers": []
+    },
+    {
+      "path": "util/clock.h",
+      "text": "#pragma once\n#include \"core/str.h\"\n\nstruct Clock {\n    Str name;\n\n    int size() const {\n        return length(name);\n    }\n};\n",
+      "markers": []
+    },
+    {
+      "path": "util/fmt.cpp",
+      "text": "#include \"core/str.h\"\n\nint format_str(const Str& s) {\n    return length(s);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice index",
+          "value": {
+            "stdout": "Indexed 3 translation units in #s: 5 file shards (# KB), 8 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice analyze modules --view edge --from util --to core",
+          "value": {
+            "stdout": "{\n  \"from\": \"util\",\n  \"to\": \"core\",\n  \"entities\": [\n    {\n      \"id\": \"#478ec97a46ae1c6f\",\n      \"entity\": \"Str\",\n      \"owner\": \"core/str.h\",\n      \"users\": [\n        \"util/clock.h:5\",\n        \"util/fmt.cpp:3\"\n      ],\n      \"interface\": true\n    },\n    {\n      \"id\": \"#b244f96089a92435\",\n      \"entity\": \"length\",\n      \"owner\": \"core/str.h\",\n      \"users\": [\n        \"util/clock.h:8\",\n        \"util/fmt.cpp:4\"\n      ],\n      \"interface\": true\n    }\n  ]\n}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

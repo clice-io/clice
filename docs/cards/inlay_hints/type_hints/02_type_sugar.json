@@ -1,0 +1,163 @@
+{
+  "id": "inlay_hints/type_hints/02_type_sugar",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Type sugar length limits",
+  "summary": "Aliases keep their spelling, and an over-long type falls back to its sugared name",
+  "prose": "A type without a spelling short enough is dropped, and default template arguments never print. The budget is `inlay_hints.type_name_limit`; `0` lifts it.",
+  "status": "supported",
+  "issues": [
+    "clangd#1298",
+    "clangd#1357"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "using Integer = int;\n\nInteger make_alias();\n\ntemplate <typename A, typename B, typename C>\nstruct extremely_long_template_name {};\n\nusing Compact = extremely_long_template_name<int, char, bool>;\n\nCompact make_compact();\n\nextremely_long_template_name<Integer, Integer, Integer> make_long();\n\ntemplate <typename T, typename U = int>\nstruct Defaulted {};\n\nDefaulted<float> make_defaulted();\n\nvoid use() {\n    auto aliased = make_alias();\n    auto shortened = make_compact();\n    auto dropped = make_long();\n    auto defaulted = make_defaulted();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto aliased⟨: Integer⟩ = make_alias();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 19,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 32
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto shortened⟨: Compact⟩ = make_compact();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 36
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 38
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "inlay_hints": {
+          "type_name_limit": 0
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto aliased⟨: Integer⟩ = make_alias();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 19,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 32
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto shortened⟨: Compact⟩ = make_compact();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 36
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto dropped⟨: extremely_long_template_name<Integer, Integer, Integer>⟩ = make_long();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 31
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 38
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

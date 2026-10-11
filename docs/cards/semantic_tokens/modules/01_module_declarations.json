@@ -1,0 +1,281 @@
+{
+  "id": "semantic_tokens/modules/01_module_declarations",
+  "topic": "semantic_tokens",
+  "subtopic": "modules",
+  "title": "Module declarations",
+  "summary": "Module declarations tokenize contextual keywords, dotted names and private fragments",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "module;\n\nexport module demo.core;\n\nexport int exported_value = 1;\n\nmodule :private;\n\nint private_value = 2;\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦module⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "⟦export⟧ module demo.core;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "export ⟦module⟧ demo.core;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "export module ⟦demo⟧.core;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "module",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "export module demo.⟦core⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 23
+                    }
+                  }
+                },
+                "type": "module",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦export⟧ int exported_value = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "export ⟦int⟧ exported_value = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "export int ⟦exported_value⟧ = 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "export int exported_value = ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 29
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦module⟧ :private;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "module :⟦private⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ private_value = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦private_value⟧ = 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int private_value = ⟦2⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "number"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
