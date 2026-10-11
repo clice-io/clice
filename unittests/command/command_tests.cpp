@@ -12,6 +12,7 @@ import :command.command;
 import :project.build;
 import :support.shell;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.cdb_layouts;
 import :unittests.utils.platform;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -1207,11 +1208,14 @@ ZEST_CASE(ResourceDir) {
 };
 
 ZEST_CASE(FixtureLayouts) {
-    /// The checked-in layouts under tests/data/cdb go through load() like a
-    /// real project's database; each pins the one property it exists for.
-    /// Macros are asserted by name: the driver render spells -D with a
-    /// separate value.
-    auto layouts = path::join(data_dir(), "cdb");
+    /// The layouts' databases go through load() like a real project's; each
+    /// pins the one property it exists for. Macros are asserted by name: the
+    /// driver render spells -D with a separate value.
+    TempDir dir;
+    for(auto& layout: cdb_layouts()) {
+        write_layout(dir, layout.name);
+    }
+    auto layouts = std::string(dir.root);
     auto load_layout = [&](CompilationDatabase& database,
                            llvm::StringRef layout,
                            llvm::StringRef cdb = "compile_commands.json") {

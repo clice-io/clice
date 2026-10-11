@@ -11,6 +11,7 @@ import :project.build;
 import :project.configuration;
 import :project.project;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.cdb_layouts;
 import :unittests.utils.platform;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -20,9 +21,10 @@ namespace clice::testing {
 
 namespace {
 
-/// A view over one checked-in layout under tests/data/cdb: its clice.toml
+/// One of the layouts written to a temporary directory: its clice.toml
 /// loaded the way the server loads it, every declared source loaded.
 struct Layout {
+    TempDir dir;
     std::string root;
     Config config;
     FileTable files;
@@ -30,7 +32,7 @@ struct Layout {
     Build build{config, cdb, files};
 
     explicit Layout(llvm::StringRef name) :
-        root(path::join(data_dir(), "cdb", name)),
+        root(write_layout(dir, name)),
         config(Config::load_from_workspace(CanonicalPath(Spelling::absolute(root)))) {
         build.reset_active(fallback_configuration(config));
         for(auto source: build.declared_sources()) {
