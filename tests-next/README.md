@@ -65,7 +65,8 @@ never the topic again or the way a case tests it. A feature topic's own
 `test.ts` asks its feature the usual way, at every marker or of the entry
 file, so most of its cases bring code and nothing else.
 
-Outside the topics: `editors/`, `nightly/` and `compat/`, each below;
+Outside the topics: `editors/`, `nightly/` and `compat/`, each below (until
+the rename `compat/` stays in `tests/`, and the other two are yet to come);
 `tools/testing/cases/topics.ts` lists every directory `tests-next/` may hold,
 and any other is an error. C++ unit tests are not
 cases: they live in `unittests/` at the repository root.
@@ -363,8 +364,9 @@ written by hand that a case can show.
   no anomaly, worker crash or error-level line the test did not declare.
 - **On failure** a test prints its step tree, what `sync` reports still
   running, and the warning and error lines of every server it started.
-- **Time.** A test running 5 minutes is hung; `sync` gives up after 4 and says
-  what is left.
+- **Time.** `sync` gives up after 4 minutes and says what is left; a script
+  still running after 250 s is hung, fails with its steps and is torn down;
+  the runner gives up on a test at 5 minutes.
 
 ## Coverage
 

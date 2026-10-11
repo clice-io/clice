@@ -54,6 +54,14 @@ cache/
 node_modules/
 .vscode-test/
 
+# A case under tests-next/ is whatever project its check needs: the build
+# output names above are inputs there.
+!tests-next/**/*build*/
+!tests-next/**/temp/
+!tests-next/**/cache/
+!tests-next/**/out/
+!tests-next/**/dist/
+
 # Python & Testing
 __pycache__/
 .pytest_cache/

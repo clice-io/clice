@@ -217,6 +217,7 @@ function spawnClice(
         const child = spawn(cliceExecutable(), args, {
             cwd,
             env: { ...env, CLICE_TEST_PAUSE: `${String(interrupt.units)} ${marker}` },
+            timeout: 300_000,
         });
         let stdout = "";
         let stderr = "";
@@ -241,7 +242,8 @@ function spawnClice(
             watcher.close();
             fs.rmSync(dir, { recursive: true, force: true });
             if (!signalled) {
-                reject(new Error(`clice ${args.join(" ")} exited before its pause point`));
+                const how = sig === null ? `exited ${String(status)}` : `was killed by ${sig}`;
+                reject(new Error(`clice ${args.join(" ")} ${how} before its pause point`));
                 return;
             }
             resolve({ status, signal: sig, stdout, stderr });

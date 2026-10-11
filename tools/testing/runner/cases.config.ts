@@ -24,6 +24,9 @@ export default defineConfig({
         include: ["cases.ts"],
         globalSetup: ["summary.ts"],
         pool: "forks",
+        // Every case is a suite of its own: without this, vitest runs them
+        // one after another and only a case's own tests side by side.
+        sequence: { concurrent: true },
         maxConcurrency: concurrency(),
         testTimeout: 300_000,
         hookTimeout: 60_000,

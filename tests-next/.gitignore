@@ -1,7 +1,0 @@
-# A case is whatever project its check needs: directories the repository
-# ignores as build output elsewhere are inputs here.
-!*build*/
-!temp/
-!cache/
-!out/
-!dist/

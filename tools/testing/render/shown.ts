@@ -69,21 +69,25 @@ export async function render(
     } else if (isLines(value)) {
         lines = value;
     } else {
-        // Every entry is a request already under way: all are awaited, so
-        // none fails unobserved behind an earlier failure.
-        const settled = await Promise.allSettled(
-            Object.entries(value).map(async ([label, entry]) =>
-                formatBlock(label, await render(entry, options, root, label)),
-            ),
-        );
-        return settled.flatMap((result) => {
-            if (result.status === "rejected") {
-                throw result.reason;
-            }
-            return result.value;
-        });
+        observe(value);
+        const out: string[] = [];
+        for (const [label, entry] of Object.entries(value)) {
+            out.push(...formatBlock(label, await render(entry, options, root, label)));
+        }
+        return out;
     }
     return lines.map((line) => portable(line, root));
+}
+
+/// Every request of a record is under way already: one failing behind an
+/// earlier failure is handled, not left unobserved. The entries still
+/// render in order, each after the one before has settled.
+function observe(value: Shown): void {
+    if (value instanceof Promise) {
+        value.catch(() => undefined);
+    } else if (typeof value === "object" && !isLines(value)) {
+        Object.values(value).forEach(observe);
+    }
 }
 
 function isLines(value: readonly string[] | object): value is readonly string[] {

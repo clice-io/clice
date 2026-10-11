@@ -55,9 +55,10 @@ export class StepRecord {
 }
 
 /// How long a test's script may run before it counts as hung: past the
-/// server's own sync deadline, short of the runner's timeout, so teardown
-/// still prints the steps and stops the servers.
-export const SCRIPT_DEADLINE_MS = 270_000;
+/// server's own sync deadline (4 minutes), and far enough short of the
+/// runner's timeout (5) that teardown still prints the steps and stops a
+/// hung server (up to half a minute).
+export const SCRIPT_DEADLINE_MS = 250_000;
 
 function asError(error: unknown): Error {
     return error instanceof Error ? error : new Error(String(error));

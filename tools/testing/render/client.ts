@@ -39,7 +39,7 @@ import {
 } from "./answers.ts";
 import type { TextEdit } from "./edits.ts";
 import type { AnswerContext } from "./lsp.ts";
-import type { Location, Named, Range, RenderScope } from "./position.ts";
+import type { Location, Named, Range, RenderScope, SourceText } from "./position.ts";
 import { shown } from "./shown.ts";
 
 /// A file, or a place in one.
@@ -145,12 +145,18 @@ export abstract class Client {
         const source = context.file(at.path);
         const { begin, end } = selectionOf(source.text, at);
         const selection = { start: source.positionAt(begin), end: source.positionAt(end) };
+        // What the edits apply to, read before a check rewrites the files:
+        // the diffs render from it.
+        const before = new Map<string, SourceText>();
         const reply = this.fetchCodeActions(at.path, selection, options.only).then(
             async (actions) => {
                 if (options.compile !== true) {
                     return actions;
                 }
                 const check = this.checks.then(async () => {
+                    for (const file of actions.flatMap((action) => [...action.edits.keys()])) {
+                        before.set(file, context.file(file));
+                    }
                     const out: Action[] = [];
                     for (const action of actions) {
                         out.push(
@@ -168,7 +174,9 @@ export abstract class Client {
                 return check;
             },
         );
-        return shown(reply, (actions) => renderActions(actions, (file) => context.file(file)));
+        return shown(reply, (actions) =>
+            renderActions(actions, (file) => before.get(file) ?? context.file(file)),
+        );
     }
 
     definition(at: Anchor): Promise<Location[]> {

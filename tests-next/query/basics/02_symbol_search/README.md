@@ -1,3 +1,3 @@
 # Search symbols by name
 
-A name query matches subsequences aligned to words, the exact name first
+A name query matches subsequences aligned to words
