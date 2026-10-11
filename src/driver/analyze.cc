@@ -128,31 +128,33 @@ int run_modules(const ModulesOptions& opts) {
         return fail(spec.error());
     }
     std::vector<query::SymbolEntry> candidates;
-    auto move = [&](Project& project,
-                    CommandResolver& commands,
-                    analysis::Facts& facts) -> std::expected<void, std::string> {
+    std::vector<std::string> unindexed;
+    auto move_declarations = [&](Project& project,
+                                 CommandResolver& commands,
+                                 analysis::Facts& facts) -> std::expected<void, std::string> {
         ContextsBlob saved;
         EditorContext contexts{project, commands, saved};
         index::IndexQuery index_query(project.project_index, project.file_table, nullptr, nullptr);
         query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
-        for(llvm::StringRef spec: opts.move_entity.value_or(std::vector<std::string>{})) {
-            auto [text, path] = spec.rsplit('=');
+        for(llvm::StringRef move: opts.move_entity.value_or(std::vector<std::string>{})) {
+            auto [text, path] = move.rsplit('=');
             if(text.empty() || path.empty()) {
                 return std::unexpected(std::format("--move-entity {}: expected <locator>=<header>",
-                                                   std::string_view(spec)));
+                                                   std::string_view(move)));
             }
             auto locator = index::SymbolQuery::parse(text);
             if(!locator) {
                 return std::unexpected(
-                    std::format("--move-entity {}: {}", std::string_view(spec), locator.error()));
+                    std::format("--move-entity {}: {}", std::string_view(move), locator.error()));
             }
             auto symbols = query::declaration(ctx, std::move(*locator));
             if(!symbols) {
                 candidates = std::move(ctx.candidates);
+                unindexed = std::move(ctx.unindexed);
                 return std::unexpected(
-                    std::format("--move-entity {}: {}", std::string_view(spec), symbols.error()));
+                    std::format("--move-entity {}: {}", std::string_view(move), symbols.error()));
             }
-            if(auto moved = analysis::move_entities(facts, spec, *symbols, path); !moved) {
+            if(auto moved = analysis::move_entities(facts, move, *symbols, path); !moved) {
                 return moved;
             }
         }
@@ -161,10 +163,11 @@ int run_modules(const ModulesOptions& opts) {
     auto loaded = analysis::load_facts(workspace_spelling(opts.workspace.value_or("")),
                                        opts.configuration.value_or(""),
                                        comma_list(opts.scope.value_or("")),
-                                       move);
+                                       move_declarations);
     if(!loaded) {
         Failure failure{.error = std::move(loaded.error().message),
                         .stale = std::move(loaded.error().dropped)};
+        failure.stale.insert(failure.stale.end(), unindexed.begin(), unindexed.end());
         if(!candidates.empty()) {
             failure.candidates = std::move(candidates);
         }

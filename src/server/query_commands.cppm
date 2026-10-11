@@ -317,9 +317,10 @@ bool units_pending(Project& project);
 PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests);
 
 /// The symbols one declaration a locator names stands for: the symbol,
-/// or, for a name the overloads of one scope spell, all of them. Named by
-/// its whole name, never a pattern; several other candidates are an error
-/// listing them in Context::candidates.
+/// or, for a name the overloads of one scope spell, all of them; macros
+/// of that name are left out. Named by its whole name, never a pattern;
+/// several other candidates are an error listing them in
+/// Context::candidates.
 Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQuery locator);
 
 /// `direction` one of supertypes, subtypes, both.

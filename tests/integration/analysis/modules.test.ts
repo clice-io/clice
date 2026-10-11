@@ -467,6 +467,15 @@ test("hypothetical partitions", async ({ session }) => {
     const byId = (await analyze(ws, "--move-entity", `${clock?.id}=core/clock.h`)) as Overview;
     expect(byId.cycles).toHaveLength(0);
 
+    // One of internal linkage is named with the header that owns it.
+    const used = (await analyze(ws, "--view", "edge", "--from", "app", "--to", "core")) as {
+        entities: { id: string; entity: string }[];
+    };
+    const helper = used.entities.find((entry) => entry.entity === "helper");
+    expect(helper?.id).toMatch(/^#[0-9a-f]+ path:core\/str\.h$/);
+    const internal = (await analyze(ws, "--move-entity", `${helper?.id}=app/helper.h`)) as Overview;
+    expect(edge(internal, "core", "app")?.sample).toContain("helper");
+
     // What the moved definition names moves with it.
     const carried = (await analyze(ws, "--move-entity", "Clock=meta/clock.h")) as Overview;
     expect(edge(carried, "meta", "core")?.sample).toEqual(

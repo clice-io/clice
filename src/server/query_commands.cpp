@@ -711,6 +711,12 @@ Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQ
     if(!candidates) {
         return std::unexpected(candidates.error());
     }
+    llvm::erase_if(*candidates, [](const index::IndexQuery::Located& candidate) {
+        return candidate.symbol.kind == SymbolKind::Macro;
+    });
+    if(candidates->empty()) {
+        return std::unexpected("the name spells only a macro, not a declaration");
+    }
     llvm::SmallVector<const index::IndexQuery::Located*> symbols;
     for(auto& candidate: *candidates) {
         symbols.push_back(&candidate);

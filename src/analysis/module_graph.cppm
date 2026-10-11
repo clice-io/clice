@@ -551,7 +551,8 @@ struct Overview {
 };
 
 struct EntityUse {
-    /// `#<hex>`, as `clice query` takes it; overloads share a name.
+    /// The locator naming it, as `clice query` and `--move-entity` take it:
+    /// `#<hex>`, with `path:` the owner for one of internal linkage.
     std::string id;
     std::string entity;
     std::string owner;

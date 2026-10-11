@@ -7,6 +7,7 @@ module clice;
 import :analysis.module_graph;
 import :command.command;
 import :index.serialization;
+import :index.symbol_query;
 import :project.command_resolver;
 import :project.open_index;
 import :project.project;
@@ -2587,9 +2588,13 @@ std::expected<EdgeDetail, std::string> Report::edge(llvm::StringRef from,
     };
     for(auto& [entity, files]: it->second.entities) {
         auto& entry = result.entities.emplace_back();
-        entry.id = index::symbol_id(facts.entities[entity].hash);
-        entry.entity = facts.entities[entity].name;
-        entry.owner = facts.files[facts.entities[entity].owner].path;
+        auto& info = facts.entities[entity];
+        auto& owner = facts.files[info.owner].path;
+        entry.id = index::symbol_locator(
+            info.hash,
+            info.linkage == InternalLinkage::None ? llvm::StringRef() : llvm::StringRef(owner));
+        entry.entity = info.name;
+        entry.owner = owner;
         entry.interface = it->second.interface.contains(entity);
         for(auto file: files) {
             entry.users.push_back(line_in(file, entity));

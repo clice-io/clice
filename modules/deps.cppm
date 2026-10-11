@@ -22908,6 +22908,7 @@ using ::kota::deco::decl::detail::has_kv_style;
 using ::kota::deco::decl::detail::iequals_ascii;
 using ::kota::deco::decl::detail::is_joined_kv_name;
 using ::kota::deco::decl::detail::parse_primitive_scalar;
+using ::kota::deco::decl::detail::takes_value_after_equals;
 }
 
 export namespace kota::deco::desc {
@@ -22924,6 +22925,7 @@ using ::kota::deco::desc::detail::has_help_text;
 using ::kota::deco::desc::detail::inferred_enum_meta_var_type;
 using ::kota::deco::desc::detail::inferred_enum_meta_var_type_t;
 using ::kota::deco::desc::detail::inferred_meta_var_token;
+using ::kota::deco::desc::detail::is_repeatable;
 using ::kota::deco::desc::detail::join_aliases;
 using ::kota::deco::desc::detail::join_strings;
 using ::kota::deco::desc::detail::kv_usage_text;
@@ -22931,6 +22933,7 @@ using ::kota::deco::desc::detail::meta_var_token;
 using ::kota::deco::desc::detail::named_aliases;
 using ::kota::deco::desc::detail::placeholder_name;
 using ::kota::deco::desc::detail::repeated_meta_vars;
+using ::kota::deco::desc::detail::usage_entry;
 using ::kota::deco::desc::detail::usage_text;
 using ::kota::deco::desc::detail::usage_text_for_field;
 }
@@ -22943,6 +22946,7 @@ using ::kota::deco::detail::StrPool;
 using ::kota::deco::detail::build_record;
 using ::kota::deco::detail::generator_of;
 using ::kota::deco::detail::prefixes_of;
+using ::kota::deco::detail::same_option_name;
 }
 
 export namespace kota::deco::ser {
