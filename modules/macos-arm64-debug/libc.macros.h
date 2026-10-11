@@ -10,6 +10,8 @@
 #define	stderr	__stderrp
 #define	alloca(size)	__alloca(size)
 #define	__alloca(size)	__builtin_alloca(size)
+#define __DARWIN_BYTE_ORDER     __DARWIN_LITTLE_ENDIAN
+#define BYTE_ORDER      __DARWIN_BYTE_ORDER
 #define __ASSERT_FILE_NAME __FILE_NAME__
 #define	assert(e)     (__builtin_expect(!(e), 0) ? __assert_rtn(__func__, __ASSERT_FILE_NAME, __LINE__, #e) : (void)0)
 #define OSSwapInt64(x)  __DARWIN_OSSwapInt64(x)
@@ -29,6 +31,9 @@
 #define UINT64_MAX        18446744073709551615ULL
 #define UINTPTR_MAX       18446744073709551615UL
 #define SIZE_MAX          UINTPTR_MAX
+#define __DARWIN_LITTLE_ENDIAN  1234    /* LSB first: i386, vax */
+#define __DARWIN_BIG_ENDIAN     4321    /* MSB first: 68000, ibm, net */
+#define BIG_ENDIAN      __DARWIN_BIG_ENDIAN
 #define SEEK_END        2       /* set file offset to EOF plus offset */
 #define __restrict
 #define errno (*__error())
@@ -46,7 +51,6 @@
 #define SIGXFSZ 25      /* exceeded file size limit */
 #define SIG_DFL         (void (*)(int))0
 #define SIG_IGN         (void (*)(int))1
-#define	_XOPEN_VERSION			600		/* [XSI] */
 #define _LIBCPP_ABI_NAMESPACE __1
 #define _LIBCPP_HARDENING_MODE_DEFAULT 2
 #define FLT_EVAL_METHOD __FLT_EVAL_METHOD__

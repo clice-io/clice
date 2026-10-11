@@ -10,6 +10,8 @@
 #define	stderr	__stderrp
 #define	alloca(size)	__alloca(size)
 #define	__alloca(size)	__builtin_alloca(size)
+#define __DARWIN_BYTE_ORDER     __DARWIN_LITTLE_ENDIAN
+#define BYTE_ORDER      __DARWIN_BYTE_ORDER
 #define	assert(e)	((void)0)
 #define OSSwapInt64(x)  __DARWIN_OSSwapInt64(x)
 #define __DARWIN_OSSwapConstInt64(x)     ((__uint64_t)((((__uint64_t)(x) & 0xff00000000000000ULL) >> 56) | 	        (((__uint64_t)(x) & 0x00ff000000000000ULL) >> 40) | 	        (((__uint64_t)(x) & 0x0000ff0000000000ULL) >> 24) | 	        (((__uint64_t)(x) & 0x000000ff00000000ULL) >>  8) | 	        (((__uint64_t)(x) & 0x00000000ff000000ULL) <<  8) | 	        (((__uint64_t)(x) & 0x0000000000ff0000ULL) << 24) | 	        (((__uint64_t)(x) & 0x000000000000ff00ULL) << 40) | 	        (((__uint64_t)(x) & 0x00000000000000ffULL) << 56)))
@@ -30,6 +32,9 @@
 #define UINT64_MAX        18446744073709551615ULL
 #define UINTPTR_MAX       18446744073709551615UL
 #define SIZE_MAX          UINTPTR_MAX
+#define __DARWIN_LITTLE_ENDIAN  1234    /* LSB first: i386, vax */
+#define __DARWIN_BIG_ENDIAN     4321    /* MSB first: 68000, ibm, net */
+#define BIG_ENDIAN      __DARWIN_BIG_ENDIAN
 #define SEEK_END        2       /* set file offset to EOF plus offset */
 #define __restrict
 #define errno (*__error())
@@ -47,7 +52,6 @@
 #define SIGXFSZ 25      /* exceeded file size limit */
 #define SIG_DFL         (void (*)(int))0
 #define SIG_IGN         (void (*)(int))1
-#define	_XOPEN_VERSION			600		/* [XSI] */
 #define FLT_EVAL_METHOD __FLT_EVAL_METHOD__
 #define FLT_RADIX __FLT_RADIX__
 #define va_start(ap, param) __builtin_va_start(ap, param)

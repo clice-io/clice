@@ -2,10 +2,6 @@
 #  define _LIBCPP_VERSION 230102
 #    define _LIBCPP_MSVCRT_LIKE
 #    define _NOEXCEPT noexcept
-#define _LIBCPP_ABI_NAMESPACE __1
-#define _LIBCPP_HAS_MUSL_LIBC 0
-#define _LIBCPP_HAS_WIDE_CHARACTERS 1
-#define _LIBCPP_LIBC_LLVM_LIBC 0
 #  define _LIBCPP_PREFERRED_OVERLOAD __attribute__((__enable_if__(true, "")))
 #  define _LIBCPP_HIDDEN
 #  define _LIBCPP_NAMESPACE_VISIBILITY
@@ -36,3 +32,7 @@
 #   define __cpp_lib_format                             202110L
 # define __cpp_lib_string_view                          201803L
 # define __cpp_lib_ranges                               202406L
+#define _LIBCPP_ABI_NAMESPACE __1
+#define _LIBCPP_HAS_MUSL_LIBC 0
+#define _LIBCPP_HAS_WIDE_CHARACTERS 1
+#define _LIBCPP_LIBC_LLVM_LIBC 0

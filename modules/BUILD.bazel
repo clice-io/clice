@@ -7,7 +7,8 @@ load(":modules.bzl", "LIBRARIES", "MODULE_COPTS")
 # <configuration>/deps.fragment.h of the configuration whose condition
 # holds, and exports what they declare. prelude.h, which every module unit
 # of clice includes first, imports it and replays the macros its headers
-# define.
+# define. scripts/modules.py writes all of it from demand.cpp; nothing it
+# writes is edited by hand.
 
 # The fragments, the macro headers and the preludes.
 cc_library(
@@ -30,4 +31,14 @@ cc_library(
     name = "modules",
     visibility = ["//visibility:public"],
     deps = [":deps"],
+)
+
+# What clice takes from the libraries, the program scripts/modules.py
+# indexes for each configuration to write the rest of modules/.
+cc_library(
+    name = "demand",
+    srcs = ["demand.cpp"],
+    copts = MODULE_COPTS,
+    tags = ["manual"],
+    deps = LIBRARIES,
 )

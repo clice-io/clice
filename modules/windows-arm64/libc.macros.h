@@ -1,13 +1,12 @@
 #pragma once
 #define _MT
 #  define _M_ARM64 1
-# define __MINGW_NAME_AW(func) func##A
 #define assert(_Expression) ((void)0)
-#define errno (*_errno())
+#define EPERM 1
+#define ESRCH 3
+#define EINTR 4
+#define EPIPE 32
 #define EINVAL 22
-#define ERANGE 34
-#define _UI64_MAX 0xffffffffffffffffull
-#define SIZE_MAX _UI64_MAX
 #define LC_ALL 0
 #define LC_COLLATE 1
 #define LC_CTYPE 2
@@ -16,25 +15,22 @@
 #define LC_TIME 5
 #define alloca(x) __builtin_alloca((x))
 #define ERANGE 34
-#define _Ret_notnull_
-#define _Post_writable_byte_size_(s)
 #define SIGINT 2
 #define SIGTERM 15
+#define SIG_DFL (__p_sig_fn_t)0
+#define SIG_IGN (__p_sig_fn_t)1
 #define INT32_MAX 2147483647
 #define INT64_MAX 9223372036854775807LL
 #define UINT32_MAX 0xffffffffU  /* 4294967295U */
 #define UINT64_MAX 0xffffffffffffffffULL /* 18446744073709551615ULL */
-#define PTRDIFF_MAX INT64_MAX
 #define SIZE_MAX UINT64_MAX
 #define INT64_C(val) val##LL
 #define UINT8_C(val) (val)
 #define UINT64_C(val) val##ULL
 #define SEEK_END 2
-#define stderr (__acrt_iob_func(2))
 #define errno (*_errno())
 #define stdout (__acrt_iob_func(1))
 #define stderr (__acrt_iob_func(2))
-#define GetMessage __MINGW_NAME_AW(GetMessage)
 #define FLT_EVAL_METHOD __FLT_EVAL_METHOD__
 #define FLT_RADIX __FLT_RADIX__
 #define va_start(ap, param) __builtin_va_start(ap, param)
