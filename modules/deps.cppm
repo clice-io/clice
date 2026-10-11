@@ -22878,6 +22878,7 @@ using ::kota::deco::decl::Joined;
 using ::kota::deco::decl::JoinedOrSeparate;
 using ::kota::deco::decl::KVAliasFields;
 using ::kota::deco::decl::KVFields;
+using ::kota::deco::decl::KVOption;
 using ::kota::deco::decl::KVStyle;
 using ::kota::deco::decl::MetaVarField;
 using ::kota::deco::decl::MultiAliasFields;
@@ -22898,7 +22899,7 @@ using ::kota::deco::decl::is_alias_placeholder_name;
 }
 
 export namespace kota::deco::decl::detail {
-using ::kota::deco::decl::detail::assign_input_vector;
+using ::kota::deco::decl::detail::append_vector;
 using ::kota::deco::decl::detail::assign_scalar;
 using ::kota::deco::decl::detail::assign_vector;
 using ::kota::deco::decl::detail::format_invalid_enum_value;
@@ -22957,7 +22958,6 @@ using ::kota::deco::trait::CustomStringResultTyWithContext;
 using ::kota::deco::trait::CustomStringVectorResultTy;
 using ::kota::deco::trait::CustomStringVectorResultTyWithContext;
 using ::kota::deco::trait::FlagResultType;
-using ::kota::deco::trait::InputResultType;
 using ::kota::deco::trait::OptionalResultType;
 using ::kota::deco::trait::OptionalTrait;
 using ::kota::deco::trait::OwnedStringResultType;
@@ -22965,6 +22965,7 @@ using ::kota::deco::trait::PrimitiveScalarResultType;
 using ::kota::deco::trait::PrimitiveVectorResultType;
 using ::kota::deco::trait::ScalarResultType;
 using ::kota::deco::trait::StringResultType;
+using ::kota::deco::trait::ValueResultType;
 using ::kota::deco::trait::VectorResultType;
 }
 
