@@ -20,9 +20,9 @@ test("unsaved interface edit", async (t) => {
     expect(await s.errors("mid.cppm")).toEqual([]);
     t.disk.edit("leaf.cppm", { replace: "int leaf()", with: "int renamed_leaf()" });
     await t.show("asked", s.errors("mid.cppm"));
-    // The look at the disk the background tick takes finds it.
-    expect(await s.poll("workspace")).toBe(1);
-    await t.show("looked", s.errors("mid.cppm"));
+    // The request looked at the disk itself: the background tick finds
+    // nothing left to see.
+    expect(await s.poll("workspace")).toBe(0);
 });
 
 test("unsaved interface header edit", async (t) => {
@@ -30,6 +30,5 @@ test("unsaved interface header edit", async (t) => {
     expect(await s.errors("mid.cppm")).toEqual([]);
     t.disk.edit("leaf.h", { replace: "int helper()", with: "int helper(int scale)" });
     await t.show("asked", s.errors("mid.cppm"));
-    expect(await s.poll("workspace")).toBe(1);
-    await t.show("looked", s.errors("mid.cppm"));
+    expect(await s.poll("workspace")).toBe(0);
 });

@@ -130,7 +130,7 @@ public:
     void drop(Fid path_id);
 
     /// The files the document's compile depends on: the ones is_stale()
-    /// checks, and the inputs of the modules it imports.
+    /// checks.
     void closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files);
 
     /// clice/switchContext: the new context is a different compilation
@@ -227,6 +227,10 @@ private:
     /// enters. False when no tree came: the worker failed the run, which
     /// the tree records, or never answered.
     kota::task<bool> fetch_include_tree(Fid host);
+
+    /// What the document's compile read, one snapshot at a time: its own
+    /// deps, its header context's chain, its PCH's and the PCMs' it imports.
+    void each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit);
 
     /// Non-const: the check observes the disk through the file table.
     bool is_stale(const Session& session);

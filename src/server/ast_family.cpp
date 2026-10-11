@@ -400,61 +400,48 @@ void ASTFamily::publish_output(const std::shared_ptr<Session>& session, CompileO
     on_output.emit(session);
 }
 
-bool ASTFamily::is_stale(const Session& session) {
-    // No early return: the changes one check finds cascade together.
-    bool stale = false;
-    auto it = projections.entries.find(session.path_id);
-    if(it != projections.entries.end() && it->second.deps.has_value()) {
-        stale = deps_changed(project.file_table, *it->second.deps);
-    }
-
-    // Chain files of a header context are embedded in the synthesized
-    // preamble, invisible to the deps snapshot — check them explicitly.
-    if(auto* header_context = contexts.header_context(session.path_id)) {
-        stale = deps_changed(project.file_table, header_context->deps) || stale;
-    }
-
-    // Check PCH staleness via the projection's pch_key.
-    auto projection = projections.projection(session.path_id);
-    if(projection && projection->pch_key.has_value()) {
-        auto pch_it = project.pch_cache.find(*projection->pch_key);
-        if(pch_it != project.pch_cache.end()) {
-            stale = deps_changed(project.file_table, pch_it->second.deps) || stale;
-        }
-    }
-
-    return stale;
-}
-
-void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) {
-    auto add = [&](const DepsSnapshot& deps) {
-        for(auto& dep: deps) {
-            files.push_back(dep.path_id);
-        }
-    };
+void ASTFamily::each_input(Fid path_id, llvm::function_ref<void(const DepsSnapshot&)> visit) {
     if(auto it = projections.entries.find(path_id);
        it != projections.entries.end() && it->second.deps) {
-        add(*it->second.deps);
+        visit(*it->second.deps);
     }
+    // Chain files of a header context are embedded in the synthesized
+    // preamble, invisible to the deps snapshot.
     if(auto* header_context = contexts.header_context(path_id)) {
-        add(header_context->deps);
+        visit(header_context->deps);
     }
     if(auto projection = projections.projection(path_id); projection && projection->pch_key) {
         if(auto it = project.pch_cache.find(*projection->pch_key); it != project.pch_cache.end()) {
-            add(it->second.deps);
+            visit(it->second.deps);
         }
     }
     // A module's snapshot covers the modules it imports in turn.
     for(auto dep: graph.dependencies(node(path_id))) {
-        if(dep.family != Family::PCM) {
+        if(dep.family != Family::PCM || PCMFamily::is_unresolved(dep)) {
             continue;
         }
-        Fid module{static_cast<std::uint32_t>(dep.key)};
-        if(auto it = project.pcm_cache.find(module); it != project.pcm_cache.end()) {
-            files.push_back(module);
-            add(it->second.deps);
+        if(auto it = project.pcm_cache.find(Fid{static_cast<std::uint32_t>(dep.key)});
+           it != project.pcm_cache.end()) {
+            visit(it->second.deps);
         }
     }
+}
+
+bool ASTFamily::is_stale(const Session& session) {
+    // No early return: the changes one check finds cascade together.
+    bool stale = false;
+    each_input(session.path_id, [&](const DepsSnapshot& deps) {
+        stale = deps_changed(project.file_table, deps) || stale;
+    });
+    return stale;
+}
+
+void ASTFamily::closure(Fid path_id, llvm::SmallVectorImpl<Fid>& files) {
+    each_input(path_id, [&](const DepsSnapshot& deps) {
+        for(auto& dep: deps) {
+            files.push_back(dep.path_id);
+        }
+    });
 }
 
 void ASTFamily::touch(Fid path_id) {
