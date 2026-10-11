@@ -1,0 +1,5 @@
+{
+  // Freestanding, -undef and -nostdinc keep host library symbols and platform
+  // macros out of the answers.
+  "flags": ["-std=c++23", "-ffreestanding", "-undef", "-nostdinc"]
+}

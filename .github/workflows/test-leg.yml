@@ -37,6 +37,9 @@ on:
       snap_shards:
         type: string
         default: "[1]"
+      cases_shards:
+        type: string
+        default: "[1]"
       editor:
         type: boolean
         default: false
@@ -294,6 +297,31 @@ jobs:
       - name: Snap tests
         timeout-minutes: 20
         run: pixi run -e test-run snap-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
+
+  cases:
+    needs: build
+    name: cases ${{ matrix.shard }}/${{ strategy.job-total }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.cases_shards) }}
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/download-programs
+        with:
+          target: ${{ inputs.target }}
+          build_type: ${{ inputs.build_type }}
+          environments: ${{ env.TEST_ENVIRONMENTS }}
+          activate-environment: ${{ env.TEST_ACTIVATE }}
+
+      - name: Cases
+        timeout-minutes: 20
+        run: pixi run -e test-run cases-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
 
   editor:
     needs: build

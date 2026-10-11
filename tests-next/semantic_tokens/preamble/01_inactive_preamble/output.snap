@@ -1,0 +1,28 @@
+inspect
+  main.cpp
+    directive: ⟦#define⟧ KEEP 1
+    macro [definition]: #define ⟦KEEP⟧ 1
+    number: #define KEEP ⟦1⟧
+    directive: ⟦#if⟧ 0
+    number: #if ⟦0⟧
+    directive [inactive]: ⟦#define⟧ DEAD 2
+    macro [inactive]: #define ⟦DEAD⟧ 2
+    number [inactive]: #define DEAD ⟦2⟧
+    directive: ⟦#endif⟧
+    primitive: ⟦int⟧ after = KEEP;
+    variable [definition]: int ⟦after⟧ = KEEP;
+    macro: int after = ⟦KEEP⟧;
+server  ✗ known wrong: KEEP loses its definition modifier when the defines sit in the preamble
+  main.cpp
+    directive: ⟦#define⟧ KEEP 1
+    macro: #define ⟦KEEP⟧ 1
+    number: #define KEEP ⟦1⟧
+    directive: ⟦#if⟧ 0
+    number: #if ⟦0⟧
+    directive [inactive]: ⟦#define⟧ DEAD 2
+    macro [inactive]: #define ⟦DEAD⟧ 2
+    number [inactive]: #define DEAD ⟦2⟧
+    directive: ⟦#endif⟧
+    primitive: ⟦int⟧ after = KEEP;
+    variable [definition]: int ⟦after⟧ = KEEP;
+    macro: int after = ⟦KEEP⟧;

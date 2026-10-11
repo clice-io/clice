@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["test/**"]
+index = false

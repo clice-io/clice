@@ -1,0 +1,5 @@
+member
+  int ⟦count⟧ = 0;  text
+  ⟦count⟧ = count + 1;  write
+  count = ⟦count⟧ + 1;  read
+use: return counter.⟦count⟧;  read

@@ -1,0 +1,25 @@
+=== each host gives the header its own reading
+int host
+  ### function `get_value`
+
+  ---
+  → `int`
+  Not self-contained: each includer chooses VALUE_TYPE first.
+
+  ---
+  ```cpp
+  int get_value()
+  ```
+  range: VALUE_TYPE ⟦get_value⟧();
+real host
+  ### function `get_value`
+
+  ---
+  → `float`
+  Not self-contained: each includer chooses VALUE_TYPE first.
+
+  ---
+  ```cpp
+  float get_value()
+  ```
+  range: VALUE_TYPE ⟦get_value⟧();

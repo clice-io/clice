@@ -21,24 +21,38 @@
     "./protocol": "./protocol/protocol.ts",
     "./compat/check": "./compat/check.ts",
     "./compat/scenario": "./compat/scenario.ts",
-    "./compile-commands": "./compile_commands.ts"
+    "./compile-commands": "./compile_commands.ts",
+    "./testing/render/*": "./testing/render/*.ts",
+    "./testing/server/*": "./testing/server/*.ts",
+    "./testing/features/*": "./testing/features/*.ts",
+    "./testing/cli/*": "./testing/cli/*.ts",
+    "./testing/coverage/*": "./testing/coverage/*.ts",
+    "./testing/logs/*": "./testing/logs/*.ts",
+    "./testing": "./testing/index.ts",
+    "./testing/cases/*": "./testing/cases/*.ts"
   },
   "scripts": {
+    "test": "vitest run --config testing/vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint"
   },
   "dependencies": {
     "diff": "^9.0.0",
+    "js-yaml": "^4.3.2",
+    "jsonc-parser": "^3.3.1",
     "shell-quote": "^1.11.0",
     "vscode-languageserver-protocol": "^3.17.5",
     "vscode-uri": "^3.1.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "~25.0.3",
     "@types/shell-quote": "^1.7.5",
+    "@vitest/eslint-plugin": "^1.6.24",
     "eslint": "^10.8.0",
     "typescript": "~5.5.4",
-    "typescript-eslint": "^8.65.0"
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.11"
   }
 }

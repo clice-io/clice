@@ -25,6 +25,7 @@
     "docs/**/*.ts",
     "snap/**/*.ts",
     "protocol/**/*.ts",
+    "testing/**/*.ts",
     "*.ts"
   ]
 }

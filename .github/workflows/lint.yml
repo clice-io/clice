@@ -86,6 +86,9 @@ jobs:
           pixi run -e node install-tests
           pixi run -e node npm run check
 
+      - name: Test framework
+        run: pixi run -e node npm test --workspace tools
+
   format:
     if: ${{ inputs.format }}
     runs-on: ubuntu-latest

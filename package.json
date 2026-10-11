@@ -4,6 +4,7 @@
   "workspaces": [
     "tools",
     "tests",
+    "tests-next",
     "editors/vscode"
   ],
   "scripts": {

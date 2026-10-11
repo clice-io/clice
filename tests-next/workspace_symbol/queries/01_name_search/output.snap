@@ -1,0 +1,6 @@
+kettle: Kettle (Struct) main.cpp │ struct ⟦Kettle⟧ {
+boil
+  boil (Function) main.cpp │ void ⟦boil⟧(Kettle& kettle);
+  boiling_point (Function) main.cpp │ int ⟦boiling_point⟧();
+refill: refill (Method) main.cpp │ void ⟦refill⟧();  in Kettle
+steam: (none)
