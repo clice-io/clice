@@ -7,11 +7,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type * as proto from "vscode-languageserver-protocol";
 import { Workspace } from "../../client/workspace.ts";
+import { withTimeout } from "../../promise.ts";
 import { Inspect } from "../inspect/inspect.ts";
 import type { Client } from "../render/client.ts";
 import { render, type ShowOptions, type Shown } from "../render/shown.ts";
 import { Serve, gateLogs } from "../server/serve.ts";
-import { StepRecord } from "../server/steps.ts";
+import { SCRIPT_DEADLINE_MS, StepRecord, settle } from "../server/steps.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
@@ -147,9 +148,12 @@ async function onInspect(
         config: options.config,
     });
     const shows: Shows = { lines: [], compared: [] };
-    try {
+    const run = async (): Promise<void> => {
         await fn(contextOf(c, client, root, shows));
         gateCompile(c, "clice inspect", await client.compileErrors());
+    };
+    try {
+        await withTimeout(run(), SCRIPT_DEADLINE_MS, "the test hung");
         return shows;
     } finally {
         client.close();
@@ -193,9 +197,7 @@ async function onServer(
         { marks: c.markers, steps, disk: new Disk(root, c.project, steps) },
     );
     const shows: Shows = { lines: [], compared: [] };
-    let failed = true;
-    let gated: unknown[] = [];
-    try {
+    const run = async (): Promise<void> => {
         await s.start();
         const errors: string[] = [];
         for (const file of opened(c, copied)) {
@@ -207,18 +209,18 @@ async function onServer(
         }
         await fn(contextOf(c, s, root, shows));
         await s.stop();
-        failed = false;
-    } finally {
-        if (failed) {
-            console.log(`steps:\n${steps.render()}`);
-        }
-        gated = [...(await s.finish(failed)), ...gateLogs(workspace, {}, failed)];
-        remove(root);
+    };
+    let failure: { error: unknown } | undefined;
+    try {
+        await withTimeout(run(), SCRIPT_DEADLINE_MS, "the test hung");
+    } catch (error) {
+        failure = { error };
+        console.log(`steps:\n${steps.render()}`);
     }
-    if (gated.length > 0) {
-        const [error] = gated;
-        throw error instanceof Error ? error : new Error(String(error));
-    }
+    const failed = failure !== undefined;
+    const gated = [...(await s.finish(failed)), ...gateLogs(workspace, {}, failed)];
+    remove(root);
+    settle(failure, gated);
     return shows;
 }
 

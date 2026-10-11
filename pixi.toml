@@ -235,6 +235,7 @@ depends-on = [
     { task = "integration-test", args = ["{{ type }}"] },
     { task = "smoke-test", args = ["{{ type }}"] },
     { task = "snap-test", args = ["{{ type }}"] },
+    { task = "cases-test", args = ["{{ type }}"] },
 ]
 
 # ============================================================================== #

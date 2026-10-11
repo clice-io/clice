@@ -147,7 +147,11 @@ export class Disk {
         return fs
             .readdirSync(this.root, { recursive: true, encoding: "utf8" })
             .map(posix)
-            .filter((file) => !file.startsWith(".clice") && fs.statSync(this.path(file)).isFile())
+            .filter(
+                (file) =>
+                    !file.split("/").includes(".clice") &&
+                    fs.statSync(this.path(file), { throwIfNoEntry: false })?.isFile() === true,
+            )
             .sort();
     }
 }

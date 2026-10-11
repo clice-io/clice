@@ -18,7 +18,7 @@ function levelOf(text: string): string | undefined {
 export function readLogs(workspace: string): LogLine[] {
     const lines: LogLine[] = [];
     for (const file of logFiles(workspace)) {
-        for (const text of fs.readFileSync(file, "utf8").split("\n")) {
+        for (const text of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
             if (text !== "") {
                 lines.push({ file: path.basename(file), text });
             }

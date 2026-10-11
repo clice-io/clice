@@ -5,11 +5,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Workspace } from "../../client/workspace.ts";
+import { withTimeout } from "../../promise.ts";
 import { runCommand, splitCommand, type CommandOptions, type CommandRun } from "../cli/run.ts";
 import { replay } from "../server/replay.ts";
 import { render, type Shown } from "../render/shown.ts";
 import { Serve, gateLogs, type ServerOptions } from "../server/serve.ts";
-import { StepRecord } from "../server/steps.ts";
+import { SCRIPT_DEADLINE_MS, StepRecord, settle } from "../server/steps.ts";
 import { markerOf, runAnswers } from "./answers.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
@@ -128,7 +129,8 @@ class TestRun implements TestContext {
         });
     }
 
-    async finish(failed: boolean): Promise<void> {
+    /// Shut down and gate every server; returns what failed.
+    async finish(failed: boolean): Promise<unknown[]> {
         if (failed) {
             console.log(`steps:\n${this.steps.render()}`);
         }
@@ -148,24 +150,22 @@ class TestRun implements TestContext {
         } else {
             console.log(`workspace kept at ${this.root}`);
         }
-        if (errors.length > 0) {
-            throw errors[0] instanceof Error ? errors[0] : new Error(String(errors[0]));
-        }
+        return errors;
     }
 }
 
 /// Run one registered test of a case; returns its output lines.
 export async function runRegistered(c: Case, registered: Registered): Promise<string[]> {
-    if (registered.kind === "test") {
-        const run = new TestRun(c, registered.options);
-        let failed = true;
-        try {
-            await registered.fn(run);
-            failed = false;
-        } finally {
-            await run.finish(failed);
-        }
-        return run.output.lines;
+    if (registered.kind === "answers") {
+        return runAnswers(c, registered.options, registered.fn);
     }
-    return runAnswers(c, registered.options, registered.fn);
+    const run = new TestRun(c, registered.options);
+    let failure: { error: unknown } | undefined;
+    try {
+        await withTimeout(registered.fn(run), SCRIPT_DEADLINE_MS, "the test hung");
+    } catch (error) {
+        failure = { error };
+    }
+    settle(failure, await run.finish(failure !== undefined));
+    return run.output.lines;
 }

@@ -20,28 +20,38 @@ function except(registered: Registered): string | undefined {
     return registered.options.except?.[process.platform];
 }
 
+function nameOf(registered: Registered): string {
+    return registered.name === "" ? registered.kind : registered.name;
+}
+
 const notApplicable: string[] = [];
 
 for (const c of cases) {
     const registered = await loadScript(c.script);
+    const ran: Registered[] = [];
+    for (const entry of registered) {
+        const why = except(entry);
+        if (why === undefined) {
+            ran.push(entry);
+        } else {
+            notApplicable.push(`${c.id} > ${nameOf(entry)}: ${why}`);
+        }
+    }
+    // A suite with no test fails in vitest.
+    if (ran.length === 0) {
+        continue;
+    }
     describe(c.id, () => {
         const results = new Map<string, string[]>();
-        for (const entry of registered) {
-            const name = entry.name === "" ? entry.kind : entry.name;
-            const why = except(entry);
-            if (why !== undefined) {
-                notApplicable.push(`${c.id} > ${name}: ${why}`);
-                continue;
-            }
-            test.concurrent(name, async () => {
+        for (const entry of ran) {
+            test.concurrent(nameOf(entry), async () => {
                 const lines = await runRegistered(c, entry);
                 checkSize(c, entry.name, lines.length, entry.options.long);
                 results.set(entry.name, lines);
             });
         }
         afterAll(() => {
-            const ran = registered.filter((entry) => except(entry) === undefined);
-            if (ran.length === 0 || ran.some((entry) => !results.has(entry.name))) {
+            if (ran.some((entry) => !results.has(entry.name))) {
                 return;
             }
             // A test that has no meaning here keeps the section it left

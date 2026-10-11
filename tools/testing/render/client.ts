@@ -59,6 +59,8 @@ export abstract class Client {
     /// The case's markers: the named ranges among them render a location
     /// equal to one as its name, while their file reads as the case wrote it.
     protected readonly marks: readonly MarkerAnchor[];
+    /// Compile checks edit the files they check, so they run one at a time.
+    private checks: Promise<unknown> = Promise.resolve();
 
     constructor(marks: readonly MarkerAnchor[]) {
         this.marks = marks;
@@ -148,15 +150,22 @@ export abstract class Client {
                 if (options.compile !== true) {
                     return actions;
                 }
-                const out: Action[] = [];
-                for (const action of actions) {
-                    out.push(
-                        action.edits.size === 0
-                            ? action
-                            : { ...action, errors: await this.compileWith(at.path, action.edits) },
-                    );
-                }
-                return out;
+                const check = this.checks.then(async () => {
+                    const out: Action[] = [];
+                    for (const action of actions) {
+                        out.push(
+                            action.edits.size === 0
+                                ? action
+                                : {
+                                      ...action,
+                                      errors: await this.compileWith(at.path, action.edits),
+                                  },
+                        );
+                    }
+                    return out;
+                });
+                this.checks = check.catch(() => undefined);
+                return check;
             },
         );
         return shown(reply, (actions) => renderActions(actions, (file) => context.file(file)));
@@ -328,4 +337,8 @@ export abstract class Client {
 }
 
 export type LocationRequest =
-    "definition" | "declaration" | "type definition" | "implementation" | "references";
+    | "definition"
+    | "declaration"
+    | "type definition"
+    | "implementation"
+    | "references";

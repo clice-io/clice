@@ -53,11 +53,7 @@ export function spanOf(text: string, anchor: Anchor): { begin: number; end: numb
 
 /// Where the one occurrence of `snippet` lies in `text`; an error naming
 /// `where` when it occurs never or more than once.
-function uniqueSpan(
-    text: string,
-    snippet: string,
-    where: string,
-): { begin: number; end: number } {
+function uniqueSpan(text: string, snippet: string, where: string): { begin: number; end: number } {
     const begin = text.indexOf(snippet);
     if (snippet === "" || begin < 0) {
         throw new Error(`${where} has no ${JSON.stringify(snippet)}`);

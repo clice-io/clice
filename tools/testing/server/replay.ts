@@ -16,7 +16,8 @@ interface Line {
 
 interface Message {
     id?: number | string;
-    method: string;
+    /// Unset on the editor's replies to the server's requests.
+    method?: string;
     params?: unknown;
 }
 
@@ -74,6 +75,11 @@ export async function replay(s: Serve, file: string): Promise<void> {
         }
         await new Promise((resolve) => setTimeout(resolve, Math.max(0, ts - previous)));
         previous = ts;
+        if (message.method === undefined) {
+            // The editor's reply to a request of the server: the client
+            // answers those itself.
+            continue;
+        }
         if (message.method === "$/cancelRequest") {
             cancels.get((message.params as { id: number | string }).id)?.cancel();
             continue;
@@ -106,7 +112,10 @@ export async function replay(s: Serve, file: string): Promise<void> {
             ),
         );
     }
-    await Promise.all(answers);
+    const exited = client.exited.then((code) => {
+        throw new Error(`the server exited (code ${String(code)})`);
+    });
+    await Promise.race([Promise.all(answers), exited]);
     if (failures.length > 0) {
         throw new Error(`requests answered with an error:\n${failures.join("\n")}`);
     }

@@ -212,7 +212,8 @@ export function writeDatabases(project: Project, files: readonly string[], root:
 }
 
 /// Copy the inputs of `dir` to `root`: markers stripped, `*.in` with
-/// `${WS}` replaced. Returns the copy's file names.
+/// `${WS}` replaced, any other file byte for byte. Returns the copy's file
+/// names.
 export function materialize(dir: string, root: string): string[] {
     const workspace = posix(root);
     const files: string[] = [];
@@ -223,7 +224,7 @@ export function materialize(dir: string, root: string): string[] {
         const bytes = fs.readFileSync(path.join(dir, rel));
         if (rel.endsWith(".in")) {
             fs.writeFileSync(target, bytes.toString("utf8").replaceAll("${WS}", workspace));
-        } else if (MARKED.test(rel)) {
+        } else if (MARKED.test(rel) && bytes.includes("§")) {
             fs.writeFileSync(target, parseAnnotations(bytes.toString("utf8")).content);
         } else {
             fs.writeFileSync(target, bytes);

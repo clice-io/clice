@@ -17,7 +17,6 @@ import { Workspace } from "../../client/workspace.ts";
 import { anomaliesInLogFiles, serverEnv } from "../../process_gate.ts";
 import { withTimeout } from "../../promise.ts";
 import {
-    GateRequest,
     type BuildKind,
     type ContextItem,
     type CurrentContextResult,
@@ -175,8 +174,6 @@ export class Serve extends Client {
     /// Where the kill this server may cause is armed, once.
     private readonly killFile = path.join(".clice", `kill-request-${String((serves += 1))}`);
     private killArmed = false;
-    /// The parks the test has not released, released before the server goes.
-    private readonly parks = new Set<Park>();
 
     /// Server actions over a copy the caller owns, whose case has `marks`;
     /// nothing starts yet.
@@ -289,7 +286,7 @@ export class Serve extends Client {
             const pulled = await this.ask(`pull ${file} v${version}`, (client) =>
                 client.pullDiagnostics(this.uri(file)),
             );
-            return this.context().diagnostics(this.uri(file), pulled);
+            return this.context().diagnostics(file, pulled);
         });
         return shown(reply, (diagnostics) => this.renderDiagnostics(file, diagnostics));
     }
@@ -309,9 +306,10 @@ export class Serve extends Client {
             await this.sync();
             const client = this.live();
             const uri = client.normalizeUri(this.uri(file));
+            const context = this.context();
             return client.publishedDiagnostics
                 .filter((params) => client.normalizeUri(params.uri) === uri)
-                .map((params) => this.context().diagnostics(params.uri, params.diagnostics));
+                .map((params) => context.diagnostics(context.path(params.uri), params.diagnostics));
         });
         return shown(reply, (pushes) =>
             pushes.flatMap((push, index) =>
@@ -435,7 +433,10 @@ export class Serve extends Client {
     protected fetchHover(at: Anchor): Promise<Hover | null> {
         const { uri, position } = this.position(at);
         return this.ask(`hover ${describeAnchor(at)}`, async (client) =>
-            this.context().hover(uri, await client.hoverAt(uri, position.line, position.character)),
+            this.context().hover(
+                at.path,
+                await client.hoverAt(uri, position.line, position.character),
+            ),
         );
     }
 
@@ -466,7 +467,7 @@ export class Serve extends Client {
             if (reply?.some((highlight) => highlight.kind === undefined)) {
                 throw new Error("clice always sets the highlight kind");
             }
-            return this.context().highlights(uri, reply);
+            return this.context().highlights(at.path, reply);
         });
     }
 
@@ -580,7 +581,8 @@ export class Serve extends Client {
     protected fetchTokens(file: string): Promise<Token[]> {
         return this.ask(`semantic tokens of ${file}`, async (client) => {
             const provider = client.initResult?.capabilities.semanticTokensProvider as
-                proto.SemanticTokensOptions | undefined;
+                | proto.SemanticTokensOptions
+                | undefined;
             if (provider === undefined) {
                 throw new Error("the server advertises no semantic tokens legend");
             }
@@ -597,7 +599,7 @@ export class Serve extends Client {
     protected fetchFolds(file: string): Promise<Fold[]> {
         const uri = this.uri(file);
         return this.ask(`folding ranges of ${file}`, async (client) =>
-            this.context().folds(uri, await client.foldingRanges(uri)),
+            this.context().folds(file, await client.foldingRanges(uri)),
         );
     }
 
@@ -608,7 +610,7 @@ export class Serve extends Client {
             if (reply?.some((symbol) => !("selectionRange" in symbol))) {
                 throw new Error("clice replies with hierarchical document symbols");
             }
-            return this.context().outline(uri, reply as proto.DocumentSymbol[] | null);
+            return this.context().outline(file, reply as proto.DocumentSymbol[] | null);
         });
     }
 
@@ -632,7 +634,7 @@ export class Serve extends Client {
                     );
                 }
             }
-            return context.links(uri, reply);
+            return context.links(file, reply);
         });
     }
 
@@ -797,24 +799,24 @@ export class Serve extends Client {
             options.at === "reply"
                 ? `the ${work} reply of ${file}`
                 : `the ${work} of ${file} in its worker`;
-        const id = await this.ask(`park ${where}`, async (client) =>
+        const id = await this.ask(`park ${where}`, (client) =>
             options.at === "reply"
                 ? client.hold(work as BuildKind, this.uri(file))
-                : (await client.sendRequest(GateRequest, { request: work, uri: this.uri(file) }))
-                      .id,
+                : client.gate(work, this.uri(file)),
         );
-        const park: Park = {
-            reached: () => this.ask(`${where} parks`, (client) => client.parkedBy(id)),
-            release: () => {
-                this.parks.delete(park);
-                // A server stopped or killed meanwhile took its parks with it.
-                return this.server === null
-                    ? Promise.resolve()
-                    : this.ask(`release ${where}`, (client) => client.release(id));
-            },
+        // A park is its server's: one stopped, killed or restarted took its
+        // parks with it, and the next numbers its own from 1 again.
+        const placed = this.server;
+        return {
+            reached: () =>
+                this.server === placed
+                    ? this.ask(`${where} parks`, (client) => client.parkedBy(id))
+                    : Promise.reject(new Error(`${where}: its server is gone`)),
+            release: () =>
+                this.server === placed
+                    ? this.ask(`release ${where}`, (client) => client.release(id))
+                    : Promise.resolve(),
         };
-        this.parks.add(park);
-        return park;
     }
 
     // The server.
@@ -1029,13 +1031,6 @@ export class Serve extends Client {
     async finish(failed: boolean): Promise<unknown[]> {
         const errors: unknown[] = [];
         const client = this.server;
-        for (const park of [...this.parks]) {
-            try {
-                await park.release();
-            } catch (error) {
-                errors.push(error);
-            }
-        }
         if (failed) {
             if (client !== null && !client.disposed) {
                 try {
@@ -1118,7 +1113,15 @@ export class Serve extends Client {
             const exited = client.exited.then((code) => {
                 throw new Error(`the server exited (code ${String(code)})`);
             });
-            return Promise.race([body(client), exited]);
+            // A closed connection throws at once; the race still observes
+            // the exit's rejection.
+            let reply: Promise<T>;
+            try {
+                reply = body(client);
+            } catch (error) {
+                reply = Promise.reject(error instanceof Error ? error : new Error(String(error)));
+            }
+            return Promise.race([reply, exited]);
         });
     }
 }

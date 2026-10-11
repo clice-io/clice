@@ -118,8 +118,7 @@ export class AnswerContext {
         }));
     }
 
-    highlights(uri: string, reply: proto.DocumentHighlight[] | null): Highlight[] {
-        const path = this.path(uri);
+    highlights(path: string, reply: proto.DocumentHighlight[] | null): Highlight[] {
         return (reply ?? []).map((highlight) => ({
             location: { path, range: highlight.range },
             kind:
@@ -131,7 +130,7 @@ export class AnswerContext {
         }));
     }
 
-    hover(uri: string, reply: proto.Hover | null): Hover | null {
+    hover(path: string, reply: proto.Hover | null): Hover | null {
         if (reply === null) {
             return null;
         }
@@ -141,15 +140,11 @@ export class AnswerContext {
             .join("\n");
         return {
             markdown,
-            range:
-                reply.range === undefined
-                    ? undefined
-                    : { path: this.path(uri), range: reply.range },
+            range: reply.range === undefined ? undefined : { path, range: reply.range },
         };
     }
 
-    diagnostics(uri: string, reply: readonly proto.Diagnostic[]): Diagnostic[] {
-        const path = this.path(uri);
+    diagnostics(path: string, reply: readonly proto.Diagnostic[]): Diagnostic[] {
         return reply.map((diagnostic) => ({
             location: { path, range: diagnostic.range },
             severity:
@@ -192,8 +187,8 @@ export class AnswerContext {
         });
     }
 
-    folds(uri: string, reply: proto.FoldingRange[] | null): Fold[] {
-        const source = this.file(this.path(uri));
+    folds(path: string, reply: proto.FoldingRange[] | null): Fold[] {
+        const source = this.file(path);
         return (reply ?? []).map((fold) => ({
             range: {
                 start: { line: fold.startLine, character: fold.startCharacter ?? 0 },
@@ -207,8 +202,7 @@ export class AnswerContext {
         }));
     }
 
-    outline(uri: string, reply: proto.DocumentSymbol[] | null): OutlineSymbol[] {
-        const path = this.path(uri);
+    outline(path: string, reply: proto.DocumentSymbol[] | null): OutlineSymbol[] {
         const convert = (symbol: proto.DocumentSymbol): OutlineSymbol => ({
             name: symbol.name,
             kind: enumName(proto.SymbolKind, symbol.kind),
@@ -220,8 +214,7 @@ export class AnswerContext {
         return (reply ?? []).map(convert);
     }
 
-    links(uri: string, reply: proto.DocumentLink[] | null): Link[] {
-        const path = this.path(uri);
+    links(path: string, reply: proto.DocumentLink[] | null): Link[] {
         return (reply ?? []).map((link) => ({
             location: { path, range: link.range },
             target:

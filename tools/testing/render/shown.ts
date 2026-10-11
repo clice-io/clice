@@ -34,7 +34,11 @@ function renderingOf(value: Promise<unknown>): Render<unknown> | undefined {
 /// itself; text, lines or a number as they are; or a record of these, one
 /// block each.
 export type Shown =
-    Promise<unknown> | string | number | readonly string[] | { readonly [label: string]: Shown };
+    | Promise<unknown>
+    | string
+    | number
+    | readonly string[]
+    | { readonly [label: string]: Shown };
 
 export interface ShowOptions {
     /// The optional parts of the answers to show.
@@ -65,11 +69,19 @@ export async function render(
     } else if (isLines(value)) {
         lines = value;
     } else {
-        const out: string[] = [];
-        for (const [label, entry] of Object.entries(value)) {
-            out.push(...formatBlock(label, await render(entry, options, root, label)));
-        }
-        return out;
+        // Every entry is a request already under way: all are awaited, so
+        // none fails unobserved behind an earlier failure.
+        const settled = await Promise.allSettled(
+            Object.entries(value).map(async ([label, entry]) =>
+                formatBlock(label, await render(entry, options, root, label)),
+            ),
+        );
+        return settled.flatMap((result) => {
+            if (result.status === "rejected") {
+                throw result.reason;
+            }
+            return result.value;
+        });
     }
     return lines.map((line) => portable(line, root));
 }

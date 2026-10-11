@@ -93,8 +93,8 @@ cases: they live in `unittests/` at the repository root.
   ```
 
   - A command is `clang++` (`clang` for a `.c` unit), `flags`, the unit's own
-    arguments, the file. Nothing else is added: a topic states its standard
-    in `flags`, and a unit's own `-std` overrides it.
+    arguments, `-fsyntax-only`, the file. Nothing else is added: a topic
+    states its standard in `flags`, and a unit's own `-std` overrides it.
   - Without `units`, every C-family source of the case is a unit with no
     arguments of its own; with it, exactly those files are, a list of lists
     giving one unit several commands.

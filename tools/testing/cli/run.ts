@@ -84,7 +84,7 @@ export function normalize(text: string, root: string): string {
 /// (a message the command prints itself) stay, progress lines go.
 function stderrLines(stderr: string): string[] {
     const out: string[] = [];
-    for (const line of stderr.split("\n")) {
+    for (const line of stderr.split(/\r?\n/)) {
         if (line.trim() === "" || line.startsWith("progress ")) {
             continue;
         }
@@ -98,16 +98,42 @@ function stderrLines(stderr: string): string[] {
     return out;
 }
 
-function stdoutLines(stdout: string): string[] {
+/// Every string of a JSON value, keys included, through `map`.
+function mapStrings(value: unknown, map: (text: string) => string): unknown {
+    if (typeof value === "string") {
+        return map(value);
+    }
+    if (Array.isArray(value)) {
+        return value.map((item) => mapStrings(item, map));
+    }
+    if (typeof value === "object" && value !== null) {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, item]) => [map(key), mapStrings(item, map)]),
+        );
+    }
+    return value;
+}
+
+/// stdout normalized, JSON pretty-printed: its strings are normalized as
+/// parsed, so an escape is never read as part of a path.
+function stdoutLines(stdout: string, root: string): string[] {
     const trimmed = stdout.trimEnd();
     if (trimmed === "") {
         return [];
     }
+    let json: unknown;
     try {
-        return JSON.stringify(JSON.parse(trimmed), null, 2).split("\n");
+        json = JSON.parse(trimmed);
     } catch {
-        return trimmed.split("\n").map((line) => line.trimEnd());
+        return normalize(trimmed, root)
+            .split("\n")
+            .map((line) => line.trimEnd());
     }
+    return JSON.stringify(
+        mapStrings(json, (text) => normalize(text, root)),
+        null,
+        2,
+    ).split("\n");
 }
 
 /// Split a command line as a POSIX shell does for plain words and double
@@ -223,13 +249,16 @@ function spawnClice(
     });
 }
 
-/// Every file under `root` but the cache, by relative path.
+/// Every file under `root` but the caches, by relative path.
 function contents(root: string): Map<string, Buffer> {
     const out = new Map<string, Buffer>();
     for (const rel of fs.readdirSync(root, { recursive: true, encoding: "utf8" })) {
         const file = path.join(root, rel);
         const name = rel.split(path.sep).join("/");
-        if (!name.startsWith(".clice/") && name !== ".clice" && fs.statSync(file).isFile()) {
+        if (
+            !name.split("/").includes(".clice") &&
+            fs.statSync(file, { throwIfNoEntry: false })?.isFile() === true
+        ) {
             out.set(name, fs.readFileSync(file));
         }
     }
@@ -280,7 +309,7 @@ export async function runCommand(
     return {
         header: ["$ clice", ...args.map((arg) => quote(normalize(arg, root)))].join(" "),
         body: [
-            ...stdoutLines(normalize(result.stdout, root)),
+            ...stdoutLines(result.stdout, root),
             ...stderrLines(normalize(result.stderr, root)),
             result.signal === null ? `exit ${String(result.status)}` : `killed by ${result.signal}`,
             ...written(before, contents(root)),

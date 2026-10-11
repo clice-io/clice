@@ -53,3 +53,32 @@ export class StepRecord {
             .join("\n");
     }
 }
+
+/// How long a test's script may run before it counts as hung: past the
+/// server's own sync deadline, short of the runner's timeout, so teardown
+/// still prints the steps and stops the servers.
+export const SCRIPT_DEADLINE_MS = 270_000;
+
+function asError(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error));
+}
+
+/// The end of a test: the script's own failure, what teardown found then
+/// printed after it; else every teardown failure at once.
+export function settle(
+    failure: { error: unknown } | undefined,
+    teardown: readonly unknown[],
+): void {
+    if (failure !== undefined) {
+        for (const error of teardown) {
+            console.log(`teardown: ${asError(error).message}`);
+        }
+        throw asError(failure.error);
+    }
+    const [first, ...rest] = teardown;
+    if (first !== undefined) {
+        throw rest.length === 0
+            ? asError(first)
+            : new Error(teardown.map((error) => asError(error).message).join("\n\n"));
+    }
+}

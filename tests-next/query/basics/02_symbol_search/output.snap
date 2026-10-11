@@ -2,7 +2,7 @@ $ clice index
   Indexed 3 translation units in #s: 5 file shards (# KB), 10 symbols.
   Session log: ${WS}/.clice/logs/${SESSION}
   exit 0
-$ clice query --method symbolSearch --query circ --limit 5
+$ clice query --method symbolSearch --symbol circ --limit 5
   {
     "result": {
       "symbols": [
@@ -12,7 +12,7 @@ $ clice query --method symbolSearch --query circ --limit 5
           "file": "${WS}/include/shapes/circle.h",
           "line": 7,
           "container": "shapes",
-          "symbolId": "#4f5847a7bd27b561"
+          "symbol": "#4f5847a7bd27b561"
         },
         {
           "name": "circumference",
@@ -20,7 +20,7 @@ $ clice query --method symbolSearch --query circ --limit 5
           "file": "${WS}/src/circle.cpp",
           "line": 9,
           "container": "shapes::Circle",
-          "symbolId": "#6bc05367cb3d24ae"
+          "symbol": "#6bc05367cb3d24ae"
         },
         {
           "name": "Circle",
@@ -28,7 +28,7 @@ $ clice query --method symbolSearch --query circ --limit 5
           "file": "${WS}/include/shapes/circle.h",
           "line": 9,
           "container": "shapes::Circle",
-          "symbolId": "#bd709bd890bbcc53"
+          "symbol": "#bd709bd890bbcc53"
         }
       ]
     },
