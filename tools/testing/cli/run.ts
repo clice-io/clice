@@ -84,7 +84,9 @@ export function normalize(text: string, root: string): string {
 /// (a message the command prints itself) stay, progress lines go.
 function stderrLines(stderr: string): string[] {
     const out: string[] = [];
-    for (const line of stderr.split(/\r?\n/)) {
+    // A Windows log line ends in \r\r\n: the logger's \r\n through a
+    // text-mode stream.
+    for (const line of stderr.split(/\r*\n/)) {
         if (line.trim() === "" || line.startsWith("progress ")) {
             continue;
         }
