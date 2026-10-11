@@ -250,7 +250,16 @@ test("keeps other scopes' functions apart", async ({ session }) => {
         "src/two.cpp",
         "static int helper(double x) { return 2; }\nint two() { return helper(2); }\n",
     );
-    ws.writeCDB(["src/main.cpp", "src/one.cpp", "src/two.cpp"]);
+    ws.write(
+        "src/mixed.cpp",
+        [
+            "int mix(int x) { return x; }",
+            "static int mix(double x) { return 2; }",
+            "int use_mix() { return mix(1) + mix(2.0); }",
+            "",
+        ].join("\n"),
+    );
+    ws.writeCDB(["src/main.cpp", "src/one.cpp", "src/two.cpp", "src/mixed.cpp"]);
     ws.pinCacheDir();
     await index(ws);
 
@@ -260,6 +269,16 @@ test("keeps other scopes' functions apart", async ({ session }) => {
     expect(units.error, "two units' static functions are no overload set").toContain(
         "2 symbols match",
     );
+
+    // One file's overloads stay a set whatever their linkage.
+    const mixed = await rename(ws, "--symbol", "mix path:src/mixed.cpp", "--to", "h", "--dry-run");
+    expect(mixed.status, mixed.error).toBe(0);
+    expect(places(mixed.result!)).toEqual([
+        "mixed.cpp:1:5",
+        "mixed.cpp:2:12",
+        "mixed.cpp:3:24",
+        "mixed.cpp:3:33",
+    ]);
 
     const methods = await rename(ws, "--symbol", "S::g", "--to", "h", "--dry-run");
     expect(methods.status, methods.error).toBe(0);

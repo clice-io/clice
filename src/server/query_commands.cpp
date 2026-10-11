@@ -105,6 +105,28 @@ SymbolEntry symbol_entry(Context& ctx, const index::IndexQuery::Located& located
     return entry;
 }
 
+/// The symbols a locator names, held to its filters: an id or a place
+/// names its symbols outright, which a pattern's lookup filters itself.
+/// An id's paths name the file holding its rows, no filter.
+std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::SymbolQuery& query) {
+    auto located = ctx.query.locate(query);
+    if(query.by_pattern()) {
+        return located;
+    }
+    llvm::erase_if(located, [&](const index::IndexQuery::Located& hit) {
+        if(!query.kinds.empty() && !llvm::is_contained(query.kinds, hit.symbol.kind)) {
+            return true;
+        }
+        return !query.handle && !query.paths.empty() &&
+               llvm::none_of(query.paths, [&](const std::string& wanted) {
+                   return hit.site.file.valid() &&
+                          index::path_matches(wanted,
+                                              ctx.project.file_table.resolve(hit.site.file));
+               });
+    });
+    return located;
+}
+
 /// The symbols a locator names; none is an unknown symbol. A locator
 /// naming a file the index has no rows for answers as unknown and notes
 /// the file.
@@ -114,7 +136,7 @@ Outcome<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::Sy
         return std::unexpected(anchored.error());
     }
     auto candidates =
-        *anchored ? ctx.query.locate(query) : std::vector<index::IndexQuery::Located>();
+        *anchored ? located_by(ctx, query) : std::vector<index::IndexQuery::Located>();
     if(candidates.empty()) {
         return std::unexpected("symbol not found");
     }
@@ -177,18 +199,22 @@ Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator)
             targets.push_back(std::move(*target));
         }
     }
-    // Overloads share a scope; functions of internal linkage share it only
-    // within their file — two units' `static` helpers are no overload set.
+    // Overloads share a scope; one of internal linkage shares it only
+    // within its file — two units' `static` helpers are no overload set.
     auto& first = targets.front().symbol;
-    bool overloads =
-        by_pattern && llvm::all_of(targets, [&](const index::RenameTarget& target) {
-            auto& [symbol, site, extent] = target.symbol;
-            return (symbol.kind == SymbolKind::Function || symbol.kind == SymbolKind::Method) &&
-                   symbol.parent == first.symbol.parent &&
-                   (symbol.scope == index::SymbolScope::External
-                        ? first.symbol.scope == symbol.scope
-                        : site.file == first.site.file);
-        });
+    auto overloaded = [&](const index::RenameTarget& target) {
+        auto& symbol = target.symbol.symbol;
+        return (symbol.kind == SymbolKind::Function || symbol.kind == SymbolKind::Method) &&
+               symbol.parent == first.symbol.parent;
+    };
+    auto internal = [](const index::RenameTarget& target) {
+        return target.symbol.symbol.scope != index::SymbolScope::External;
+    };
+    auto one_file = [&](const index::RenameTarget& target) {
+        return target.symbol.site.file == first.site.file;
+    };
+    bool overloads = by_pattern && llvm::all_of(targets, overloaded) &&
+                     (llvm::none_of(targets, internal) || llvm::all_of(targets, one_file));
     if(targets.size() > 1 && !overloads) {
         return ambiguous(ctx, *candidates);
     }
@@ -401,24 +427,9 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, st
     if(!*anchored) {
         return result;
     }
-    auto located = query->by_pattern() ? ctx.query.search(*query, limit) : ctx.query.locate(*query);
-    // A locator names its symbols outright; the filters still apply, but
-    // an id's paths name the file holding its rows instead.
-    if(!query->by_pattern()) {
-        llvm::erase_if(located, [&](const index::IndexQuery::Located& hit) {
-            if(!query->kinds.empty() && !llvm::is_contained(query->kinds, hit.symbol.kind)) {
-                return true;
-            }
-            return !query->handle && !query->paths.empty() &&
-                   llvm::none_of(query->paths, [&](const std::string& wanted) {
-                       return hit.site.file.valid() &&
-                              index::path_matches(wanted,
-                                                  ctx.project.file_table.resolve(hit.site.file));
-                   });
-        });
-        if(located.size() > limit) {
-            located.resize(limit);
-        }
+    auto located = query->by_pattern() ? ctx.query.search(*query, limit) : located_by(ctx, *query);
+    if(located.size() > limit) {
+        located.resize(limit);
     }
     for(auto& hit: located) {
         result.symbols.push_back(symbol_entry(ctx, hit));

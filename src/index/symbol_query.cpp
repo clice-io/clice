@@ -309,9 +309,10 @@ std::string symbol_locator(SymbolHash hash, llvm::StringRef anchor) {
     if(anchor.empty()) {
         return id;
     }
-    return llvm::any_of(anchor, is_space)
-               ? std::format(R"({} path:"{}")", id, std::string_view(anchor))
-               : std::format("{} path:{}", id, std::string_view(anchor));
+    // Quotes hold together what would split the term or open arguments.
+    bool quote = llvm::any_of(anchor, [](char c) { return is_space(c) || c == '<' || c == '>'; });
+    return quote ? std::format(R"({} path:"{}")", id, std::string_view(anchor))
+                 : std::format("{} path:{}", id, std::string_view(anchor));
 }
 
 bool args_match(llvm::StringRef wanted, llvm::StringRef actual) {

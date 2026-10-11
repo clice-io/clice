@@ -165,6 +165,15 @@ ZEST_CASE(HandlesAndPositions) {
     ZEXPECT(error_of("a.cpp:0") == "lines and columns count from 1");
 }
 
+ZEST_CASE(Locators) {
+    ZEXPECT(index::symbol_locator(0x1a2b, "") == "#0000000000001a2b");
+    for(llvm::StringRef path: {"/w/a.cpp", "/w/my dir/a.cpp", "/w/a<b.cpp"}) {
+        auto query = parsed(index::symbol_locator(0x1a2b, path));
+        ZEXPECT(query.handle == index::SymbolHash(0x1a2b));
+        ZEXPECT(query.paths == std::vector{path.str()});
+    }
+}
+
 ZEST_CASE(Filters) {
     auto filtered = parsed("foo kind:function,Method path:src/index/");
     ZEXPECT(filtered.pattern == "foo");

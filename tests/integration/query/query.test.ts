@@ -672,6 +672,9 @@ test("rejects bad questions", async ({ session }) => {
     expect(line.status).toBe(1);
     expect(line.error).toContain("count from 1");
 
+    const kinds = await query(ws, "definition", "--symbol", "main.cpp:4:5 kind:variable");
+    expect(kinds.error, "a place is held to the kinds asked for").toBe("symbol not found");
+
     const typo = await query(ws, "definition", "--symbol", "gone.cpp:2");
     expect(typo.status).toBe(1);
     expect(typo.error).toContain("no such file");
