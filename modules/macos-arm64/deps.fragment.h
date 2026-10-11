@@ -1,5 +1,7 @@
 #include <pthread.h>
+#include <signal.h>
 #include <strings.h>
+#include <sys/types.h>
 #include <time.h>
 #include <errno.h>
 #include <stdio.h>
@@ -150,6 +152,13 @@ import std.compat;
 #include "llvm/Support/xxhash.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
+#include "roaring/roaring.hh"
+#include "lmdb.h"
+#include "spdlog/details/log_msg.h"
+#include "spdlog/sinks/base_sink.h"
+#include "spdlog/sinks/ringbuffer_sink.h"
+#include "spdlog/spdlog.h"
+#include "simdjson.h"
 #include "kota/async/async.h"
 #include "kota/async/io/system.h"
 #include "kota/codec/bincode/bincode.h"
@@ -182,10 +191,3 @@ import std.compat;
 #include "kota/support/ranges.h"
 #include "kota/zest/async.h"
 #include "kota/zest/zest.h"
-#include "roaring/roaring.hh"
-#include "lmdb.h"
-#include "spdlog/details/log_msg.h"
-#include "spdlog/sinks/base_sink.h"
-#include "spdlog/sinks/ringbuffer_sink.h"
-#include "spdlog/spdlog.h"
-#include "simdjson.h"

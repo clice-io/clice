@@ -3142,7 +3142,7 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     /// A kept module's textual header -> an (entity, user file) needing it.
     std::vector<llvm::DenseMap<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>>> because(
         count);
-    std::vector<std::map<std::pair<std::string, std::uint32_t>, bool>> exports(count);
+    std::vector<std::map<std::tuple<std::string, std::uint32_t, ExportForm>, bool>> exports(count);
     /// Per header, the modules it names or includes and the macros of other
     /// modules it reads; a fragment's are its includers'.
     std::vector<std::set<std::uint32_t>> file_imports(facts.files.size()),
@@ -3301,21 +3301,42 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
     for(auto& declaration: facts.usings) {
         for(auto file: including_files(facts, declaration.file, true)) {
             if(reached[module_of(file)].contains(file)) {
-                exports[module_of(file)].try_emplace({declaration.name, declaration.file});
+                exports[module_of(file)].try_emplace(
+                    {declaration.name, declaration.file, ExportForm::Name});
             }
         }
     }
+    // An unscoped enum's enumerators go by one using-enum-declaration; an
+    // enum without a name by the type of its first enumerator by name.
+    std::map<std::uint32_t, std::pair<std::string, bool>> unnamed;
     for(std::uint32_t entity = 0; entity < facts.entities.size(); entity += 1) {
         auto& info = facts.entities[entity];
         auto module = module_of(info.owner);
-        if(info.kind != SymbolKind::Macro && info.linkage == InternalLinkage::None &&
-           !info.export_name.empty() && reached[module].contains(info.owner) &&
-           llvm::any_of(info.units.empty() ? facts.files[info.owner].units : info.units,
-                        [&](std::uint32_t unit) { return module_of(unit) != module; })) {
-            exports[module][{info.export_name, info.owner}] |=
-                llvm::any_of(reverse.users[entity],
-                             [&](std::uint32_t user) { return module_of(user) != module; });
+        if(info.kind == SymbolKind::Macro || info.linkage != InternalLinkage::None ||
+           info.export_name.empty() || !reached[module].contains(info.owner) ||
+           llvm::none_of(info.units.empty() ? facts.files[info.owner].units : info.units,
+                         [&](std::uint32_t unit) { return module_of(unit) != module; })) {
+            continue;
         }
+        auto used = llvm::any_of(reverse.users[entity],
+                                 [&](std::uint32_t user) { return module_of(user) != module; });
+        auto& enumeration = facts.entities[info.top];
+        if(info.kind != SymbolKind::EnumMember || enumeration.kind != SymbolKind::Enum) {
+            exports[module][{info.export_name, info.owner, ExportForm::Name}] |= used;
+        } else if(!enumeration.export_name.empty()) {
+            exports[module][{enumeration.export_name, info.owner, ExportForm::Enum}] |= used;
+        } else {
+            auto& [first, any_used] = unnamed[info.top];
+            if(first.empty() || info.export_name < first) {
+                first = info.export_name;
+            }
+            any_used |= used;
+        }
+    }
+    for(auto& [enumeration, entry]: unnamed) {
+        auto& [first, used] = entry;
+        auto owner = facts.entities[enumeration].owner;
+        exports[module_of(owner)][{first, owner, ExportForm::EnumOf}] |= used;
     }
 
     // A kept module's header is included by the nearest files up its
@@ -3560,8 +3581,9 @@ std::expected<std::vector<Interface>, std::string> Report::interface(llvm::Strin
             }
         }
         for(auto& [key, used]: exports[module]) {
+            auto& [name, file, form] = key;
             interface.exports.push_back(
-                {.name = key.first, .file = facts.files[key.second].path, .used = used});
+                {.name = name, .file = facts.files[file].path, .used = used, .form = form});
         }
         for(auto& alias: facts.aliases) {
             auto charged = charged_files(facts, alias.file);

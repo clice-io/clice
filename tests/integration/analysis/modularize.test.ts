@@ -21,7 +21,7 @@ interface Interface {
     module: string;
     imports: string[];
     entries: Header[];
-    exports: { name: string; file: string; used: boolean }[];
+    exports: { name: string; file: string; used: boolean; form: number }[];
     aliases: { name: string; target: string }[];
     textual: Header[];
     sharedLocals: { name: string; file: string; modules: string[] }[];
@@ -152,6 +152,7 @@ async function writeProject(
             "    friend bool operator==(Thing, Thing) { return true; }",
             "};",
             "enum Color { red };",
+            "enum { alpha_low, alpha_high };",
             "int make(int);",
             "using fakestd::fake_abs;",
             "}",
@@ -480,9 +481,20 @@ test("library interfaces", async ({ session }) => {
         [["alpha/alpha.h"], "<alpha/alpha.h>"],
         [["alpha/limits.h"], "<alpha/limits.h>"],
     ]);
-    const exported = new Set(alpha.exports.map((entry) => entry.name));
-    const wanted = ["alpha::Thing", "alpha::Color", "alpha::red", "alpha::make", "alpha::fake_abs"];
+    const exported = new Set(
+        alpha.exports.filter((entry) => entry.form === 0).map((entry) => entry.name),
+    );
+    const wanted = ["alpha::Thing", "alpha::Color", "alpha::make", "alpha::fake_abs"];
     expect(wanted.filter((name) => exported.has(name))).toEqual(wanted);
+    // An unscoped enum's enumerators go by the enum, one without a name by
+    // an enumerator's type.
+    expect(exported.has("alpha::red")).toBe(false);
+    expect(
+        alpha.exports.filter((entry) => entry.form !== 0).map((entry) => [entry.name, entry.form]),
+    ).toEqual([
+        ["alpha::Color", 1],
+        ["alpha::alpha_high", 2],
+    ]);
     // A hidden friend is found by argument-dependent lookup alone.
     expect(exported.has("alpha::operator==")).toBe(false);
     expect(alpha.aliases).toEqual([{ name: "al", target: "::alpha" }]);
@@ -636,7 +648,12 @@ test("modularize writes the wrapping", async ({ session }) => {
     expect(alpha).toContain("import std.compat;");
     expect(alpha).toContain("export module alpha;");
     expect(alpha).toContain("export namespace alpha {\nusing ::alpha::Color;");
-    expect(alpha).toContain("using ::alpha::red;");
+    expect(alpha).toContain(
+        "\nexport module alpha;\n\ntemplate <class T> using unnamed_enum = T;\n",
+    );
+    expect(alpha).toContain("using enum ::alpha::Color;");
+    expect(alpha).toContain("using enum unnamed_enum<decltype(::alpha::alpha_high)>;");
+    expect(alpha).not.toContain("using ::alpha::red;");
     expect(alpha).not.toContain("operator==");
     expect(alpha).toContain("export namespace al = ::alpha;");
     const wide = alpha.indexOf("#define ALPHA_WIDE 1");
@@ -946,14 +963,14 @@ test("modularize rewrites program modules", async ({ session }) => {
 test("modularize merges configurations", async ({ session }) => {
     const ws = await writeProject(session);
     expect((await modularize(ws)).status).toBe(0);
-    // A second configuration: alpha exports blue for red, its alias names
+    // A second configuration: alpha exports blue for Color, its alias names
     // another namespace, and one more header is emptied.
     cpSync(ws.path("wrap"), ws.path("two"), { recursive: true });
     const alpha = ws.read("wrap/alpha.cppm");
     ws.write(
         "two/alpha.cppm",
         alpha
-            .replace("using ::alpha::red;", "using ::alpha::blue;")
+            .replace("using enum ::alpha::Color;", "using ::alpha::blue;")
             .replace("export namespace al = ::alpha;", "export namespace al = ::alpha::wide;"),
     );
     ws.write("two/alpha.macros.h", ws.read("wrap/alpha.macros.h") + "#define ALPHA_WIDE_ONLY 1\n");
@@ -997,7 +1014,9 @@ test("modularize merges configurations", async ({ session }) => {
     const merged = ws.read("merged/alpha.cppm");
     expect(
         merged.startsWith(
-            "module;\n\n" + dispatch("alpha.fragment.h") + "\nexport module alpha;\n",
+            "module;\n\n" +
+                dispatch("alpha.fragment.h") +
+                "\nexport module alpha;\n\ntemplate <class T> using unnamed_enum = T;\n",
         ),
     ).toBe(true);
     const one = lines(
@@ -1005,7 +1024,7 @@ test("modularize merges configurations", async ({ session }) => {
         "export namespace al = ::alpha;",
         "",
         "export namespace alpha {",
-        "using ::alpha::red;",
+        "using enum ::alpha::Color;",
         "}",
         "#endif",
     );

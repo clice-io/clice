@@ -755,6 +755,18 @@ struct InterfaceAlias {
     std::string target;
 };
 
+/// How an interface exports a name.
+enum class ExportForm : std::uint8_t {
+    /// A using-declaration of the name.
+    Name,
+    /// A using-enum-declaration of the unscoped enum `name`: its
+    /// enumerators at once.
+    Enum,
+    /// A using-enum-declaration of the enum without a name the enumerator
+    /// `name` belongs to, named by the enumerator's type.
+    EnumOf,
+};
+
 struct InterfaceExport {
     std::string name;
 
@@ -764,6 +776,8 @@ struct InterfaceExport {
     /// Whether files of other modules name it, as opposed to it merely
     /// being on the surface their units enter.
     bool used = false;
+
+    ExportForm form = ExportForm::Name;
 };
 
 /// A header as files of other modules include it.

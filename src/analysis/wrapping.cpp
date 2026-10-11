@@ -95,6 +95,10 @@ std::expected<std::vector<std::string>, std::string>
     return order;
 }
 
+/// Names an enum without a name by the type of an enumerator, which a
+/// using-enum-declaration takes only through an alias.
+constexpr llvm::StringLiteral unnamed_enum = "template <class T> using unnamed_enum = T;";
+
 /// What a module exports from one namespace: its aliases, then its names,
 /// as no using-declaration exports an alias.
 struct ScopeExports {
@@ -131,6 +135,7 @@ std::string export_text(const Exports& exports) {
 struct Wrapper {
     std::string fragment;
     Exports exports;
+    bool names_unnamed_enums = false;
 };
 
 std::expected<Wrapper, std::string> read_wrapper(llvm::StringRef module, llvm::StringRef text) {
@@ -150,6 +155,10 @@ std::expected<Wrapper, std::string> read_wrapper(llvm::StringRef module, llvm::S
     for(auto line: lines) {
         if(scope && line == "}") {
             scope.reset();
+            continue;
+        }
+        if(!scope && line == unnamed_enum) {
+            wrapper.names_unnamed_enums = true;
             continue;
         }
         if(!scope) {
@@ -532,11 +541,26 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             exports[scope.str()].aliases.insert(
                 std::format("namespace {} = {};", alias_name.str(), alias.target));
         }
+        bool names_unnamed_enums = false;
         for(auto& entry: interface.exports) {
-            exports[scope_of(entry.name).first.str()].names.insert(
-                std::format("using ::{};", entry.name));
+            auto& names = exports[scope_of(entry.name).first.str()].names;
+            switch(entry.form) {
+                case ExportForm::Name: names.insert(std::format("using ::{};", entry.name)); break;
+                case ExportForm::Enum:
+                    names.insert(std::format("using enum ::{};", entry.name));
+                    break;
+                case ExportForm::EnumOf:
+                    names.insert(
+                        std::format("using enum unnamed_enum<decltype(::{})>;", entry.name));
+                    names_unnamed_enums = true;
+                    break;
+            }
         }
-        unit += std::format("\nexport module {};\n\n", name) + export_text(exports);
+        unit += std::format("\nexport module {};\n\n", name);
+        if(names_unnamed_enums) {
+            unit += std::format("{}\n\n", unnamed_enum.str());
+        }
+        unit += export_text(exports);
         result.files.push_back({module.source, std::move(unit)});
         result.files.push_back({std::format("{}.macros.h", name), macro_header(interface)});
         result.plan.mirrors.push_back(std::format("mirror/{}", name));
@@ -712,6 +736,9 @@ std::expected<Wrapping, std::string> merge(llvm::ArrayRef<Configuration> configu
         }
         std::string unit = "module;\n\n" + dispatch(std::format("{}.fragment.h", name)) +
                            std::format("\nexport module {};\n", name);
+        if(llvm::any_of(wrappers[name], &Wrapper::names_unnamed_enums)) {
+            unit += std::format("\n{}\n", unnamed_enum.str());
+        }
         for(auto& [key, exports]: groups) {
             unit += "\n";
             if(key.first == 0) {

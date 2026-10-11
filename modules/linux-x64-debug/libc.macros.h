@@ -35,7 +35,6 @@
 #define	SIGSTOP		19	/* Stop, unblockable (POSIX).  */
 #define	SIGXFSZ		25	/* File size limit exceeded (4.2 BSD).  */
 # define bswap_64(x) __bswap_64 (x)
-# define SEEK_END	2	/* Seek from end of file.  */
 #define	__GLIBC__	2
 #define	__GLIBC_MINOR__	17
 #define __GLIBC_PREREQ(maj, min) 	((__GLIBC__ << 16) + __GLIBC_MINOR__ >= ((maj) << 16) + (min))
@@ -73,8 +72,6 @@
 #define FLT_EVAL_METHOD __FLT_EVAL_METHOD__
 #define FLT_RADIX __FLT_RADIX__
 #define va_start(ap, param) __builtin_va_start(ap, param)
-#define va_end(ap) __builtin_va_end(ap)
-#define va_arg(ap, type) __builtin_va_arg(ap, type)
 #define offsetof(t, d) __builtin_offsetof(t, d)
 #define _mm256_extract_epi64(X, N)   ((long long)__builtin_ia32_vec_ext_v4di((__v4di)(__m256i)(X), (int)(N)))
 #define INT_MAX   __INT_MAX__
