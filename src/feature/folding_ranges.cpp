@@ -57,6 +57,12 @@ public:
                 collect_decl(decl);
             } else if(entry.node.kind() == SemanticNode::Kind::Stmt) {
                 collect_stmt(entry.node.get<clang::Stmt>(), entry.parent);
+            } else if(entry.node.kind() == SemanticNode::Kind::TypeLoc) {
+                if(auto specialization = entry.node.get<clang::TypeLoc>()
+                                             ->getAs<clang::TemplateSpecializationTypeLoc>()) {
+                    add_template_arguments(specialization.getLAngleLoc(),
+                                           specialization.getRAngleLoc());
+                }
             }
 
             index += 1;
@@ -65,6 +71,7 @@ public:
         collect_block_directives(unit.semantics().block_directives());
         collect_module_fragments(unit.semantics().module_declarations());
         collect_comments(unit.semantics().comments());
+        collect_macro_definitions(unit.semantics().macro_definitions());
         add_runs(unit.semantics().include_directives(), protocol::FoldingRangeKind::Imports);
         collect_raw_strings(unit.semantics().raw_strings());
         add_runs(usings, "usingDeclaration");
@@ -245,6 +252,31 @@ private:
             add_range(clang::SourceRange(init->getLBraceLoc(), init->getRBraceLoc()),
                       "initializer",
                       "{...}");
+            return;
+        }
+
+        if(const auto* requirements = llvm::dyn_cast<clang::RequiresExpr>(stmt)) {
+            // The opening brace is recorded nowhere; it follows the
+            // parameter list, if any.
+            auto range = requirements->getSourceRange();
+            if(auto parameters_end = requirements->getRParenLoc(); parameters_end.isValid()) {
+                range.setBegin(parameters_end);
+            }
+            auto tokens =
+                unit.expanded_tokens(range).drop_until([](const clang::syntax::Token& token) {
+                    return token.kind() == clang::tok::l_brace;
+                });
+            if(!tokens.empty()) {
+                add_range(
+                    clang::SourceRange(tokens.front().location(), requirements->getRBraceLoc()),
+                    "requiresExpression",
+                    "{...}");
+            }
+            return;
+        }
+
+        if(const auto* reference = llvm::dyn_cast<clang::DeclRefExpr>(stmt)) {
+            add_template_arguments(reference->getLAngleLoc(), reference->getRAngleLoc());
         }
     }
 
@@ -298,6 +330,10 @@ private:
         add_range(clang::SourceRange(parameters->getLAngleLoc(), parameters->getRAngleLoc()),
                   "templateParams",
                   "<...>");
+    }
+
+    void add_template_arguments(clang::SourceLocation left, clang::SourceLocation right) {
+        add_range(clang::SourceRange(left, right), "templateArgs", "<...>");
     }
 
     void collect_parameter_list(const clang::FunctionDecl* function) {
@@ -369,6 +405,21 @@ private:
             }
         }
         add_runs(line_comments, protocol::FoldingRangeKind::Comment);
+    }
+
+    /// A definition continued over several lines folds below its first
+    /// line, like a run.
+    void collect_macro_definitions(llvm::ArrayRef<LocalSourceRange> definitions) {
+        for(auto definition: definitions) {
+            auto first_line_end = line_text_end(definition.begin);
+            if(first_line_end < definition.end) {
+                ranges.push_back({
+                    .range = {first_line_end, definition.end},
+                    .kind = "macroDefinition",
+                    .lines = definition,
+                });
+            }
+        }
     }
 
     /// A raw string folds on its delimiters, which may carry a custom

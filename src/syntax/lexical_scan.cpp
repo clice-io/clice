@@ -103,6 +103,8 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
             info.block_directives.push_back({.kind = *kind, .range = range});
         } else if(keyword == "include" || keyword == "include_next" || keyword == "import") {
             info.include_directives.push_back(range);
+        } else if(keyword == "define") {
+            info.macro_definitions.push_back(range);
         }
     };
 

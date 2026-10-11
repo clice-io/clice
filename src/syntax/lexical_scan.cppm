@@ -96,6 +96,10 @@ struct LexicalInfo {
     /// order, each from the `#` to the end of its logical line.
     std::vector<LocalSourceRange> include_directives;
 
+    /// `#define` directives in source order, each from the `#` to the end
+    /// of its logical line.
+    std::vector<LocalSourceRange> macro_definitions;
+
     /// Raw string literal tokens in source order, outside directives.
     std::vector<LocalSourceRange> raw_strings;
 

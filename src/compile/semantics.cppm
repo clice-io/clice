@@ -399,6 +399,12 @@ public:
         return lexical.include_directives;
     }
 
+    /// The main file's macro definitions in source order, the preamble's
+    /// and skipped blocks' included.
+    llvm::ArrayRef<LocalSourceRange> macro_definitions() const {
+        return lexical.macro_definitions;
+    }
+
     /// The main file's raw string literal tokens in source order.
     llvm::ArrayRef<LocalSourceRange> raw_strings() const {
         return lexical.raw_strings;
