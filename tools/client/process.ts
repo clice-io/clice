@@ -55,7 +55,7 @@ export function runProcess(
         });
         // A child exiting before it reads its input breaks the pipe; its
         // exit, not the failed write, reports the run.
-        child.stdin.on("error", () => {});
+        child.stdin.on("error", () => undefined);
         child.stdin.end(options.input);
         child.on("error", (spawnError) => {
             error = spawnError;
