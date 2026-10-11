@@ -21,8 +21,8 @@ struct NamedLayout {
 
 /// Projects the database and build tests load the way a real project is
 /// loaded, each pinning one property of how databases and rules combine.
-inline const std::vector<NamedLayout>& cdb_layouts() {
-    static const std::vector<NamedLayout> layouts = {
+const inline std::vector<NamedLayout>& cdb_layouts() {
+    const static std::vector<NamedLayout> layouts = {
         {"command_string",
          {
              {"compile_commands.json", R"([
