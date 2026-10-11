@@ -8,6 +8,10 @@ pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
 tests/data/** text eol=lf
 tests/snap/** text eol=lf
 tests-next/** text eol=lf
+# Cases about CRLF line endings keep the bytes they are written in.
+tests-next/compile/encoding/02_line_endings/*.h -text
+tests-next/compile/encoding/02_line_endings/*.cpp -text
+tests-next/format/document/06_crlf_line_endings/*.cpp -text
 
 # Treat trace files as binary to suppress text diffs
 tests/smoke/*.jsonl linguist-generated=true binary
