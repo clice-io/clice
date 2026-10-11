@@ -870,6 +870,18 @@ ZEST_CASE(ApplyRewritesTokens) {
     ZEXPECT(!index::apply_renames(longer, renamed, main_id).has_value());
 }
 
+ZEST_CASE(DollarNames) {
+    add_main(file("a.cpp"), R"(
+        int §my$count = 0;
+        int use() { return §my$count; }
+    )");
+    merge();
+    auto renamed = rename("my$count", "total");
+    ZASSERT(renamed);
+    ZEXPECT(edits(*renamed) == marks());
+    ZEXPECT(clean(*renamed));
+}
+
 ZEST_CASE(BatchSwapsNames) {
     add_main(file("a.cpp"), R"(
         int alpha;

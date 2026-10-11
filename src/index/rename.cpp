@@ -12,8 +12,10 @@ namespace clice::index {
 
 namespace {
 
+/// A character of an identifier as the lexer reads one, `$` included.
 bool identifier_char(char c) {
-    return clang::isAsciiIdentifierContinue(c) || static_cast<unsigned char>(c) >= 0x80;
+    return clang::isAsciiIdentifierContinue(c, /*AllowDollar=*/true) ||
+           static_cast<unsigned char>(c) >= 0x80;
 }
 
 /// The offsets in `text[begin, end)` where `name` stands as a whole

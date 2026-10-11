@@ -620,7 +620,7 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
 
     auto& plans = planned.plan.plans;
     std::set<std::string> stale;
-    std::set<std::pair<std::string, std::uint32_t>> noted;
+    std::set<std::tuple<std::string, std::uint32_t, std::string>> noted;
     for(std::size_t i = 0; i < plans.size(); i += 1) {
         auto& plan = plans[i];
         auto& entry = result.renames[entries[i]];
@@ -629,7 +629,7 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
         entry.warnings = plan.warnings;
         stale.insert(plan.stale.begin(), plan.stale.end());
         for(auto& note: plan.unconfirmed) {
-            if(!noted.insert({note.site.path, note.site.range.begin}).second) {
+            if(!noted.insert({note.site.path, note.site.range.begin, plan.old_name}).second) {
                 continue;
             }
             result.unconfirmed.push_back({
@@ -644,8 +644,8 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
     }
     std::ranges::sort(result.unconfirmed,
                       [](const RenameNoteEntry& lhs, const RenameNoteEntry& rhs) {
-                          return std::tie(lhs.file, lhs.line, lhs.column) <
-                                 std::tie(rhs.file, rhs.line, rhs.column);
+                          return std::tie(lhs.file, lhs.line, lhs.column, lhs.name) <
+                                 std::tie(rhs.file, rhs.line, rhs.column, rhs.name);
                       });
     for(auto& [edit, index]: planned.plan.edits) {
         auto& site = edit.site;
