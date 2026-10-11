@@ -197,12 +197,25 @@ export function renderSummary(dir: string): string {
     return out.join("\n");
 }
 
+/// A board id (`10-12#1`) says nothing to a reader of the docs.
+const INTERNAL_ID = /\b\d\d-\d\d#\d+\b/;
+
 /// Compare `snapshot` with the case's snap.toml, its known-wrong flags
 /// kept, or rewrite it when updating. Returns the snapshot flagged.
 export function checkOutput(c: Case, snapshot: Snapshot): Snapshot {
     const file = snapshotPath(c);
     const before = readFile(c);
-    const result = flagged(snapshot, flags(before));
+    const wrong = flags(before);
+    if (c.readme !== undefined) {
+        for (const [key, reason] of wrong) {
+            if (INTERNAL_ID.test(reason)) {
+                throw new Error(
+                    `${c.id}: ${key} is known wrong for "${reason}", which the docs show: cite issues as tracker#N`,
+                );
+            }
+        }
+    }
+    const result = flagged(snapshot, wrong);
     const text = writeSnapshot(result);
     if (process.env["UPDATE_SNAPSHOTS"] === "1") {
         if (before !== text) {
