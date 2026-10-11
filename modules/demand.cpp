@@ -266,8 +266,6 @@ using ::ssize_t;
 #endif
 #ifdef DecoKV
 #endif
-#ifdef DecoKVStyled
-#endif
 #ifdef EINTR
 #endif
 #ifdef EINVAL
