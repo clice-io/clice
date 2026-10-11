@@ -150,7 +150,11 @@ def generate(name, clice):
     if triple != host:
         flags.append(f"--platforms=@xclang//platforms:{triple}")
 
+    # A configuration's directory exists only after its last generation
+    # went through: merge takes whatever is there.
+    out = os.path.join(OUT, name)
     work = os.path.join(OUT, f"{name}.index")
+    shutil.rmtree(out, ignore_errors=True)
     shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work)
     events = f"{work}/events.json"
@@ -210,7 +214,7 @@ def generate(name, clice):
             "--std",
             std[0],
             "--out",
-            os.path.join(OUT, name),
+            f"{work}/wrapping",
             "--no-mirrors",
         ],
         check=True,
@@ -221,6 +225,7 @@ def generate(name, clice):
     # TU-local entity: the partition needs fixing.
     if warnings := json.loads(plan)["wrapping"]["warnings"]:
         raise SystemExit("\n".join(f"{name}: {warning}" for warning in warnings))
+    os.rename(f"{work}/wrapping", out)
 
 
 def merge(clice):

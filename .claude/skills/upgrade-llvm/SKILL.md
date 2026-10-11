@@ -93,7 +93,7 @@ Strategy:
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
-Then all four suites on the Linux box, and a build of every other configuration on the box that builds it (`pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:<triple>` for the cross ones): CI runs them all, but a configuration that does not build is found faster here.
+Then all four suites on the Linux box, and a build of every other configuration on the box that builds it: `pixi run build Debug` on both boxes (the ASan libclang, built with assertions, declares more than the release one), `pixi run build RelWithDebInfo` on macOS, and `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:<triple>` for the cross ones. CI runs them all, but a configuration that does not build is found faster here.
 
 ## Step 6: Create PR
 
