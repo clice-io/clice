@@ -1,0 +1,18 @@
+[answers.first_include]
+formatting = '''
+ // Range formatting sorts the include block a selection touches, and only
+ // that one.
+-#include "zeta.h"
+ #include "alpha.h"
++#include "zeta.h"
+
+ int  total = alpha  +  zeta;
+'''
+
+[answers.code]
+formatting = '''
+ #include "alpha.h"
+
+-int  total = alpha  +  zeta;
++int total = alpha + zeta;
+'''

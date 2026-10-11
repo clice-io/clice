@@ -1,0 +1,167 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol value --to amount --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "value",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "amount",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "ambiguous: 2 symbols match; name one by the `symbol` of a candidate",
+        "candidates": [
+          {
+            "name": "value",
+            "kind": "Variable",
+            "file": "${WS}/main.cpp",
+            "line": 6,
+            "container": "b",
+            "symbol": "#2d69354e2aeb0cf6"
+          },
+          {
+            "name": "value",
+            "kind": "Variable",
+            "file": "${WS}/main.cpp",
+            "line": 2,
+            "container": "a",
+            "symbol": "#ab73a1a4b609cf4d"
+          }
+        ]
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol a::value --to amount --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "a::value",
+        "name": "value",
+        "kind": "Variable",
+        "symbol": "#ab73a1a4b609cf4d",
+        "newName": "amount",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 2,
+            "column": 5,
+            "name": "value",
+            "newName": "amount",
+            "heuristic": false
+          },
+          {
+            "line": 9,
+            "column": 23,
+            "name": "value",
+            "newName": "amount",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol \"#ab73a1a4b609cf4d\" --to amount"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": null,
+        "locator": "#ab73a1a4b609cf4d",
+        "name": "value",
+        "kind": "Variable",
+        "symbol": "#ab73a1a4b609cf4d",
+        "newName": "amount",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 2,
+            "column": 5,
+            "name": "value",
+            "newName": "amount",
+            "heuristic": false
+          },
+          {
+            "line": 9,
+            "column": 23,
+            "name": "value",
+            "newName": "amount",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol \"#ab73a1a4b609cf4d\" --to amount".files]
+"main.cpp" = '''
+ namespace a {
+-int value;
++int amount;
+ }
+
+…
+ }
+
+-int use() { return a::value + b::value; }
++int use() { return a::amount + b::value; }
+'''

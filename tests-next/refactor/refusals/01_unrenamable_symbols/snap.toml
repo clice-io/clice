@@ -1,0 +1,186 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 11 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol CALL --to INVOKE"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "CALL",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "INVOKE",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "renaming a macro is not supported yet",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol print_line --to print --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "print_line",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "print",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "`print_line` is declared in a system header",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol getter --to fetch --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "getter",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "fetch",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "every declaration of `getter` is spelled by a macro",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol Meters::operator+ --to plus --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Meters::operator+",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "plus",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "`operator+` is named by the language, not by an identifier",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol main.cpp:13:14 --to number --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "main.cpp:13:14",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "number",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "`operator double` is named by the language, not by an identifier",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol main.cpp:16:18 --to meters --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "main.cpp:16:18",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "meters",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "`operator \"\"_m` is named by the language, not by an identifier",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1

@@ -1,0 +1,9 @@
+default_configuration = "debug"
+
+[[rules]]
+configuration = "debug"
+compile_commands = ["out/debug"]
+
+[[rules]]
+configuration = "release"
+compile_commands = ["out/release"]

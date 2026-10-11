@@ -1,0 +1,15 @@
+[answers.whole_line]
+formatting = '''
+ int    first(   int   a ) {return a;}
+-int    second(   int   b ) {return b;}
++int second(int b) { return b; }
+ int    third(   int   c ) {return    c;}
+'''
+
+[answers.inside]
+formatting = '''
+ int    first(   int   a ) {return a;}
+ int    second(   int   b ) {return b;}
+-int    third(   int   c ) {return    c;}
++int third(int c) { return c; }
+'''

@@ -1,0 +1,16 @@
+[answers."main.cpp"]
+formatting = '''
+-int    add(   int   a  ,  int   b  ) {
+-return   a+b ;
+-}
++int add(int a, int b) { return a + b; }
+'''
+
+[answers."legacy/old.cpp"]
+formatting = '''
+-int    add(   int   a  ,  int   b  ) {
+-return   a+b ;
++int add(int a, int b) {
++        return a + b;
+ }
+'''

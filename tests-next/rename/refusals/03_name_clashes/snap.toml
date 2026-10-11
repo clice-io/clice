@@ -1,0 +1,62 @@
+[answers.parameter_to_local]
+wrong = "the parameter takes the name of a local of the same function, which no longer compiles, and the rename goes ahead without a word"
+
+[answers.parameter_to_local.rename]
+compiles = false
+errors = ["redefinition of 'result'"]
+
+[answers.parameter_to_local.rename.edits]
+"main.cpp" = '''
+ // Names that clash where only the compiler sees it: a parameter and a local
+ // of one function, two parameters, two functions of one signature.
+-int scale(int factor, int offset) {
+-    int result = factor * 2 + offset;
++int scale(int result, int offset) {
++    int result = result * 2 + offset;
+     return result;
+ }
+'''
+
+[answers.local_to_parameter]
+wrong = "the local takes the name of a parameter of the same function, which no longer compiles; that clash should stop the rename, as it does between two parameters"
+
+[answers.local_to_parameter.rename]
+compiles = false
+errors = ["redefinition of 'factor'"]
+
+[answers.local_to_parameter.rename.edits]
+"main.cpp" = '''
+ // of one function, two parameters, two functions of one signature.
+ int scale(int factor, int offset) {
+-    int result = factor * 2 + offset;
+-    return result;
++    int factor = factor * 2 + offset;
++    return factor;
+ }
+'''
+
+[answers.parameter_to_parameter.rename]
+error = "cannot rename `offset`: `factor` already names a parameter of the same function (${WS}/main.cpp:3)"
+
+[answers.same_signature]
+wrong = "the function takes the name of another with the same parameters, a redefinition, and the rename only warns"
+
+[answers.same_signature.rename]
+notice = '''
+Renaming `compute`:
+  `twin` already names a function in the same scope (${WS}/main.cpp:9): the renamed function overloads it, which fails to build in C or when their parameters are the same
+'''
+compiles = false
+errors = ["redefinition of 'twin'"]
+
+[answers.same_signature.rename.edits]
+"main.cpp" = '''
+ }
+
+-int compute(int v) { return v; }
++int twin(int v) { return v; }
+ int twin(int v) { return v + 1; }
+
+-int main() { return scale(1, 2) + compute(3) + twin(4); }
++int main() { return scale(1, 2) + twin(3) + twin(4); }
+'''

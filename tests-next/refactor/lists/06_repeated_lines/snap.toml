@@ -1,0 +1,136 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec same_name.txt --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": 1,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 2,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [
+          "`compute` is renamed to `evaluate` already"
+        ],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 2,
+            "column": 20,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec other_name.txt --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": 1,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 2,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "calculate",
+        "edits": 0,
+        "conflicts": [
+          "`compute` is renamed to `evaluate` as well"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 2,
+            "column": 20,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1

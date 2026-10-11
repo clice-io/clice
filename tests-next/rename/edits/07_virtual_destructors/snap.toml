@@ -1,0 +1,32 @@
+[answers.base]
+wrong = "the message lists the derived class's destructor as a spelling of the renamed class left alone, though it never names it"
+
+[answers.base.rename]
+notice = '''
+Spellings of `Shape` left alone:
+  ${WS}/main.cpp:8: ~Circle() override {} (the name is written here as `~Circle`)
+'''
+compiles = true
+
+[answers.base.rename.edits]
+"main.cpp" = '''
+ // A class whose destructor a derived class overrides: the derived
+ // destructor never names the renamed class.
+-struct Shape {
+-    virtual ~Shape() {}
++struct Figure {
++    virtual ~Figure() {}
+ };
+
+-struct Circle : Shape {
++struct Circle : Figure {
+     ~Circle() override {}
+ };
+…
+ int main() {
+     Circle c;
+-    Shape& s = c;
++    Figure& s = c;
+     return sizeof(s) > 0 ? 0 : 1;
+ }
+'''

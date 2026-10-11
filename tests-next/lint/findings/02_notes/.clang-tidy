@@ -1,0 +1,2 @@
+Checks: "-*,bugprone-argument-comment,readability-inconsistent-declaration-parameter-name"
+HeaderFilterRegex: ".*"

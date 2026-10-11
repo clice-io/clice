@@ -1,0 +1,30 @@
+[test."$ clice format scratch.cpp"]
+stdout = "Formatted 1 file in #s."
+exit = 0
+
+[test."$ clice format scratch.cpp".files]
+"scratch.cpp" = '''
+-int   draft(){return 1;}
++int draft() { return 1; }
+'''
+
+[test."$ clice format src"]
+stdout = "Formatted 2 files in #s."
+exit = 0
+
+[test."$ clice format src".files]
+"src/engine.cpp" = '''
+ #include "../vendor/vendored.h"
+
+-int   step(int value){return vendored(value)+1;}
++int step(int value) { return vendored(value) + 1; }
+'''
+"src/engine.h" = '''
+ #pragma once
+-int   step(int value);
++int step(int value);
+'''
+
+[test."$ clice format vendor"]
+stdout = "No files to format under ${WS}."
+exit = 0

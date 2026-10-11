@@ -1,0 +1,86 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol length --to size --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "length",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "size",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "symbol not found",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol \"length path:main.cpp\" --to size --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "length path:main.cpp",
+        "name": "length",
+        "kind": "Parameter",
+        "symbol": "#48a9f18a4aaf9b1e path:${WS}/main.cpp",
+        "newName": "size",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 22,
+            "name": "length",
+            "newName": "size",
+            "heuristic": false
+          },
+          {
+            "line": 2,
+            "column": 21,
+            "name": "length",
+            "newName": "size",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0

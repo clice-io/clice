@@ -1,0 +1,7 @@
+[test."$ clice lint --workers 2"]
+wrong = "the build compiles main.cpp twice, and only its first command is checked: the division the second one compiles goes unreported, which clang-tidy reports"
+stdout = '''
+${WS}/main.cpp:6:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1

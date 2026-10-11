@@ -1,0 +1,212 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol fast --to compute --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "fast",
+        "name": "fast",
+        "kind": "EnumMember",
+        "symbol": "#e2317c1b505efc78",
+        "newName": "compute",
+        "edits": 2,
+        "conflicts": [
+          "`compute` is already declared in the same scope (${WS}/main.cpp:4)"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 13,
+            "name": "fast",
+            "newName": "compute",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 24,
+            "name": "fast",
+            "newName": "compute",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol fast --to slow --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "fast",
+        "name": "fast",
+        "kind": "EnumMember",
+        "symbol": "#e2317c1b505efc78",
+        "newName": "slow",
+        "edits": 2,
+        "conflicts": [
+          "`slow` is already declared in the same scope (${WS}/main.cpp:1)"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 13,
+            "name": "fast",
+            "newName": "slow",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 24,
+            "name": "fast",
+            "newName": "slow",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol Color::red --to compute --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Color::red",
+        "name": "red",
+        "kind": "EnumMember",
+        "symbol": "#cfe0f122bed7103e",
+        "newName": "compute",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 2,
+            "column": 20,
+            "name": "red",
+            "newName": "compute",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 55,
+            "name": "red",
+            "newName": "compute",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol Color::red --to green --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Color::red",
+        "name": "red",
+        "kind": "EnumMember",
+        "symbol": "#cfe0f122bed7103e",
+        "newName": "green",
+        "edits": 2,
+        "conflicts": [
+          "`green` is already declared in the same scope (${WS}/main.cpp:2)"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 2,
+            "column": 20,
+            "name": "red",
+            "newName": "green",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 55,
+            "name": "red",
+            "newName": "green",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1

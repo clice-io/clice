@@ -1,0 +1,7 @@
+[test."$ clice lint --workers 2"]
+stdout = '''
+${WS}/main.cpp:7:2: error: expected ';' after top level declarator [clang-diagnostic-error]
+${WS}/vendor/broken.h:2:15: error: expected expression [clang-diagnostic-error]
+Linted 1 translation unit in #s: 2 findings.
+'''
+exit = 1

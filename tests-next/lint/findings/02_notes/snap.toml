@@ -1,0 +1,13 @@
+[test."$ clice lint --workers 2"]
+stdout = '''
+${WS}/a.cpp:12:10: warning: argument name 'disabled' in comment does not match parameter name 'enabled' [bugprone-argument-comment]
+${WS}/common.h:3:16: note: 'enabled' declared here
+${WS}/common.h:5:6: warning: function 'function' has a definition with different parameter names [readability-inconsistent-declaration-parameter-name]
+${WS}/a.cpp:7:6: note: the definition seen here
+${WS}/common.h:5:6: note: differing parameters are named here: ('original'), in definition: ('alpha')
+${WS}/common.h:5:6: warning: function 'function' has a definition with different parameter names [readability-inconsistent-declaration-parameter-name]
+${WS}/b.cpp:3:6: note: the definition seen here
+${WS}/common.h:5:6: note: differing parameters are named here: ('original'), in definition: ('beta')
+Linted 2 translation units in #s: 3 findings.
+'''
+exit = 1

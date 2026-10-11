@@ -1,0 +1,3 @@
+BasedOnStyle: LLVM
+IndentWidth: 8
+AllowShortFunctionsOnASingleLine: None

@@ -1,0 +1,112 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec renames.txt"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": 1,
+        "locator": "alpha",
+        "name": "alpha",
+        "kind": "Variable",
+        "symbol": "#6567e2a96d8539cf",
+        "newName": "beta",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 2,
+        "locator": "beta",
+        "name": "beta",
+        "kind": "Variable",
+        "symbol": "#64d3e39a3a4c3904",
+        "newName": "gamma",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 3,
+        "locator": "gamma",
+        "name": "gamma",
+        "kind": "Function",
+        "symbol": "#ee98a78f76b0db21",
+        "newName": "alpha",
+        "edits": 1,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "alpha",
+            "newName": "beta",
+            "heuristic": false
+          },
+          {
+            "line": 2,
+            "column": 5,
+            "name": "beta",
+            "newName": "gamma",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 5,
+            "name": "gamma",
+            "newName": "alpha",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 22,
+            "name": "alpha",
+            "newName": "beta",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 30,
+            "name": "beta",
+            "newName": "gamma",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec renames.txt".files]
+"main.cpp" = '''
+-int alpha;
+ int beta;
+-int gamma() { return alpha + beta; }
++int gamma;
++int alpha() { return beta + gamma; }
+'''

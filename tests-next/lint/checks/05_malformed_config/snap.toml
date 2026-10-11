@@ -1,0 +1,23 @@
+[test."$ clice lint --workers 2"]
+wrong = "a .clang-tidy that does not parse should fail the run, reported once; its errors repeat for every unit, and the default checks run in its place"
+stdout = '''
+${WS}/main.cpp:3:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
+Linted 2 translation units in #s: 1 finding.
+'''
+stderr = [
+    "stderr: ${WS}/.clang-tidy:2:21: error: Expected quote at end of scalar",
+    "stderr: HeaderFilterRegex: [",
+    "stderr:                     ^",
+    "stderr: ${WS}/.clang-tidy:1:1: error: Map value must not be empty",
+    'stderr: Checks: "-*,modernize-use-nullptr',
+    "stderr: ^~~~~~",
+    "stderr: Error parsing ${WS}/.clang-tidy: Invalid argument",
+    "stderr: ${WS}/.clang-tidy:2:21: error: Expected quote at end of scalar",
+    "stderr: HeaderFilterRegex: [",
+    "stderr:                     ^",
+    "stderr: ${WS}/.clang-tidy:1:1: error: Map value must not be empty",
+    'stderr: Checks: "-*,modernize-use-nullptr',
+    "stderr: ^~~~~~",
+    "stderr: Error parsing ${WS}/.clang-tidy: Invalid argument",
+]
+exit = 1

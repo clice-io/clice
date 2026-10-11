@@ -1,0 +1,10 @@
+[answers."main.cpp"]
+formatting = '''
+-#include "zeta.h"
+ #include "alpha.h"
+ #include "mid.h"
++#include "zeta.h"
+
+-int  total = alpha + mid + zeta;
++int total = alpha + mid + zeta;
+'''

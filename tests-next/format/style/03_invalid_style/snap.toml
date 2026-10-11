@@ -1,0 +1,3 @@
+[answers."main.cpp"]
+wrong = "a .clang-format clang-format cannot read makes formatting do nothing, with no message saying why"
+formatting = "(no change)"

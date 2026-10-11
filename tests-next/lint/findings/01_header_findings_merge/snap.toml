@@ -1,0 +1,7 @@
+[test."$ clice lint --workers 2"]
+stdout = '''
+${WS}/average.cpp:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
+${WS}/ratio.h:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
+Linted 2 translation units in #s: 2 findings.
+'''
+exit = 1

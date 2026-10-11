@@ -1,0 +1,47 @@
+[answers.1abc.rename]
+error = "cannot rename `compute`: `1abc` is not an identifier"
+
+[answers.class.rename]
+error = "cannot rename `compute`: `class` is a keyword"
+
+[answers.Point.rename]
+error = "cannot rename `compute`: `Point` is already declared in the same scope (${WS}/main.cpp:3)"
+
+[answers.TWICE.rename]
+error = "cannot rename `compute`: `TWICE` is a macro (${WS}/main.cpp:1): it would expand in place of the new name"
+
+[answers.other.rename]
+notice = '''
+Renaming `compute`:
+  `other` already names a function in the same scope (${WS}/main.cpp:6): the renamed function overloads it, which fails to build in C or when their parameters are the same
+'''
+
+[answers.other.rename.edits]
+"main.cpp" = '''
+ struct Point { int x; };
+
+-int compute(int v) { return TWICE(v); }
++int other(int v) { return TWICE(v); }
+ double other(double v) { return v; }
+
+-int main() { return compute(1) + other(2.0); }
++int main() { return other(1) + other(2.0); }
+'''
+
+[answers._Compute.rename]
+notice = '''
+Renaming `compute`:
+  `_Compute` is reserved for the implementation
+'''
+
+[answers._Compute.rename.edits]
+"main.cpp" = '''
+ struct Point { int x; };
+
+-int compute(int v) { return TWICE(v); }
++int _Compute(int v) { return TWICE(v); }
+ double other(double v) { return v; }
+
+-int main() { return compute(1) + other(2.0); }
++int main() { return _Compute(1) + other(2.0); }
+'''

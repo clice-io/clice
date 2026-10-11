@@ -1,0 +1,69 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol geo --to shapes"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": null,
+        "locator": "geo",
+        "name": "geo",
+        "kind": "Namespace",
+        "symbol": "#b8d40a731e70f055",
+        "newName": "shapes",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 11,
+            "name": "geo",
+            "newName": "shapes",
+            "heuristic": false
+          },
+          {
+            "line": 8,
+            "column": 21,
+            "name": "geo",
+            "newName": "shapes",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol geo --to shapes".files]
+"main.cpp" = '''
+-namespace geo {
++namespace shapes {
+ // geo holds the shapes.
+ inline int area(int side) { return side * side; }
+…
+ const char* label = "geo::area";
+
+-int main() { return geo::area(2); }
++int main() { return shapes::area(2); }
+'''

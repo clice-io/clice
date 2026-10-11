@@ -1,0 +1,27 @@
+["out of both"."$ clice lint --index --workers 2"]
+stdout = '''
+${WS}/main.cpp:2:12: warning: use nullptr [modernize-use-nullptr]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1
+
+["out of both"."$ clice index --workers 2"]
+stdout = '''
+Indexed 0 translation units in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["out of lint alone"."$ clice lint --index --workers 2"]
+stdout = '''
+${WS}/main.cpp:2:12: warning: use nullptr [modernize-use-nullptr]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1
+
+["out of lint alone"."$ clice index --workers 2"]
+stdout = '''
+Indexed 0 translation units in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

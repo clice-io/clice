@@ -1,0 +1,2 @@
+Checks: "-*,modernize-use-nullptr
+HeaderFilterRegex: [

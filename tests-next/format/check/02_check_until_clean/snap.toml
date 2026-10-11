@@ -1,0 +1,41 @@
+[test."$ clice format --check"]
+stdout = "Checked 3 files in #s: 3 need formatting."
+stderr = [
+    "stderr: ${WS}/app.cpp:5:4: error: code should be clang-formatted [-Wclang-format-violations]",
+    "stderr: int  run() { return scale(vendored(1), installed(2)); }",
+    "stderr:    ^",
+    "stderr: ${WS}/lib.h:2:4: error: code should be clang-formatted [-Wclang-format-violations]",
+    "stderr: int  scale(int value, int factor) { return value * factor; }",
+    "stderr:    ^",
+    "stderr: ${WS}/main.cpp:3:4: error: code should be clang-formatted [-Wclang-format-violations]",
+    "stderr: int  main() { return scale(2, 3); }",
+    "stderr:    ^",
+]
+exit = 1
+
+[test."$ clice format"]
+stdout = "Formatted 3 files in #s."
+exit = 0
+
+[test."$ clice format".files]
+"app.cpp" = '''
+ #include <system.h>
+
+-int  run() { return scale(vendored(1), installed(2)); }
++int run() { return scale(vendored(1), installed(2)); }
+'''
+"lib.h" = '''
+ #pragma once
+-int  scale(int value, int factor) { return value * factor; }
++int scale(int value, int factor) { return value * factor; }
+'''
+"main.cpp" = '''
+ #include "lib.h"
+
+-int  main() { return scale(2, 3); }
++int main() { return scale(2, 3); }
+'''
+
+[test."$ clice format --check #2"]
+stdout = "Checked 3 files in #s: all formatted."
+exit = 0

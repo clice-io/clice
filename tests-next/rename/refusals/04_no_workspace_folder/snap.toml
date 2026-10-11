@@ -1,0 +1,13 @@
+["no project".prepare.prepare_rename]
+error = "a rename edits the sources of a workspace folder; open one"
+
+["no project".rename.rename]
+error = "a rename edits the sources of a workspace folder; open one"
+
+["a project found for the file".rename.rename.edits]
+"main.cpp" = '''
+-int compute();
+-int use() { return compute(); }
++int evaluate();
++int use() { return evaluate(); }
+'''

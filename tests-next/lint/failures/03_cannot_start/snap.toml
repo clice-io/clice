@@ -1,0 +1,20 @@
+["no database"."$ clice lint --workers 2"]
+stderr = ["error: Nothing to lint: no compile_commands.json found under ${WS}"]
+exit = 2
+
+["missing workspace"."$ clice lint --workspace nowhere --workers 2"]
+stderr = ["error: Nothing to lint: no compile_commands.json found under ${WS}/nowhere"]
+exit = 2
+
+["missing workspace".created]
+wrong = "a workspace that does not exist should be reported as missing; the run creates it, with a cache inside"
+value = ["nowhere/.clice/CACHEDIR.TAG"]
+
+["invalid worker count"."$ clice lint --workers many"]
+stderr = [
+    "stderr: at argv[1]:",
+    "stderr:   --workers many",
+    "stderr:             ^~~~",
+    "stderr:   invalid integer value: many",
+]
+exit = 2

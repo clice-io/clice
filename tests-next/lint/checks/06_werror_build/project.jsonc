@@ -1,0 +1,5 @@
+{
+  // The build turns its warnings into errors.
+  "units": { "main.cpp": ["-Wunused-variable", "-Werror"] },
+  "compiles": false
+}

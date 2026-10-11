@@ -1,0 +1,392 @@
+["renames a class"."$ clice index --workers 2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 12 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["renames a class"."$ clice refactor rename --symbol Shape --to Figure --dry-run"]
+wrong = "Circle's destructor is listed as a place left alone, written as `~Circle`: it overrides the destructor of Shape but never names Shape, so it is no place of the rename"
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Shape",
+        "name": "Shape",
+        "kind": "Struct",
+        "symbol": "#7af3cb29dff9916d",
+        "newName": "Figure",
+        "edits": 11,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 6,
+            "column": 20,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          },
+          {
+            "line": 10,
+            "column": 5,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/shape.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 1,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 8,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 1,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 9,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 8,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/shape.h",
+        "edits": [
+          {
+            "line": 3,
+            "column": 8,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 5,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 14,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          },
+          {
+            "line": 9,
+            "column": 17,
+            "name": "Shape",
+            "newName": "Figure",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/shape.cpp",
+        "line": 8,
+        "column": 9,
+        "name": "Shape",
+        "reason": "the name is written here as `~Circle`",
+        "text": "Circle::~Circle() {}"
+      },
+      {
+        "file": "${WS}/shape.h",
+        "line": 11,
+        "column": 5,
+        "name": "Shape",
+        "reason": "the name is written here as `~Circle`",
+        "text": "~Circle() override;"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["a constructor names its class"."$ clice index --workers 2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 12 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a constructor names its class"."$ clice refactor rename --symbol Circle::Circle --to Disk --dry-run"]
+wrong = "Shape's destructor is listed as a place left alone, written as `~Shape`: the destructor of Circle overrides it, but it never names Circle, so it is no place of the rename"
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Circle::Circle",
+        "name": "Circle",
+        "kind": "Struct",
+        "symbol": "#b0649159dc9e5933",
+        "newName": "Disk",
+        "edits": 10,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 6,
+            "column": 58,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          },
+          {
+            "line": 9,
+            "column": 5,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/shape.cpp",
+        "edits": [
+          {
+            "line": 7,
+            "column": 1,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          },
+          {
+            "line": 7,
+            "column": 9,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          },
+          {
+            "line": 8,
+            "column": 1,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          },
+          {
+            "line": 8,
+            "column": 10,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          },
+          {
+            "line": 9,
+            "column": 8,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/shape.h",
+        "edits": [
+          {
+            "line": 9,
+            "column": 8,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          },
+          {
+            "line": 10,
+            "column": 5,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          },
+          {
+            "line": 11,
+            "column": 6,
+            "name": "Circle",
+            "newName": "Disk",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/shape.cpp",
+        "line": 4,
+        "column": 8,
+        "name": "Circle",
+        "reason": "the name is written here as `~Shape`",
+        "text": "Shape::~Shape() {}"
+      },
+      {
+        "file": "${WS}/shape.h",
+        "line": 5,
+        "column": 13,
+        "name": "Circle",
+        "reason": "the name is written here as `~Shape`",
+        "text": "virtual ~Shape();"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["renames the overrides"."$ clice index --workers 2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 12 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["renames the overrides"."$ clice refactor rename --symbol Circle::area --to size --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Circle::area",
+        "name": "area",
+        "kind": "Method",
+        "symbol": "#f020286f8fd97f75",
+        "newName": "size",
+        "edits": 6,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 6,
+            "column": 41,
+            "name": "area",
+            "newName": "size",
+            "heuristic": false
+          },
+          {
+            "line": 11,
+            "column": 32,
+            "name": "area",
+            "newName": "size",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/shape.cpp",
+        "edits": [
+          {
+            "line": 5,
+            "column": 15,
+            "name": "area",
+            "newName": "size",
+            "heuristic": false
+          },
+          {
+            "line": 9,
+            "column": 16,
+            "name": "area",
+            "newName": "size",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/shape.h",
+        "edits": [
+          {
+            "line": 6,
+            "column": 20,
+            "name": "area",
+            "newName": "size",
+            "heuristic": false
+          },
+          {
+            "line": 12,
+            "column": 12,
+            "name": "area",
+            "newName": "size",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "column": 47,
+        "name": "area",
+        "reason": "the index ties no symbol to it: a dependent name it could not resolve, an inactive #if branch, or code no unit compiles",
+        "text": "double measure(const T& shape) { return shape.area(); }"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0

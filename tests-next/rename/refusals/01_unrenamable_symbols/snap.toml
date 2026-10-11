@@ -1,0 +1,14 @@
+[answers.include]
+prepare_rename = {}
+
+[answers.macro_definition.prepare_rename]
+error = "renaming a macro is not supported yet"
+
+[answers.operator.prepare_rename]
+error = "`operator+` is named by the language, not by an identifier"
+
+[answers.system.prepare_rename]
+error = "`printf` is declared in a system header"
+
+[answers.macro_use.prepare_rename]
+error = "renaming a macro is not supported yet"

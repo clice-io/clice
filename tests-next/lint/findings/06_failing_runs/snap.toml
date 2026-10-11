@@ -1,0 +1,10 @@
+[test."$ clice lint --workers 2"]
+stdout = '''
+${WS}/main.cpp:2:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1
+
+[test."$ clice lint --workers 2 #2"]
+stdout = "Linted 1 translation unit in #s: 0 findings."
+exit = 0

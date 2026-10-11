@@ -1,0 +1,266 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec conflicting.txt"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": 1,
+        "locator": "nope",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "none",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "symbol not found",
+        "candidates": null
+      },
+      {
+        "line": 2,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 4,
+        "conflicts": [
+          "`evaluate` is already declared in the same scope (${WS}/lib.h:5)"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 3,
+        "locator": "Widget",
+        "name": "Widget",
+        "kind": "Struct",
+        "symbol": "#5b52580eb5b8875a",
+        "newName": "evaluate",
+        "edits": 5,
+        "conflicts": [
+          "`evaluate` is already declared in the same scope (${WS}/main.cpp:3)"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/lib.h",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 8,
+            "name": "Widget",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 5,
+            "name": "Widget",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 1,
+            "name": "Widget",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 9,
+            "name": "Widget",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 7,
+            "column": 20,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 10,
+            "column": 5,
+            "name": "Widget",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/other.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 22,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/lib.h",
+        "line": 10,
+        "column": 14,
+        "name": "compute",
+        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "text": "#define CALL compute(1)"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "column": 33,
+        "name": "compute",
+        "reason": "the name is written here as `CALL`",
+        "text": "int use() { return compute(2) + CALL; }"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --spec unknown.txt"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": 1,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 4,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 2,
+        "locator": "nope",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "none",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "symbol not found",
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/lib.h",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 7,
+            "column": 20,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/other.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 22,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/lib.h",
+        "line": 10,
+        "column": 14,
+        "name": "compute",
+        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "text": "#define CALL compute(1)"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "column": 33,
+        "name": "compute",
+        "reason": "the name is written here as `CALL`",
+        "text": "int use() { return compute(2) + CALL; }"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1

@@ -1,0 +1,7 @@
+[test."$ clice lint --workers 2"]
+wrong = "the error is the unused-variable warning -Werror promoted; clang-tidy reports it under that name, clang-diagnostic-unused-variable"
+stdout = '''
+${WS}/main.cpp:4:9: error: unused variable 'unused' [clang-diagnostic-error]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1

@@ -1,0 +1,37 @@
+["a missing file argument"."$ clice format missing.cpp"]
+stderr = ["stderr: ${WS}/missing.cpp: no such file"]
+exit = 2
+
+["a non-source file argument"."$ clice format notes.md"]
+stderr = ["stderr: ${WS}/notes.md: not a C-family source file"]
+exit = 2
+
+["an invalid log level"."$ clice format --log-level loud"]
+stderr = [
+    "stderr: at argv[1]:",
+    "stderr:   --log-level loud",
+    "stderr:               ^~~~",
+    "stderr:   invalid enum value: loud (supported: trace, debug, info, warn, error, off)",
+]
+exit = 2
+
+["an invalid job count"."$ clice format --jobs many"]
+stderr = [
+    "stderr: at argv[1]:",
+    "stderr:   --jobs many",
+    "stderr:          ^~~~",
+    "stderr:   invalid integer value: many",
+]
+exit = 2
+
+["a workspace that does not exist"."$ clice format --check --workspace missing"]
+stderr = ["stderr: ${WS}/missing: not a directory"]
+exit = 2
+
+["an unknown configuration"."$ clice format --configuration nope"]
+wrong = "with no configuration declared, the error lists an empty `()` instead of saying the project declares none"
+stderr = [
+    "error: --configuration nope names no rule's configuration ()",
+    "stderr: the requested configuration does not exist",
+]
+exit = 2

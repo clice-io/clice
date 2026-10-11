@@ -1,0 +1,502 @@
+["class members"."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 14 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["class members"."$ clice refactor rename --symbol Base::size --to capacity --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Base::size",
+        "name": "size",
+        "kind": "Field",
+        "symbol": "#5edaf86359cfcd79",
+        "newName": "capacity",
+        "edits": 2,
+        "conflicts": [
+          "`capacity` is a member of Derived (${WS}/main.cpp:17), which the renamed member would hide or be hidden by"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 12,
+            "column": 9,
+            "name": "size",
+            "newName": "capacity",
+            "heuristic": false
+          },
+          {
+            "line": 20,
+            "column": 31,
+            "name": "size",
+            "newName": "capacity",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+["class members"."$ clice refactor rename --symbol Derived::capacity --to size --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Derived::capacity",
+        "name": "capacity",
+        "kind": "Field",
+        "symbol": "#3dcb122da86eca9f",
+        "newName": "size",
+        "edits": 2,
+        "conflicts": [
+          "`size` is a member of Base (${WS}/main.cpp:12), which the renamed member would hide or be hidden by"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 17,
+            "column": 9,
+            "name": "capacity",
+            "newName": "size",
+            "heuristic": false
+          },
+          {
+            "line": 34,
+            "column": 39,
+            "name": "capacity",
+            "newName": "size",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+["class members"."$ clice refactor rename --symbol Base::grow --to Base --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Base::grow",
+        "name": "grow",
+        "kind": "Method",
+        "symbol": "#2005e6dfad12843c",
+        "newName": "Base",
+        "edits": 3,
+        "conflicts": [
+          "`Base` names the class the member belongs to"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 13,
+            "column": 10,
+            "name": "grow",
+            "newName": "Base",
+            "heuristic": false
+          },
+          {
+            "line": 20,
+            "column": 12,
+            "name": "grow",
+            "newName": "Base",
+            "heuristic": false
+          },
+          {
+            "line": 33,
+            "column": 7,
+            "name": "grow",
+            "newName": "Base",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+["class members"."$ clice refactor rename --symbol Derived --to capacity --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Derived",
+        "name": "Derived",
+        "kind": "Struct",
+        "symbol": "#990dbf9bf6ac7666",
+        "newName": "capacity",
+        "edits": 2,
+        "conflicts": [
+          "`capacity` is a member of the renamed class (${WS}/main.cpp:17), which may not share its name"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 16,
+            "column": 8,
+            "name": "Derived",
+            "newName": "capacity",
+            "heuristic": false
+          },
+          {
+            "line": 32,
+            "column": 5,
+            "name": "Derived",
+            "newName": "capacity",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+["one scope"."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 14 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["one scope"."$ clice refactor rename --symbol alpha --to beta --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "alpha",
+        "name": "alpha",
+        "kind": "Namespace",
+        "symbol": "#abd6dc3c08c02fcf",
+        "newName": "beta",
+        "edits": 2,
+        "conflicts": [
+          "a namespace `beta` already exists in the same scope (${WS}/main.cpp:7); merging namespaces is not supported"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 11,
+            "name": "alpha",
+            "newName": "beta",
+            "heuristic": false
+          },
+          {
+            "line": 34,
+            "column": 12,
+            "name": "alpha",
+            "newName": "beta",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+["one scope"."$ clice refactor rename --symbol volume --to LIMIT --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "volume",
+        "name": "volume",
+        "kind": "Function",
+        "symbol": "#0e47af8c45caf2a3",
+        "newName": "LIMIT",
+        "edits": 2,
+        "conflicts": [
+          "`LIMIT` is a macro (${WS}/main.cpp:1): it would expand in place of the new name"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 23,
+            "column": 5,
+            "name": "volume",
+            "newName": "LIMIT",
+            "heuristic": false
+          },
+          {
+            "line": 24,
+            "column": 30,
+            "name": "volume",
+            "newName": "LIMIT",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+["one scope"."$ clice refactor rename --symbol area --to volume --dry-run"]
+wrong = "`volume` takes the same parameters as `area`, so the rename makes a redefinition, which does not compile, and it only warns"
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "area",
+        "name": "area",
+        "kind": "Function",
+        "symbol": "#99ad4f80ff5d6ffc",
+        "newName": "volume",
+        "edits": 3,
+        "conflicts": [],
+        "warnings": [
+          "`volume` already names a function in the same scope (${WS}/main.cpp:23): the renamed function overloads it, which fails to build in C or when their parameters are the same"
+        ],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 22,
+            "column": 5,
+            "name": "area",
+            "newName": "volume",
+            "heuristic": false
+          },
+          {
+            "line": 24,
+            "column": 5,
+            "name": "area",
+            "newName": "volume",
+            "heuristic": false
+          },
+          {
+            "line": 34,
+            "column": 50,
+            "name": "area",
+            "newName": "volume",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["one function"."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 14 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["one function"."$ clice refactor rename --symbol \"factor path:main.cpp\" --to length --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "factor path:main.cpp",
+        "name": "factor",
+        "kind": "Parameter",
+        "symbol": "#21444f8d4520085f path:${WS}/main.cpp",
+        "newName": "length",
+        "edits": 2,
+        "conflicts": [
+          "`length` already names a parameter of the same function (${WS}/main.cpp:26)"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 26,
+            "column": 34,
+            "name": "factor",
+            "newName": "length",
+            "heuristic": false
+          },
+          {
+            "line": 27,
+            "column": 30,
+            "name": "factor",
+            "newName": "length",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+["one function"."$ clice refactor rename --symbol \"result path:main.cpp\" --to length --dry-run"]
+wrong = "`length` is a parameter of the same function: the renamed local would redeclare it in the function's outermost block, which does not compile, yet no conflict is reported"
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "result path:main.cpp",
+        "name": "result",
+        "kind": "Variable",
+        "symbol": "#5019987308b788cd path:${WS}/main.cpp",
+        "newName": "length",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 27,
+            "column": 12,
+            "name": "result",
+            "newName": "length",
+            "heuristic": false
+          },
+          {
+            "line": 28,
+            "column": 12,
+            "name": "result",
+            "newName": "length",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0

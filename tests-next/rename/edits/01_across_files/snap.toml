@@ -1,0 +1,33 @@
+[answers.prepare.prepare_rename]
+at = "int ⟦compute⟧(int x) { return x; }"
+placeholder = "compute"
+
+[answers.rename.rename]
+notice = '''
+Spellings of `compute` left alone:
+  ${WS}/a.h:4: #define CALL compute(1) (inside a preprocessor directive, which the index does not resolve)
+  ${WS}/main.cpp:4: int use() { return compute(2) + CALL; } (the name is written here as `CALL`)
+'''
+
+[answers.rename.rename.edits]
+"a.h" = '''
+ #pragma once
+-int compute(int x);
++int evaluate(int x);
+ struct Widget { Widget(); int value; };
+ #define CALL compute(1)
+'''
+"main.cpp" = '''
+ #include "a.h"
+-int compute(int x) { return x; }
++int evaluate(int x) { return x; }
+ Widget::Widget() : value(0) {}
+-int use() { return compute(2) + CALL; }
++int use() { return evaluate(2) + CALL; }
+ int main() { Widget w; return use() + w.value; }
+'''
+"other.cpp" = '''
+ #include "a.h"
+-int again() { return compute(3); }
++int again() { return evaluate(3); }
+'''

@@ -1,0 +1,149 @@
+["each configuration's index"."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["each configuration's index"."$ clice index --configuration release --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["each configuration's index"."$ clice refactor rename --symbol compute --to evaluate --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 24,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "column": 21,
+        "name": "compute",
+        "reason": "the index ties no symbol to it: a dependent name it could not resolve, an inactive #if branch, or code no unit compiles",
+        "text": "int fast() { return compute(1); }"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["each configuration's index"."$ clice refactor rename --symbol compute --to evaluate --configuration release --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 21,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 6,
+        "column": 24,
+        "name": "compute",
+        "reason": "the index ties no symbol to it: a dependent name it could not resolve, an inactive #if branch, or code no unit compiles",
+        "text": "int checked() { return compute(2); }"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["an unknown configuration"."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["an unknown configuration"."$ clice refactor rename --symbol compute --to evaluate --configuration nope --dry-run"]
+wrong = "the configuration is unknown, yet the answer blames the index and suggests `clice index` or `--fresh`; it should say that `nope` names no configuration, as `--fresh` does"
+stdout = '''
+{
+  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "stale": []
+}
+'''
+stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+exit = 1

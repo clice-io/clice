@@ -1,0 +1,6 @@
+[test."$ clice lint --workers 2"]
+stdout = '''
+${WS}/main.cpp:4:12: warning: use nullptr [modernize-use-nullptr]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1

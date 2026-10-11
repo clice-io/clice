@@ -1,0 +1,187 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol comput --to evaluate --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "comput",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "evaluate",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "symbol not found",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol Compute --to evaluate --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Compute",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "evaluate",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "symbol not found",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol \"comp*\" --to evaluate --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "comp*",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "evaluate",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "a rename names its symbol by its whole name, not by a pattern",
+        "candidates": null
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol other.cpp:3:22 --to evaluate --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "other.cpp:3:22",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 4,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/lib.h",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 7,
+            "column": 20,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/other.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 22,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/lib.h",
+        "line": 10,
+        "column": 14,
+        "name": "compute",
+        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "text": "#define CALL compute(1)"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "column": 33,
+        "name": "compute",
+        "reason": "the name is written here as `CALL`",
+        "text": "int use() { return compute(2) + CALL; }"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0

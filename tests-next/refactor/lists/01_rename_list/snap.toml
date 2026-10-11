@@ -1,0 +1,212 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec renames.txt"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": 2,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 4,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 4,
+        "locator": "Widget",
+        "name": "Widget",
+        "kind": "Struct",
+        "symbol": "#5b52580eb5b8875a",
+        "newName": "Gadget",
+        "edits": 5,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 5,
+        "locator": "use",
+        "name": "use",
+        "kind": "Function",
+        "symbol": "#864f22013c538ab8",
+        "newName": "apply",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/lib.h",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 8,
+            "name": "Widget",
+            "newName": "Gadget",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 5,
+            "name": "Widget",
+            "newName": "Gadget",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 1,
+            "name": "Widget",
+            "newName": "Gadget",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 9,
+            "name": "Widget",
+            "newName": "Gadget",
+            "heuristic": false
+          },
+          {
+            "line": 7,
+            "column": 5,
+            "name": "use",
+            "newName": "apply",
+            "heuristic": false
+          },
+          {
+            "line": 7,
+            "column": 20,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          },
+          {
+            "line": 10,
+            "column": 5,
+            "name": "Widget",
+            "newName": "Gadget",
+            "heuristic": false
+          },
+          {
+            "line": 11,
+            "column": 12,
+            "name": "use",
+            "newName": "apply",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/other.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 22,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/lib.h",
+        "line": 10,
+        "column": 14,
+        "name": "compute",
+        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "text": "#define CALL compute(1)"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 7,
+        "column": 33,
+        "name": "compute",
+        "reason": "the name is written here as `CALL`",
+        "text": "int use() { return compute(2) + CALL; }"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --spec renames.txt".files]
+"lib.h" = '''
+ #pragma once
+
+-int compute(int x);
++int evaluate(int x);
+
+-struct Widget {
+-    Widget();
++struct Gadget {
++    Gadget();
+     int value;
+ };
+'''
+"main.cpp" = '''
+ #include "lib.h"
+
+-int compute(int x) { return x; }
++int evaluate(int x) { return x; }
+
+-Widget::Widget() : value(0) {}
++Gadget::Gadget() : value(0) {}
+
+-int use() { return compute(2) + CALL; }
++int apply() { return evaluate(2) + CALL; }
+
+ int main() {
+-    Widget w;
+-    return use() + w.value;
++    Gadget w;
++    return apply() + w.value;
+ }
+'''
+"other.cpp" = '''
+ #include "lib.h"
+
+-int again() { return compute(3); }
++int again() { return evaluate(3); }
+'''

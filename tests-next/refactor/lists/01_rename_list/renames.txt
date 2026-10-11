@@ -1,0 +1,5 @@
+// API cleanup
+compute => evaluate
+
+Widget => Gadget
+use => apply

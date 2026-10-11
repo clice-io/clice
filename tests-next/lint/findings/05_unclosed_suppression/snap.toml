@@ -1,0 +1,7 @@
+[test."$ clice lint --workers 2"]
+wrong = "clang-tidy reports a NOLINTBEGIN that no NOLINTEND closes as an error of its own; the report leaves it out"
+stdout = '''
+${WS}/main.cpp:5:12: warning: use nullptr [modernize-use-nullptr]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1

@@ -1,0 +1,62 @@
+[test."$ clice refactor rename --spec no_arrow.txt"]
+stdout = '''
+{
+  "error": "line 1: expected `<locator> => <new name>`",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --spec no_rename.txt"]
+stdout = '''
+{
+  "error": "the rename list names no rename",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --spec no_locator.txt"]
+stdout = '''
+{
+  "error": "line 2: expected `<locator> => <new name>`",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --spec no_name.txt"]
+stdout = '''
+{
+  "error": "line 1: expected `<locator> => <new name>`",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --spec bad_id.txt"]
+stdout = '''
+{
+  "error": "line 2: invalid symbol id '#xyz'",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --spec missing.txt"]
+stdout = '''
+{
+  "error": "cannot read missing.txt: No such file or directory",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --spec - --symbol compute --to evaluate"]
+stdout = '''
+{
+  "error": "--spec lists the renames; --symbol and --to name one",
+  "stale": []
+}
+'''
+exit = 1

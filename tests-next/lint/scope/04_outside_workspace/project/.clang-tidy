@@ -1,0 +1,3 @@
+Checks: "-*,bugprone-integer-division"
+HeaderFilterRegex: ".*"
+SystemHeaders: true

@@ -1,0 +1,379 @@
+["renames the set"."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["renames the set"."$ clice refactor rename --symbol scale --to resize --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "scale",
+        "name": "scale",
+        "kind": "Function",
+        "symbol": "#7443d398c6f2a263",
+        "newName": "resize",
+        "edits": 4,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": false
+          },
+          {
+            "line": 2,
+            "column": 8,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 45,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": true
+          },
+          {
+            "line": 5,
+            "column": 20,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "column": 14,
+        "name": "scale",
+        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "text": "#define CALL scale(1)"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["renames one overload"."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["renames one overload"."$ clice query --method definition --symbol main.cpp:2:8"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Function",
+    "symbol": "#e4d8e937e2717771",
+    "definition": {
+      "file": "${WS}/main.cpp",
+      "startLine": 2,
+      "endLine": 2,
+      "text": "double scale(double x) { return x; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["renames one overload"."$ clice refactor rename --symbol \"#e4d8e937e2717771\" --to resize --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "#e4d8e937e2717771",
+        "name": "scale",
+        "kind": "Function",
+        "symbol": "#e4d8e937e2717771",
+        "newName": "resize",
+        "edits": 1,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 2,
+            "column": 8,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "column": 45,
+        "name": "scale",
+        "reason": "the name here also refers to `scale`, under another build configuration or as another candidate of a dependent call",
+        "text": "template <typename T> T twice(T v) { return scale(v) * 2; }"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "column": 14,
+        "name": "scale",
+        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "text": "#define CALL scale(1)"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["lists both overloads"."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["lists both overloads"."$ clice query --method definition --symbol main.cpp:1:5"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Function",
+    "symbol": "#7443d398c6f2a263",
+    "definition": {
+      "file": "${WS}/main.cpp",
+      "startLine": 1,
+      "endLine": 1,
+      "text": "int scale(int x) { return x; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["lists both overloads"."$ clice query --method definition --symbol main.cpp:2:8"]
+stdout = '''
+{
+  "result": {
+    "name": "scale",
+    "kind": "Function",
+    "symbol": "#e4d8e937e2717771",
+    "definition": {
+      "file": "${WS}/main.cpp",
+      "startLine": 2,
+      "endLine": 2,
+      "text": "double scale(double x) { return x; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["lists both overloads"."$ clice refactor rename --spec same.txt --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": 1,
+        "locator": "#7443d398c6f2a263",
+        "name": "scale",
+        "kind": "Function",
+        "symbol": "#7443d398c6f2a263",
+        "newName": "resize",
+        "edits": 3,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 2,
+        "locator": "#e4d8e937e2717771",
+        "name": "scale",
+        "kind": "Function",
+        "symbol": "#e4d8e937e2717771",
+        "newName": "resize",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": false
+          },
+          {
+            "line": 2,
+            "column": 8,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 45,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": true
+          },
+          {
+            "line": 5,
+            "column": 20,
+            "name": "scale",
+            "newName": "resize",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "column": 14,
+        "name": "scale",
+        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "text": "#define CALL scale(1)"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["lists both overloads"."$ clice refactor rename --spec apart.txt --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": 1,
+        "locator": "#7443d398c6f2a263",
+        "name": "scale",
+        "kind": "Function",
+        "symbol": "#7443d398c6f2a263",
+        "newName": "grow",
+        "edits": 2,
+        "conflicts": [
+          "the name at ${WS}/main.cpp:3 also refers to `scale`, which another rename makes `shrink`"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      },
+      {
+        "line": 2,
+        "locator": "#e4d8e937e2717771",
+        "name": "scale",
+        "kind": "Function",
+        "symbol": "#e4d8e937e2717771",
+        "newName": "shrink",
+        "edits": 1,
+        "conflicts": [
+          "the name at ${WS}/main.cpp:3 also refers to `scale`, which another rename makes `grow`"
+        ],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "scale",
+            "newName": "grow",
+            "heuristic": false
+          },
+          {
+            "line": 2,
+            "column": 8,
+            "name": "scale",
+            "newName": "shrink",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 20,
+            "name": "scale",
+            "newName": "grow",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "column": 14,
+        "name": "scale",
+        "reason": "inside a preprocessor directive, which the index does not resolve",
+        "text": "#define CALL scale(1)"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1

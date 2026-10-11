@@ -1,0 +1,105 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol Point::x --to column"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Point::x",
+        "name": "x",
+        "kind": "Field",
+        "symbol": "#995ff32f556a7dc8",
+        "newName": "column",
+        "edits": 6,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 2,
+            "column": 9,
+            "name": "x",
+            "newName": "column",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 30,
+            "name": "x",
+            "newName": "column",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 36,
+            "name": "x",
+            "newName": "column",
+            "heuristic": false
+          },
+          {
+            "line": 9,
+            "column": 17,
+            "name": "x",
+            "newName": "column",
+            "heuristic": false
+          },
+          {
+            "line": 10,
+            "column": 14,
+            "name": "x",
+            "newName": "column",
+            "heuristic": false
+          },
+          {
+            "line": 11,
+            "column": 24,
+            "name": "x",
+            "newName": "column",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol Point::x --to column".files]
+"main.cpp" = '''
+ struct Point {
+-    int x;
++    int column;
+     int y;
+ };
+
+-int norm(Point p) { return p.x * p.x + p.y * p.y; }
++int norm(Point p) { return p.column * p.column + p.y * p.y; }
+
+ int main() {
+-    Point p = {.x = 1, .y = 2};
+-    Point q{.x = 3};
+-    return norm(p) + q.x;
++    Point p = {.column = 1, .y = 2};
++    Point q{.column = 3};
++    return norm(p) + q.column;
+ }
+'''

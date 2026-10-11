@@ -1,0 +1,4 @@
+{
+  // The unit sits in a directory its own command searches as a system one.
+  "flags": ["-isystem", "src"]
+}

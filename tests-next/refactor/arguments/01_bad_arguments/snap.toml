@@ -1,0 +1,44 @@
+[test."$ clice refactor"]
+stdout = '''
+{
+  "error": "name the refactoring to run: rename",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor extract"]
+stdout = '''
+{
+  "error": "unknown refactoring 'extract'",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol compute"]
+stdout = '''
+{
+  "error": "--to names the new name",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --to evaluate"]
+stdout = '''
+{
+  "error": "name the symbol with --symbol",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol compute --to \"\""]
+stdout = '''
+{
+  "error": "at argv[3]:\n  rename --symbol compute --to \n                          ^~~~\n  missing argument value",
+  "stale": []
+}
+'''
+exit = 2

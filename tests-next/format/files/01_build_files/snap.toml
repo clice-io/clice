@@ -1,0 +1,22 @@
+[test."$ clice format"]
+stdout = "Formatted 3 files in #s."
+exit = 0
+
+[test."$ clice format".files]
+"app.cpp" = '''
+ #include <system.h>
+
+-int   run(){return scale(vendored(1),installed(2));}
++int run() { return scale(vendored(1), installed(2)); }
+'''
+"lib.h" = '''
+ #pragma once
+-int   scale(int value,int factor){return value*factor;}
++int scale(int value, int factor) { return value * factor; }
+'''
+"main.cpp" = '''
+ #include "lib.h"
+
+-int   main(){return scale(2,3);}
++int main() { return scale(2, 3); }
+'''

@@ -1,0 +1,242 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 4 translation units in #s: 4 file shards (# KB), 12 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol f --to h --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "f",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "h",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "ambiguous: 2 symbols match; name one by the `symbol` of a candidate",
+        "candidates": [
+          {
+            "name": "f",
+            "kind": "Function",
+            "file": "${WS}/src/main.cpp",
+            "line": 2,
+            "container": "b",
+            "symbol": "#1d6e90c8d7f77165"
+          },
+          {
+            "name": "f",
+            "kind": "Function",
+            "file": "${WS}/src/main.cpp",
+            "line": 1,
+            "container": "a",
+            "symbol": "#fdb09edeb2b831b0"
+          }
+        ]
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol \"helper path:src/\" --to h --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "helper path:src/",
+        "name": "",
+        "kind": "",
+        "symbol": "",
+        "newName": "h",
+        "edits": 0,
+        "conflicts": [],
+        "warnings": [],
+        "error": "ambiguous: 2 symbols match; name one by the `symbol` of a candidate",
+        "candidates": [
+          {
+            "name": "helper",
+            "kind": "Function",
+            "file": "${WS}/src/two.cpp",
+            "line": 1,
+            "container": null,
+            "symbol": "#3f8827417223031d path:${WS}/src/two.cpp"
+          },
+          {
+            "name": "helper",
+            "kind": "Function",
+            "file": "${WS}/src/one.cpp",
+            "line": 1,
+            "container": null,
+            "symbol": "#49e20ffe491b1aa6 path:${WS}/src/one.cpp"
+          }
+        ]
+      }
+    ],
+    "files": [],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol \"mix path:src/mixed.cpp\" --to h --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "mix path:src/mixed.cpp",
+        "name": "mix",
+        "kind": "Function",
+        "symbol": "#13a0ec432ec841a7 path:${WS}/src/mixed.cpp",
+        "newName": "h",
+        "edits": 4,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/src/mixed.cpp",
+        "edits": [
+          {
+            "line": 1,
+            "column": 5,
+            "name": "mix",
+            "newName": "h",
+            "heuristic": false
+          },
+          {
+            "line": 2,
+            "column": 12,
+            "name": "mix",
+            "newName": "h",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 24,
+            "name": "mix",
+            "newName": "h",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 33,
+            "name": "mix",
+            "newName": "h",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol S::g --to h --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "S::g",
+        "name": "g",
+        "kind": "Method",
+        "symbol": "#baa7d004239dec08",
+        "newName": "h",
+        "edits": 6,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/src/main.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 16,
+            "name": "g",
+            "newName": "h",
+            "heuristic": false
+          },
+          {
+            "line": 3,
+            "column": 30,
+            "name": "g",
+            "newName": "h",
+            "heuristic": false
+          },
+          {
+            "line": 4,
+            "column": 8,
+            "name": "g",
+            "newName": "h",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 8,
+            "name": "g",
+            "newName": "h",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 47,
+            "name": "g",
+            "newName": "h",
+            "heuristic": false
+          },
+          {
+            "line": 6,
+            "column": 56,
+            "name": "g",
+            "newName": "h",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0

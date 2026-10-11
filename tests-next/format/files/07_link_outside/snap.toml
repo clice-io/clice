@@ -1,0 +1,7 @@
+[test."$ clice format link.cpp --workspace ws"]
+stderr = ["stderr: ${WS}/ws/link.cpp: links outside the workspace"]
+exit = 2
+
+[test."$ clice format --workspace ws"]
+stdout = "No files to format under ${WS}/ws."
+exit = 0

@@ -1,0 +1,8 @@
+[test."$ clice format --check --workspace src"]
+stdout = "Checked 1 file in #s: 1 needs formatting."
+stderr = [
+    "stderr: ${WS}/src/main.cpp:1:4: error: code should be clang-formatted [-Wclang-format-violations]",
+    "stderr: int  main() { return 0; }",
+    "stderr:    ^",
+]
+exit = 1

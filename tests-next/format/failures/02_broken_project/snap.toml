@@ -1,0 +1,15 @@
+["a broken configuration"."$ clice format"]
+stderr = [
+    "error: Invalid clice.toml ${WS}/clice.toml: TOML parse error: Error while parsing table header: expected ']', saw '\\n' (line 1, column 8)",
+    "warning: Falling back to default configuration because ${WS}/clice.toml is invalid",
+    "stderr: ${WS}/clice.toml: TOML parse error: Error while parsing table header: expected ']', saw '\\n' (line 1, column 8)",
+]
+exit = 2
+
+["a broken compilation database"."$ clice format --check"]
+stderr = [
+    "error: Invalid compilation database format in ${WS}/compile_commands.json: root element must be an array.",
+    "warning: Compilation database ${WS}/compile_commands.json is not readable yet",
+    "stderr: ${WS}/compile_commands.json: the compilation database could not be loaded",
+]
+exit = 2

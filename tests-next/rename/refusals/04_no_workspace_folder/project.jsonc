@@ -1,0 +1,4 @@
+{
+  // No database: nothing ties main.cpp to a project.
+  "databases": {}
+}

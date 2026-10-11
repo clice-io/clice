@@ -1,0 +1,13 @@
+[test."$ clice format"]
+stdout = "Formatted 1 file in #s."
+exit = 0
+
+[test."$ clice format".files]
+"link.cpp" = '''
+-int  main() { return 0; }
++int main() { return 0; }
+'''
+"real/main.cpp" = '''
+-int  main() { return 0; }
++int main() { return 0; }
+'''

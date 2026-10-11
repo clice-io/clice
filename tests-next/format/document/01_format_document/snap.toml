@@ -1,0 +1,13 @@
+[answers."main.cpp"]
+formatting = '''
+-int    add(   int   a  ,  int   b  ) {
+-return   a+b ;
+-}
++int add(int a, int b) { return a + b; }
+
+-struct  Point{int x;int y;};
++struct Point {
++    int x;
++    int y;
++};
+'''

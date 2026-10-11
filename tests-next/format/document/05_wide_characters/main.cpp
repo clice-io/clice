@@ -1,0 +1,3 @@
+// Edits after multi-byte characters land where the client counts them.
+const char* greeting = "héllo wörld 日本語";   int   café=1;
+const char* emoji = "😀😀";int  after = 2;

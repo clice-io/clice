@@ -1,0 +1,2 @@
+[[rules]]
+compile_commands = [".."]

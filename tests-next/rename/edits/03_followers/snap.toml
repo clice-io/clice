@@ -1,0 +1,102 @@
+[answers.class.rename]
+compiles = true
+
+[answers.class.rename.edits]
+"main.cpp" = '''
+-struct Shape {
+-    Shape() : sides(0) {}
+-    explicit Shape(int n) : sides(n) {}
+-    ~Shape() {}
++struct Polygon {
++    Polygon() : sides(0) {}
++    explicit Polygon(int n) : sides(n) {}
++    ~Polygon() {}
+     virtual int area() const { return 0; }
+     int sides;
+ };
+
+-struct Square : Shape {
+-    Square() : Shape(4) {}
++struct Square : Polygon {
++    Square() : Polygon(4) {}
+     int area() const override { return 1; }
+ };
+…
+
+ int main() {
+-    Shape s(3);
++    Polygon s(3);
+     Square q;
+     Box<int> b{1};
+'''
+
+[answers.constructor.rename]
+compiles = true
+
+[answers.constructor.rename.edits]
+"main.cpp" = '''
+ };
+
+-struct Square : Shape {
+-    Square() : Shape(4) {}
++struct Tile : Shape {
++    Tile() : Shape(4) {}
+     int area() const override { return 1; }
+ };
+…
+ int main() {
+     Shape s(3);
+-    Square q;
++    Tile q;
+     Box<int> b{1};
+     Box<bool> f{true};
+'''
+
+[answers.virtual.rename]
+compiles = true
+
+[answers.virtual.rename.edits]
+"main.cpp" = '''
+     explicit Shape(int n) : sides(n) {}
+     ~Shape() {}
+-    virtual int area() const { return 0; }
++    virtual int surface() const { return 0; }
+     int sides;
+ };
+…
+ struct Square : Shape {
+     Square() : Shape(4) {}
+-    int area() const override { return 1; }
++    int surface() const override { return 1; }
+ };
+
+…
+     Box<int> b{1};
+     Box<bool> f{true};
+-    return s.area() + q.area() + b.value + f.flag;
++    return s.surface() + q.surface() + b.value + f.flag;
+ }
+'''
+
+[answers.template.rename]
+compiles = true
+
+[answers.template.rename.edits]
+"main.cpp" = '''
+ };
+
+-template <typename T> struct Box { T value; };
+-template <> struct Box<bool> { bool flag; };
++template <typename T> struct Holder { T value; };
++template <> struct Holder<bool> { bool flag; };
+
+ int main() {
+     Shape s(3);
+     Square q;
+-    Box<int> b{1};
+-    Box<bool> f{true};
++    Holder<int> b{1};
++    Holder<bool> f{true};
+     return s.area() + q.area() + b.value + f.flag;
+ }
+'''

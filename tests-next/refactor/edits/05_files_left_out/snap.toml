@@ -1,0 +1,84 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol compute --to evaluate"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": null,
+        "locator": "compute",
+        "name": "compute",
+        "kind": "Function",
+        "symbol": "#0129094638d1b328",
+        "newName": "evaluate",
+        "edits": 2,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/lib.h",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 5,
+            "name": "compute",
+            "newName": "evaluate",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [
+      {
+        "file": "${WS}/extra.cpp",
+        "line": 3,
+        "column": 22,
+        "name": "compute",
+        "reason": "the index holds no rows of this file: no unit it indexes compiles or includes it",
+        "text": "int extra() { return compute(2); }"
+      }
+    ],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol compute --to evaluate".files]
+"lib.h" = '''
+ #pragma once
+
+-int compute(int x);
++int evaluate(int x);
+'''
+"main.cpp" = '''
+ #include "lib.h"
+
+-int compute(int x) { return x; }
++int evaluate(int x) { return x; }
+'''

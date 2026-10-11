@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}/project",
+    "file": "${WS}/project/main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-I${WS}/outside/include", "-isystem", "${WS}/outside/system", "-fsyntax-only", "${WS}/project/main.cpp"]
+  },
+  {
+    "directory": "${WS}/project",
+    "file": "${WS}/outside/far.cpp",
+    "arguments": ["clang++", "-std=c++20", "-fsyntax-only", "${WS}/outside/far.cpp"]
+  }
+]

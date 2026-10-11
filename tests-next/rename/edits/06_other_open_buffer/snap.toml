@@ -1,0 +1,25 @@
+[test.renamed.rename.edits]
+"a.h" = '''
+ #pragma once
+-int compute(int x);
++int evaluate(int x);
+'''
+"main.cpp" = '''
+ #include "a.h"
+-int compute(int x) { return x; }
+-int main() { return compute(1); }
++int evaluate(int x) { return x; }
++int main() { return evaluate(1); }
+'''
+"other.cpp" = '''
+ #include "a.h"
+-int again() { return compute(3); }
+-int later() { return compute(9); }
++int again() { return evaluate(3); }
++int later() { return evaluate(9); }
+'''
+
+[test.renamed.rename.versions]
+"a.h" = "disk"
+"main.cpp" = 0
+"other.cpp" = 1

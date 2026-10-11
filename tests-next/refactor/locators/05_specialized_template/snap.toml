@@ -1,0 +1,282 @@
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# KB), 15 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method references --symbol Holder"]
+wrong = "the query calls `Holder` ambiguous between the template and its specializations, while the rename takes the same name as the template: a specialization is named with its arguments, `Holder<bool>`, so `Holder` names the template here too"
+stdout = '''
+{
+  "error": "ambiguous: 3 symbols match; name one by the `symbol` of a candidate",
+  "candidates": [
+    {
+      "name": "Holder",
+      "kind": "Struct",
+      "file": "${WS}/main.cpp",
+      "line": 4,
+      "container": null,
+      "symbol": "#b9ddd5b92359f6ae"
+    },
+    {
+      "name": "Holder<T *>",
+      "kind": "Struct",
+      "file": "${WS}/main.cpp",
+      "line": 10,
+      "container": null,
+      "symbol": "#d07b0f76973f5d8b"
+    },
+    {
+      "name": "Holder<bool>",
+      "kind": "Struct",
+      "file": "${WS}/main.cpp",
+      "line": 16,
+      "container": null,
+      "symbol": "#fa05ea6f87683b82"
+    }
+  ],
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice refactor rename --symbol Holder --to Box --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Holder",
+        "name": "Holder",
+        "kind": "Struct",
+        "symbol": "#b9ddd5b92359f6ae",
+        "newName": "Box",
+        "edits": 12,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 4,
+            "column": 8,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 5,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 10,
+            "column": 8,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 11,
+            "column": 5,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 16,
+            "column": 8,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 17,
+            "column": 5,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 21,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 21,
+            "column": 24,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 23,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 24,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 26,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 27,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol \"Holder<bool>\" --to Box --dry-run"]
+stdout = '''
+{
+  "result": {
+    "applied": false,
+    "renames": [
+      {
+        "line": null,
+        "locator": "Holder<bool>",
+        "name": "Holder",
+        "kind": "Struct",
+        "symbol": "#b9ddd5b92359f6ae",
+        "newName": "Box",
+        "edits": 12,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/main.cpp",
+        "edits": [
+          {
+            "line": 4,
+            "column": 8,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 5,
+            "column": 5,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 10,
+            "column": 8,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 11,
+            "column": 5,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 16,
+            "column": 8,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 17,
+            "column": 5,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 21,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 21,
+            "column": 24,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 23,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 24,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 26,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          },
+          {
+            "line": 27,
+            "column": 1,
+            "name": "Holder",
+            "newName": "Box",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0

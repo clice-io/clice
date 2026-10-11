@@ -1,0 +1,4 @@
+[[rules]]
+patterns = ["vendor/**"]
+lint = false
+index = false
