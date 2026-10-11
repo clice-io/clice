@@ -1003,6 +1003,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                                               : qualified_name(hash, owner_shard),
             .kind = kind,
             .owner = owner,
+            .declared_in = declared_in,
             .linkage = linkage,
             .top = id,
             .line = line,
@@ -2589,12 +2590,12 @@ std::expected<EdgeDetail, std::string> Report::edge(llvm::StringRef from,
     for(auto& [entity, files]: it->second.entities) {
         auto& entry = result.entities.emplace_back();
         auto& info = facts.entities[entity];
-        auto& owner = facts.files[info.owner].path;
-        entry.id = index::symbol_locator(
-            info.hash,
-            info.linkage == InternalLinkage::None ? llvm::StringRef() : llvm::StringRef(owner));
+        entry.id = index::symbol_locator(info.hash,
+                                         info.linkage == InternalLinkage::None
+                                             ? llvm::StringRef()
+                                             : llvm::StringRef(facts.files[info.declared_in].path));
         entry.entity = info.name;
-        entry.owner = owner;
+        entry.owner = facts.files[info.owner].path;
         entry.interface = it->second.interface.contains(entity);
         for(auto file: files) {
             entry.users.push_back(line_in(file, entity));

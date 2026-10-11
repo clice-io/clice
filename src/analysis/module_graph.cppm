@@ -105,6 +105,11 @@ struct Entity {
     /// equals.
     std::uint32_t owner = 0;
 
+    /// The file declaring it, whose index holds it: the owner, or the
+    /// fragment the owner pastes it in from. A hypothetical move changes
+    /// the owner, never this.
+    std::uint32_t declared_in = 0;
+
     InternalLinkage linkage = InternalLinkage::None;
 
     /// The outermost enclosing entity the owner also provides (a member's
@@ -552,7 +557,7 @@ struct Overview {
 
 struct EntityUse {
     /// The locator naming it, as `clice query` and `--move-entity` take it:
-    /// `#<hex>`, with `path:` the owner for one of internal linkage.
+    /// `#<hex>`, with `path:` the file declaring one of internal linkage.
     std::string id;
     std::string entity;
     std::string owner;

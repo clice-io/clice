@@ -475,6 +475,19 @@ test("hypothetical partitions", async ({ session }) => {
     expect(helper?.id).toMatch(/^#[0-9a-f]+ path:core\/str\.h$/);
     const internal = (await analyze(ws, "--move-entity", `${helper?.id}=app/helper.h`)) as Overview;
     expect(edge(internal, "core", "app")?.sample).toContain("helper");
+    // Moved, it is still named by the header the index holds it in.
+    const back = (await analyze(
+        ws,
+        "--move-entity",
+        `${helper?.id}=app/helper.h`,
+        "--view",
+        "edge",
+        "--from",
+        "core",
+        "--to",
+        "app",
+    )) as { entities: { id: string; entity: string }[] };
+    expect(back.entities.find((entry) => entry.entity === "helper")?.id).toBe(helper?.id);
 
     // What the moved definition names moves with it.
     const carried = (await analyze(ws, "--move-entity", "Clock=meta/clock.h")) as Overview;
@@ -508,6 +521,40 @@ test("hypothetical partitions", async ({ session }) => {
     const failure = JSON.parse(failed.stdout) as { error: string; candidates: unknown[] };
     expect(failure.error).toMatch(/^--move-entity Traits=core\/traits2\.h: ambiguous/);
     expect(failure.candidates.length).toBeGreaterThan(1);
+});
+
+test("operator overloads move together", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.pinCacheDir();
+    ws.write(
+        "core/vec.h",
+        lines(
+            "#pragma once",
+            "struct Vec { int x; };",
+            "Vec operator+(Vec a, Vec b);",
+            "Vec operator+(Vec a, int b);",
+        ),
+    );
+    ws.write(
+        "core/vec.cpp",
+        lines(
+            '#include "core/vec.h"',
+            "Vec operator+(Vec a, Vec b) { return {a.x + b.x}; }",
+            "Vec operator+(Vec a, int b) { return {a.x + b}; }",
+        ),
+    );
+    ws.write(
+        "app/main.cpp",
+        lines('#include "core/vec.h"', "int main() { return (Vec{1} + Vec{2} + 3).x; }"),
+    );
+    ws.writeCDB(["core/vec.cpp", "app/main.cpp"]);
+    const run = await runClice("index", "--workspace", ws.root);
+    expect(run.status, `stderr: ${run.stderr}`).toBe(0);
+
+    const before = (await analyze(ws)) as Overview;
+    expect(edge(before, "app", "core")?.sample).toContain("operator+");
+    const moved = (await analyze(ws, "--move-entity", "operator+=app/ops.h")) as Overview;
+    expect(edge(moved, "app", "core")?.sample ?? []).not.toContain("operator+");
 });
 
 test("partition files and limits", async ({ session }) => {

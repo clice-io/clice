@@ -184,7 +184,8 @@ bool one_overload_set(llvm::ArrayRef<const index::IndexQuery::Located*> symbols)
     auto& first = *symbols.front();
     auto overloaded = [&](const index::IndexQuery::Located* located) {
         auto& symbol = located->symbol;
-        return (symbol.kind == SymbolKind::Function || symbol.kind == SymbolKind::Method) &&
+        return (symbol.kind == SymbolKind::Function || symbol.kind == SymbolKind::Method ||
+                symbol.kind == SymbolKind::Operator) &&
                symbol.parent == first.symbol.parent;
     };
     auto internal = [](const index::IndexQuery::Located* located) {
