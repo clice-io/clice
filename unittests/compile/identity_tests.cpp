@@ -1065,6 +1065,40 @@ struct §(other)Other {};
     ZEXPECT(entity_at(*this, "first.h", "ov") != entity_at(*this, "first.h", "ov2"));
 }
 
+ZEST_CASE(PartitionsAcrossUnits) {
+    auto sources = [](llvm::StringRef first, llvm::StringRef second) {
+        return std::format(R"cpp(
+#[fwd.cppm]
+export module m:fwd;
+export class Widget;
+
+#[def.cppm]
+export module m:def;
+export class Widget {{}};
+
+#[m.cppm]
+export module m;
+export import :{};
+export import :{};
+
+#[main.cpp]
+import m;
+void §(use)use(Widget&);
+)cpp",
+                           first,
+                           second);
+    };
+
+    add_files("main.cpp", sources("fwd", "def"));
+    ZASSERT(compile_with_modules());
+
+    Tester other;
+    other.add_files("main.cpp", sources("def", "fwd"));
+    ZASSERT(other.compile_with_modules());
+
+    ZEXPECT(entity("use") == entity_at(other, "main.cpp", "use"));
+}
+
 ZEST_CASE(ParentChain) {
     add_main("main.cpp", R"cpp(
 namespace §(ns)ns {

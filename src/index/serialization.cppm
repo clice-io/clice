@@ -90,8 +90,9 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// indexes only what it parsed, and its manifest lists what the modules it
 /// imports were built from; v28: references that modify what they name
 /// carry a Write row; v29: `auto` and `decltype` keywords carry an occurrence
-/// of the type they stand for, with a Deduced row).
-constexpr inline std::uint32_t index_format_version = 29;
+/// of the type they stand for, with a Deduced row; v30: entity hashes name
+/// a partition's module, not the partition).
+constexpr inline std::uint32_t index_format_version = 30;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

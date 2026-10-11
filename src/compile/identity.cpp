@@ -16,7 +16,7 @@ namespace {
 
 /// Seeds every hash; bump it whenever a rule below changes so old hashes
 /// can never collide with new ones by accident.
-constexpr std::uint8_t identity_scheme = 1;
+constexpr std::uint8_t identity_scheme = 2;
 
 /// Segment markers. Their numeric values are part of the hash, so append
 /// only.
@@ -741,9 +741,12 @@ std::uint64_t EntityTable::expr_hash(const clang::Expr* expr) {
 }
 
 void EntityTable::add_context(Hasher& hasher, const clang::Decl* decl) {
+    /// Partitions attach to their module: a class one partition
+    /// forward-declares and another defines is one entity, whichever
+    /// declaration a unit reads first.
     if(auto* module = decl->getOwningModuleForLinkage()) {
         hasher.add(Tag::Module);
-        hasher.add(module->getFullModuleName());
+        hasher.add(module->getPrimaryModuleInterfaceName());
     }
 
     /// C linkage names one entity across every namespace.
