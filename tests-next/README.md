@@ -5,7 +5,9 @@ The test system clice ships its first release with. The old suites under
 case by case and are deleted once empty, and this directory then takes the name
 `tests/`; the framework under `tools/testing/` then replaces `tools/snap`,
 `tools/replay.ts` and the session layer of `tools/client`. Nothing here is
-compatible with the old formats, on purpose.
+compatible with the old formats, on purpose. Until then the docs still come
+from `tests/snap`, and the coverage check (below) runs only by hand: a
+partial set of cases leaves most of the surface unexercised.
 
 This file is the contract: how tests are organized, what a case is made of, how
 it asserts, how the docs come out of it, and what tests never do.

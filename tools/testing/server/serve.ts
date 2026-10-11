@@ -167,7 +167,7 @@ export class Serve extends Client {
     readonly steps: StepRecord;
     readonly workspace: Workspace;
     private readonly disk: Disk;
-    private options: ServerOptions;
+    private readonly options: ServerOptions;
     private server: CliceClient | null = null;
     private readonly servers: CliceClient[] = [];
     private readonly documents = new Map<string, Document>();
@@ -186,11 +186,6 @@ export class Serve extends Client {
         this.workspace = workspace;
         this.disk = owner.disk;
         this.steps = owner.steps;
-        this.options = options;
-    }
-
-    /// The options every server started from now on takes.
-    configure(options: ServerOptions): void {
         this.options = options;
     }
 
