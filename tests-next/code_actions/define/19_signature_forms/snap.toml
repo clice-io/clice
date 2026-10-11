@@ -1,0 +1,197 @@
+[[answers.trailing.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'size' inline"
+compiles = true
+
+[answers.trailing.code_actions.edits]
+"main.cpp" = '''
+ namespace app::detail {
+ struct Handle {
+-    auto size() -> int;
++    auto size() -> int {}
+     void release() &&;
+     void watch(void (*on_change)(int) = nullptr, int every = limit(1, 2));
+'''
+
+[[answers.trailing.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Handle::size' out of line"
+compiles = true
+
+[answers.trailing.code_actions.edits]
+"main.cpp" = '''
+     static int limit(int low, int high);
+ };
++
++auto Handle::size() -> int {
+ }
+
++}
++
+ template <class, int = 0>
+ struct Tagged {
+'''
+
+[[answers.ref_qualified.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'release' inline"
+compiles = true
+
+[answers.ref_qualified.code_actions.edits]
+"main.cpp" = '''
+ struct Handle {
+     auto size() -> int;
+-    void release() &&;
++    void release() && {}
+     void watch(void (*on_change)(int) = nullptr, int every = limit(1, 2));
+     void reset() = delete;
+'''
+
+[[answers.ref_qualified.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Handle::release' out of line"
+compiles = true
+
+[answers.ref_qualified.code_actions.edits]
+"main.cpp" = '''
+     static int limit(int low, int high);
+ };
++
++void Handle::release() && {
+ }
+
++}
++
+ template <class, int = 0>
+ struct Tagged {
+'''
+
+[[answers.callback.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'watch' inline"
+compiles = true
+
+[answers.callback.code_actions.edits]
+"main.cpp" = '''
+     auto size() -> int;
+     void release() &&;
+-    void watch(void (*on_change)(int) = nullptr, int every = limit(1, 2));
++    void watch(void (*on_change)(int) = nullptr, int every = limit(1, 2)) {}
+     void reset() = delete;
+     friend void swap(Handle& left, Handle& right);
+'''
+
+[[answers.callback.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Handle::watch' out of line"
+compiles = true
+
+[answers.callback.code_actions.edits]
+"main.cpp" = '''
+     static int limit(int low, int high);
+ };
++
++void Handle::watch(void (*on_change)(int), int every) {
+ }
+
++}
++
+ template <class, int = 0>
+ struct Tagged {
+'''
+
+[answers.deleted]
+code_actions = []
+
+[answers.friend_function]
+code_actions = []
+
+[[answers.unnamed_parameters.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'tag' inline"
+compiles = true
+
+[answers.unnamed_parameters.code_actions.edits]
+"main.cpp" = '''
+ template <class, int = 0>
+ struct Tagged {
+-    void tag();
++    void tag() {}
+ };
+'''
+
+[[answers.unnamed_parameters.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Tagged<T0, T1>::tag' out of line"
+compiles = true
+
+[answers.unnamed_parameters.code_actions.edits]
+"main.cpp" = '''
+ };
+
++template <class T0, int T1>
++void Tagged<T0, T1>::tag() {
++}
++
+ template <class T>
+ struct Tree {
+'''
+
+[[answers.nested_in_template.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'visit' inline"
+compiles = true
+
+[answers.nested_in_template.code_actions.edits]
+"main.cpp" = '''
+ struct Tree {
+     struct Node {
+-        void visit();
++        void visit() {}
+     };
+     void compact() requires(sizeof(T) > 1);
+'''
+
+[[answers.nested_in_template.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Tree<T>::Node::visit' out of line"
+compiles = true
+
+[answers.nested_in_template.code_actions.edits]
+"main.cpp" = '''
+     void compact() requires(sizeof(T) > 1);
+ };
++
++template <class T>
++void Tree<T>::Node::visit() {
++}
+'''
+
+[[answers.requires_clause.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'compact' inline"
+compiles = true
+
+[answers.requires_clause.code_actions.edits]
+"main.cpp" = '''
+         void visit();
+     };
+-    void compact() requires(sizeof(T) > 1);
++    void compact() requires(sizeof(T) > 1) {}
+ };
+'''
+
+[[answers.requires_clause.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Tree<T>::compact' out of line"
+compiles = true
+
+[answers.requires_clause.code_actions.edits]
+"main.cpp" = '''
+     void compact() requires(sizeof(T) > 1);
+ };
++
++template <class T>
++void Tree<T>::compact() requires(sizeof(T) > 1) {
++}
+'''

@@ -1,0 +1,62 @@
+[[answers.local.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with '::X'"
+compiles = true
+
+[answers.local.code_actions.edits]
+"main.cpp" = '''
+ void local() {
+     int X = 0;
+-    auto v = make_x();
++    ::X v = make_x();
+     static_assert(__is_same(decltype(v), ::X));
+ }
+'''
+
+[[answers.transitive.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with '::a::T'"
+compiles = true
+
+[answers.transitive.code_actions.edits]
+"main.cpp" = '''
+ using namespace mid;
+ void f() {
+-    auto t = make_t();
++    ::a::T t = make_t();
+     static_assert(__is_same(decltype(t), ::a::T));
+ }
+'''
+
+[answers.variable]
+code_actions = []
+
+[[answers.literal.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'Pair<::X, Tag<'X'>>'"
+compiles = true
+
+[answers.literal.code_actions.edits]
+"main.cpp" = '''
+ struct X {};
+ void f() {
+-    auto v = make_pair();
++    Pair<::X, Tag<'X'>> v = make_pair();
+     static_assert(__is_same(decltype(v), Pair<::X, Tag<'X'>>));
+ }
+'''
+
+[[answers.unicode.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with '::Å'"
+compiles = true
+
+[answers.unicode.code_actions.edits]
+"main.cpp" = '''
+ struct Å {};
+ void f() {
+-    auto v = make_å();
++    ::Å v = make_å();
+     static_assert(__is_same(decltype(v), ::Å));
+ }
+'''

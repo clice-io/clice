@@ -1,0 +1,26 @@
+[[answers.inside.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'Config'"
+compiles = true
+
+[answers.inside.code_actions.edits]
+"main.cpp" = '''
+ namespace ns {
+ struct Config {};
+-auto load() { return Config{}; }
++Config load() { return Config{}; }
+ }
+'''
+
+[[answers.outside.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'ns::Config'"
+compiles = true
+
+[answers.outside.code_actions.edits]
+"main.cpp" = '''
+ }
+
+-auto make() { return ns::load(); }
++ns::Config make() { return ns::load(); }
+'''

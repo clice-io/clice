@@ -1,0 +1,24 @@
+[[answers.console.code_actions]]
+kind = "refactor.rewrite.implementPureVirtuals"
+title = "Implement pure virtual methods of 'Console'"
+compiles = true
+
+[answers.console.code_actions.edits]
+"main.cpp" = '''
+ }
+
+-struct Console : io::Logger {};
++struct Console : io::Logger {
++    void log(const char* format, ...) override;
++    void print(...) override;
++    void flush() noexcept override;
++    void sync() noexcept override;
++    void rotate() override;
++    consteval int level() override;
++};
+
+ static_assert(!__is_abstract(Console));
+'''
+
+[answers.channel]
+code_actions = []

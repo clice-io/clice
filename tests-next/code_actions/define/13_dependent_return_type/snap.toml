@@ -1,0 +1,28 @@
+[[answers.front.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'front' inline"
+compiles = true
+
+[answers.front.code_actions.edits]
+"main.cpp" = '''
+ struct Container {
+     using value_type = T;
+-    value_type front() const;
++    value_type front() const {}
+ };
+'''
+
+[[answers.front.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Container<T>::front' out of line"
+compiles = true
+
+[answers.front.code_actions.edits]
+"main.cpp" = '''
+     value_type front() const;
+ };
++
++template <typename T>
++typename Container<T>::value_type Container<T>::front() const {
++}
+'''

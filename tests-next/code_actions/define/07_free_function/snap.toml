@@ -1,0 +1,31 @@
+[[answers.load.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'load' out of line"
+compiles = true
+
+[answers.load.code_actions.edits]
+"main.cpp" = '''
+ struct Config {};
+ Config load(const char* path);
++
++Config load(const char* path) {
+ }
+
++}
++
+ int compute(int x);
+'''
+
+[[answers.global.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'compute' out of line"
+compiles = true
+
+[answers.global.code_actions.edits]
+"main.cpp" = '''
+
+ int compute(int x);
++
++int compute(int x) {
++}
+'''

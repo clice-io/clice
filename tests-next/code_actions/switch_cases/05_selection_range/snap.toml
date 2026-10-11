@@ -1,0 +1,15 @@
+[[answers.whole.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 2 missing enum cases to switch"
+compiles = true
+
+[answers.whole.code_actions.edits]
+"main.cpp" = '''
+     case Kind::A:
+         return 1;
++    case Kind::B:
++    case Kind::C:
++        break;
+     }
+     return 0;
+'''

@@ -1,0 +1,13 @@
+[[answers.printf.code_actions]]
+kind = "quickfix"
+title = "Add #include <cstdio>"
+compiles = true
+
+[answers.printf.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <cstdio>
+
+ void f() {
+'''

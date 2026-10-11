@@ -1,0 +1,29 @@
+[[answers.argument.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'Box<outer::Item>'"
+compiles = true
+
+[answers.argument.code_actions.edits]
+"main.cpp" = '''
+
+ void f() {
+-    auto box = make_box();
++    Box<outer::Item> box = make_box();
+     auto global = ::make_global();
+ }
+'''
+
+[[answers.global.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with '::Global'"
+compiles = true
+
+[answers.global.code_actions.edits]
+"main.cpp" = '''
+ void f() {
+     auto box = make_box();
+-    auto global = ::make_global();
++    ::Global global = ::make_global();
+ }
+ }  // namespace inner
+'''

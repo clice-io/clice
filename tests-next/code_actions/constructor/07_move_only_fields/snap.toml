@@ -1,0 +1,36 @@
+[[answers.owner.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Owner'"
+compiles = true
+
+[answers.owner.code_actions.edits]
+"main.cpp" = '''
++#include <utility>
+ struct Handle {
+     Handle(Handle&&) = default;
+…
+     int&& pending;
+     int count;
++    Owner(Handle handle, int&& pending, int count) : handle(std::move(handle)), pending(std::move(pending)), count(count) {}
+ };
+'''
+
+[answers.pinned]
+code_actions = []
+
+[[answers.holder.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Holder'"
+compiles = true
+
+[answers.holder.code_actions.edits]
+"main.cpp" = '''
++#include <utility>
+ struct Handle {
+     Handle(Handle&&) = default;
+…
+     Slot<T> slot;
+     int count;
++    Holder(Slot<T> slot, int count) : slot(std::move(slot)), count(count) {}
+ };
+'''

@@ -1,0 +1,6 @@
+{
+  // sys/ stands in for the standard library, its public headers including
+  // internal ones the way libstdc++, libc++ and MSVC's library do.
+  "flags": ["-Isys"],
+  "compiles": false
+}

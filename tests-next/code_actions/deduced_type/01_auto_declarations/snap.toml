@@ -10,7 +10,7 @@ compiles = true
 -    auto tonnes = 12;
 +    int tonnes = 12;
      const auto& cargo = fleet::unload();
-     return tonnes;
+     auto* heaviest = &tonnes;
 '''
 
 [[answers.reference.code_actions]]
@@ -24,6 +24,21 @@ compiles = true
      auto tonnes = 12;
 -    const auto& cargo = fleet::unload();
 +    const fleet::Truck::Load& cargo = fleet::unload();
+     auto* heaviest = &tonnes;
+     return tonnes;
+'''
+
+[[answers.pointer.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'int'"
+compiles = true
+
+[answers.pointer.code_actions.edits]
+"main.cpp" = '''
+     auto tonnes = 12;
+     const auto& cargo = fleet::unload();
+-    auto* heaviest = &tonnes;
++    int* heaviest = &tonnes;
      return tonnes;
  }
 '''

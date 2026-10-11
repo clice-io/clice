@@ -1,0 +1,62 @@
+[[answers.member.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'C::Private'"
+compiles = true
+
+[answers.member.code_actions.edits]
+"main.cpp" = '''
+
+     void member() {
+-        auto p = make();
++        C::Private p = make();
+     }
+ };
+'''
+
+[[answers.own.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'Own'"
+compiles = true
+
+[answers.own.code_actions.edits]
+"main.cpp" = '''
+         struct Nested {};
+     };
+-    auto o = Own{};
++    Own o = Own{};
+     auto n = Own::Nested{};
+     auto h = local();
+'''
+
+[[answers.nested.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'Own::Nested'"
+compiles = true
+
+[answers.nested.code_actions.edits]
+"main.cpp" = '''
+     };
+     auto o = Own{};
+-    auto n = Own::Nested{};
++    Own::Nested n = Own::Nested{};
+     auto h = local();
+     auto p = C::make();
+'''
+
+[answers.local]
+code_actions = []
+
+[answers.private]
+code_actions = []
+
+[answers.closure]
+code_actions = []
+
+[answers.specialization]
+code_actions = []
+
+[answers.expression]
+code_actions = []
+
+[answers.this]
+code_actions = []

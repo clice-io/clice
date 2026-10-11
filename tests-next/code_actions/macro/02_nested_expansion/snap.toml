@@ -1,0 +1,13 @@
+[[answers.quad.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'QUAD'"
+compiles = true
+
+[answers.quad.code_actions.edits]
+"main.cpp" = '''
+
+ int f(int n) {
+-    return QUAD(n);
++    return ((((n) + (n))) + (((n) + (n))));
+ }
+'''

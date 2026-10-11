@@ -1,0 +1,28 @@
+[[answers.b.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'b' inline"
+compiles = true
+
+[answers.b.code_actions.edits]
+"main.cpp" = '''
+ struct S {
+     void a();
+-    void b();
++    void b() {}
+ };
+ }
+'''
+
+[[answers.b.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'ns::S::b' out of line"
+compiles = true
+
+[answers.b.code_actions.edits]
+"main.cpp" = '''
+ void ns::S::a() {
+ }
++
++void ns::S::b() {
++}
+'''

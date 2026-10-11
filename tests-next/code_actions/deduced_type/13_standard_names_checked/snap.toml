@@ -1,0 +1,66 @@
+[answers.size]
+code_actions = []
+
+[[answers.null.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'decltype(nullptr)'"
+compiles = true
+
+[answers.null.code_actions.edits]
+"main.cpp" = '''
+ void f() {
+     auto n = sizeof(int);
+-    auto p = nullptr;
++    decltype(nullptr) p = nullptr;
+     static_assert(__is_same(decltype(p), decltype(nullptr)));
+ }
+'''
+
+[answers.global]
+wrong = "std::size_t is declared above this global variable, which should be written std::size_t as it is inside a namespace"
+code_actions = []
+
+[[answers.size_std.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::size_t'"
+compiles = true
+
+[answers.size_std.code_actions.edits]
+"main.cpp" = '''
+
+ void g(int* a, int* b) {
+-    auto n = sizeof(int);
++    std::size_t n = sizeof(int);
+     static_assert(__is_same(decltype(n), std::size_t));
+     auto d = b - a;
+'''
+
+[[answers.difference.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::ptrdiff_t'"
+compiles = true
+
+[answers.difference.code_actions.edits]
+"main.cpp" = '''
+     auto n = sizeof(int);
+     static_assert(__is_same(decltype(n), std::size_t));
+-    auto d = b - a;
++    std::ptrdiff_t d = b - a;
+     static_assert(__is_same(decltype(d), std::ptrdiff_t));
+     auto p = nullptr;
+'''
+
+[[answers.null_std.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::nullptr_t'"
+compiles = true
+
+[answers.null_std.code_actions.edits]
+"main.cpp" = '''
+     auto d = b - a;
+     static_assert(__is_same(decltype(d), std::ptrdiff_t));
+-    auto p = nullptr;
++    std::nullptr_t p = nullptr;
+     static_assert(__is_same(decltype(p), std::nullptr_t));
+ }
+'''

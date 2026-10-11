@@ -1,0 +1,14 @@
+#pragma once
+
+namespace std {
+template <class T>
+struct allocator {};
+
+template <class T, class Allocator = allocator<T>>
+class vector {
+public:
+    using iterator = T*;
+    iterator begin();
+    iterator end();
+};
+}

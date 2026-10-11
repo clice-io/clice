@@ -1,0 +1,13 @@
+[[answers.painter.code_actions]]
+kind = "refactor.rewrite.implementPureVirtuals"
+title = "Implement pure virtual methods of 'Painter'"
+compiles = true
+
+[answers.painter.code_actions.edits]
+"main.cpp" = '''
+ namespace app {
+ struct Painter : shapes::Painter {
++    shapes::Color paint(const shapes::Painter::Options& options) const& override;
+ };
+ }
+'''

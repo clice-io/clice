@@ -1,0 +1,31 @@
+[[answers.overloads.code_actions]]
+kind = "refactor.rewrite.reorderDefinitions"
+title = "Reorder definitions by declaration order"
+compiles = true
+
+[answers.overloads.code_actions.edits]
+"main.cpp" = '''
+ void other();
+
+-void over(double) {}
+ void over(int) {}
++void over(double) {}
+ void other() {}
+'''
+
+[[answers.tpl.code_actions]]
+kind = "refactor.rewrite.reorderDefinitions"
+title = "Reorder definitions of 'Box' by declaration order"
+compiles = true
+
+[answers.tpl.code_actions.edits]
+"main.cpp" = '''
+
+ template <class T>
+-void Box<T>::b() {}
++void Box<T>::a() {}
+
+ template <class T>
+-void Box<T>::a() {}
++void Box<T>::b() {}
+'''

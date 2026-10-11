@@ -1,0 +1,12 @@
+[[test.helper.code_actions]]
+kind = "quickfix"
+title = 'Add #include "lib.h"'
+compiles = true
+
+[test.helper.code_actions.edits]
+"utils.h" = '''
+ #pragma once
++#include "lib.h"
+
+ inline int get_x(Point p) {
+'''

@@ -1,0 +1,12 @@
+[[answers.callbacks.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Callbacks'"
+compiles = true
+
+[answers.callbacks.code_actions.edits]
+"main.cpp" = '''
+     int (&counter)[4];
+     const char* name;
++    Callbacks(void (*on_open)(int), int (&counter)[4], const char* name) : on_open(on_open), counter(counter), name(name) {}
+ };
+'''

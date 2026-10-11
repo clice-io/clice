@@ -1,0 +1,30 @@
+[[answers.wide.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 2 missing enum cases to switch"
+compiles = true
+
+[answers.wide.code_actions.edits]
+"main.cpp" = '''
+     case Wide::Low:
+         return 0;
++    case Wide::High:
++    case Wide::Mid:
++        break;
+     }
+     return 1;
+'''
+
+[[answers.fallthrough.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 1 missing enum case to switch"
+compiles = true
+
+[answers.fallthrough.code_actions.edits]
+"main.cpp" = '''
+     int extra = 0;
+     switch (shape) {
++    case Shape::Triangle:
++        break;
+     case Shape::Circle:
+         extra = 1;
+'''

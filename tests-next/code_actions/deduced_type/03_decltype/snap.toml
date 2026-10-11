@@ -1,0 +1,28 @@
+[[answers.dt.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'decltype(value())' with 'int'"
+compiles = true
+
+[answers.dt.code_actions.edits]
+"main.cpp" = '''
+
+ void f() {
+-    decltype(value()) x = 0;
++    int x = 0;
+     decltype(x) y = 0;
+ }
+'''
+
+[[answers.nested.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'decltype(x)' with 'int'"
+compiles = true
+
+[answers.nested.code_actions.edits]
+"main.cpp" = '''
+ void f() {
+     decltype(value()) x = 0;
+-    decltype(x) y = 0;
++    int y = 0;
+ }
+'''

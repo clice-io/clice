@@ -1,0 +1,14 @@
+[[answers.typo.code_actions]]
+kind = "quickfix"
+title = "change 'totl' to 'total'"
+compiles = true
+
+[answers.typo.code_actions.edits]
+"main.cpp" = '''
+ int sum(int count) {
+     int total = 0;
+-    total += totl + count;
++    total += total + count;
+     return total;
+ }
+'''

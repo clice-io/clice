@@ -1,0 +1,12 @@
+[[answers.node.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Node'"
+compiles = true
+
+[answers.node.code_actions.edits]
+"main.cpp" = '''
+     std::unique_ptr<Node> next;
+     std::string name;
++    Node(std::unique_ptr<Node> next, const std::string& name) : next(std::move(next)), name(name) {}
+ };
+'''

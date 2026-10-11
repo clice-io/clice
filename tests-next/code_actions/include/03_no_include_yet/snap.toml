@@ -1,0 +1,12 @@
+[[answers.string.code_actions]]
+kind = "quickfix"
+title = "Add #include <string>"
+compiles = true
+
+[answers.string.code_actions.edits]
+"main.cpp" = '''
+ #pragma once
++#include <string>
+
+ using Strings = std::string;
+'''

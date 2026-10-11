@@ -1,0 +1,12 @@
+[[answers.constrained.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Constrained'"
+compiles = true
+
+[answers.constrained.code_actions.edits]
+"main.cpp" = '''
+     Maybe<int> maybe;
+     int count;
++    Constrained(Maybe<int> maybe, int count) : maybe(std::move(maybe)), count(count) {}
+ };
+'''

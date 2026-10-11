@@ -1,0 +1,59 @@
+[[answers.inner.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'a::X'"
+compiles = true
+
+[answers.inner.code_actions.edits]
+"main.cpp" = '''
+ struct X {};
+ void f() {
+-    auto x = a::make();
++    a::X x = a::make();
+     static_assert(__is_same(decltype(x), a::X));
+     auto box = a::make_box();
+'''
+
+[[answers.argument.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'Box<a::X>'"
+compiles = true
+
+[answers.argument.code_actions.edits]
+"main.cpp" = '''
+     auto x = a::make();
+     static_assert(__is_same(decltype(x), a::X));
+-    auto box = a::make_box();
++    Box<a::X> box = a::make_box();
+     static_assert(__is_same(decltype(box), a::Box<a::X>));
+ }
+'''
+
+[[answers.global.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with '::G'"
+compiles = true
+
+[answers.global.code_actions.edits]
+"main.cpp" = '''
+ T make_t();
+ void f() {
+-    auto g = ::make_global();
++    ::G g = ::make_global();
+     static_assert(__is_same(decltype(g), ::G));
+ }
+'''
+
+[[answers.parameter.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'ns::T'"
+compiles = true
+
+[answers.parameter.code_actions.edits]
+"main.cpp" = '''
+ template <class T>
+ void g() {
+-    auto t = make_t();
++    ns::T t = make_t();
+     static_assert(__is_same(decltype(t), ns::T));
+ }
+'''

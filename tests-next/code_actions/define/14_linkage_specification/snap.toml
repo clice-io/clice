@@ -1,0 +1,31 @@
+[[answers.single.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'c_entry' out of line"
+compiles = true
+
+[answers.single.code_actions.edits]
+"main.cpp" = '''
+ extern "C" int c_entry(int argc);
+
++int c_entry(int argc) {
++}
++
+ extern "C" {
+ int c_helper(int x);
+'''
+
+[[answers.block.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'c_helper' out of line"
+compiles = true
+
+[answers.block.code_actions.edits]
+"main.cpp" = '''
+ extern "C" {
+ int c_helper(int x);
++
++int c_helper(int x) {
+ }
++
++}
+'''

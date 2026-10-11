@@ -1,0 +1,21 @@
+[answers.explicit_base]
+code_actions = []
+
+[answers.implicit_base]
+code_actions = []
+
+[answers.const_base]
+code_actions = []
+
+[[answers.const_initialized.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Fourth'"
+compiles = true
+
+[answers.const_initialized.code_actions.edits]
+"main.cpp" = '''
+ struct Fourth : Timed {
+     int x;
++    explicit Fourth(int x) : x(x) {}
+ };
+'''

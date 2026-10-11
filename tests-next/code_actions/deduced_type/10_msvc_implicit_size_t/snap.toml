@@ -1,0 +1,13 @@
+[[answers.size.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'size_t'"
+compiles = true
+
+[answers.size.code_actions.edits]
+"main.cpp" = '''
+
+ void f() {
+-    auto size = sizeof(int);
++    size_t size = sizeof(int);
+ }
+'''

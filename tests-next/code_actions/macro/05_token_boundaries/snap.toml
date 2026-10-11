@@ -1,0 +1,56 @@
+[[answers.negated.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'NEG'"
+compiles = true
+
+[answers.negated.code_actions.edits]
+"main.cpp" = '''
+ constexpr const int* pointer = &value;
+
+-static_assert(NEG-value == 4);
++static_assert(- -value == 4);
+ static_assert(12/DEREF(pointer) == 3);
+ static_assert(PICK(false) == 2);
+'''
+
+[[answers.divided.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'DEREF'"
+compiles = true
+
+[answers.divided.code_actions.edits]
+"main.cpp" = '''
+
+ static_assert(NEG-value == 4);
+-static_assert(12/DEREF(pointer) == 3);
++static_assert(12/ *pointer == 3);
+ static_assert(PICK(false) == 2);
+ static_assert(12/NOTHING*pointer == 3);
+'''
+
+[[answers.picked.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'PICK'"
+compiles = true
+
+[answers.picked.code_actions.edits]
+"main.cpp" = '''
+ static_assert(NEG-value == 4);
+ static_assert(12/DEREF(pointer) == 3);
+-static_assert(PICK(false) == 2);
++static_assert((false ? 1 : ::fallback()) == 2);
+ static_assert(12/NOTHING*pointer == 3);
+'''
+
+[[answers.removed.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'NOTHING'"
+compiles = true
+
+[answers.removed.code_actions.edits]
+"main.cpp" = '''
+ static_assert(12/DEREF(pointer) == 3);
+ static_assert(PICK(false) == 2);
+-static_assert(12/NOTHING*pointer == 3);
++static_assert(12/ *pointer == 3);
+'''

@@ -1,0 +1,32 @@
+[[answers.deque.code_actions]]
+kind = "quickfix"
+title = "Add #include <deque>"
+compiles = true
+
+[answers.deque.code_actions.edits]
+"uses_deque.cpp" = '''
++#include <deque>
+ using namespace std;
+'''
+
+[[answers.string.code_actions]]
+kind = "quickfix"
+title = "Add #include <string>"
+compiles = true
+
+[answers.string.code_actions.edits]
+"uses_string.cpp" = '''
++#include <string>
+ std::string text;
+'''
+
+[[answers.vector.code_actions]]
+kind = "quickfix"
+title = "Add #include <vector>"
+compiles = true
+
+[answers.vector.code_actions.edits]
+"uses_vector.cpp" = '''
++#include <vector>
+ using namespace std;
+'''

@@ -1,0 +1,44 @@
+[[answers.directive.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'app::Config'"
+compiles = true
+
+[answers.directive.code_actions.edits]
+"main.cpp" = '''
+ void directive() {
+     using namespace v2;
+-    auto c = load();
++    app::Config c = load();
+     static_assert(__is_same(decltype(c), app::Config));
+ }
+'''
+
+[[answers.friend.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'app::Node'"
+compiles = true
+
+[answers.friend.code_actions.edits]
+"main.cpp" = '''
+
+     friend void visit(Tree&) {
+-        auto n = make_node();
++        app::Node n = make_node();
+         static_assert(__is_same(decltype(n), app::Node));
+     }
+'''
+
+[[answers.outer.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'app::U'"
+compiles = true
+
+[answers.outer.code_actions.edits]
+"main.cpp" = '''
+ template <class U>
+ void S<U>::f() {
+-    auto u = make_u();
++    app::U u = make_u();
+     static_assert(__is_same(decltype(u), app::U));
+ }
+'''

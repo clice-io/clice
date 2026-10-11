@@ -1,0 +1,41 @@
+[[answers.specialization.code_actions]]
+kind = "refactor.rewrite.implementPureVirtuals"
+title = "Implement pure virtual methods of 'Numbers'"
+compiles = true
+
+[answers.specialization.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-struct Numbers : Source<int> {};
++struct Numbers : Source<int> {
++    int get() const override;
++    void put(int value, int times) override;
++};
+
+ class Task {
+'''
+
+[answers.private_virtual]
+wrong = "the base keeps step private, as the non-virtual interface idiom does; the override should stay private instead of joining the public interface"
+
+[[answers.private_virtual.code_actions]]
+kind = "refactor.rewrite.implementPureVirtuals"
+title = "Implement pure virtual methods of 'Download'"
+compiles = true
+
+[answers.private_virtual.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-class Download : public Task {};
++class Download : public Task {
++public:
++    void step() override;
++};
+
+ struct Interface {
+'''
+
+[answers.destructor_only]
+code_actions = []

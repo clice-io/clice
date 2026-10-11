@@ -1,0 +1,19 @@
+[answers.directive]
+code_actions = []
+
+[[answers.empty.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'EMPTY'"
+compiles = true
+
+[answers.empty.code_actions.edits]
+"main.cpp" = '''
+
+ #if GUARD
+-int guarded = EMPTY 1;
++int guarded =  1;
+ #endif
+'''
+
+[answers.continued]
+code_actions = []

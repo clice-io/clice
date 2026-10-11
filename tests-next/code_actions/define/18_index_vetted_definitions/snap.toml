@@ -1,0 +1,34 @@
+[[index.cls.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget'"
+compiles = true
+
+[index.cls.code_actions.edits]
+"widget.h" = '''
+     void c();
+ };
++
++inline void Widget::c() {
++}
+'''
+
+[[index.cls.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget' in main.cpp"
+compiles = true
+
+[index.cls.code_actions.edits]
+"main.cpp" = '''
+
+ void Widget::a() {}
++
++void Widget::c() {
++}
++
+'''
+
+["host compiles"."widget.h"]
+diagnostics = []
+
+["host compiles"."main.cpp"]
+errors = []

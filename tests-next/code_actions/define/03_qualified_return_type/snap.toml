@@ -1,0 +1,61 @@
+[[answers.begin.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'begin' inline"
+compiles = true
+
+[answers.begin.code_actions.edits]
+"main.cpp" = '''
+ struct Shape {
+     struct Iterator {};
+-    Iterator begin();
++    Iterator begin() {}
+     const geometry::Point& origin(Iterator it) const;
+ };
+'''
+
+[[answers.begin.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Shape::begin' out of line"
+compiles = true
+
+[answers.begin.code_actions.edits]
+"main.cpp" = '''
+     const geometry::Point& origin(Iterator it) const;
+ };
++
++Shape::Iterator Shape::begin() {
+ }
++
++}
+'''
+
+[[answers.origin.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'origin' inline"
+compiles = true
+
+[answers.origin.code_actions.edits]
+"main.cpp" = '''
+     struct Iterator {};
+     Iterator begin();
+-    const geometry::Point& origin(Iterator it) const;
++    const geometry::Point& origin(Iterator it) const {}
+ };
+ }
+'''
+
+[[answers.origin.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Shape::origin' out of line"
+compiles = true
+
+[answers.origin.code_actions.edits]
+"main.cpp" = '''
+     const geometry::Point& origin(Iterator it) const;
+ };
++
++const geometry::Point& Shape::origin(Iterator it) const {
+ }
++
++}
+'''

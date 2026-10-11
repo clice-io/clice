@@ -1,0 +1,23 @@
+[[test.cls.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget'"
+
+[test.cls.code_actions.edits]
+"widget.h" = '''
+   void a();
+ };
++
++inline void Widget::a() {}
+'''
+
+[[test.cls.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget' in main.cpp"
+
+[test.cls.code_actions.edits]
+"vendor/real/main.cpp" = '''
+
+ int main() { return 0; }
++
++void Widget::a() {}
+'''

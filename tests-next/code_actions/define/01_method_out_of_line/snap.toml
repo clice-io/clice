@@ -1,0 +1,26 @@
+[[answers.f.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.f.code_actions.edits]
+"main.cpp" = '''
+ struct S {
+-    int f(int x, int y = 3) const;
++    int f(int x, int y = 3) const {}
+ };
+'''
+
+[[answers.f.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+compiles = true
+
+[answers.f.code_actions.edits]
+"main.cpp" = '''
+     int f(int x, int y = 3) const;
+ };
++
++int S::f(int x, int y) const {
++}
+'''

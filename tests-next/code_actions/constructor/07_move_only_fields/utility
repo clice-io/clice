@@ -1,0 +1,6 @@
+#pragma once
+
+namespace std {
+template <class T>
+T&& move(T& value);
+}

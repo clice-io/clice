@@ -1,0 +1,16 @@
+[[answers.parse.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Parser'"
+compiles = true
+
+[answers.parse.code_actions.edits]
+"main.cpp" = '''
+ void Parser::parse() {
+ }
++
++void Parser::reset() {
++}
++
++bool Parser::done() const {
++}
+'''

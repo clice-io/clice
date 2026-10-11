@@ -1,0 +1,94 @@
+[[answers.alias.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'Id'"
+compiles = true
+
+[answers.alias.code_actions.edits]
+"main.cpp" = '''
+
+ void f() {
+-    auto id = next_id();
++    Id id = next_id();
+     auto list = numbers();
+     auto p = both();
+'''
+
+[[answers.default_argument.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::vector<int>'"
+compiles = true
+
+[answers.default_argument.code_actions.edits]
+"main.cpp" = '''
+ void f() {
+     auto id = next_id();
+-    auto list = numbers();
++    std::vector<int> list = numbers();
+     auto p = both();
+     std::vector<int> v;
+'''
+
+[[answers.two_arguments.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::pair<int, double>'"
+compiles = true
+
+[answers.two_arguments.code_actions.edits]
+"main.cpp" = '''
+     auto id = next_id();
+     auto list = numbers();
+-    auto p = both();
++    std::pair<int, double> p = both();
+     std::vector<int> v;
+     auto it = v.begin();
+'''
+
+[[answers.member_typedef.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::vector<int>::iterator'"
+compiles = true
+
+[answers.member_typedef.code_actions.edits]
+"main.cpp" = '''
+     auto p = both();
+     std::vector<int> v;
+-    auto it = v.begin();
++    std::vector<int>::iterator it = v.begin();
+     for (auto& x : v) {
+     }
+'''
+
+[[answers.range_for.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'int'"
+compiles = true
+
+[answers.range_for.code_actions.edits]
+"main.cpp" = '''
+     std::vector<int> v;
+     auto it = v.begin();
+-    for (auto& x : v) {
++    for (int& x : v) {
+     }
+     decltype(auto) d = next_id();
+'''
+
+[answers.decltype_auto]
+code_actions = []
+
+[answers.abbreviated]
+code_actions = []
+
+[[answers.static_member.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'int'"
+compiles = true
+
+[answers.static_member.code_actions.edits]
+"main.cpp" = '''
+
+ struct Limits {
+-    static constexpr auto most = 10;
++    static constexpr int most = 10;
+ };
+'''

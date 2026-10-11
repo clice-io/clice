@@ -1,0 +1,88 @@
+[[answers.stringize.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'STR'"
+compiles = true
+
+[answers.stringize.code_actions.edits]
+"main.cpp" = '''
+
+ void f(int a, int b) {
+-    const char* s = STR(hello);
++    const char* s = "hello";
+     int c = CAT(foo, bar);
+     int d = CALL(add, a, b);
+'''
+
+[[answers.paste.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'CAT'"
+compiles = true
+
+[answers.paste.code_actions.edits]
+"main.cpp" = '''
+ void f(int a, int b) {
+     const char* s = STR(hello);
+-    int c = CAT(foo, bar);
++    int c = foobar;
+     int d = CALL(add, a, b);
+     SWAP(a, b);
+'''
+
+[[answers.variadic.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'CALL'"
+compiles = true
+
+[answers.variadic.code_actions.edits]
+"main.cpp" = '''
+     const char* s = STR(hello);
+     int c = CAT(foo, bar);
+-    int d = CALL(add, a, b);
++    int d = add(a, b);
+     SWAP(a, b);
+     int e = SQUARE(LIMIT);
+'''
+
+[[answers.statement.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'SWAP'"
+compiles = true
+
+[answers.statement.code_actions.edits]
+"main.cpp" = '''
+     int c = CAT(foo, bar);
+     int d = CALL(add, a, b);
+-    SWAP(a, b);
++    do { int t = a; a = b; b = t; } while (0);
+     int e = SQUARE(LIMIT);
+     int m = MAX_ITEMS;
+'''
+
+[[answers.macro_argument.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'SQUARE'"
+compiles = true
+
+[answers.macro_argument.code_actions.edits]
+"main.cpp" = '''
+     int d = CALL(add, a, b);
+     SWAP(a, b);
+-    int e = SQUARE(LIMIT);
++    int e = ((4) * (4));
+     int m = MAX_ITEMS;
+ }
+'''
+
+[[answers.from_header.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'MAX_ITEMS'"
+compiles = true
+
+[answers.from_header.code_actions.edits]
+"main.cpp" = '''
+     SWAP(a, b);
+     int e = SQUARE(LIMIT);
+-    int m = MAX_ITEMS;
++    int m = 10;
+ }
+'''

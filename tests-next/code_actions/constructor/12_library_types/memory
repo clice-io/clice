@@ -1,0 +1,14 @@
+#pragma once
+
+namespace std {
+template <class T>
+T&& move(T& value);
+
+template <class T>
+class unique_ptr {
+public:
+    unique_ptr() = default;
+    unique_ptr(unique_ptr&&) = default;
+    unique_ptr(const unique_ptr&) = delete;
+};
+}

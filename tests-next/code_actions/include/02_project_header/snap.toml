@@ -1,0 +1,14 @@
+[answers.inspect.helper]
+code_actions = []
+
+[[answers.server.helper.code_actions]]
+kind = "quickfix"
+title = 'Add #include "lib.h"'
+compiles = true
+
+[answers.server.helper.code_actions.edits]
+"main.cpp" = '''
++#include "lib.h"
+ int main() {
+     return helper(1);
+'''

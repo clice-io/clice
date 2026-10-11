@@ -1,0 +1,16 @@
+[[answers.all.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget'"
+compiles = true
+
+[answers.all.code_actions.edits]
+"main.cpp" = '''
+ void Widget::reset() {
+ }
++
++Widget::Widget() {
++}
++
++void Widget::grow(int by) {
++}
+'''

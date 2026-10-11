@@ -1,0 +1,85 @@
+[[answers.draw.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'draw' inline"
+compiles = true
+
+[answers.draw.code_actions.edits]
+"main.cpp" = '''
+
+ struct Derived : Base {
+-    void draw() override;
++    void draw() override {}
+     static Derived make() noexcept;
+     constexpr int size() const;
+'''
+
+[[answers.draw.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Derived::draw' out of line"
+compiles = true
+
+[answers.draw.code_actions.edits]
+"main.cpp" = '''
+     constexpr int size() const;
+ };
++
++void Derived::draw() {
++}
+'''
+
+[[answers.make.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'make' inline"
+compiles = true
+
+[answers.make.code_actions.edits]
+"main.cpp" = '''
+ struct Derived : Base {
+     void draw() override;
+-    static Derived make() noexcept;
++    static Derived make() noexcept {}
+     constexpr int size() const;
+ };
+'''
+
+[[answers.make.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Derived::make' out of line"
+compiles = true
+
+[answers.make.code_actions.edits]
+"main.cpp" = '''
+     constexpr int size() const;
+ };
++
++Derived Derived::make() noexcept {
++}
+'''
+
+[[answers.size.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'size' inline"
+compiles = true
+
+[answers.size.code_actions.edits]
+"main.cpp" = '''
+     void draw() override;
+     static Derived make() noexcept;
+-    constexpr int size() const;
++    constexpr int size() const {}
+ };
+'''
+
+[[answers.size.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Derived::size' out of line"
+compiles = true
+
+[answers.size.code_actions.edits]
+"main.cpp" = '''
+     constexpr int size() const;
+ };
++
++constexpr int Derived::size() const {
++}
+'''

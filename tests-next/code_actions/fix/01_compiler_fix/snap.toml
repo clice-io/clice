@@ -1,0 +1,12 @@
+[[answers.semicolon.code_actions]]
+kind = "quickfix"
+title = "insert ';'"
+compiles = true
+
+[answers.semicolon.code_actions.edits]
+"main.cpp" = '''
+ int answer() {
+-    return 42
++    return 42;
+ }
+'''

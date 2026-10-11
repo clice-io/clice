@@ -1,0 +1,35 @@
+[[answers.lvalue.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto&&' with 'int&'"
+compiles = true
+
+[answers.lvalue.code_actions.edits]
+"main.cpp" = '''
+
+ void f(int (&array)[3]) {
+-    auto&& ref = value;
++    int& ref = value;
+     auto&& temp = 1;
+     auto callback = &fn;
+'''
+
+[[answers.rvalue.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'int'"
+compiles = true
+
+[answers.rvalue.code_actions.edits]
+"main.cpp" = '''
+ void f(int (&array)[3]) {
+     auto&& ref = value;
+-    auto&& temp = 1;
++    int&& temp = 1;
+     auto callback = &fn;
+     auto& bound = array;
+'''
+
+[answers.pointer]
+code_actions = []
+
+[answers.array]
+code_actions = []

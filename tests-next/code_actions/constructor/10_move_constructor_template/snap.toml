@@ -1,0 +1,12 @@
+[[answers.templated.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Templated'"
+compiles = true
+
+[answers.templated.code_actions.edits]
+"main.cpp" = '''
+     Unique<int> unique;
+     int count;
++    Templated(Unique<int> unique, int count) : unique(std::move(unique)), count(count) {}
+ };
+'''

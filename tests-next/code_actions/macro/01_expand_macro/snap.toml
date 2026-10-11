@@ -1,0 +1,41 @@
+[[answers.name.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'SQUARE'"
+compiles = true
+
+[answers.name.code_actions.edits]
+"main.cpp" = '''
+
+ int f(int n) {
+-    return SQUARE(n + 1) + LIMIT;
++    return ((n + 1) * (n + 1)) + LIMIT;
+ }
+'''
+
+[[answers.argument.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'SQUARE'"
+compiles = true
+
+[answers.argument.code_actions.edits]
+"main.cpp" = '''
+
+ int f(int n) {
+-    return SQUARE(n + 1) + LIMIT;
++    return ((n + 1) * (n + 1)) + LIMIT;
+ }
+'''
+
+[[answers.object.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'LIMIT'"
+compiles = true
+
+[answers.object.code_actions.edits]
+"main.cpp" = '''
+
+ int f(int n) {
+-    return SQUARE(n + 1) + LIMIT;
++    return SQUARE(n + 1) + 42;
+ }
+'''

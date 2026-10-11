@@ -1,0 +1,15 @@
+[[answers.declares.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 2 missing enum cases to switch"
+compiles = true
+
+[answers.declares.code_actions.edits]
+"main.cpp" = '''
+     int extra = 0;
+     switch (shape) {
++    case Shape::Triangle:
++    case Shape::Hexagon:
++        break;
+     case Shape::Circle:
+         extra = 1;
+'''

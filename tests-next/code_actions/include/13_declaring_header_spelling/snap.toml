@@ -1,0 +1,11 @@
+[[answers.shadowed.code_actions]]
+kind = "quickfix"
+title = 'Add #include "second/util.h"'
+compiles = true
+
+[answers.shadowed.code_actions.edits]
+"main.cpp" = '''
++#include "second/util.h"
+ int main() {
+     return shadowed();
+'''

@@ -1,0 +1,14 @@
+[answers.string]
+wrong = "the directive goes above the comment that opens the file, such as a license header; it belongs below it"
+
+[[answers.string.code_actions]]
+kind = "quickfix"
+title = "Add #include <string>"
+compiles = true
+
+[answers.string.code_actions.edits]
+"main.cpp" = '''
++#include <string>
+ // A line starting with a name `module` is code outside a module unit: the
+ // directive goes to the file's start without opening a module fragment.
+'''

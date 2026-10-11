@@ -1,0 +1,15 @@
+[[answers.sw.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 2 missing enum cases to switch"
+compiles = true
+
+[answers.sw.code_actions.edits]
+"main.cpp" = '''
+     case io::Read:
+         break;
++    case io::Write:
++    case io::Append:
++        break;
+     }
+ }
+'''

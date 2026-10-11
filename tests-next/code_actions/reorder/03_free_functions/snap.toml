@@ -1,0 +1,23 @@
+[[answers.alpha.code_actions]]
+kind = "refactor.rewrite.reorderDefinitions"
+title = "Reorder definitions by declaration order"
+compiles = true
+
+[answers.alpha.code_actions.edits]
+"main.cpp" = '''
+ int gamma();
+
+-int gamma() {
+-    return 3;
+-}
+-
+ int alpha() {
+     return 1;
+…
+     return 2;
+ }
++
++int gamma() {
++    return 3;
++}
+'''

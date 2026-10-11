@@ -1,0 +1,13 @@
+[[answers.point.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Point'"
+compiles = true
+
+[answers.point.code_actions.edits]
+"main.cpp" = '''
+     int y;
+ };
++
++Point::Point(int x, int y) {
++}
+'''

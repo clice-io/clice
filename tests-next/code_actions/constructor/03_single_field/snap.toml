@@ -1,0 +1,13 @@
+[[answers.handle.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Handle'"
+compiles = true
+
+[answers.handle.code_actions.edits]
+"main.cpp" = '''
+ class Handle {
+     int fd;
++public:
++    explicit Handle(int fd) : fd(fd) {}
+ };
+'''

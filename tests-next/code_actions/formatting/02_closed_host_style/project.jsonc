@@ -1,0 +1,5 @@
+{
+  // The database names the host through the src link the test makes to
+  // vendor/real.
+  "units": { "src/main.cpp": [] }
+}

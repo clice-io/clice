@@ -1,0 +1,44 @@
+[[answers.qualified.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'n::M'"
+compiles = true
+
+[answers.qualified.code_actions.edits]
+"main.cpp" = '''
+
+ void f() {
+-    auto x = n::m;
++    n::M x = n::m;
+     static_assert(__is_same(decltype(x), n::M));
+     auto y = n::pm;
+'''
+
+[[answers.pointer.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'decltype(n::M{})*'"
+compiles = true
+
+[answers.pointer.code_actions.edits]
+"main.cpp" = '''
+     auto x = n::m;
+     static_assert(__is_same(decltype(x), n::M));
+-    auto y = n::pm;
++    decltype(n::M{})* y = n::pm;
+     static_assert(__is_same(decltype(y), n::M*));
+ }
+'''
+
+[[answers.directive.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'n::M'"
+compiles = true
+
+[answers.directive.code_actions.edits]
+"main.cpp" = '''
+
+ void g() {
+-    auto z = m;
++    n::M z = m;
+     static_assert(__is_same(decltype(z), n::M));
+ }
+'''

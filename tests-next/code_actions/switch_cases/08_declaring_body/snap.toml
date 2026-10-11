@@ -1,0 +1,29 @@
+[[answers.conditional.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 1 missing enum case to switch"
+compiles = true
+
+[answers.conditional.code_actions.edits]
+"main.cpp" = '''
+ int sides(Shape shape) {
+     switch (shape) {
++    case Shape::Triangle:
++        break;
+ #if 1
+     case Shape::Circle:
+'''
+
+[[answers.attributed.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 1 missing enum case to switch"
+compiles = true
+
+[answers.attributed.code_actions.edits]
+"main.cpp" = '''
+ int corners(Shape shape, int extra) {
+     switch (shape) {
++    case Shape::Triangle:
++        break;
+     [[likely]] case Shape::Circle:
+         extra += 1;
+'''

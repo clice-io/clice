@@ -1,0 +1,28 @@
+[[answers.run.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'run' inline"
+compiles = true
+
+[answers.run.code_actions.edits]
+"main.cpp" = '''
+ struct Outer {
+     struct Inner {
+-        void run();
++        void run() {}
+     };
+     int x;
+'''
+
+[[answers.run.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Outer::Inner::run' out of line"
+compiles = true
+
+[answers.run.code_actions.edits]
+"main.cpp" = '''
+     int x;
+ };
++
++void Outer::Inner::run() {
++}
+'''

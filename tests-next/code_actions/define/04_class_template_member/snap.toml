@@ -1,0 +1,59 @@
+[[answers.get.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'get' inline"
+compiles = true
+
+[answers.get.code_actions.edits]
+"main.cpp" = '''
+ template <typename T, int N = 4>
+ struct Box {
+-    T get() const;
++    T get() const {}
+ };
+'''
+
+[[answers.get.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Box<T, N>::get' out of line"
+compiles = true
+
+[answers.get.code_actions.edits]
+"main.cpp" = '''
+ };
+
++template <typename T, int N>
++T Box<T, N>::get() const {
++}
++
+ template <typename T>
+ struct Box<T*, 1> {
+'''
+
+[[answers.single.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'single' inline"
+compiles = true
+
+[answers.single.code_actions.edits]
+"main.cpp" = '''
+ template <typename T>
+ struct Box<T*, 1> {
+-    T* single();
++    T* single() {}
+ };
+'''
+
+[[answers.single.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Box<T*, 1>::single' out of line"
+compiles = true
+
+[answers.single.code_actions.edits]
+"main.cpp" = '''
+     T* single();
+ };
++
++template <typename T>
++T* Box<T*, 1>::single() {
++}
+'''

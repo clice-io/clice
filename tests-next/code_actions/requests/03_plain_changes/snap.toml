@@ -1,0 +1,24 @@
+[[test.f.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+
+[test.f.code_actions.edits]
+"main.cpp" = '''
+ struct S {
+-    int f();
++    int f() {}
+ };
+'''
+
+[[test.f.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+
+[test.f.code_actions.edits]
+"main.cpp" = '''
+     int f();
+ };
++
++int S::f() {
++}
+'''

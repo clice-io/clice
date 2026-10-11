@@ -1,0 +1,51 @@
+[[answers.initialized.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Settings'"
+compiles = true
+
+[answers.initialized.code_actions.edits]
+"main.cpp" = '''
+     int timeout;
+     static int instances;
++    Settings(int retries, int timeout) : retries(retries), timeout(timeout) {}
+ };
+'''
+
+[[answers.bit_fields.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Flags'"
+compiles = true
+
+[answers.bit_fields.code_actions.edits]
+"main.cpp" = '''
+     unsigned visible : 1;
+     unsigned level : 7;
++    Flags(unsigned int visible, unsigned int level) : visible(visible), level(level) {}
+ };
+'''
+
+[answers.template_fields]
+wrong = "the include goes above the comment that opens the file, such as a license header; it belongs below it"
+
+[[answers.template_fields.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Range'"
+compiles = true
+
+[answers.template_fields.code_actions.edits]
+"main.cpp" = '''
++#include <utility>
+ // Fields as everyday classes write them: a default member initializer is a
+ // parameter like any other field and a static member is none; bit-fields
+…
+     T first;
+     T last;
++    Range(T first, T last) : first(std::move(first)), last(std::move(last)) {}
+ };
+'''
+
+[answers.array]
+code_actions = []
+
+[answers.anonymous_union]
+code_actions = []

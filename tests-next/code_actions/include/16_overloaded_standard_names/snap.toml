@@ -1,0 +1,97 @@
+[answers.move]
+wrong = "std::move needs <utility>, yet no include is offered for it"
+code_actions = []
+
+[answers.size_t]
+wrong = "seven headers are offered for std::size_t, where the one a user wants is <cstddef>"
+
+[[answers.size_t.code_actions]]
+kind = "quickfix"
+title = "Add #include <cstddef>"
+
+[answers.size_t.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <cstddef>
+
+ struct Box {};
+'''
+
+[[answers.size_t.code_actions]]
+kind = "quickfix"
+title = "Add #include <cstdlib>"
+
+[answers.size_t.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <cstdlib>
+
+ struct Box {};
+'''
+
+[[answers.size_t.code_actions]]
+kind = "quickfix"
+title = "Add #include <cstring>"
+
+[answers.size_t.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <cstring>
+
+ struct Box {};
+'''
+
+[[answers.size_t.code_actions]]
+kind = "quickfix"
+title = "Add #include <cwchar>"
+
+[answers.size_t.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <cwchar>
+
+ struct Box {};
+'''
+
+[[answers.size_t.code_actions]]
+kind = "quickfix"
+title = "Add #include <cuchar>"
+
+[answers.size_t.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <cuchar>
+
+ struct Box {};
+'''
+
+[[answers.size_t.code_actions]]
+kind = "quickfix"
+title = "Add #include <ctime>"
+
+[answers.size_t.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <ctime>
+
+ struct Box {};
+'''
+
+[[answers.size_t.code_actions]]
+kind = "quickfix"
+title = "Add #include <cstdio>"
+
+[answers.size_t.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <cstdio>
+
+ struct Box {};
+'''

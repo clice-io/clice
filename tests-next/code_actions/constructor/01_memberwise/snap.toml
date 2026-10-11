@@ -1,0 +1,12 @@
+[[answers.record.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Record'"
+compiles = true
+
+[answers.record.code_actions.edits]
+"main.cpp" = '''
+     const char* label;
+     double* weight;
++    Record(int id, const Name& name, const char* label, double* weight) : id(id), name(name), label(label), weight(weight) {}
+ };
+'''

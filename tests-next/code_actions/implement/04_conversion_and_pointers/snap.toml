@@ -1,0 +1,13 @@
+[[answers.sink.code_actions]]
+kind = "refactor.rewrite.implementPureVirtuals"
+title = "Implement pure virtual methods of 'Sink'"
+compiles = true
+
+[answers.sink.code_actions.edits]
+"main.cpp" = '''
+
+ struct Sink : Source {
++    operator bool() const override;
++    void subscribe(void (*callback)(int, char)) override;
+ };
+'''

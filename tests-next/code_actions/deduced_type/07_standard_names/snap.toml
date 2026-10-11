@@ -1,0 +1,83 @@
+[[answers.inspect.in_namespace.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::size_t'"
+compiles = true
+
+[answers.inspect.in_namespace.code_actions.edits]
+"main.cpp" = '''
+
+ namespace geometry {
+-auto unit = sizeof(int);
++std::size_t unit = sizeof(int);
+ }
+'''
+
+[[answers.inspect.size.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::size_t'"
+compiles = true
+
+[answers.inspect.size.code_actions.edits]
+"main.cpp" = '''
+
+ void measure(int* first, int* last) {
+-    auto bytes = sizeof(int);
++    std::size_t bytes = sizeof(int);
+     auto distance = last - first;
+     auto none = nullptr;
+'''
+
+[[answers.inspect.difference.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::ptrdiff_t'"
+compiles = true
+
+[answers.inspect.difference.code_actions.edits]
+"main.cpp" = '''
+ void measure(int* first, int* last) {
+     auto bytes = sizeof(int);
+-    auto distance = last - first;
++    std::ptrdiff_t distance = last - first;
+     auto none = nullptr;
+ }
+'''
+
+[[answers.inspect.null.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::nullptr_t'"
+compiles = true
+
+[answers.inspect.null.code_actions.edits]
+"main.cpp" = '''
+     auto bytes = sizeof(int);
+     auto distance = last - first;
+-    auto none = nullptr;
++    std::nullptr_t none = nullptr;
+ }
+'''
+
+[answers.server]
+wrong = "std::size_t, std::ptrdiff_t and std::nullptr_t come from an included header; the editor does not find them there, offering nothing for sizeof and a pointer difference and decltype(nullptr) for nullptr"
+
+[answers.server.in_namespace]
+code_actions = []
+
+[answers.server.size]
+code_actions = []
+
+[answers.server.difference]
+code_actions = []
+
+[[answers.server.null.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'decltype(nullptr)'"
+compiles = true
+
+[answers.server.null.code_actions.edits]
+"main.cpp" = '''
+     auto bytes = sizeof(int);
+     auto distance = last - first;
+-    auto none = nullptr;
++    decltype(nullptr) none = nullptr;
+ }
+'''

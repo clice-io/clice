@@ -1,0 +1,48 @@
+[[answers.nested.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 2 missing enum cases to switch"
+compiles = true
+
+[answers.nested.code_actions.edits]
+"main.cpp" = '''
+     case Widget::Kind::Button:
+         return 1;
++    case Widget::Kind::Label:
++    case Widget::Kind::Input:
++        break;
+     }
+     return 0;
+'''
+
+[[answers.using_enum.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 2 missing enum cases to switch"
+compiles = true
+
+[answers.using_enum.code_actions.edits]
+"main.cpp" = '''
+     case Red:
+         return 1;
++    case Color::Green:
++    case Color::Blue:
++        break;
+     }
+     return 0;
+'''
+
+[[answers.empty.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 3 missing enum cases to switch"
+compiles = true
+
+[answers.empty.code_actions.edits]
+"main.cpp" = '''
+ int mix(Color color) {
+     switch (color) {
++        case Color::Red:
++        case Color::Green:
++        case Color::Blue:
++            break;
+     }
+     return 0;
+'''

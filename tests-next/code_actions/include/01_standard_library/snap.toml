@@ -1,0 +1,12 @@
+[[answers.vector.code_actions]]
+kind = "quickfix"
+title = "Add #include <vector>"
+compiles = true
+
+[answers.vector.code_actions.edits]
+"main.cpp" = '''
+ #include "config.h"
++#include <vector>
+
+ void f() {
+'''

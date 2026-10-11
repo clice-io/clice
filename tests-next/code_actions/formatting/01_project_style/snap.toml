@@ -1,0 +1,42 @@
+[[answers.scale.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'scale' inline"
+compiles = true
+
+[answers.scale.code_actions.edits]
+"main.cpp" = '''
+ struct Shape {
+-  int scale(int factor = 1) const;
++  int scale(int factor = 1) const {}
+ };
+'''
+
+[[answers.scale.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Shape::scale' out of line"
+compiles = true
+
+[answers.scale.code_actions.edits]
+"main.cpp" = '''
+ };
+
++int Shape::scale(int factor) const {}
++
+ enum class Color { Red, Green, Blue };
+'''
+
+[[answers.cases.code_actions]]
+kind = "refactor.rewrite.populateSwitch"
+title = "Add 2 missing enum cases to switch"
+compiles = true
+
+[answers.cases.code_actions.edits]
+"main.cpp" = '''
+   case Color::Red:
+     return 1;
++  case Color::Green:
++  case Color::Blue:
++    break;
+   }
+   return 0;
+'''

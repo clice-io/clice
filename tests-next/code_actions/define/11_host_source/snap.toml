@@ -1,0 +1,179 @@
+[[answers.inspect.cls.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget'"
+compiles = true
+
+[answers.inspect.cls.code_actions.edits]
+"widget.h" = '''
+     int id_;
+ };
++
++inline Widget::Widget(int id) {
+ }
++
++inline int Widget::id() const {
++}
++
++template <class T>
++void Widget::visit(T& visitor) {
++}
++
++inline void Widget::done() {
++}
++
++}
+'''
+
+[[answers.inspect.cls.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget'"
+host = [
+    '''
+ns::Widget::Widget(int id) {
+}
+''',
+    '''
+int ns::Widget::id() const {
+}
+''',
+    '''
+void ns::Widget::done() {
+}
+''',
+]
+
+[[answers.inspect.id.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'id' inline"
+compiles = true
+
+[answers.inspect.id.code_actions.edits]
+"widget.h" = '''
+ public:
+     Widget(int id);
+-    int id() const;
++    int id() const {}
+     template <class T>
+     void visit(T& visitor);
+'''
+
+[[answers.inspect.id.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::id' out of line"
+compiles = true
+
+[answers.inspect.id.code_actions.edits]
+"widget.h" = '''
+     int id_;
+ };
++
++inline int Widget::id() const {
+ }
++
++}
+'''
+
+[[answers.inspect.id.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'ns::Widget::id'"
+host = [
+    '''
+int ns::Widget::id() const {
+}
+''',
+]
+
+[[answers.server.cls.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget'"
+compiles = true
+
+[answers.server.cls.code_actions.edits]
+"widget.h" = '''
+     int id_;
+ };
++
++inline Widget::Widget(int id) {
+ }
++
++inline int Widget::id() const {
++}
++
++template <class T>
++void Widget::visit(T& visitor) {
++}
++
++}
+'''
+
+[[answers.server.cls.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget' in main.cpp"
+compiles = true
+
+[answers.server.cls.code_actions.edits]
+"main.cpp" = '''
+ void Widget::done() {
+ }
++
++ns::Widget::Widget(int id) {
+ }
+
++int ns::Widget::id() const {
++}
++
++}
++
+ int main() {
+     ns::Widget w(1);
+'''
+
+[[answers.server.id.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'id' inline"
+compiles = true
+
+[answers.server.id.code_actions.edits]
+"widget.h" = '''
+ public:
+     Widget(int id);
+-    int id() const;
++    int id() const {}
+     template <class T>
+     void visit(T& visitor);
+'''
+
+[[answers.server.id.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Widget::id' out of line"
+compiles = true
+
+[answers.server.id.code_actions.edits]
+"widget.h" = '''
+     int id_;
+ };
++
++inline int Widget::id() const {
+ }
++
++}
+'''
+
+[[answers.server.id.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'ns::Widget::id' in main.cpp"
+compiles = true
+
+[answers.server.id.code_actions.edits]
+"main.cpp" = '''
+ void Widget::done() {
+ }
++
++int ns::Widget::id() const {
+ }
+
++}
++
+ int main() {
+     ns::Widget w(1);
+'''

@@ -1,0 +1,13 @@
+[[answers.string.code_actions]]
+kind = "quickfix"
+title = "Add #include <string>"
+compiles = true
+
+[answers.string.code_actions.edits]
+"main.cpp" = '''
+
+ #include "config.h"
++#include <string>
+
+ extern "C" {
+'''

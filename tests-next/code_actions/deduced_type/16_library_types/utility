@@ -1,0 +1,6 @@
+#pragma once
+
+namespace std {
+template <class First, class Second>
+struct pair {};
+}

@@ -1,0 +1,107 @@
+[[answers.plain.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.plain.code_actions.edits]
+"main.cpp" = '''
+ template <auto V>
+ struct Plain {
+-    void f();
++    void f() {}
+ };
+'''
+
+[[answers.plain.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Plain<V>::f' out of line"
+compiles = true
+
+[answers.plain.code_actions.edits]
+"main.cpp" = '''
+ };
+
++template <auto V>
++void Plain<V>::f() {
++}
++
+ template <Small auto V>
+ struct Constrained {
+'''
+
+[[answers.constrained.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'g' inline"
+compiles = true
+
+[answers.constrained.code_actions.edits]
+"main.cpp" = '''
+ template <Small auto V>
+ struct Constrained {
+-    void g();
++    void g() {}
+ };
+'''
+
+[[answers.constrained.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Constrained<V>::g' out of line"
+compiles = true
+
+[answers.constrained.code_actions.edits]
+"main.cpp" = '''
+ };
+
++template <Small auto V>
++void Constrained<V>::g() {
++}
++
+ template <auto... Vs>
+ struct Pack {
+'''
+
+[[answers.pack.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'h' inline"
+compiles = true
+
+[answers.pack.code_actions.edits]
+"main.cpp" = '''
+ template <auto... Vs>
+ struct Pack {
+-    void h();
++    void h() {}
+ };
+'''
+
+[[answers.pack.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Pack<Vs...>::h' out of line"
+compiles = true
+
+[answers.pack.code_actions.edits]
+"main.cpp" = '''
+ };
+
++template <auto... Vs>
++void Pack<Vs...>::h() {
++}
++
+ template <auto V>
+ struct Split {
+'''
+
+[[answers.body.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Split'"
+compiles = true
+
+[answers.body.code_actions.edits]
+"main.cpp" = '''
+     int x = 0;
+ }
++
++template <auto V>
++void Split<V>::b() {
++}
+'''

@@ -1,0 +1,24 @@
+[[answers.cls.code_actions]]
+kind = "refactor.rewrite.reorderDefinitions"
+title = "Reorder definitions of 'S' by declaration order"
+compiles = true
+
+[answers.cls.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-int S::d() {
+-    return 4;
++int S::a() {
++    return 1;
+ }
+
+…
+ }
+
+-int S::a() {
+-    return 1;
++int S::d() {
++    return 4;
+ }
+'''

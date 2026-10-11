@@ -1,0 +1,9 @@
+#pragma once
+
+namespace std {
+class string {
+public:
+    string() = default;
+    string(const string&) = default;
+};
+}

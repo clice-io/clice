@@ -1,0 +1,11 @@
+[[answers.using.code_actions]]
+kind = "quickfix"
+title = "remove the using"
+compiles = true
+
+[answers.using.code_actions.edits]
+"main.cpp" = '''
+ }
+
+-using detail::value;
+'''

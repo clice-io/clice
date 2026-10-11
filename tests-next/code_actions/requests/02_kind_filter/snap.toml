@@ -1,0 +1,96 @@
+[[answers.all.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+
+[answers.all.code_actions.edits]
+"main.cpp" = '''
+ struct S {
+-    int f();
++    int f() {}
+ };
+'''
+
+[[answers.all.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+
+[answers.all.code_actions.edits]
+"main.cpp" = '''
+     int f();
+ };
++
++int S::f() {
++}
+'''
+
+[answers.quickfix]
+code_actions = []
+
+[[answers.refactor.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+
+[answers.refactor.code_actions.edits]
+"main.cpp" = '''
+ struct S {
+-    int f();
++    int f() {}
+ };
+'''
+
+[[answers.refactor.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+
+[answers.refactor.code_actions.edits]
+"main.cpp" = '''
+     int f();
+ };
++
++int S::f() {
++}
+'''
+
+[[answers."refactor.rewrite.define".code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+
+[answers."refactor.rewrite.define".code_actions.edits]
+"main.cpp" = '''
+ struct S {
+-    int f();
++    int f() {}
+ };
+'''
+
+[[answers."refactor.rewrite.define".code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+
+[answers."refactor.rewrite.define".code_actions.edits]
+"main.cpp" = '''
+     int f();
+ };
++
++int S::f() {
++}
+'''
+
+[[answers."refactor.rewrite.define.outOfLine".code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::f' out of line"
+
+[answers."refactor.rewrite.define.outOfLine".code_actions.edits]
+"main.cpp" = '''
+     int f();
+ };
++
++int S::f() {
++}
+'''
+
+[answers."refactor.rewrite.def"]
+code_actions = []
+
+[answers."refactor.rewrite.populateSwitch"]
+code_actions = []

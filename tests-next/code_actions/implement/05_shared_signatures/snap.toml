@@ -1,0 +1,17 @@
+[[answers.file.code_actions]]
+kind = "refactor.rewrite.implementPureVirtuals"
+title = "Implement pure virtual methods of 'File'"
+compiles = true
+
+[answers.file.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-struct File : Reader, Writer {};
++struct File : Reader, Writer {
++    void close() override;
++    void flush() noexcept override;
++};
+
+ static_assert(!__is_abstract(File));
+'''

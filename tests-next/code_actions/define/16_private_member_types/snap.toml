@@ -1,0 +1,56 @@
+[[answers.head.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'f' inline"
+compiles = true
+
+[answers.head.code_actions.edits]
+"main.cpp" = '''
+     template <Kind K>
+     struct Slot {
+-        void f();
++        void f() {}
+     };
+'''
+
+[[answers.head.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Owner::Slot<K>::f' out of line"
+compiles = true
+
+[answers.head.code_actions.edits]
+"main.cpp" = '''
+     Part part();
+ };
++
++template <Owner::Kind K>
++void Owner::Slot<K>::f() {
++}
+'''
+
+[[answers.result.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'part' inline"
+compiles = true
+
+[answers.result.code_actions.edits]
+"main.cpp" = '''
+     };
+
+-    Part part();
++    Part part() {}
+ };
+'''
+
+[[answers.result.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Owner::part' out of line"
+compiles = true
+
+[answers.result.code_actions.edits]
+"main.cpp" = '''
+     Part part();
+ };
++
++Owner::Part Owner::part() {
++}
+'''

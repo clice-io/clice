@@ -1,0 +1,22 @@
+[[answers.done.code_actions]]
+kind = "refactor.rewrite.define.missing"
+title = "Define missing members of 'Widget'"
+compiles = true
+
+[answers.done.code_actions.edits]
+"main.cpp" = '''
+ void Widget::done() {
+ }
++
++Widget::Widget(int id) {
++}
++
++Tag Widget::tag() {
++}
++
++const Tag& Widget::last() {
++}
++
++void Widget::draw(int scale) {
++}
+'''

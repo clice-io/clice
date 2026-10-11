@@ -1,0 +1,27 @@
+[[answers.assign.code_actions]]
+kind = "quickfix"
+title = "place parentheses around the assignment to silence this warning"
+compiles = true
+
+[answers.assign.code_actions.edits]
+"main.cpp" = '''
+ int check(int x) {
+-    if(x = 1) {
++    if((x = 1)) {
+         return 1;
+     }
+'''
+
+[[answers.assign.code_actions]]
+kind = "quickfix"
+title = "use '==' to turn this assignment into an equality comparison"
+compiles = true
+
+[answers.assign.code_actions.edits]
+"main.cpp" = '''
+ int check(int x) {
+-    if(x = 1) {
++    if(x == 1) {
+         return 1;
+     }
+'''

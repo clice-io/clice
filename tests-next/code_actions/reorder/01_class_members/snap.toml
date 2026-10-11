@@ -1,0 +1,47 @@
+[[answers.cls.code_actions]]
+kind = "refactor.rewrite.reorderDefinitions"
+title = "Reorder definitions of 'Parser' by declaration order"
+compiles = true
+
+[answers.cls.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-/// Parses the tail.
+-void Parser::third() {
+-}
+-
+ void Parser::first() {
+ }
+…
+ void Parser::second() {
+ }
++
++/// Parses the tail.
++void Parser::third() {
++}
+'''
+
+[[answers.second.code_actions]]
+kind = "refactor.rewrite.reorderDefinitions"
+title = "Reorder definitions of 'Parser' by declaration order"
+compiles = true
+
+[answers.second.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-/// Parses the tail.
+-void Parser::third() {
+-}
+-
+ void Parser::first() {
+ }
+…
+ void Parser::second() {
+ }
++
++/// Parses the tail.
++void Parser::third() {
++}
+'''

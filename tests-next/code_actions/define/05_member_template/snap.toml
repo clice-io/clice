@@ -1,0 +1,61 @@
+[[answers.visit.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'visit' inline"
+compiles = true
+
+[answers.visit.code_actions.edits]
+"main.cpp" = '''
+ struct Visitor {
+     template <typename U = int>
+-    void visit(U value);
++    void visit(U value) {}
+
+     template <Small V>
+'''
+
+[[answers.visit.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Visitor<T>::visit' out of line"
+compiles = true
+
+[answers.visit.code_actions.edits]
+"main.cpp" = '''
+     void small(V value);
+ };
++
++template <typename T>
++template <typename U>
++void Visitor<T>::visit(U value) {
++}
+'''
+
+[[answers.small.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'small' inline"
+compiles = true
+
+[answers.small.code_actions.edits]
+"main.cpp" = '''
+     template <Small V>
+         requires(sizeof(V) > 1)
+-    void small(V value);
++    void small(V value) {}
+ };
+'''
+
+[[answers.small.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'Visitor<T>::small' out of line"
+compiles = true
+
+[answers.small.code_actions.edits]
+"main.cpp" = '''
+     void small(V value);
+ };
++
++template <typename T>
++template <Small V>
++    requires(sizeof(V) > 1)
++void Visitor<T>::small(V value) {
++}
+'''

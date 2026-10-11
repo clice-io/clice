@@ -1,0 +1,71 @@
+[[answers.alias.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'decltype(make_pointer())' with 'int*'"
+compiles = true
+
+[answers.alias.code_actions.edits]
+"main.cpp" = '''
+
+ int* make_pointer();
+-using Pointer = decltype(make_pointer());
++using Pointer = int*;
+
+ void f(int* pointer, int** table) {
+'''
+
+[[answers.pointer.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'const auto' with 'int* const'"
+compiles = true
+
+[answers.pointer.code_actions.edits]
+"main.cpp" = '''
+
+ void f(int* pointer, int** table) {
+-    const auto p = pointer;
++    int* const p = pointer;
+     static_assert(__is_same(decltype(p), int* const));
+     const auto* row = table;
+'''
+
+[[answers.pointee.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'const auto' with 'int* const'"
+compiles = true
+
+[answers.pointee.code_actions.edits]
+"main.cpp" = '''
+     const auto p = pointer;
+     static_assert(__is_same(decltype(p), int* const));
+-    const auto* row = table;
++    int* const* row = table;
+     static_assert(__is_same(decltype(row), int* const*));
+     static const auto s = pointer;
+'''
+
+[[answers.specifiers.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'const auto' with 'int* const'"
+compiles = true
+
+[answers.specifiers.code_actions.edits]
+"main.cpp" = '''
+     const auto* row = table;
+     static_assert(__is_same(decltype(row), int* const*));
+-    static const auto s = pointer;
++    static int* const s = pointer;
+     static_assert(__is_same(decltype(s), int* const));
+     const static auto t = pointer;
+'''
+
+[answers.parted]
+code_actions = []
+
+[answers.macro]
+code_actions = []
+
+[answers.comment]
+code_actions = []
+
+[answers.hidden]
+code_actions = []

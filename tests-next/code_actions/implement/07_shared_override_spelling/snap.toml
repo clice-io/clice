@@ -1,0 +1,16 @@
+[[answers.spelled.code_actions]]
+kind = "refactor.rewrite.implementPureVirtuals"
+title = "Implement pure virtual methods of 'Both'"
+compiles = true
+
+[answers.spelled.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-struct Both : Aliased, Plain {};
++struct Both : Aliased, Plain {
++    void resize(int) override;
++};
+
+ static_assert(!__is_abstract(Both));
+'''

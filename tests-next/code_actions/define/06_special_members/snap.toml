@@ -1,0 +1,143 @@
+[[answers.ctor.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'S' inline"
+compiles = true
+
+[answers.ctor.code_actions.edits]
+"main.cpp" = '''
+
+ struct S {
+-    S();
++    S() {}
+     explicit S(int value);
+     ~S();
+'''
+
+[[answers.ctor.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::S' out of line"
+compiles = true
+
+[answers.ctor.code_actions.edits]
+"main.cpp" = '''
+     operator Meter() const;
+ };
++
++S::S() {
++}
+'''
+
+[[answers.explicit_ctor.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'S' inline"
+compiles = true
+
+[answers.explicit_ctor.code_actions.edits]
+"main.cpp" = '''
+ struct S {
+     S();
+-    explicit S(int value);
++    explicit S(int value) {}
+     ~S();
+     S& operator=(const S& other);
+'''
+
+[[answers.explicit_ctor.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::S' out of line"
+compiles = true
+
+[answers.explicit_ctor.code_actions.edits]
+"main.cpp" = '''
+     operator Meter() const;
+ };
++
++S::S(int value) {
++}
+'''
+
+[[answers.dtor.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define '~S' inline"
+compiles = true
+
+[answers.dtor.code_actions.edits]
+"main.cpp" = '''
+     S();
+     explicit S(int value);
+-    ~S();
++    ~S() {}
+     S& operator=(const S& other);
+     operator Meter() const;
+'''
+
+[[answers.dtor.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::~S' out of line"
+compiles = true
+
+[answers.dtor.code_actions.edits]
+"main.cpp" = '''
+     operator Meter() const;
+ };
++
++S::~S() {
++}
+'''
+
+[[answers.assign.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'operator=' inline"
+compiles = true
+
+[answers.assign.code_actions.edits]
+"main.cpp" = '''
+     explicit S(int value);
+     ~S();
+-    S& operator=(const S& other);
++    S& operator=(const S& other) {}
+     operator Meter() const;
+ };
+'''
+
+[[answers.assign.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::operator=' out of line"
+compiles = true
+
+[answers.assign.code_actions.edits]
+"main.cpp" = '''
+     operator Meter() const;
+ };
++
++S& S::operator=(const S& other) {
++}
+'''
+
+[[answers.conversion.code_actions]]
+kind = "refactor.rewrite.define.inline"
+title = "Define 'operator Meter' inline"
+compiles = true
+
+[answers.conversion.code_actions.edits]
+"main.cpp" = '''
+     ~S();
+     S& operator=(const S& other);
+-    operator Meter() const;
++    operator Meter() const {}
+ };
+'''
+
+[[answers.conversion.code_actions]]
+kind = "refactor.rewrite.define.outOfLine"
+title = "Define 'S::operator Meter' out of line"
+compiles = true
+
+[answers.conversion.code_actions.edits]
+"main.cpp" = '''
+     operator Meter() const;
+ };
++
++S::operator Meter() const {
++}
+'''

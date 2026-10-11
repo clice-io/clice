@@ -1,0 +1,26 @@
+[[answers.circle.code_actions]]
+kind = "refactor.rewrite.implementPureVirtuals"
+title = "Implement pure virtual methods of 'Circle'"
+compiles = true
+
+[answers.circle.code_actions.edits]
+"main.cpp" = '''
+ struct Circle : Shape {
+     double radius;
++    double area() const override;
++    void scale(double factor) noexcept override;
+ };
+'''
+
+[[answers.circle.code_actions]]
+kind = "refactor.rewrite.generateMemberwiseConstructor"
+title = "Generate a memberwise constructor for 'Circle'"
+compiles = true
+
+[answers.circle.code_actions.edits]
+"main.cpp" = '''
+ struct Circle : Shape {
+     double radius;
++    explicit Circle(double radius) : radius(radius) {}
+ };
+'''
