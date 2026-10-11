@@ -1,0 +1,9 @@
+[[rules]]
+configuration = "debug"
+patterns = ["**/*.cpp"]
+append = ["-DDEBUG"]
+
+[[rules]]
+configuration = "release"
+patterns = ["**/*.cpp"]
+append = ["-DRELEASE"]

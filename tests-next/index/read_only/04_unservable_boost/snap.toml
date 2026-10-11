@@ -1,0 +1,15 @@
+[test.orphan]
+document_symbols = [
+    { name = "orphan", kind = "Function", at = "int ⟦orphan⟧() { return 1; }" },
+]
+
+[test."orphan pushed"]
+pushes = [[]]
+
+[test.scratch]
+document_symbols = [
+    { name = "scratch", kind = "Function", at = "int ⟦scratch⟧() { return 2; }" },
+]
+
+[test."scratch pushed"]
+pushes = [[]]

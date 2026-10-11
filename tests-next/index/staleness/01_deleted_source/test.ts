@@ -1,4 +1,3 @@
-import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 test("deleted source withdraws its rows", async (t) => {
@@ -8,7 +7,14 @@ test("deleted source withdraws its rows", async (t) => {
     await t.show("before", s.definition(call));
     t.disk.rm("src/registry.cpp");
     await s.sync({ poll: true });
-    await t.show("after", s.definition(call));
+    await t.show("after", {
+        definition: s.definition(call),
+        references: s.references(call),
+        symbols: s.workspaceSymbols("registry_reset"),
+    });
+    // The persisted index drops the rows as well.
+    await s.stop();
+    await t.cli("query --method symbolSearch --symbol registry_reset");
 });
 
 test("closed header edit reaches its includers", async (t) => {
@@ -20,5 +26,5 @@ test("closed header edit reaches its includers", async (t) => {
     });
     await s.sync({ poll: true });
     await t.show("symbols", s.workspaceSymbols("registry_size"));
-    expect(await s.errors("app/main.cpp")).not.toEqual([]);
+    await t.show("errors", s.errors("app/main.cpp"));
 });

@@ -1,0 +1,5 @@
+[test.links]
+document_links = [
+    { at = '#include ⟦"b.h"⟧', target = "b.h" },
+    { at = '#include ⟦"a.h"⟧', target = "a.h" },
+]

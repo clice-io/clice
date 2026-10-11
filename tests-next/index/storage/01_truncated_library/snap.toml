@@ -1,0 +1,98 @@
+["cut mid-page"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["cut mid-page"."$ clice query --method symbolSearch --symbol add"]
+wrong = "after saying the index is cut short it also says there is no index cache, which is not so"
+stdout = '''
+{
+  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "stale": []
+}
+'''
+stderr = [
+    "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is shorter than its pages (8192 of 20480 bytes); run `clice index` to repair it",
+    "error: No index cache at ${WS}/.clice/cache/v14/index/default; run `clice index` first",
+]
+exit = 1
+
+["cut mid-page"."$ clice index #2"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = [
+    "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is corrupt (meta failed: MDB_INVALID: File is not an LMDB file); rebuilding",
+]
+exit = 0
+
+["cut mid-page"."$ clice query --method symbolSearch --symbol add #2"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "add",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#5c1bf8ca24c752f7"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[emptied."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[emptied."$ clice query --method symbolSearch --symbol add"]
+wrong = "an emptied index reads as a bad file descriptor that turns persistence off, and as no index cache at all; that the index is damaged and `clice index` repairs it is expected"
+stdout = '''
+{
+  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "stale": []
+}
+'''
+stderr = [
+    "warning: Cannot open the index database at ${WS}/.clice/cache/v14/index/default/index.mdb (open failed: Bad file descriptor); index persistence is disabled for this session",
+    "error: No index cache at ${WS}/.clice/cache/v14/index/default; run `clice index` first",
+]
+exit = 1
+
+[emptied."$ clice index #2"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[emptied."$ clice query --method symbolSearch --symbol add #2"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "add",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#5c1bf8ca24c752f7"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

@@ -1,0 +1,3 @@
+[test."after the edit"]
+definition = ["int ⟦foo⟧() { return 1; }"]
+uses = ["int main() { return ⟦foo⟧(); }"]

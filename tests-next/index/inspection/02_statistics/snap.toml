@@ -1,0 +1,11 @@
+[test."$ clice index --stats"]
+stderr = ["error: No index cache at ${WS}/.clice; run `clice index` first"]
+exit = 1
+
+[test."$ clice index --stats --top 1"]
+stderr = ["error: No index cache at ${WS}/.clice; run `clice index` first"]
+exit = 1
+
+[test."$ clice index --variants"]
+stderr = ["error: No index cache at ${WS}/.clice; run `clice index` first"]
+exit = 1

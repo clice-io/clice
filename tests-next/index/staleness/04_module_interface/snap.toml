@@ -1,0 +1,20 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 2 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice index #2"]
+stdout = '''
+Indexed 0 translation units in #s: 2 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice index #3"]
+stdout = '''
+Indexed 2 translation units in #s: 2 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

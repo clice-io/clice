@@ -1,0 +1,106 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol \"sum path:src/\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "sum_src",
+        "kind": "Function",
+        "file": "${WS}/src/a.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#1021c69a8dde905f"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:src/a.cpp\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "tally",
+        "kind": "Variable",
+        "file": "${WS}/src/a.cpp",
+        "line": 1,
+        "container": null,
+        "symbol": "#6c0f5b9087ce07a0 path:${WS}/src/a.cpp"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:./lib/src/b.cpp\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "tally",
+        "kind": "Variable",
+        "file": "${WS}/lib/src/b.cpp",
+        "line": 1,
+        "container": null,
+        "symbol": "#420d45808a85b99e path:${WS}/lib/src/b.cpp"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:b.cpp\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "tally",
+        "kind": "Variable",
+        "file": "${WS}/lib/src/b.cpp",
+        "line": 1,
+        "container": null,
+        "symbol": "#420d45808a85b99e path:${WS}/lib/src/b.cpp"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol \"sum path:\\\"${WS}/lib\\\"\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "sum_lib",
+        "kind": "Function",
+        "file": "${WS}/lib/src/b.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#39a8aa13717d58d5"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

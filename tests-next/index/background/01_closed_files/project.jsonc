@@ -1,0 +1,4 @@
+{
+  "flags": ["-std=c++20"],
+  "units": { "main.cpp": [], "nav.cpp": [] }
+}

@@ -1,0 +1,37 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method references --symbol a.c:2:22 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "red",
+    "kind": "EnumMember",
+    "symbol": "#c51d828ab4ca5235",
+    "references": [
+      {
+        "file": "${WS}/a.c",
+        "line": 2,
+        "context": "int a(void) { return red; }"
+      },
+      {
+        "file": "${WS}/b.c",
+        "line": 2,
+        "context": "int b(void) { return red + 1; }"
+      },
+      {
+        "file": "${WS}/color.h",
+        "line": 2,
+        "context": "enum color { red };"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0

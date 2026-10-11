@@ -1,0 +1,48 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --workspace .. --method definition --symbol Animal"]
+stdout = '''
+{
+  "result": {
+    "name": "Animal",
+    "kind": "Struct",
+    "symbol": "#a1654fc0dd5efb6c",
+    "definition": {
+      "file": "${WS}/a.h",
+      "startLine": 3,
+      "endLine": 3,
+      "text": "struct Animal { virtual ~Animal() = default; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --workspace .. --method projectFiles"]
+stdout = '''
+{
+  "result": {
+    "files": [
+      {
+        "path": "${WS}/main.cpp",
+        "kind": "source",
+        "moduleName": null
+      },
+      {
+        "path": "${WS}/a.h",
+        "kind": "header",
+        "moduleName": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

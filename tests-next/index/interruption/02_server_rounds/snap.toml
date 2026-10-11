@@ -1,0 +1,20 @@
+["checkpoint survives a kill"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["shutdown reply follows the save"."$ clice index"]
+stdout = '''
+Indexed 0 translation units in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["sigterm saves the round"."$ clice index"]
+stdout = '''
+Indexed 0 translation units in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

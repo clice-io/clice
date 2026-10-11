@@ -1,0 +1,24 @@
+["open file index via file".diagnostics]
+diagnostics = []
+
+["open file index via file".references]
+references = ["int ⟦function_000⟧() { return 0; }", "int use() { return ⟦function_000⟧(); }"]
+
+["oversized index without store".diagnostics]
+diagnostics = [
+    { at = "⟦⟧int function_000() { return 0; }", severity = "warning", message = "the index (0 MiB) is too large to send between clice processes; features that read the file's own index, such as references within it, are unavailable", source = "clice" },
+]
+
+["oversized index without store".hover.hover]
+markdown = '''
+### function `function_000`
+
+---
+→ `int`
+
+---
+```cpp
+int function_000()
+```
+'''
+range = "int ⟦function_000⟧() { return 0; }"

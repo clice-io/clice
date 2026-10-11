@@ -1,0 +1,265 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method references --symbol util.h:2:12 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#9cbf31b6d292b357 path:${WS}/util.h",
+    "references": [
+      {
+        "file": "${WS}/a.cpp",
+        "line": 2,
+        "context": "int a() { return helper(1); }"
+      },
+      {
+        "file": "${WS}/b.cpp",
+        "line": 2,
+        "context": "int b() { int local = 2; return helper(local) + local; }"
+      },
+      {
+        "file": "${WS}/util.h",
+        "line": 2,
+        "context": "static int helper(int x) { return x; }"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method references --symbol a.cpp:2:18 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#9cbf31b6d292b357 path:${WS}/util.h",
+    "references": [
+      {
+        "file": "${WS}/a.cpp",
+        "line": 2,
+        "context": "int a() { return helper(1); }"
+      },
+      {
+        "file": "${WS}/b.cpp",
+        "line": 2,
+        "context": "int b() { int local = 2; return helper(local) + local; }"
+      },
+      {
+        "file": "${WS}/util.h",
+        "line": 2,
+        "context": "static int helper(int x) { return x; }"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method references --symbol b.cpp:2:15 --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "local",
+    "kind": "Variable",
+    "symbol": "#184d20bd78e844c2 path:${WS}/b.cpp",
+    "references": [
+      {
+        "file": "${WS}/b.cpp",
+        "line": 2,
+        "context": "int b() { int local = 2; return helper(local) + local; }"
+      },
+      {
+        "file": "${WS}/b.cpp",
+        "line": 2,
+        "context": "int b() { int local = 2; return helper(local) + local; }"
+      },
+      {
+        "file": "${WS}/b.cpp",
+        "line": 2,
+        "context": "int b() { int local = 2; return helper(local) + local; }"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method documentSymbols --path util.h"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "kind": "Function",
+        "startLine": 2,
+        "endLine": 2,
+        "symbol": "#9cbf31b6d292b357 path:${WS}/util.h"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method documentSymbols --path b.cpp"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "b",
+        "kind": "Function",
+        "startLine": 2,
+        "endLine": 2,
+        "symbol": "#10cfba676b91bcb7"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:${WS}/util.h\""]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#9cbf31b6d292b357 path:${WS}/util.h",
+    "definition": {
+      "file": "${WS}/util.h",
+      "startLine": 2,
+      "endLine": 2,
+      "text": "static int helper(int x) { return x; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:util.h\""]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#9cbf31b6d292b357 path:${WS}/util.h",
+    "definition": {
+      "file": "${WS}/util.h",
+      "startLine": 2,
+      "endLine": 2,
+      "text": "static int helper(int x) { return x; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:a.cpp\""]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#9cbf31b6d292b357 path:${WS}/util.h",
+    "definition": {
+      "file": "${WS}/util.h",
+      "startLine": 2,
+      "endLine": 2,
+      "text": "static int helper(int x) { return x; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol \"#9cbf31b6d292b357 path:a.cpp\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "kind": "Function",
+        "file": "${WS}/util.h",
+        "line": 2,
+        "container": null,
+        "symbol": "#9cbf31b6d292b357 path:${WS}/util.h"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:gone.cpp\""]
+stdout = '''
+{
+  "error": "no such file: ${WS}/gone.cpp",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:new.cpp\""]
+stdout = '''
+{
+  "error": "symbol not found",
+  "stale": [
+    "${WS}/new.cpp"
+  ]
+}
+'''
+exit = 1
+
+[test."$ clice query --method symbolSearch --symbol \"\\\"helper\\\" path:util.h\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "kind": "Function",
+        "file": "${WS}/util.h",
+        "line": 2,
+        "container": null,
+        "symbol": "#9cbf31b6d292b357 path:${WS}/util.h"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol \"\\\"helper\\\" path:a.cpp\""]
+stdout = '''
+{
+  "result": {
+    "symbols": []
+  },
+  "stale": []
+}
+'''
+exit = 0

@@ -1,0 +1,44 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method documentSymbols --path \"my dir/util.h\""]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "kind": "Function",
+        "startLine": 2,
+        "endLine": 2,
+        "symbol": "#cc85f8008b8ef85d path:\"${WS}/my dir/util.h\""
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol \"#cc85f8008b8ef85d path:\\\"${WS}/my dir/util.h\\\"\""]
+stdout = '''
+{
+  "result": {
+    "name": "helper",
+    "kind": "Function",
+    "symbol": "#cc85f8008b8ef85d path:\"${WS}/my dir/util.h\"",
+    "definition": {
+      "file": "${WS}/my dir/util.h",
+      "startLine": 2,
+      "endLine": 2,
+      "text": "static int helper(int x) { return x; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0

@@ -1,0 +1,34 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = [
+    "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable",
+    "warning: Toolchain resolve failed for ${WS}/main.cpp: Driver ${WS}/missing-cc not found or not executable",
+]
+exit = 0
+
+[test."$ clice query --method compileCommand --path main.cpp"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/main.cpp",
+    "directory": "${WS}",
+    "arguments": [
+      "${WS}/missing-cc",
+      "-resource-dir",
+      "${RESOURCE}",
+      "${WS}/main.cpp"
+    ],
+    "source": "database",
+    "toolchainError": "Driver ${WS}/missing-cc not found or not executable"
+  },
+  "stale": []
+}
+'''
+stderr = [
+    "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable",
+    "warning: Toolchain resolve failed for ${WS}/main.cpp: Driver ${WS}/missing-cc not found or not executable",
+]
+exit = 0

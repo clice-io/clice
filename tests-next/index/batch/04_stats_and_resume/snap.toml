@@ -1,0 +1,25 @@
+[test."$ clice index --stats"]
+stderr = ["error: No index cache at ${WS}/.clice; run `clice index` first"]
+exit = 1
+
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice index --workers 2 #2"]
+stdout = '''
+Indexed 0 translation units in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice index --show-symbol add"]
+stdout = '''
+symbol #5c1bf8ca24c752f7  kind=Function  name=add  args=  qualified=add  flags=HasDefinition,Completable  form=Identifier
+  scope=External  file=${WS}/main.cpp  reference files=1
+  ${WS}/main.cpp: definitions=1 declarations=0 references=0
+'''
+exit = 0

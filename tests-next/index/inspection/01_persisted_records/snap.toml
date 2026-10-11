@@ -1,0 +1,86 @@
+[records."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[records."$ clice index --show-symbol geo::area"]
+stdout = '''
+symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
+  parent #b8d40a731e70f055  kind=Namespace  name=geo
+  scope=External  file=${WS}/geo.cpp  reference files=3
+  ${WS}/geo.cpp: definitions=1 declarations=0 references=0
+  ${WS}/geo.h: definitions=0 declarations=1 references=0
+  ${WS}/main.cpp: definitions=0 declarations=0 references=1
+'''
+exit = 0
+
+[records."$ clice index --show-symbol \"#410bf4404641a3b4\""]
+stdout = '''
+symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
+  parent #b8d40a731e70f055  kind=Namespace  name=geo
+  scope=External  file=${WS}/geo.cpp  reference files=3
+  ${WS}/geo.cpp: definitions=1 declarations=0 references=0
+  ${WS}/geo.h: definitions=0 declarations=1 references=0
+  ${WS}/main.cpp: definitions=0 declarations=0 references=1
+'''
+exit = 0
+
+[records."$ clice index --show-symbol area"]
+stdout = '''
+symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
+  parent #b8d40a731e70f055  kind=Namespace  name=geo
+  scope=External  file=${WS}/geo.cpp  reference files=3
+  ${WS}/geo.cpp: definitions=1 declarations=0 references=0
+  ${WS}/geo.h: definitions=0 declarations=1 references=0
+  ${WS}/main.cpp: definitions=0 declarations=0 references=1
+'''
+exit = 0
+
+[records."$ clice index --show-file geo.h"]
+stdout = '''
+file ${WS}/geo.h
+  blob=# B  content size=65  content hash=#9dd4e54be8a63a99  text=not stored (ASCII)
+  variants=1
+    #5bcfb7d37d516235  contributed by 2 units
+      ${WS}/geo.cpp
+      ${WS}/main.cpp
+  symbols=4  local symbols=2  occurrences=4  relations=4
+    Declaration=1
+    Definition=3
+    local #03f26c0a76f19d73  kind=Parameter  name=width
+    local #fe1adf0868b4d70d  kind=Parameter  name=height
+'''
+exit = 0
+
+[records."$ clice index --show-tu main.cpp"]
+stdout = '''
+translation unit ${WS}/main.cpp
+  built at #time  generation=1  content hash=#f296566f561e8eb5
+  contributions=2
+    #5bcfb7d37d516235  ${WS}/geo.h
+    #3406757ee3bd7d1e  ${WS}/main.cpp
+  include tree (1 node):
+    ${WS}/geo.h  included at ${WS}/main.cpp:1
+'''
+exit = 0
+
+["names nothing recorded"."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["names nothing recorded"."$ clice index --show-symbol nowhere"]
+stdout = "No symbol named nowhere in the index (names cover the global table; file-local symbols are reachable by #hash)."
+exit = 1
+
+["names nothing recorded"."$ clice index --show-file gone.h"]
+stdout = "No rows for ${WS}/gone.h in the index."
+exit = 1
+
+["names nothing recorded"."$ clice index --show-tu geo.h"]
+stdout = "No manifest for ${WS}/geo.h in the index."
+exit = 1

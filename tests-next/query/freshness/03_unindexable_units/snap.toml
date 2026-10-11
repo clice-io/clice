@@ -1,0 +1,18 @@
+[test."$ clice query --method symbolSearch --symbol ghost --fresh"]
+stdout = '''
+{
+  "result": {
+    "symbols": []
+  },
+  "stale": [
+    "${WS}/ghost.cpp"
+  ]
+}
+'''
+stderr = [
+    "warning: Failed to read file for scanning: ${WS}/ghost.cpp",
+    "stderr: indexing 0/2 units, 0 failed",
+    "warning: [2/2] Index failed for ${WS}/ghost.cpp: TU run compilation failed",
+    "stderr: indexing 2/2 units, 1 failed",
+]
+exit = 0

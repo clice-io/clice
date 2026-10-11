@@ -1,0 +1,82 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol compute"]
+stdout = '''
+{
+  "error": "symbol not found",
+  "stale": [
+    "${WS}/main.cpp"
+  ]
+}
+'''
+exit = 1
+
+[test."$ clice query --method definition --symbol new.cpp:1:5"]
+stdout = '''
+{
+  "error": "symbol not found",
+  "stale": [
+    "${WS}/new.cpp"
+  ]
+}
+'''
+exit = 1
+
+[test."$ clice query --method documentSymbols --path main.cpp"]
+stdout = '''
+{
+  "result": {
+    "symbols": []
+  },
+  "stale": [
+    "${WS}/main.cpp"
+  ]
+}
+'''
+exit = 0
+
+[test."$ clice query --method documentSymbols --path a.h"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "~Animal",
+        "kind": "Method",
+        "startLine": 3,
+        "endLine": 3,
+        "symbol": "#2dbb9112f1fa26ec"
+      },
+      {
+        "name": "Animal",
+        "kind": "Struct",
+        "startLine": 3,
+        "endLine": 3,
+        "symbol": "#a1654fc0dd5efb6c"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method counterparts --path a.h"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/a.h",
+    "candidates": [],
+    "preferred": null
+  },
+  "stale": [
+    "${WS}/main.cpp"
+  ]
+}
+'''
+exit = 0

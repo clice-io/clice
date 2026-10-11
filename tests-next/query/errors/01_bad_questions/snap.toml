@@ -1,0 +1,124 @@
+[test."$ clice query --method symbolSearch --symbol add"]
+stdout = '''
+{
+  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "stale": []
+}
+'''
+stderr = ["error: No index cache at ${WS}/.clice; run `clice index` first"]
+exit = 1
+
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method callGraph --symbol add --direction sideways"]
+stdout = '''
+{
+  "error": "invalid direction 'sideways': expected callers, callees or both",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method definition --symbol nope"]
+stdout = '''
+{
+  "error": "symbol not found",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method documentSymbols --path gone.cpp"]
+stdout = '''
+{
+  "error": "no such file: ${WS}/gone.cpp",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method fileDeps --path gone.cpp"]
+stdout = '''
+{
+  "error": "no such file: ${WS}/gone.cpp",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method definition --symbol main.cpp:0"]
+stdout = '''
+{
+  "error": "lines and columns count from 1",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method definition --symbol gone.cpp:2"]
+stdout = '''
+{
+  "error": "no such file: ${WS}/gone.cpp",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method definition --symbol add --path main.cpp"]
+stdout = '''
+{
+  "error": "--path names the file of a file question; narrow a symbol with path: in --symbol",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method symbolSearch --symbol add --path main.cpp"]
+stdout = '''
+{
+  "error": "--path names the file of a file question; narrow a symbol with path: in --symbol",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method definition"]
+stdout = '''
+{
+  "error": "name the symbol with --symbol",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method bogus"]
+stdout = '''
+{
+  "error": "unknown method 'bogus'",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method definition --symbol \"main.cpp:4:5 kind:variable\""]
+stdout = '''
+{
+  "error": "symbol not found",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice query --method symbolSearch --symbol \"add kind:Fnction\""]
+stdout = '''
+{
+  "error": "unknown symbol kind 'Fnction'",
+  "stale": []
+}
+'''
+exit = 1

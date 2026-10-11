@@ -1,0 +1,78 @@
+["asks the running server to index"."$ clice index --workers 2"]
+stdout = "Indexed through the running clice server (pid #)."
+exit = 0
+
+["asks the running server to index"."$ clice query --method symbolSearch --symbol extra --fresh"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "extra",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "container": null,
+        "symbol": "#c9be3d07e9d6b64f"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["asks the running server to index"."$ clice query --method symbolSearch --symbol extra"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "extra",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "container": null,
+        "symbol": "#c9be3d07e9d6b64f"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["refuses a writer it cannot ask"."$ clice index"]
+stderr = [
+    "error: another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done",
+]
+exit = 1
+
+["refuses a writer it cannot ask"."$ clice query --method symbolSearch --symbol compute --fresh"]
+stdout = '''
+{
+  "error": "another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done",
+  "stale": []
+}
+'''
+exit = 1
+
+["refuses a writer it cannot ask"."$ clice query --method symbolSearch --symbol compute"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "compute",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "container": null,
+        "symbol": "#81df9416985c4402"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

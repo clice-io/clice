@@ -1,0 +1,2 @@
+[test.definition]
+definition = ["b.cpp │ int ⟦foo⟧(int a) { return a; }"]

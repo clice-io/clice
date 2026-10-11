@@ -1,0 +1,4 @@
+{
+  // C++ behind a C suffix, forced by the command's -x.
+  "units": { "legacy.c": ["-x", "c++"] }
+}

@@ -1,0 +1,32 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method references --symbol value --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Function",
+    "symbol": "#2282827d1139ff33",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "context": "value() { return 1; }"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "context": "int use() { return value(); }"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

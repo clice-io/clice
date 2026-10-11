@@ -1,0 +1,48 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 2 file shards (# KB), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method counterparts --path store_impl.cpp"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/store_impl.cpp",
+    "candidates": [
+      {
+        "path": "${WS}/store.cppm",
+        "reasons": [
+          "declares 1 of 1 definition",
+          "interface of module store"
+        ]
+      }
+    ],
+    "preferred": "${WS}/store.cppm"
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method counterparts --path store.cppm"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/store.cppm",
+    "candidates": [
+      {
+        "path": "${WS}/store_impl.cpp",
+        "reasons": [
+          "defines 1 of 1 declaration",
+          "implements module store"
+        ]
+      }
+    ],
+    "preferred": "${WS}/store_impl.cpp"
+  },
+  "stale": []
+}
+'''
+exit = 0

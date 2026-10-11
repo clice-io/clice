@@ -1,0 +1,23 @@
+[test.outline]
+document_symbols = [
+    { name = "twice", kind = "Function", at = "int ⟦twice⟧(int x) {" },
+    { name = "main", kind = "Function", at = "int ⟦main⟧() { return twice(2); }" },
+]
+
+[test.links]
+document_links = [
+    { at = '#include ⟦"header.h"⟧', target = "header.h" },
+]
+
+[test.hover]
+wrong = "read-only hover of a function the project only declares shows its name alone; the declaration's signature is expected, as a compiled file shows it"
+
+[test.hover.hover]
+markdown = "### function `add`"
+range = "return ⟦add⟧(x, x);"
+
+[test.tokens]
+semantic_tokens = []
+
+[test.folds]
+folding_ranges = []

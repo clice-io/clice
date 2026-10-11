@@ -1,0 +1,25 @@
+#include "nav.h"
+§(blank)
+int §(area)area(const Shape& s) {
+    return s.width * s.height;
+}
+
+§(shape_type)Shape §(global_shape)global_shape;
+
+int shape_area() {
+    return area(global_shape);
+}
+
+void GLRenderer::render() {}
+
+void DebugGLRenderer::render() {}
+
+Shape make_unit_shape() {
+    return {1, 1};
+}
+
+#include "nav_late.h"
+
+int use_area_scale(const Shape& s) {
+    return §(area_scale)area_scale(s);
+}

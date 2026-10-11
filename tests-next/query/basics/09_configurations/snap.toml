@@ -1,0 +1,76 @@
+[test."$ clice index --configuration release"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --configuration release --method symbolSearch --symbol release_only"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "release_only",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#9be809ea5b8417d9"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol debug_only"]
+stdout = '''
+{
+  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "stale": []
+}
+'''
+stderr = [
+    "error: No index cache at ${WS}/.clice/cache/v14/index/debug~50f0a9a717df05f7; run `clice index` first",
+]
+exit = 1
+
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol debug_only #2"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "debug_only",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "container": null,
+        "symbol": "#02a1ff6ce8621992"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --configuration nope --method symbolSearch --symbol debug_only"]
+wrong = "the answer says the index could not be opened and suggests `clice index`, where the configuration name is what is wrong"
+stdout = '''
+{
+  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "stale": []
+}
+'''
+stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+exit = 1

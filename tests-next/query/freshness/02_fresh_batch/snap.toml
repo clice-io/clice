@@ -1,0 +1,41 @@
+[test."$ clice query --method symbolSearch --symbol compute --fresh"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "compute",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "container": null,
+        "symbol": "#81df9416985c4402"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+stderr = ["stderr: indexing 0/1 units, 0 failed", "stderr: indexing 1/1 units, 0 failed"]
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol extra --fresh"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "extra",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "container": null,
+        "symbol": "#c9be3d07e9d6b64f"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+stderr = ["stderr: indexing 0/1 units, 0 failed", "stderr: indexing 1/1 units, 0 failed"]
+exit = 0

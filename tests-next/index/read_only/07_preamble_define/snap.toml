@@ -1,0 +1,10 @@
+[test.define.hover]
+markdown = '''
+### macro `LIMIT`
+
+---
+```cpp
+#define LIMIT 10
+```
+'''
+range = "#define ⟦LIMIT⟧ 10"

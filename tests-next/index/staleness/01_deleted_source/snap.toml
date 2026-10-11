@@ -3,8 +3,28 @@ definition = ["src/registry.cpp │ int ⟦registry_count⟧() {"]
 
 ["deleted source withdraws its rows".after]
 definition = ["include/registry.h │ int ⟦registry_count⟧();"]
+references = ["return ⟦registry_count⟧();", "include/registry.h │ int ⟦registry_count⟧();"]
+symbols = []
+
+["deleted source withdraws its rows"."$ clice query --method symbolSearch --symbol registry_reset"]
+stdout = '''
+{
+  "result": {
+    "symbols": []
+  },
+  "stale": [
+    "${WS}/src/registry.cpp"
+  ]
+}
+'''
+exit = 0
 
 ["closed header edit reaches its includers".symbols]
 workspace_symbols = [
     { name = "registry_size", kind = "Function", at = "include/registry.h │ int ⟦registry_size⟧();" },
+]
+
+["closed header edit reaches its includers".errors]
+errors = [
+    { at = "return ⟦registry_count⟧();", severity = "error", message = "use of undeclared identifier 'registry_count'", source = "clang", code = "err_undeclared_var_use" },
 ]

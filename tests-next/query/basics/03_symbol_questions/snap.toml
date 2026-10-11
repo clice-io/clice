@@ -1,0 +1,259 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol add"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "add",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#5c1bf8ca24c752f7"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol \"#5c1bf8ca24c752f7\""]
+stdout = '''
+{
+  "result": {
+    "name": "add",
+    "kind": "Function",
+    "symbol": "#5c1bf8ca24c752f7",
+    "definition": {
+      "file": "${WS}/main.cpp",
+      "startLine": 2,
+      "endLine": 2,
+      "text": "int add(int a, int b) { return a + b; }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol main.cpp:4"]
+stdout = '''
+{
+  "result": {
+    "name": "compute",
+    "kind": "Function",
+    "symbol": "#81df9416985c4402",
+    "definition": {
+      "file": "${WS}/main.cpp",
+      "startLine": 4,
+      "endLine": 4,
+      "text": "int compute() { return add(1, 2); }"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method readSymbol --symbol compute"]
+stdout = '''
+{
+  "result": {
+    "name": "compute",
+    "kind": "Function",
+    "file": "${WS}/main.cpp",
+    "startLine": 4,
+    "endLine": 4,
+    "text": "int compute() { return add(1, 2); }",
+    "symbol": "#81df9416985c4402"
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method references --symbol add --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "add",
+    "kind": "Function",
+    "symbol": "#5c1bf8ca24c752f7",
+    "references": [
+      {
+        "file": "${WS}/a.h",
+        "line": 2,
+        "context": "int add(int a, int b);"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "context": "int add(int a, int b) { return a + b; }"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "context": "int compute() { return add(1, 2); }"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method callGraph --symbol add --direction callers"]
+stdout = '''
+{
+  "result": {
+    "root": {
+      "name": "add",
+      "kind": "Function",
+      "file": "${WS}/main.cpp",
+      "line": 2,
+      "symbol": "#5c1bf8ca24c752f7"
+    },
+    "callers": [
+      {
+        "name": "compute",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "symbol": "#81df9416985c4402"
+      }
+    ],
+    "callees": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method typeHierarchy --symbol Dog --direction supertypes"]
+stdout = '''
+{
+  "result": {
+    "root": {
+      "name": "Dog",
+      "kind": "Struct",
+      "file": "${WS}/main.cpp",
+      "line": 3,
+      "symbol": "#7316a0a19122a8ae"
+    },
+    "supertypes": [
+      {
+        "name": "Animal",
+        "kind": "Struct",
+        "file": "${WS}/a.h",
+        "line": 3,
+        "symbol": "#a1654fc0dd5efb6c"
+      }
+    ],
+    "subtypes": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method documentSymbols --path main.cpp"]
+wrong = "the symbols come in no order a reader can follow; source order (add, Dog, compute, main) is expected"
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "add",
+        "kind": "Function",
+        "startLine": 2,
+        "endLine": 2,
+        "symbol": "#5c1bf8ca24c752f7"
+      },
+      {
+        "name": "main",
+        "kind": "Function",
+        "startLine": 5,
+        "endLine": 5,
+        "symbol": "#70b5c0d150872970"
+      },
+      {
+        "name": "Dog",
+        "kind": "Struct",
+        "startLine": 3,
+        "endLine": 3,
+        "symbol": "#7316a0a19122a8ae"
+      },
+      {
+        "name": "compute",
+        "kind": "Function",
+        "startLine": 4,
+        "endLine": 4,
+        "symbol": "#81df9416985c4402"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol kind:Struct,Function --limit 10"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "Animal",
+        "kind": "Struct",
+        "file": "${WS}/a.h",
+        "line": 3,
+        "container": null,
+        "symbol": "#a1654fc0dd5efb6c"
+      },
+      {
+        "name": "add",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#5c1bf8ca24c752f7"
+      },
+      {
+        "name": "Dog",
+        "kind": "Struct",
+        "file": "${WS}/main.cpp",
+        "line": 3,
+        "container": null,
+        "symbol": "#7316a0a19122a8ae"
+      },
+      {
+        "name": "compute",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "container": null,
+        "symbol": "#81df9416985c4402"
+      },
+      {
+        "name": "main",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 5,
+        "container": null,
+        "symbol": "#70b5c0d150872970"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

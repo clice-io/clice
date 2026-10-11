@@ -1,0 +1,4 @@
+{
+  // The case ships its own database, naming a compiler that does not exist.
+  "databases": {}
+}

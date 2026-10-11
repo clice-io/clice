@@ -1,0 +1,26 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol local.cpp:1"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "kind": "Function",
+        "file": "${WS}/local.cpp",
+        "line": 1,
+        "container": null,
+        "symbol": "#2b6730af87013000 path:${WS}/local.cpp"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

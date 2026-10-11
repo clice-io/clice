@@ -1,0 +1,15 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 2 file shards (# KB), 202 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice index --show-symbol alpha"]
+stdout = '''
+symbol #1631ac4f1048cdac  kind=Function  name=alpha  args=  qualified=alpha  flags=HasDefinition,Completable  form=Identifier
+  scope=External  file=${WS}/a.cpp  reference files=2
+  ${WS}/a.cpp: definitions=1 declarations=0 references=0
+  ${WS}/b.cpp: definitions=0 declarations=1 references=1
+'''
+exit = 0

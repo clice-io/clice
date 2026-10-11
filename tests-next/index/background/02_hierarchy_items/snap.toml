@@ -1,0 +1,12 @@
+["item without its data".incoming]
+incoming_calls = [
+    {
+        name = "compute",
+        kind = "Function",
+        at = "int ⟦compute⟧() {",
+        sites = ["return ⟦add⟧(1, 2) + add(3, 4);", "return add(1, 2) + ⟦add⟧(3, 4);"],
+    },
+]
+
+["item of no symbol".incoming]
+value = "Failed to resolve call hierarchy item"

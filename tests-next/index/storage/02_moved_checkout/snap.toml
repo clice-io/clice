@@ -1,0 +1,93 @@
+[test."$ clice index --workspace before"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/before/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --workspace before --method symbolSearch --symbol UTIL_LIMIT"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "UTIL_LIMIT",
+        "kind": "Macro",
+        "file": "${WS}/before/inc/util.h",
+        "line": 2,
+        "container": null,
+        "symbol": "#62c66549c34ab5e4"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --workspace before --method symbolSearch --symbol src/a.cpp:2"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "kind": "Function",
+        "file": "${WS}/before/src/a.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#6ee96116f5b64099 path:${WS}/before/src/a.cpp"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice index --workspace after"]
+stdout = '''
+Indexed 0 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/after/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --workspace after --method symbolSearch --symbol UTIL_LIMIT"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "UTIL_LIMIT",
+        "kind": "Macro",
+        "file": "${WS}/after/inc/util.h",
+        "line": 2,
+        "container": null,
+        "symbol": "#62c66549c34ab5e4"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --workspace after --method symbolSearch --symbol src/a.cpp:2"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "helper",
+        "kind": "Function",
+        "file": "${WS}/after/src/a.cpp",
+        "line": 2,
+        "container": null,
+        "symbol": "#6ee96116f5b64099 path:${WS}/after/src/a.cpp"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

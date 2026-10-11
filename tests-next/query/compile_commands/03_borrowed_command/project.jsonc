@@ -1,0 +1,5 @@
+{
+  // The case ships its own database; its compiler does not exist, so the
+  // command answer is the database's, the same on every host.
+  "databases": {}
+}

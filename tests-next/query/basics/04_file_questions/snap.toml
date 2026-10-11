@@ -1,0 +1,118 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method projectFiles"]
+stdout = '''
+{
+  "result": {
+    "files": [
+      {
+        "path": "${WS}/main.cpp",
+        "kind": "source",
+        "moduleName": null
+      },
+      {
+        "path": "${WS}/a.h",
+        "kind": "header",
+        "moduleName": null
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method projectFiles --filter source"]
+stdout = '''
+{
+  "result": {
+    "files": [
+      {
+        "path": "${WS}/main.cpp",
+        "kind": "source",
+        "moduleName": null
+      }
+    ],
+    "total": 1
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method fileDeps --path main.cpp --direction includes"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/main.cpp",
+    "includes": [
+      {
+        "path": "${WS}/a.h",
+        "depth": 1
+      }
+    ],
+    "includers": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method fileDeps --path a.h --direction includers"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/a.h",
+    "includes": [],
+    "includers": [
+      {
+        "path": "${WS}/main.cpp",
+        "depth": 1
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method impactAnalysis --path a.h"]
+stdout = '''
+{
+  "result": {
+    "directDependents": [
+      "${WS}/main.cpp"
+    ],
+    "transitiveDependents": [],
+    "affectedModules": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method counterparts --path a.h"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/a.h",
+    "candidates": [
+      {
+        "path": "${WS}/main.cpp",
+        "reasons": [
+          "defines 1 of 1 declaration"
+        ]
+      }
+    ],
+    "preferred": "${WS}/main.cpp"
+  },
+  "stale": []
+}
+'''
+exit = 0

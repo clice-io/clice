@@ -1,0 +1,40 @@
+[test.symbols]
+workspace_symbols = [
+    { name = "alpha", kind = "Function", at = "a.h │ inline int ⟦alpha⟧() { return 1; }" },
+]
+
+[test."symbols after the header changed"]
+workspace_symbols = [
+    { name = "beta", kind = "Function", at = "a.h │ inline int ⟦beta⟧() { return 2; }" },
+]
+
+[test."$ clice index --workers 2"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
+1 translation unit failed to index (see the log); the index is partial:
+  ${WS}/a.h
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = [
+    "warning: [2/2] Index failed for ${WS}/a.h: no compile command found; the file stays uncovered",
+]
+exit = 1
+
+[test."$ clice index --workers 2 #2"]
+stdout = '''
+Indexed 0 translation units in #s: 1 file shard (# B), 3 symbols.
+1 translation unit failed to index (see the log); the index is partial:
+  ${WS}/a.h
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = [
+    "warning: [1/2] Index failed for ${WS}/a.h: no compile command found; the file stays uncovered",
+]
+exit = 1
+
+[test."$ clice index --workers 2 #3"]
+stdout = '''
+Indexed 0 translation units in #s: 1 file shard (# B), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

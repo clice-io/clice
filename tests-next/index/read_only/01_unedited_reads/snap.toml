@@ -1,0 +1,208 @@
+["index serves unedited reads".tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "header.h"', type = "directive" },
+    { at = '#include ⟦"header.h"⟧', type = "header" },
+    { at = "⟦/// Doubles a value.⟧", type = "comment" },
+    { at = "⟦int⟧ twice(int x) {", type = "primitive" },
+    { at = "int ⟦twice⟧(int x) {", type = "function", modifiers = ["definition"] },
+    { at = "int twice(⟦int⟧ x) {", type = "primitive" },
+    { at = "int twice(int ⟦x⟧) {", type = "parameter", modifiers = ["definition"] },
+    { at = "⟦return⟧ add(x, x);", type = "keyword" },
+    { at = "return ⟦add⟧(x, x);", type = "function" },
+    { at = "return add(⟦x⟧, x);", type = "parameter" },
+    { at = "return add(x, ⟦x⟧);", type = "parameter" },
+    { at = "⟦int⟧ main() { return twice(2); }", type = "primitive" },
+    { at = "int ⟦main⟧() { return twice(2); }", type = "function", modifiers = ["definition"] },
+    { at = "int main() { ⟦return⟧ twice(2); }", type = "keyword" },
+    { at = "int main() { return ⟦twice⟧(2); }", type = "function" },
+    { at = "int main() { return twice(⟦2⟧); }", type = "number" },
+]
+
+["index serves unedited reads".outline]
+document_symbols = [
+    { name = "twice", kind = "Function", at = "int ⟦twice⟧(int x) {" },
+    { name = "main", kind = "Function", at = "int ⟦main⟧() { return twice(2); }" },
+]
+
+["index serves unedited reads".folds]
+folding_ranges = [
+    { kind = "functionBody", at = "int twice(int x) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]
+
+["index serves unedited reads".links]
+document_links = [
+    { at = '#include ⟦"header.h"⟧', target = "header.h" },
+]
+
+["index serves unedited reads".add]
+wrong = "read-only hover of a function the project only declares shows its name alone; the declaration's signature is expected, as a compiled file shows it"
+
+["index serves unedited reads".add.hover]
+markdown = "### function `add`"
+range = "return ⟦add⟧(x, x);"
+
+["index serves unedited reads"."add definition"]
+definition = ["header.h │ int ⟦add⟧(int a, int b);"]
+
+["index serves unedited reads".twice.hover]
+markdown = '''
+### function `twice`
+
+---
+Doubles a value.
+
+---
+```cpp
+int twice(int x)
+```
+'''
+range = "int main() { return ⟦twice⟧(2); }"
+
+["index serves unedited reads".x]
+highlights = [
+    { at = "int twice(int ⟦x⟧) {", kind = "text" },
+    { at = "return add(⟦x⟧, x);", kind = "read" },
+    { at = "return add(x, ⟦x⟧);", kind = "read" },
+]
+selection_ranges = [
+    "return add(⟦x⟧, x);",
+    "return add(⟦x, x⟧);",
+    "return add⟦(x, x)⟧;",
+    "⟦return add(x, x);⟧",
+    "int twice(int x) ⟦{ … }⟧ (3 lines)",
+]
+
+["index serves unedited reads".hints]
+inlay_hints = []
+
+["index serves unedited reads".pushes]
+pushes = []
+
+["cold outline awaits the boost".cold]
+outline = [
+    { name = "twice", kind = "Function", at = "int ⟦twice⟧(int x) {" },
+    { name = "main", kind = "Function", at = "int ⟦main⟧() { return twice(2); }" },
+]
+links = [
+    { at = '#include ⟦"header.h"⟧', target = "header.h" },
+]
+
+["edit escalates to compile".edited]
+pushes = []
+
+["edit escalates to compile".read.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "return ⟦add⟧(x, x);"
+
+["edit escalates to compile".pushed]
+pushes = [[]]
+
+["diverged open buffer escalates".restored]
+document_symbols = [
+    { name = "twice", kind = "Function", at = "int ⟦twice⟧(int x) {" },
+    { name = "main", kind = "Function", at = "int ⟦main⟧() { return twice(2); }" },
+]
+
+["diverged open buffer escalates".pushed]
+pushes = [[]]
+
+["readonly on builds no pch".completion.completion]
+items = [
+    { label = "twice(int x)", kind = "Function", detail = "int" },
+]
+
+["readonly on builds no pch".pushes]
+pushes = []
+
+["readonly on pull builds nothing".pulled]
+diagnostics = []
+
+["escalation upgrades inlay hints".read-only]
+inlay_hints = []
+
+["escalation upgrades inlay hints".edited]
+inlay_hints = [
+    { line = "return add(⟨a:⟩x, ⟨b:⟩x);" },
+    { line = "int main() { return twice(⟨x:⟩2); }" },
+]
+
+["diverged buffer serves no links".diverged]
+links = []
+definition = []
+
+["off compiles on demand".opened]
+pushes = []
+
+["off compiles on demand".read.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "return ⟦add⟧(x, x);"
+
+["off compiles on demand".pushed]
+pushes = [[]]
+
+["index answers while pull compile runs".outline]
+document_symbols = [
+    { name = "twice", kind = "Function", at = "int ⟦twice⟧(int x) {" },
+    { name = "main", kind = "Function", at = "int ⟦main⟧() { return twice(2); }" },
+]
+
+["index answers while pull compile runs".pushed]
+pushes = [[]]
+
+["completion escalates".completion.completion]
+items = [
+    { label = "twice(int x)", kind = "Function", detail = "int" },
+]
+
+["completion escalates".completed]
+pushes = []
+
+["completion escalates".read]
+wrong = "read-only hover of a function the project only declares shows its name alone; the declaration's signature is expected, as a compiled file shows it"
+
+["completion escalates".read.hover]
+markdown = "### function `add`"
+range = "return ⟦add⟧(x, x);"
+
+["completion escalates".pushed]
+pushes = [[]]
+
+["header served read-only".header]
+wrong = "read-only hover of a function the project only declares shows its name alone; the declaration's signature is expected, as a compiled file shows it"
+outline = [
+    { name = "add", kind = "Function", at = "int ⟦add⟧(int a, int b);" },
+]
+references = ["int ⟦add⟧(int a, int b);", "main.cpp │ return ⟦add⟧(x, x);"]
+
+["header served read-only".header.hover]
+markdown = "### function `add`"
+range = "int ⟦add⟧(int a, int b);"
+
+["header served read-only".pushed]
+pushes = []
