@@ -359,7 +359,8 @@ llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern) {
 
 void SymbolQuery::anchor(const Spelling& root) {
     for(auto& wanted: paths) {
-        if(llvm::any_of(wanted, [](char c) { return path::is_separator(c); })) {
+        if(wanted == "." || wanted == ".." ||
+           llvm::any_of(wanted, [](char c) { return path::is_separator(c); })) {
             wanted = CanonicalPath(Spelling(wanted, root)).str();
         }
     }

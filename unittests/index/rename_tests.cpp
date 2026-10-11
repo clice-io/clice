@@ -837,6 +837,14 @@ ZEST_CASE(LocalsStayHome) {
     ZASSERT(renamed->unconfirmed.size() == 1U);
     ZEXPECT(renamed->unconfirmed.front().site.path.ends_with("b.h"));
     ZEXPECT(renamed->unconfirmed.front().reason.contains("preprocessor directive"));
+
+    // One changed since it was indexed may define the new name by now.
+    ZASSERT(!static_cast<bool>(vfs::write(file("b.h"), "#define entries 1\n#define ROWS rows\n")));
+    renamed = rename_at("cursor", "entries");
+    ZASSERT(renamed);
+    ZEXPECT(renamed->blocked());
+    ZASSERT(renamed->stale.size() == 1U);
+    ZEXPECT(renamed->stale.front().ends_with("b.h"));
 }
 
 ZEST_CASE(EditOutsideWorkspace) {

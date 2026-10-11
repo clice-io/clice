@@ -503,14 +503,15 @@ RenamePlan plan_rename(const IndexQuery& query,
         auto& served = text_of(file);
         bool indexed = served.text.has_value();
         // A local or a parameter is out of another file's reach but through
-        // a macro it defines, and one no unit compiles defines none for it.
+        // a macro it defines, and a file no indexed unit includes defines
+        // none for it.
         bool foreign = root.scope == SymbolScope::FileLocal && file != target.symbol.site.file;
-        if(foreign && !indexed) {
+        if(indexed ? *served.text != current->text
+                   : query.indexes(file) || (!foreign && scope.units_pending)) {
+            stale.insert(display);
             continue;
         }
-        if(!foreign &&
-           (indexed ? *served.text != current->text : query.indexes(file) || scope.units_pending)) {
-            stale.insert(display);
+        if(foreign && !indexed) {
             continue;
         }
         auto spelled = current->tokens.find(old_name);

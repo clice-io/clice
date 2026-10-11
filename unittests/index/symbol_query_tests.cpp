@@ -235,10 +235,11 @@ ZEST_CASE(Paths) {
 ZEST_CASE(AnchoredPaths) {
     TempDir dir;
     CanonicalPath root(Spelling::absolute(dir.root));
-    auto query = parsed("foo path:src/ path:a.cpp path:./lib/b.h");
+    auto query = parsed("foo path:src/ path:a.cpp path:./lib/b.h path:.");
     query.anchor(Spelling(root));
     auto src = root.str() + "/src";
-    ZEXPECT(query.paths == (std::vector<std::string>{src, "a.cpp", root.str() + "/lib/b.h"}));
+    ZEXPECT(query.paths ==
+            (std::vector<std::string>{src, "a.cpp", root.str() + "/lib/b.h", root.str()}));
     ZEXPECT(index::path_matches(src, src + "/a.cpp"));
     ZEXPECT(!index::path_matches(src, root.str() + "/lib/src/a.cpp"));
 }

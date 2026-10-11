@@ -31,7 +31,7 @@ JoinFlavor => JoinKind
 
 The renames apply at once, each locator naming a symbol as the index has it before any of them: `A => B` beside `B => C` renames the old `B` to `C`, and two names may swap. Each new name is checked against the names the whole list leaves — a symbol another line renames away no longer collides with it, two lines giving symbols of one scope the same name do. A token naming two renamed symbols, such as a call in a template left open between two overloads, is changed when both get the same name and stops the list when they do not. A line renaming a symbol an earlier line renames already is planned once when it gives the same name, and is a conflict when it gives another.
 
-The list is all or nothing: a line that names no symbol, a conflict of any line, or a stale file stops the whole list, and nothing is written. Fix the list and run it again; the index still matches the disk, so no reindex is needed between attempts.
+The list is all or nothing: a line that names no symbol, a conflict of any line, or a stale file stops the whole list, and nothing is written. After a line naming no symbol or a conflict, fix the list and run it again: nothing was written, so the index still matches the disk. A stale file needs reindexing first, which `--fresh` does.
 
 ## Answers
 
@@ -59,6 +59,6 @@ The editor's rename selects the name under the cursor, or says why the symbol th
 
 ## Known Limitations
 
-- The checks are static: a change of meaning the index cannot see — argument-dependent lookup finding another function, a member of the new name capturing a use inside its class, a local of the new name clashing with or hiding the renamed one inside a function, an overload that cannot coexist with the renamed function — goes unnoticed. Build after renaming.
+- The checks are static: a change of meaning the index cannot see — argument-dependent lookup finding another function, a member of the new name capturing a use inside its class, a local or a template parameter of the new name clashing with or hiding the renamed one inside a function, an overload that cannot coexist with the renamed function — goes unnoticed. Build after renaming.
 - Macros cannot be renamed yet.
 - An editor's rename edits through the index of the project serving the file; another project open in the same editor keeps its uses of the symbol.
