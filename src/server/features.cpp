@@ -1612,6 +1612,7 @@ std::vector<protocol::SymbolInformation> Features::workspace_symbol(llvm::String
     if(!parsed) {
         return results;
     }
+    parsed->anchor(Spelling(project.config.workspace_root));
     // Some clients (VS Code) filter the replies against the query text
     // again, where a bare name would fail a qualified query: those
     // replies carry the qualified name.

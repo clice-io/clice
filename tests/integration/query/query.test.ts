@@ -4,7 +4,7 @@
 /// server when one holds the writer lock, else by a batch run.
 
 import * as fs from "node:fs";
-import { basename } from "node:path";
+import { basename, relative } from "node:path";
 import { runProcess, waitUntil, type CliceClient } from "@clice/tools/client";
 import { canonicalUri, Workspace } from "@clice/tools/workspace";
 import { URI } from "vscode-uri";
@@ -525,6 +525,34 @@ test("finds a file's own symbols by name", async ({ session }) => {
         lines.push(picked.result!.definition.startLine);
     }
     expect(lines.sort()).toEqual([2, 4]);
+});
+
+test("paths start at the workspace root", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("src/a.cpp", "static int tally = 1;\nint sum_src() { return tally; }\n");
+    ws.write("lib/src/b.cpp", "static int tally = 2;\nint sum_lib() { return tally; }\n");
+    ws.writeCDB(["src/a.cpp", "lib/src/b.cpp"]);
+    ws.pinCacheDir();
+    expect((await runIndex(ws)).status).toBe(0);
+
+    const files = async (text: string) =>
+        (
+            await query<{ symbols: { name: string; file: string }[] }>(
+                ws,
+                "symbolSearch",
+                "--symbol",
+                text,
+            )
+        )
+            .result!.symbols.map(
+                (s) => `${s.name}@${relative(ws.root, s.file).replaceAll("\\", "/")}`,
+            )
+            .sort();
+    expect(await files("sum path:src/")).toEqual(["sum_src@src/a.cpp"]);
+    expect(await files('"tally" path:src/a.cpp')).toEqual(["tally@src/a.cpp"]);
+    expect(await files('"tally" path:./lib/src/b.cpp')).toEqual(["tally@lib/src/b.cpp"]);
+    expect(await files('"tally" path:b.cpp')).toEqual(["tally@lib/src/b.cpp"]);
+    expect(await files(`sum path:"${ws.path("lib")}"`)).toEqual(["sum_lib@lib/src/b.cpp"]);
 });
 
 test("references reach enumerators of every file", async ({ session }) => {

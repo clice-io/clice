@@ -17,8 +17,9 @@ module;
 ///   src/a.cpp:120        the symbols defined on that line
 ///   src/a.cpp:120:8      the symbol under that cursor (1-based line and byte column)
 ///   kind:function        of these kinds (comma-separated, or the term repeated)
-///   path:src/index/      declared under that directory; a bare file name
-///                        matches by name, any other path by its tail
+///   path:src/index/      declared in that file or under that directory, a
+///                        relative path from the workspace root; a bare file
+///                        name matches by name
 ///
 /// Terms are separated by whitespace; quotes and angle brackets keep
 /// theirs. One term names the symbol, the rest narrow it.
@@ -27,6 +28,7 @@ module clice:index.symbol_query;
 
 import :index.types;
 import :semantic.symbol;
+import :vfs.path;
 
 namespace clice::index {
 
@@ -74,8 +76,9 @@ struct SymbolQuery {
 
     std::vector<SymbolKind> kinds;
 
-    /// Path filters; with a handle, the file whose rows anchor it — a
-    /// symbol only some files see has no project-wide row.
+    /// Path filters, each a bare file name or a path, absolute once
+    /// anchored; with a handle, the file whose rows anchor it — a symbol
+    /// only some files see has no project-wide row.
     std::vector<std::string> paths;
 
     /// Set instead of a pattern: the symbol with this id.
@@ -86,6 +89,10 @@ struct SymbolQuery {
 
     /// Parse a query; the error names what could not be read.
     static std::expected<SymbolQuery, std::string> parse(llvm::StringRef text);
+
+    /// Take the path filters spelling a path as identities, relative ones
+    /// from the workspace `root`; a bare file name stays a name.
+    void anchor(const Spelling& root);
 
     /// Whether the query names symbols by pattern rather than by id or
     /// place.
@@ -117,11 +124,10 @@ bool glob_matches(llvm::StringRef pattern, llvm::StringRef name);
 /// The literal runs between a glob pattern's wildcards.
 llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern);
 
-/// Whether a file satisfies a `path:` term: a bare file name by name, a
-/// directory (trailing separator) by containing it, an absolute path
-/// exactly (or as a directory prefix with its separator), any other path
-/// by its tail on a component boundary.
-bool path_matches(llvm::StringRef wanted, llvm::StringRef path);
+/// Whether `file` satisfies an anchored `path:` term (SymbolQuery::anchor):
+/// a bare file name by name, a path by being that file or lying under that
+/// directory.
+bool path_matches(llvm::StringRef wanted, llvm::StringRef file);
 
 /// One container of a symbol's chain as the scope check sees it.
 struct ScopeEntry {

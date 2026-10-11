@@ -553,7 +553,10 @@ ZEST_CASE(SameScopeCollisions) {
 
 ZEST_CASE(ParametersAndLabels) {
     add_main(file("a.cpp"), R"(
+        int sum(int §(declared)first, int second);
         int sum(int §(param)first, int second) { return first + second; }
+        int scale(int factor, int amount);
+        int scale(int §(apart)value, int amount) { return value * amount; }
         void spin() {
         §(label)again:
         done:
@@ -566,6 +569,16 @@ ZEST_CASE(ParametersAndLabels) {
     ZASSERT(param);
     ZASSERT(param->conflicts.size() == 1U);
     ZEXPECT(param->conflicts.front().contains("parameter of the same function"));
+
+    // Another declaration's parameters are its own.
+    auto apart = rename_at("apart", "factor");
+    ZASSERT(apart);
+    ZEXPECT(clean(*apart));
+    auto alike = batch({
+        {.target = cursor("declared")->target, .new_name = "total"},
+        {.target = cursor("param")->target,    .new_name = "total"},
+    });
+    ZEXPECT(!alike.blocked());
 
     auto label = rename_at("label", "done");
     ZASSERT(label);

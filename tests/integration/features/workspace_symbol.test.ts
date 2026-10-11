@@ -27,3 +27,20 @@ test("exact name outranks prefix and substring matches", async ({ session }) => 
     expect(result).not.toBeNull();
     expect(result!.map((s) => s.name)).toEqual(["foo", "foobar", "xfoo"]);
 });
+
+test("paths start at the workspace root", async ({ session }) => {
+    const { client, workspace } = session.tmp();
+    workspace.write("src/a.cpp", "int sum_src() { return 1; }\n");
+    workspace.write("lib/src/b.cpp", "int sum_lib() { return 2; }\n");
+    workspace.writeCDB(["src/a.cpp", "lib/src/b.cpp"]);
+    await client.initialize(workspace);
+
+    const [uri] = client.open("src/a.cpp");
+    expect(await client.waitForIndex(uri, "sum_lib"), "Index not ready after 30s").toBe(true);
+
+    const named = async (text: string) =>
+        ((await client.workspaceSymbols(text)) ?? []).map((s) => s.name).sort();
+    expect(await named("sum path:src/")).toEqual(["sum_src"]);
+    expect(await named("sum path:lib/src/")).toEqual(["sum_lib"]);
+    expect(await named("sum path:b.cpp")).toEqual(["sum_lib"]);
+});

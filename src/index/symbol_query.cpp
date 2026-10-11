@@ -6,6 +6,7 @@ module clice;
 
 import :index.serialization;
 import :index.symbol_query;
+import :vfs.path;
 
 namespace clice::index {
 
@@ -231,12 +232,6 @@ std::string without_spaces(llvm::StringRef text) {
     return out;
 }
 
-std::string with_forward_slashes(llvm::StringRef path) {
-    std::string out = path.str();
-    std::ranges::replace(out, '\\', '/');
-    return out;
-}
-
 bool segment_matches(const SymbolQuery::Segment& segment, const ScopeEntry& entry) {
     return llvm::StringRef(segment.name).equals_insensitive(entry.name) &&
            args_match(segment.args, entry.args);
@@ -362,22 +357,19 @@ llvm::SmallVector<llvm::StringRef, 4> glob_literals(llvm::StringRef pattern) {
     return result;
 }
 
-bool path_matches(llvm::StringRef wanted, llvm::StringRef path) {
-    auto want = with_forward_slashes(wanted);
-    auto have = with_forward_slashes(path);
-    llvm::StringRef w = want;
-    llvm::StringRef h = have;
-    if(!w.contains('/')) {
-        return llvm::sys::path::filename(h, llvm::sys::path::Style::posix) == w;
+void SymbolQuery::anchor(const Spelling& root) {
+    for(auto& wanted: paths) {
+        if(llvm::any_of(wanted, [](char c) { return path::is_separator(c); })) {
+            wanted = CanonicalPath(Spelling(wanted, root)).str();
+        }
     }
-    bool rooted = w.front() == '/' || (w.size() > 1 && w[1] == ':');
-    if(rooted) {
-        return w.back() == '/' ? h.starts_with(w) : h == w || h.starts_with(want + "/");
+}
+
+bool path_matches(llvm::StringRef wanted, llvm::StringRef file) {
+    if(path::is_rooted(wanted)) {
+        return path::under(file, wanted);
     }
-    if(w.back() == '/') {
-        return h.contains("/" + want);
-    }
-    return h.ends_with("/" + want);
+    return path::filename(file) == wanted;
 }
 
 bool segments_match(llvm::ArrayRef<SymbolQuery::Segment> segments,

@@ -34,7 +34,7 @@ A locator names symbols, wherever a command takes one. It is one string: spaces 
 | `src/a.cpp:120`              | the symbols defined on that line                                                                                                                                                                                                                           |
 | `src/a.cpp:120:8`            | the symbol under that cursor, with a 1-based line and byte column                                                                                                                                                                                          |
 | `kind:function,method`       | only these kinds                                                                                                                                                                                                                                           |
-| `path:src/index/`            | symbols declared under that directory; a bare file name matches by name, any other path by its tail                                                                                                                                                        |
+| `path:src/index/`            | symbols declared in that file or under that directory, a relative path starting at the workspace root; a bare file name, `path:a.cpp`, matches every file of that name                                                                                     |
 
 A local, a parameter and an entity of internal linkage — `static`, or in an anonymous namespace — are known only to the files that see them: a name finds them only together with `path:` naming their file or its directory.
 

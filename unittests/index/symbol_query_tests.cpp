@@ -5,7 +5,9 @@ module;
 module clice;
 
 import :index.symbol_query;
+import :unittests.utils.temp_dir;
 import :unittests.utils;
+import :vfs.path;
 
 namespace clice::testing {
 namespace {
@@ -222,17 +224,23 @@ ZEST_CASE(Globs) {
 ZEST_CASE(Paths) {
     ZEXPECT(index::path_matches("a.cpp", "/w/src/a.cpp"));
     ZEXPECT(!index::path_matches("a.cpp", "/w/src/ba.cpp"));
-    ZEXPECT(index::path_matches("src/a.cpp", "/w/src/a.cpp"));
-    ZEXPECT(!index::path_matches("src/a.cpp", "/w/xsrc/a.cpp"));
-    ZEXPECT(index::path_matches("src/index/", "/w/src/index/a.cpp"));
-    ZEXPECT(!index::path_matches("src/index/", "/w/src/indexer/a.cpp"));
     ZEXPECT(index::path_matches("/w/src/", "/w/src/a.cpp"));
+    ZEXPECT(index::path_matches("/w/src", "/w/src/a.cpp"));
+    ZEXPECT(!index::path_matches("/w/src", "/w/srcx/a.cpp"));
     ZEXPECT(index::path_matches("/w/src/a.cpp", "/w/src/a.cpp"));
     ZEXPECT(!index::path_matches("/w/src/a.cpp", "/w/src/a.cpp2"));
-    ZEXPECT(index::path_matches("/w/src", "/w/src/a.cpp"));
     ZEXPECT(!index::path_matches("/w/src/", "/x/w/src/a.cpp"));
-    ZEXPECT(index::path_matches(R"(src\a.cpp)", "C:/w/src/a.cpp"));
-    ZEXPECT(index::path_matches("C:/w/", R"(C:\w\src\a.cpp)"));
+}
+
+ZEST_CASE(AnchoredPaths) {
+    TempDir dir;
+    CanonicalPath root(Spelling::absolute(dir.root));
+    auto query = parsed("foo path:src/ path:a.cpp path:./lib/b.h");
+    query.anchor(Spelling(root));
+    auto src = root.str() + "/src";
+    ZEXPECT(query.paths == (std::vector<std::string>{src, "a.cpp", root.str() + "/lib/b.h"}));
+    ZEXPECT(index::path_matches(src, src + "/a.cpp"));
+    ZEXPECT(!index::path_matches(src, root.str() + "/lib/src/a.cpp"));
 }
 
 ZEST_CASE(Scope) {

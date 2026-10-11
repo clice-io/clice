@@ -50,8 +50,8 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
 /// one holding an id's rows, is one file, workspace-relative or absolute
 /// as the command's own path arguments are; false when the index holds no
 /// rows for it, which the caller answers as not found with the file
-/// noted. A rooted path filter names its file by identity, however the
-/// command line spelled it.
+/// noted. A path filter spelling a path names its file or directory by
+/// identity, a relative one from the workspace root.
 Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
     auto anchor = [&](std::string& path) -> Outcome<bool> {
         Spelling spelled(path, Spelling(ctx.project.config.workspace_root));
@@ -70,11 +70,7 @@ Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
         }
         return true;
     }
-    for(auto& wanted: query.paths) {
-        if(path::is_absolute(wanted)) {
-            wanted = CanonicalPath(Spelling::absolute(wanted)).str();
-        }
-    }
+    query.anchor(Spelling(ctx.project.config.workspace_root));
     return query.position ? anchor(query.position->path) : true;
 }
 

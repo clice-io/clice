@@ -629,6 +629,25 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
     }
     bool local = parent && function_like(parent->kind);
+    // A function's parameters and locals belong to the declaration whose
+    // name precedes them most closely in their file: another declaration's
+    // never meet the renamed symbol.
+    auto declaration_of = [&](const Site& site) {
+        std::optional<std::uint32_t> nearest;
+        for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
+            for(auto& declared: query.sites(home, site.file, kind)) {
+                if(declared.file == site.file && declared.range.begin < site.range.begin &&
+                   (!nearest || declared.range.begin > *nearest)) {
+                    nearest = declared.range.begin;
+                }
+            }
+        }
+        return std::pair(site.file, nearest);
+    };
+    std::pair<Fid, std::optional<std::uint32_t>> declaration;
+    if(local) {
+        declaration = declaration_of(target.symbol.site);
+    }
     // Both languages reserve `__x` and `_X` everywhere, and `_x` at file
     // and global namespace scope.
     if(new_name.contains("__") ||
@@ -652,6 +671,9 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
         auto other_home = scope_of(symbol, other.site.file);
         if(other_home == home) {
+            if(local && declaration_of(other.site) != declaration) {
+                continue;
+            }
             if(function_like(symbol.kind) && function_like(root.kind)) {
                 // Overloads of the old name renamed alike stay overloads.
                 if(symbol.name == old_name) {

@@ -275,8 +275,8 @@ ZEST_CASE(Filters) {
     ZEXPECT(names(corpus, built, "kind:namespace *") == (Names{"inner", "outer", "v2"}));
     ZEXPECT(names(corpus, built, "u path:memory") == (Names{"unique_ptr"}));
     ZEXPECT(names(corpus, built, "u path:/usr/") == (Names{"unique_ptr"}));
-    ZEXPECT(names(corpus, built, "* path:src/b/") == (Names{"upper_bound"}));
-    ZEXPECT(names(corpus, built, "up path:b/algo.h") == (Names{"upper_bound"}));
+    ZEXPECT(names(corpus, built, "* path:/w/src/b/") == (Names{"upper_bound"}));
+    ZEXPECT(names(corpus, built, "up path:/w/src/b/algo.h") == (Names{"upper_bound"}));
     ZEXPECT(names(corpus, built, "up path:nowhere.h").empty());
     ZEXPECT(names(corpus, built, "up kind:macro").empty());
 }
