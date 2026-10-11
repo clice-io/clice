@@ -1239,26 +1239,37 @@ auto definition(const clang::Decl* decl,
         llvm::dyn_cast<clang::TagDecl>(class_template ? class_template->getTemplatedDecl() : decl);
     if(!tag || !tag->getDefinition()) {
         decl->print(os, policy);
-        return definition;
+    } else {
+        /// The head comes from the definition too: only a definition prints
+        /// its bases. tag_head() relies on the terse body.
+        assert(options.terse);
+        tag = tag->getDefinition();
+        if(class_template) {
+            os << tag_head(*llvm::cast<clang::CXXRecordDecl>(tag)->getDescribedClassTemplate(),
+                           policy);
+        } else {
+            os << tag_head(*tag, policy);
+        }
+        if(options.max_members > 0) {
+            MemberPrinter printer{
+                .os = os,
+                .policy = policy,
+                .token_count = token_count,
+                .budget = options.max_members,
+            };
+            printer.body(*tag);
+        }
     }
 
-    /// The head comes from the definition too: only a definition prints its
-    /// bases. tag_head() relies on the terse body.
-    assert(options.terse);
-    tag = tag->getDefinition();
-    if(class_template) {
-        os << tag_head(*llvm::cast<clang::CXXRecordDecl>(tag)->getDescribedClassTemplate(), policy);
-    } else {
-        os << tag_head(*tag, policy);
-    }
-    if(options.max_members > 0) {
-        MemberPrinter printer{
-            .os = os,
-            .policy = policy,
-            .token_count = token_count,
-            .budget = options.max_members,
-        };
-        printer.body(*tag);
+    /// The declarations of a private module fragment are module private,
+    /// which clang prints as the `__module_private__` specifier of its own
+    /// module maps: no C++20 code spells it.
+    if(decl->isModulePrivate()) {
+        constexpr llvm::StringLiteral specifier = "__module_private__ ";
+        for(auto at = definition.find(specifier); at != std::string::npos;
+            at = definition.find(specifier, at)) {
+            definition.erase(at, specifier.size());
+        }
     }
     return definition;
 }

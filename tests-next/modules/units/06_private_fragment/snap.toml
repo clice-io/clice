@@ -12,9 +12,6 @@ export int public_fn()
 '''
 range = "return ⟦public_fn⟧();"
 
-[answers.defined]
-wrong = "the declaration reads __module_private__, a clang keyword the code never spells; it should read int private_helper()"
-
 [answers.defined.hover]
 markdown = '''
 ### function `private_helper`
@@ -24,7 +21,7 @@ markdown = '''
 
 ---
 ```cpp
-__module_private__ int private_helper()
+int private_helper()
 ```
 '''
 range = "return ⟦private_helper⟧();"
