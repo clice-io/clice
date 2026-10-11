@@ -97,7 +97,7 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
     };
 
     for (;;) {
-        // A silent multi-minute wait here looks like a hung suite; surface
+        // A silent multi-minute wait here looks like a hung suite; report
         // contention early and fail loudly instead of starving forever.
         const waited = Date.now() - startedAt;
         if (!warned && waited > 5_000) {
@@ -141,7 +141,7 @@ async function acquireWorkspaceLock(name: string): Promise<() => void> {
         fs.writeFileSync(pidFile, String(process.pid));
         // Dead-owner stealing has a window: a rival that read the dead pid
         // right before we recreated the lock may still remove it under us.
-        // Confirm ownership after the write settles; losers just retry.
+        // Confirm ownership after the write finishes; losers just retry.
         await sleep(50);
         try {
             if (Number(fs.readFileSync(pidFile, "utf8")) === process.pid) {

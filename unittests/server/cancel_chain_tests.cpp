@@ -16,7 +16,7 @@ ZEST_SUITE(CancelChain) {
 
 // The master-side shape: an LSP handler task raced against its request
 // token, passing the same token into the worker send. When the token
-// fires, the send emits the wire $/cancelRequest and the handler ends
+// fires, the send emits $/cancelRequest over IPC and the handler ends
 // cancelled once the worker has answered — proven here by the worker
 // interrupting a 200k-decl parse instead of finishing it.
 ZEST_CASE(HandlerCancelChainsThrough) {
@@ -68,7 +68,7 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         source.cancel();
         co_await group.join();
 
-        // The worker must have seen the wire cancel: an interrupted (or
+        // The worker must have seen the IPC cancel: an interrupted (or
         // never started) compile leaves the document without an AST.
         worker::QueryParams qp;
         qp.kind = worker::QueryKind::DocumentSymbol;
@@ -86,7 +86,7 @@ ZEST_CASE(HandlerCancelChainsThrough) {
     ZEXPECT(handler_cancelled);
 }
 
-// The scheduler's cooperative cancel of a stateless build is a wire cancel
+// The scheduler's cooperative cancel of a stateless build is an IPC cancel
 // whose answer the sender keeps awaiting (the slot must stay busy while the
 // worker is): the stop flag it trips makes that answer arrive at the next
 // declaration boundary instead of after the whole TU.

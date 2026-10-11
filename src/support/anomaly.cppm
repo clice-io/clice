@@ -16,7 +16,7 @@ namespace clice::logging {
 /// reported as LSP errors, guidance messages or plain logs instead.
 ///
 /// Debug builds abort on the first occurrence so the CI Debug matrix and
-/// local development surface the bug as early as possible. Release builds
+/// local development show the bug as early as possible. Release builds
 /// log the occurrence with an `[anomaly:<id>]` marker (the enumerator name,
 /// rendered via the reflective enum formatter), forward it to the
 /// notify hook (master process: `window/logMessage`) and continue running.

@@ -23,13 +23,13 @@ struct IndexerFixture;
 
 /// The background indexing pump: the standing-interest scheduler that
 /// drives disk files through TURun rounds. It owns the queue, the debt
-/// ledger with its claim/settle contract and requeue budget, the idle
+/// table with its take/finish contract and requeue budget, the idle
 /// batching timer and the feeder window — and nothing about what a run
 /// produces (the TURun family) or where results live (the IndexStore).
 ///
 /// The pump is serving-neutral: it never sees a SessionStore. The serving
 /// side injects its policy through `compiled_by_session` and
-/// `on_attempt_settled`; a batch driver installs neither.
+/// `on_attempt_finished`; a batch driver installs neither.
 class IndexPump {
 public:
     IndexPump(kota::event_loop& loop,
@@ -38,22 +38,22 @@ public:
               IndexStore& store,
               WorkerPool& pool);
 
-    /// Invoked when an index attempt settled with no retry pending, before
+    /// Invoked when an index attempt finished with no retry pending, before
     /// the attempt's waiters wake (contract 15): the serving side decides
-    /// whether the settled state can ever serve an open session and
+    /// whether the finished state can ever serve an open session and
     /// escalates it otherwise, so the waking waiters re-derive their route
     /// against the escalated state. Also invoked for a boost the pump
     /// refuses — a file a rule keeps out of the index — since no attempt
-    /// will ever settle for it.
+    /// will ever finish for it.
     std::function<void(Fid path_id)> on_attempt_finished;
 
     /// Whether an open document's own compile serves the file: debt other
-    /// than a change of its own content then settles without a background
+    /// than a change of its own content then is finished without a background
     /// compile, which would compile the file a second time. The serving
     /// side enqueues the file again when the document closes.
     std::function<bool(Fid path_id)> compiled_by_session;
 
-    /// Emitted when store rows that may be index-served changed (merged,
+    /// Emitted when store shards that may be index-served changed (merged,
     /// re-masked, dropped or shed). Carries the affected path_ids; the
     /// serving adapter checks which of them an open session serves and
     /// refreshes those clients.
@@ -99,7 +99,7 @@ public:
     /// keeps a single queue entry; its reason is upgraded to ContentChanged
     /// if either enqueue says so (a file both cascaded onto and edited is
     /// as stale as the edit makes it). False when a rule keeps the file out
-    /// of the index: nothing is queued and no attempt will ever settle.
+    /// of the index: nothing is queued and no attempt will ever finish.
     bool enqueue(Fid server_path_id, ReindexReason reason);
 
     /// Someone is reading `server_path_id` through the index and nothing
@@ -109,9 +109,9 @@ public:
     void boost(Fid server_path_id);
 
     /// Wait until the pending (re)index attempt observed at call time
-    /// settles — the merge landed, the attempt gave up, or the entry was
+    /// finishes — the merge committed, the attempt gave up, or the entry was
     /// cleared — and return immediately when nothing is pending. One
-    /// attempt, not a settled file: a requeue landing during the flight
+    /// attempt, not an idle file: a requeue arriving during the flight
     /// does not extend the wait. For replies clients cache with no
     /// refresh request (outline, links): answered while the didOpen
     /// boost is still running, the empty result would freeze until the
@@ -130,7 +130,7 @@ public:
     /// ContentChanged reason would suppress its deliberately still-serving
     /// shard forever. A queue slot already consumed stays consumed; one not
     /// yet consumed is skipped at dispatch time (the consume loop treats a
-    /// missing ledger entry as a cleared slot) unless the file is recorded
+    /// missing table entry as a cleared slot) unless the file is recorded
     /// again first, which reuses it.
     void clear_pending(Fid server_path_id) {
         pending_table.clear(server_path_id);
@@ -144,21 +144,21 @@ public:
     /// previously scheduled idle window would starve the reader).
     void schedule(bool immediate = false);
 
-    /// Claim a store report: book its reindex debt into the ledger — before
-    /// the current attempt settles and its waiters wake, so a waker never
-    /// observes rows as settled that the report just declared stale — and
-    /// surface its serving-row changes through on_rows_changed.
+    /// Take a store report: book its reindex debt into the table — before
+    /// the current attempt finishes and its waiters wake, so a waker never
+    /// observes an index as finished that the report just declared stale —
+    /// and report its serving-index changes through on_index_changed.
     void take_report(const IndexStore::Report& report);
 
     /// The pump debt a save()'s CDB snapshot persists: files whose latest
-    /// attempt failed for good plus everything still booked in the ledger.
+    /// attempt failed for good plus everything still booked in the table.
     llvm::SmallVector<Fid> save_debt() const;
 
-    /// Save the index with this pump's debt and claim the report, again
+    /// Save the index with this pump's debt and take the report, again
     /// while a save owes a retry (a grown map can still be too small).
     kota::task<> persist(IndexStore::SearchRebuild search = IndexStore::SearchRebuild::Behind);
 
-    /// Cancel background indexing and wait for all tasks to settle.
+    /// Cancel background indexing and wait for all tasks to finish.
     kota::task<> stop();
 
     /// Whether background indexing is currently idle (no active or queued work).
@@ -173,15 +173,15 @@ public:
 
     /// Files whose latest index attempt failed for good — rejected by the
     /// worker, an empty or unverifiable result, a spent crash budget, or a
-    /// dead IPC path — with no retry pending. Their rows are missing or
+    /// dead IPC path — with no retry pending. Their index is missing or
     /// stale; a later successful pass removes them again. The one-shot
     /// `clice index` reports a partial build from this.
     const llvm::DenseSet<Fid>& failed() const {
         return failed_ids;
     }
 
-    /// TUs actually indexed and merged this session — dispatched claims the
-    /// freshness gate skipped do not count. The one-shot `clice index`
+    /// TUs actually indexed and merged this session — dispatched taken debts
+    /// the freshness gate skipped do not count. The one-shot `clice index`
     /// reports its work from this, so a warm rerun honestly says 0.
     std::size_t indexed_files() const {
         return indexed_total;
@@ -216,7 +216,7 @@ private:
     IndexStore& store;
     WorkerPool& pool;
 
-    /// Background indexing queue and scheduling state. The ledger tracks
+    /// Background indexing queue and scheduling state. The pending table tracks
     /// which files hold an un-consumed slot so enqueue can dedupe; the
     /// queue is compacted once a round has fully drained.
     std::vector<Fid> index_queue;
@@ -225,8 +225,8 @@ private:
     /// next round and may be a file the running round has in flight.
     std::size_t round_end = 0;
 
-    /// The pending-reindex debt: claim/settle bookkeeping, tickets and
-    /// the crash-requeue budget live in the ledger. The pump-side rules
+    /// The pending-reindex debt: take/finish bookkeeping, tickets and
+    /// the crash-requeue budget live in the pending table. The pump-side rules
     /// on top of it, each born from a concrete bug:
     /// 1. The freshness check inside the index task is the ONLY place
     ///    that decides to skip work. Duplicating it at the feeder
@@ -238,14 +238,14 @@ private:
 
     constexpr static unsigned max_requeue_attempts = 3;
 
-    /// Merge a failed dispatch's claim back through the ledger and apply
+    /// Merge a failed dispatch's taken debt back through the table and apply
     /// the pump-side halves: a Requeued file gets its queue slot, an
     /// abandoned one wakes its waiters.
     PendingTable::FailureDecision note_dispatch_failure(const PendingTable::TakenDebt& taken,
                                                         PendingTable::Failure failure);
 
     /// Wake the file's await_attempt waiters whose observed ticket the
-    /// settled attempt covers (`ticket` and older) and drop their events.
+    /// finished attempt covers (`ticket` and older) and drop their events.
     /// The default wakes every waiter — for the paths where no further
     /// attempt will come (entry cleared, shutdown).
     void wake_attempt_waits(Fid server_path_id, std::uint64_t ticket = -1);
@@ -260,9 +260,9 @@ private:
 
     /// The events await_attempt waiters park on, per file and per pending
     /// ticket observed at wait time; each fires when an attempt covering
-    /// its ticket settles (or wholesale at stop()). Keyed by ticket so a
+    /// its ticket finishes (or wholesale at stop()). Keyed by ticket so a
     /// requeue during an attempt's flight cannot extend earlier waits —
-    /// await_attempt promises one attempt, not a settled file.
+    /// await_attempt promises one attempt, not an idle file.
     llvm::DenseMap<Fid, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
     bool indexing_active = false;
     bool indexing_scheduled = false;
@@ -307,7 +307,7 @@ private:
                                   std::size_t& dispatched);
 
     /// One dispatched unit of a background round: admit, run the TU through
-    /// its TURun node, claim the merge report, settle the claimed debt and
+    /// its TURun node, take the merge report, finish the taken debt and
     /// report progress.
     kota::task<> run_index_task(PendingTable::TakenDebt taken,
                                 std::size_t index,

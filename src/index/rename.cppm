@@ -4,8 +4,8 @@ module;
 
 /// Rename: the symbols one name change touches, the tokens spelling their
 /// name, and what keeps the change from being safe. The index answers all
-/// of it — no recompile: a rename is the rows of a symbol group, each
-/// checked against the text it indexed, plus a sweep of the workspace for
+/// of it — no recompile: a rename is the entries of a symbol group, each
+/// checked against the text it indexed, plus a scan of the workspace for
 /// the tokens spelling the old name that the index ties to nothing.
 
 module clice:index.rename;
@@ -48,8 +48,8 @@ struct CursorRename {
 std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
                                                    const IndexQuery::Cursor& cursor);
 
-/// A file's current text as a rename's sweep looks at it: the tokens
-/// spelling each name swept — a rename's old and new name, or those of
+/// A file's current text as a rename's scan looks at it: the tokens
+/// spelling each name scanned — a rename's old and new name, or those of
 /// every rename of a batch.
 struct ScannedText {
     std::string text;
@@ -63,14 +63,14 @@ struct ScannedText {
     llvm::StringMap<std::vector<Token>> tokens;
 };
 
-/// Sweep `text` for `names`; nullopt when it spells none of them as a
+/// Scan `text` for `names`; nullopt when it spells none of them as a
 /// token. Text work alone, safe on any thread: a server runs it off its
 /// event loop over the whole workspace.
 std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& names);
 
 /// Where a rename may change text, and how to read it.
 struct RenameScope {
-    /// The workspace files the sweep looks at, absolute: its sources and
+    /// The workspace files the scan looks at, absolute: its sources and
     /// headers by suffix, build trees, hidden directories and the cache
     /// directory left out.
     llvm::ArrayRef<std::string> files;
@@ -80,12 +80,12 @@ struct RenameScope {
     /// conflict.
     llvm::function_ref<bool(llvm::StringRef path)> editable;
 
-    /// A file's current text — an open buffer's, else the disk's — swept
-    /// for the names of the rename (sweep_text); null when it spells none.
+    /// A file's current text — an open buffer's, else the disk's — scanned
+    /// for the names of the rename (scan_text); null when it spells none.
     llvm::function_ref<const ScannedText*(llvm::StringRef path)> read;
 
     /// Whether some unit of the build the index is to hold has no record
-    /// in it yet: a file the index holds no rows of may then be one the
+    /// in it yet: a file the index holds no shard of may then be one the
     /// unit compiles or includes, unindexed rather than outside the index.
     bool units_pending = false;
 };
@@ -124,7 +124,7 @@ struct RenamePlan {
     std::vector<std::string> warnings;
 
     /// Files the rename edits, or that spell its old or new name, whose
-    /// rows are not current — their text moved on, or the build compiles
+    /// index is not current — their text moved on, or the build compiles
     /// them but the index never did. Nothing is written while any stands.
     std::vector<std::string> stale;
 
@@ -179,7 +179,7 @@ struct BatchPlan {
     }
 };
 
-/// Plan `renamings` together. `scope.read` sweeps a file for the old and
+/// Plan `renamings` together. `scope.read` scans a file for the old and
 /// new names of all of them; each plan looks only at the files spelling
 /// its own two.
 BatchPlan plan_renames(const IndexQuery& query,

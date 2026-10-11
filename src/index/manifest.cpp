@@ -31,7 +31,7 @@ struct ManifestBlob {
     /// node_count × (varint fv, varint parent + 1 with 0 = root, varint line)
     std::vector<std::uint8_t> nodes;
 
-    /// contribution_count × (varint fv, 8-byte little-endian rows hash —
+    /// contribution_count × (varint fv, 8-byte little-endian variant hash —
     /// hashes are random bits, varint would only inflate them)
     std::vector<std::uint8_t> contributions;
 

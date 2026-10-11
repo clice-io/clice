@@ -32,7 +32,7 @@ std::string extract_line(llvm::StringRef content, std::uint32_t offset) {
 }
 
 /// The disk bytes of a pure-ASCII blob's file, served only while their
-/// hash still matches what the rows were built from — a moved-on file
+/// hash still matches what the shard was built from — a moved-on file
 /// degrades to no text rather than slicing mismatched text.
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
@@ -53,7 +53,7 @@ auto site_key(const Site& site) {
     return std::tie(site.path, site.range.begin, site.range.end);
 }
 
-/// The whole declaration a declaring row names, when the row carries its
+/// The whole declaration a declaring relation names, when the relation carries its
 /// extent in this source's text.
 std::optional<Site> extent_of(const IndexSource& source, const Relation& relation) {
     assert(RelationKind(relation.kind).isDeclOrDef());
@@ -98,7 +98,7 @@ llvm::SmallVector<SymbolRef, 4>
     return chain;
 }
 
-/// Whether the rows declare or define the symbol, not only name it.
+/// Whether the shard declares or defines the symbol, not only name it.
 bool declares(const Shard& shard, SymbolHash hash) {
     bool found = false;
     for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
@@ -217,10 +217,10 @@ std::optional<IndexSource> IndexQuery::serving(Fid file) const {
         return std::nullopt;
     }
     return IndexSource{.kind = IndexSource::Kind::Shard,
-                     .file = file,
-                     .path = files.display(file),
-                     .shard = shard,
-                     .positions = shard->positions()};
+                       .file = file,
+                       .path = files.display(file),
+                       .shard = shard,
+                       .positions = shard->positions()};
 }
 
 const Shard* IndexQuery::shard_matching(Fid file, llvm::StringRef text) const {
@@ -233,9 +233,9 @@ std::shared_ptr<TUIndex> IndexQuery::preamble_blob(Fid file) const {
 }
 
 bool IndexQuery::visit_overlay_relations(const TUIndex& state,
-                                    SymbolHash hash,
-                                    RelationKind kind,
-                                    RelationVisitor visitor) const {
+                                         SymbolHash hash,
+                                         RelationKind kind,
+                                         RelationVisitor visitor) const {
     auto main_id = state.path_count() - 1;
     bool stopped = false;
     for(std::uint32_t i = 0; i < state.section_count() && !stopped; i += 1) {
@@ -246,8 +246,8 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
         auto& shard = state.section_shard(i);
         std::optional<IndexSource> source;
         shard.lookup(hash, kind, [&](const Relation& relation) {
-            // An overlay spans hundreds of headers and few hold rows of any
-            // one symbol: resolving every entry's file up front dominated
+            // An overlay spans hundreds of headers and few hold relations of
+            // any one symbol: resolving every entry's file up front dominated
             // each lookup.
             if(!source) {
                 auto file = files.intern(Spelling::absolute(state.path(local_id)));
@@ -255,10 +255,10 @@ bool IndexQuery::visit_overlay_relations(const TUIndex& state,
                     return false;
                 }
                 source = IndexSource{.kind = IndexSource::Kind::Overlay,
-                                   .file = file,
-                                   .path = files.display(file),
-                                   .shard = &shard,
-                                   .positions = shard.positions()};
+                                     .file = file,
+                                     .path = files.display(file),
+                                     .shard = &shard,
+                                     .positions = shard.positions()};
             }
             stopped = !visitor(*source, relation);
             return !stopped;
@@ -347,10 +347,10 @@ void IndexQuery::for_each_relation(SymbolHash hash,
     };
 
     if(order == Order::LiveFirst) {
-        // Live sources outrank disk shards: they carry the rows as seen
+        // Live sources outrank disk shards: they carry the index as seen
         // under the buffer's context, and exist even when no disk TU has
         // been indexed — the in-memory-file case behind empty
-        // go-to-definition. First the buffers' own rows, then their
+        // go-to-definition. First the buffers' own indexes, then their
         // preamble regions, then the header entries.
         [[maybe_unused]] bool completed = sessions() && preambles() && overlays() && disk();
     } else {
@@ -368,7 +368,7 @@ const Shard* IndexQuery::declaring_shard(Fid file) const {
 void IndexQuery::each_live_file(SymbolHash hash,
                                 RelationKind kind,
                                 llvm::function_ref<void(Fid)> visit) const {
-    // One source's rows arrive together.
+    // One source's relations arrive together.
     Fid last;
     for_each_relation(hash,
                       {},
@@ -427,9 +427,9 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
             return false;
         }
         auto site = IndexSource{.file = file,
-                              .path = source->path,
-                              .shard = &shard,
-                              .positions = source->positions}
+                                .path = source->path,
+                                .shard = &shard,
+                                .positions = source->positions}
                         .site(named->range);
         if(!site) {
             return false;
@@ -573,7 +573,7 @@ std::vector<Site> IndexQuery::sites(SymbolHash hash, Fid anchor, RelationKind ki
                           }
                           return true;
                       });
-    // Same-kind rows can share one anchor: a macro body using an argument
+    // Same-kind relations can share one anchor: a macro body using an argument
     // twice spells both references at the one written token.
     dedup_sites(result);
     return result;
@@ -610,11 +610,11 @@ std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, 
         return placed;
     }
     // A declaration stands in only for a symbol nothing defines. A
-    // reported definition may sit in a file whose rows are not serving —
-    // withheld as stale, or an open buffer that moved on from them — and
+    // reported definition may sit in a file whose shard is not serving —
+    // withheld as stale, or an open buffer that moved on from it — and
     // then stays unavailable (`clice query` reports such a symbol as not
     // found). A deleted file holds nothing anymore, and a definition
-    // deleted since its report leaves no such row behind.
+    // deleted since its report leaves no such relation behind.
     if(reported_defined(hash, anchor)) {
         bool unavailable = false;
         each_disk_file(hash, anchor, [&](Fid file) {
@@ -667,7 +667,7 @@ std::vector<IndexQuery::Edge> IndexQuery::edges(SymbolHash hash,
         if(!located) {
             continue;
         }
-        // A row present in both a shard and an overlay lands twice;
+        // A relation present in both a shard and an overlay arrives twice;
         // hierarchy items must not repeat call sites.
         dedup_sites(sites);
         result.push_back({.symbol = std::move(*located), .sites = std::move(sites)});
@@ -810,7 +810,7 @@ std::vector<IndexQuery::PlacedHighlight>
             }
         }
     };
-    // The preamble rows live only as long as the visit.
+    // The preamble index lives only as long as the visit.
     bool placed = false;
     if(source->kind == IndexSource::Kind::SessionIndex) {
         live->each_preamble([&](const IndexSource& preamble) {
@@ -899,7 +899,7 @@ std::optional<llvm::StringRef>
                             std::unique_ptr<llvm::MemoryBuffer>& storage) const {
     // Buffer-backed sources and non-ASCII blobs carry their text; an
     // open session served by its shard reads in buffer coordinates, so it
-    // lands here too.
+    // ends up here too.
     if(source.kind == IndexSource::Kind::SessionIndex ||
        source.kind == IndexSource::Kind::PreambleIndex || !source.positions.text().empty()) {
         return source.positions.text();
@@ -909,7 +909,7 @@ std::optional<llvm::StringRef>
 
 std::optional<IndexQuery::Definition> IndexQuery::definition_text(SymbolHash hash,
                                                                   Fid anchor) const {
-    // Live sources first: buffer-true rows also know symbols the project
+    // Live sources first: buffer-true indexes also know symbols the project
     // table has never seen (an unsaved definition), the preamble region
     // holds the buffer's own macros, and an overlay is the only source for
     // a header seen under the live context. The first in-bounds Definition
@@ -995,12 +995,12 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
     llvm::DenseSet<SymbolHash> seen;
     auto indexed = index.search_index.search(query, limit, index.workspace);
     // A damaged index answers incompletely, a missing one not at all:
-    // until the rebuild the whole table is judged row by row instead.
+    // until the rebuild the whole table is judged symbol by symbol instead.
     bool scan_table = index.search_index.damaged() || !index.search_index.loaded();
     bool exhausted = scan_table || indexed.exhausted;
     if(!scan_table) {
         for(auto& hit: indexed.hits) {
-            // A row the table changed since the index was built is read
+            // A symbol the table changed since the index was built is read
             // from the table below, not from the index's stale copy.
             if(index.search_pending.contains(hit.hash)) {
                 continue;
@@ -1013,7 +1013,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
     }
 
     // What the index does not file — the symbols merged since it was
-    // built, and the open sessions' — is judged row by row against the
+    // built, and the open sessions' — is judged symbol by symbol against the
     // same query.
     NameRanker ranker(query);
     bool scoped =
@@ -1107,8 +1107,8 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
         });
     }
     // A file's own symbols — locals, parameters, internal-linkage
-    // entities — are in no table but the file's rows, which hold every
-    // such symbol they name: a query naming files looks for the ones each
+    // entities — are in no table but the file's shard, which holds every
+    // such symbol it names: a query naming files looks for the ones each
     // of them declares.
     if(!query.paths.empty()) {
         for(std::uint32_t raw = 0; raw < files.spellings.size(); raw += 1) {
@@ -1204,8 +1204,8 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
         if(!path_id) {
             return {};
         }
-        // Stale rows describe text that no longer exists: resolving the
-        // requested place against them would name the wrong symbol.
+        // A stale index describes text that no longer exists: resolving the
+        // requested place against it would name the wrong symbol.
         auto source = serving(*path_id);
         if(!source) {
             return {};
@@ -1229,7 +1229,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
             return resolve_at(*cursor);
         }
         // The definitions on the line, the file's own symbols included:
-        // the serving source holds every row, whichever table names it.
+        // the serving source holds every entry, whichever table names it.
         std::vector<Located> defined;
         llvm::DenseSet<SymbolHash> seen;
         source->shard->for_each_relation([&](SymbolHash hash, const Relation& r) {
@@ -1260,7 +1260,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
             break;
         }
     }
-    // Spelling the name exactly settles it; otherwise every match stands.
+    // Spelling the name exactly decides it; otherwise every match stands.
     // A class and its constructors spell one name: asked by it, the class
     // answers.
     llvm::DenseSet<SymbolHash> exact;
@@ -1291,7 +1291,7 @@ std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
     if(!source) {
         return {};
     }
-    // The rows themselves say what is defined in the file, in row order:
+    // The relations themselves say what is defined in the file, in shard order:
     // the project table's symbols and the file's internal ones — a
     // function's locals are no part of it.
     std::vector<Located> result;
@@ -1390,7 +1390,7 @@ auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::st
     // Between a closing */ and its opener the scan is inside a block
     // comment: interior lines need no marker of their own (`/*` above bare
     // text above `*/`). `block_start` remembers where the block began in
-    // `lines` so one whose opener never surfaces can be dropped.
+    // `lines` so one whose opener never shows up can be dropped.
     bool in_block = false;
     std::size_t block_start = 0;
     while(begin > 0) {

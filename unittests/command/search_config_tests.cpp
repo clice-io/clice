@@ -61,7 +61,7 @@ ZEST_CASE(ReordersDirectoryGroups) {
 
 ZEST_CASE(KeepsForcedIncludes) {
     // In command order and as written: their lookup starts from the
-    // working directory, which extraction does not settle.
+    // working directory, which extraction does not determine.
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
                                      "-include",

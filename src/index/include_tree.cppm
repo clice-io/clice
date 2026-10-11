@@ -23,8 +23,8 @@ constexpr inline std::uint32_t no_node = ~0u;
 /// (headers without guards) are distinct nodes; so is a directive whose
 /// target was skipped (guarded or `#pragma once`, entered earlier) — an
 /// edge of the document with no file entry behind it. The same nodes
-/// travel in the TU envelope and persist in the manifest; only `file`
-/// changes meaning at merge: a TU-local path id on the wire, a
+/// travel in the TU index and persist in the manifest; only `file`
+/// changes meaning at merge: a TU-local path id in the TU index, a
 /// FileVersion id (VersionID::raw) in a manifest.
 struct IncludeNode {
     std::uint32_t file = 0;
@@ -42,7 +42,7 @@ struct IncludeNode {
     friend bool operator==(const IncludeNode&, const IncludeNode&) = default;
 };
 
-/// The include tree of one compilation as the envelope carries it. Path
+/// The include tree of one compilation as the TU index carries it. Path
 /// ids are TU-local; the main file is always the last path, a convention
 /// serialization and the indexer rely on.
 struct IncludeTree {
@@ -52,14 +52,14 @@ struct IncludeTree {
 
     /// Parallel to `paths`: hash of the bytes this compilation actually
     /// consumed per file (0 = the buffer was unavailable for hashing).
-    /// Freshness baselines built from these describe what the index rows
-    /// were built from, never a later disk state.
+    /// Freshness baselines built from these describe what the index was
+    /// built from, never a later disk state.
     std::vector<std::uint64_t> path_hashes;
 
     /// Every include edge of the parse. Besides backing `path_id` lookups,
     /// these are the TU's include dependencies for shard freshness checks,
-    /// so it keeps every edge even when no index row lands in the included
-    /// file.
+    /// so it keeps every edge even when no index entry ends up in the
+    /// included file.
     std::vector<IncludeNode> nodes;
 
     /// Build-time only: each FileID (one header context) to the node that
@@ -69,7 +69,7 @@ struct IncludeTree {
 
     /// Build the tree for `unit`. The nodes cover the union of every file
     /// included in this parse (from the replayed directives) and
-    /// `indexed_fids` — the files the index actually recorded rows for.
+    /// `indexed_fids` — the files the index actually recorded entries for.
     /// The latter can lie outside the directives universe: with a preamble
     /// PCH the preamble headers' FileIDs are loaded from the AST file and
     /// this parse's preprocessor callbacks never see them. Their include

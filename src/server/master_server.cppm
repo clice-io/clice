@@ -204,7 +204,7 @@ public:
     /// metadata save that follows a build is not waited for.
     kota::task<> wait_idle(const kota::ipc::JSONPeer& editor);
 
-    /// What settle() still waits for, one line each; empty once settled.
+    /// What wait_idle() still waits for, one line each; empty once idle.
     std::vector<std::string> pending_work(const kota::ipc::JSONPeer& editor);
 
     kota::cancellation_token shutdown_token() const {
@@ -223,7 +223,7 @@ public:
     WorkerPool pool;
 
     /// The projects served, in folder order; never empty. The first also
-    /// serves files no project claims. Shared with the requests running in
+    /// serves files no project covers. Shared with the requests running in
     /// a project, which keep a removed one alive until they complete.
     std::vector<std::shared_ptr<ProjectServer>> projects;
 
@@ -241,14 +241,14 @@ public:
     /// A project started or stopped serving.
     Signal<> on_projects_changed;
 
-    /// Emitted when rows an open index-served session is serving changed:
-    /// results the client already pulled describe the old rows, and only a
+    /// Emitted when the index an open index-served session is serving changed:
+    /// results the client already pulled describe the old index, and only a
     /// refresh request makes it re-pull them — index-only sessions never
     /// compile, so the compile-driven refresh in the output push path
     /// cannot cover them.
     Signal<> on_serving_index_changed;
 
-    /// Wakes subscribers after a new message landed in notify_log. Pure
+    /// Wakes subscribers after a new message arrived in notify_log. Pure
     /// wake-up per the Signal contract: subscribers keep a sequence cursor
     /// and read the messages from the log, so a late subscriber (or a
     /// missed signal) simply catches up on its next drain. The constructor
@@ -270,7 +270,7 @@ public:
 
     /// The folders served: the client's workspace folders (or
     /// the command line's --workspace), and the roots open_session found
-    /// above files no folder claims.
+    /// above files no folder covers.
     std::vector<CanonicalPath> workspace_roots;
 
     /// The client's initializationOptions, applied to every project.
@@ -287,7 +287,7 @@ public:
     bool client_on_host = false;
 
 private:
-    /// A project over `root`, its cross-project queries wired to the
+    /// A project over `root`, its cross-project queries connected to the
     /// others.
     std::shared_ptr<ProjectServer> make_project(CanonicalPath root);
 
@@ -336,10 +336,10 @@ private:
     ProjectServer* compiler(Fid path_id);
 
     /// The project a file belongs to: its compiler, else the deepest root
-    /// holding it; null when none claims it.
+    /// holding it; null when none covers it.
     ProjectServer* project_of(Fid path_id);
 
-    /// The claimant, else the first project.
+    /// The file's project (project_of), else the first project.
     ProjectServer& route(Fid path_id);
 
     /// Move the open documents of `from` routing now sends elsewhere,

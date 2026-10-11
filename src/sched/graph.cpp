@@ -84,7 +84,7 @@ void TaskGraph::release(NodeId id) {
 kota::task<> TaskGraph::zero_interest_check(NodeId id) {
     // Resumes on the next event-loop iteration, strictly after every
     // deferred resume of the current one — i.e. after the release/
-    // re-acquire cascade that scheduled this check has fully settled.
+    // re-acquire cascade that scheduled this check has fully finished.
     co_await kota::yield();
 
     auto& node = nodes.find(id)->second;
@@ -165,7 +165,7 @@ void TaskGraph::finish_round(NodeId id, Round& round, RoundOutcome reported) {
     auto& node = nodes.find(id)->second;
     assert(node.compiling && node.round.get() == &round && "round bookkeeping out of sync");
 
-    // An overtaken round has no verdict about the current content,
+    // An overtaken round has no result about the current content,
     // whatever it reported: a stale Success must not clear dirty, and a
     // stale Failed must not stop waiters from retrying with the new
     // content. Outcome always passes through round identity.
@@ -194,7 +194,7 @@ void TaskGraph::finish_round(NodeId id, Round& round, RoundOutcome reported) {
     }
 
     // Publish last: resumes triggered by set() are deferred by the event
-    // loop, so nothing re-enters the graph mid-landing.
+    // loop, so nothing re-enters the graph mid-commit.
     round.outcome = outcome;
     round.completion.set();
 }
@@ -286,7 +286,7 @@ kota::task<bool> TaskGraph::join_node(NodeId id, std::optional<NodeId> waiter) {
         }
 
         // Re-find: spawn_round runs the closure synchronously, which may
-        // rehash the map (and may even land the round outright).
+        // rehash the map (and may even finish the round outright).
         auto round = nodes.find(id)->second.round;
 
         // Blocking on a node whose live wait chain reaches back to the
@@ -300,7 +300,7 @@ kota::task<bool> TaskGraph::join_node(NodeId id, std::optional<NodeId> waiter) {
         switch(round->outcome) {
             case RoundOutcome::Success: co_return true;
             case RoundOutcome::Failed: co_return false;
-            // The round ended without a verdict; we still hold interest,
+            // The round ended without a result; we still hold interest,
             // so drive a new one. Each retry consumes one staleness event
             // — this terminates once the events stop.
             case RoundOutcome::Stale: break;
@@ -365,7 +365,7 @@ llvm::SmallVector<NodeId> TaskGraph::update(NodeId id) {
 
         // The in-flight result (if any) is stale: fire the round's token.
         // Interest is untouched — waiters keep their references and drive
-        // a fresh round once the overtaken one lands.
+        // a fresh round once the overtaken one finishes.
         cancel_round(node);
         node.dirty = true;
         node.generation += 1;
@@ -384,7 +384,7 @@ void TaskGraph::mark_dirty(NodeId id) {
         return;
     }
     // No generation bump and no token: an in-flight round is already
-    // producing the fresh artifact this mark asks for, and its landing
+    // producing the fresh artifact this mark asks for, and its commit
     // clears the flag it would find set.
     it->second.dirty = true;
 }

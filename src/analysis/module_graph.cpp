@@ -20,7 +20,7 @@ namespace {
 
 constexpr std::uint32_t none = ~0u;
 
-/// 1-based line of `offset` in the content a shard's rows describe.
+/// 1-based line of `offset` in the content a shard describes.
 std::uint32_t line_of(const index::Shard& shard, std::uint32_t offset) {
     return kota::ipc::lsp::line_of(shard.line_starts(), offset) + 1;
 }
@@ -63,7 +63,7 @@ struct RawUse {
     std::uint32_t count = 0;
     std::uint32_t line = 0;
 
-    /// Some row names it outright rather than as an overload candidate.
+    /// Some relation names it outright rather than as an overload candidate.
     bool strong = false;
 };
 
@@ -208,7 +208,7 @@ llvm::SmallVector<std::uint32_t> including_files(const Facts& facts,
 /// The files a file's uses are charged to: itself, or for a fragment the
 /// files including it. A table pasted inside declarations is charged to
 /// none: each file pasting it names what it names there through its own
-/// Pasted rows, and its own rows merge what every pasting context made of
+/// Pasted relations, and its own shard merges what every pasting context made of
 /// it (clang's Options.inc expands to enumerators in clang and to option
 /// tables naming the program's types in the program).
 llvm::SmallVector<std::uint32_t> charged_files(const Facts& facts, std::uint32_t file) {
@@ -236,7 +236,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         return relative.empty() ? std::string(table.display(fid)) : relative;
     };
 
-    // The scoped files are the indexed ones: those holding rows, the
+    // The scoped files are the indexed ones: those holding a shard, the
     // translation units, and the files their include trees enter.
     llvm::DenseMap<Fid, std::uint32_t> ids;
     std::vector<Fid> fids;
@@ -285,7 +285,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     // closure runs through third-party headers.
     llvm::DenseMap<Fid, llvm::SmallVector<Fid>> includes;
     llvm::DenseMap<Fid, llvm::SmallVector<Fid, 2>> included_by;
-    /// (file, rows hash) -> the scoped units whose rows of the file are
+    /// (file, variant hash) -> the scoped units whose index of the file is
     /// that variant.
     llvm::DenseMap<std::pair<std::uint32_t, std::uint64_t>, llvm::SmallVector<std::uint32_t, 2>>
         contributors;
@@ -349,7 +349,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         }
     }
 
-    // The text of a scoped file's line, from the disk: the rows hold
+    // The text of a scoped file's line, from the disk: the index holds
     // positions, not the source.
     llvm::DenseMap<std::uint32_t, std::string> contents;
     auto text_of = [&](std::uint32_t file) -> llvm::StringRef {
@@ -414,7 +414,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
 
     // A name qualified by its containers, inline namespaces skipped as
     // lookup skips them. A TU-local container is in `shard`, the shard
-    // holding the entity's rows.
+    // holding the entity's entries.
     auto identity_of = [&](index::SymbolHash hash, const index::Shard* shard) {
         auto identity = index.identity_of(hash);
         if(!identity && shard) {
@@ -477,9 +477,9 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
                identity.name.str();
     };
 
-    // What each scoped file names, from its reference rows: a spelled name
+    // What each scoped file names, from its reference relations: a spelled name
     // mirrors its occurrence there, and a name a macro expansion produces
-    // has only the row. A weak row is one candidate of a dependent call's
+    // has only the relation. A weak relation is one candidate of a dependent call's
     // overload set, kept apart: the candidates an operator finds where a
     // template is defined are not what its instantiations call.
     llvm::DenseMap<index::SymbolHash, llvm::SmallVector<Site, 2>> sites;
@@ -599,7 +599,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         });
     }
 
-    // A fragment pasted inside a declaration: the includer's Pasted rows at
+    // A fragment pasted inside a declaration: the includer's Pasted relations at
     // the directive name what the fragment names there.
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
         for(auto line: pasted_lines[id]) {
@@ -616,7 +616,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     }
 
     // A macro definition some #undef removes is a helper scoped to the lines
-    // between (an X-macro around a table): the #undef's row references it.
+    // between (an X-macro around a table): the #undef's relation references it.
     // A header included again undefines its own macro ahead of defining it
     // anew (<assert.h>, <limits.h>): that #undef ends nothing.
     llvm::DenseSet<index::SymbolHash> undefined;
@@ -722,7 +722,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
     };
 
     // A using-declaration at namespace scope (`namespace hlsl { using
-    // dxil::ResourceClass; }`) re-declares a name there: a weak row of the
+    // dxil::ResourceClass; }`) re-declares a name there: a weak relation of the
     // target on a `using` line in a namespace.
     for(std::uint32_t id = 0; id < facts.files.size(); id += 1) {
         auto* shard = index.shard(fids[id]);
@@ -747,8 +747,8 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         }
     }
 
-    // A namespace alias at namespace scope: its definition row, and on its
-    // line the last row naming a namespace, the one it aliases.
+    // A namespace alias at namespace scope: its definition relation, and on its
+    // line the last relation naming a namespace, the one it aliases.
     for(auto& [hash, list]: sites) {
         auto identity = index.identity_of(hash);
         if(!identity || identity->kind != SymbolKind::Namespace) {
@@ -1228,7 +1228,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         std::ranges::sort(facts.files[id].specializes);
     }
 
-    // Each use row inside a definition the file provides belongs to the
+    // Each use relation inside a definition the file provides belongs to the
     // innermost such definition: what moves with it.
     struct Extent {
         std::uint32_t begin = 0;
@@ -1257,12 +1257,12 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
         std::ranges::sort(definitions, [](const Extent& lhs, const Extent& rhs) {
             return std::tuple(lhs.begin, rhs.end) < std::tuple(rhs.begin, lhs.end);
         });
-        auto& sites = use_sites[id];
-        std::ranges::sort(sites);
+        auto& file_sites = use_sites[id];
+        std::ranges::sort(file_sites);
         std::vector<std::pair<std::uint32_t, std::uint32_t>> owned_uses;
         llvm::SmallVector<const Extent*> open;
         std::size_t next = 0;
-        for(auto& [offset, hash]: sites) {
+        for(auto& [offset, hash]: file_sites) {
             for(; next < definitions.size() && definitions[next].begin <= offset; next += 1) {
                 while(!open.empty() && open.back()->end <= definitions[next].begin) {
                     open.pop_back();
@@ -1276,7 +1276,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(open.empty() || used == none || facts.entities[used].kind == SymbolKind::Macro) {
                 continue;
             }
-            // Only rows the uses or self-uses count.
+            // Only relations the uses or self-uses count.
             auto& use = raw[id][hash];
             if(facts.entities[used].owner == id ||
                (!defines(id, hash) && (use.strong || !operators[used]))) {
@@ -1585,7 +1585,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
         return llvm::join(segments, "/");
     };
 
-    // The names a glob claims a file for; a directory module that happens to
+    // The names whose glob matches a file; a directory module that happens to
     // share one stays the program's.
     llvm::StringSet<> matched_names;
     for(auto& file: facts.files) {
@@ -1661,7 +1661,7 @@ std::expected<Partition, std::string> partition(const Facts& facts, const Partit
     // entry without a kind says.
     std::vector<bool> rewritten(count, false), wrapped(count, false);
     for(auto& declared: spec.modules) {
-        // A merge or move can still take a claimed module's files away.
+        // A merge or move can still take a matched module's files away.
         auto module = result.module_named(declared.name);
         if(!matched_names.contains(declared.name) || module == count) {
             continue;
@@ -1872,7 +1872,7 @@ struct Graph {
     /// Headers only their own module's sources use, directly or through
     /// other such headers: internal partitions, whose names never reach
     /// the module's interface. A header specializing an out-of-scope
-    /// template has users no row shows and never is one.
+    /// template has users no relation shows and never is one.
     std::vector<bool> internal;
 
     Graph(const Facts& facts, const Partition& partition) :
@@ -2367,7 +2367,7 @@ Overview Report::overview(std::uint32_t limit) const {
     // it and the other headers those implement, it exchanges nothing with
     // the rest of its own module, and all its users sit in that other
     // module. A header specializing out-of-scope templates has users no
-    // row shows and stays put.
+    // relation shows and stays put.
     auto& reverse = graph.reverse;
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<std::uint32_t, 2>> implemented_by, implements;
     for(auto& redeclaration: facts.redeclarations) {

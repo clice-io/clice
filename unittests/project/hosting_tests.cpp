@@ -325,7 +325,7 @@ ZEST_CASE(LenderSearchDir) {
 };
 
 ZEST_CASE(LenderIgnoresCommandless) {
-    /// A member a rule claims with a default command that is no compile
+    /// A member a rule covers with a default command that is no compile
     /// command lends nothing.
     TempDir tmp;
     tmp.touch("src/a.cpp", "");
@@ -499,7 +499,7 @@ ZEST_CASE(TreeRulesOutHost) {
     ZEXPECT(host->file == b);
     ZEXPECT(host->lines.empty());
 
-    /// Once shared.h changes, the tree vouches for nothing on its way.
+    /// Once shared.h changes, the tree confirms nothing on its way.
     p.write("common/shared.h", "#pragma once\n#include <config.h>\nint more;\n");
     p.project.file_table.disk.end_turn();
     ZEXPECT(!enterings(p.project, a, config_b).has_value());
@@ -534,7 +534,7 @@ ZEST_CASE(EnteringsInCompileOrder) {
 ZEST_CASE(ForcedIncludeFallsBack) {
     /// The compile enters the header only through a file its command
     /// forces in, which no cut of the unit's text reproduces: the tree
-    /// settles on the lexical chain.
+    /// falls back to the lexical chain.
     TreeProject p;
     llvm::StringRef main_text = "#include \"t.h\"\n";
     llvm::StringRef common_text = "#pragma once\n#include \"t.h\"\n";
@@ -564,7 +564,7 @@ ZEST_CASE(ForcedIncludeFallsBack) {
 };
 
 ZEST_CASE(ContributorHosts) {
-    /// A unit whose indexed compile gave the header rows hosts it though
+    /// A unit whose indexed compile gave the header entries hosts it though
     /// the scan reached the header under another configuration.
     TreeProject p;
     llvm::StringRef b_text = "#include <config.h>\n";

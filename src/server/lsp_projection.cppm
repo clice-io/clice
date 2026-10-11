@@ -11,7 +11,7 @@ import :semantic.symbol;
 
 /// The LSP shapes of the index query's domain values: the one place that
 /// spells URIs, maps sites through their coordinates and encodes symbol
-/// handles for the wire. Transports and feature assembly call these at
+/// handles for the protocol. Transports and feature assembly call these at
 /// their reply edge; nothing below it sees a protocol type.
 namespace clice::to_lsp {
 

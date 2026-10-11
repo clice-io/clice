@@ -103,7 +103,7 @@ ZEST_CASE(InsideSurrogatePair) {
     auto session = store.open(Fid{1});
     store.apply_open(*session, "\xf0\x9f\x98\x80x\n", 1);
 
-    // UTF-16 unit 1 is inside the emoji's surrogate pair: the edit lands
+    // UTF-16 unit 1 is inside the emoji's surrogate pair: the edit is applied
     // at the character's start.
     auto change = partial_change(0, 1, 0, 1, "Y");
     store.apply_change(*session, change, 2);

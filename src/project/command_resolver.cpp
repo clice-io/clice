@@ -118,7 +118,7 @@ void CommandResolver::reset_header_mode(Fid path_id) {
 void CommandResolver::dump_mode_slices(std::vector<CacheModeEntry>& modes,
                                        llvm::function_ref<std::uint32_t(Fid)> intern_id) const {
     for(auto& [path_id, result]: header_results) {
-        // A verdict scored with no disk observation (hash 0) cannot be
+        // A result scored with no disk observation (hash 0) cannot be
         // validated on load, so it stays in memory: persisted, it would
         // skip the self-containment trial for whatever bytes the next
         // session finds on disk.
@@ -133,7 +133,7 @@ void CommandResolver::load_mode_slices(
     llvm::ArrayRef<CacheModeEntry> modes,
     llvm::function_ref<std::optional<Fid>(std::uint32_t)> file_of) {
     for(auto& entry: modes) {
-        // The writer never emits unbound (hash 0) verdicts; an entry
+        // The writer never emits unbound (hash 0) results; an entry
         // carrying one is corrupt and must not bypass the content gate.
         if(entry.content_hash == 0 ||
            static_cast<HeaderMode>(entry.mode) != HeaderMode::NeedsContext)
@@ -141,13 +141,13 @@ void CommandResolver::load_mode_slices(
         auto id = file_of(entry.file);
         if(!id)
             continue;
-        // The verdict is tied to the header's contents — a file edited
+        // The result is tied to the header's contents — a file edited
         // while the server was down must re-earn its trial.
         auto disk = project.file_table.current(*id);
         if(!disk || disk->hash != entry.content_hash)
             continue;
         header_results[*id] = {.mode = HeaderMode::NeedsContext,
-                                .content_hash = entry.content_hash};
+                               .content_hash = entry.content_hash};
     }
 }
 

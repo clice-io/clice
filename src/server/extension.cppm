@@ -154,7 +154,7 @@ struct PollParams {
     std::string loop;
 
     /// CDB loop only; defaults to true. A forced tick reloads unconditionally
-    /// — no content gate, no settling debounce — so one request applies a
+    /// — no content gate, no stability debounce — so one request applies a
     /// change deterministically. `false` runs the production tick, for
     /// tests that pin the content gate itself.
     std::optional<bool> force;
@@ -196,14 +196,14 @@ struct FileBuilds {
 };
 
 struct StatsResult {
-    /// pch_cache entries whose pch.idx envelope is currently open, and
+    /// pch_cache entries whose pch.idx index is currently open, and
     /// their mapped bytes. Steady state after closing documents: bounded
     /// by the loaded-state budget, not by every key ever touched.
     std::uint32_t pch_loaded_states = 0;
     std::uint64_t pch_state_bytes = 0;
 
     /// Shard blobs awaiting persistence (the indexer's dirty set — zero
-    /// after a settled save), and the total mapped bytes of every loaded
+    /// after a finished save), and the total mapped bytes of every loaded
     /// shard blob.
     std::uint32_t index_inmemory_shards = 0;
     std::uint64_t index_shard_content_bytes = 0;
@@ -212,7 +212,7 @@ struct StatsResult {
     std::uint32_t last_save_shards = 0;
 
     /// In-flight tmp blobs of this instance's cache store. Zero once
-    /// builds settle — every pending write either committed or cleaned
+    /// builds finish — every pending write either committed or cleaned
     /// itself up.
     std::uint32_t pending_tmp_files = 0;
 
@@ -264,7 +264,7 @@ struct SyncResult {
     /// Index state remains that no save committed.
     bool unsaved = false;
 
-    /// What still ran at the deadline, one line each; empty once settled.
+    /// What still ran at the deadline, one line each; empty once idle.
     std::vector<std::string> pending;
 };
 

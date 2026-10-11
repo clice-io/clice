@@ -17,17 +17,17 @@ namespace clice::index {
 ///
 /// - the project-wide external symbol table with per-symbol reference-file
 ///   bitmaps (the cross-file query fan-out): the persisted global blob read
-///   in place, plus the rows merged or changed since it was bound. A
-///   reader never copies a row; a writer copies only the rows it changes
+///   in place, plus the entries merged or changed since it was bound. A
+///   reader never copies an entry; a writer copies only the entries it changes
 ///   and folds them into the next blob it writes,
 /// - one manifest per indexed TU (replaced wholesale by its reindex),
 /// - `contributions`, derived from the manifests at load: per file, which
-///   TU contributed which rows variant. Its distinct hashes per file are
+///   TU contributed which variant. Its distinct hashes per file are
 ///   the file's live variants — the mask Shard queries filter by — and its
 ///   emptiness is what retires a shard blob,
-/// - the per-file row blobs (`shards`), fetched from the database on first
+/// - the per-file shard blobs (`shards`), fetched from the database on first
 ///   use by a reader and kept whole by the writer,
-/// - the name search index and the rows it does not describe.
+/// - the name search index and the entries it does not describe.
 ///
 /// The FileVersion table manifests reference lives in clice::FileTable,
 /// shared with every other freshness consumer — and, in a server running
@@ -70,7 +70,7 @@ struct ProjectIndex {
     /// The writer's half of a bound blob: intern its file versions into
     /// `files` and read the per-TU manifest
     /// pins — `manifest_pins` maps each pinned TU's tu_fv (as the table's
-    /// id) to the generation stamp its manifest must carry to be adopted.
+    /// id) to the generation its manifest must carry to be adopted.
     /// Rejects a blob whose version table is inconsistent, leaving `files`
     /// untouched.
     std::expected<void, llvm::StringRef>
@@ -90,7 +90,7 @@ struct ProjectIndex {
                     FileTable& files,
                     llvm::DenseMap<VersionID, std::uint64_t>& manifest_pins);
 
-    /// The symbol's stored facts; the strings borrow the base or the row.
+    /// The symbol's stored facts; the strings borrow the base or the entry.
     std::optional<SymbolIdentity> identity_of(SymbolHash hash) const;
 
     /// How many files reference the symbol; 0 for an unknown hash.
@@ -99,7 +99,7 @@ struct ProjectIndex {
     /// The files referencing the symbol, as the file table's ids.
     void each_reference_file(SymbolHash hash, llvm::function_ref<void(Fid)> visit) const;
 
-    /// Every symbol, base rows and changed rows alike, in no particular
+    /// Every symbol, base entries and changed entries alike, in no particular
     /// order; `visit` returns false to stop.
     void for_each_symbol(
         llvm::function_ref<bool(SymbolHash, const SymbolIdentity&, std::uint32_t references)> visit)
@@ -107,16 +107,16 @@ struct ProjectIndex {
 
     std::size_t symbol_count() const;
 
-    /// The symbol's row to change: the changed row when there is one,
-    /// else a copy of the base row, else a fresh one.
+    /// The symbol's entry to change: the changed entry when there is one,
+    /// else a copy of the base entry, else a fresh one.
     Symbol& touch(SymbolHash hash);
 
-    /// Merge a TU's external symbols straight off the wire; `file_ids_map`
+    /// Merge a TU's external symbols straight off the serialized TU index; `file_ids_map`
     /// maps the TU-local ids of `index`'s path table to pool ids. Symbol
     /// names are copied only for symbols new to the table. `added`
     /// receives the hashes of the symbols new to the table or whose name,
     /// arguments, parent, file or flags the merge changed — what a name
-    /// search keyed on the table's rows must re-read.
+    /// search keyed on the table's entries must re-read.
     void merge(const TUIndex& index,
                llvm::ArrayRef<Fid> file_ids_map,
                llvm::SmallVectorImpl<SymbolHash>* added = nullptr);
@@ -124,26 +124,26 @@ struct ProjectIndex {
     /// Serialize the global blob: the versions some manifest still
     /// references (the shared table is not touched — a version the index
     /// stops referencing can still anchor another consumer's check; ids
-    /// are never reused either way), the symbol table — base rows copied,
-    /// changed rows encoded, in hash order — with its path table, a per-TU
-    /// pin of every manifest's generation stamp, and the search index's
-    /// generation and pending rows. The changed rows are held aside until
-    /// rebase or restore_unwritten says whether the bytes landed.
+    /// are never reused either way), the symbol table — base entries copied,
+    /// changed entries encoded, in hash order — with its path table, a per-TU
+    /// pin of every manifest's generation, and the search index's
+    /// generation and pending entries. The changed entries are held aside until
+    /// rebase or restore_unwritten says whether the bytes were persisted.
     void serialize_global(llvm::raw_ostream& os, const FileTable& files);
 
     /// The bytes serialize_global produced were persisted: they become the
-    /// base, and the rows they hold leave the changed set. Rows changed
+    /// base, and the entries they hold leave the changed set. Entries changed
     /// since the serialization stay changed.
     void rebase(std::unique_ptr<llvm::MemoryBuffer> blob, FileTable& files);
 
-    /// The bytes serialize_global produced were not persisted: the rows
-    /// held aside return to the changed set, under the rows changed since.
+    /// The bytes serialize_global produced were not persisted: the entries
+    /// held aside return to the changed set, under the entries changed since.
     void restore_unwritten();
 
     /// Generation of the persisted global blob, bumped once per save that
-    /// writes it. Manifests are stamped with the generation they were
+    /// writes it. Manifests record the generation they were
     /// saved under (TUManifest::global_gen), and the global blob pins the
-    /// stamp expected of every TU's manifest; the loader adopts a manifest
+    /// generation expected of every TU's manifest; the loader adopts a manifest
     /// only on an exact match, so a lost or failed manifest write cannot
     /// leave an older on-disk manifest serving as current.
     std::uint64_t global_generation = 0;
@@ -151,7 +151,7 @@ struct ProjectIndex {
     /// TU fid -> its manifest.
     llvm::DenseMap<Fid, TUManifest> manifests;
 
-    /// Derived from `manifests`: file fid -> (TU fid -> rows hash).
+    /// Derived from `manifests`: file fid -> (TU fid -> variant hash).
     llvm::DenseMap<Fid, llvm::SmallDenseMap<Fid, std::uint64_t, 2>> contributions;
 
     /// Derived from `manifests`: a place some TU's failed lookup looked ->
@@ -186,16 +186,16 @@ struct ProjectIndex {
     /// Returns the affected file path_ids, like apply_manifest.
     llvm::SmallVector<Fid> remove_manifest(const FileTable& files, Fid tu_path_id);
 
-    /// The distinct rows hashes contributed to `path_id` — the file's live
+    /// The distinct variant hashes contributed to `path_id` — the file's live
     /// variant set.
     llvm::SmallVector<std::uint64_t> live_variants(Fid path_id) const;
 
-    /// The TUs that contributed rows to `file`: from `contributions` in a
+    /// The TUs that contributed a variant to `file`: from `contributions` in a
     /// writer, from the global blob's persisted copy in a reader, which
     /// holds no manifests to derive it from.
     void each_contributor(Fid file, llvm::function_ref<void(Fid)> visit) const;
 
-    /// The files holding rows of an internal-linkage symbol, starting from
+    /// The files holding entries of an internal-linkage symbol, starting from
     /// `anchor`, a file that holds some: the anchor, and every file the
     /// local fanout (TUManifest::local_fanout) of a TU contributing to a
     /// file reached so far lists for the symbol. A `static` in a header is
@@ -211,7 +211,7 @@ struct ProjectIndex {
     /// has none current.
     const TUManifest* tu_manifest(Fid tu) const;
 
-    /// Per-file row blobs keyed by project-level path_id: symbol
+    /// Per-file shard blobs keyed by project-level path_id: symbol
     /// occurrences, relations and stored content for position mapping,
     /// served zero-copy. The writer holds every persisted shard here; a
     /// reader opened over a database fills it on first use (shard()). A
@@ -220,14 +220,14 @@ struct ProjectIndex {
     mutable std::map<Fid, Shard> shards;
 
     /// The file's shard: held, or fetched from the database the index was
-    /// opened over. Null when the file has no rows.
+    /// opened over. Null when the file has no index.
     const Shard* shard(Fid file) const;
 
     /// The name search index over the symbol table as last built, and the
-    /// rows it does not describe — merged or changed since — which a
+    /// entries it does not describe — merged or changed since — which a
     /// search reads from the table instead until the writer folds them
     /// into a rebuilt index. Both persist next to the table: the global
-    /// blob pins the search blob's generation and carries the pending rows,
+    /// blob pins the search blob's generation and carries the pending entries,
     /// so a reader adopts exactly the search index the table was saved
     /// with.
     SearchIndex search_index;
@@ -264,11 +264,11 @@ private:
     struct Base;
     std::unique_ptr<Base> base;
 
-    /// Rows merged or changed since the base was bound, in file-table ids.
+    /// Entries merged or changed since the base was bound, in file-table ids.
     llvm::DenseMap<SymbolHash, Symbol> changed;
 
-    /// Rows serialized by the last serialize_global and not yet known to
-    /// have landed; reads consult them after `changed`.
+    /// Entries serialized by the last serialize_global and not yet known to
+    /// have been persisted; reads consult them after `changed`.
     llvm::DenseMap<SymbolHash, Symbol> written;
 
     /// A reader's manifests, fetched on first use; nullopt remembers a

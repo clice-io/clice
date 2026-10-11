@@ -53,9 +53,9 @@ index::TUIndex full_index;
 std::shared_ptr<Session> session;
 std::string main_path;
 
-/// Compile the added sources, persist the preamble envelope (exactly what
+/// Compile the added sources, persist the preamble index (exactly what
 /// the PCH build produces), and open a session whose pch_key points at
-/// it. The session's own index is the main-file-only envelope, mirroring
+/// it. The session's own index is the main-file-only TU index, mirroring
 /// the production per-edit index.
 void open_with_overlay(std::source_location location = std::source_location::current()) {
     ZASSERT(compile());
@@ -116,7 +116,7 @@ std::string header_path(llvm::StringRef basename) {
     return {};
 }
 
-/// Merge the full envelope into the workspace's disk index, installing
+/// Merge the full TU index into the workspace's disk index, installing
 /// each section's blob verbatim as background indexing would.
 void merge_disk_index() {
     llvm::SmallVector<Fid> file_ids_map;
@@ -132,9 +132,9 @@ void merge_disk_index() {
     }
 }
 
-/// A settled, rows-empty per-edit index — what a session holds when every
-/// row of its buffer lives behind the PCH. `loaded` is what the freshness
-/// gate keys on; an unloaded index means "compile not settled".
+/// A finished per-edit index with no entries — what a session holds when
+/// every entry of its buffer lives behind the PCH. `loaded` is what the
+/// freshness gate keys on; an unloaded index means "compile not finished".
 index::TUIndex empty_session_index() {
     TUIndexMirror mirror;
     mirror.built_at = 1;
@@ -234,7 +234,7 @@ int main() { return 0; }
     ZASSERT(info);
     ZEXPECT(info->name == "FOO");
 
-    // The definition text comes from the same preamble rows, sliced from
+    // The definition text comes from the same preamble entries, sliced from
     // the buffer: the hover card for a `#define` above the PCH bound.
     auto definition = index_query.definition_text(cursor.symbols.front(), cursor.site.file);
     ZASSERT(definition);
@@ -277,7 +277,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
 )");
     open_with_overlay();
 
-    // Opening the header makes its session authoritative: overlay rows
+    // Opening the header makes its session authoritative: overlay entries
     // for it describe the disk snapshot and would map onto the edited
     // buffer at wrong lines, so they must vanish from results.
     session_store.open(project.file_table.intern(Spelling::absolute(header_path("foo.h"))));
@@ -328,7 +328,7 @@ Derived instance;
     ZEXPECT(supertypes[0].symbol.name == "Base");
 
     // Once derived.h is open, its session owns the type relations spelled
-    // there; the overlay's disk-snapshot rows must stop contributing.
+    // there; the overlay's disk-snapshot relations must stop contributing.
     session_store.open(project.file_table.intern(Spelling::absolute(header_path("derived.h"))));
     supertypes = index_query.type_hierarchy(derived, Fid{}, {.subtypes = false}).supertypes;
     ZEXPECT(supertypes.size() == 0);
@@ -347,7 +347,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     ZASSERT(index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition));
 
     // The disk was seen holding other text for the header: its overlay
-    // rows describe text that no longer exists (freshness contract,
+    // entries describe text that no longer exists (freshness contract,
     // clause 2), exactly like a shard contribution.
     project.file_table.observe(project.file_table.intern(Spelling::absolute(header_path("foo.h"))),
                                DiskObservation{.hash = 1});
@@ -463,7 +463,7 @@ int main() { return 0; }
 
     // A second file with a byte-identical preamble shares the PCH (the
     // key excludes the source path), but the preamble entry carries
-    // file-local macro identities — its rows must stay scoped to the
+    // file-local macro identities — its entries must stay scoped to the
     // file that built the blob.
     auto other_path = std::string(llvm::sys::path::parent_path(main_path)) + "/other.cpp";
     auto other = session_store.open(project.file_table.intern(Spelling::absolute(other_path)));
@@ -487,7 +487,7 @@ int main() { return 0; }
     open_with_overlay();
     install_empty_index();
 
-    // Body edits dirty the session but never move preamble rows: as long
+    // Body edits dirty the session but never move preamble entries: as long
     // as the buffer still starts with the blob's preamble text, the
     // entry keeps serving — the prefix comparison is the freshness check.
     projections.entries[session->path_id].current = false;
@@ -505,7 +505,7 @@ int main() { return 0; }
 
     // A deferred PCH rebuild keeps an old blob while the buffer's
     // preamble moved on; once the buffer no longer starts with the blob's
-    // stored preamble text, its rows must not be served.
+    // stored preamble text, its entries must not be served.
     session->text = "// drift\n" + session->text;
     session->sync_text();
     ZEXPECT(!index_query.first_site(hash_of("FOO"), Fid{}, RelationKind::Definition).has_value());
@@ -521,7 +521,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 )");
     open_with_overlay();
 
-    // Fabricate a divergent disk row: another context's shard claims the
+    // Fabricate a divergent disk relation: another context's shard reports the
     // definition sits on line 0. The overlay (live context) must win.
     auto foo = hash_of("foo");
     index::FileIndex fake;
@@ -546,7 +546,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
 
 ZEST_CASE(SynthesizedContextSkipped) {
     // A header context's synthesized files name nothing on disk, and what
-    // they declare is the host's to index: no rows, no dependency.
+    // they declare is the host's to index: no entries, no dependency.
     auto synthesized = TestVFS::path(".clice-context.h");
     add_main("main.cpp",
              std::format(R"(

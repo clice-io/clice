@@ -117,7 +117,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
                            llvm::SmallVectorImpl<clang::TemplateArgument>& deduced);
 
-/// The verdict of select_partial: a winner, or why there is none. Real
+/// The outcome of select_partial: a winner, or why there is none. Real
 /// instantiation diagnoses an ambiguity (no partial dominates every other
 /// match), and a winner whose match is Unverified may not apply at all.
 /// Callers degrade on both rather than pick arbitrarily or trust the

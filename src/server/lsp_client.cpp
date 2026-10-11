@@ -197,7 +197,7 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path_id = this->server.files.intern(*path);
     auto project = this->server.owner_of(path_id).shared_from_this();
     // A document under a second name has a buffer of its own: it is the
-    // file — its session, its index rows — only while both hold the same
+    // file — its session, its index — only while both hold the same
     // text.
     auto session = this->server.find_session(path_id);
     if(auto* alias = find_alias(path_id, *path);
@@ -835,7 +835,7 @@ void LSPClient::register_language_features() {
             if(session) {
                 // Recorded against the live session: one that replaced this
                 // pull's meanwhile (the document moved to another project)
-                // compiles the same text, and its landing must correct the
+                // compiles the same text, and its commit must correct the
                 // empty answer the closed one gave.
                 if(auto live = server.find_session(path_id)) {
                     pulled[path_id] = {
@@ -1304,7 +1304,7 @@ void LSPClient::register_extensions() {
 
     // Ownership gauges for memory-lifecycle tests (see ext::StatsParams).
     // Read-only and synchronous: every counter is computed from live
-    // master state on the event loop, so an assertion made after a settled
+    // master state on the event loop, so an assertion made after a finished
     // operation observes exactly the state that operation left behind.
     peer.on_request(
         "clice/internal/stats",
@@ -1428,7 +1428,8 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
         if(auto it = pulled.find(session.path_id);
            it != pulled.end() && it->second.version == session.version &&
            it->second.report !=
-               llvm::xxh3_64bits(full_report(project.features.finished_diagnostics(session)).data)) {
+               llvm::xxh3_64bits(
+                   full_report(project.features.finished_diagnostics(session)).data)) {
             refresh_diagnostics();
         }
     } else {
@@ -1443,7 +1444,7 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
 
     // Two cases make the client re-pull whole-document results it already
     // holds: index projections served while this compile was pending
-    // (their answers just got better), and a compile that landed for
+    // (their answers just got better), and a compile that finished for
     // unchanged text — a context switch or a changed dependency reshapes
     // tokens (including their inactive regions), hints and folds with no
     // didChange to trigger the client's own re-pull. Edit-driven compiles

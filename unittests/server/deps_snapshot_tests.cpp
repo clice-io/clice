@@ -133,7 +133,7 @@ ZEST_CASE(EveryChangeFound) {
 }
 
 ZEST_CASE(BackdatedEditDetected) {
-    // The F04 shape: the edit lands with an mtime that does not move
+    // The F04 shape: the edit arrives with an mtime that does not move
     // forward (rsync -t, git-restore-mtime). Equality comparison sends it
     // to the hash layer regardless of the timestamp's direction.
     TempDir tmp;

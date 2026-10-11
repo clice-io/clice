@@ -219,8 +219,8 @@ struct RawInlayHint {
 
 /// Range payload for inlay hints: each label piece naming a symbol placed
 /// as the server places it, from the unit's own TU index standing in for
-/// the server's — a declaration, else the definition, the main file's rows
-/// first as an open buffer's are.
+/// the server's — a declaration, else the definition, the main file's shard
+/// first as an open buffer's is.
 std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
                                                      LocalSourceRange range,
                                                      llvm::StringRef config) {
@@ -617,7 +617,7 @@ bool participates(const FeatureSpec& spec, const SourceFile& file) {
 /// Run the feature over one participating file and fill its entry. The
 /// compile is one pass, deliberately without the preamble PCH the server
 /// uses: a shared snapshot pins that the PCH split does not change feature
-/// results, so any divergence between the two paths surfaces as a snapshot
+/// results, so any divergence between the two paths shows as a snapshot
 /// mismatch instead of hiding in the preamble. It sees the whole unit —
 /// every stripped file is remapped and every built PCM attached — so
 /// cross-file fixtures compile like the server's view of the workspace.
@@ -673,7 +673,7 @@ void run_feature(FileEntry& entry,
     }
 
     // The AST builds even for broken sources (a language server must keep
-    // working on them), so error diagnostics are surfaced separately: the
+    // working on them), so error diagnostics are reported separately: the
     // snap harness rejects fixtures whose code or annotations silently
     // broke instead of pinning garbage.
     if(auto errors = error_messages(unit, /*errors_only=*/true); !errors.empty()) {
@@ -789,7 +789,7 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     // Validate --config up front so a typo fails the whole run with a
-    // clear message instead of surfacing as a per-file feature error.
+    // clear message instead of showing as a per-file feature error.
     llvm::StringRef config = opts.config.has_value() ? llvm::StringRef(*opts.config) : "";
     if(!config.empty()) {
         if(spec->check_config == nullptr) {
@@ -913,7 +913,7 @@ int run_inspect(const InspectOptions& opts) {
 
     // Directory mode covers what the build compiles under the tree, not only
     // what the suffix filter admits: a source without a known suffix that a
-    // default command claims (`-x c++`) is a member too.
+    // default command covers (`-x c++`) is a member too.
     if(is_dir && flags.empty()) {
         llvm::StringSet<> listed;
         for(auto& [rel, abs]: files) {
@@ -932,7 +932,7 @@ int run_inspect(const InspectOptions& opts) {
 
     // Every readable file gets an entry up front: the hash of its stripped
     // content feeds the C++/TS stripper-twin check for support files too,
-    // and module/feature errors below land on stable entries.
+    // and module/feature errors below end up on stable entries.
     std::vector<SourceFile> sources;
     for(auto& [rel, abs]: files) {
         auto buffer = vfs::read(abs);
@@ -996,7 +996,7 @@ int run_inspect(const InspectOptions& opts) {
     // and build the PCM of each unit providing a module in dependency
     // order, so importing files in the unit compile like they do against
     // the server's module pipeline. A dependency cycle leaves its modules
-    // unbuilt and surfaces as ordinary compile errors on the importers.
+    // unbuilt and shows as ordinary compile errors on the importers.
     llvm::StringMap<std::string> pcms;
     std::vector<std::string> pcm_files;
     if(is_dir) {

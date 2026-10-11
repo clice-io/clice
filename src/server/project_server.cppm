@@ -51,7 +51,7 @@ public:
     /// Load the project from disk (see bootstrap_project), restore the
     /// editor's context choices, and start its store-lifetime services;
     /// then watch its databases and files. Documents opened before are
-    /// validated and settled against the loaded state.
+    /// validated and their serving decided against the loaded state.
     void start();
 
     /// Quiesce compile and index work and persist the final state; then
@@ -64,7 +64,7 @@ public:
 
     /// Open a document routed here with its buffer — an editor's didOpen,
     /// or one another project closed as it moved here. Its saved context choice is
-    /// validated and its serving settled now, or by start() when the
+    /// validated and its serving decided now, or by start() when the
     /// project has not started yet.
     void open_session(Fid path_id, std::string text, int version);
 
@@ -100,7 +100,7 @@ public:
     void open_closures(llvm::SmallVectorImpl<Fid>& files);
 
     /// Whether anything here derives from the file: an open document, a
-    /// command, an include edge, index rows, a compile that read it or
+    /// command, an include edge, index entries, a compile that read it or
     /// looked for it. The disk changes of files it does not know are not
     /// this project's to cascade.
     bool knows(Fid path_id);
@@ -120,7 +120,7 @@ public:
     /// registered at construction — nodes materialize on demand, so a
     /// module-free project pays nothing. The store and the pump are
     /// serving-neutral; the session-side policy — unservable escalation,
-    /// serving-row refresh — lives on this class and is installed into the
+    /// serving-index refresh — lives on this class and is installed into the
     /// pump's hooks at construction. The AST family is assembled here in
     /// the project's server: its rounds capture sessions, quarantine and
     /// publishing.
@@ -155,27 +155,27 @@ private:
     /// A fresh session for the document, replacing a live one.
     std::shared_ptr<Session> create_session(Fid path_id);
 
-    /// Settle a freshly opened index-only buffer: escalate one that
+    /// Decide a freshly opened index-only buffer's serving: escalate one that
     /// already diverged from its shard, or boost the file's background
     /// indexing when nothing can serve it. Escalated sessions need no
-    /// settlement — builds are pull-driven.
+    /// decision — builds are pull-driven.
     void decide_open_serving(std::shared_ptr<Session> session);
 
-    /// start() ran: documents opened from now on are settled at once.
+    /// start() ran: documents opened from now on have their serving decided at once.
     bool started = false;
 
-    /// An index attempt settled with no retry pending; a session waiting
+    /// An index attempt finished with no retry pending; a session waiting
     /// on the index with nothing servable will never be served by it —
     /// escalate instead of letting it answer empty forever.
     void index_attempt_finished(Fid path_id);
 
-    /// Whether an open session serves this file's project rows (freshness
-    /// clause 4) and a client already pulled some of them — the emit
-    /// condition of MasterServer::on_serving_rows_changed.
+    /// Whether an open session serves this file's project shard (freshness
+    /// clause 4) and a client already pulled from it — the emit
+    /// condition of MasterServer::on_serving_index_changed.
     bool serves_session_index(Fid path_id) const;
 
-    /// Filter a store row-change report down to the sessions actually
-    /// serving those rows and wake the transports.
+    /// Filter a store index-change report down to the sessions actually
+    /// serving those shards and wake the transports.
     void index_changed(llvm::ArrayRef<Fid> path_ids);
 
     Signal<llvm::ArrayRef<Fid>>::Connection index_changed_conn;

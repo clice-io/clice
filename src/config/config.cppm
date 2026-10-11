@@ -271,7 +271,7 @@ struct CompiledRule {
         kota::GlobPattern glob;
 
         /// The literal directory the pattern starts in (the workspace root
-        /// for `**`-led patterns): where the files it claims are enumerated.
+        /// for `**`-led patterns): where the files it covers are enumerated.
         CanonicalPath root;
     };
 

@@ -21,9 +21,9 @@ namespace clice::index {
 /// symbol.
 SymbolScope classify_scope(const clang::NamedDecl* decl);
 
-/// How build_tu_index shapes the envelope.
+/// How build_tu_index shapes the TU index blob.
 struct TUIndexOptions {
-    /// Keep only the rows in the main file.
+    /// Keep only the entries in the main file.
     bool main_file_only = false;
 
     /// Variant identities the receiver already stores, sorted. A section
@@ -33,19 +33,19 @@ struct TUIndexOptions {
     llvm::ArrayRef<std::uint64_t> known_variants;
 };
 
-/// Index one TU and encode the result as its envelope bytes: the include
+/// Index one TU and encode the result as its TU index blob: the include
 /// tree (remapped into a manifest), the TU's symbol table with
 /// per-symbol reference files (merged into the project table), and one
-/// self-contained shard blob per file that received rows (stored or
-/// merged into the file's disk shard). Rows of a header entered several
-/// times are one union blob. The envelope travels worker→server over IPC
+/// self-contained shard blob per file that received entries (stored or
+/// merged into the file's disk shard). Entries of a header entered several
+/// times are one union blob. The TU index blob travels worker→server over IPC
 /// and is dismantled into the three persistent layers on arrival.
 std::string build_tu_index(CompilationUnitRef unit, const TUIndexOptions& options = {});
 
 /// The preamble variant: a preamble is a TU cut off at the preamble
-/// bound, and its index is the same envelope — persisted verbatim as the
-/// PCH's `.pch.idx` pair — plus the preamble-specific fields ordinary
-/// envelopes leave empty: the identity of the exact preamble text, and
+/// bound, and its index is the same TU index blob — persisted verbatim as
+/// the PCH's `.pch.idx` pair — plus the preamble-specific fields ordinary
+/// TU index blobs leave empty: the identity of the exact preamble text, and
 /// the PCH-derived feature state spliced into main-file results
 /// (document links, inactive regions, the open conditional stack at the
 /// bound, the diagnostics as published).
@@ -55,18 +55,19 @@ std::string build_preamble_index(CompilationUnitRef unit,
                                  llvm::ArrayRef<std::uint8_t> open_conditionals,
                                  llvm::StringRef diagnostics);
 
-/// Zero-copy reader over an envelope: the tree, the per-file blob hashes
-/// and the blob bytes themselves are read straight off the wire — a new
-/// variant's bytes are sliced out and written or merged without ever
-/// decoding the envelope around them — and symbol names are touched only
-/// when a consumer genuinely needs them. Whole-envelope accessors on an
-/// empty reader answer empty/zero; per-element accessors require a valid
-/// index, and no index is valid on an empty reader (every count is 0).
+/// Zero-copy reader over a TU index blob: the tree, the per-file blob
+/// hashes and the blob bytes themselves are read straight off the
+/// serialized bytes — a new variant's bytes are sliced out and written or
+/// merged without ever decoding the TU index around them — and symbol
+/// names are touched only when a consumer genuinely needs them. TU-wide
+/// accessors on an empty reader answer empty/zero; per-element accessors
+/// require a valid index, and no index is valid on an empty reader (every
+/// count is 0).
 class TUIndex {
 public:
     TUIndex() = default;
 
-    /// Wrap verified envelope bytes without owning them (the caller keeps
+    /// Wrap verified TU index bytes without owning them (the caller keeps
     /// the bytes alive). Verification gates the format version and bounds
     /// every path id the tree, the symbol table and the sections carry;
     /// corrupt bytes load as an empty reader.
@@ -75,16 +76,16 @@ public:
     /// shards_verify in one pass.
     static TUIndex from_bytes(llvm::StringRef data);
 
-    /// Adopt an owning buffer of envelope bytes (a mapped `.pch.idx`, a
+    /// Adopt an owning buffer of TU index bytes (a mapped `.pch.idx`, a
     /// session's IPC result). Same verification as from_bytes.
     static TUIndex from_buffer(std::unique_ptr<llvm::MemoryBuffer> buffer);
 
-    /// Whether this reader holds an envelope.
+    /// Whether this reader holds a TU index blob.
     bool loaded() const {
         return !data.empty();
     }
 
-    /// The envelope bytes backing this reader.
+    /// The TU index bytes backing this reader.
     llvm::StringRef bytes() const {
         return data;
     }
@@ -106,7 +107,7 @@ public:
 
     std::uint32_t node_count() const;
 
-    /// One node of the include tree, its file a path id of this envelope.
+    /// One node of the include tree, its file a path id of this TU index.
     IncludeNode node(std::uint32_t i) const;
 
     std::uint32_t section_count() const;
@@ -115,29 +116,29 @@ public:
 
     std::uint64_t section_hash(std::uint32_t i) const;
 
-    /// One section's shard blob bytes, borrowing the envelope; empty for
+    /// One section's shard blob bytes, borrowing the TU index; empty for
     /// a variant the receiver already stores (TUIndexOptions::known_variants).
     llvm::StringRef section_blob(std::uint32_t i) const;
 
-    /// The section holding `path_id`'s rows, or nullopt when the file had
-    /// none (no rows means no contribution). Sections ascend by path id.
+    /// The section holding `path_id`'s entries, or nullopt when the file had
+    /// none (no entries means no contribution). Sections ascend by path id.
     std::optional<std::uint32_t> section_of(std::uint32_t path_id) const;
 
     /// section_shard of `path_id`'s section, or an empty shard when the
     /// file has none.
     const Shard& shard_of(std::uint32_t path_id) const;
 
-    /// A reader over section `section`'s rows, wrapped on first use and
-    /// cached for the envelope's lifetime (the wrap verifies the blob and
+    /// A reader over section `section`'s entries, wrapped on first use and
+    /// cached for the TU index's lifetime (the wrap verifies the blob and
     /// later materializes its line table). An empty shard when its blob
     /// fails verification.
     const Shard& section_shard(std::uint32_t section) const;
 
     /// Wrap every section's blob in one pass, checking its bytes against
     /// the recorded section hash on top of structural verification — the
-    /// load gate for persisted envelopes, where a corrupt blob must read
+    /// load gate for persisted TU indexes, where a corrupt blob must read
     /// as "pair missing" and rebuild instead of silently serving wrong
-    /// rows or nothing.
+    /// entries or nothing.
     bool shards_verify() const;
 
     /// Visit every symbol of the table in ascending hash order: hash,
@@ -163,37 +164,37 @@ public:
     std::optional<std::vector<LocalFanout>>
         local_fanout(llvm::ArrayRef<std::uint32_t> contribution_paths) const;
 
-    /// Whether `text` still begins with the exact preamble this envelope
+    /// Whether `text` still begins with the exact preamble this TU index
     /// was built from — the gate for serving preamble-derived state
-    /// against a live buffer (the rows are offsets into that prefix).
+    /// against a live buffer (the entries are offsets into that prefix).
     /// Compared by hash: the text itself is not stored. Always false for
-    /// an ordinary envelope.
+    /// an ordinary TU index.
     bool matches_prefix(llvm::StringRef text) const;
 
     /// Document links of the preamble region, materialized from the
-    /// envelope; empty for an ordinary one.
+    /// TU index; empty for an ordinary one.
     std::vector<DocumentLink> links() const;
 
     /// Inactive regions within the preamble (flat begin/end offset
-    /// pairs); empty for an ordinary envelope. Borrows the envelope.
+    /// pairs); empty for an ordinary TU index. Borrows the TU index.
     llvm::ArrayRef<std::uint32_t> inactive_regions() const;
 
     /// Conditional stack still open at the preamble bound; empty for an
-    /// ordinary envelope. Borrows the envelope.
+    /// ordinary TU index. Borrows the TU index.
     llvm::ArrayRef<std::uint8_t> open_conditionals() const;
 
     /// The diagnostics the preamble's build raised, as published (a JSON
-    /// array of LSP diagnostics); empty for an ordinary envelope. Borrows
-    /// the envelope.
+    /// array of LSP diagnostics); empty for an ordinary TU index. Borrows
+    /// the TU index.
     llvm::StringRef preamble_diagnostics() const;
 
 private:
-    /// The verified envelope bytes (owned iff `owned` is set); accessors
+    /// The verified TU index bytes (owned iff `owned` is set); accessors
     /// rebuild the (pointer-sized) fbs view from them on demand.
     std::unique_ptr<llvm::MemoryBuffer> owned;
     llvm::StringRef data;
 
-    /// Lazily wrapped per-section readers; the envelope is immutable for
+    /// Lazily wrapped per-section readers; the TU index is immutable for
     /// the reader's lifetime, so the cache never invalidates.
     mutable std::vector<Shard> shards;
 };

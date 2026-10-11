@@ -17,7 +17,7 @@ struct IndexerFixture;
 }
 
 struct IndexLoadOptions {
-    /// Keep the sweeps in memory only: an out-of-process reader must not
+    /// Keep the removals in memory only: an out-of-process reader must not
     /// delete blobs a concurrently running server may be about to
     /// reference.
     bool read_only = false;
@@ -59,23 +59,23 @@ struct ContextsBlob {
 /// The project index's storage engine: merging TUIndex results into the
 /// in-memory ProjectIndex and Shard blobs, persisting them, and restoring
 /// them at startup. It knows nothing about sessions or the pump's debt
-/// ledger — every row-changing entry point returns a neutral Report and the
-/// callers route it: the pump claims the reindex debt, the serving adapter
-/// decides which row changes need a client refresh.
+/// table — every index-changing entry point returns a neutral Report and the
+/// callers route it: the pump takes the reindex debt, the serving adapter
+/// decides which index changes need a client refresh.
 class IndexStore {
 public:
-    /// What one row-changing entry point did to state others own.
+    /// What one index-changing entry point did to state others own.
     /// Collections are deduplicated.
     class Report {
     public:
-        /// TUs owed a ContentChanged reindex: their rows are missing,
-        /// stale or discarded and no in-process event would rebuild them.
-        /// The pump claims these before the current attempt settles.
+        /// TUs owed a ContentChanged reindex: their index is missing,
+        /// stale or discarded and no in-process event would rebuild it.
+        /// The pump takes these before the current attempt finishes.
         llvm::ArrayRef<Fid> reindex() const {
             return reindex_ids;
         }
 
-        /// Files whose stored rows were replaced, re-masked or dropped
+        /// Files whose stored index was replaced, re-masked or dropped
         /// while possibly index-served: the serving adapter checks which
         /// of them an open session actually serves and refreshes those.
         llvm::ArrayRef<Fid> index_changed() const {
@@ -83,7 +83,7 @@ public:
         }
 
         /// This save left state that an immediate retry commits: debt
-        /// that surfaced after its CDB snapshot serialized (write-time
+        /// that showed up after its CDB snapshot serialized (write-time
         /// corruption recovery), or a batch a full map refused before the
         /// map grew.
         bool owes_retry = false;
@@ -119,7 +119,7 @@ public:
         /// Also when it is missing or merely behind: no more indexing is
         /// queued, so the persisted one is fresh for the next cold start.
         Idle,
-        /// Never: the rows commit without waiting for it, and the next
+        /// Never: the index commits without waiting for it, and the next
         /// session rebuilds it.
         Never,
     };
@@ -150,8 +150,8 @@ public:
     };
 
     /// Merge a TUIndex result: intern FileVersions, replace the TU's
-    /// manifest, and write row blobs only for variants no shard stores yet
-    /// — a re-index whose rows are unchanged records its contributions and
+    /// manifest, and write shard blobs only for variants no shard stores yet
+    /// — a re-index whose entries are unchanged records its contributions and
     /// touches nothing else. `imports` is what the PCMs the parse read
     /// were built from (Project::module_inputs).
     std::expected<Report, MergeError> merge(const void* tu_index_data,
@@ -168,7 +168,7 @@ public:
     /// affected shards' live masks follow), persisted blobs at the next
     /// save. For invalidation content-based freshness cannot see — a
     /// compile-command change — where a surviving manifest would keep
-    /// judging the old-command rows fresh, in this session and after a
+    /// judging the old-command index fresh, in this session and after a
     /// restart.
     Report drop_index(Fid tu_path_id);
 
@@ -180,8 +180,8 @@ public:
     /// `debt` is the pump's immutable debt snapshot at call time: the CDB
     /// snapshot persists its standalone entries so a dropped header's
     /// repair debt survives a process exit. Owner debt the compaction
-    /// discovers before serializing joins the same snapshot; debt surfaced
-    /// after it (write-time corruption recovery) comes back in the report
+    /// discovers before serializing joins the same snapshot; debt that shows
+    /// up after it (write-time corruption recovery) comes back in the report
     /// with owes_retry set.
     kota::task<Report> save(llvm::SmallVector<Fid> debt,
                             SearchRebuild search = SearchRebuild::Behind);
@@ -201,23 +201,23 @@ public:
     Remembered remembered();
 
     /// Load the global blob, adopt every resolvable manifest, fetch the
-    /// shard blobs the contributions expect, and sweep the rest.
+    /// shard blobs the contributions expect, and remove the rest.
     LoadResult load(IndexLoadOptions options = {});
 
     /// Record the host source whose command a standalone-indexed header's
-    /// retained rows borrowed. Written when a merge lands, persisted in
+    /// retained index borrowed. Written when a merge commits, persisted in
     /// the CDB snapshot for the offline invalidation diff.
     void record_header_host(Fid header, Fid host) {
         header_hosts[header] = host;
     }
 
-    /// The header's retained rows no longer borrow a host's command: they
-    /// landed under its own, or a guessed one.
+    /// The header's retained index no longer borrows a host's command: it
+    /// was merged under its own, or a guessed one.
     void forget_header_host(Fid header) {
         header_hosts.erase(header);
     }
 
-    /// The standalone-indexed headers whose retained rows borrowed
+    /// The standalone-indexed headers whose retained index borrowed
     /// `host`'s command.
     llvm::SmallVector<Fid> headers_hosted_by(Fid host) const {
         llvm::SmallVector<Fid> headers;
@@ -229,7 +229,7 @@ public:
         return headers;
     }
 
-    /// Start a freshness round: FileVersion verdicts hold for one round —
+    /// Start a freshness round: FileVersion results hold for one round —
     /// the disk can change under a running round, but staleness is
     /// re-judged per round anyway.
     void begin_round() {
@@ -238,12 +238,12 @@ public:
 
     /// Check whether a file needs re-indexing: no manifest, or a stale
     /// FileVersion among its dependencies. Valid only within one round:
-    /// the verdicts are cleared by begin_round(), never here.
+    /// the results are cleared by begin_round(), never here.
     bool need_update(Fid file);
 
     /// Shard blobs whose write has not durably completed: dirty since the
     /// last save plus the batch a running save is committing. The gauge
-    /// reaches zero only once every shard write settled — never in the
+    /// reaches zero only once every shard write finished — never in the
     /// window where save() has snapshot-cleared the dirty set but its
     /// commit (and the last_save_shards update) is still in flight.
     std::size_t pending_shard_writes() const {
@@ -271,7 +271,7 @@ private:
     kota::event_loop& loop;
     Project& project;
 
-    /// Header-mode verdicts, persisted in the artifacts blob.
+    /// Header-mode results, persisted in the artifacts blob.
     CommandResolver& commands;
 
     /// Serializes concurrent save() calls: the pump's round-end save, the
@@ -289,7 +289,7 @@ private:
 
     /// Whether the search index is worth rebuilding now: the symbols
     /// merged since its build outgrew what a direct scan should carry,
-    /// or indexing settled after enough merges (or with no index at all).
+    /// or indexing became idle after enough merges (or with no index at all).
     bool search_rebuild_due(SearchRebuild search) const;
 
     /// Rebuild the search index from the symbol table — the build runs on
@@ -297,7 +297,7 @@ private:
     /// the next batch.
     kota::task<> rebuild_search_index();
 
-    /// Merges landed since the search index was built.
+    /// Merges committed since the search index was built.
     std::size_t merges_since_search_build = 0;
 
     /// A rebuilt search blob no batch has committed yet.
@@ -310,7 +310,7 @@ private:
     bool global_dirty = false;
 
     /// Blob removals discovered during load (stale manifests, orphan
-    /// shards, swept layouts), deferred into the first save so startup
+    /// shards, removed layouts), deferred into the first save so startup
     /// never runs synchronous database commits on the event loop.
     llvm::SmallVector<index::BlobKey> startup_removes;
 
@@ -321,7 +321,7 @@ private:
 
     /// The persisted CDB snapshot needs a rewrite no dirty blob will
     /// trigger: its write failed while the rest of the batch may have
-    /// landed, or load() found it missing or corrupt next to a valid
+    /// committed, or load() found it missing or corrupt next to a valid
     /// global. Without this flag the rewrite would wait for an unrelated
     /// dirtying merge: a save with nothing else to commit skips the
     /// snapshot recompute entirely.
@@ -332,7 +332,7 @@ private:
     std::uint64_t serialized_records = 0;
 
     /// Host source whose command each standalone-indexed header's retained
-    /// rows borrowed, recorded when a merge lands and persisted in the CDB
+    /// index borrowed, recorded when a merge commits and persisted in the CDB
     /// snapshot.
     /// The offline invalidator checks the recorded host directly — the
     /// include graph is rebuilt from the NEW commands before load(), so
@@ -352,20 +352,20 @@ private:
     /// Diff the persisted CDB snapshot against the live CDB and drop the
     /// index of every TU whose compile command changed while no server was
     /// running — content-based freshness cannot see command changes, so an
-    /// adopted manifest would keep judging the old-command rows fresh, in
+    /// adopted manifest would keep judging the old-command index fresh, in
     /// this session and after a restart. A TU the build stopped compiling
     /// — every database that listed it is healthy and lists it no more, or
-    /// the default command that claimed it is gone — leaves the index; one
+    /// the default command that covered it is gone — leaves the index; one
     /// a database that failed to load listed keeps serving its last-known
-    /// rows, mirroring the live CDB-reload treatment.
+    /// index, mirroring the live CDB-reload treatment.
     void reconcile_cdb_snapshot(Report& report);
 
-    /// Drop the index of every TU a rule's `index = false` keeps out: rows
+    /// Drop the index of every TU a rule's `index = false` keeps out: an index
     /// built before the rule would otherwise serve on, since the pump never
     /// rebuilds an excluded unit.
     void retire_excluded(Report& report);
 
-    /// Per-round FileVersion staleness verdicts: many TUs share the same
+    /// Per-round FileVersion staleness results: many TUs share the same
     /// versions, and one stat (or repair) per version per round is enough.
     llvm::DenseMap<VersionID, bool> fv_stale;
 
@@ -375,15 +375,15 @@ private:
     bool file_version_stale(VersionID fv_id);
 
     /// Add every TU contributing to `path_id`'s shard to the report's
-    /// reindex debt. Used when the file's resident rows are lost while its
+    /// reindex debt. Used when the file's resident index is lost while its
     /// manifests still read fresh: no in-process event would ever rebuild
-    /// them, and for standalone headers no restart sweep would either.
+    /// it, and for standalone headers no restart pass would either.
     void requeue_owners(Fid path_id, Report& report);
 
     /// Drop every resident shard that may borrow database memory —
     /// everything not dirty, since dirty shards own their bytes by
     /// construction (merges install memory copies) — and requeue the
-    /// owners of the dropped rows.
+    /// owners of the dropped shards.
     void shed_borrowed_shards(Report& report);
 
     /// Runtime-corruption recovery, shared by the write-time and the

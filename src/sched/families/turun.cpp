@@ -81,13 +81,13 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                                  {.extra_prepend = extras.prepend, .extra_append = extras.append});
     if(resolved.source == CommandSource::Fallback ||
        (resolved.source == CommandSource::Inferred && !project.build.unit(path_id))) {
-        // A file whose manifest survives keeps serving its last-known rows,
+        // A file whose manifest survives keeps serving its last-known index,
         // so skipping it loses nothing. One without a manifest (dropped or
         // never built) stays uncovered — count that as a failure so a batch
         // run reports the debt instead of exiting clean.
         if(!project.project_index.manifests.contains(path_id)) {
             finished[path_id] = {.result = Result::Failed,
-                               .error = "no compile command found; the file stays uncovered"};
+                                 .error = "no compile command found; the file stays uncovered"};
             co_return RoundOutcome::Failed;
         }
         finished[path_id] = {.result = Result::Skipped};
@@ -103,7 +103,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     // included — a borrowed header host's flags select the same imports the
     // parse will see — and its sentinel edges are what let an unresolved
     // name's first provider re-dirty this TU. A failed PCM build is not
-    // terminal — the parse consumes whatever artifacts landed and the
+    // terminal — the parse consumes whatever artifacts arrived and the
     // worker reports its own failure if they are not enough.
     std::vector<const char*> argv;
     argv.reserve(params.arguments.size());
@@ -169,9 +169,9 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             auto read = vfs::read(transfer->tmp_path, vfs::Read::Mapped);
             if(!read) {
                 finished[path_id] = {.result = Result::Failed,
-                                   .error = std::format("reading the index from {} failed: {}",
-                                                        transfer->tmp_path,
-                                                        read.error().message())};
+                                     .error = std::format("reading the index from {} failed: {}",
+                                                          transfer->tmp_path,
+                                                          read.error().message())};
                 co_return RoundOutcome::Failed;
             }
             transferred = std::move(*read);
@@ -179,7 +179,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         }
         if(plan.index && index_bytes.empty()) {
             finished[path_id] = {.result = Result::Failed,
-                               .error = "the worker returned no TUIndex"};
+                                 .error = "the worker returned no TUIndex"};
             co_return RoundOutcome::Failed;
         }
         Outcome outcome;
@@ -191,7 +191,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
             // build (or a removal clearing the entry) means this result
             // describes text that no longer exists — e.g. a compile-command
             // change whose erase+re-enqueue must not be undone by an
-            // in-flight merge of the old-command rows. Drop the merge; the
+            // in-flight merge of the old-command index. Drop the merge; the
             // follow-up slot redoes it.
             if(guards.superseded && guards.superseded()) {
                 LOG_INFO("Discarding superseded index result for {}", file_path);
@@ -204,20 +204,21 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
                 if(report.error() == IndexStore::MergeError::Outdated) {
                     send_in_full.insert(path_id);
                     finished[path_id] = {.result = Result::Preempted,
-                                       .error = "a variant the result named by hash is not stored"};
+                                         .error =
+                                             "a variant the result named by hash is not stored"};
                     co_return RoundOutcome::Stale;
                 }
-                // Rejected wholesale: the file's rows are missing or stale,
+                // Rejected wholesale: the file's index is missing or stale,
                 // which is a failure, not a completed index.
                 finished[path_id] = {.result = Result::Failed,
-                                   .error = "the TUIndex result failed verification"};
+                                     .error = "the TUIndex result failed verification"};
                 co_return RoundOutcome::Failed;
             }
-            // Record the borrowed host only for rows that landed: written at
+            // Record the borrowed host only for an index that merged: written at
             // dispatch, a failed rebuild would leave the persisted CDB
-            // snapshot naming the new host while the retained rows were
+            // snapshot naming the new host while the retained index was
             // built through the old one — an unchanged new host then pins
-            // those stale rows fresh across restarts.
+            // that stale index fresh across restarts.
             if(resolved.source == CommandSource::IncludeGraph) {
                 store.record_header_host(path_id, resolved.host);
             } else {
@@ -240,7 +241,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
     if(result.error().code == worker::dispatch_errc::worker_crashed) {
         finished[path_id] = {.result = Result::Crashed,
-                           .error = "it crashed the worker: " + result.error().message};
+                             .error = "it crashed the worker: " + result.error().message};
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_died ||
@@ -249,7 +250,7 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Stale;
     }
     if(result.error().code == worker::dispatch_errc::worker_unavailable && pool.revives_slots()) {
-        // The outage is a window, not a verdict: the pool revives dead
+        // The outage is a window, not a decision: the pool revives dead
         // slots, so the requeued attempt can succeed once one returns to
         // service. Without revival the failure below is terminal.
         finished[path_id] = {.result = Result::Preempted, .error = result.error().message};

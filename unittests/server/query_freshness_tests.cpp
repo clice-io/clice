@@ -47,7 +47,7 @@ index::IndexQuery disk_query{project.project_index, project.file_table, &gate, n
 Fid main_id;
 Fid header_id;
 
-/// Build an envelope from the added sources and merge it into the
+/// Build a TU index from the added sources and merge it into the
 /// workspace, installing each section's blob verbatim as the file's shard.
 void merge_into_workspace() {
     auto bytes = index::build_tu_index(*unit);
@@ -81,7 +81,7 @@ index::SymbolHash symbol_at(Fid path_id, std::uint32_t offset) {
     return result;
 }
 
-/// Files contributing reference rows for a symbol, by basename.
+/// Files contributing reference relations for a symbol, by basename.
 std::vector<std::string> reference_files(index::SymbolHash hash) {
     std::vector<std::string> files;
     for(auto& site: disk_query.sites(hash, Fid{}, RelationKind::Reference)) {
@@ -124,29 +124,29 @@ ZEST_CASE(GateSplitsShards) {
     auto hash = symbol_at(main_id, point("use"));
     ZASSERT(hash != 0UL);
 
-    // Baseline: the main TU contributes its reference row, and the
+    // Baseline: the main TU contributes its reference relation, and the
     // definition resolves into the header shard.
     ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
     ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
     // Awaiting a reindex for a dependency change only: the disk still
-    // holds the text the rows indexed, so they keep serving.
+    // holds the text its shard indexed, so the shard keeps serving.
     indexer.enqueue(main_id, ReindexReason::DepsOnly);
     ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 
-    // Line-based resolution in the file works while its rows are current.
+    // Line-based resolution in the file works while its index is current.
     index::SymbolQuery by_line;
     by_line.position = {.path = project.file_table.resolve(main_id).str(), .line = 3};
     ZASSERT(!disk_query.locate(by_line).empty());
 
     // The disk was seen holding other text: the file's contribution is
-    // skipped until its rows describe the disk again; other files' rows
+    // skipped until its shard describes the disk again; other files' shards
     // are unaffected.
     project.file_table.observe(main_id, DiskObservation{.hash = 1});
     ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
     ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
-    // Cursor-style resolution against the stale rows is unresolvable: the
+    // Cursor-style resolution against the stale index is unresolvable: the
     // line numbers describe text that no longer exists.
     ZASSERT(disk_query.locate(by_line).empty());
 
@@ -155,7 +155,7 @@ ZEST_CASE(GateSplitsShards) {
     ZASSERT(!index_query.first_site(hash, Fid{}, RelationKind::Definition).has_value());
 
     // With background indexing disabled nothing would ever catch up:
-    // last-known rows keep serving instead of leaving a permanent hole.
+    // the last-known index keeps serving instead of leaving a permanent hole.
     gate.options.withhold = false;
     ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 }
@@ -171,7 +171,7 @@ ZEST_CASE(DeletedFileWithdrawsIndex) {
     ZASSERT(hash != 0UL);
     ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 
-    // The rows of a file seen gone point at text that is gone with it.
+    // The index of a file seen gone points at text that is gone with it.
     project.file_table.saw_missing(main_id);
     ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
 }

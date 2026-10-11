@@ -27,7 +27,7 @@ IndexPump::IndexPump(kota::event_loop& loop,
 
 void IndexPump::boost(Fid server_path_id) {
     if(!enqueue(server_path_id, ReindexReason::DepsOnly)) {
-        // No attempt will ever settle for an excluded file: the serving
+        // No attempt will ever finish for an excluded file: the serving
         // side hears that now, or the session waits on the index forever.
         if(on_attempt_finished) {
             on_attempt_finished(server_path_id);
@@ -38,7 +38,7 @@ void IndexPump::boost(Fid server_path_id) {
     // the bulk backlog. A slot past the running round stays past it and
     // leads the next round: the round may have the file in flight, and a
     // second attempt there would join the same node, where only one of
-    // the two lands an outcome.
+    // the two commits an outcome.
     auto begin = index_queue.begin() + index_queue_pos;
     auto it = std::find(begin, index_queue.end(), server_path_id);
     if(it != index_queue.end()) {
@@ -56,9 +56,9 @@ bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     if(!project.build.indexed(project.file_table.resolve(server_path_id))) {
         return false;
     }
-    // New debt voids the running round's freshness memos: a claim taken
+    // New debt voids the running round's freshness memos: debt taken
     // after this recording must re-judge against the disk, or its skip
-    // would settle the fresh ticket on a verdict memoized before the
+    // would finish the fresh ticket on a result memoized before the
     // change and the file would never re-index.
     store.begin_round();
     if(pending_table.record(server_path_id, reason)) {
@@ -104,7 +104,7 @@ kota::task<> IndexPump::await_attempt(Fid server_path_id) {
         waits.push_back({ticket, std::make_shared<kota::event>()});
         it = waits.end() - 1;
     }
-    // Hold the shared_ptr across the await: the settle moves the event out
+    // Hold the shared_ptr across the await: the wake moves the event out
     // of the map before setting it, and a fresh wait after that parks on a
     // new instance.
     auto event = it->event;
@@ -160,7 +160,7 @@ kota::task<> IndexPump::stop() {
     if(index_idle_timer) {
         index_idle_timer->stop();
     }
-    // Cancelled tasks unwind before their settle bookkeeping; release any
+    // Cancelled tasks unwind before their finish bookkeeping; release any
     // parked feature request rather than stranding it past shutdown.
     for(auto& waits: llvm::make_second_range(attempt_waits)) {
         for(auto& wait: waits) {
@@ -209,7 +209,7 @@ auto IndexPump::note_dispatch_failure(const PendingTable::TakenDebt& taken,
     if(outcome.needs_slot) {
         index_queue.push_back(taken.id);
     }
-    // Giving up cleared the ledger; no further attempt will come, so any
+    // Giving up cleared the table entry; no further attempt will come, so any
     // parked waiter must not be left waiting for one.
     if(outcome.decision == PendingTable::FailureDecision::GaveUp) {
         wake_attempt_waits(taken.id);
@@ -245,7 +245,7 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
             // Feed at most twice the pool's low budget: deep enough that
             // workers never idle waiting for the feeder, shallow enough
             // that the pool queue holds little when a pause or budget cut
-            // lands. The floor keeps the window alive when the budget
+            // arrives. The floor keeps the window alive when the budget
             // reads zero (a pool that has not started yet); without it
             // the feeder would wait on task_done with nothing in flight
             // to ever set it.
@@ -262,7 +262,7 @@ kota::task<> IndexPump::run_round_feeder(kota::task_group<>& workers,
         // No open-session or hash-freshness shortcut here: the index task
         // is the single decision point for skipping (it knows the pending
         // reason; a hash check alone cannot see a file's own edit), and
-        // its settle retires the claimed debt with newer recordings
+        // its finish retires the taken debt with newer recordings
         // honored. A second, reason-blind copy of these checks here is
         // exactly what once erased ContentChanged state early and let a
         // stale shard keep serving.
@@ -305,7 +305,8 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     // to see a file's own edit (it validates the recorded
     // dependencies), so only deps-only slots — where it exists to
     // deduplicate cascade storms — may take the shortcut.
-    bool content_changed = pending_table.pending_reason(server_path_id) == ReindexReason::ContentChanged;
+    bool content_changed =
+        pending_table.pending_reason(server_path_id) == ReindexReason::ContentChanged;
     bool served = !content_changed && compiled_by_session && compiled_by_session(server_path_id);
     if(!served && (content_changed || store.need_update(server_path_id))) {
         LOG_INFO("[{}/{}] Indexing {}", index, total, file_path);
@@ -323,9 +324,9 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
             round.task_done.set();
             co_return;
         }
-        // The report's debt is claimed before the settle and the
+        // The report's debt is taken before the finish and the
         // waiter wake-ups below: a waker re-deriving its route must
-        // never observe rows as settled that the merge just declared
+        // never observe an index as finished that the merge just declared
         // stale.
         take_report(outcome.report);
         switch(outcome.result) {
@@ -362,7 +363,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
                 using enum PendingTable::Failure;
                 auto failure = outcome.result == TURunFamily::Result::Crashed ? Crashed
                                : outcome.result == TURunFamily::Result::Lost  ? Lost
-                                                                                : Preempted;
+                                                                              : Preempted;
                 switch(note_dispatch_failure(taken, failure)) {
                     case PendingTable::FailureDecision::Dropped: {
                         LOG_INFO("[{}/{}] Index dropped for removed file {}",
@@ -420,14 +421,14 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
         }
     }
     // The pending window ends with the index attempt, success or not. On
-    // failure the last-known rows resume serving — deliberately: keeping
+    // failure the last-known index resumes serving — deliberately: keeping
     // the gate would hide a file that fails to index (broken compile,
     // missing command) from every cross-file query with no recovery path,
     // since only a future event re-enqueues it. Any such event re-judges
     // staleness by content hash. A re-enqueue during the flight booked
-    // newer debt: the settle leaves it standing.
+    // newer debt: the finish leaves it standing.
     pending_table.finish(taken);
-    // The attempt settled with no retry pending; the serving side judges
+    // The attempt finished with no retry pending; the serving side judges
     // whether an open session still waiting on the index can ever be
     // served by it, before its waiters wake (contract 15).
     if(on_attempt_finished && !pending_table.contains(server_path_id)) {
@@ -435,7 +436,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     }
     // Wake the waiters parked on this attempt (and older tickets it
     // covers) after the escalation above, so they re-derive their route
-    // against the settled state. Waiters of a requeue made during the
+    // against the finished state. Waiters of a requeue made during the
     // flight bound the fresh ticket and stay parked for that newer
     // attempt.
     wake_attempt_waits(server_path_id, taken.ticket);
@@ -462,7 +463,7 @@ kota::task<> IndexPump::run_background_indexing() {
     LOG_DEBUG("Background indexing: starting, {} files queued",
               index_queue.size() - index_queue_pos);
 
-    // FileVersion verdicts hold for one round: the disk can change under a
+    // FileVersion results hold for one round: the disk can change under a
     // running round, but staleness is re-judged per round anyway.
     store.begin_round();
 
@@ -506,7 +507,8 @@ kota::task<> IndexPump::run_background_indexing() {
     // Files enqueued or requeued past the round snapshot keep the queue
     // alive for the next scheduled round.
     if(index_queue_pos >= index_queue.size()) {
-        assert(!pending_table.has_queued_slots() && "a drained queue must leave no unconsumed slot");
+        assert(!pending_table.has_queued_slots() &&
+               "a drained queue must leave no unconsumed slot");
         index_queue.clear();
         index_queue_pos = 0;
         round_end = 0;
@@ -531,8 +533,8 @@ kota::task<> IndexPump::run_background_indexing() {
 
     // Files enqueued or requeued while the round ran saw their schedule()
     // no-op against indexing_active; without this kick they would wait for
-    // the next external event — and a content-changed pending file's rows
-    // stay skipped for that whole wait.
+    // the next external event — and a content-changed pending file's index
+    // stays skipped for that whole wait.
     if(index_queue_pos < index_queue.size()) {
         schedule(/*immediate=*/true);
     }

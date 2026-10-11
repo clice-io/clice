@@ -158,14 +158,14 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     auto bound = synthesized && !synthesized->open.empty() ? 0 : compute_preamble_bound(text);
     if(bound == 0 && !synthesized) {
         // No preamble directives and no injected -include — PCH would be
-        // empty. Self-contained header contexts land here too: they borrow
+        // empty. Self-contained header contexts end up here too: they borrow
         // a command but inject nothing.
         return {};
     }
 
     // With a synthesized prefix, the PCH is worth building even at
     // bound == 0: the -include'd prefix is processed via the predefines
-    // buffer and lands in the PCH, so the (potentially huge) prefix is not
+    // buffer and ends up in the PCH, so the (potentially huge) prefix is not
     // re-parsed on every edit. The -include flag is part of the
     // canonicalized arguments below, and the prefix's name hashes its
     // content — through the fragments it includes, the whole chain's — so
@@ -211,7 +211,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
     // blobs a newer bundled clang would reject, and the build configuration
     // keeps the blob with the library that records its dependencies:
     // shared across configurations, one could rebuild it while another's
-    // records still vouched for the old content.
+    // records still confirmed the old content.
     auto preamble_text = text.substr(0, bound);
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_input_check,
@@ -343,7 +343,7 @@ void ASTFamily::saved(Session& session) {
     }
     // Typing never re-runs the self-containment trial, yet an edit can
     // make a header lean on its includer: a save showing what an includer
-    // would provide, or saving a buffer whose compile has not landed yet,
+    // would provide, or saving a buffer whose compile has not finished yet,
     // runs it again.
     if(contexts.commands.header_mode(session.path_id) == HeaderMode::SelfContained) {
         if(auto projection = projections.projection_at(session.path_id, session.version);
@@ -489,7 +489,7 @@ void ASTFamily::drop(Fid path_id) {
 
 void ASTFamily::switch_identity(Session& session) {
     // Invalidate any in-flight compile: without the bump it would pass
-    // its landing validity check and publish results for the superseded
+    // its commit validity check and publish results for the superseded
     // identity.
     session.generation += 1;
     session.trial_done = false;
@@ -572,7 +572,7 @@ kota::task<bool> ASTFamily::ensure_compiled(std::shared_ptr<Session> session) {
     }
 
     // Join the document's round, retrying through stale attempts (a Lost
-    // invalidation mid-flight lands Stale and the next attempt recompiles)
+    // invalidation mid-flight yields Stale and the next attempt recompiles)
     // until a terminal outcome. A buffer edit or session replacement ends
     // the join instead: the result would describe a buffer that no longer
     // exists, and the editor re-requests after an edit.
@@ -620,7 +620,7 @@ kota::task<std::optional<PCMFamily::ModuleDeps>>
                                          directory,
                                          std::optional<llvm::StringRef>(text));
     graph.declare(node(path_id), deps.declared);
-    // Sentinels join the round's candidates too: a successful landing
+    // Sentinels join the round's candidates too: a successful commit
     // replaces the declaration with them, and a declare-only edge would
     // vanish with it.
     for(auto dep: deps.declared) {
@@ -748,7 +748,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // The round's content identity. The graph's round identity covers
     // invalidation (ctx.current()); this covers the buffer itself — a
     // didChange or session replacement makes every product describe text
-    // that no longer exists, so the landing discards wholesale, while a
+    // that no longer exists, so the commit discards wholesale, while a
     // Lost invalidation (generation unchanged) still publishes salvage.
     auto gen = session->generation;
 
@@ -835,7 +835,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         auto source = resolution.source;
         auto* synthesized = resolution.synthesized.get();
 
-        // The line the appended suffix #include lands on — anything at or
+        // The line the appended suffix #include ends up on — anything at or
         // past it is phantom text the user cannot see.
         std::optional<std::uint32_t> suffix_line_limit;
         auto* header_context = contexts.header_context(path_id);
@@ -852,7 +852,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         // Whether this round is the self-containment probe: a header
         // deliberately compiled without its includer prefix to see if it
         // stands alone. Decided here, where resolve_command chose to omit
-        // the prefix; the landing gates what the probe may write.
+        // the prefix; the commit gates what the probe may write.
         bool trial_round = attempt == 0 && !session->trial_done && header_context &&
                            !header_context->synthesized &&
                            contexts.commands.header_mode(path_id) == HeaderMode::Unknown;
@@ -1102,7 +1102,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                      file_path);
             // Retract unconditionally — a blamed pair never survives, even
             // when the retry budget is spent — but rerun only once. The
-            // strike ledger bounds the cross-round shape: this round lands
+            // strike table bounds the cross-round shape: this round finishes
             // Stale (the retract re-dirties the key its candidate edge
             // points at), the waiter respawns it, and without the parked
             // key each respawn would rebuild and blame forever.
@@ -1121,7 +1121,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             // diagnostics, a non-Done one falls to the honest gap below.
         }
 
-        // A non-Done reply past the gate is a non-result: settling it
+        // A non-Done reply past the gate is a non-result: committing it
         // would freeze the document on a product that never existed —
         // empty diagnostics, no index, an empty deps snapshot nothing can
         // invalidate. Superseded rounds were already discarded at the
@@ -1145,7 +1145,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             co_return RoundOutcome::Failed;
         }
 
-        // A probe invalidated mid-flight is discarded whole: its verdict is
+        // A probe invalidated mid-flight is discarded whole: its result is
         // a conditional write like the projection's current flag (dispatch
         // reset trial_done and the header mode for the recompile to
         // re-earn), and its diagnostics come from a compile deliberately
@@ -1161,13 +1161,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
         }
 
-        // Self-containment trial verdict. Scored once per settled input
+        // Self-containment trial result. Scored once per stable input
         // state: trial_done is reset whenever compile inputs change for
         // reasons other than buffer edits, so a dependency change re-runs
         // the trial while ordinary typing never does. Only NeedsContext is
         // persisted — SelfContained is recorded in memory alone (dependency
         // changes erase it) so queryContext can dedup identical-flag hosts
-        // once the verdict is actually earned, never on a guess.
+        // once the result is actually earned, never on a guess.
         if(trial_round) {
             session->trial_done = true;
             trial_misses = missing_context_errors(diagnostics);
@@ -1185,16 +1185,16 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             // Scored on the buffer: a restart keeps it only for the same
             // text on disk. A context that misses as much (a database
             // without the include directories the includer needs too) is
-            // no verdict to keep.
+            // no result to keep.
             contexts.commands.record_header_mode(path_id, HeaderMode::NeedsContext, session->hash);
         }
 
-        // The landing: build the whole package off to the side, then
+        // The commit: build the whole package off to the side, then
         // install it with no suspension before the outcome becomes
         // visible (contract 16) — a joiner must never see Success before
         // the projection describes the buffer it compiled. A Lost
         // invalidation mid-flight (ctx no longer current, generation
-        // unchanged) lands the same package as bounded staleness —
+        // unchanged) commits the same package as bounded staleness —
         // recorded, published, but not current — and reports Stale so
         // waiters drive the recompile.
         bool current = ctx.current();
@@ -1213,7 +1213,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         auto next = std::make_shared<ASTProjection>();
         next->pch_key = adopted_pch;
         next->failed_pch_key = failed_pch;
-        // The AST and the file index settle together — that pairing is
+        // The AST and the file index commit together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
         // compile that produced no index data (fatal error, no AST) must
         // therefore drop the previous buffer's index rather than leave it
@@ -1269,14 +1269,14 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         session->crashed_pch.clear();
         on_output.emit(session);
         // The push above told clients to re-pull what the fresh AST now
-        // answers better; one refresh per landing.
+        // answers better; one refresh per commit.
         session->index_served = false;
         if(on_indexing_needed) {
             on_indexing_needed();
         }
         co_return current ? RoundOutcome::Success : RoundOutcome::Stale;
     }
-    // Every arm of the two-send loop lands or returns; the trial's
+    // Every arm of the two-send loop commits or returns; the trial's
     // continue only fires on the first send, the artifact retry only once.
     std::unreachable();
 }

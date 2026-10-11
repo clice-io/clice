@@ -41,7 +41,7 @@ public:
 
     /// The preamble's includes follow the predefines buffer, the last
     /// thing the compile enters before the main file's rest; replayed once
-    /// every callback has left it, so they land in the main file's scope.
+    /// every callback has left it, so they arrive in the main file's scope.
     void LexedFileChanged(clang::FileID,
                           LexedFileChangeReason reason,
                           clang::SrcMgr::CharacteristicKind,
@@ -366,7 +366,7 @@ CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
                ref.starts_with("-Wa,");
     };
     // A -X<tool> forwards its next token, so the pair filters as one
-    // unit on the operand's verdict — a lone survivor would consume
+    // unit on the operand's outcome — a lone survivor would consume
     // whatever follows it on the final command (the source path, say).
     auto forwards_operand = [](llvm::StringRef ref) {
         return ref == "-Xclang" || ref == "-Xpreprocessor" || ref == "-Xlinker" ||
@@ -542,7 +542,7 @@ clang::DiagnosticsEngine::Level
         // NOLINT comments)?
         return clang::DiagnosticsEngine::Ignored;
     }
-    // The compiler settles its own diagnostics in system macros: an error
+    // The compiler decides its own diagnostics in system macros: an error
     // there stays one.
     if(!context.isCompilerDiagnostic(diag.getID()) &&
        !context.getOptions().SystemHeaders.value_or(false) && diag.hasSourceManager() &&
@@ -615,7 +615,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         }
     }
 
-    /// No need to run clang-tidy or IncludeFixerif we are not going to surface
+    /// No need to run clang-tidy or IncludeFixerif we are not going to report
     /// diagnostics.
     const static auto all_factories = [] {
         tidy::ClangTidyCheckFactories factories;

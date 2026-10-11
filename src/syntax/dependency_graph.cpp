@@ -758,7 +758,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
 
         pending_dir_tasks.reserve(unique_dirs.size());
         for(auto& entry: unique_dirs) {
-            // A listing the cache can still vouch for skips the readdir;
+            // A listing the cache can still confirm skips the readdir;
             // its one validation stat happens lazily at first use.
             if(file_table.dirs.kept(entry.getKey())) {
                 continue;
@@ -789,7 +789,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     std::vector<kota::task<FileScanResult>> prefetch_tasks;
 
     // Warm path through the shared table: a live stat the shared pair can
-    // vouch for pins the bytes' cached lexical scan — a rescan then skips
+    // confirm pins the bytes' cached lexical scan — a rescan then skips
     // the read and the lex for every unchanged file, at the cost of one
     // stat. Recorded at discovery so the prefetch never races the check.
     std::vector<FileScanResult> pending_warm;
@@ -831,9 +831,9 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         std::vector<FileScanResult> scan_results = std::move(pending_warm);
         pending_warm.clear();
         std::size_t wave_cache_hits = scan_results.size();
-        llvm::DenseSet<Fid> scanned;
+        llvm::DenseSet<Fid> known;
         for(auto& r: scan_results) {
-            scanned.insert(r.path_id);
+            known.insert(r.path_id);
         }
 
         if(!prefetch_tasks.empty()) {
@@ -855,7 +855,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             for(auto& entry: current_wave) {
                 auto pid = entry.path_id;
                 auto context = entry.context;
-                if(scanned.contains(pid) || try_warm(pid, context)) {
+                if(known.contains(pid) || try_warm(pid, context)) {
                     continue;
                 }
                 auto path = file_table.resolve(pid).data();

@@ -37,7 +37,7 @@ ZEST_SUITE(FileTable) {
 
 ZEST_CASE(HardlinksReadApart) {
     // Two spellings hardlinked to one file are two files: a read through
-    // one never vouches for the other.
+    // one never confirms the other.
     TempDir tmp;
     tmp.touch("a.h", "int shared();\n");
     auto a = tmp.path("a.h");
@@ -61,7 +61,7 @@ ZEST_CASE(HardlinksReadApart) {
 ZEST_CASE(RenameSaveReads) {
     // An editor-style save (write tmp, rename over) replaces the file.
     // The forged size and mtime match the old pair: the file ID and change
-    // time in the stamp keep it from vouching for the new bytes.
+    // time in the stamp keep it from confirming the new bytes.
     TempDir tmp;
     tmp.touch("f.h", "int v1();\n");
     auto f = tmp.path("f.h");
@@ -183,7 +183,7 @@ ZEST_CASE(RootClimbPastSymlink) {
 #endif
 
 ZEST_CASE(FreshReadNotVouched) {
-    // A check that reads a just-written file gets the right verdict but
+    // A check that reads a just-written file gets the right result but
     // must not keep the stat as the fast path: on a coarse-mtime
     // filesystem a same-tick write could later forge it.
     TempDir tmp;
@@ -429,7 +429,7 @@ ZEST_CASE(DriveRootSpelled) {
 ZEST_CASE(WindowsCaseVariantsMerge) {
     // The worker names a file by the OS's final name for it, in on-disk
     // case; a spelling in another case interning to a second fid splits
-    // the file's dependencies and index rows between the two.
+    // the file's dependencies and index between the two.
     TempDir tmp;
     tmp.touch("Real/File.h", "");
     FileTable pool;

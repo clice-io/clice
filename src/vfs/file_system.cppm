@@ -40,7 +40,7 @@ constexpr std::int64_t stat_baseline_before_ns(std::int64_t at_ms) {
     return at_ms * 1'000'000 - mtime_guard_ns;
 }
 
-/// Whether a stat taken now carrying `mtime_ns` may vouch for what it
+/// Whether a stat taken now carrying `mtime_ns` may guarantee what it
 /// describes beyond this moment.
 bool stable_mtime(std::int64_t mtime_ns);
 
@@ -115,7 +115,7 @@ std::expected<std::unique_ptr<llvm::MemoryBuffer>, std::error_code> read(llvm::S
 /// the mtime between the two fstats; a rename-over does not affect the
 /// open handle at all). A post-fstat mtime inside the guard window
 /// (coarse-granularity filesystems) demotes the pair to unreliable: a
-/// racing write can land within one mtime tick, so such a stat must not
+/// racing write can arrive within one mtime tick, so such a stat must not
 /// suppress future reads. Safe to call from any thread.
 std::expected<ObservedFile, std::error_code> read_observed(llvm::StringRef path);
 

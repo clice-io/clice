@@ -12,7 +12,7 @@ namespace clice {
 
 /// A command a file compiles under: one of its database entries
 /// (CDBExact); for a file without entries that a rule's default command
-/// claims, that command (Default); for a provisional member, the command it
+/// covers, that command (Default); for a provisional member, the command it
 /// borrows (Inferred).
 struct Candidate {
     ConfigID config;
@@ -133,7 +133,7 @@ public:
 
     /// Record that the user saved `file`, a source the build does not
     /// declare: a provisional member while it has a lender and no host (see
-    /// Project::refresh_provisional), until an entry or a rule claims it.
+    /// Project::refresh_provisional), until an entry or a rule covers it.
     /// False when it is recorded already.
     bool record(Fid file);
 
@@ -162,11 +162,11 @@ public:
     /// rules, edits it for both, each rule once.
     ConfigID lend(ConfigID command, CanonicalRef lender, CanonicalRef file);
 
-    /// The directories the default-command rules claim sources under, none
+    /// The directories the default-command rules cover sources under, none
     /// inside another, and the cache directory a walk of them skips.
     struct SourceWalk {
         llvm::SmallVector<CanonicalPath> roots;
-        /// The roots of rules with patterns: a file there may be claimed
+        /// The roots of rules with patterns: a file there may be covered
         /// whatever its suffix (a forced language), elsewhere only one
         /// clang recognizes.
         llvm::SmallVector<CanonicalPath> patterned;
@@ -174,10 +174,10 @@ public:
     };
 
     /// What a default-sources enumeration walks; no roots when no active
-    /// rule claims sources.
+    /// rule covers sources.
     SourceWalk source_walk() const;
 
-    /// Enumerate the sources the default-command rules claim again, from a
+    /// Enumerate the sources the default-command rules cover again, from a
     /// walk of source_walk() (see walk_sources), and report the ones that
     /// appeared since the last enumeration — a file created after startup
     /// joins the build; a deleted one just leaves the members. The file
@@ -191,13 +191,13 @@ public:
 
     /// Whether `file` is a translation unit of its own: declared() or a
     /// provisional member — the members() filter for one file, so
-    /// commands() is never empty for a unit. A header claims no unit; its
+    /// commands() is never empty for a unit. A header is no unit; its
     /// default command is the resolver's last resort after host inference,
     /// never its own command.
     bool unit(Fid file);
 
     /// Whether the build declares `file` a unit: it has a database entry,
-    /// or a default-command rule claims it and it is a source.
+    /// or a default-command rule covers it and it is a source.
     bool declared(Fid file);
 
     /// Whether a file joins the background index: no matching active rule
@@ -243,14 +243,14 @@ private:
     /// source by suffix (never a header), or a file a rule singles out by
     /// pattern whose default command forces a language (`-x c++` for an
     /// extensionless tool). A rule without patterns applies to every file,
-    /// so its forced language claims only what clang recognizes — or the
+    /// so its forced language covers only what clang recognizes — or the
     /// configuration file itself would become a unit.
     bool default_source(CanonicalRef path);
 
-    /// The active rules declaring a default command that can claim a file.
+    /// The active rules declaring a default command that can cover a file.
     llvm::SmallVector<const CompiledRule*> covering_rules() const;
 
-    /// The files of a walk a default-command rule claims: C-family sources
+    /// The files of a walk a default-command rule covers: C-family sources
     /// (never headers) matching the rules' patterns.
     void collect_covered_sources(llvm::ArrayRef<CanonicalPath> walked, std::vector<Fid>& out);
 

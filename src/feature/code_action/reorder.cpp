@@ -323,8 +323,8 @@ std::vector<TextReplacement> permutation(CompilationUnitRef unit, std::vector<Sl
         blocks[{slot.block, slot.branch}].push_back(index);
     }
 
-    // The slot whose text lands in each slot, and where each slot's text
-    // lands.
+    // The slot whose text moves into each slot, and where each slot's text
+    // moves.
     std::vector<std::size_t> source(slots.size());
     std::vector<std::size_t> target(slots.size());
     std::vector<bool> pinned(slots.size(), false);

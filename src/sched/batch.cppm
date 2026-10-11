@@ -9,7 +9,7 @@ import :worker.protocol;
 namespace clice {
 
 /// A snapshot of a batch index run's progress within the current round:
-/// units settled (indexed, skipped as fresh, or failed) against the
+/// units finished (indexed, skipped as fresh, or failed) against the
 /// round's total, and the files failed for good so far.
 struct BatchProgress {
     std::size_t completed = 0;
@@ -180,9 +180,9 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options);
 /// Lint the workspace through TURun {tidy} (or {index, tidy}): bootstrap,
 /// run every lintable CDB entry through the family under its .clang-tidy
 /// configuration, and return the merged findings. The background pump
-/// stays off during the sweep — the plan's own runs are the only consumer
+/// stays off during the pass — the plan's own runs are the only consumer
 /// of the graph; with --index the pump then drains the reindex debt the
-/// sweep's merges booked before the final save.
+/// pass's merges booked before the final save.
 BatchLintResult run_batch_lint(const BatchLintOptions& options);
 
 }  // namespace clice

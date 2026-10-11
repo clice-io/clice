@@ -138,9 +138,9 @@ bool is_implicit(const clang::Stmt* statement) {
     return false;
 }
 
-// The range whose tokens a node claims. Usually just the source range, with
+// The range whose tokens a node takes. Usually just the source range, with
 // one exception: MemberExprs to implicitly access anonymous fields should not
-// claim any tokens for themselves. Given:
+// take any tokens for themselves. Given:
 //   struct A { struct { int b; }; };
 // The clang AST reports the following nodes for an access to b:
 //   A().b;
@@ -164,13 +164,13 @@ clang::SourceRange owned_source_range(const SemanticNode& node) {
 }  // namespace
 
 // Builds the Semantics of the main file: one full traversal of its AST,
-// claiming expanded tokens innermost-first; a node owns the spelled tokens
-// its claimed tokens stand for (TokenMap::origin). Finally the preprocessor
+// taking expanded tokens innermost-first; a node owns the spelled tokens
+// its taken tokens stand for (TokenMap::origin). Finally the preprocessor
 // directives (macros, includes, imports) are appended as nodes of their own,
 // owning their name tokens.
 //
-// The traversal maintains a parent stack. Nodes claim their tokens when they
-// pop, so children get to claim parts of their range first, and parents only
+// The traversal maintains a parent stack. Nodes take their tokens when they
+// pop, so children get to take parts of their range first, and parents only
 // own tokens that no child owned.
 //
 // Nodes *usually* nest nicely: a child's getSourceRange() lies within the
@@ -178,14 +178,14 @@ clang::SourceRange owned_source_range(const SemanticNode& node) {
 //
 // Exception 1: when declarators nest, *inner* declarator is the *outer* type.
 //              e.g. void foo[5](int) is an array of functions.
-// To handle this case, declarators are careful to only claim the tokens they
-// own, rather than claim a range and rely on claim ordering.
+// To handle this case, declarators are careful to only take the tokens they
+// own, rather than take a range and rely on take ordering.
 //
-// Exception 2: siblings both claim the same node.
+// Exception 2: siblings both take the same node.
 //              e.g. `int x, y;` produces two sibling VarDecls.
 //                    ~~~~~ x
 //                    ~~~~~~~~ y
-// Here the first ("leftmost") sibling claims the tokens it wants, and the
+// Here the first ("leftmost") sibling takes the tokens it wants, and the
 // other sibling gets what's left. So selecting "int" only includes the left
 // VarDecl in the selection tree.
 class SemanticsBuilder : public clang::RecursiveASTVisitor<SemanticsBuilder> {
@@ -201,7 +201,7 @@ public:
     // We traverse all "well-behaved" nodes the same way:
     //  - push the node onto the stack
     //  - traverse its children recursively
-    //  - pop it from the stack, claiming its unclaimed tokens
+    //  - pop it from the stack, taking its untaken tokens
     //
     // Two categories of nodes are not "well-behaved":
     //  - those without source range information, we don't record those
@@ -420,8 +420,8 @@ public:
         return true;
     }
 
-    // The DeclStmt for the loop variable claims to cover the whole range
-    // inside the parens, this causes the range-init expression to not be hit.
+    // The DeclStmt for the loop variable reports a range covering the whole
+    // range inside the parens, this causes the range-init expression to not be hit.
     // Traverse the loop VarDecl instead, which has the right source range.
     bool TraverseCXXForRangeStmt(clang::CXXForRangeStmt* S) {
         return traverse_node(SemanticNode(static_cast<const clang::Stmt*>(S)), [&] {
@@ -502,7 +502,7 @@ private:
     }
 
     // Pushes a node onto the ancestor stack. Pairs with pop().
-    // Performs early claiming for some nodes (on the earlySourceRange).
+    // Performs early taking for some nodes (on the earlySourceRange).
     void push(SemanticNode node) {
         clang::SourceRange early = early_source_range(node);
         auto self = static_cast<std::uint32_t>(semantics.nodes.size());
@@ -512,7 +512,7 @@ private:
         take_range(early, self);
     }
 
-    // Pops a node off the ancestor stack, claims its tokens and seals its
+    // Pops a node off the ancestor stack, takes its tokens and seals its
     // subtree extent.
     void pop() {
         std::uint32_t self = stack.back();
@@ -521,12 +521,12 @@ private:
         stack.pop_back();
     }
 
-    // Returns the range of tokens that this node will claim directly, and
+    // Returns the range of tokens that this node will take directly, and
     // is not available to the node's children.
     // Usually empty, but sometimes children cover tokens but shouldn't own them.
     clang::SourceRange early_source_range(const SemanticNode& N) {
         if(const clang::Decl* VD = N.get<clang::VarDecl>()) {
-            // We want the name in the var-decl to be claimed by the decl itself and
+            // We want the name in the var-decl to be taken by the decl itself and
             // not by any children. Ususally, we don't need this, because source
             // ranges of children are not overlapped with their parent's.
             // An exception is lambda captured var decl, where AutoTypeLoc is
@@ -555,27 +555,27 @@ private:
         return clang::SourceRange();
     }
 
-    // Claim tokens for N, after processing its children.
-    // By default this claims all unclaimed tokens in its source range.
-    // We override this if we want to claim fewer tokens (e.g. there are gaps).
+    // Take tokens for N, after processing its children.
+    // By default this takes all untaken tokens in its source range.
+    // We override this if we want to take fewer tokens (e.g. there are gaps).
     void take_tokens_for(const SemanticNode& N, std::uint32_t self) {
         // CXXConstructExpr often shows implicit construction, like `string s;`.
         // Don't associate any tokens with it unless there's some syntax like {}.
-        // This prevents it from claiming 's', its primary location.
+        // This prevents it from taking 's', its primary location.
         if(const auto* CCE = N.get<clang::CXXConstructExpr>()) {
             take_range(CCE->getParenOrBraceRange(), self);
             return;
         }
 
         // ExprWithCleanups is always implicit. It often wraps CXXConstructExpr.
-        // Prevent it claiming 's' in the case above.
+        // Prevent it taking 's' in the case above.
         if(N.get<clang::ExprWithCleanups>()) {
             return;
         }
 
         // Declarators nest "inside out", with parent types inside child ones.
-        // Instead of claiming the whole range (clobbering parent tokens), carefully
-        // claim the tokens owned by this node and non-declarator children.
+        // Instead of taking the whole range (clobbering parent tokens), carefully
+        // take the tokens owned by this node and non-declarator children.
         // (We could manipulate traversal order instead, but this is easier).
         //
         // Non-declarator types nest normally, and are handled like other nodes.
@@ -596,8 +596,8 @@ private:
         //                      char                   `-Builtin char
         //
         // In each row
-        //   --- represents unclaimed parts of the SourceRange.
-        //   ### represents parts that children already claimed.
+        //   --- represents untaken parts of the SourceRange.
+        //   ### represents parts that children already took.
         if(const auto* TL = N.get<clang::TypeLoc>()) {
             if(auto PTL = TL->getAs<clang::ParenTypeLoc>()) {
                 take_range(PTL.getLParenLoc(), self);
@@ -655,12 +655,12 @@ private:
         return range;
     }
 
-    // Claim all unclaimed expanded tokens in S for node `self`.
+    // Take all untaken expanded tokens in S for node `self`.
     //
     // The whole-TU shape only feeds the index projection, which never queries
-    // token ownership — skip the claim machinery entirely. This matters: the
+    // token ownership — skip the take machinery entirely. This matters: the
     // preamble-state build runs a whole-TU pass over the preamble unit, and
-    // claiming its entire expanded stream would be paid on every PCH build.
+    // taking its entire expanded stream would be paid on every PCH build.
     void take_range(clang::SourceRange S, std::uint32_t self) {
         if(!options.main_file_only) {
             return;
@@ -780,20 +780,20 @@ private:
             llvm::SmallVector<unsigned, 2> extra_offsets;
         };
 
-        std::vector<Entry> entries;
+        std::vector<Entry> directives;
 
         if(auto it = unit.directives().find(main_fid); it != unit.directives().end()) {
             auto& directive = it->second;
 
             for(auto& macro: directive.macros) {
                 if(auto offset = offset_in_main_file(macro.loc)) {
-                    entries.push_back({*offset, SemanticNode(&macro), {}});
+                    directives.push_back({*offset, SemanticNode(&macro), {}});
                 }
             }
 
             for(auto& include: directive.includes) {
                 if(auto offset = offset_in_main_file(include.location)) {
-                    entries.push_back({*offset, SemanticNode(&include), {}});
+                    directives.push_back({*offset, SemanticNode(&include), {}});
                 }
             }
 
@@ -820,7 +820,7 @@ private:
                 }
                 if(anchor) {
                     entry.offset = *anchor;
-                    entries.push_back(std::move(entry));
+                    directives.push_back(std::move(entry));
                 }
             }
         }
@@ -828,7 +828,7 @@ private:
         // A comment node owns no spelled tokens (the stream drops them); it
         // participates by its payload range only.
         for(auto& comment: semantics.lexical.comments) {
-            entries.push_back({comment.range.begin, SemanticNode(&comment), {}});
+            directives.push_back({comment.range.begin, SemanticNode(&comment), {}});
         }
 
         // A module declaration owns its written tokens: the keywords, the
@@ -850,12 +850,12 @@ private:
             for(auto& part: module.partition_parts) {
                 entry.extra_offsets.push_back(part.begin);
             }
-            entries.push_back(std::move(entry));
+            directives.push_back(std::move(entry));
         }
 
-        std::ranges::sort(entries, {}, &Entry::offset);
+        std::ranges::sort(directives, {}, &Entry::offset);
 
-        for(auto& entry: entries) {
+        for(auto& entry: directives) {
             auto self = static_cast<std::uint32_t>(semantics.nodes.size());
             semantics.nodes.push_back({entry.node, Semantics::invalid, self + 1});
             add_directive_entry(entry.offset, self);
@@ -882,7 +882,7 @@ private:
             next[token] += 1;
         }
 
-        // A node claiming a macro's tokens owns its name once.
+        // A node taking a macro's tokens owns its name once.
         std::uint32_t kept = 0;
         std::uint32_t start = 0;
         for(std::size_t token = 0; token + 1 < offsets.size(); token += 1) {
@@ -908,7 +908,7 @@ private:
     clang::FileID main_fid;
     clang::SourceRange main_file_range;
 
-    /// Per expanded token, whether a node claimed it.
+    /// Per expanded token, whether a node took it.
     llvm::BitVector taken;
 
     llvm::SmallVector<std::uint32_t, 64> stack;
@@ -1061,7 +1061,7 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
         return;
     }
 
-    /// using Base<T>::foo; — the dependent flavor of a using declaration.
+    /// using Base<T>::foo; — the dependent variant of a using declaration.
     if(auto* UUV = llvm::dyn_cast<clang::UnresolvedUsingValueDecl>(D)) {
         if(resolver) {
             for(auto* target: resolver->lookup(UUV)) {
@@ -1268,7 +1268,7 @@ void type_loc_references(clang::TypeLoc TL, References& out, types::TemplateReso
         return;
     }
 
-    /// using typename B<T>::type; type x; — the dependent flavor keeps the
+    /// using typename B<T>::type; type x; — the dependent variant keeps the
     /// unresolved-using declaration itself, resolved further when possible.
     if(auto UUTL = TL.getAs<clang::UnresolvedUsingTypeLoc>()) {
         for(const auto* target: types::decls_of(UUTL.getType(), resolver)) {

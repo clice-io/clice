@@ -10,8 +10,8 @@ namespace clice::control {
 /// the index writer lock taken by a server ask of it. Paths are absolute
 /// filesystem paths.
 
-/// Sweep the build — every unit re-validated against the disk, the ones
-/// the hash gate finds current skipped — and answer once the rows are
+/// Run a pass over the build — every unit re-validated against the disk, the ones
+/// the hash gate finds current skipped — and answer once the index is
 /// persisted. Refused when `configuration` is not the one the server
 /// indexes, or when its configuration keeps background indexing off.
 struct IndexParams {
@@ -19,7 +19,7 @@ struct IndexParams {
 };
 
 struct IndexResult {
-    /// Units whose rows are not current after the sweep: the attempt
+    /// Units whose index is not current after the pass: the attempt
     /// failed for good, or the serving side kept them out.
     std::vector<std::string> failed;
 };

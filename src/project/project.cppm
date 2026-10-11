@@ -117,9 +117,9 @@ struct Selection {
 ///
 /// Everything derived from the PCH build beyond validity metadata — the
 /// preamble's symbol index, document links, inactive regions, the open
-/// conditional stack — lives in the paired pch.idx envelope (the store's
+/// conditional stack — lives in the paired pch.idx index (the store's
 /// `.pch.idx` aux file), committed and evicted together with the PCH.
-/// Open a PCH's `.pch.idx` envelope (memory-mapped). Returns nullptr when
+/// Open a PCH's `.pch.idx` index (memory-mapped). Returns nullptr when
 /// the file is unreadable, structurally invalid, of a different format
 /// version, or any embedded shard blob fails verification — callers treat
 /// all of these as a PCH cache miss.
@@ -141,7 +141,7 @@ struct PCHState {
     std::uint32_t bound = 0;
     DepsSnapshot deps;
 
-    /// Path of the paired pch.idx envelope.
+    /// Path of the paired pch.idx index.
     std::string index_path;
 
     /// Lazily opened blob; shared so a consumer holding it across an await
@@ -236,12 +236,12 @@ struct Project {
     llvm::DenseMap<Fid, PCMState> pcm_cache;
 
     /// The persisted index as loaded: the global symbol table, the per-TU
-    /// manifests, the per-file row blobs and the name search index.
+    /// manifests, the per-file shard blobs and the name search index.
     index::ProjectIndex project_index;
 
     /// Monotonic generation of context-affecting project state (include
     /// graph, CDB, disk contents). Bumped on didSave; clice/queryContext
-    /// stamps its results with it and clice/switchContext rejects requests
+    /// tags its results with it and clice/switchContext rejects requests
     /// made against an older epoch, so a client can never apply a context
     /// picked from a stale listing without noticing.
     std::uint64_t context_epoch = 1;
@@ -310,7 +310,7 @@ struct Project {
     /// flushes it on its next run.
     bool artifacts_dirty = false;
 
-    /// Wired by the master to schedule a flush soon after a mark; unset
+    /// Connected by the master to schedule a flush soon after a mark; unset
     /// (tests, batch tools) means the owner saves on its own cadence.
     std::function<void()> request_flush;
 

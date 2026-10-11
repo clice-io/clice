@@ -74,11 +74,11 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
         }
         // An oversized buffer is not worth a synchronous main-thread lex;
         // the full-lex projections follow the investment policy instead of
-        // the index slice. Row-backed answers serve at any size.
+        // the index slice. Index-backed answers serve at any size.
         bool capped = options.full_lex && session.text.size() > full_lex_cap;
         if(!capped) {
-            // The session's own rows when current (the quarantine fallback
-            // — the worker cannot be asked, the rows are still true), else
+            // The session's own index when current (the quarantine fallback
+            // — the worker cannot be asked, the index is still true), else
             // the disk shard admitted by freshness clause 4.
             if(auto serving = query.serving(session.path_id)) {
                 // An index answer must not strand an escalated session's
@@ -124,9 +124,9 @@ kota::task<std::optional<Features::Stop>> Features::nav_gate(const Ticket& ticke
         case Route::Ast: break;
     }
     // Same posture as every AST-backed request: the session's file index
-    // is produced by the very compile awaited here, so once this settles
+    // is produced by the very compile awaited here, so once this finishes
     // the index describes the buffer. A failed compile yields null rather
-    // than a lookup against a buffer with no settled index; a superseded
+    // than a lookup against a buffer with no finished index; a superseded
     // one tells the client to re-pull.
     bool compiled = co_await ast.ensure_compiled(ticket.session);
     if(!ticket.fresh()) {
@@ -150,7 +150,7 @@ std::optional<index::IndexQuery::Cursor>
 
 /// The command a file compiles with — among a multi-configuration
 /// file's or host's entries the pinned one, else the first, or the default
-/// command claiming it — rules applied, like the resolve path's effective
+/// command covering it — rules applied, like the resolve path's effective
 /// command: whether it compiles the file as C, whether an -x forces that
 /// (the driver override beats every suffix heuristic), and the last -std
 /// value.
@@ -365,7 +365,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
             // Manifest edges cover the whole document (the background
             // index has no preamble split); guard-skipped lines and
             // __has_include/#embed have no edge and produce no link.
-            // Unlike the rows the other projections serve, the edges are
+            // Unlike the entries the other projections serve, the edges are
             // disk truth: the quarantine fallback (own index current,
             // buffer edited) must not project them onto a buffer the
             // manifest never described — an edited directive would get
@@ -431,7 +431,7 @@ Features::RawResult Features::definition(Ticket ticket,
     // Preamble include lines first: they have no symbol occurrence in
     // the index and are invisible to the worker's AST. A projection still
     // not current after the awaited compile means the world was re-dirtied
-    // mid-flight (the round landed as bounded staleness): the cached
+    // mid-flight (the round committed as bounded staleness): the cached
     // links may describe a pre-edit preamble — skip, and let the index and
     // worker paths below answer.
     auto offset =
@@ -633,7 +633,7 @@ Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_
         case Route::Empty: {
             // The client caches this null, and only a semanticTokens
             // refresh makes it re-pull once the cold document's shard
-            // lands — the merge signals refreshes for sessions with
+            // arrives — the merge signals refreshes for sessions with
             // this flag, so an empty pull registers the same interest
             // as a served one.
             session->index_served = true;
@@ -728,7 +728,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
             // Same contract as the semantic-tokens Empty route: the
             // client caches this reply, and only a foldingRange
             // refresh makes it re-pull once the cold document's
-            // shard lands.
+            // shard arrives.
             session->index_served = true;
             co_return serde_raw{"[]"};
         }
@@ -748,9 +748,10 @@ Features::RawResult Features::document_symbol(Ticket ticket, kota::cancellation_
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             auto entries = feature::extract_index_entries(*source->shard);
-            auto symbols = feature::index_document_symbols(entries.decls, [&](index::SymbolHash hash) {
-                return query.symbol_info(hash);
-            });
+            auto symbols =
+                feature::index_document_symbols(entries.decls, [&](index::SymbolHash hash) {
+                    return query.symbol_info(hash);
+                });
             session->index_served = true;
             co_return to_raw(feature::document_symbols_to_protocol(symbols,
                                                                    session->positions(),
@@ -839,7 +840,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     // The task starts once the messages read with the request are
     // dispatched: a $/cancelRequest among them (rapid-fire completions
     // cancel and re-issue as the user types) keeps it from starting, and an
-    // edit lands before the offset and completion context are computed,
+    // edit arrives before the offset and completion context are computed,
     // so the synchronous include scan below never serves candidates or
     // ranges for a buffer that no longer exists. Unlike the whole-document
     // features, such an edit is served, not refused: the ticket is taken
@@ -1102,7 +1103,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         co_await kota::fail(rename_refused(std::move(at.error())));
     }
 
-    // The walk, the reads and the sweep run off the loop; only the files
+    // The walk, the reads and the scan run off the loop; only the files
     // spelling a name come back with their text.
     struct Scanned {
         std::vector<std::string> files;
@@ -1130,7 +1131,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     if(ticket.session && !ticket.fresh()) {
         co_await kota::fail(content_modified());
     }
-    // Rows indexed during the sweep may link the symbol to more: plan
+    // Entries indexed during the scan may link the symbol to more: plan
     // with the group they give now.
     cursor = cursor_at(path_id, position);
     if(!cursor) {
@@ -1154,7 +1155,7 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
         return workspace_file(root, cache_dir, CanonicalPath(Spelling::absolute(path)));
     };
     // Open buffers, and edited files the walk's suffixes left out, are
-    // swept on first read.
+    // scanned on first read.
     llvm::StringMap<std::optional<index::ScannedText>> late;
     auto read = [&](llvm::StringRef path) -> const index::ScannedText* {
         auto file = project.file_table.find(Spelling::absolute(path));

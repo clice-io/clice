@@ -629,7 +629,7 @@ private:
 
     /// A label piece reaching `decl`, as the index knows it.
     InlayHintPart linked(llvm::StringRef text, const clang::NamedDecl* decl) {
-        // Only a written declaration has rows to reach.
+        // Only a written declaration has index entries to reach.
         if(decl->getLocation().isInvalid()) {
             return plain(text);
         }
@@ -645,7 +645,7 @@ private:
     }
 
     /// The parameter of the written function an instantiated one stands
-    /// for: an instantiation's declarations have no rows of their own.
+    /// for: an instantiation's declarations have no index entries of their own.
     const static clang::ParmVarDecl* written_param(const clang::ParmVarDecl* param) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
         const auto* pattern = function ? function->getTemplateInstantiationPattern() : nullptr;

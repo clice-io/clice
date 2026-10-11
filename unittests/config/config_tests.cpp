@@ -97,14 +97,14 @@ ZEST_CASE(CacheDirServesOneProject) {
     ZEXPECT(owned_elsewhere(shared, b));
 
     // One inside its root belongs to that root, whatever it records, and
-    // a subproject nested there finds it taken once the root claimed it.
+    // a subproject nested there finds it taken once the root became its owner.
     tmp.touch("a/.clice/owner", b.str() + "\n");
     auto inner = path::join(a, ".clice");
     ZEXPECT(!owned_elsewhere(inner, a));
     set_cache_dir_owner(inner, a);
     ZEXPECT(owned_elsewhere(inner, CanonicalPath(Spelling::absolute(path::join(a, "sub")))));
 
-    // An owner that no longer exists claims nothing.
+    // An owner that no longer exists owns nothing.
     tmp.touch("moved/owner", tmp.path("gone") + "\n");
     auto moved = tmp.path("moved");
     ZEXPECT(!owned_elsewhere(moved, b));
@@ -718,7 +718,7 @@ ZEST_CASE(RemovedKeyIssueWarns) {
 
 ZEST_CASE(UnknownFeatureKeyWarns) {
     // Feature options structs double as config sections; a typo inside one
-    // must still surface as a Warning, not vanish.
+    // must still be reported as a Warning, not vanish.
     TempDir tmp;
     tmp.touch("clice.toml", "[inlay_hints]\nblokc_end = true\n");
     std::vector<ConfigIssue> issues;

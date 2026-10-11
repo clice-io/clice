@@ -11,7 +11,7 @@ import :worker.pool;
 
 namespace clice {
 
-/// Preamble artifacts (a PCH and its pch.idx envelope, committed as one
+/// Preamble artifacts (a PCH and its pch.idx index, committed as one
 /// pair) as a task-graph family: one node per content-addressed pch_key,
 /// no edges, one round = one revalidation or build. The facade is the
 /// only surface consumers touch.
@@ -57,8 +57,8 @@ public:
         /// built) — adopt it.
         Ready,
         Failed,
-        /// The observed attempt ended without a verdict (advisory
-        /// cancellation, shutdown): no adoption, but no failure verdict
+        /// The observed attempt ended without a result (advisory
+        /// cancellation, shutdown): no adoption, but no failure result
         /// either.
         Preempted,
     };
@@ -108,26 +108,26 @@ public:
     bool building(llvm::StringRef pch_key) const;
 
     /// Retract a pair the frontend could not consume: remove both blobs
-    /// from the store and drop the settled cache entry, so the next
+    /// from the store and drop the idle cache entry, so the next
     /// acquire misses and rebuilds instead of trusting corrupt bytes for
     /// the life of the store.
     void invalidate(llvm::StringRef pch_key);
 
     /// A parse consuming the pair died or blamed it: retract it AND book a
     /// strike against the key. Each successful rebuild clears the build
-    /// side, so consumption strikes keep their own ledger; enough of them
+    /// side, so consumption strikes keep their own table; enough of them
     /// park the key and acquisitions fail fast, so consumers fall back to
     /// compiling without a PCH instead of looping rebuild/blame forever
     /// over failing storage.
     void blame(llvm::StringRef pch_key);
 
     /// A parse consumed the key's pair and completed without blaming it:
-    /// clear its consumption strikes (cf. BlameBudget::on_land).
+    /// clear its consumption strikes (cf. BlameBudget::on_success).
     void consumed_ok(llvm::StringRef pch_key) {
         consume_blames.on_success(pch_key);
     }
 
-    /// Open the pch.idx envelope of a cached PCH. The single consumption
+    /// Open the pch.idx index of a cached PCH. The single consumption
     /// gate for `.pch.idx` blobs: when the blob turns out unreadable, the
     /// on-disk pair is retracted from the store as well — otherwise every
     /// later session re-adopts the corrupt pair from the artifacts blob and
@@ -136,7 +136,7 @@ public:
     /// loaded-state budget (see enforce_loaded_budget).
     std::shared_ptr<index::TUIndex> preamble_state(llvm::StringRef pch_key);
 
-    /// Unload pch.idx envelopes beyond the budget (open documents + 2),
+    /// Unload pch.idx indexes beyond the budget (open documents + 2),
     /// least recently used first. Without this every preamble key ever
     /// touched keeps its blob mapped for the server's lifetime — tens of
     /// MB per key on real projects, released by neither didClose nor
@@ -145,7 +145,7 @@ public:
     /// reopens the blob from disk.
     void enforce_loaded_budget();
 
-    /// Open-document count provider, wired by the master. Sizes the
+    /// Open-document count provider, connected by the master. Sizes the
     /// loaded-state budget; unset (tests, tools) falls back to
     /// default_open_documents.
     std::function<std::size_t()> open_documents;
@@ -155,7 +155,7 @@ private:
     void drop(llvm::StringMap<PCHState>::iterator entry);
 
     /// One PCH round: run one attempt and retire the stash once a current
-    /// round lands a verdict.
+    /// round commits a result.
     kota::task<RoundOutcome> run(RoundContext& ctx, std::uint64_t key_id);
 
     /// One attempt: revalidate the registered pair, or dispatch a build
@@ -170,7 +170,7 @@ private:
 
     /// Per-key slot for the dispatch owner's stash; replaced by the
     /// spawning acquire, read by its round and any stale-retry rounds, and
-    /// retired when a current round lands a verdict.
+    /// retired when a current round commits a result.
     struct KeyState {
         Request inputs;
     };
@@ -180,7 +180,7 @@ private:
     WorkerPool& pool;
 
     /// Move a pch key to the front of the loaded-state LRU. Called
-    /// whenever an entry's envelope is opened or replaced.
+    /// whenever an entry's pch.idx index is opened or replaced.
     void touch_loaded_state(llvm::StringRef pch_key);
 
     /// The keys whose build killed a worker, with the death (see
@@ -202,7 +202,7 @@ private:
     /// side, which every successful rebuild clears.
     BlameBudget consume_blames;
 
-    /// Keys of pch_cache entries whose envelope is currently loaded,
+    /// Keys of pch_cache entries whose pch.idx index is currently loaded,
     /// most recently used first (see enforce_loaded_budget).
     llvm::SmallVector<std::string, 8> loaded_state_lru;
 

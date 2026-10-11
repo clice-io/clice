@@ -70,7 +70,7 @@ struct SymbolEntry {
     std::optional<std::string> container;
 
     /// The locator naming the symbol back: its `#<hex>` id, with the
-    /// file holding its rows for a symbol only some files see.
+    /// file holding its entries for a symbol only some files see.
     std::string symbol;
 };
 
@@ -87,8 +87,8 @@ struct Context {
     EditorContext& contexts;
     const index::IndexQuery& query;
 
-    /// Files a command was asked about that the index holds no rows for;
-    /// the caller reports them next to the rows the query withheld.
+    /// Files a command was asked about that the index holds no shard for;
+    /// the caller reports them next to the shards the query withheld.
     std::vector<std::string> unindexed;
 
     /// The symbols a locator named when it had to name one; the caller
@@ -242,7 +242,7 @@ struct RenameResult {
     /// writing could not rewrite.
     std::vector<std::string> conflicts;
 
-    /// Files spelling an old or a new name whose rows are not current; the
+    /// Files spelling an old or a new name whose index is not current; the
     /// renames are not written while any stands.
     std::vector<std::string> stale;
 };
@@ -310,7 +310,7 @@ bool units_pending(Project& project);
 
 /// Plan the renames together against the workspace on disk (see
 /// index::plan_renames), each workspace file read once: what would change,
-/// what the index cannot vouch for, and what keeps the change from being
+/// what the index cannot guarantee, and what keeps the change from being
 /// safe. Nothing is written. A rename names its symbol by its whole name,
 /// never a pattern; the overloads of one scope that name spells are
 /// renamed together.

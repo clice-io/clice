@@ -25,7 +25,7 @@ namespace {
 
 ZEST_SUITE(tu_index, Tester) {
 
-/// One file's rows read back out of its envelope section through the
+/// One file's shard read back out of its TU index section through the
 /// Shard reader — every assertion below therefore exercises the full
 /// build → encode → read roundtrip, not builder-internal state.
 struct DecodedShard {
@@ -187,7 +187,7 @@ void EXPECT_SELECT(llvm::StringRef pos,
     ZASSERT(dump(occurrences.front().range) == dump(expected));
 };
 
-/// Whether the main file holds a symbol-pair row of `kind` from the
+/// Whether the main file holds a symbol-pair relation of `kind` from the
 /// symbol at marker `source` to the one at marker `target`.
 bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef target) {
     auto sources = select(source);
@@ -205,7 +205,7 @@ bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef t
 }
 
 /// One main-file occurrence: the text it covers, its symbol's kind and the
-/// kinds of that symbol's rows whose range holds it.
+/// kinds of that symbol's relations whose range holds it.
 struct Spelled {
     std::string text;
     SymbolKind::Kind kind;
@@ -671,7 +671,7 @@ ZEST_CASE(UsingRelationKey) {
 
     auto& index = tu_index.main_file_index;
 
-    // The relation row of a using declaration is keyed by the same symbol
+    // The relation of a using declaration is keyed by the same symbol
     // its occurrence references, so looking the occurrence's symbol up in
     // the relations always finds the using site.
     auto use_occs = select("use");
@@ -1201,7 +1201,7 @@ ZEST_CASE(CrossFileHeaderIndex) {
     auto helper_hash = it->target;
     ZASSERT(tu_index.symbols.contains(helper_hash));
 
-    // The helper's declaration should be in the header's rows.
+    // The helper's declaration should be in the header's index.
     bool found_in_header = false;
     for(auto& [path_id, file_index]: tu_index.file_indices) {
         for(auto& [sym, rels]: file_index.relations) {
@@ -1255,8 +1255,8 @@ ZEST_CASE(KnownVariantsSkipped) {
             std::vector<std::string>{"internal", "only_in_header", "shared", "user"});
 
     // The stored header travels as its hash alone, and the external
-    // symbols only it names stay out of the table; the main file's rows,
-    // every symbol they name and the internal ones still travel.
+    // symbols only it names stay out of the table; the main file's index,
+    // every symbol it names and the internal ones still travel.
     decode_index(index::build_tu_index(*unit, {.known_variants = known}));
     auto& view = tu_index.view;
     ZASSERT(view.section_hash(header) == known.front());
@@ -1681,8 +1681,8 @@ ZEST_CASE(CanonicalFile) {
     ZASSERT(defined.file == header_path);
     ZASSERT(has(defined, index::SymbolFlags::Completable));
 
-    // A main-file-only build keeps no header rows: a symbol the main file
-    // merely uses has no declaring row at all.
+    // A main-file-only build keeps no header entries: a symbol the main file
+    // merely uses has no declaring entry at all.
     decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
     auto used = symbol_named("header_only").second;
     ZASSERT(!has(used, index::SymbolFlags::HasDefinition));
@@ -1706,7 +1706,7 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
 )");
     ZASSERT(compile_with_pch());
 
-    // A full build keeps the preamble rows: this proves the row exists
+    // A full build keeps the preamble entries: this proves the entry exists
     // (so the gate test below cannot pass vacuously) and that the loaded
     // fid resolves through the graph to the header's path.
     decode_index(index::build_tu_index(*unit));
@@ -1718,8 +1718,8 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
 
     decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
 
-    // Rows resolving into the preamble are dropped: the preamble's own
-    // index covers them. Only the main file's rows remain.
+    // Entries resolving into the preamble are dropped: the preamble's own
+    // index covers them. Only the main file's entries remain.
     ZASSERT(tu_index.file_indices.empty());
     EXPECT_SELECT("1", "def");
 }
@@ -1739,7 +1739,7 @@ Derived* use();
 )");
     ZASSERT(compile_with_pch());
 
-    // Full build: the base-specifier rows land in the preamble header
+    // Full build: the base-specifier entries end up in the preamble header
     // and its loaded fid resolves to the header's path.
     decode_index(index::build_tu_index(*unit));
     bool found = false;
@@ -2339,7 +2339,7 @@ ZEST_CASE(TUIndexSections) {
     auto& view = tu_index.view;
     ZASSERT(view.built_at() > 0);
 
-    // Sections ascend by path id and the main file's rows are the
+    // Sections ascend by path id and the main file's shard is the
     // last path id's section.
     for(std::uint32_t i = 1; i < view.section_count(); i += 1) {
         ZASSERT(view.section_path(i - 1) < view.section_path(i));
@@ -2349,7 +2349,7 @@ ZEST_CASE(TUIndexSections) {
 
     // Every section's hash is the byte identity of its blob, the blob
     // loads as a self-contained single-variant shard under that identity,
-    // and the whole envelope passes the persisted-load gate.
+    // and the whole TU index passes the persisted-load gate.
     ZASSERT(view.shards_verify());
     for(std::uint32_t i = 0; i < view.section_count(); i += 1) {
         auto blob = view.section_blob(i);
@@ -2360,7 +2360,7 @@ ZEST_CASE(TUIndexSections) {
         ZASSERT(shard.variants().front() == view.section_hash(i));
     }
 
-    // The graph travels with the envelope: every path resolves and the
+    // The graph travels with the TU index: every path resolves and the
     // consumed-content hash column covers the whole table.
     for(std::uint32_t id = 0; id < view.path_count(); id += 1) {
         ZASSERT(!view.path(id).empty());
@@ -2382,7 +2382,7 @@ ZEST_CASE(CorruptSectionBytesRejected) {
     // The persisted-load gate must reject any flipped section byte, in
     // particular flips that still form a structurally valid shard (an
     // opaque hash field, say) — only the byte hash catches those, and
-    // serving them would navigate by corrupted rows across restarts.
+    // serving them would navigate by corrupted entries across restarts.
     add_main("main.cpp", R"(
             int value = 1;
             int main() { return value; }
@@ -2420,7 +2420,7 @@ ZEST_CASE(FromRejectsHostileInput) {
         )");
     auto bytes = tu_index.view.bytes();
 
-    // Sanity: the intact envelope loads, so the rejections below are earned.
+    // Sanity: the intact TU index loads, so the rejections below are earned.
     ZASSERT(index::TUIndex::from_bytes(bytes).loaded());
 
     ZASSERT(!index::TUIndex::from_bytes(bytes.substr(0, bytes.size() / 2)).loaded());
@@ -2437,7 +2437,7 @@ ZEST_CASE(FromRejectsHostileInput) {
 
 ZEST_CASE(FromRejectsStaleFormatVersion) {
     // Only the version slot and the path table are written: every other
-    // field reads back absent, which is structurally valid — the verdict
+    // field reads back absent, which is structurally valid — the result
     // must hinge on the version value.
     TUIndexMirror stale;
     stale.format_version = index::index_format_version + 1;
@@ -2453,7 +2453,7 @@ ZEST_CASE(FromRejectsStaleFormatVersion) {
 
 ZEST_CASE(FromRejectsReservedParents) {
     // Symbol parents become DenseSet keys in a query's container walk; the
-    // sentinel values must fail the envelope as a whole.
+    // sentinel values must fail the TU index as a whole.
     TUIndexMirror honest;
     honest.paths = {"/proj/main.cpp"};
     honest.add_symbol(42, {.name = "sym", .parent = 7});
@@ -2468,7 +2468,7 @@ ZEST_CASE(FromRejectsReservedParents) {
 
 ZEST_CASE(FromRejectsSymbolColumns) {
     // Merged reference files persist behind versions that match the disk,
-    // so a malformed table must fail the envelope as a whole, never merge
+    // so a malformed table must fail the TU index as a whole, never merge
     // in part.
     TUIndexMirror honest;
     honest.paths = {"/proj/a.h", "/proj/main.cpp"};
@@ -2536,7 +2536,7 @@ ZEST_CASE(FromRejectsOutOfRangeParents) {
 ZEST_CASE(FromRejectsOutOfRangePathIds) {
     // Structural verification does not constrain field values, and the
     // merge pipeline dereferences every decoded path id against the path
-    // table without further checks — an envelope pointing outside its own
+    // table without further checks — a TU index pointing outside its own
     // table must be rejected as a whole (the symbol table's ids: see
     // FromRejectsSymbolColumns).
 
@@ -2564,7 +2564,7 @@ ZEST_CASE(FromRejectsOutOfRangePathIds) {
 
 ZEST_CASE(FromRejectsEmptyPathTable) {
     // The builder ends every path table with the main file, and
-    // consumers address path_count() - 1 unchecked — an envelope with no
+    // consumers address path_count() - 1 unchecked — a TU index with no
     // paths at all is corrupt.
     TUIndexMirror hostile;
     ZASSERT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
@@ -2572,7 +2572,7 @@ ZEST_CASE(FromRejectsEmptyPathTable) {
 
 ZEST_CASE(FromRejectsUnsortedSections) {
     // section_of binary-searches the section table by path id; a repeated
-    // or out-of-order id would attribute one file's rows to another.
+    // or out-of-order id would attribute one file's shard to another.
 
     // Positive control: the ascending shape loads.
     TUIndexMirror honest;
@@ -2599,7 +2599,7 @@ ZEST_CASE(FromRejectsUnsortedSections) {
 
 ZEST_CASE(AbsentPathHashesReadZero) {
     // The hash column may be shorter than the path table on a foreign
-    // envelope (structurally valid: the field reads back empty); absent
+    // TU index (structurally valid: the field reads back empty); absent
     // entries read as 0, "unavailable".
     TUIndexMirror mirror;
     mirror.paths = {"/proj/a.h", "/proj/main.cpp"};

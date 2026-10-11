@@ -14,7 +14,7 @@ import { normalizeFileUri, yamlStr } from "../snapshot.ts";
 /// the server driver opens every source of the fixture's unit, which is
 /// what places their symbols in the search space without background
 /// indexing. That default cannot witness project-wide search: an open
-/// sibling's hits prove nothing about closed files. A fixture claiming
+/// sibling's hits prove nothing about closed files. A fixture asserting
 /// them keeps the target file closed — a markerless header sibling is
 /// never opened — sets `indexing: true`, and names each symbol that must
 /// arrive from the background index in an `// indexed:` line (inside the

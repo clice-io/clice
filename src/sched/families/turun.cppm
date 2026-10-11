@@ -27,8 +27,8 @@ class PCMFamily;
 ///
 /// The family owns the run policy: command resolution, module-PCM edges,
 /// the worker dispatch, and the store merge with its supersede gate. The
-/// pump owns the debt ledger, the queue and the requeue budget; it reads
-/// this family's per-attempt outcome to settle them.
+/// pump owns the debt table, the queue and the requeue budget; it reads
+/// this family's per-attempt outcome to finish them.
 class TURunFamily {
 public:
     TURunFamily(TaskGraph& graph,
@@ -52,14 +52,14 @@ public:
 
     enum class Result : std::uint8_t {
         /// The run produced its planned products (the index merged into
-        /// the store, the tidy findings landed in the outcome).
+        /// the store, the tidy findings arrived in the outcome).
         Completed,
         /// Deliberately produced nothing: the result was superseded, or
-        /// the TU has no real command but keeps its last-known rows.
+        /// the TU has no real command but keeps its last-known index.
         Skipped,
         /// Terminal failure on current content: the worker rejected the
         /// TU, returned an empty or unverifiable result, the merge was
-        /// rejected, or the TU has no real command and no surviving rows.
+        /// rejected, or the TU has no real command and no surviving index.
         Failed,
         /// The run killed its worker: the worker named it, or it ran past
         /// the pool's deadline. The same bytes would again.
@@ -79,8 +79,8 @@ public:
     struct Outcome {
         Result result = Result::Shutdown;
 
-        /// Merge debt and serving-row changes — the pump claims these
-        /// before the attempt settles and its waiters wake.
+        /// Merge debt and serving-index changes — the pump takes these
+        /// before the attempt finishes and its waiters wake.
         IndexStore::Report report;
 
         /// Findings of the tidy pass (plan product `tidy`).
@@ -97,8 +97,8 @@ public:
     };
 
     /// Attempt context the pump threads through one run — work-input
-    /// ownership (the debt-claim contract), not staleness snapshots: the
-    /// supersede check asks the live ledger at merge time.
+    /// ownership (the take/finish contract), not staleness snapshots: the
+    /// supersede check asks the live pending table at merge time.
     struct Guards {
         std::function<bool()> superseded;
     };
@@ -130,9 +130,9 @@ private:
     };
 
     /// The stash-and-collect halves of run() around the graph join: the
-    /// plan and guards go in before the request, the landed outcome comes
+    /// plan and guards go in before the request, the finished outcome comes
     /// out after it. Each consumer runs one attempt per file at a time
-    /// (the pump's ledger, the lint driver's sweep), so at most one live
+    /// (the pump's pending table, the lint driver's pass), so at most one live
     /// entry per TU.
     llvm::DenseMap<Fid, Inputs> inputs;
     llvm::DenseMap<Fid, Outcome> finished;

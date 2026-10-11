@@ -14,7 +14,7 @@ import :vfs.cache_store;
 namespace clice::testing {
 namespace {
 
-/// The acquisition crash matrix: a build's worker death lands on the key
+/// The acquisition crash matrix: a build's worker death is recorded on the key
 /// exactly once, whatever happens to the joiners or to the owner's own
 /// frame, and the key is refused until a consumer forgives it. Real
 /// workers, poisoned via the crash pragma.
@@ -108,7 +108,7 @@ ZEST_CASE(PoisonKeyRecordsOnce) {
 
 ZEST_CASE(OwnerGoneStillRecords) {
     // The dispatch owner's request is cancelled right after its spawn: the
-    // round runs to its real reply, so the death still lands on the key —
+    // round runs to its real reply, so the death is still recorded on the key —
     // a crash is never dropped because the requester went away (a stale
     // round's crashes still count).
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
@@ -168,7 +168,7 @@ ZEST_CASE(ForgiveLiftsRefusal) {
 
 ZEST_CASE(SharedBuildBothReady) {
     // The success half of the matrix: one build serves every joiner, no
-    // crash is recorded, and the pair lands registered under the key.
+    // crash is recorded, and the pair ends up registered under the key.
     std::optional<PCHFamily::Outcome> a, b;
 
     execute([&]() -> kota::task<> {
@@ -192,7 +192,7 @@ ZEST_CASE(SharedBuildBothReady) {
 }
 
 ZEST_CASE(BlameParksKey) {
-    // Consumption strikes keep their own ledger: the build-side budget
+    // Consumption strikes keep their own table: the build-side budget
     // clears on every successful rebuild, so a pair whose every rebuild
     // gets blamed again would rebuild forever without one. A clean
     // consumption clears the strikes; consecutive blames park the key

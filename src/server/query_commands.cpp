@@ -31,12 +31,12 @@ Lines lines_of(const index::Site& site) {
 }
 
 /// The file a path names in the index. An error for a path that is not a
-/// file; nullopt (noted as unindexed) for one the index has no rows for.
+/// file; nullopt (noted as unindexed) for one the index has no shard for.
 Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     if(!vfs::is_file(path)) {
         return std::unexpected(std::format("no such file: {}", path));
     }
-    // Interning only names the file; whether the index holds rows for
+    // Interning only names the file; whether the index holds a shard for
     // it is the shard fetch's answer.
     auto file = ctx.project.file_table.intern(path);
     if(!ctx.project.project_index.shard(file)) {
@@ -47,9 +47,9 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
 }
 
 /// Anchor a query's paths in the workspace. The file of a place, and the
-/// one holding an id's rows, is one file, workspace-relative or absolute
+/// one holding an id's entries, is one file, workspace-relative or absolute
 /// as the command's own path arguments are; false when the index holds no
-/// rows for it, which the caller answers as not found with the file
+/// shard for it, which the caller answers as not found with the file
 /// noted. A path filter spelling a path names its file or directory by
 /// identity, a relative one from the workspace root.
 Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
@@ -75,7 +75,7 @@ Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
 }
 
 /// The locator an answer names a symbol by: one only some files see is
-/// anchored at the file of its site, which holds its rows.
+/// anchored at the file of its site, which holds its entries.
 std::string symbol_of(const index::IndexQuery::Located& located) {
     bool external = located.symbol.scope == index::SymbolScope::External;
     return index::symbol_locator(located.symbol.hash,
@@ -103,7 +103,7 @@ SymbolEntry symbol_entry(Context& ctx, const index::IndexQuery::Located& located
 
 /// The symbols a locator names, held to its filters: an id or a place
 /// names its symbols outright, which a pattern's lookup filters itself.
-/// An id's paths name the file holding its rows, no filter.
+/// An id's paths name the file holding its entries, no filter.
 std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::SymbolQuery& query) {
     auto located = ctx.query.locate(query);
     if(query.by_pattern()) {
@@ -124,7 +124,7 @@ std::vector<index::IndexQuery::Located> located_by(Context& ctx, const index::Sy
 }
 
 /// The symbols a locator names; none is an unknown symbol. A locator
-/// naming a file the index has no rows for answers as unknown and notes
+/// naming a file the index has no shard for answers as unknown and notes
 /// the file.
 Outcome<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::SymbolQuery query) {
     auto anchored = anchor_paths(ctx, query);

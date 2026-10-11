@@ -53,7 +53,7 @@ private:
 
     /// Push a session's materialized compile output to the client: its
     /// diagnostics — or, to a pulling client, a diagnostics refresh when an
-    /// answer it holds went stale — plus the refresh requests a landing
+    /// answer it holds went stale — plus the refresh requests its arrival
     /// warrants. Invoked by the compiler's on_output signal, and by the
     /// initialized handler to replay outputs that materialized before the
     /// client was ready. No-op until client_ready.
@@ -66,8 +66,8 @@ private:
     void report_index_progress();
 
     /// Ask the client to re-pull semantic tokens and folding ranges after
-    /// a background merge replaced rows an index-served session was
-    /// serving. Invoked by the indexer's on_serving_rows_changed signal;
+    /// a background merge replaced a shard an index-served session was
+    /// serving. Invoked by the indexer's on_serving_index_changed signal;
     /// capability-gated.
     void refresh_index_served();
 
@@ -89,7 +89,7 @@ private:
 
     /// Whether the client accepts workspace/semanticTokens/refresh,
     /// workspace/inlayHint/refresh and workspace/foldingRange/refresh —
-    /// the upgrade signal after an index-served session's compile lands
+    /// the upgrade signal after an index-served session's compile finishes
     /// (see push_output).
     bool semantic_tokens_refresh = false;
     bool inlay_hint_refresh = false;
@@ -126,7 +126,7 @@ private:
     bool versioned_edits = false;
 
     /// Document version of each path's last compile output (see
-    /// push_output): an output landing for the same version means the text
+    /// push_output): an output arriving for the same version means the text
     /// did not change, so the client's pulled results went stale without
     /// any didChange to make it re-pull — the push path sends refreshes.
     llvm::DenseMap<Fid, int> output_versions;
@@ -198,7 +198,7 @@ private:
     /// Subscription to background-index progress; disconnects on destruction.
     Signal<>::Connection progress_conn;
 
-    /// Subscription to serving-row replacements by background merges;
+    /// Subscription to serving-index replacements by background merges;
     /// disconnects on destruction.
     Signal<>::Connection serving_conn;
 

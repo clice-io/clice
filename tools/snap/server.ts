@@ -107,7 +107,7 @@ export async function checkServerSnapFixture(
         }
         // The inspect driver owns the strict two-way diagnostics gate; here
         // only unexpected errors fail — the preamble split may legitimately
-        // shift where an expected-broken fixture's diagnostics surface. A
+        // shift where an expected-broken fixture's diagnostics are reported. A
         // server-only fixture never runs the inspect gate, so the stale
         // `diagnostics: expected` direction must be enforced here.
         if (errors.length > 0 && !fixture.meta.diagnostics) {

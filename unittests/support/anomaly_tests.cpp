@@ -151,7 +151,7 @@ ZEST_CASE(GuidanceLazyAtLevel) {
 }
 
 ZEST_CASE(MarkerNamesStable) {
-    /// Every id fires through the macro once and produces its wire marker.
+    /// Every id fires through the macro once and produces its log marker.
     /// Integration tests grep these exact strings — keep them stable.
     AnomalyCapture capture;
 

@@ -289,7 +289,7 @@ struct SemanticsOptions {
 /// The map deliberately covers only what the live AST covers. Content the
 /// compile consumed as immutable state (the preamble under a PCH) is served
 /// by results precomputed at PCH build time and merged per feature. Do not
-/// try to reconstruct it here: serialized rows cannot become AST nodes.
+/// try to reconstruct it here: serialized entries cannot become AST nodes.
 class Semantics {
 public:
     constexpr static std::uint32_t invalid = static_cast<std::uint32_t>(-1);
@@ -332,7 +332,7 @@ public:
         NodeFlags flags;
     };
 
-    /// Build the semantics of the unit: one full traversal claiming tokens
+    /// Build the semantics of the unit: one full traversal taking tokens
     /// innermost-first, plus one pass over the preprocessor directives.
     static Semantics build(CompilationUnitRef unit, SemanticsOptions options = {});
 
@@ -350,7 +350,7 @@ public:
     /// The spelled tokens of the main file (a view into the unit's tokens,
     /// not a copy); empty for the whole-TU shape. They cover the whole file
     /// even under a preamble PCH — what the PCH consumes is the preamble's
-    /// AST and directives (those travel through the pch.idx envelope
+    /// AST and directives (those travel through the pch.idx index
     /// instead), not its spelling.
     llvm::ArrayRef<clang::syntax::Token> spelled_tokens() const {
         return tokens;

@@ -17,7 +17,7 @@ namespace clice::testing {
 
 namespace {
 
-/// An envelope holding only the minimal path table verification demands,
+/// A TU index blob holding only the minimal path table verification demands,
 /// under `version`.
 std::string blob_of_version(std::uint32_t version) {
     TUIndexMirror mirror;
@@ -36,7 +36,7 @@ std::vector<std::uint32_t> inactive;
 std::vector<std::uint8_t> conditionals;
 std::string diagnostics;
 
-/// Compile, build a preamble envelope, persist it as the `.pch.idx` pair
+/// Compile, build a preamble TU index, persist it as the `.pch.idx` pair
 /// and load it back through the production gate.
 void build_state(std::source_location location = std::source_location::current()) {
     ZASSERT(compile());
@@ -71,7 +71,7 @@ index::SymbolHash hash_of(llvm::StringRef name,
     return hash;
 }
 
-/// Walk a symbol's relation rows in every header section (all but the
+/// Walk a symbol's relations in every header section (all but the
 /// main file's), the way the query layer's overlay lookup serves them.
 void lookup_headers(index::SymbolHash hash,
                     RelationKind kind,
@@ -98,7 +98,7 @@ ZEST_CASE(ForcedIncludeServed) {
 
     // A compile-command forced include: clang records its include edge in
     // the predefines buffer, which is a valid location — so unlike the
-    // synthetic buffers themselves, the file must stay in the envelope
+    // synthetic buffers themselves, the file must stay in the TU index
     // under its own path.
     prepare();
     owned_args.insert(owned_args.end() - 1, "-include");
@@ -150,7 +150,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
                    });
     ZEXPECT(found_def);
 
-    // Header-internal references are in the envelope too.
+    // Header-internal references are in the TU index too.
     bool found_ref = false;
     lookup_headers(foo, RelationKind::Reference, [&](llvm::StringRef, const index::Relation& r) {
         if(r.range == range("href", "foo.h")) {
@@ -161,7 +161,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     });
     ZEXPECT(found_ref);
 
-    // Everything needed to map rows to LSP positions rides in each shard;
+    // Everything needed to map entries to LSP positions rides in each shard;
     // pure-ASCII content itself is omitted.
     for(std::uint32_t i = 0; i < state->section_count(); i += 1) {
         auto& shard = state->shard_of(state->section_path(i));
@@ -241,7 +241,7 @@ int main() { return 0; }
     ZEXPECT(state->open_conditionals() == llvm::ArrayRef<std::uint8_t>(conditionals));
     ZEXPECT(state->preamble_diagnostics() == diagnostics);
 
-    // An envelope with no header sections answers lookups with silence,
+    // A TU index with no header sections answers lookups with silence,
     // not UB.
     bool visited = false;
     lookup_headers(42, RelationKind::Reference, [&](llvm::StringRef, const index::Relation&) {
@@ -307,7 +307,7 @@ int main() { return 0; }
 )");
     build_state();
 
-    // Overwrite one section's blob bytes in place: the envelope stays
+    // Overwrite one section's blob bytes in place: the TU index stays
     // structurally valid, but the load gate verifies every blob and must
     // read the pair as missing instead of silently serving nothing.
     auto read = read_file(dir.path("state.pch.idx"));
@@ -337,7 +337,7 @@ int other = 1;
 
     ZEXPECT(state->path(state->path_count() - 1).ends_with("main.cpp"));
 
-    // The preamble text itself is not stored; the envelope keeps only the
+    // The preamble text itself is not stored; the TU index keeps only the
     // identity of the exact prefix it was built from.
     auto content = unit->main_content();
     ZEXPECT(state->matches_prefix(content));
@@ -345,7 +345,7 @@ int other = 1;
     ZEXPECT(!state->matches_prefix(content.drop_back(1)));
     ZEXPECT(!state->matches_prefix("int changed = 0;"));
 
-    // An ordinary envelope never serves preamble state.
+    // An ordinary TU index never serves preamble state.
     auto ordinary = index::build_tu_index(*unit);
     ZEXPECT(!index::TUIndex::from_bytes(ordinary).matches_prefix(content));
 }

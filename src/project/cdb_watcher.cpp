@@ -116,7 +116,7 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
     }
     if(!exists) {
         // Deleted — usually mid-regeneration. Keep serving the loaded
-        // entries; the rewrite lands as the next observed change.
+        // entries; the rewrite arrives as the next observed change.
         tracked.applied = std::move(current);
         project.cdb.set_present(tracked.id, false);
         if(flips) {
@@ -125,7 +125,7 @@ void CDBWatcher::tick_source(TrackedSource& tracked, bool force, CDBDiff& delta)
         return;
     }
     auto diff = project.cdb.reload_and_diff(tracked.id);
-    // The baseline is the reload's own reads: a rewrite landing meanwhile
+    // The baseline is the reload's own reads: a rewrite arriving meanwhile
     // is seen next tick. A database the reload could not read (still
     // locked by the generator) leaves them as they were, so the reload is
     // retried; one it read but could not parse is retried once it moves.
@@ -180,8 +180,8 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
     if(!listed_at || root_flag->stamp != listed_at) {
         listed = database_places(root);
         // An entry made within the clock tick of the root's last change
-        // leaves its stamp as it was: only a settled stamp vouches for the
-        // listing (see vfs::settled).
+        // leaves its stamp as it was: only a stable stamp guarantees the
+        // listing (see vfs::stable_mtime).
         auto& stamp = root_flag->stamp;
         listed_at = stamp && vfs::stable_mtime(stamp->mtime_ns) ? stamp : std::nullopt;
     }
@@ -232,7 +232,7 @@ void CDBWatcher::discover(llvm::ArrayRef<Fid> open_files) {
         }
         // Never loaded, so baselined unread: the fresh file is a change
         // against the never-loaded source and goes through the normal
-        // settle-and-reload path.
+        // debounce-and-reload path.
         auto id = project.cdb.add_source(place);
         if(llvm::none_of(sources, [&](const TrackedSource& tracked) { return tracked.id == id; })) {
             LOG_INFO("Found compilation database: {}", place);

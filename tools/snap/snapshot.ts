@@ -26,7 +26,7 @@ export const WORKSPACE_PLACEHOLDER = "${WS}";
 const URI_ILLEGAL_CHAR = /[^A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]/;
 const URI_BAD_PERCENT = /%(?![0-9A-Fa-f]{2})/;
 
-/// Validate a wire URI and rewrite it to a platform-independent form.
+/// Validate a protocol URI and rewrite it to a platform-independent form.
 ///
 /// This is deliberately an invariant check, not a best-effort cleanup: any
 /// server response field holding a file reference must be a well-formed

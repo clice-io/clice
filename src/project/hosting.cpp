@@ -161,7 +161,7 @@ const LenderIndex& lender_index(Project& project) {
     std::ranges::sort(members, {}, [&](Fid unit) { return project.file_table.resolve(unit); });
     llvm::StringMap<CanonicalPath> identities;
     for(auto member: members) {
-        // A member a rule claims with a default command that is no compile
+        // A member a rule covers with a default command that is no compile
         // command has none; a provisional member's is borrowed, and never
         // lent on.
         for(auto& command: project.build.commands(member)) {
@@ -297,7 +297,7 @@ llvm::SmallVector<Fid> ranked_hosts(Project& project, Fid header) {
 
     // The lexical scan follows each header's includes under the first
     // command that reached it; a unit whose compile resolved them
-    // otherwise names the header in its index rows.
+    // otherwise names the header in its index entries.
     llvm::SmallVector<Fid> hosts;
     llvm::DenseSet<Fid> seen;
     auto add = [&](Fid candidate) {

@@ -49,7 +49,7 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
 
 namespace {
 
-/// One file's rows on the wire: a self-contained single-variant shard
+/// One file's index in the TU index blob: a self-contained single-variant shard
 /// blob (index/shard.h). `hash` is xxh3 of `blob` — the variant's
 /// identity — so the master can skip blobs it already stores without
 /// touching their bytes; the blob is left empty for a variant the master
@@ -62,10 +62,10 @@ struct FileSection {
     std::vector<std::uint8_t> blob;
 };
 
-/// The envelope's wire layout. Only the builder below ever materializes
+/// The TU index's serialized layout. Only the builder below ever materializes
 /// it; every consumer reads the bytes through the TUIndex reader.
 struct TUIndexBlob {
-    /// Wire schema version (index_format_version), gated by
+    /// Serialized schema version (index_format_version), gated by
     /// TUIndex::from_bytes.
     /// A worker respawned after the binary on disk changed can be one
     /// build ahead of the server, and a layout change need not be
@@ -82,11 +82,11 @@ struct TUIndexBlob {
     std::vector<std::uint64_t> path_hashes;
     std::vector<IncludeNode> nodes;
 
-    /// The symbols the rows name, sorted by hash, except the file-local
+    /// The symbols the entries name, sorted by hash, except the file-local
     /// ones (a function's locals, a template's parameters) — only their
     /// own file can mention one, and that file's section names it — and
     /// the external symbols only sections left empty name. Names and arguments are back to back
-    /// with one end offset per row; so are the reference files, as path ids.
+    /// with one end offset per entry; so are the reference files, as path ids.
     std::vector<std::uint64_t> sym_hashes;
     std::string sym_names;
     std::vector<std::uint32_t> sym_name_ends;
@@ -96,15 +96,15 @@ struct TUIndexBlob {
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint8_t> sym_scopes;
     std::vector<std::uint16_t> sym_flags;
-    /// Path ids, `no_file` for a symbol without a declaring row.
+    /// Path ids, `no_file` for a symbol without a declaring relation.
     std::vector<std::uint32_t> sym_files;
     std::vector<std::uint32_t> sym_reference_ends;
     std::vector<std::uint32_t> sym_references;
 
-    /// One entry per file with rows, ascending by path id.
+    /// One entry per file with an index, ascending by path id.
     std::vector<FileSection> sections;
 
-    /// Preamble ride-alongs, empty on ordinary envelopes: identity of the
+    /// Preamble ride-alongs, empty on ordinary TU indexes: identity of the
     /// exact preamble text the PCH was built from (matches_prefix), and
     /// the PCH-derived feature state spliced into main-file results. The
     /// refs borrow the builder's inputs — encode-only, like the section
@@ -165,9 +165,9 @@ bool is_specialization(const clang::NamedDecl* decl) {
     return false;
 }
 
-/// Occurrences claim disjoint ranges: a name inside another symbol's
+/// Occurrences cover disjoint ranges: a name inside another symbol's
 /// written name — the class in `~Foo` — is that name's, and the symbol it
-/// names keeps only its relation row there.
+/// names keeps only its relation there.
 void drop_nested(std::vector<Occurrence>& occurrences) {
     std::ranges::sort(occurrences, [](const Occurrence& lhs, const Occurrence& rhs) {
         return std::tuple(lhs.range.begin, rhs.range.end) <
@@ -287,7 +287,7 @@ bool is_completable(const clang::NamedDecl* decl) {
     return false;
 }
 
-/// Projects the unit's semantic map into TUIndex rows: occurrences and
+/// Projects the unit's semantic map into TUIndex entries: occurrences and
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Projector {
 public:
@@ -295,13 +295,13 @@ public:
         unit(unit), main_file_only(options.main_file_only), known_variants(options.known_variants) {
     }
 
-    /// The only gate through which rows enter `file_indices`. With
+    /// The only gate through which entries enter `file_indices`. With
     /// main_file_only, the index covers just the main file — yet
     /// AST nodes reachable from its top-level decls can carry locations
     /// in other files: inherited default arguments and base specifiers
-    /// of classes defined in a preamble header land there. Such rows
+    /// of classes defined in a preamble header end up there. Such entries
     /// belong to the preamble's own index, so they are dropped here. So
-    /// are the rows of a header's borrowed includer context: its host
+    /// are the entries of a header's borrowed includer context: its host
     /// indexes them.
     FileIndex* file_index(clang::FileID fid) {
         if((main_file_only && fid != unit.main_file()) || unit.from_context(fid)) {
@@ -310,8 +310,9 @@ public:
         return &file_indices[fid];
     }
 
-    /// Symbol-table registration shared by every row writer: name lookups
-    /// need the entry even when a symbol's only rows are relations.
+    /// Symbol-table registration shared by every occurrence and relation
+    /// writer: name lookups need the entry even when a symbol has only
+    /// relations.
     index::SymbolHash ensure_symbol(const clang::NamedDecl* decl) {
         auto hash = unit.entity(decl);
         auto [it, success] = symbols.try_emplace(hash);
@@ -322,8 +323,8 @@ public:
     }
 
     /// What the symbol table records about a declaration besides its
-    /// rows. The facts the rows decide — HasDefinition and the canonical
-    /// file — are filled in once every row is projected.
+    /// index entries. The facts the entries decide — HasDefinition and the
+    /// canonical file — are filled in once every entry is projected.
     Symbol describe(const clang::NamedDecl* decl) {
         Symbol symbol;
         auto flags = SymbolFlags::None;
@@ -441,9 +442,9 @@ public:
         index->relations[hash].emplace_back(relation);
     }
 
-    /// A Definition/Declaration/Reference row mirroring an occurrence: it
-    /// spans the whole written name the occurrence lies in, and decl/def
-    /// rows also carry the declaration's full extent.
+    /// A Definition/Declaration/Reference relation mirroring an occurrence:
+    /// it spans the whole written name the occurrence lies in, and decl/def
+    /// relations also carry the declaration's full extent.
     void add_self_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
                            clang::SourceRange name) {
@@ -473,13 +474,13 @@ public:
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
-    /// A symbol-to-symbol row (type-of, inheritance, overrides, ctor/dtor
+    /// A symbol-to-symbol relation (type-of, inheritance, overrides, ctor/dtor
     /// ownership); `anchor` decides which file's index receives it.
     void add_pair_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
                            const clang::NamedDecl* target,
                            clang::SourceRange anchor) {
-        // The anchor only routes the row to a file's index; symbol pairs
+        // The anchor only routes the relation to a file's index; symbol pairs
         // carry no range of their own.
         auto fid = unit.decompose_expansion_range(anchor).first;
         auto* index = file_index(fid);
@@ -494,7 +495,7 @@ public:
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
-    /// A call edge, landing at the call expression's location.
+    /// A call edge, recorded at the call expression's location.
     void add_call_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
                            const clang::NamedDecl* target,
@@ -673,8 +674,8 @@ public:
     }
 
     /// Hierarchy ranges are positions in the caller's document: a call
-    /// written in a fragment the caller's body pastes in lands at that
-    /// include.
+    /// written in a fragment the caller's body pastes in is recorded at
+    /// that include.
     clang::SourceRange in_caller_file(const clang::NamedDecl* caller, clang::SourceRange range) {
         auto include = pasted_into(caller, unit.expansion_location(range.getBegin()));
         return include.isValid() ? clang::SourceRange(include) : range;
@@ -682,8 +683,8 @@ public:
 
     /// A fragment pasted inside a declaration (an X-macro table included
     /// into a switch) is the pasting file's text: each name it uses gets a
-    /// Pasted row at that include, while its own rows stay where the
-    /// fragment spells it.
+    /// Pasted relation at that include, while its own entries stay where
+    /// the fragment spells it.
     void add_pasted_relation(const clang::NamedDecl* decl,
                              const clang::Decl* host,
                              clang::SourceLocation location) {
@@ -721,7 +722,7 @@ public:
         auto& context = unit.context();
         if(auto* CE = node.get<clang::CallExpr>()) {
             // A call no name is written for — the conversion `int i = c`
-            // makes — lands at the expression it converts.
+            // makes — is recorded at the expression it converts.
             auto range = callee_name(CE, context.getSourceManager());
             if(range.isInvalid()) {
                 range = CE->getExprLoc();
@@ -789,7 +790,7 @@ public:
         }
 
         // Recorded where the specialization is written, as base edges
-        // are: the template's own rows never change with the units that
+        // are: the template's own entries never change with the units that
         // specialize it.
         if(auto* ND = llvm::dyn_cast<clang::NamedDecl>(D)) {
             if(auto* primary = specialized_template(ND)) {
@@ -935,7 +936,7 @@ public:
     /// `decltype(auto)`, `decltype(expr)`, an abbreviated template's
     /// `auto` — is an occurrence of the declarations that type names once
     /// its pointers, references and arrays are stripped, as if the type
-    /// were written there, with a Deduced row: navigation from the keyword
+    /// were written there, with a Deduced relation: navigation from the keyword
     /// reaches the type, references to the type never list the keyword.
     void project_placeholder(const Semantics& semantics, std::uint32_t index) {
         const auto& entry = semantics.node(index);
@@ -1036,10 +1037,10 @@ public:
                     }
                 }
 
-                // An occurrence claims "this range spells the name", so it
+                // An occurrence says "this range spells the name", so it
                 // exists only where that holds. Names conjured by a macro
                 // body or token paste still get the self-relation below —
-                // reference lists and jump targets keep the invocation row —
+                // reference lists and jump targets keep the invocation relation —
                 // but the invocation token itself stays the macro's, not
                 // theirs.
                 if(spelled) {
@@ -1050,7 +1051,7 @@ public:
 
                 // Every occurrence is mirrored as a self-relation spanning
                 // the whole name, so find-references on the occurring decl
-                // finds this row and cursor-site detection finds the
+                // finds this relation and cursor-site detection finds the
                 // occurrence inside it.
                 add_self_relation(occurrence.decl, occurrence.kind, name);
 
@@ -1118,13 +1119,13 @@ public:
         }
         tree = IncludeTree::from(unit, indexed_fids);
 
-        // Rows are keyed by FileID while they accumulate, by path from here
+        // Entries are keyed by FileID while they accumulate, by path from here
         // on. A header entered several times (its FileIDs differ, its path
-        // id does not) contributes the union of its entries' rows:
+        // id does not) contributes the union of its FileIDs' entries:
         // write_shard canonicalizes — sorts and deduplicates — so
         // concatenation is union. A file with no include edge is a
         // synthetic buffer (predefines, <command line>): it has no real
-        // path to attribute rows to, and path_id() would misfile them
+        // path to attribute entries to, and path_id() would misfile them
         // under the source file. Real files forced in via -include are not
         // affected — clang records their include edge in the predefines
         // buffer, which is a valid location. The main file legitimately
@@ -1155,9 +1156,9 @@ public:
             drop_nested(file_index.occurrences);
         }
 
-        // The canonical file is decided across every file's rows: a
+        // The canonical file is decided across every file's relations: a
         // definition wins over a declaration, and between equals the
-        // lowest path id, so the choice is a pure function of the rows.
+        // lowest path id, so the choice is a pure function of the relations.
         auto adopt = [](Symbol& symbol, std::uint32_t path_id, bool definition) {
             bool defined = has_flag(symbol.flags, SymbolFlags::HasDefinition);
             if(definition && !defined) {
@@ -1180,8 +1181,8 @@ public:
                         adopt(symbol, path_id, false);
                     } else if(RelationKind(relation.kind).isBetweenSymbol()) {
                         // A query anchors a relation's target at the file
-                        // holding the row; an internal one reaches its own
-                        // rows from there only through this file.
+                        // holding the relation; an internal one reaches its
+                        // own entries from there only through this file.
                         if(auto it = symbols.find(relation.target_symbol);
                            it != symbols.end() && it->second.scope == SymbolScope::TULocal) {
                             it->second.reference_files.add(path_id);
@@ -1345,7 +1346,7 @@ BlobView blob_root(llvm::StringRef data) {
     return BlobView::from_verified_bytes(blob_bytes(data));
 }
 
-/// The symbol table columns of an envelope, borrowing the wire.
+/// The symbol table columns of a TU index blob, borrowing its bytes.
 struct SymbolColumns {
     llvm::ArrayRef<std::uint64_t> hashes;
     llvm::StringRef names;
@@ -1421,7 +1422,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // id the merge dereferences against the path table is bounded here so
     // the accessors stay check-free. The builder ends every path table
     // with the main file, so consumers address path_count() - 1
-    // unchecked — an empty table marks a corrupt envelope.
+    // unchecked — an empty table marks a corrupt TU index.
     auto count = root[&TUIndexBlob::paths].size();
     if(count == 0) {
         LOG_DEBUG("Rejecting TU index: empty path table");
@@ -1438,11 +1439,11 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         }
     }
     auto symbols = SymbolColumns::of(root);
-    auto count = symbols.hashes.size();
-    if(symbols.name_ends.size() != count || symbols.args_ends.size() != count ||
-       symbols.parents.size() != count || symbols.kinds.size() != count ||
-       symbols.scopes.size() != count || symbols.flags.size() != count ||
-       symbols.files.size() != count || symbols.reference_ends.size() != count ||
+    auto symbol_count = symbols.hashes.size();
+    if(symbols.name_ends.size() != symbol_count || symbols.args_ends.size() != symbol_count ||
+       symbols.parents.size() != symbol_count || symbols.kinds.size() != symbol_count ||
+       symbols.scopes.size() != symbol_count || symbols.flags.size() != symbol_count ||
+       symbols.files.size() != symbol_count || symbols.reference_ends.size() != symbol_count ||
        !monotone_ends(symbols.name_ends, symbols.names.size()) ||
        !monotone_ends(symbols.args_ends, symbols.args.size()) ||
        !monotone_ends(symbols.reference_ends, symbols.references.size())) {
@@ -1452,11 +1453,11 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     // Lookups binary-search the hashes. Hashes and parents become DenseMap
     // and DenseSet keys in every consumer (the project table, a query's
     // parent walk), and the two sentinel values corrupt or assert in those
-    // containers; the builder never emits them, so an envelope carrying
+    // containers; the builder never emits them, so a TU index carrying
     // one is corrupt. Merged reference files would persist behind versions
     // that match the disk, so a path id past the table must reject the
-    // whole envelope rather than be dropped.
-    for(std::size_t i = 0; i < count; i += 1) {
+    // whole TU index rather than be dropped.
+    for(std::size_t i = 0; i < symbol_count; i += 1) {
         if((i != 0 && symbols.hashes[i] <= symbols.hashes[i - 1]) ||
            reserved_key(symbols.hashes[i]) || reserved_key(symbols.parents[i])) {
             LOG_DEBUG("Rejecting TU index: unsorted or reserved symbol hash, or reserved parent");
@@ -1473,7 +1474,7 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
     }
     // section_of binary-searches the section table by path id and shard_of
     // trusts the result, so the ids must ascend strictly — a repeated or
-    // out-of-order id would attribute one file's rows to another.
+    // out-of-order id would attribute one file's index to another.
     auto sections = root[&TUIndexBlob::sections];
     std::uint32_t previous_path_id = 0;
     for(std::size_t i = 0; i < sections.size(); i += 1) {
@@ -1589,8 +1590,8 @@ bool TUIndex::shards_verify() const {
     for(std::uint32_t i = 0; i < section_count(); i += 1) {
         // Structural verification alone accepts flipped bits that still
         // form a valid shard (an in-bounds range, another symbol id);
-        // only the byte hash catches those, so a persisted envelope must
-        // fail here and rebuild instead of serving corrupted rows.
+        // only the byte hash catches those, so a persisted TU index must
+        // fail here and rebuild instead of serving corrupted entries.
         if(llvm::xxh3_64bits(section_blob(i)) != section_hash(i)) {
             return false;
         }
@@ -1612,7 +1613,9 @@ void TUIndex::iterate_symbols(
     }
     auto symbols = SymbolColumns::of(blob_root(data));
     for(std::uint32_t entry = 0; entry < symbols.hashes.size(); entry += 1) {
-        if(!callback(symbols.hashes[entry], symbols.identity(entry), symbols.references_of(entry))) {
+        if(!callback(symbols.hashes[entry],
+                     symbols.identity(entry),
+                     symbols.references_of(entry))) {
             return;
         }
     }

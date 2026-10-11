@@ -81,7 +81,7 @@ ZEST_CASE(BatchTraversesHeaders) {
         {"ratio.h",  "inline double ratio(int a, int b) { return a / b; }\n"},
         {"main.cpp", "#include \"ratio.h\"\nint main() { return 0; }\n"     },
     };
-    // The finding lands with the header's location; the header filter is
+    // The finding arrives with the header's location; the header filter is
     // the consumer's to apply.
     auto unit = compile_main(sources, {.checks = "-*,bugprone-integer-division", .batch = true});
     ZASSERT(unit.completed());
@@ -333,7 +333,7 @@ ZEST_CASE(ExtraArgsCommandSplit) {
     ZASSERT(split.prepend == prepend);
     ZASSERT(split.append == append);
 
-    // A -X<tool> pair filters on its operand's verdict — dropping just
+    // A -X<tool> pair filters on its operand's decision — dropping just
     // the operand would leave the forwarder to eat the next argument.
     auto pairs = tidy::command_extra_args(
         {"-Xclang", "-Wno-unused", "-Xclang", "-fno-exceptions", "-Xclang"},

@@ -45,7 +45,7 @@ namespace protocol = kota::ipc::protocol;
 ///
 /// Discipline: any feature whose answer is assembled from more than one
 /// source belongs here. Transports (LSP handlers) only translate
-/// between the wire protocol and these methods — they never merge, retry,
+/// between the protocol and these methods — they never merge, retry,
 /// or gate results themselves.
 class Features {
 public:
@@ -66,7 +66,7 @@ public:
 
     /// The other projects' index queries, and the query of the project a
     /// file open in the editor is routed to (null for a closed file), both
-    /// wired by the master. A symbol's navigation answers are also sought
+    /// connected by the master. A symbol's navigation answers are also sought
     /// in the peers declaring it in the same file — an application and the
     /// library beside it see each other's uses — and an open file answers
     /// only through the project serving its buffer (see gather).
@@ -74,7 +74,7 @@ public:
     std::function<const index::IndexQuery*(Fid)> open_in;
 
     /// The editor's requests take their ticket as the request is dispatched,
-    /// ahead of the messages read with it: an edit among those lands before
+    /// ahead of the messages read with it: an edit among those arrives before
     /// the task starts and supersedes the ticket.
 
     /// Full document-link result for a session: the worker's main-file links
@@ -83,7 +83,7 @@ public:
         document_links(Ticket ticket, kota::cancellation_token token = {});
 
     /// The diagnostics of the document's buffer as it is now: awaits the
-    /// compile the buffer is owed, and an edit landing meanwhile is
+    /// compile the buffer is owed, and an edit arriving meanwhile is
     /// followed rather than answered ContentModified — a pull names no
     /// version, and clients clear what they hold on that error. Following
     /// has no bound of its own: a client that no longer wants the answer
@@ -91,7 +91,7 @@ public:
     /// nothing.
     kota::task<std::vector<protocol::Diagnostic>> diagnostics(std::shared_ptr<Session> session);
 
-    /// What diagnostics answers once the compile settled, without waiting
+    /// What diagnostics answers once the compile finished, without waiting
     /// for one: the output's diagnostics while it describes the buffer,
     /// then the crash notes; nothing once the session closed.
     std::vector<protocol::Diagnostic> finished_diagnostics(const Session& session) const;
@@ -208,7 +208,7 @@ public:
 
     /// Nullopt when nothing at the position can be renamed or the file
     /// fails to compile; an error names the conflicts, or the files whose
-    /// rows are not current, that keep the rename from being made.
+    /// index is not current, that keep the rename from being made.
     kota::task<std::optional<Renamed>, kota::ipc::Error> rename(Ticket ticket,
                                                                 Fid path_id,
                                                                 const protocol::Position& position,
@@ -247,14 +247,14 @@ private:
     struct RouteOptions {
         /// The projection raw-lexes the whole buffer (semantic tokens,
         /// folds): it follows the investment policy once the buffer is
-        /// oversized, while row- and cursor-backed answers serve at any
+        /// oversized, while index- and cursor-backed answers serve at any
         /// size.
         bool full_lex = false;
         /// The feature has no refresh request, so an empty reply to a cold
         /// document would be cached by the client for good — no signal
         /// ever makes it re-pull. Await the didOpen boost once (bounded by
         /// one index attempt) before answering Empty, and decide again
-        /// from whatever source that settles: the shard, the escalated
+        /// from whatever source is there once it finishes: the shard, the escalated
         /// compile, or honestly empty under readonly "on".
         bool await_cold_attempt = false;
     };
@@ -286,7 +286,7 @@ private:
 
     /// The compile gate of index-navigation requests: awaits the compile
     /// exactly when the routing decided the AST is the serving source
-    /// (freshness clause 1 needs the settled file index), and lets
+    /// (freshness clause 1 needs the finished file index), and lets
     /// index-served sessions resolve through clauses 1/4 without forcing
     /// the build. A Stop means answer with it instead: the compile failed,
     /// or the request was superseded.
@@ -299,7 +299,7 @@ private:
     /// The lexing dialect of a session's index projections. An explicit -x
     /// in the file's own CDB entry decides outright; a header follows its
     /// active context's host when one exists; otherwise C when the file is
-    /// a C source or every TU contributing its indexed rows is one, C++
+    /// a C source or every TU contributing its indexed entries is one, C++
     /// else (mixed inclusion favors the superset).
     const clang::LangOptions& index_lang_options(const Session& session);
 
@@ -355,9 +355,9 @@ private:
     /// This project's query, then the peers of `symbol` (peers_of).
     llvm::SmallVector<Source> sources(index::SymbolHash symbol, Fid anchor);
 
-    /// Whether `from`'s rows for `file` stand among the answers of `asked`:
+    /// Whether `from`'s shard for `file` stands among the answers of `asked`:
     /// any project's for a closed file; for an open one only the project
-    /// serving its buffer — the others hold its disk rows, which the buffer
+    /// serving its buffer — the others hold its disk shard, which the buffer
     /// superseded — unless that project is not asked.
     bool answers_for(const index::IndexQuery& from, Fid file, llvm::ArrayRef<Source> asked) const;
 

@@ -263,7 +263,7 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
 
     auto planned = query::rename(ctx, *requests);
     auto& result = planned.result;
-    // A unit --fresh failed to index answers from rows that may be old.
+    // A unit --fresh failed to index answers from an index that may be old.
     bool blocked = planned.blocked() || !failed.empty();
     if(!blocked && !opts.dry_run && !planned.plan.edits.empty()) {
         if(auto applied = apply(files, planned.plan); !applied) {

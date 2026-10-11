@@ -51,7 +51,7 @@ export function parsePerfLines(text: string, pid = 1): PerfEvent[] {
         const thread = THREAD_PATTERN.exec(line);
         events.push({
             topic,
-            // The log stamp has no timezone; Date.parse reads it as local
+            // The log timestamp has no timezone; Date.parse reads it as local
             // time, which is what the producing process used.
             ts: timestamp !== undefined ? Date.parse(timestamp.replace(" ", "T")) : null,
             pid,
@@ -173,7 +173,7 @@ export function toChromeTrace(
         traceEvents.push({ name: "process_name", ph: "M", pid: Number(pid), args: { name } });
     }
     // Events concatenate from multiple log files in file order, so the
-    // first stamped event is not necessarily the earliest. No spread into
+    // first timestamped event is not necessarily the earliest. No spread into
     // Math.min: a long session's event count exceeds the engine's
     // argument-count limit.
     let base = Infinity;

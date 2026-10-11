@@ -96,7 +96,7 @@ ZEST_CASE(RuleBoundDatabaseWins) {
 
 ZEST_CASE(DefaultCommandMembers) {
     /// No database anywhere: the rule's default command serves the files
-    /// its patterns claim, enumerates the matching sources as members, and
+    /// its patterns cover, enumerates the matching sources as members, and
     /// a nested rule keeps some of them out of the index.
     Layout layout("default_command_only");
     ZEXPECT(layout.build.declared_sources().empty());
@@ -110,7 +110,7 @@ ZEST_CASE(DefaultCommandMembers) {
     ZEXPECT(has_arg(rendered, "DEFAULTED"));
     ZEXPECT(has_arg(rendered, layout.path("include")));
 
-    /// A file no rule claims has no command; the builtin fallback serves it.
+    /// A file no rule covers has no command; the builtin fallback serves it.
     ZEXPECT(!!layout.build.commands(layout.fid("tools/other.cpp")).empty());
     ZEXPECT(has_arg(layout.render("tools/other.cpp"), "clang++"));
 
@@ -125,8 +125,8 @@ ZEST_CASE(DefaultCommandMembers) {
 };
 
 ZEST_CASE(UnitPredicate) {
-    /// A source a default-command rule claims is a unit of its own; a header
-    /// the same rule matches is not, and neither is a file no rule claims. A
+    /// A source a default-command rule covers is a unit of its own; a header
+    /// the same rule matches is not, and neither is a file no rule covers. A
     /// database entry makes any file a unit.
     Layout defaults("default_command_only");
     ZEXPECT(defaults.build.unit(defaults.fid("src/main.cpp")));
@@ -193,7 +193,7 @@ lint = false
 
 ZEST_CASE(WalkResolvesLinks) {
     /// A symlink under a pattern root names the file it points to, which
-    /// the pattern does not claim.
+    /// the pattern does not cover.
     TempDir tmp;
     tmp.touch("src/main.cpp", "int main() {}\n");
     tmp.touch("elsewhere/impl.cpp", "");
@@ -228,7 +228,7 @@ ZEST_CASE(FormatSet) {
 
 ZEST_CASE(PatternRootsEnumerate) {
     /// Members are enumerated from where the patterns point, not from the
-    /// configuration file's directory: a config under .clice/ claims
+    /// configuration file's directory: a config under .clice/ covers
     /// sources through `${workspace}` and `..` patterns alike, and a
     /// pattern reaching outside the workspace is honoured too.
     TempDir tmp;
@@ -319,7 +319,7 @@ ZEST_CASE(ForcedLanguageMembers) {
 
 ZEST_CASE(WorkspaceRuleCoversKnownSources) {
     /// A rule without patterns applies to every file, so its forced language
-    /// claims only what clang recognizes as a source: the configuration file
+    /// covers only what clang recognizes as a source: the configuration file
     /// and an extensionless script stay out until a pattern names the script.
     TempDir tmp;
     tmp.touch("clice.toml", "");
@@ -418,7 +418,7 @@ ZEST_CASE(InvalidDefaultCommandIgnored) {
 };
 
 ZEST_CASE(UnmatchableRuleDeclaresNothing) {
-    /// A default-command rule whose every pattern is invalid can claim no
+    /// A default-command rule whose every pattern is invalid can cover no
     /// file, so it declares no source and discovery stays on; a database it
     /// names still counts, since entries apply regardless of patterns.
     TempDir tmp;

@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-/// The index vocabulary: row and symbol types shared by every layer —
+/// The index vocabulary: entry and symbol types shared by every layer —
 /// builders accumulate them, blob readers hand them out, the project
 /// table stores them.
 
@@ -22,11 +22,11 @@ using SymbolHash = std::uint64_t;
 enum class SymbolScope : std::uint8_t {
     /// Can be referenced from any TU (external or module linkage). Stored
     /// in ProjectIndex, whose reference bitmaps list the files holding its
-    /// rows.
+    /// entries.
     External = 0,
     /// Can be referenced across files within one TU but not across TUs
     /// (internal linkage: static, anonymous namespace). Stored in the
-    /// shards holding its rows; the TUs that reference it from several
+    /// shards holding its entries; the TUs that reference it from several
     /// files list those files (TUManifest::local_fanout).
     TULocal = 1,
     /// Cannot be referenced from any other file (local variables, parameters,
@@ -64,7 +64,7 @@ struct Occurrence {
     friend bool operator==(const Occurrence&, const Occurrence&) = default;
 };
 
-/// One file's rows while a build accumulates them; encoded into a shard
+/// One file's index while a build accumulates it; encoded into a shard
 /// blob (index/shard.h) at build end and consumed as bytes from then on.
 struct FileIndex {
     /// The braces matter: fbs decode value-constructs map entries with
@@ -164,7 +164,7 @@ constexpr NameForm name_form(SymbolFlags flags) {
         9);
 }
 
-/// No canonical file: the symbol has rows but none of them declares it.
+/// No canonical file: the symbol has entries but none of them declares it.
 constexpr inline std::uint32_t no_file = ~0u;
 
 /// A symbol's identity as a blob reader hands it out; the strings borrow
@@ -201,17 +201,17 @@ struct Symbol {
     SymbolFlags flags = SymbolFlags::None;
 
     /// The file holding the canonical declaration — a definition when one
-    /// is known, else the first declaration — as a TU-local path id in an
-    /// envelope and a FileTable id in the project table; `no_file` when the
+    /// is known, else the first declaration — as a TU-local path id in a
+    /// TU index and a FileTable id in the project table; `no_file` when the
     /// symbol is only referenced.
     std::uint32_t file = no_file;
 
     /// All files that referenced this symbol; for an internal-linkage one
-    /// also the files whose rows target it (a structured binding's
-    /// TypeDefinition row naming a type the file never spells).
+    /// also the files whose relations target it (a structured binding's
+    /// TypeDefinition relation naming a type the file never spells).
     Bitmap reference_files;
 
-    /// The identity a reader hands out for this row; the strings borrow it.
+    /// The identity a reader hands out for this entry; the strings borrow it.
     SymbolIdentity identity() const {
         return {
             .name = name,
@@ -261,7 +261,7 @@ struct SymbolRef {
 /// A resolved document link: the argument range of an include-like
 /// directive (byte offsets in the containing file) and the absolute path
 /// of the target file. Plain data — it serializes over the worker RPC and
-/// the PCH's pch.idx envelope as-is and becomes an LSP DocumentLink only
+/// the PCH's pch.idx index as-is and becomes an LSP DocumentLink only
 /// at the reply edge, where the session's line map does the conversion.
 struct DocumentLink {
     LocalSourceRange range;

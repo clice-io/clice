@@ -57,7 +57,7 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
     IncludeTree tree;
 
     // Path and node ids are assigned in first-visit order and the
-    // envelope's byte hash is an identity, so the visit order must be a
+    // TU index's byte hash is an identity, so the visit order must be a
     // pure function of the parse — sort every fid set that arrives in
     // DenseMap iteration order.
     auto& directives = unit.directives();
@@ -121,7 +121,7 @@ IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::Fil
 
     // Hash the consumed bytes per path from the compiler's own buffers.
     // Freshness checks compare the disk against these, so they must
-    // describe what the rows were built from — a fid whose buffer never
+    // describe what the index was built from — a fid whose buffer never
     // loaded here (preamble header behind a PCH) contributes no hash and
     // its consumers stay conservative.
     tree.path_hashes.assign(tree.paths.size(), 0);

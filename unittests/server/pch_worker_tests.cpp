@@ -75,7 +75,7 @@ ZEST_CASE(BuildPCHThenCompile) {
     // Verify the PCH file exists on disk.
     ZASSERT(llvm::sys::fs::exists(pch_path));
 
-    // The worker wrote the paired preamble envelope: it must load and
+    // The worker wrote the paired preamble index: it must load and
     // carry the preamble's document links (the #include of common.h).
     auto state = load_pch_index(tmp.path("preamble.pch.idx"));
     ZASSERT(state != nullptr);

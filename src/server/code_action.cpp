@@ -196,15 +196,15 @@ kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
             *text);
 
         // After the last definition of the container's members in the
-        // host's serving rows, in the coordinates that source vouches
-        // for; at the end of the file when it holds none. The rows are
-        // read directly: an open host's own rows know its definitions
+        // host's serving index, in the coordinates that source guarantees;
+        // at the end of the file when it holds none. The relations are
+        // read directly: an open host's own index knows its definitions
         // before the background index merges them into the project table.
         std::optional<protocol::Position> after;
         auto source = request.container != 0 ? query.serving(host) : std::nullopt;
         if(source) {
             source->shard->for_each_relation([&](index::SymbolHash hash,
-                                                const index::Relation& relation) {
+                                                 const index::Relation& relation) {
                 if(relation.kind != RelationKind::Definition) {
                     return true;
                 }

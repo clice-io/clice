@@ -10,7 +10,7 @@ namespace clice {
 
 namespace {
 
-/// The source file's preamble-region rows of an overlay envelope (buffer
+/// The source file's preamble-region shard of an overlay TU index (buffer
 /// offsets below the preamble bound).
 const index::Shard& preamble_shard(const index::TUIndex& state) {
     return state.shard_of(state.path_count() - 1);
@@ -23,9 +23,9 @@ bool ServerLiveSources::is_open(Fid file) const {
 }
 
 index::IndexSource ServerLiveSources::buffer_source(index::IndexSource::Kind kind,
-                                                  Fid file,
-                                                  const Session& session,
-                                                  const index::Shard& shard) const {
+                                                    Fid file,
+                                                    const Session& session,
+                                                    const index::Shard& shard) const {
     return {
         .kind = kind,
         .file = file,
@@ -40,8 +40,8 @@ const index::Shard* ServerLiveSources::session_shard(Fid file, const Session& se
     if(!projection || !projection->index || !projection->index->loaded()) {
         return nullptr;
     }
-    // Rows compiled from exactly the buffer's bytes describe it however
-    // their dependencies moved since (the shard's DepsOnly contract); a
+    // A shard compiled from exactly the buffer's bytes describes it however
+    // its dependencies moved since (the shard's DepsOnly contract); a
     // header compiled with an appended suffix line never matches its
     // buffer's bytes and serves only while its compile is current.
     auto& shard = projection->file_shard();
@@ -67,8 +67,8 @@ std::optional<index::IndexSource> ServerLiveSources::serving_buffer(Fid file) co
     return buffer_source(index::IndexSource::Kind::Shard, file, *session, it->second);
 }
 
-void
-    ServerLiveSources::each_session(llvm::function_ref<bool(const index::IndexSource&)> visit) const {
+void ServerLiveSources::each_session(
+    llvm::function_ref<bool(const index::IndexSource&)> visit) const {
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         auto* shard = session_shard(file, session);
         return !shard ||
@@ -100,11 +100,11 @@ void ServerLiveSources::each_preamble(
         if(!state) {
             return true;
         }
-        // The preamble entry's rows are buffer offsets of the file that
+        // The preamble shard's entries are buffer offsets of the file that
         // built the blob: serve them only for that very file and only while
         // the buffer still starts with the exact preamble text the blob was
         // built from. The prefix comparison validates the described region
-        // directly — body edits never move preamble rows — so no dirty-flag
+        // directly — body edits never move preamble entries — so no dirty-flag
         // gating is needed on top.
         if(project.file_table.find(Spelling::absolute(state->path(state->path_count() - 1))) !=
                file ||

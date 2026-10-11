@@ -117,10 +117,10 @@ private:
     struct ProbeAdmission;
     ProbeAdmission admit_probe(ConfigID id, InputKind input);
 
-    /// Lands a query's outcome: the tokens into the probe cache, a failure
+    /// Commits a query's outcome: the tokens into the probe cache, a failure
     /// into the negative cache with its time.
     void commit_probe(llvm::StringRef key,
-                    const std::expected<std::vector<std::string>, std::string>& result);
+                      const std::expected<std::vector<std::string>, std::string>& result);
 
     CompilationDatabase& db;
 

@@ -451,7 +451,7 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
     }
     if(kill_process) {
         // Make sure the process is really gone so monitor_worker's
-        // proc.wait() is guaranteed to deliver a verdict.
+        // proc.wait() is guaranteed to deliver a result.
         w.proc.kill();
     }
 }
@@ -459,7 +459,7 @@ void WorkerPool::mark_worker_dead(std::size_t index, bool stateful, bool kill_pr
 kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
     auto& workers = stateful ? stateful_workers : stateless_workers;
 
-    // Every exit settles this incarnation's record, shutdown included:
+    // Every exit marks this incarnation's record done, shutdown included:
     // senders whose link broke are parked on it.
     struct MarkDone {
         std::shared_ptr<WorkerDeath> death;
@@ -641,9 +641,9 @@ bool WorkerPool::process_crash(std::size_t index, bool stateful, int exit_code, 
     if(stateful) {
         info.lost_documents = std::exchange(w.lost_documents, {});
     } else {
-        // The dead worker's claim was released by mark_worker_dead; a queued
-        // low-priority waiter may now fit on another idle worker instead of
-        // stalling until the respawn lands.
+        // The dead worker's acquisition was released by mark_worker_dead; a
+        // queued low-priority waiter may now fit on another idle worker instead
+        // of stalling until the respawn finishes.
         try_dispatch_pending();
     }
 
@@ -784,7 +784,7 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
         if(stop_scope.cancelled() || !has_future_capacity() || cancel.cancelled())
             co_return SIZE_MAX;
 
-        // Claim directly only when no earlier request is queued (FIFO
+        // Acquire directly only when no earlier request is queued (FIFO
         // fairness); high priority never waits behind queued low.
         bool fifo_clear =
             priority == P::High ? high_queue.empty() : high_queue.empty() && low_queue.empty();
@@ -801,7 +801,7 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
         if(priority == P::High && pick_idle_stateless() == SIZE_MAX)
             cancel_low_priority(low_reclaim_deficit(1));
 
-        // Queue up and suspend until try_dispatch_pending() claims a worker
+        // Queue up and suspend until try_dispatch_pending() acquires a worker
         // for us or wakes us to observe pool death. The destructor covers
         // cancellation while queued or between dispatch and resume.
         PendingStateless pending(*this, priority);
@@ -822,8 +822,8 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
             continue;
 
         auto idx = std::exchange(pending.assigned_worker, SIZE_MAX);
-        // If the claimed worker died between dispatch and resume, the claim
-        // was already cleaned up with the slot — go around again.
+        // If the acquired worker died between dispatch and resume, the
+        // acquisition was already cleaned up with the slot — go around again.
         if(stateless_workers[idx].generation != pending.assigned_gen)
             continue;
         co_return idx;
@@ -876,7 +876,7 @@ void WorkerPool::try_dispatch_pending() {
 }
 
 void WorkerPool::fail_pending_requests() {
-    // Waiters are woken without a claim (assigned_worker stays SIZE_MAX);
+    // Waiters are woken without an acquired worker (assigned_worker stays SIZE_MAX);
     // they re-check the pool state and return an error.
     auto drain = [](std::deque<PendingStateless*>& queue) {
         while(!queue.empty()) {
@@ -1112,7 +1112,7 @@ void WorkerPool::tick_deadlines() {
 }
 
 void WorkerPool::cancel_low_priority(std::size_t count) {
-    // Newest claim first: the youngest compile has the least work to lose,
+    // Newest acquisition first: the youngest compile has the least work to lose,
     // and a fixed scan order would keep sacrificing the same slot's file.
     llvm::SmallVector<std::size_t> victims;
     for(std::size_t i = 0; i < stateless_workers.size(); i += 1) {
@@ -1121,11 +1121,11 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
             continue;
         if(w.cancel_requested_at != std::chrono::steady_clock::time_point{})
             continue;
-        // A claim whose sender has not resumed yet has no cancellation
+        // An acquired slot whose sender has not resumed yet has no cancellation
         // source installed; skip it entirely — stamping it would leave a
         // request that never saw a cancel to be grace-killed as if it had
         // ignored one. The demand is not dropped: the sender re-checks the
-        // deficit when it arms and gives the claim back on the spot.
+        // deficit when it arms and gives the slot back on the spot.
         if(!w.preempt_source)
             continue;
         victims.push_back(i);
@@ -1138,7 +1138,7 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
         if(cancelled >= count)
             break;
         auto& w = stateless_workers[i];
-        // Cancels the request on the wire; a slot that dies before the
+        // Cancels the request over IPC; a slot that dies before the
         // grace expires has its stamp cleared by the respawn.
         w.preempt_source->cancel();
         w.cancel_requested_at = std::chrono::steady_clock::now();
@@ -1337,7 +1337,7 @@ void WorkerPool::preempt_low_priority(std::size_t count) {
     }
     if(preempted > 0) {
         LOG_WARN("Preempted {} low-priority workers (memory pressure)", preempted);
-        // The victims' claims are gone; queued work may fit under the
+        // The victims' acquisitions are gone; queued work may fit under the
         // (reduced) limit on the remaining idle workers.
         try_dispatch_pending();
     }

@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-/// Positions in a text version and the sites index rows resolve to.
+/// Positions in a text version and the sites index entries resolve to.
 
 module clice:index.site;
 
@@ -21,8 +21,8 @@ struct LineColumn {
     std::uint32_t utf16_column = 0;
 };
 
-/// One row's site: the file, the row's byte range in the text the rows
-/// were built from, and the range's ends as positions. `path` names the
+/// One entry's site: the file, the entry's byte range in the text the index
+/// was built from, and the range's ends as positions. `path` names the
 /// file as the user knows it (FileTable::display).
 struct Site {
     Fid file;

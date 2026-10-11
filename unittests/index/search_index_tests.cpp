@@ -19,7 +19,7 @@ using index::SymbolFlags;
 using index::SymbolHash;
 using index::SymbolQuery;
 
-/// A snapshot built row by row; hashes are the row numbers from 1.
+/// A snapshot built entry by entry; hashes are the entry numbers from 1.
 struct Corpus {
     SearchSnapshot snapshot;
     llvm::StringMap<SymbolHash> by_qualified;
@@ -287,7 +287,7 @@ ZEST_CASE(Typos) {
     ZEXPECT(names(corpus, built, "strcpy") == (Names{"strcpy_s", "strncpy"}));
     ZEXPECT(names(corpus, built, "strcpy", 1) == (Names{"strcpy_s"}));
     ZEXPECT(names(corpus, built, "strncpx") == (Names{"strncpy"}));
-    // A row the clean pass rejected is judged again as a typo.
+    // An entry the clean pass rejected is judged again as a typo.
     ZEXPECT(names(corpus, built, "aaaaaa") == (Names{"aaaxaaa"}));
     ZEXPECT((names(corpus, built, "strcp").empty() ||
              names(corpus, built, "strcp") == Names{"strcpy_s"}));
@@ -317,7 +317,7 @@ ZEST_CASE(Quality) {
 }
 
 /// The narrowing by tokens and the early stop lose nothing: every hit a
-/// full scan of the rows would rank among the best comes out of the
+/// full scan of the entries would rank among the best comes out of the
 /// index, in the same order.
 ZEST_CASE(MatchesFullScan) {
     Corpus corpus;

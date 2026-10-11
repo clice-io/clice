@@ -25,9 +25,9 @@ constexpr std::size_t max_chain = 64;
 
 using Mode = SymbolQuery::Mode;
 
-/// The persisted search index. Rows are in quality order (ties by hash),
+/// The persisted search index. Entries are in quality order (ties by hash),
 /// which is the doc id order every bitmap speaks; the arenas hold the
-/// names back to back with one end offset per row; posting arenas hold
+/// names back to back with one end offset per entry; posting arenas hold
 /// portable roaring images the same way.
 struct SearchBlob {
     std::uint32_t format_version = 0;
@@ -75,7 +75,7 @@ struct SearchBlob {
     std::vector<std::uint32_t> kind_ends;
     std::vector<std::uint8_t> kind_postings;
 
-    /// The files of the rows, one bitmap each.
+    /// The files of the entries, one bitmap each.
     std::vector<std::string> paths;
     std::vector<std::uint32_t> file_ends;
     std::vector<std::uint8_t> file_postings;
@@ -512,7 +512,7 @@ std::optional<NameRank>
                         .score = quality};
     }
     // A query too short for trigrams is keyed by a name's first two words
-    // in the index; judging rows the same way keeps the two answers alike.
+    // in the index; judging entries the same way keeps the two answers alike.
     if(!short_tokens.empty()) {
         llvm::SmallVector<NameToken, 64> tokens;
         name_tokens(name, tokens);

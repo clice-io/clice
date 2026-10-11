@@ -97,7 +97,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         // the request down the same pipe, and the single-threaded worker
         // processes it while the handler is parked on the pool await — the
         // compile cannot have replied first, so the cancel deterministically
-        // lands mid-flight (a 150ms window lost this race on a warm macOS
+        // arrives mid-flight (a 150ms window lost this race on a warm macOS
         // runner that compiled the TU faster).
         co_await kota::sleep(20, w.loop);
         source.cancel();
@@ -696,10 +696,10 @@ ZEST_CASE(DocumentLimitEvicts) {
 
 ZEST_CASE(BusyDocumentsStay) {
     // A document in flight is never evicted: the master would hear of the
-    // eviction while the compile is still to land and compile it again.
+    // eviction while the compile is still to finish and compile it again.
     // The large document's compile is still running when the small one's
-    // lands over the cap; only the small one, idle by the time the large
-    // one lands, may go.
+    // finishes over the cap; only the small one, idle by the time the large
+    // one finishes, may go.
     TempDir tmp;
     std::string large = "#include <vector>\n";
     for(int i = 0; i < 5000; i += 1) {

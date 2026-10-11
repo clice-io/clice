@@ -33,7 +33,7 @@ MasterServer::MasterServer(kota::event_loop& loop,
                            std::string requested_configuration) :
     loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)),
     self_path(std::move(self_path)) {
-    // Documents opened before initialize land in this project: sessions
+    // Documents opened before initialize end up in this project: sessions
     // are plain state, and initialize re-routes them once folders exist.
     projects.push_back(make_project(CanonicalPath()));
     files.disk.shadow = llvm::sys::Process::GetEnv("CLICE_SHADOW_FRESHNESS").has_value();
@@ -213,7 +213,7 @@ void MasterServer::route_pool_callbacks() {
         // A live round's compile puts the document back on its owner —
         // the worker evicted it before that compile arrived, or it would
         // have kept it — so the eviction changes nothing. One that crossed
-        // the compile's reply on the wire leaves the master trusting a
+        // the compile's reply over IPC leaves the master trusting a
         // document the worker no longer holds: the next query hears
         // document_unloaded and compiles it again (see Dispatcher::ask).
         auto& project = owner_of(*id);
@@ -775,7 +775,7 @@ kota::task<ext::SwitchContextResult> MasterServer::switch_context(Fid path_id,
     }
     result = co_await target->context_service.switch_context(*session, context_path_id, params);
     // A context choice asks for the context-pure AST view; the merged
-    // index cannot give it (union rows). A rejected switch changed no
+    // index cannot give it (union entries). A rejected switch changed no
     // context and owes none.
     if(result.success) {
         target->ast.escalate(*session);
@@ -810,7 +810,7 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
 }
 
 void MasterServer::serve_again(ProjectServer& project, std::shared_ptr<Session> session) {
-    // A compile landing on unchanged text has the client re-pull what it
+    // A compile finishing on unchanged text has the client re-pull what it
     // holds.
     if(session->serving == ServingMode::Escalated) {
         project.ast.request_compile(std::move(session));
@@ -858,18 +858,18 @@ bool MasterServer::test_hooks() const {
     return pool.probe != nullptr;
 }
 
-/// Whether the project's index pump has work settle() waits for. A queue
+/// Whether the project's index pump has work wait_idle() waits for. A queue
 /// no round will take, indexing being off, is none.
 static bool indexing(ProjectServer& project) {
     return project.project.config.project.enable_indexing.value && !project.sched.pump.is_idle();
 }
 
-/// Whether the project has work settle() waits for.
+/// Whether the project has work wait_idle() waits for.
 static bool working(ProjectServer& project) {
     return !project.sched.graph.compiling().empty() || indexing(project);
 }
 
-/// The requests of `editor` settle() waits for: all but syncs.
+/// The requests of `editor` wait_idle() waits for: all but syncs.
 static auto awaited_requests(const kota::ipc::JSONPeer& editor) {
     auto requests = editor.incoming_requests();
     std::erase_if(requests,
@@ -886,7 +886,7 @@ kota::task<> MasterServer::wait_idle(const kota::ipc::JSONPeer& editor) {
     };
     while(true) {
         if(quiet()) {
-            // What a landing scheduled on the loop — a refresh request, a
+            // What a commit scheduled on the loop — a refresh request, a
             // progress handshake — goes out before the answer.
             co_await kota::yield();
             if(quiet()) {

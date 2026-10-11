@@ -25,7 +25,7 @@ struct StdModules {
 /// none for an empty directory.
 std::expected<std::optional<StdModules>, std::string> read_std_modules(llvm::StringRef directory);
 
-/// The partition file at `path`, if any, added to `spec`: modules claimed
+/// The partition file at `path`, if any, added to `spec`: modules covered
 /// by globs, first match wins. A module's `provides` names the module
 /// exporting its names, std.compat for the C library, which `libcxx`
 /// resolves.

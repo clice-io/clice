@@ -114,7 +114,7 @@ bool template_compatible(const clang::TemplateTemplateParmDecl* TTP, clang::Temp
 
 /// Indices of the deduction-depth parameter packs referenced inside an
 /// expansion pattern; a zero-length expansion must still bind them (to the
-/// empty pack) so cardinality conflicts with other occurrences surface.
+/// empty pack) so cardinality conflicts with other occurrences show.
 struct PackIndexCollector : clang::RecursiveASTVisitor<PackIndexCollector> {
     unsigned depth;
     llvm::SmallVector<unsigned, 2> indices;
@@ -686,7 +686,7 @@ bool Unifier::unify(TemplateArguments patterns, TemplateArguments arguments) {
             /// `Us = {int, X}`), while non-pack parameters must deduce
             /// consistently across elements. The element count is fixed by
             /// the arity — whatever the fixed suffix (`void(Ts..., int)`)
-            /// does not claim belongs to the expansion. A second expansion
+            /// does not take belongs to the expansion. A second expansion
             /// has no unique split and rejects.
             unsigned suffix = flat_patterns.size() - p - 1;
             for(unsigned q = p + 1; q < flat_patterns.size(); q += 1) {
@@ -858,8 +858,8 @@ struct Folder {
         auto rhs = fold(binary->getRHS());
 
         /// An operand that does not fold may stand for a substitution
-        /// failure, which leaves the whole expression false: `false` settles
-        /// `&&` regardless, `true` settles `||` only beside a known operand.
+        /// failure, which leaves the whole expression false: `false` decides
+        /// `&&` regardless, `true` decides `||` only beside a known operand.
         if(op == clang::BO_LAnd && ((lhs && lhs->isZero()) || (rhs && rhs->isZero()))) {
             return typed(truth(false), binary->getType());
         }
@@ -1014,7 +1014,7 @@ bool same_expression(clang::ASTContext& context,
 
 /// Whether a constraint is satisfied. Its top-level `&&` and `||`
 /// (through parentheses) join separately checked atomic constraints, so a
-/// satisfied disjunct settles a disjunction and an unsatisfied conjunct a
+/// satisfied disjunct decides a disjunction and an unsatisfied conjunct a
 /// conjunction, whatever the other side.
 std::optional<bool>
     satisfaction(clang::ASTContext& context,

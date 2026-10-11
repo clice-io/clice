@@ -48,8 +48,8 @@ kota::task<> SchedulingStack::checkpoint() {
 kota::task<> SchedulingStack::shutdown() {
     co_await graph.shutdown();
     // Editors kill a server that is slow to exit, and rebuilding the
-    // search index dominates a cold round's save: the rows commit alone,
-    // and the next session's first settled save rebuilds the index.
+    // search index dominates a cold round's save: the shards commit alone,
+    // and the next session's first idle save rebuilds the index.
     co_await pump.persist(IndexStore::SearchRebuild::Never);
 }
 

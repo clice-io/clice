@@ -16,7 +16,7 @@ ZEST_SUITE(Logging) {
 
 ZEST_CASE(VersionInfoSet) {
     // Guards the cmake target-stamping plumbing: an unset CLICE_TARGET_STRING
-    // would otherwise only surface in crash logs.
+    // would otherwise only show in crash logs.
     ZEXPECT(!clice::version.empty());
     ZEXPECT(!clice::target.empty());
 }

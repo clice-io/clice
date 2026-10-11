@@ -154,7 +154,7 @@ struct CompileParams {
     std::vector<std::uint8_t> open_conditionals;
 
     /// Inactive regions of the preamble share (byte-offset pairs up to the
-    /// PCH bound), read from the PCH's pch.idx envelope. The worker only
+    /// PCH bound), read from the PCH's pch.idx index. The worker only
     /// scans past the bound, yet serves semantic tokens for the whole file.
     std::vector<std::uint32_t> preamble_inactive_regions;
 
@@ -166,7 +166,7 @@ struct CompileParams {
 };
 
 /// Outcome of a stateful compile. Anything but `Done` is a non-result: the
-/// master must not settle the session, record dependencies, or publish the
+/// master must not mark the session finished, record dependencies, or publish the
 /// (empty) diagnostics as current — doing so freezes the document on a
 /// product that never existed.
 enum class CompileStatus : uint8_t {
@@ -206,7 +206,7 @@ struct CompileResult {
     bool index_in_file = false;
 };
 
-/// Build a PCH (and its paired pch.idx envelope) from preamble content.
+/// Build a PCH (and its paired pch.idx index) from preamble content.
 struct BuildPCHParams {
     std::string file;
     std::string directory;
@@ -229,7 +229,7 @@ struct BuildPCHParams {
     /// (fsync + atomic rename) after the worker reports success.
     std::string output_path;
 
-    /// Tmp path for the pch.idx envelope, allocated alongside output_path.
+    /// Tmp path for the pch.idx index, allocated alongside output_path.
     /// The worker serializes the preamble's index and feature state into
     /// it; the master commits both blobs together.
     std::string index_output_path;
@@ -412,7 +412,7 @@ struct IncludeTreeResult {
 
 /// Request the document links of an open file's AST. Only the main-file
 /// region is covered: the preamble is compiled into the PCH, and its links
-/// live in the PCH's pch.idx envelope (spliced in by the master).
+/// live in the PCH's pch.idx index (spliced in by the master).
 struct DocumentLinkParams {
     std::string path;
 };

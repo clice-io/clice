@@ -321,7 +321,7 @@ struct CollectedItem {
 
 class CodeCompletionCollector final : public clang::CodeCompleteConsumer {
 public:
-    /// Sema surfaces macro candidates and statement keywords only on
+    /// Sema reports macro candidates and statement keywords only on
     /// request: `if`, `for` and the like exist only as code patterns.
     static clang::CodeCompleteOptions sema_options() {
         clang::CodeCompleteOptions options;

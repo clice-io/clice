@@ -117,7 +117,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
         }
     }
 
-    // Every scanned name lands in the edge set, resolved or not: an
+    // Every scanned name goes into the edge set, resolved or not: an
     // unresolved name edges to its sentinel, which is what lets the
     // name's first provider re-dirty this unit through the ordinary
     // cascade later — no side bookkeeping of who failed against it.
@@ -274,16 +274,16 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     // The modules it imports are inputs as much as its own text — the
     // PCM embeds what it read of them — and theirs already carry their own
     // imports', so the snapshot is transitive. Taken before the build: an
-    // eviction landing during it must not drop them.
+    // eviction arriving during it must not drop them.
     auto imported = project.module_inputs(deps.resolved);
 
     // The interest class is read at dispatch time: a foreground requester
     // may have joined after this round started. The advisory token rides
-    // into the pool, which cancels the request on the wire while this
+    // into the pool, which cancels the request over IPC while this
     // frame keeps awaiting the real reply (contract 2 — the slot frees
     // only when the worker is truly idle).
     auto priority = ctx.foreground() ? worker::Priority::High : worker::Priority::Low;
-    // Sampled before the build reads it: a save landing mid-build is not
+    // Sampled before the build reads it: a save arriving mid-build is not
     // what crashed.
     auto content = content_hash(path_id);
     auto result = co_await deliver(
@@ -294,7 +294,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             build_crashes.insert_or_assign(path_id, Crash{content, error});
         });
 
-    // A foreground reclaim or an advisory cancel is no verdict on the
+    // A foreground reclaim or an advisory cancel is no decision on the
     // unit: report the round stale so waiters drive a retry instead of
     // failing their whole chain.
     if(!result.has_value() && result.error().code == worker::dispatch_errc::cancelled) {
@@ -372,7 +372,7 @@ bool PCMFamily::revalidate_blobs() {
     }
     for(auto pid: evicted) {
         // Artifact tier only: the blob vanished, its content did not, so
-        // importers' landed results stay valid. A full invalidate() here
+        // importers' committed results stay valid. A full invalidate() here
         // would void the very consumer round that is revalidating before
         // rebuilding its imports — under a cache budget smaller than the
         // working set, that voids and respawns the waiter forever.

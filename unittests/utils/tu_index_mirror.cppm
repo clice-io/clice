@@ -12,9 +12,9 @@ import :unittests.utils;
 
 namespace clice::testing {
 
-/// The envelope's wire layout (tu_index.cpp's EnvelopeBlob) through its
-/// sections, field for field: tests plant shapes the builder never emits,
-/// or re-encode a real envelope with one field changed.
+/// The TU index blob's serialized layout (tu_index.cpp's TUIndexBlob) through
+/// its sections, field for field: tests plant shapes the builder never emits,
+/// or re-encode a real TU index with one field changed.
 struct TUIndexMirror {
     struct Section {
         std::uint32_t path_id = 0;
@@ -41,7 +41,7 @@ struct TUIndexMirror {
     std::vector<std::uint32_t> sym_references;
     std::vector<Section> sections;
 
-    /// Append a symbol row; the reader requires ascending hashes.
+    /// Append a symbol entry; the reader requires ascending hashes.
     void add_symbol(index::SymbolHash hash,
                     const index::SymbolIdentity& identity,
                     llvm::ArrayRef<std::uint32_t> references = {}) {
@@ -59,7 +59,7 @@ struct TUIndexMirror {
         sym_reference_ends.push_back(static_cast<std::uint32_t>(sym_references.size()));
     }
 
-    /// A loaded envelope's fields through the sections.
+    /// A loaded TU index's fields through the sections.
     static TUIndexMirror of(const index::TUIndex& view) {
         TUIndexMirror mirror;
         mirror.built_at = view.built_at();

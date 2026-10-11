@@ -49,7 +49,7 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
 }
 
 ZEST_CASE(UnboundResultStaysLocal) {
-    // A NeedsContext verdict scored with no disk observation has no hash
+    // A NeedsContext result scored with no disk observation has no hash
     // to validate on load: it serves this session but must neither
     // persist nor, if found in a blob, bypass the content gate — the next
     // session's bytes never earned it.
@@ -75,7 +75,7 @@ ZEST_CASE(UnboundResultStaysLocal) {
 }
 
 ZEST_CASE(ModeSliceContentGate) {
-    // A content-bound verdict survives a restart only while the disk
+    // A content-bound result survives a restart only while the disk
     // still holds the bytes it was scored on.
     TempDir tmp;
     FileTable files;
@@ -109,7 +109,7 @@ ZEST_CASE(ResultPersistenceMarksDirty) {
     // The persisted mode slice and the artifacts blob move together: any
     // transition of a content-bound NeedsContext — earned, downgraded by
     // a trial, or reset by a dependency change — must rewrite the blob,
-    // or a restart resurrects the dropped verdict (the header's own hash
+    // or a restart resurrects the dropped result (the header's own hash
     // still matches). Session-local transitions must not thrash it.
     FileTable files;
     Project project{files};
@@ -123,14 +123,14 @@ ZEST_CASE(ResultPersistenceMarksDirty) {
     resolver.reset_header_mode(id);
     ZASSERT(project.artifacts_dirty);
 
-    // Unbound verdicts and self-contained impressions are never persisted.
+    // Unbound results and self-contained impressions are never persisted.
     project.artifacts_dirty = false;
     resolver.record_header_mode(id, HeaderMode::NeedsContext);
     resolver.record_header_mode(id, HeaderMode::SelfContained);
     resolver.reset_header_mode(id);
     ZASSERT(!project.artifacts_dirty);
 
-    // A trial downgrading a persisted verdict drops it from the blob.
+    // A trial downgrading a persisted result drops it from the blob.
     resolver.record_header_mode(id, HeaderMode::NeedsContext, 7);
     project.artifacts_dirty = false;
     resolver.record_header_mode(id, HeaderMode::SelfContained);
@@ -139,7 +139,7 @@ ZEST_CASE(ResultPersistenceMarksDirty) {
 
 ZEST_CASE(SelfContainedFlipBumpsEpoch) {
     // A self-contained header's listing merges hosts the others list one
-    // by one: entering or leaving that verdict changes the listing, and
+    // by one: entering or leaving that result changes the listing, and
     // nothing else does.
     FileTable files;
     Project project{files};

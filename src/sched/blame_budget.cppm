@@ -9,7 +9,7 @@ namespace clice {
 /// Content-keyed budget for shared PCH pairs whose consumers keep blaming
 /// them (see PCHFamily::blame).
 ///
-/// The pair is shared, so one consumer's verdict cannot contain it: every
+/// The pair is shared, so one consumer's decision cannot contain it: every
 /// session with the same preamble would rebuild and blame it again. The
 /// budget is keyed by the artifact's content-derived cache key, which makes
 /// recovery structural: editing the content changes the key, and the fresh
@@ -23,7 +23,7 @@ public:
     /// hashes), so editing it cannot unlock the key. After the cooldown the
     /// key earns a fresh budget — the retry either succeeds or re-blocks
     /// after `threshold` more blames. Mirrors slot revival: bounded burn,
-    /// never a permanent verdict.
+    /// never a permanent decision.
     explicit BlameBudget(std::chrono::steady_clock::duration retry_after =
                              std::chrono::minutes(5)) : retry_after(retry_after) {}
 
@@ -64,7 +64,7 @@ private:
     std::chrono::steady_clock::duration retry_after;
 
     /// Grows by one entry per blamed key and shrinks as cooldowns expire or
-    /// consumers land.
+    /// consumers succeed.
     llvm::StringMap<Entry> blames;
 };
 

@@ -1026,7 +1026,7 @@ Toolchain::ProbeAdmission Toolchain::admit_probe(ConfigID id, InputKind input) {
 }
 
 void Toolchain::commit_probe(llvm::StringRef key,
-                           const std::expected<std::vector<std::string>, std::string>& result) {
+                             const std::expected<std::vector<std::string>, std::string>& result) {
     if(!result) {
         failed.try_emplace(key, std::pair{result.error(), std::chrono::steady_clock::now()});
         return;

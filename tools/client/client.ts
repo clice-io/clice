@@ -73,10 +73,10 @@ export { withTimeout } from "../promise.ts";
 export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
 export const IDLE_WAIT = 500; // Server stabilization after an operation
 export const IDLE_TIMEOUT = 5_000; // Idle soak time in lifecycle tests
-export const EDIT_SUPERSEDE_DELAY = 300; // An edit lands while SLOW_SOURCE still parses
+export const EDIT_SUPERSEDE_DELAY = 300; // An edit arrives while SLOW_SOURCE still parses
 
 /// Two hundred thousand trivial declarations: slow to parse on any
-/// hardware, so an edit or a cancel lands while a request still waits on
+/// hardware, so an edit or a cancel arrives while a request still waits on
 /// the compile, and cheap to abandon (the worker polls the stop flag per
 /// declaration).
 export const SLOW_SOURCE =
@@ -396,7 +396,7 @@ export class CliceClient {
         return client;
     }
 
-    // === Raw wire access =================================================
+    // === Raw protocol access =============================================
 
     sendRequest<P, R, E>(
         type: proto.RequestType<P, R, E>,
@@ -519,7 +519,7 @@ export class CliceClient {
         const ws = workspace instanceof Workspace ? workspace : new Workspace(workspace);
         const initializationOptions = initializationOptionsFor(ws, options);
 
-        // Wire URIs stay percent-encoded (a '#' in the path must travel as
+        // Protocol URIs stay percent-encoded (a '#' in the path must travel as
         // %23, not become a fragment); the decoded ws.uri() form is for
         // identity comparisons only.
         const wsUri = URI.file(ws.root).toString();
@@ -1136,7 +1136,7 @@ export class CliceClient {
     }
 
     /// Lines carrying at least one token with the `inactive` semantic
-    /// token modifier — the wire form of preprocessor-inactive regions.
+    /// token modifier — the protocol form of preprocessor-inactive regions.
     async inactiveLines(uri: string): Promise<number[]> {
         const result = await this.semanticTokensFull(uri);
         const provider = this.initResult?.capabilities.semanticTokensProvider as
@@ -1288,7 +1288,7 @@ export class CliceClient {
 
     /// clice/internal/poll (test hook): run one tracker tick and apply its
     /// effects synchronously. `force: false` takes the CDB loop through its
-    /// real stamp gate and settling debounce (see PollParams).
+    /// real stamp gate and stability debounce (see PollParams).
     poll(loop: "cdb" | "workspace", options: { force?: boolean } = {}): Promise<PollResult> {
         return this.sendRequest(PollRequest, {
             loop,

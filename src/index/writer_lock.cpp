@@ -19,7 +19,7 @@ namespace {
 constexpr llvm::StringLiteral lock_name = "index.lock";
 constexpr llvm::StringLiteral endpoint_name = "server.json";
 
-/// The holder's pid as stamped into the lock file; nullopt when the stamp
+/// The holder's pid as recorded in the lock file; nullopt when the pid
 /// is unreadable (a Windows holder keeps the file exclusive) or absent.
 std::optional<std::uint32_t> recorded_pid(llvm::StringRef lock_path) {
     auto content = vfs::read(lock_path, vfs::Read::Bytes);
@@ -64,7 +64,7 @@ std::optional<WriterLock> WriterLock::acquire(llvm::StringRef cache_dir) {
     out.seek(0);
     out << llvm::sys::Process::getProcessId() << '\n';
     out.flush();
-    // Best effort: a lock left unstamped only costs the next process the
+    // Best effort: a lock left without a pid only costs the next process the
     // pid in its message, while an errored stream aborts in its destructor.
     out.clear_error();
     return WriterLock(lock_fd);
@@ -72,7 +72,7 @@ std::optional<WriterLock> WriterLock::acquire(llvm::StringRef cache_dir) {
 
 void WriterLock::release() {
     if(fd != -1) {
-        // The stamp names the holder; an unheld lock reads as nobody.
+        // The recorded pid names the holder; an unheld lock reads as nobody.
         llvm::sys::fs::resize_file(fd, 0);
         llvm::sys::fs::unlockFile(fd);
         llvm::sys::Process::SafelyCloseFileDescriptor(fd);
@@ -118,8 +118,8 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
         return probe;
     }
     if(!llvm::sys::fs::tryLockFile(lock_fd)) {
-        // Swept under the lock: a server acquiring it right after the
-        // release publishes a record this sweep must not take.
+        // Removed under the lock: a server acquiring it right after the
+        // release publishes a record this removal must not take.
         remove_endpoint(cache_dir);
         llvm::sys::fs::unlockFile(lock_fd);
         llvm::sys::Process::SafelyCloseFileDescriptor(lock_fd);
@@ -139,7 +139,7 @@ WriterProbe probe_writer(llvm::StringRef cache_dir) {
         return probe;
     }
     // A record from a server that died holding the lock survives until the
-    // next holder records its own; the stamp tells them apart where it can
+    // next holder records its own; the recorded pid tells them apart where it can
     // be read.
     if(holder && *holder != endpoint.pid) {
         return probe;

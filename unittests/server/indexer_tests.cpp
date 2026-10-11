@@ -36,7 +36,7 @@ import :worker.pool;
 namespace clice::testing {
 
 /// Test fixture with friend access to the pump's and the store's
-/// internals. The claim wrappers (merge/save/load/drop_index) route each
+/// internals. The take wrappers (merge/save/load/drop_index) route each
 /// store report back into the pump, as the production callers do.
 struct IndexerFixture {
     using Decision = PendingTable::FailureDecision;
@@ -58,7 +58,7 @@ struct IndexerFixture {
         turun.register_runner();
     }
 
-    /// Merge a worker result and claim its report, as the TURun round does.
+    /// Merge a worker result and take its report, as the TURun round does.
     bool merge(const void* data, std::size_t size) {
         auto report = index_store.merge(data, size, {});
         if(report) {
@@ -67,14 +67,14 @@ struct IndexerFixture {
         return report.has_value();
     }
 
-    /// One save with the pump's debt snapshot, its report claimed back —
+    /// One save with the pump's debt snapshot, its report taken back —
     /// without persist()'s retry, so a test observes each save.
     kota::task<> async_save(IndexStore::SearchRebuild search = IndexStore::SearchRebuild::Behind) {
         pump.take_report(co_await index_store.save(pump.save_debt(), search));
     }
 
-    /// Load and claim the report, as the workspace load does. Returns the
-    /// decode verdict (false = old-format or corrupt global).
+    /// Load and take the report, as the workspace load does. Returns the
+    /// decode result (false = old-format or corrupt global).
     bool load(bool read_only = false) {
         auto result = index_store.load({.read_only = read_only});
         pump.take_report(result.report);
@@ -91,7 +91,7 @@ struct IndexerFixture {
     }
 
     /// Record a terminally failed attempt, as run_index_task's failure
-    /// verdicts do.
+    /// decisions do.
     void mark_failed(Fid id) {
         pump.failed_ids.insert(id);
     }
@@ -109,7 +109,7 @@ struct IndexerFixture {
     std::uint64_t ticket(Fid id) {
         auto it = pump.pending_table.entries.find(id);
         return it == pump.pending_table.entries.end() ? std::numeric_limits<std::uint64_t>::max()
-                                               : it->second.ticket;
+                                                      : it->second.ticket;
     }
 
     unsigned attempts(Fid id) {
@@ -139,13 +139,13 @@ struct IndexerFixture {
         loop.run();
     }
 
-    /// Start a fresh staleness round: per-round FileVersion verdicts are
+    /// Start a fresh staleness round: per-round FileVersion results are
     /// cleared by run_background_indexing, which these tests bypass.
     void clear_round() {
         index_store.begin_round();
     }
 
-    /// Judge staleness inside the current round (see clear_verdicts).
+    /// Judge staleness inside the current round (see clear_round).
     bool need_update(llvm::StringRef path) {
         return index_store.need_update(project.file_table.intern(Spelling::absolute(path)));
     }
@@ -161,7 +161,7 @@ struct IndexerFixture {
     }
 
     /// Record a standalone header's borrowed host, as the TURun round does
-    /// after its merge lands (these tests merge worker results directly).
+    /// after its merge commits (these tests merge worker results directly).
     void set_header_host(Fid header_id, Fid host_id) {
         index_store.record_header_host(header_id, host_id);
     }
@@ -190,11 +190,11 @@ struct IndexerFixture {
 namespace {
 
 struct IndexedTU {
-    std::string data;     ///< Envelope bytes, as a worker would ship them.
+    std::string data;     ///< TU index bytes, as a worker would ship them.
     std::string tu_path;  ///< The TU's canonical path inside the index.
 };
 
-/// Index a real on-disk file in-process into its envelope bytes, the
+/// Index a real on-disk file in-process into its TU index bytes, the
 /// sections of `known` variants left empty.
 IndexedTU index_file(TempDir& tmp,
                      llvm::StringRef file,
@@ -226,7 +226,7 @@ IndexedTU index_file(TempDir& tmp,
     return result;
 }
 
-/// Re-encode an envelope with its consumed-content hash column dropped,
+/// Re-encode a TU index with its consumed-content hash column dropped,
 /// as a file behind a PCM ships it.
 std::string strip_path_hashes(llvm::StringRef data) {
     auto mirror = TUIndexMirror::of(index::TUIndex::from_bytes(data));
@@ -329,8 +329,8 @@ ZEST_CASE(MergeIgnoresDiskDrift) {
     ZASSERT(it != project.project_index.shards.end());
     ZASSERT(it->second.content_hash() == llvm::xxh3_64bits("int value() { return 1; }\n"));
 
-    // The disk moved on since the rows were indexed. The blob is
-    // self-contained — its rows pair with the generation it embeds, never
+    // The disk moved on since the index was built. The blob is
+    // self-contained — its entries pair with the generation it embeds, never
     // with the disk — so the re-merge is a pure variant hit and freshness
     // gating owns the drift.
     tmp.touch("main.cpp", "int renamed() { return 2; }\n");
@@ -339,7 +339,7 @@ ZEST_CASE(MergeIgnoresDiskDrift) {
     ZASSERT(it->second.variants().size() == std::size_t(1));
     ZASSERT(project.project_index.contributions.lookup(path_id).contains(path_id));
 
-    // Rows built from the settled content open a new generation.
+    // An index built from the new content opens a new generation.
     auto fresh = index_file(tmp, src);
     ZASSERT(!fresh.data.empty());
     merge(fresh.data.data(), fresh.data.size());
@@ -471,7 +471,7 @@ ZEST_CASE(GrowFailureShedsCleanShards) {
     // grow() failing is backend-independent shed territory: every clean
     // (non-dirty, possibly borrowed) shard must go with its owner requeued
     // — the manifests still read fresh, so nothing else would rebuild the
-    // dropped rows — while dirty ones are owned by construction and stay.
+    // dropped shards — while dirty ones are owned by construction and stay.
     // The spy also fails dirty.cpp's put so it is re-dirtied by the time
     // the migration runs.
     struct FailingGrow final : index::BlobDatabase {
@@ -564,7 +564,7 @@ ZEST_CASE(MidSaveMergeKept) {
     ZASSERT(!fresh.data.empty());
 
     // The merge task runs when save() suspends at its write await: it
-    // lands after the dirty snapshot was taken and cleared, exactly the
+    // commits after the dirty snapshot was taken and cleared, exactly the
     // window re-dirtying exists for.
     auto save_body = [&]() -> kota::task<> {
         co_await async_save();
@@ -581,9 +581,9 @@ ZEST_CASE(MidSaveMergeKept) {
     loop.schedule(merge_task);
     loop.run();
 
-    // Sampled while save() awaited its commit: the settle gauge must keep
-    // covering the in-flight batch, or a stats poll in that window reads
-    // "settled" with last_save_shards still holding its reset.
+    // Sampled while save() awaited its commit: the pending-write gauge must
+    // keep covering the in-flight batch, or a stats poll in that window
+    // reads "finished" with last_save_shards still holding its reset.
     ZASSERT(mid_save_pending >= 1);
 
     // The save committed the pre-merge snapshot: the shard keeps the new
@@ -622,7 +622,7 @@ ZEST_CASE(MergeHitWritesNothing) {
     loop.run();
     ZASSERT(index_store.pending_shard_writes() == 0u);
 
-    // A re-merge whose rows the shard already stores is the steady state of
+    // A re-merge whose variant the shard already stores is the steady state of
     // every background round: it must record contributions and touch no
     // blob at all.
     merge(indexed.data.data(), indexed.data.size());
@@ -660,7 +660,7 @@ ZEST_CASE(SharedHeaderVariants) {
     ZASSERT(shard.variants().size() == std::size_t(2));
     ZASSERT(project.project_index.contributions.lookup(header_id).size() == std::size_t(3));
 
-    // Re-indexing a TU whose header rows are unchanged must not disturb
+    // Re-indexing a TU whose header variant is unchanged must not disturb
     // the other TUs' variants either.
     tmp.touch("a.cpp", "#include \"shared.h\"\nint a2() { return shared_fn(); }\n");
     auto fresh = index_file(tmp, tmp.path("a.cpp"));
@@ -750,7 +750,7 @@ ZEST_CASE(HeaderRegenerationReplaces) {
 
     // The header changes, a reindex captures it — and the header changes
     // AGAIN before the result merges. The worker's bytes are their own
-    // generation: they land verbatim regardless of the disk moving on, and
+    // generation: they merge verbatim regardless of the disk moving on, and
     // freshness gating owns the remaining drift.
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 2; }\n");
     auto v2 = index_file(tmp, src);
@@ -762,7 +762,7 @@ ZEST_CASE(HeaderRegenerationReplaces) {
     ZASSERT(new_hash != 0);
     ZASSERT(new_hash != old_hash);
     ZASSERT(project.project_index.shards[header_id].has_variant(new_hash));
-    // A new content generation never shares row storage with the old one.
+    // A new content generation never shares variant storage with the old one.
     ZASSERT(!project.project_index.shards[header_id].has_variant(old_hash));
     ZASSERT(project.project_index.shards[header_id].content_hash() ==
             llvm::xxh3_64bits("#pragma once\ninline int dep() { return 2; }\n"));
@@ -797,7 +797,7 @@ ZEST_CASE(SaveCompactsAndRetires) {
     save();
 
     // b stops including the header: its variant dies, and the next save
-    // erases the dead rows for real.
+    // erases the dead variant for real.
     tmp.touch("b.cpp", "int b() { return 2; }\n");
     auto b2 = index_file(tmp, tmp.path("b.cpp"));
     ZASSERT(!b2.data.empty());
@@ -874,7 +874,7 @@ ZEST_CASE(SaveRetiresPinnedShard) {
                                    [&](llvm::StringRef k) { on_disk |= k == key; });
     ZASSERT(!on_disk);
 
-    // pb's manifest survives, still pinning rows the retirement made
+    // pb's manifest survives, still pinning variants the retirement made
     // unservable; nothing else in this process would rebuild them (a
     // reverted header even reads fresh by hash), so the retirement must
     // re-enqueue pb itself.
@@ -901,7 +901,7 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
 
     // The header moves to a new content generation and only ga catches up:
     // the rebuilt blob discards gb's variant. With no pending slot left for
-    // gb, no in-process event would rebuild its rows — the rebuild itself
+    // gb, no in-process event would rebuild its variant — the rebuild itself
     // must re-enqueue it, and as ContentChanged: a reverted header reads
     // fresh by hash, which a deps-only slot would skip past.
     tmp.touch("gen.h",
@@ -927,7 +927,7 @@ ZEST_CASE(RejectsCorruptSection) {
     auto indexed = index_file(tmp, tmp.path("cor_main.cpp"));
     ZASSERT(!indexed.data.empty());
 
-    // Corrupt the main file's blob bytes in place: the outer wire still
+    // Corrupt the main file's blob bytes in place: the outer container still
     // verifies (sections are opaque bytes to it), only the blob's byte
     // identity check against the recorded section hash fails.
     std::string corrupt = indexed.data;
@@ -945,7 +945,7 @@ ZEST_CASE(RejectsCorruptSection) {
     // The header section verifies fine and is staged before the main
     // section's identity check fails; the reject must discard the whole
     // result — a manifest whose recorded versions all match the disk would
-    // otherwise be judged fresh forever with the main file's rows missing.
+    // otherwise be judged fresh forever with the main file's shard missing.
     merge(corrupt.data(), corrupt.size());
     auto tu_id = project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("cor.h")));
@@ -958,7 +958,7 @@ ZEST_CASE(RejectsCorruptSection) {
     ZASSERT(project.project_index.symbol_count() == 0u);
     ZASSERT(project.file_table.versions.empty());
 
-    // The intact result still lands afterwards.
+    // The intact result still merges afterwards.
     merge(indexed.data.data(), indexed.data.size());
     ZASSERT(project.project_index.manifests.contains(tu_id));
     ZASSERT(project.project_index.shards.contains(header_id));
@@ -973,7 +973,7 @@ ZEST_CASE(HashlessRemergeHits) {
 
     // A file behind a PCM ships no consumed-content hash; the variant
     // identity is the blob's own byte hash, so membership needs no
-    // content vouching at all.
+    // content confirmation at all.
     auto stripped = strip_path_hashes(indexed.data);
     ZASSERT(!stripped.empty());
 
@@ -981,7 +981,7 @@ ZEST_CASE(HashlessRemergeHits) {
     auto path_id = project.file_table.intern(Spelling::absolute(src));
     ZASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
 
-    // Re-merging the same rows must register as a hit, not append the
+    // Re-merging the same variant must register as a hit, not append the
     // stored variant to the blob a second time.
     merge(stripped.data(), stripped.size());
     ZASSERT(project.project_index.shards[path_id].variants().size() == std::size_t(1));
@@ -992,7 +992,7 @@ ZEST_CASE(FailedWriteNotCounted) {
     tmp.touch("main.cpp", "int uncommitted() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
-    // A storage whose commits never land (disk full, permissions): the
+    // A storage whose commits never succeed (disk full, permissions): the
     // gauge must report what was durably committed, not what the save
     // attempted.
     struct FailingStorage final : index::BlobDatabase {
@@ -1061,7 +1061,7 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
     tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
     open_store(tmp, project);
 
-    // Corruption surfacing at write time (a damaged page only the write's
+    // Corruption showing up at write time (a damaged page only the write's
     // tree descent reaches): the save must condemn the environment and
     // continue on a fresh one instead of re-writing into it every save.
     // Batch shards own their bytes and stay to re-persist; the clean
@@ -1160,7 +1160,7 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
     tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
     open_store(tmp, project);
 
-    // Corruption surfacing first at migration time (a damaged page only the
+    // Corruption showing up first at migration time (a damaged page only the
     // re-read from the advanced snapshot reaches, after the write-time
     // check passed): same recovery as write-time corruption — the resident
     // view is shed with its owner re-enqueued, the environment condemned
@@ -1254,7 +1254,7 @@ struct Indexed {
         src = tmp.path("main.cpp");
         header = tmp.path("dep.h");
         // Age the files out of the mtime guard window so their stats can
-        // vouch for them, the way real project files predate an index run.
+        // confirm them, the way real project files predate an index run.
         if(!set_file_mtime(src, file_mtime_ns(src) - 10'000'000'000) ||
            !set_file_mtime(header, file_mtime_ns(header) - 10'000'000'000)) {
             return false;
@@ -1270,7 +1270,7 @@ struct Indexed {
 
 ZEST_CASE(CreatedHeaderStales) {
     // Where a failed include looked is an input of the TU: a header
-    // appearing there makes its rows stale.
+    // appearing there makes its index stale.
     TempDir tmp;
     tmp.touch("main.cpp", "#include \"gen.h\"\nint use() { return 0; }\n");
     auto src = tmp.path("main.cpp");
@@ -1406,7 +1406,7 @@ ZEST_CASE(IdleRebuildPinsSearch) {
         auto indexed = index_file(tmp, src);
         ZASSERT(!indexed.data.empty());
         f.merge(indexed.data.data(), indexed.data.size());
-        // The plain save persists the table; the settled one then rebuilds
+        // The plain save persists the table; the idle one then rebuilds
         // the search index with no other change to write.
         f.save();
         ZASSERT(!f.global_dirty());
@@ -1450,9 +1450,9 @@ ZEST_CASE(LoadHealsBrokenShard) {
     open_store(tmp, f.project);
     f.load();
 
-    // The header's rows are unservable, so its contributing TU's manifest
+    // The header's shard is unservable, so its contributing TU's manifest
     // is dropped and the TU re-enqueued — no CDB entry would ever re-index
-    // a header otherwise. The orphan is swept.
+    // a header otherwise. The orphan is removed.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.project_index.manifests.empty());
     ZASSERT(f.pump.pending_reason(tu_id));
@@ -1508,7 +1508,7 @@ ZEST_CASE(ReadOnlyLoadKeepsDisk) {
     open_store(tmp, f.project);
     f.load(/*read_only=*/true);
 
-    // The in-memory sweeps still run: the unservable header drops its
+    // The in-memory passes still run: the unservable header drops its
     // contributing TU's manifest and re-enqueues the TU.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.project_index.manifests.empty());
@@ -1549,7 +1549,7 @@ ZEST_CASE(LoadHealsMissingVariant) {
 
     // Replace the header's blob with one that verifies but stores a variant
     // no manifest contributed — the residue of a crash or failed write that
-    // landed the manifest without its shard.
+    // committed the manifest without its shard.
     inject_blob(tmp,
                 index::IndexBlobKind::Shard,
                 header_key,
@@ -1559,7 +1559,7 @@ ZEST_CASE(LoadHealsMissingVariant) {
     open_store(tmp, f.project);
     f.load();
 
-    // set_live would silently drop the missing rows, so the shard is as
+    // set_live would silently drop the missing variant, so the shard is as
     // unservable as an unreadable one: the TU's manifest goes and the TU
     // re-enqueues.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
@@ -1590,14 +1590,11 @@ ZEST_CASE(LoadHealsWrongGeneration) {
     }
 
     // Replace the header's blob with one from ANOTHER content generation
-    // whose explicit variant list still claims the contributed identity —
+    // whose explicit variant list still reports the contributed identity —
     // the residue of a crash between shard and manifest writes. Every
     // recorded FileVersion matches the disk, so only the generation pin
     // can tell that positions would map through stale text.
-    inject_blob(tmp,
-                index::IndexBlobKind::Shard,
-                header_key,
-                planted_blob("stale text", variant));
+    inject_blob(tmp, index::IndexBlobKind::Shard, header_key, planted_blob("stale text", variant));
 
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -1621,11 +1618,11 @@ ZEST_CASE(LoadDropsNewerManifest) {
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
 
-        // Plant what a lost global write leaves behind: a manifest stamped
-        // with a generation the persisted global never reached. Every
+        // Plant what a lost global write leaves behind: a manifest carrying
+        // a generation the persisted global never reached. Every
         // FileVersion it references is known and its shard variant stored
-        // (a rows-only reindex), so only the stamp can tell that the
-        // global's symbols never landed.
+        // (a shard-only reindex), so only the generation can tell that the
+        // global's symbols never committed.
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
         auto raced = f.project.project_index.manifests.find(tu_id)->second;
         raced.global_gen = f.project.project_index.global_generation + 1;
@@ -1667,10 +1664,10 @@ ZEST_CASE(LoadDropsLostManifest) {
         f.merge(indexed.data.data(), indexed.data.size());
         f.save();
 
-        // Plant what a failed manifest write under a landed global leaves
-        // behind: the previous manifest, older-stamped, with every
+        // Plant what a failed manifest write under a committed global leaves
+        // behind: the previous manifest, of an older generation, with every
         // FileVersion still resolvable and its shard variant stored (a
-        // reindex that changed rows or the include tree only). Only the
+        // reindex that changed shards or the include tree only). Only the
         // global's pin can tell it is not the manifest the save meant.
         auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
         auto lost = f.project.project_index.manifests.find(tu_id)->second;
@@ -1691,8 +1688,8 @@ ZEST_CASE(LoadDropsLostManifest) {
     open_store(tmp, f.project);
     f.load();
 
-    // The mistamped manifest is dropped and the TU re-enqueued instead of
-    // the previous reindex's dependency set and rows serving as current.
+    // The wrong-generation manifest is dropped and the TU re-enqueued instead of
+    // the previous reindex's dependency set and shards serving as current.
     auto tu_id = f.project.file_table.intern(Spelling::absolute(src));
     ZASSERT(f.project.project_index.manifests.empty());
     ZASSERT(f.pump.pending_reason(tu_id) == ReindexReason::ContentChanged);
@@ -1716,7 +1713,7 @@ ZEST_CASE(LoadRequeuesStaleManifest) {
         // Plant what a crash between save phases leaves: a manifest whose
         // dependency FileVersion the persisted global table never learned,
         // while the TU's own version is known — here for the header, whose
-        // standalone index no CDB sweep would ever rebuild.
+        // standalone index no CDB pass would ever rebuild.
         auto header_id = f.project.file_table.intern(Spelling::absolute(header));
         VersionID header_fv;
         for(std::uint32_t fv = 0; fv < f.project.file_table.versions.size(); fv += 1) {
@@ -1784,7 +1781,7 @@ ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
         auto key = blob_key(f.project.file_table.resolve(
             f.project.file_table.intern(Spelling::absolute(indexed.tu_path))));
         // Replace the persisted manifest with an unresolvable one: the
-        // next load sweeps it — deferred into the first save — and the
+        // next load removes it — deferred into the first save — and the
         // TU's shard turns orphan, deferred too.
         index::TUManifest stale;
         stale.tu_fv = VersionID{999999};
@@ -1803,7 +1800,7 @@ ZEST_CASE(DeferredRemovalYieldsToFreshWrite) {
     open_store(tmp, f.project);
     ZASSERT(f.load());
 
-    // The swept TU re-indexes before the first save, so that save both
+    // The removed TU re-indexes before the first save, so that save both
     // re-writes and (deferred) removes the same keys — the fresh write
     // must win or the file never persists again.
     auto indexed = index_file(tmp, src);
@@ -2029,9 +2026,9 @@ ZEST_CASE(UnreadableGlobalPreserved) {
     }
 
     // The global blob exists but fails to open — a transient IO error at
-    // startup, not absence. Sweeping would destroy the intact index; a
-    // fresh lineage saved over the unread one could alias its fv ids and
-    // generation stamps. The session must run memory-only and leave every
+    // startup, not absence. Removing everything would destroy the intact
+    // index; a fresh lineage saved over the unread one could alias its fv
+    // ids and generations. The session must run memory-only and leave every
     // blob for the next start.
     struct UnreadableGlobal final : index::BlobDatabase {
         std::unique_ptr<index::BlobDatabase> real;
@@ -2106,7 +2103,7 @@ ZEST_CASE(DropIndexEvictsPersisted) {
     }
 
     // The drop survives a restart: nothing on disk resurrects the
-    // old-command rows as fresh.
+    // old-command index as fresh.
     IndexerFixture f;
     open_store(tmp, f.project);
     f.load();
@@ -2182,7 +2179,7 @@ ZEST_CASE(RemovedEntryKeepsIndex) {
         f.save();
     }
 
-    // The entry vanished from the CDB: the last-known rows still serve
+    // The entry vanished from the CDB: the last-known index still serves
     // navigation, same conservative semantics as the live reload path.
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -2224,7 +2221,7 @@ ZEST_CASE(UndeclaredSourceRetires) {
 
     // The configuration stopped declaring the database that listed the
     // file. Unlike a declared database that failed to load, a dropped
-    // declaration is the build's final word: the rows leave.
+    // declaration is the build's final word: its index leaves.
     IndexerFixture f;
     open_store(tmp, f.project);
     load_declared(f, {"a"});
@@ -2266,7 +2263,7 @@ ZEST_CASE(SourceRelocationPersists) {
 
     // The file moved to the other database with the same command: the
     // provenance change alone reindexes, so the snapshot records the
-    // database that now vouches for the rows.
+    // database that now guarantees the index.
     tmp.touch("a/compile_commands.json", "[]");
     tmp.touch("b/compile_commands.json", listing);
     IndexerFixture f;
@@ -2304,7 +2301,7 @@ ZEST_CASE(DiscoveredRelocationRetires) {
     }
 
     // Discovery found the database elsewhere this session and loaded it:
-    // rows only the vanished one vouched for retire, like a dropped
+    // shards only the vanished one guaranteed retire, like a dropped
     // declaration's.
     llvm::sys::fs::remove(tmp.path("compile_commands.json"));
     tmp.touch("build/compile_commands.json", listing("other.cpp"));
@@ -2337,7 +2334,7 @@ ZEST_CASE(DefaultCommandKept) {
         f.save();
     }
 
-    // The same default command claims the file again: its recorded
+    // The same default command covers the file again: its recorded
     // identity matches and nothing is owed.
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -2365,8 +2362,8 @@ ZEST_CASE(UncoveredDefaultRetires) {
         f.save();
     }
 
-    // The rule whose default command claimed the file is gone and nothing
-    // else compiles it: the rows leave instead of being rebuilt under the
+    // The rule whose default command covered the file is gone and nothing
+    // else compiles it: the index leaves instead of being rebuilt under the
     // builtin fallback, and no debt survives for a unit the build left.
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -2392,7 +2389,7 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
         f.save();
     }
 
-    // A rule added since keeps the unit out of the index: the rows built
+    // A rule added since keeps the unit out of the index: the shards built
     // last session leave, and nothing re-enqueues them.
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -2639,7 +2636,7 @@ ZEST_CASE(UnreachableHostRebuilds) {
     }
 
     // The host's command is untouched but an offline edit removed its
-    // include of the header: the rows keep serving while a queued rebuild
+    // include of the header: the index keeps serving while a queued rebuild
     // re-selects a host.
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -2657,7 +2654,7 @@ ZEST_CASE(CDBWriteFailureRetried) {
     auto src = tmp.path("main.cpp");
 
     // A storage that fails only the CDB snapshot blob, with everything
-    // else landing normally.
+    // else committing normally.
     struct CDBFailingStorage final : index::BlobDatabase {
         std::unique_ptr<index::BlobDatabase> real;
         bool fail_cdb = true;
@@ -2722,7 +2719,7 @@ ZEST_CASE(CDBWriteFailureRetried) {
     ZASSERT(!storage->real->contains(index::IndexBlobKind::CDB, "cdb"));
 
     // Nothing else is dirty any more, yet the failed snapshot alone must
-    // drive the next save until it lands — and until it does, the state
+    // drive the next save until it commits — and until it does, the state
     // counts as unsaved (`clice index` fails on it after the final save).
     ZASSERT(f.index_store.has_unsaved_state());
     storage->fail_cdb = false;
@@ -2744,7 +2741,7 @@ ZEST_CASE(MissingSnapshotRewritten) {
         ZASSERT(!indexed.data.empty());
         ZASSERT(f.merge(indexed.data.data(), indexed.data.size()));
         f.save();
-        // The global landed but the final CDB write never did: the rest of
+        // The global committed but the final CDB write never did: the rest of
         // the index is intact.
         f.project.index_db->write(
             {
@@ -2785,7 +2782,7 @@ ZEST_CASE(DroppedHeaderDebtRetried) {
 
     {
         // The host's command changed offline: the header's index is dropped
-        // and queued — but the rebuild never lands this session. The saved
+        // and queued — but the rebuild never finishes this session. The saved
         // snapshot must keep recording the header, or nothing would ever
         // retry it.
         IndexerFixture f;
@@ -2848,9 +2845,9 @@ ZEST_CASE(VanishedHeaderDebtDies) {
 }
 
 ZEST_CASE(StaleFormatDropsPch) {
-    // A .pch.idx envelope written under an older index format is
+    // A .pch.idx index written under an older index format is
     // unreadable; the format gate drops every PCH entry at load so the
-    // pairs rebuild immediately, instead of the mismatch surfacing lazily
+    // pairs rebuild immediately, instead of the mismatch showing up lazily
     // on the first overlay query — which cannot trigger a rebuild.
     TempDir tmp;
     tmp.touch("dep.h", "int x;\n");
@@ -2953,7 +2950,7 @@ ZEST_CASE(DeplessPcmDropped) {
 }
 
 ZEST_CASE(HeaderModePersisted) {
-    // The NeedsContext verdict rides the artifacts blob: a restart with
+    // The NeedsContext result rides the artifacts blob: a restart with
     // unchanged disk content adopts it instead of re-running the trial.
     TempDir tmp;
     tmp.touch("utils.h", "inline int f();\n");
@@ -3136,7 +3133,7 @@ ZEST_CASE(DepsDowngradeKeepsDebt) {
     f.pump.enqueue(id, ReindexReason::ContentChanged);
     auto launch = f.ticket(id);
 
-    // The content pass is dispatched; a deps-only cascade lands mid-flight
+    // The content pass is dispatched; a deps-only cascade arrives mid-flight
     // and downgrades the pending reason, betting on that pass to cover the
     // edit. The pass fails — the requeue must restore the ContentChanged
     // debt or the stale shard stops being suppressed.
@@ -3157,7 +3154,7 @@ ZEST_CASE(GaveUpClearsDowngraded) {
     auto launch = f.ticket(id);
     f.set_attempts(id, IndexerFixture::budget);
 
-    // A deps-only enqueue lands mid-flight, then the content pass spends
+    // A deps-only enqueue arrives mid-flight, then the content pass spends
     // its last life. The downgraded entry must not stay queued: its retry
     // is doomed, and the give-up already accepted the staleness.
     f.consume(id);
@@ -3188,7 +3185,7 @@ ZEST_CASE(AttemptWaitPerTicket) {
     f.loop.schedule(first);
     f.loop.run();
 
-    // A requeue lands mid-flight: the entry stays pending under a fresh
+    // A requeue arrives mid-flight: the entry stays pending under a fresh
     // ticket, and a new waiter binds to that newer attempt.
     f.consume(id);
     f.pump.enqueue(id, ReindexReason::DepsOnly);
@@ -3204,7 +3201,7 @@ ZEST_CASE(AttemptWaitPerTicket) {
     // The flight's completion covers the ticket its waiter observed, no
     // matter the requeue: await_attempt promises one attempt, and holding
     // the waiter through every follow-up would park a feature request for
-    // as long as edits keep landing.
+    // as long as edits keep arriving.
     f.finish(id, launch);
     ZASSERT(first_woke);
     ZASSERT(!second_woke);
@@ -3228,7 +3225,7 @@ ZEST_CASE(ContentChangeResetsBudget) {
     f.pump.enqueue(id, ReindexReason::ContentChanged);
     ZASSERT(f.attempts(id) == 0u);
 
-    // A deps-only cascade is not new content and keeps the ledger.
+    // A deps-only cascade is not new content and keeps the attempt count.
     ZASSERT(int(f.fail(id, PendingTable::Failure::Lost)) ==
             int(IndexerFixture::Decision::Requeued));
     f.pump.enqueue(id, ReindexReason::DepsOnly);
@@ -3249,7 +3246,7 @@ ZEST_CASE(RoundSnapshotBoundary) {
     f.pump.enqueue(b, ReindexReason::ContentChanged);
 
     // Grow the queue from inside the round: the first Report enqueues a
-    // third file, which must land past the round snapshot and wait for the
+    // third file, which must arrive past the round snapshot and wait for the
     // next round instead of being consumed by this one.
     bool grew = false;
     IndexPump::Progress first_end;
@@ -3317,9 +3314,9 @@ ZEST_CASE(PauseResumesRound) {
 
 };  // ZEST_SUITE(IndexerRequeue)
 
-/// The store's neutral change reports and the pump's claim of them — the
-/// contracts the Indexer split introduced: every row-changing source
-/// reports debt and row changes, the save carries the pump's debt
+/// The store's neutral change reports and the pump taking them — the
+/// contracts the Indexer split introduced: every index-changing source
+/// reports debt and index changes, the save carries the pump's debt
 /// snapshot both ways.
 ZEST_SUITE(IndexReports) {
 
@@ -3340,10 +3337,10 @@ ZEST_CASE(MergeReportsIndexChanged) {
 }
 
 ZEST_CASE(DropReportsServedIndex) {
-    // drop_index deletes rows an index-served session may already have
+    // drop_index deletes entries an index-served session may already have
     // consumed; the report must carry every affected file so the serving
-    // side can refresh — dropped rows change answers exactly like merged
-    // rows do, and no later merge or compile is owed to cover them.
+    // side can refresh — dropped entries change answers exactly like merged
+    // entries do, and no later merge or compile is owed to cover them.
     IndexerFixture f;
     TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
@@ -3432,9 +3429,9 @@ ZEST_CASE(FailedStandaloneInSnapshot) {
 }
 
 ZEST_CASE(LateDebtShutdownRetry) {
-    // Debt surfacing after the save serialized its snapshot (write-time
+    // Debt showing up after the save serialized its snapshot (write-time
     // corruption recovery) comes back with snapshot_stale set; the
-    // shutdown's one metadata retry must land it in the fresh database,
+    // shutdown's one metadata retry must commit it to the fresh database,
     // or a dropped standalone header's repair debt is lost for good.
     struct CorruptOnWrite final : index::BlobDatabase {
         bool poisoned = false;
@@ -3540,8 +3537,8 @@ ZEST_CASE(BoostSparesRunningRound) {
         f.pump.enqueue(files.back(), ReindexReason::DepsOnly);
     }
 
-    // Asked for each dispatched deps-only slot: the boost lands while the
-    // second file is claimed.
+    // Asked for each dispatched deps-only slot: the boost arrives while the
+    // second file is taken.
     std::vector<llvm::SmallVector<Fid>> rounds(1);
     f.pump.compiled_by_session = [&](Fid id) {
         if(rounds.size() == 1 && rounds.front().size() == 1) {
@@ -3678,7 +3675,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     loop.schedule(task);
     loop.run();
 
-    // The rows commit without the search index a cold round never built.
+    // The shards commit without the search index a cold round never built.
     ZASSERT(log.writes.size() == 1u);
     ZASSERT(llvm::is_contained(log.writes[0], index::IndexBlobKind::Manifest));
     ZASSERT(!llvm::is_contained(log.writes[0], index::IndexBlobKind::Search));
@@ -3763,7 +3760,7 @@ ZEST_SUITE(TURunIndex) {
 ZEST_CASE(OutdatedRerunsInFull) {
     // Two headers with the same bytes share one variant identity. Only
     // x1.h stores it, so b.cpp's x2.h section matches a known hash while
-    // its own file stores nothing: that result must not land, and the
+    // its own file stores nothing: that result must not commit, and the
     // rerun sends every section.
     TempDir tmp;
     tmp.touch("x1.h", "#pragma once\nint f();\n");

@@ -441,7 +441,7 @@ CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
             // alone. Freshness is the master's call, made on content: a
             // same-bytes rewrite (`git stash pop`, a branch switch) moves
             // only the mtime and must not get a PCH the master still
-            // vouches for rejected. The size check stays, as it guards the
+            // confirms rejected. The size check stays, as it guards the
             // reader against offsets past the end of a shrunk file.
             instance.getFrontendOpts().IncludeTimestamps = false;
 

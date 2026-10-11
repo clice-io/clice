@@ -56,7 +56,7 @@ struct ContextService {
 
     /// Start the document over under another context: nothing it earned
     /// under the one it leaves — the resolved header context, the compile
-    /// in flight, the self-containment verdict — carries over.
+    /// in flight, the self-containment result — carries over.
     void leave_context(Session& session);
 
     /// clice/listConfigurations: the configuration menu with the running,

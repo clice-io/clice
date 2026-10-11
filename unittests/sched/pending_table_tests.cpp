@@ -13,10 +13,10 @@ namespace {
 using Decision = PendingTable::FailureDecision;
 using Failure = PendingTable::Failure;
 
-/// The claim/settle contract in isolation: debt is claimed atomically at
+/// The take/finish contract in isolation: debt is taken atomically at
 /// dispatch, flight-time recordings book newer debt, success consumes
-/// only the claim, and failure merges the claim back — bounded for
-/// crashes.
+/// only the taken debt, and failure merges the taken debt back — bounded
+/// for crashes.
 ZEST_SUITE(PendingTable) {
 
 constexpr static unsigned budget = 3;
@@ -36,9 +36,9 @@ ZEST_CASE(content_absorbs_queued) {
 }
 
 ZEST_CASE(consumed_pass_owns_debt) {
-    // A deps-only recording after the slot was claimed is new debt of its
+    // A deps-only recording after the slot was taken is new debt of its
     // own kind: the in-flight pass owns the earlier content change, and
-    // keeping ContentChanged would suppress the file's rows past it.
+    // keeping ContentChanged would suppress the file's index past it.
     table.record(Fid{1}, ReindexReason::ContentChanged);
     auto taken = table.take(Fid{1});
     ZASSERT(taken);
@@ -49,7 +49,7 @@ ZEST_CASE(consumed_pass_owns_debt) {
 
 ZEST_CASE(finish_spares_newer_debt) {
     // A recording during the flight books newer debt; the older attempt's
-    // settle must leave it standing, and only the newer claim clears it.
+    // finish must leave it standing, and only the newer taken debt clears it.
     table.record(Fid{1}, ReindexReason::ContentChanged);
     auto old_taken = table.take(Fid{1});
     ZASSERT(old_taken);
@@ -66,9 +66,9 @@ ZEST_CASE(finish_spares_newer_debt) {
 }
 
 ZEST_CASE(deps_never_supersede) {
-    // Only newer content supersedes an in-flight pass: its rows describe
+    // Only newer content supersedes an in-flight pass: its index describes
     // text that no longer exists. A deps-only recording does not — the
-    // rows are positionally right and the follow-up covers the drift.
+    // index is positionally right and the follow-up covers the drift.
     table.record(Fid{1}, ReindexReason::ContentChanged);
     auto taken = table.take(Fid{1});
     ZASSERT(taken);
@@ -80,7 +80,7 @@ ZEST_CASE(deps_never_supersede) {
     table.record(Fid{1}, ReindexReason::ContentChanged);
     ZEXPECT(table.superseded(*taken));
 
-    // A cleared entry (file removed) also lands nothing.
+    // A cleared entry (file removed) also commits nothing.
     table.clear(Fid{1});
     ZEXPECT(table.superseded(*taken));
 }
@@ -96,7 +96,7 @@ ZEST_CASE(superseded_failure_spends_nothing) {
 
     ZEXPECT(table.on_dispatch_failure(*stale, Failure::Lost).decision == Decision::Superseded);
 
-    // The fresh claim still has the whole budget: `budget` crashes
+    // The fresh debt still has the whole budget: `budget` crashes
     // requeue before the next one abandons.
     for(unsigned i = 0; i < budget; i += 1) {
         auto taken = table.take(Fid{1});
@@ -126,7 +126,7 @@ ZEST_CASE(preemption_needs_no_budget) {
 ZEST_CASE(requeue_carries_content) {
     // The requeue carries the debt class the dispatch was launched for: a
     // deps-only downgrade during the flight bet on the content pass
-    // landing, and a failed pass leaves the edit uncovered.
+    // committing, and a failed pass leaves the edit uncovered.
     table.record(Fid{1}, ReindexReason::ContentChanged);
     auto taken = table.take(Fid{1});
     ZASSERT(taken);

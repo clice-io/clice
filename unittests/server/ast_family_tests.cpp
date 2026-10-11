@@ -114,7 +114,7 @@ ZEST_CASE(InvalidateKeepsProjection) {
 
     stack.ast.invalidate(pid);
 
-    // Only the currency claim is revoked; the products stay for the
+    // Only the currency flag is revoked; the products stay for the
     // bounded-staleness consumers (preamble links, hover gap).
     ZASSERT(!stack.ast.projections.current(pid));
     auto projection = stack.ast.projections.projection(pid);
@@ -230,7 +230,7 @@ ZEST_CASE(CrashPublishesNote) {
 ZEST_CASE(ShutdownUnblocksWaiters) {
     // A waiter parked on an in-flight round must resolve at shutdown:
     // ASTFamily::stop interrupts the parse (the send itself carries no
-    // token by design), so the round lands promptly and the graph's
+    // token by design), so the round finishes promptly and the graph's
     // shutdown finds nothing to wait out.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
@@ -420,7 +420,7 @@ ZEST_CASE(SupersededCompileCancelled) {
         }
         ZASSERT(stack.is_compiling(session->path_id));
 
-        // The edit lands while the slow compile is in flight.
+        // The edit arrives while the slow compile is in flight.
         session->text = "int fixed;\n";
         session->sync_text();
         session->generation += 1;
@@ -694,7 +694,7 @@ ZEST_CASE(BufferImportRecorded) {
     stack.loop.run();
     ZEXPECT(done);
 
-    // The sentinel edge survives the landing: a first provider's update
+    // The sentinel edge survives the commit: a first provider's update
     // must reach this document's node.
     auto dirtied = stack.graph.update(PCMFamily::unresolved_node("m"));
     ZEXPECT(std::ranges::find(dirtied, NodeId{Family::AST, session->path_id.raw}) != dirtied.end());
@@ -907,7 +907,7 @@ ZEST_CASE(EpochGuardsPCHWrite) {
     auto gen = session->generation;
     auto epoch = stack.ast.projections.epoch(pid);
     // A Lost-type invalidation (disk/CDB change behind the in-flight
-    // request) lands after takeoff: the projection epoch bumps,
+    // request) arrives after takeoff: the projection epoch bumps,
     // generation stays.
     stack.ast.invalidate(pid);
 
@@ -1107,8 +1107,8 @@ ZEST_CASE(ClientCancelSparesCompile) {
 
 ZEST_CASE(StaleReplyBecomesContentModified) {
     // A reply for a buffer the client edited away never leaves as a value:
-    // the landing turns it into ContentModified even when the worker
-    // answered after the compile had settled — the edit landed while the
+    // the finish turns it into ContentModified even when the worker
+    // answered after the compile had finished — the edit arrived while the
     // query itself was in flight.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});
 
@@ -1148,7 +1148,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
         };
         group.spawn(tokens());
         // spawn runs the query inline to that suspension, so the pool
-        // already reports it in flight: the bump lands provably between
+        // already reports it in flight: the bump arrives provably between
         // dispatch and reply.
         ZASSERT(stack.pool.foreground_busy());
         session->generation += 1;
@@ -1287,7 +1287,7 @@ ZEST_CASE(EpochGuardsPCHWash) {
     // A successful build whose license epoch moved mid-flight must not
     // clear the session's PCH record: the crash belongs to content the
     // request no longer describes, and clearing it would let a poison
-    // preamble dodge its bar behind an old round's landing.
+    // preamble dodge its bar behind an old round's commit.
     TempDir tmp;
     tmp.touch("a.cpp", "");
     auto src = tmp.path("a.cpp");
@@ -1322,14 +1322,14 @@ ZEST_CASE(EpochGuardsPCHWash) {
                                                           arguments);
         };
         // Runs after the launch suspended on its dispatched build: a
-        // Lost-type invalidation lands behind the in-flight request.
+        // Lost-type invalidation arrives behind the in-flight request.
         auto invalidate = [&]() -> kota::task<> {
             stack.ast.invalidate(session->path_id);
             co_return;
         };
         co_await kota::when_all(launch(), invalidate());
 
-        // The build landed (the shared artifact is cached) and the stale
+        // The build finished (the shared artifact is cached) and the stale
         // request compiles against it, but it adopted nothing and cleared
         // nothing.
         ZEXPECT(built);
@@ -1445,7 +1445,7 @@ ZEST_CASE(StaleDepsNoAdopt) {
 
 ZEST_CASE(EvictedDocumentRecompiles) {
     // The worker evicts a document behind the master's back (no eviction
-    // notice is wired here): the query hears document_unloaded, compiles it
+    // notice is routed here): the query hears document_unloaded, compiles it
     // there again and answers, never null.
     TempDir tmp;
     tmp.touch("a.cpp", "");
@@ -1485,7 +1485,7 @@ ZEST_CASE(EvictedDocumentRecompiles) {
 
 ZEST_CASE(EvictedAgainRecompiles) {
     // The worker loses the document again between the recompile's reply and
-    // the query — another document's request landing in that window: the
+    // the query — another document's request arriving in that window: the
     // query compiles it there again for every eviction it meets.
     TempDir tmp;
     tmp.touch("a.cpp", "");

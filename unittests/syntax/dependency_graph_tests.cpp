@@ -1034,7 +1034,7 @@ ZEST_CASE(ScanCacheWarmRun) {
 int main() {}
 )");
     // Out of the mtime guard window, or the cold scan's pairs stay
-    // unreliable and cannot vouch for the warm run.
+    // unreliable and cannot confirm the warm run.
     ZASSERT(set_file_mtime(tmp.path("inc/util.h"),
                            file_mtime_ns(tmp.path("inc/util.h")) - 10'000'000'000));
     ZASSERT(set_file_mtime(tmp.path("src/main.cpp"),

@@ -326,7 +326,7 @@ public:
     /// not valid JSON, or has a root that is not an array, the previously
     /// loaded entries are kept and nullopt is returned. Individual
     /// malformed entries are still skipped — which means a file truncated
-    /// mid-array loads as a partial set; the poll-side settle debounce is
+    /// mid-array loads as a partial set; the poll-side debounce is
     /// what guards against reading half-written files.
     std::optional<std::size_t> load_source(SourceID id);
 
@@ -354,7 +354,7 @@ public:
     /// alone, its entries staying those of the load before; a source never
     /// loaded has only the database, unread. A watcher compares the disk
     /// against these hashes, not against a stat taken after the load, which
-    /// a rewrite landing in between would already describe.
+    /// a rewrite arriving in between would already describe.
     llvm::ArrayRef<LoadInput> inputs(SourceID id) const;
 
     /// Whether the source's file exists on disk as last observed: set by a

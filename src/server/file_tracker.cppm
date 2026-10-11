@@ -13,7 +13,7 @@ namespace clice {
 
 /// Polling of what a project is built from, beyond the files themselves
 /// (which vfs::DiskState looks at): its compilation databases (see
-/// CDBWatcher), the sources its default-command rules claim, and the git
+/// CDBWatcher), the sources its default-command rules cover, and the git
 /// checkout the workspace lies in — every git operation that changes the
 /// worktree rewrites the index, and then every file under the workspace
 /// is due for a look.

@@ -19,7 +19,7 @@ import :worker.pool;
 namespace clice::testing {
 namespace {
 
-/// A loaded shard whose rows were built from `content`, for the
+/// A loaded shard whose entries were built from `content`, for the
 /// disk-vs-shard freshness comparisons below.
 index::Shard shard_of(llvm::StringRef content) {
     std::string bytes;
@@ -85,7 +85,7 @@ ZEST_CASE(NewProviderDirtiesImporters) {
     // closed TU reindexes as ContentChanged (its dep snapshot never
     // named the interface, so the hash gate cannot see the change); an
     // open document recompiles. Nothing is ever dropped — a consumer
-    // that can no longer build keeps serving its last-known rows.
+    // that can no longer build keeps serving its last-known index.
     TempDir tmp;
     tmp.touch("m.cppm", "int mv();\n");
 
@@ -128,7 +128,7 @@ ZEST_CASE(NewProviderDirtiesImporters) {
 }
 
 ZEST_CASE(ReloadProviderCascades) {
-    // The CDB-reload flavor of provider appearance: the provider-set diff
+    // The CDB-reload variant of provider appearance: the provider-set diff
     // drives the same sentinel cascade, and a consumer retired by the
     // very same reload leaves the index without a reindex being owed.
     TempDir tmp;
@@ -208,8 +208,8 @@ ZEST_CASE(DiskChangeSparesSession) {
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
     // The open file's own compile reads its buffer, never its disk: it is
-    // not stale, nor is the self-containment verdict scored on that buffer,
-    // while its disk rows are.
+    // not stale, nor is the self-containment result scored on that buffer,
+    // while its disk index is.
     ZASSERT(dirty.reset_header_mode.empty());
     ZASSERT(dirty.mark_ast_dirty.empty());
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{saved});
@@ -237,7 +237,7 @@ ZEST_CASE(DiskChangeBesideBuffer) {
     Invalidator invalidator(project, store, resolver, ph.projections, ph.pcm, ph.index);
     auto dirty = invalidator.apply(FileEvent::disk_changed(changed));
 
-    // Bytes from elsewhere replace the buffer the verdict was scored on.
+    // Bytes from elsewhere replace the buffer the result was scored on.
     ZASSERT(dirty.reset_header_mode == llvm::SmallVector<Fid>{changed});
 }
 
@@ -298,8 +298,8 @@ ZEST_CASE(ChainHitAndMiss) {
     auto dirty = invalidator.apply(FileEvent::disk_changed(saved));
 
     // Every context derived through the saved file resolves again and
-    // drops its verdict; an open one recompiles, a closed one reindexes in
-    // the background — its shard rows were built under the old chain.
+    // drops its decision; an open one recompiles, a closed one reindexes in
+    // the background — its shard was built under the old chain.
     llvm::SmallVector<Fid> dropped{hit, closed};
     llvm::sort(dropped);
     ZASSERT(dirty.drop_context == dropped);
@@ -511,7 +511,7 @@ ZEST_CASE(CrashMarksLostDirty) {
     llvm::SmallVector<Fid> expected{first, second};
     llvm::sort(expected);
     ZASSERT(dirty.mark_lost == expected);
-    // A crash loses build products, not compile inputs: no verdict reset.
+    // A crash loses build products, not compile inputs: no result reset.
     ZASSERT(dirty.mark_ast_dirty.empty());
     ZASSERT(dirty.reset_header_mode.empty());
 }
@@ -574,7 +574,7 @@ ZEST_CASE(DiskChangeClosedCascades) {
     auto dirty = invalidator.apply(FileEvent::disk_changed(header));
 
     // A closed file's disk change cascades exactly like a save, plus the
-    // file's own stale shard is refreshed. The changed file's own rows are
+    // file's own stale shard is refreshed. The changed file's own index is
     // untrustworthy; its dependent only rebuilds semantics.
     ZASSERT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_tu});
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{header});
@@ -819,7 +819,7 @@ ZEST_CASE(CDBAddedScansAndEnqueues) {
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // The rescan resolved the new entry's includes; the new file reindexes.
-    // A command change rewrites rows as thoroughly as an edit.
+    // A command change rewrites the index as thoroughly as an edit.
     ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{main_id});
     ZASSERT(dirty.reindex_content_changed == llvm::SmallVector<Fid>{main_id});
     ZASSERT(dirty.drop_index == llvm::SmallVector<Fid>{main_id});
@@ -946,7 +946,7 @@ ZEST_CASE(CDBChangedDropsHostedContext) {
 ZEST_CASE(CDBDropsBorrowedIndex) {
     // A header indexed standalone in an earlier session borrowed its
     // host's command without ever being opened in this one: the host's
-    // command change drops and rebuilds its rows all the same.
+    // command change drops and rebuilds its index all the same.
     FileTable files;
     Project project{files};
     SessionStore store;
@@ -971,7 +971,7 @@ ZEST_CASE(CDBDropsBorrowedIndex) {
 
 ZEST_CASE(CDBBorrowersByServing) {
     // Open borrowers the index store names: an index-only session loses
-    // its serving rows with the drop and reindexes now; a compiling one
+    // its serving index with the drop and reindexes now; a compiling one
     // reindexes when it closes. Neither recompiles — no context borrows.
     FileTable files;
     Project project{files};
@@ -1029,7 +1029,7 @@ ZEST_CASE(CDBChangedCascadesModule) {
 
     // A module unit's flag change cascades through the compile graph
     // exactly like a content change: importers' PCMs went stale. The
-    // unit itself lands in both lists (its own entry changed AND the
+    // unit itself ends up in both lists (its own entry changed AND the
     // cascade dirtied its PCM); the indexer's absorbing upgrade
     // resolves the overlap to ContentChanged.
     ZEXPECT(dirty.mark_ast_dirty == llvm::SmallVector<Fid>{open_user});
@@ -1098,7 +1098,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
     auto dirty = invalidator.apply(FileEvent::cdb_changed(std::move(delta)));
 
     // The rebuild resolves includes from the surviving entries only. The
-    // removed entry's rows leave the index: its database still loads and
+    // removed entry's shard leaves the index: its database still loads and
     // simply stopped compiling the file.
     ZASSERT(project.dep_graph.get_all_includes(gone_id).empty());
     ZASSERT(project.dep_graph.get_includers(header_id) == llvm::ArrayRef<Fid>{kept_id});
@@ -1109,7 +1109,7 @@ ZEST_CASE(CDBRemovedDropsSourceRole) {
 
 ZEST_CASE(CDBRemovedStillCovered) {
     /// The entry left the database but a rule's default command still
-    /// claims the file: a command change, not a retirement — the rows are
+    /// covers the file: a command change, not a retirement — the index is
     /// rebuilt under the default command instead of leaving.
     TempDir tmp;
     tmp.touch("gone.cpp", R"(int x;)");

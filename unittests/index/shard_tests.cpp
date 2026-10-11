@@ -34,7 +34,7 @@ std::string write_fresh(const index::FileIndex& file_index, llvm::StringRef cont
     return bytes;
 }
 
-/// The main file's worker-encoded blob, straight from the envelope.
+/// The main file's worker-encoded blob, straight from the TU index.
 std::string main_blob() {
     auto section = tu_index.section_of(tu_index.path_count() - 1);
     if(!section) {
@@ -118,7 +118,7 @@ ZEST_CASE(RoundtripLookups) {
 }
 
 ZEST_CASE(DeterministicEncoding) {
-    // The blob's byte hash is the variant's identity, so equal rows must
+    // The blob's byte hash is the variant's identity, so equal entries must
     // encode to equal bytes regardless of in-memory insertion order.
     index::FileIndex file_index;
     file_index.occurrences = {
@@ -135,7 +135,9 @@ ZEST_CASE(DeterministicEncoding) {
     };
 
     index::FileIndex shuffled;
-    shuffled.occurrences = {file_index.occurrences[2], file_index.occurrences[0], file_index.occurrences[1]};
+    shuffled.occurrences = {file_index.occurrences[2],
+                            file_index.occurrences[0],
+                            file_index.occurrences[1]};
     shuffled.relations[333] = file_index.relations[333];
     shuffled.relations[111] = {file_index.relations[111][1], file_index.relations[111][0]};
 
@@ -225,7 +227,7 @@ ZEST_CASE(LongLineEscape) {
 
 ZEST_CASE(WideRangeEncoding) {
     // Past 16MB of content the packed range column cannot hold begins;
-    // the wide tier takes over transparently.
+    // the wide encoding takes over transparently.
     std::string content(index::packed_range_limit + 64, 'w');
     auto file_index = simple_index({
         {{0, 3},                                                          111},
@@ -250,12 +252,12 @@ ZEST_CASE(VariantMaskFiltering) {
     auto variants = shard.variants();
     ZASSERT(variants.size() == std::size_t(2));
 
-    // All variants live by default: both rows serve.
+    // All variants live by default: both occurrences serve.
     ZASSERT(hash_at(shard, 1) == 111u);
     ZASSERT(hash_at(shard, 11) == 222u);
 
-    // Restricting to the first variant hides the row only the second
-    // holds, while the shared row keeps serving.
+    // Restricting to the first variant hides the occurrence only the second
+    // holds, while the shared occurrence keeps serving.
     shard.set_live({variants[0]});
     ZASSERT(shard.has_dead_variants());
     ZASSERT(hash_at(shard, 1) == 111u);
@@ -289,8 +291,8 @@ ZEST_CASE(CompactionDropsVariant) {
 }
 
 ZEST_CASE(KWayMerge) {
-    // Several fresh variants land in one write; shared rows collapse with
-    // OR-ed masks and each unique row stays filterable to its owner.
+    // Several fresh variants are merged in one write; shared occurrences collapse
+    // with OR-ed masks and each unique occurrence stays filterable to its owner.
     std::string content = "aaa bbb ccc ddd eee";
     std::vector<index::Shard> fresh;
     for(std::uint32_t i = 0; i < 3; i += 1) {
@@ -354,14 +356,14 @@ void expect_encoding_behavior(std::uint32_t count) {
     auto variants = shard.variants();
     ZASSERT(variants.size() == std::size_t(count));
 
-    // Every variant's unique row serves under the full live set, and the
-    // shared relation collapsed to one row across all variants.
+    // Every variant's unique occurrence serves under the full live set, and the
+    // shared relation collapsed to one entry across all variants.
     for(std::uint32_t i = 1; i <= count; i += 1) {
         ZASSERT(hash_at(shard, i * 16 + 1) == 1000u + i);
     }
     ZASSERT(reference_count(shard, 999) == std::size_t(count) + 1);
 
-    // One live variant: its unique rows and the shared rows serve, another
+    // One live variant: its unique entries and the shared entries serve, another
     // variant's do not — on the occurrence and the relation side alike.
     shard.set_live({variants[2]});
     ZASSERT(hash_at(shard, 1) == 111u);
@@ -726,8 +728,8 @@ ZEST_CASE(LineTableMismatchRejected) {
 }
 
 ZEST_CASE(MisorderedEntriesRejected) {
-    // Occurrence lookup binary-searches decoded row ends; a corrupt blob
-    // whose rows lost their order must load as "not on disk" and be
+    // Occurrence lookup binary-searches decoded entry ends; a corrupt blob
+    // whose entries lost their order must load as "not on disk" and be
     // rebuilt, not keep misresolving queries on every restart.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
@@ -753,7 +755,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
     blob.occs.long_entries = {0};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
-    // Begins sorted, but the escaped end regresses below the row before.
+    // Begins sorted, but the escaped end regresses below the entry before.
     blob.occs.packed = {index::pack_range(0, index::length_escape), index::pack_range(8, 3)};
     blob.occs.long_entries = {0};
     blob.occs.long_ends = {14};  // ends decode to {14, 11}
@@ -762,7 +764,7 @@ ZEST_CASE(MisorderedEntriesRejected) {
     // An escaped end before its own begin.
     blob.occs.packed = {index::pack_range(0, 3), index::pack_range(8, index::length_escape)};
     blob.occs.long_entries = {1};
-    blob.occs.long_ends = {5};  // row 1: begin 8, end 5
+    blob.occs.long_ends = {5};  // entry 1: begin 8, end 5
     ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
@@ -797,9 +799,9 @@ ZEST_CASE(DuplicateOccKeyRejected) {
 }
 
 ZEST_CASE(UnsortedRelationsRejected) {
-    // Rows of one relation group merge under the full (kind, begin, end,
+    // Entries of one relation group merge under the full (kind, begin, end,
     // payload) key and the writer sorts and combines equal keys, so
-    // out-of-order or repeated rows are non-canonical and would mis-merge
+    // out-of-order or repeated entries are non-canonical and would mis-merge
     // silently instead of being rejected.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
@@ -855,7 +857,7 @@ ZEST_CASE(EscapeTableMismatchRejected) {
     blob.occs.long_ends = {};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
-    // A sparse entry pointing at an unescaped row.
+    // A sparse entry pointing at an unescaped occurrence.
     blob.occs.packed = {index::pack_range(0, 3)};
     blob.occs.long_entries = {0};
     blob.occs.long_ends = {260};
@@ -927,8 +929,8 @@ ZEST_CASE(RangesBeyondContentRejected) {
 }
 
 ZEST_CASE(WrongRangeEncodingRejected) {
-    // The range tier is a strict function of the content size — a second
-    // spelling of the same rows would fork the byte identity.
+    // The range encoding is a strict function of the content size — a second
+    // spelling of the same entries would fork the byte identity.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     fill_content(blob, "aaaaaaaaaaaaaaaa");
@@ -988,7 +990,7 @@ ZEST_CASE(DuplicateSymbolHashRejected) {
 
 ZEST_CASE(DuplicateVariantRejected) {
     // Liveness and compaction select variants by identity; a duplicated
-    // entry would make every copy live at once, and rows masked only to the
+    // entry would make every copy live at once, and entries masked only to the
     // extra id would serve and survive with no contribution owning them.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
@@ -1043,8 +1045,8 @@ ZEST_CASE(StraySymbolIdRejected) {
 }
 
 ZEST_CASE(MismatchedPayloadTableRejected) {
-    // Readers decode whichever sparse table holds a row without consulting
-    // its kind: a decl/def row in the symbol table (or the reverse) would
+    // Readers decode whichever sparse table holds a relation without consulting
+    // its kind: a decl/def relation in the symbol table (or the reverse) would
     // serve one payload's bit pattern as the other.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
@@ -1085,8 +1087,8 @@ ZEST_CASE(MismatchedPayloadTableRejected) {
 }
 
 ZEST_CASE(OwnerlessMaskRejected) {
-    // A mask owning no stored variant serves its row unconditionally while
-    // every variant is live (row_live's live.all fast path never consults
+    // A mask owning no stored variant serves its entry unconditionally while
+    // every variant is live (LiveFilter's live.all fast path never consults
     // it), vanishes once any variant dies, and the next compaction erases
     // it for real — so it must reject the blob at load.
     index::ShardBlob blob;
@@ -1113,7 +1115,7 @@ ZEST_CASE(OwnerlessMaskRejected) {
     blob.occs.masks32 = {0b100};
     ZASSERT(!make_shard(bytes_of()).loaded());
 
-    // The u64 tier is bounded alike.
+    // The u64 encoding is bounded alike.
     for(std::uint32_t i = 3; i <= 40; i += 1) {
         blob.variants.push_back(i);
     }
@@ -1149,8 +1151,8 @@ ZEST_CASE(OwnerlessMaskRejected) {
 }
 
 ZEST_CASE(CorruptRoaringMaskRejected) {
-    // Roaring row masks gate liveness and are rewritten by compaction; a
-    // slice failing decode would read the row as dead and the next
+    // Roaring entry masks gate liveness and are rewritten by compaction; a
+    // slice failing decode would read the entry as dead and the next
     // compaction would erase it for real, every manifest still fresh — so
     // an undecodable slice must reject the blob at load.
     index::ShardBlob blob;

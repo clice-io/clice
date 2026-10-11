@@ -30,7 +30,7 @@ struct Flag {
 
 /// What the master knows of the files on disk: per file, what the last
 /// look through its fid found, and the changes those looks saw. A look is
-/// a status of the file and, unless an earlier read vouches for that
+/// a status of the file and, unless an earlier read confirms that
 /// status, a read. Whoever looks — a freshness check, a rescan, a save, a
 /// background tick — records it here, so this is the single source of disk
 /// change events.
@@ -105,7 +105,7 @@ public:
 
     /// Record a same-source read (the scan worker's, or one made through
     /// read()). Unpaired or unreliable reads carry a true hash but no
-    /// proof for their stamp, so they never vouch for a later status.
+    /// proof for their stamp, so they never confirm a later status.
     void observe(Fid fid, const DiskObservation& obs);
 
     /// Read the file under the pairing discipline and record it. nullopt =
@@ -118,13 +118,13 @@ public:
     std::optional<DiskObservation> current(Fid fid);
 
     /// A same-source observation for a status the caller just took: the
-    /// hash the last reliable read vouches for when its stamp equals the
+    /// hash the last reliable read guarantees when its stamp equals the
     /// status's, else a real read (whose observation may describe a newer
     /// stamp than the caller's, which is then simply newer truth). nullopt
     /// = unreadable right now.
     std::optional<DiskObservation> observe_for(Fid fid, const Status& status);
 
-    /// The hash the last reliable read through this fid vouches for at
+    /// The hash the last reliable read through this fid guarantees at
     /// exactly this stamp, recorded as a look; nullopt when someone must
     /// read. Equality, never a watermark: the hash is "the hash of the
     /// bytes that had this stamp", nothing else.
@@ -267,8 +267,8 @@ private:
     /// Record a look's finding: a first look is no change — nothing was
     /// derived from an unseen state; any other finding than the last one
     /// is. The file is due again after its interval: the shortest after a
-    /// first look, a change, or an mtime not yet `settled` (see
-    /// vfs::settled), else twice the last one.
+    /// first look, a change, or an mtime not yet `stable` (see
+    /// vfs::stable_mtime), else twice the last one.
     void saw(Fid fid, std::optional<std::uint64_t> hash, bool stable);
 
     /// The turn's look at a file, taken once per turn — unless the last

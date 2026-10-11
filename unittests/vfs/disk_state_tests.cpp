@@ -38,7 +38,7 @@ struct Fixture {
         return CanonicalPath(Spelling::absolute(tmp.path(relative))).str();
     }
 
-    /// A file written long enough ago that its reads vouch for its stamp.
+    /// A file written long enough ago that its reads confirm its stamp.
     Fid file(llvm::StringRef relative, llvm::StringRef content) {
         tmp.touch(relative, content);
         auto path = tmp.path(relative);

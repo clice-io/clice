@@ -25,10 +25,10 @@ ProjectLoad bootstrap_project(Project& project,
 
     if(project.config.project.enable_indexing.value && (!load.members.empty() || owed)) {
         for(auto member: load.members) {
-            // Bulk sweep of unknown staleness: the hash gate decides per
+            // Bulk pass of unknown staleness: the hash gate decides per
             // file. DepsOnly — a cold start with a warm index cache must
             // keep serving the loaded shards, not blank every query until
-            // the sweep drains.
+            // the pass drains.
             pump.enqueue(member, ReindexReason::DepsOnly);
         }
         pump.schedule();

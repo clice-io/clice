@@ -70,7 +70,7 @@ import :support.format;
 /// "index_detail" (inside one index pass: op=build splits the semantics
 /// table from projection and finishing, op=serialize splits the path-id
 /// rekeying copy from the flatbuffers pack, op=preamble the document
-/// links and the pch.idx envelope). Use stable key=value pairs and
+/// links and the pch.idx index). Use stable key=value pairs and
 /// `_ms` suffixes for durations — scripts aggregate these lines
 /// (tools/bench/perf_report.ts).
 ///

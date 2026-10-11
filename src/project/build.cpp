@@ -384,8 +384,8 @@ bool Build::default_source(CanonicalRef path) {
     if(is_source_path(path)) {
         return true;
     }
-    // A header claims no translation unit of its own; an extensionless file
-    // does when its rule's command forces a source language.
+    // A header is no translation unit of its own; an extensionless file
+    // is when its rule's command forces a source language.
     if(suffix_type(path) != clang::driver::types::TY_INVALID || path::extension(path) == ".cuh") {
         return false;
     }
@@ -430,7 +430,7 @@ Build::SourceWalk Build::source_walk() const {
         return walk;
     }
 
-    // Where the claimed files can be: each pattern's literal directory, the
+    // Where the covered files can be: each pattern's literal directory, the
     // whole workspace for a rule without patterns. A root inside another
     // is walked as part of it.
     auto add_root = [&](CanonicalRef root) {

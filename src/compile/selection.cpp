@@ -16,8 +16,8 @@ using Node = SelectionTree::Node;
 
 // Return the range covering a node and all its children.
 clang::SourceRange get_source_range(const clang::DynTypedNode& node) {
-    // MemberExprs to implicitly access anonymous fields should not claim any
-    // tokens for themselves, see claimed_source_range in semantics.cpp.
+    // MemberExprs to implicitly access anonymous fields should not take any
+    // tokens for themselves, see owned_source_range in semantics.cpp.
     if(const auto* ME = node.get<clang::MemberExpr>()) {
         if(!ME->getMemberDecl()->getDeclName()) {
             return ME->getBase() ? get_source_range(clang::DynTypedNode::create(*ME->getBase()))

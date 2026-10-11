@@ -1,6 +1,6 @@
 /// Typed definitions of clice's custom LSP extensions — the single source
-/// shared by the integration tests and the VSCode extension. Wire shapes
-/// mirror src/server/extension.h (camelCase on the wire).
+/// shared by the integration tests and the VSCode extension. Protocol shapes
+/// mirror src/server/extension.h (camelCase in the protocol).
 
 import { NotificationType, RequestType, RequestType0 } from "vscode-languageserver-protocol";
 
@@ -187,7 +187,7 @@ export interface PollParams {
     /// Which loop to tick: "cdb" or "workspace".
     loop: "cdb" | "workspace";
     /// CDB loop only; defaults to true. A forced tick reloads unconditionally,
-    /// skipping the (size, mtime) stamp gate and the two-tick settling
+    /// skipping the (size, mtime) stamp gate and the two-tick stability
     /// debounce, so one request applies a change deterministically. `false`
     /// runs the production tick: a rewrite is noticed only through its stamp,
     /// and a changed stamp must hold for two consecutive ticks to reload.
@@ -275,7 +275,7 @@ export interface SyncResult {
     failed: string[];
     /// Index state remains that no save committed.
     unsaved: boolean;
-    /// What still ran at the deadline, one line each; empty once settled.
+    /// What still ran at the deadline, one line each; empty once idle.
     pending: string[];
 }
 
@@ -330,7 +330,7 @@ export interface HeldParams {
 
 export const HeldNotification = new NotificationType<HeldParams>("clice/internal/held");
 
-/// The keys of a wire type, for pinning a live reply's shape against the
+/// The keys of a protocol type, for pinning a live reply's shape against the
 /// hand-written C++ struct: the listing is checked complete at compile
 /// time (a key the type gains must be added here), and a test compares it
 /// with the reply's `Object.keys`.

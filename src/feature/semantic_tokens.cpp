@@ -233,7 +233,7 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
 /// pass over the semantic map: lexical kinds straight from the token kind,
 /// macros/includes/imports/attributes from the owning SemanticNode, and
 /// declaration names by collecting the decls anchored at the token from its
-/// owner chain. Conflicts are settled on the spot and adjacent tokens of the
+/// owner chain. Conflicts are resolved on the spot and adjacent tokens of the
 /// same kind merge as they are emitted, so no post-processing pass is needed.
 ///
 /// Tokens inside macro definition bodies only get lexical kinds: highlighting

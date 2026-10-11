@@ -47,10 +47,10 @@ namespace clice {
 
 /// Result of one round, as reported by the family closure and then filtered
 /// through round identity: a round that update() overtook mid-flight is
-/// recorded Stale whatever it reported — its verdict is about content that
+/// recorded Stale whatever it reported — its result is about content that
 /// no longer exists.
 enum class RoundOutcome : std::uint8_t {
-    /// No verdict: the round was overtaken (content update, loss of
+    /// No result: the round was overtaken (content update, loss of
     /// interest, scheduler preemption). Waiters that still hold interest
     /// drive a fresh round. The closure may have published salvage results
     /// before reporting Stale; the graph has no say over them.
@@ -65,7 +65,7 @@ enum class RoundOutcome : std::uint8_t {
 enum class JoinOutcome : std::uint8_t {
     Success,
     Failed,
-    /// OneAttempt only: the observed attempt ended without a verdict.
+    /// OneAttempt only: the observed attempt ended without a result.
     Stale,
     /// The validity predicate went false; the join stopped waiting.
     Abandoned,
@@ -113,18 +113,18 @@ class TaskGraph;
 struct RoundContext {
     /// Record a candidate edge to `dep` and wait until it is usable. The
     /// edge takes effect for cascade and interest the moment this is
-    /// called; it becomes durable only if this round lands Success while
+    /// called; it becomes durable only if this round commits Success while
     /// still current.
     kota::task<DependResult> depend(NodeId dep);
 
     /// depend() without the dispatch or the wait: record the candidate
     /// edge to a node that never runs (a sentinel a scan consumed the
     /// absence of). Same cascade/interest/foreground semantics, same
-    /// durable promotion on a successful landing — which is the point: a
-    /// declared-only edge would be replaced by the landing's candidates.
+    /// durable promotion on a successful commit — which is the point: a
+    /// declared-only edge would be replaced by the commit's candidates.
     void reference(NodeId dep);
 
-    /// Whether this round's result would still count if it landed now.
+    /// Whether this round's result would still count if it committed now.
     bool current() const;
 
     /// Live interest class of the node — read at dispatch time, a
@@ -152,7 +152,7 @@ private:
 /// Multi-family dependency graph with interest-counted cancellation — the
 /// thin scheduling core. Only four things live here: node identity, data
 /// edges, rounds, and interest/priority. Everything else (artifact
-/// products, cache keys, crash ledgers, retry budgets) belongs to the
+/// products, cache keys, crash tables, retry budgets) belongs to the
 /// family closures.
 ///
 /// Each dirty node is driven by rounds produced by its family's runner,
@@ -175,7 +175,7 @@ private:
 ///   stale. Interest is untouched; waiters observe the stale round and
 ///   drive a fresh one.
 /// - Round completion: the reported outcome passes through round identity
-///   (an overtaken round lands Stale regardless), Success promotes the
+///   (an overtaken round commits Stale regardless), Success promotes the
 ///   round's candidate edges to the durable edge set, and waiters wake.
 class TaskGraph {
 public:
@@ -195,7 +195,7 @@ public:
     /// of nodes that were marked dirty.
     llvm::SmallVector<NodeId> update(NodeId id);
 
-    /// The artifact tier of invalidation: the node's landed verdict is
+    /// The artifact tier of invalidation: the node's committed outcome is
     /// still true of its inputs — only its on-disk product vanished
     /// (cache eviction). Marks the node alone so the next depend or
     /// request rebuilds it: no dependent cascade (dependents consumed
@@ -257,7 +257,7 @@ private:
         kota::event completion;
         RoundOutcome outcome = RoundOutcome::Stale;
 
-        /// Node generation this round was spawned against; the landing
+        /// Node generation this round was spawned against; the commit
         /// filter compares it to decide whether the result still counts.
         std::uint64_t generation = 0;
 
@@ -297,7 +297,7 @@ private:
         bool zero_check_pending = false;
 
         /// Monotonic counter bumped by update(); the round-identity filter
-        /// compares against it at landing.
+        /// compares against it at commit.
         std::uint64_t generation = 0;
 
         /// Advisory cancellation scope of the current round; replaced
@@ -337,14 +337,14 @@ private:
                             std::shared_ptr<Round> round,
                             kota::cancellation_token token);
 
-    /// Synchronous landing: filter the reported outcome through round
+    /// Synchronous commit: filter the reported outcome through round
     /// identity, retire candidate back-edges, promote candidates to the
     /// durable set on current success, release edge references and wake
     /// waiters.
     void finish_round(NodeId id, Round& round, RoundOutcome reported);
 
     /// Replace the durable edge set and its back-edges. Shared by round
-    /// landing (candidates promote) and declare(); every named node must
+    /// commit (candidates promote) and declare(); every named node must
     /// already exist.
     void set_durable_edges(NodeId id, llvm::ArrayRef<NodeId> deps);
 

@@ -343,7 +343,7 @@ struct InlayHintPart {
     /// reach; 0 for plain text.
     index::SymbolHash symbol = 0;
 
-    /// A file holding the symbol's rows, for a symbol only its own file or
+    /// A file holding the symbol's entries, for a symbol only its own file or
     /// translation unit names (a parameter, an internal type); empty for one
     /// every unit names.
     std::string anchor;
@@ -372,7 +372,7 @@ auto semantic_tokens(CompilationUnitRef unit,
                      llvm::ArrayRef<std::uint32_t> inactive_regions,
                      PositionEncoding encoding) -> protocol::SemanticTokens;
 
-/// Wire encoding of computed tokens against the text they describe — one
+/// Protocol encoding of computed tokens against the text they describe — one
 /// encoder for the worker's AST results and the master's index
 /// projections, so both paths emit byte-identical replies.
 auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
@@ -400,7 +400,7 @@ auto declaration_lines(llvm::StringRef content,
                        llvm::ArrayRef<std::uint32_t> block_directives)
     -> std::optional<LocalSourceRange>;
 
-/// Wire encoding of computed folds, for the worker's AST results and the
+/// Protocol encoding of computed folds, for the worker's AST results and the
 /// master's index projections alike. A `line_folding_only` client folds
 /// whole lines and ignores the character offsets.
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
@@ -424,7 +424,7 @@ auto lexical_selection_ranges(llvm::StringRef content,
                               llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>>;
 
-/// Wire encoding of one offset's ranges as a chain of parents.
+/// Protocol encoding of one offset's ranges as a chain of parents.
 auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
                                  const PositionMap& map,
                                  PositionEncoding encoding) -> protocol::SelectionRange;
@@ -442,7 +442,7 @@ auto inlay_hints(CompilationUnitRef unit,
                  LocalSourceRange target,
                  const InlayHintsOptions& options = {}) -> std::vector<InlayHint>;
 
-/// Wire encoding of computed hints against the text they describe. A label
+/// Protocol encoding of computed hints against the text they describe. A label
 /// naming a symbol keeps its pieces when `locate` gives the location each
 /// symbol's piece navigates to; without it, and for every other label, the
 /// label is one string.
@@ -606,7 +606,7 @@ struct IncludeRequest {
     IncludeInsertion insertion;
 };
 
-/// What only the project index can settle: resolved by the master at the
+/// What only the project index can decide: resolved by the master at the
 /// reply edge; clice inspect resolves it as an empty index would.
 using IndexRequest = std::variant<DefineRequest, DefineInHostRequest, IncludeRequest>;
 
@@ -639,15 +639,15 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
 /// for `file`; unchanged without one.
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
 
-/// Index projections: whole-document features computed from index rows plus
+/// Index projections: whole-document features computed from index entries plus
 /// the document text, serving open files that have no AST yet (see
 /// Features' routing rules). Inputs are index vocabulary types and
-/// narrow resolvers, never index storage — the caller extracts rows from
+/// narrow resolvers, never index storage — the caller extracts entries from
 /// shard/ProjectIndex and hands them over. Each projection's output is an
 /// honest subset of its AST twin's: missing pieces (Sema modifiers, outline
 /// detail, statement folds, ...) are pinned by the read-only test corpus.
 
-/// One Decl/Def relation row of the document: the name-token anchor, the
+/// One Decl/Def relation of the document: the name-token anchor, the
 /// declaration's full extent (invalid when the index recorded none — a
 /// cross-file or invalid source range) and the symbol it belongs to.
 struct IndexDecl {
@@ -657,11 +657,11 @@ struct IndexDecl {
     bool definition = false;
 };
 
-/// The rows of one document the projections consume, extracted from its
-/// serving shard: every occurrence, the reference rows of names nested in
+/// The entries of one document the projections consume, extracted from its
+/// serving shard: every occurrence, the reference relations of names nested in
 /// another's written name (the class in `~Foo`, which owns no occurrence
 /// there) as occurrences of their own, and the Decl/Def relations as decl
-/// rows.
+/// entries.
 struct IndexEntries {
     std::vector<index::Occurrence> occurrences;
     std::vector<IndexDecl> decls;
@@ -674,10 +674,10 @@ using IndexIncludeEdge = index::IncludeEdge;
 using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(index::SymbolHash)>;
 
 /// Language options for raw-lexing `path` without a compile command: C
-/// for .c files and when `c_rows` says the served rows were built by C
+/// for .c files and when `c_only` says the served index was built by C
 /// parses only, C++ otherwise. A default-constructed LangOptions is C89
 /// — `class` would lex as an identifier. `standard` is the serving
-/// command's -std value when known: the rows were classified under it,
+/// command's -std value when known: the entries were classified under it,
 /// and a newer standard's extra keywords (`concept` in C++17 code)
 /// would shadow them. Absent, unknown or contradicting values fall back
 /// to the driver's default standard — the dialect a -std-less command

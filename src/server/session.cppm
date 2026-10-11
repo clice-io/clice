@@ -28,7 +28,7 @@ enum class ReadonlyMode : std::uint8_t {
     /// Files start as On and switch to Off at the first edit intent
     /// (edit, completion, signature help, a context switch, a restored
     /// buffer that diverged from the index). A file the index can never
-    /// serve — indexing disabled, or its boost attempt settled without a
+    /// serve — indexing disabled, or its boost attempt finished without a
     /// servable shard — falls back to Off rather than answering empty
     /// forever.
     Auto,
@@ -67,7 +67,7 @@ struct Session {
     std::string text;
 
     /// xxh3 of `text`, rewritten with it: what "the buffer holds these
-    /// bytes" is compared by against disk observations and index rows.
+    /// bytes" is compared by against disk observations and index shards.
     std::uint64_t hash = 0;
 
     /// The line tables of `text`: where each line starts, and which lines
@@ -111,27 +111,27 @@ struct Session {
     /// what the AST now answers better (semantic tokens, inlay hints).
     bool index_served = false;
 
-    /// Whether this session's self-containment trial has settled. Reset
+    /// Whether this session's self-containment trial has finished. Reset
     /// when compile inputs change for reasons other than buffer edits
     /// (didSave cascades, chain invalidation, mtime staleness), so the
-    /// verdict re-evaluates on dependency changes but ordinary typing
+    /// result re-evaluates on dependency changes but ordinary typing
     /// errors never trigger a pointless prefix synthesis.
     bool trial_done = false;
 
     /// The PCH pair a crash of this document's compile was put on: the
     /// retraction rebuilds it, and a crash on it again is the document's
-    /// own. Cleared by a compile that lands.
+    /// own. Cleared by a compile that finishes.
     std::string crashed_pch;
 
     /// A worker death under this document's compile with clang-tidy on,
-    /// held while the compile retries without the pass: a landing blames
+    /// held while the compile retries without the pass: finishing blames
     /// the pass, another crash the compile.
     std::optional<kota::ipc::Error> tidy_crash;
 };
 
-/// A request's claim on the buffer it was asked about: the generation
+/// What a request takes of the buffer it was asked about: the generation
 /// snapshot taken as the request is dispatched.
-/// Every later decision — adopting a compile product, landing a worker
+/// Every later decision — adopting a compile product, committing a worker
 /// reply, answering at all — asks `fresh()` first; a didChange or
 /// didClose bumped the generation, and whatever the request computed
 /// describes a buffer that no longer exists. Completion still answers

@@ -8,7 +8,7 @@ import :unittests.utils;
 
 namespace clice::testing {
 
-/// Wait for event-loop cancellation cascades to settle before asserting state.
+/// Wait for event-loop cancellation cascades to finish before asserting state.
 template <typename Pred>
 kota::task<> wait_until(Pred pred) {
     for(int i = 0; i < 100 && !pred(); ++i) {

@@ -83,32 +83,32 @@ llvm::SmallVector<FileEvent> take_disk_events(FileTable& files);
 /// Effect algebra: the sets are not disjoint, and stronger effects subsume
 /// weaker ones on the same file — mark_ast_dirty implies forgetting the
 /// self-containment impression, which reset_header_mode extends to a
-/// persisted verdict — and one event may push a file into several sets.
+/// persisted result — and one event may push a file into several sets.
 /// Execution is idempotent per effect, so the overlap is harmless; what
 /// matters is that each set can also occur ALONE (reset_header_mode for a
 /// closed header has no AST to dirty), which is why they are separate
 /// vocabulary rather than severity levels of one list.
 struct DirtySet {
     /// Compile inputs changed: ast_dirty + trial_done=false + forget the
-    /// cached self-containment verdict.
+    /// cached self-containment result.
     llvm::SmallVector<Fid> mark_ast_dirty;
     /// Built AST lost (worker crash) but compile inputs did not change:
     /// recompile only, without re-running the header trial or touching the
-    /// self-containment verdict.
+    /// self-containment result.
     llvm::SmallVector<Fid> mark_lost;
     /// A header's content other than its open buffer, or its include chain,
-    /// changed: drop its self-containment verdict so the next compile
+    /// changed: drop its self-containment result so the next compile
     /// re-earns it.
-    /// Executed by the command resolver, which owns the verdicts.
+    /// Executed by the command resolver, which owns the results.
     llvm::SmallVector<Fid> reset_header_mode;
-    /// Closed files whose own content changed: their index rows describe
+    /// Closed files whose own content changed: their index describes
     /// text that no longer exists. Enqueue for background reindexing as
     /// ReindexReason::ContentChanged — queries skip these files'
-    /// contributions until the reindex lands.
+    /// contributions until the reindex finishes.
     llvm::SmallVector<Fid> reindex_content_changed;
     /// Closed files enqueued only because a dependency changed: their own
-    /// rows are positionally intact. Enqueue as ReindexReason::DepsOnly —
-    /// queries keep serving the previous rows. A file in both lists is
+    /// shard is positionally intact. Enqueue as ReindexReason::DepsOnly —
+    /// queries keep serving the previous shard. A file in both lists is
     /// ContentChanged (the indexer's reason upgrade is absorbing).
     llvm::SmallVector<Fid> reindex_deps_only;
 
@@ -148,7 +148,7 @@ struct DirtySet {
     }
 
     /// A TU the build stopped compiling — its database still loads but no
-    /// longer lists it: the rows leave the index and nothing is owed, unlike
+    /// longer lists it: its shard leaves the index and nothing is owed, unlike
     /// a file that vanished from disk, whose shard stays behind (queries
     /// withhold it).
     void add_retire(Fid path_id) {
@@ -172,7 +172,7 @@ public:
     /// that no longer exists, and content-based freshness cannot see that.
     /// The indexer drops the manifest, contributions and persisted blobs —
     /// a surviving manifest would judge the queued reindex fresh and keep
-    /// the old-command rows serving, in this session and after a restart.
+    /// the old-command index serving, in this session and after a restart.
     /// Follows the later-event rule above: a later removal's clear cancels
     /// the drop, since the deleted file's index stays behind.
     llvm::SmallVector<Fid> drop_index;
@@ -203,7 +203,7 @@ public:
 ///     recorded header hosts, never mutates them;
 ///   - directly updates the derived graphs Project owns (include graph,
 ///     module map, ...);
-///   - anything touching Sessions, context-domain state (verdicts, choices,
+///   - anything touching Sessions, context-domain state (header results, choices,
 ///     header contexts), the index queue, or cache persistence is returned
 ///     as a DirtySet effect and executed by the dispatcher, so the engine
 ///     stays testable with plain data structures.

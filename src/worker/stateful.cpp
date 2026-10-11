@@ -123,7 +123,7 @@ class StatefulWorker {
 
     /// Evict least recently used idle documents down to the cap. Busy
     /// ones stay, so the cap is exceeded while more documents than it are
-    /// in flight at once; the calls after their requests settle catch up.
+    /// in flight at once; the calls after their requests finish catch up.
     void shrink_if_over_limit() {
         bool evicted = false;
         auto it = lru.end();
@@ -253,11 +253,11 @@ RequestResult<worker::CompileParams>
     doc->pcms = params.pcms;
 
     // The old AST describes the text this request just replaced: drop
-    // it before the cancellable await, or a cancellation landing while
+    // it before the cancellable await, or a cancellation arriving while
     // the work is still queued would wake waiters with the previous
     // unit installed next to the new buffer — with_ast_or would serve
     // stale offsets as current. Waiters observe has_ast == false and
-    // return their missing value until a compile lands.
+    // return their missing value until a compile finishes.
     doc->has_ast = false;
     doc->unit = CompilationUnit(nullptr);
 
@@ -357,7 +357,7 @@ RequestResult<worker::CompileParams>
             // the master's rebuild of a retracted pair. Drop it last,
             // after every use of the unit above; queries observe
             // has_ast == false and return their missing value until a
-            // compile lands.
+            // compile finishes.
             if(!doc->unit.completed() && !doc->unit.fatal_error()) {
                 doc->unit = CompilationUnit(nullptr);
                 doc->has_ast = false;

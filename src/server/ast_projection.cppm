@@ -55,8 +55,8 @@ struct ASTProjection {
     /// retries.
     std::optional<std::string> failed_pch_key;
 
-    /// The latest compilation's index envelope; null until a compile
-    /// lands index data. NOT merged into Project.project_index — that
+    /// The latest compilation's TU index; null until a compile
+    /// commits index data. NOT merged into Project.project_index — that
     /// only gets disk-derived data from background indexing.
     std::shared_ptr<index::TUIndex> index;
 
@@ -64,9 +64,9 @@ struct ASTProjection {
     /// transports (see CompileOutput).
     std::optional<CompileOutput> output;
 
-    /// The main file's rows within `index` (an empty shard when the
+    /// The main file's entries within `index` (an empty shard when the
     /// compile produced none). Callers gate on index_current, which
-    /// implies a loaded envelope.
+    /// implies a loaded TU index.
     const index::Shard& file_shard() const {
         return index->shard_of(index->path_count() - 1);
     }
@@ -87,9 +87,9 @@ struct ASTProjectionTable {
         std::optional<DepsSnapshot> deps;
 
         /// Whether the projection describes the current buffer: the last
-        /// compile landed and no invalidation arrived since. The
+        /// compile finished and no invalidation arrived since. The
         /// ast_dirty flag of the old world, inverted, with its single
-        /// write points in the family (round landing and invalidation).
+        /// write points in the family (round commit and invalidation).
         bool current = false;
 
         /// Bumped by every invalidation of this document. The stateless
@@ -122,7 +122,7 @@ struct ASTProjectionTable {
                    : nullptr;
     }
 
-    /// The last compile landed and no invalidation arrived since
+    /// The last compile finished and no invalidation arrived since
     /// (!ast_dirty of the old world).
     bool current(Fid path_id) const {
         const auto* entry = find(path_id);

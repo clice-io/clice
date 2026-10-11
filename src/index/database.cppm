@@ -21,7 +21,7 @@ inline std::string blob_key(llvm::StringRef name) {
 
 /// The blob families the index persists.
 enum class IndexBlobKind : std::uint8_t {
-    /// Per-file row blobs (ShardBlob), keyed by a path hash.
+    /// Per-file shard blobs (ShardBlob), keyed by a path hash.
     Shard,
     /// Per-TU manifests, keyed by a path hash.
     Manifest,
@@ -32,7 +32,7 @@ enum class IndexBlobKind : std::uint8_t {
     /// changes that happened while no server was running.
     CDB,
     /// The single artifact-validity blob (PCH/PCM records with their deps,
-    /// header-mode verdicts), key "artifacts".
+    /// header-mode results), key "artifacts".
     Artifacts,
     /// The single user-context blob (saved context choices, synthesized
     /// artifact hosts), key "contexts" — sovereignty records, never
@@ -89,7 +89,7 @@ public:
     virtual ReadBlob read(IndexBlobKind kind, llvm::StringRef key) = 0;
 
     /// Whether a blob exists under the key, even when unreadable — how the
-    /// loader tells a missing global blob (sweep everything) from a
+    /// loader tells a missing global blob (remove everything) from a
     /// transient read failure (touch nothing).
     virtual bool contains(IndexBlobKind kind, llvm::StringRef key) = 0;
 
@@ -105,7 +105,7 @@ public:
     /// snapshot), load paths tolerate exactly a prefix, and the LMDB
     /// backend commits everything or nothing in one transaction, removes
     /// included. The failed put indices are returned so the caller can
-    /// re-dirty them; removes are best-effort (load sweeps stale blobs by
+    /// re-dirty them; removes are best-effort (load removes stale blobs by
     /// their generation pins). A full LMDB map fails the whole batch and
     /// latches the grow request `grow()` serves.
     virtual llvm::SmallVector<std::size_t> write(llvm::ArrayRef<Blob> puts,

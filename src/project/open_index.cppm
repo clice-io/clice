@@ -18,8 +18,8 @@ namespace clice {
 bool open_index(Project& project, CanonicalRef root, llvm::StringRef requested_configuration);
 
 /// What load_index found beyond the tables: the translation units the
-/// load dropped as stale or partially written, whose rows are absent
-/// until a reindex lands, and the persisted context choices.
+/// load dropped as stale or partially written, whose index is absent
+/// until a reindex finishes, and the persisted context choices.
 struct LoadedIndex {
     llvm::SmallVector<Fid> dropped;
 
@@ -28,7 +28,7 @@ struct LoadedIndex {
 };
 
 /// Open the index as the writer loads it — every manifest adopted, every
-/// shard fetched and verified, the header-mode verdicts restored into
+/// shard fetched and verified, the header-mode results restored into
 /// `commands` — for the commands that walk the whole index or need the
 /// build (loaded when `with_build`). Nullopt, with the cause logged, when
 /// there is no usable index.

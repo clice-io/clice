@@ -177,7 +177,7 @@ ZEST_CASE(TinyPipeStillReports) {
     // Windows/macOS pipes are far smaller than Linux's 64KB, so a flushed
     // backlog takes many calls to deliver — the gap report must ride the
     // FIRST accepted quantum, not wait for the backlog to clear (that
-    // ordering bug only surfaced on small-pipe CI runners).
+    // ordering bug only showed up on small-pipe CI runners).
     Pipe pipe;
     ::fcntl(pipe.fds[1], F_SETPIPE_SZ, 4096);
     logging::StderrSink sink(pipe.fds[1], 65536);

@@ -2,7 +2,7 @@
 /// entry's own flags, written as a header of `#error` checks that the
 /// entry's source includes when it exists. The real build ran before the
 /// header did, so only clice's parse sees it, and every value clice gets
-/// wrong surfaces as a compile error naming the macro and the value the
+/// wrong is reported as a compile error naming the macro and the value the
 /// compiler has.
 
 import * as fs from "node:fs";
@@ -13,7 +13,7 @@ import { run } from "./scenario.ts";
 /// Macros whose values follow from the compiler, its target and the
 /// command's flags: language mode, target, data model, and the semantic
 /// switches clice keeps. All are integers, so `#if` can compare them.
-/// `__GNUC__` is left out on purpose: clice parses as clang, which claims
+/// `__GNUC__` is left out on purpose: clice parses as clang, which reports
 /// GCC 4.2 compatibility whichever GCC built the project.
 const GNU_MACROS = [
     "__cplusplus",

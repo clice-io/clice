@@ -87,7 +87,7 @@ public:
     /// content. Returns the dirtied path_ids.
     llvm::SmallVector<Fid> invalidate(Fid path_id);
 
-    /// Invoked after a PCM lands so background indexing can pick up the
+    /// Invoked after a PCM commits so background indexing can pick up the
     /// new artifact.
     std::function<void()> on_indexing_needed;
 
@@ -143,10 +143,10 @@ public:
     /// on the resolved subset.
     kota::task<ModuleDeps> direct_deps(Fid path_id);
 
-    /// The already-resolved-command flavor: scans under exactly the
+    /// The already-resolved-command variant: scans under exactly the
     /// arguments the caller will compile with, rendered by `resolution`.
     /// The AST path uses it so a context choice or donated header host
-    /// cannot diverge between the scan and the parse — the path_id flavor
+    /// cannot diverge between the scan and the parse — the path_id variant
     /// re-picks a CDB entry, which is only right for whole-TU runs on real
     /// commands. The header context the arguments name is served to the
     /// scan from memory. An engaged `content` scans it in place of the

@@ -265,7 +265,7 @@ llvm::SmallVector<llvm::StringRef> Config::configurations() const {
 
 /// Codec config the published schema is generated under, for its
 /// `additionalProperties: false`: a key load() warns about as unknown is
-/// one the schema rejects — the same typo surfaces both ways.
+/// one the schema rejects — the same typo is reported both ways.
 struct DenyUnknownKeys {
     constexpr static bool deny_unknown_fields = true;
 };
@@ -360,7 +360,7 @@ Config Config::load_from_workspace(CanonicalRef workspace_root,
                 if(auto config = load(config_path, workspace_root, issues, /*finalized=*/false))
                     return std::move(*config);
                 // Present but malformed: fall through to defaults, but
-                // surface the situation clearly so users know their config
+                // report the situation clearly so users know their config
                 // wasn't applied.
                 LOG_WARN("Falling back to default configuration because {} is invalid",
                          config_path);
@@ -387,7 +387,7 @@ std::string cache_dir_owner(llvm::StringRef cache_dir) {
 }
 
 /// A recorded owner that no longer exists (a moved or deleted checkout)
-/// claims nothing.
+/// owns nothing.
 static bool live_owner(llvm::StringRef owner, llvm::StringRef root) {
     return !owner.empty() && owner != root && vfs::is_directory(owner);
 }

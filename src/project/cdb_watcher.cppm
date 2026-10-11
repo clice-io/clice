@@ -18,7 +18,7 @@ namespace clice {
 /// file table looks at (see vfs::DiskState::watch); a tick here only weighs
 /// what those looks found. A source's inputs are compared with what its
 /// load read (see CompilationDatabase::inputs), never with a look taken
-/// afterwards: a rewrite landing between the load and the first look still
+/// afterwards: a rewrite arriving between the load and the first look still
 /// reads as a change.
 class CDBWatcher {
 public:
@@ -39,7 +39,7 @@ public:
     /// Build::source_order); its entries keep serving meanwhile.
     ///
     /// `force` reloads unconditionally: it skips both the content gate and
-    /// the two-tick settling debounce (the half-written-file guard). The
+    /// the two-tick debounce (the half-written-file guard). The
     /// test hook uses it so a single poll request applies a change
     /// deterministically; a spurious forced reload just yields an empty
     /// diff.
@@ -62,7 +62,7 @@ private:
     /// One registered source's watch state.
     struct TrackedSource {
         SourceID id;
-        /// What the watcher last settled on: the reads of the source's last
+        /// What the watcher last adopted: the reads of the source's last
         /// load, or a deletion it acted on.
         Hashes applied;
         /// Half-write guard: what the previous tick saw while it differed

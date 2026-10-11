@@ -4295,7 +4295,7 @@ ZEST_CASE(ConstrainedBeatsUnconstrained) {
 }
 
 ZEST_CASE(ConstraintDisjunction) {
-    /// A satisfied disjunct settles the disjunction even beside one that
+    /// A satisfied disjunct decides the disjunction even beside one that
     /// cannot be decided.
     run(R"code(
         template <typename T>
@@ -4970,10 +4970,10 @@ ZEST_CASE(BrokenCodeScan) {
 }
 
 ZEST_CASE(StandardScan) {
-    /// Crash-safety sweep: feed every dependent typedef and dependent
+    /// Crash-safety scan: feed every dependent typedef and dependent
     /// expression in a libstdc++-heavy TU through the resolver. Results are
     /// irrelevant — under the assertion-enabled ASan Debug build, surviving
-    /// the sweep is the assertion.
+    /// the scan is the assertion.
     add_main("main.cpp", R"code(
         #include <functional>
         #include <map>

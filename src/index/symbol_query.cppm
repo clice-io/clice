@@ -77,8 +77,8 @@ struct SymbolQuery {
     std::vector<SymbolKind> kinds;
 
     /// Path filters, each a bare file name or a path, absolute once
-    /// anchored; with a handle, the file whose rows anchor it — a symbol
-    /// only some files see has no project-wide row.
+    /// anchored; with a handle, the file whose entries anchor it — a symbol
+    /// only some files see has no project-wide entry.
     std::vector<std::string> paths;
 
     /// Set instead of a pattern: the symbol with this id.
@@ -110,7 +110,7 @@ struct SymbolQuery {
 
 /// The locator naming a symbol back: its `#<hex>` id, followed by `path:`
 /// and `anchor` when there is one — for a symbol only some files see, a
-/// file holding its rows.
+/// file holding its entries.
 std::string symbol_locator(SymbolHash hash, llvm::StringRef anchor);
 
 /// Whether a symbol's arguments satisfy the query's: any when the query

@@ -55,12 +55,12 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
         return kota::outcome_error(
             kota::ipc::Error{worker::dispatch_errc::cancelled, "Query not sent"});
     };
-    // The caller's compile gave a crash of the kind time to settle.
+    // The caller's compile gave a crash of the kind time to be booked.
     if(ticket.session->quarantine->barred(evidence, Quarantine::Clock::now())) {
         co_return unsent();
     }
     // A query that kills the worker is this document's doing even though
-    // its compile landed: per-kind record, since only this query kind
+    // its compile finished: per-kind record, since only this query kind
     // answering clears it (see Quarantine).
     Quarantine::Attempt attempt(*ticket.session->quarantine, evidence);
     bool compile = false;
@@ -84,11 +84,11 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
                 }
                 // The worker evicted the document behind a projection that
                 // still reads current: its eviction notice crossed a compile
-                // of the document still landing, which the master took for
+                // of the document still finishing, which the master took for
                 // the one that would put it back, or another document's
-                // request landed between this compile's reply and the query.
+                // request arrived between this compile's reply and the query.
                 // Compile it there again. Each eviction takes another request
-                // landing in that window, so the retries end with the work in
+                // arriving in that window, so the retries end with the work in
                 // flight.
                 ast.invalidate(ticket.session->path_id);
             }
@@ -98,10 +98,10 @@ RequestResult<Params> Dispatcher::ask(const Ticket& ticket,
 
 template <typename Outcome>
 Outcome Dispatcher::finish(const Ticket& ticket,
-                         std::uint8_t kind,
-                         llvm::StringRef label,
-                         Outcome result,
-                         bool snapshot) {
+                           std::uint8_t kind,
+                           llvm::StringRef label,
+                           Outcome result,
+                           bool snapshot) {
     auto& session = *ticket.session;
     if(!result.has_value()) {
         if(!worker::is_operational_error(result.error())) {
@@ -129,9 +129,9 @@ Outcome Dispatcher::finish(const Ticket& ticket,
         return empty_answer<Outcome>();
     }
     // The reply proves this kind on the DISPATCHED content answers; an edit
-    // that landed mid-flight must not clear the new content's record —
+    // that arrived mid-flight must not clear the new content's record —
     // crashes were counted per attempt regardless of staleness, a success
-    // settles only when fresh. Clearing a record republishes: no compile
+    // clears only when fresh. Clearing a record republishes: no compile
     // runs to drop its note.
     if(ticket.fresh() && session.quarantine->crashed(kind)) {
         session.quarantine->on_success(kind);
@@ -251,7 +251,7 @@ kota::task<std::vector<feature::InlayHint>, kota::ipc::Error>
                             const protocol::Range& range,
                             kota::cancellation_token token) {
     // Clamped against the buffer the ticket was taken on: a buffer that
-    // moves before the reply lands turns the reply into ContentModified.
+    // moves before the reply arrives turns the reply into ContentModified.
     auto offsets = ticket.session->positions().offset_range(range, PositionEncoding::UTF16);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,
@@ -298,7 +298,7 @@ kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
                              const protocol::Range& range,
                              kota::cancellation_token token) {
     // Clamped against the buffer the ticket was taken on: a buffer that
-    // moves before the reply lands turns the reply into ContentModified.
+    // moves before the reply arrives turns the reply into ContentModified.
     auto selection = ticket.session->positions().offset_range(range, PositionEncoding::UTF16);
     auto path = std::string(project.file_table.resolve(ticket.session->path_id));
     co_return co_await typed(ticket,

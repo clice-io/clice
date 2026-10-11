@@ -89,7 +89,7 @@ ZEST_CASE(StoreAndLookup) {
     ZASSERT(*hit == path);
     ZASSERT(read_file(*hit).value_or("") == "blob content");
 
-    // The blob landed inside the versioned namespace directory.
+    // The blob was committed into the versioned namespace directory.
     ZASSERT(llvm::StringRef(path).contains("v1"));
     ZASSERT(llvm::StringRef(path).ends_with("k1.pch"));
 }
@@ -230,7 +230,7 @@ ZEST_CASE(VersionBumpDiscards) {
 ZEST_CASE(LiveLayoutKept) {
     TempDir tmp;
     // A clice of another version is live inside v1 (our own pid stands in
-    // for its `tmp/{pid}` marker): the sweep must not delete the cache out
+    // for its `tmp/{pid}` marker): the removal pass must not delete the cache out
     // from under it.
     auto self = std::to_string(llvm::sys::Process::getProcessId());
     tmp.touch("root/cache/v1/tmp/" + self + "/0.pch");
@@ -267,7 +267,7 @@ ZEST_CASE(SymlinkNotFollowed) {
     tmp.touch("outside/keep.txt", "data");
     tmp.mkdir("root/cache");
     // A stale entry that is a symlink to data outside the cache root: the
-    // version sweep must unlink it without recursing into the target.
+    // version removal must unlink it without recursing into the target.
     [[maybe_unused]] auto linked =
         ::symlink(tmp.path("outside").c_str(), tmp.path("root/cache/v0").c_str());
 
@@ -347,7 +347,7 @@ ZEST_CASE(CommitFailureSurfaces) {
     register_lru(store);
 
     // A non-empty directory can neither be renamed over nor removed: the
-    // commit must report the failure, not silently claim the data is stored.
+    // commit must report the failure, not silently report the data is stored.
     tmp.touch("root/cache/v1/pch/k1.pch/squatter", "x");
     auto pending = store.begin_store("pch", "k1");
     ZASSERT(!vfs::write(pending.tmp_path, "dropped"));
@@ -648,7 +648,7 @@ ZEST_CASE(StaleAuxDropped) {
     // (see reset_aux_locked): the primary was republished, the old aux
     // stayed behind. Pairs commit primary-first, so a legitimate aux is
     // never older than its primary — registration must not adopt this one.
-    // int-FD flavor: setLastAccessAndModificationTime has no overload for
+    // int-FD variant: setLastAccessAndModificationTime has no overload for
     // the native handle type on Windows.
     auto aux_path = tmp.path("root/cache/v1/pch/k1.pch.idx");
     int fd = 0;
@@ -719,7 +719,7 @@ ZEST_CASE(ReadOnlyOpenTouchesNothing) {
     }
 
     // A newer-version inspector must neither create its own directory nor
-    // sweep the older version a live server may still be using.
+    // remove the older version a live server may still be using.
     auto store = CacheStore::open(tmp.path("root"), version + 1, /*read_only=*/true);
     ZASSERT(!store.has_value());
     ZASSERT(!llvm::sys::fs::exists(tmp.path("root/cache/v2")));

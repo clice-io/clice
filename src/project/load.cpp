@@ -60,8 +60,8 @@ ProjectLoad load_project(Project& project,
                 project.index_db = index::open_database(*project.store, configuration, true);
             } else if((project.writer_lock = index::WriterLock::acquire(cfg.cache_dir))) {
                 // The owner is recorded, and checked again, under the lock:
-                // another project may have claimed the directory since the
-                // configuration chose it.
+                // another project may have become the directory's owner since
+                // the configuration chose it.
                 if(owned_elsewhere(cfg.cache_dir, root)) {
                     LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps no index",
                                  std::string_view(cfg.cache_dir),
@@ -100,7 +100,7 @@ ProjectLoad load_project(Project& project,
     // member yet, so a database generated later (picked up by the CDB
     // poll) starts from the previous session's index.
     report.index = store.load({.read_only = read_only_index});
-    // A unit deleted while no server ran keeps its rows until a look finds
+    // A unit deleted while no server ran keeps its index until a look finds
     // it missing (see FreshnessGate).
     project.file_table.disk.find_missing(
         llvm::to_vector(llvm::make_first_range(project.project_index.manifests)));

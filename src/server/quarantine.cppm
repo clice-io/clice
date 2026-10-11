@@ -26,7 +26,7 @@ namespace clice {
 ///     standing: the newer inputs are still untried.
 ///  3. Blame conservation — on_crash() is the only way strikes accrue; one
 ///     worker death counts once however many of the document's requests it
-///     failed, and only the kind answering (on_land) or a save clears them.
+///     failed, and only the kind answering (on_success) or a save clears them.
 ///  4. Visibility — a record shows in the document's diagnostics, except a
 ///     first crash on inputs changed within editing_window and not saved
 ///     since: half-typed code crashing is the common case there, and the
@@ -77,7 +77,7 @@ public:
 
     /// A dispatch of `kind`, held across its flight. Under a record's
     /// license it spends the license and hands it back at destruction
-    /// unless a crash or the kind answering settled the record meanwhile
+    /// unless a crash or the kind answering resolved the record meanwhile
     /// (invariant 2). Construct only for an admitted dispatch (!barred).
     class [[nodiscard]] Attempt {
     public:

@@ -120,7 +120,7 @@ export const codeAction: Feature = {
         // The index-backed actions (definitions vetted and placed in the
         // host, headers declaring a name) race the background index: an
         // indexing fixture names the symbols that must have arrived from
-        // another file's rows — the requested file's own session already
+        // another file's index — the requested file's own session already
         // knows the declarations it sees, which is not the fact awaited.
         const indexed = directiveLines(ctx.stripped, "indexed");
         if (indexed.length > 0 && ctx.indexing !== true) {

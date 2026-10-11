@@ -287,7 +287,7 @@ class Bench {
     /// scenario spawns a fresh server, so files beyond this set are exactly
     /// this scenario's session logs.
     priorLogs: Set<string>;
-    /// When set (epoch ms), server-side perf events stamped before this
+    /// When set (epoch ms), server-side perf events timestamped before this
     /// point are dropped: they belong to setup/warmup work the client
     /// series deliberately excludes.
     perfWindowStart: number | null = null;
@@ -408,7 +408,7 @@ async function shutdownServer(client: CliceClient, opts: Options): Promise<void>
 /// Server start → initialize response → first diagnostics of the main file.
 ///
 /// The hover poke that triggers compilation on clice stays off the timed
-/// path: diagnostics publish when compilation settles and the hover is
+/// path: diagnostics publish when compilation finishes and the hover is
 /// computed afterward, so awaiting its response first (as openAndWait
 /// does) would fold hover computation into every sample. The sample ends
 /// at the diagnostics notification; the poke is drained after the clock
@@ -510,7 +510,7 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
     // Log timestamps truncate to milliseconds, so a boundary read in the
     // same millisecond as the last warmup's perf line cannot separate the
     // two. Park until the wall clock leaves the warmup millisecond: every
-    // warmup event is stamped <= boundary, every measured one >= boundary+1.
+    // warmup event is timestamped <= boundary, every measured one >= boundary+1.
     const boundary = Date.now();
     while (Date.now() <= boundary) {
         await new Promise((resolve) => setTimeout(resolve, 1));

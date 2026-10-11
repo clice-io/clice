@@ -25,19 +25,19 @@ kota::ipc::Error content_modified();
 
 /// The document side of talking to workers. Every request that carries an
 /// open document's content to a worker — or asks the worker holding its
-/// AST — goes through here and lands through one exit. The pool owns the
+/// AST — goes through here and finishes through one exit. The pool owns the
 /// worker side (slots, crash budgets, routing, attributing a death); this
 /// owns what a request means for the document: whether its quarantine
 /// admits it, whose crash a death is, and whether the reply still
 /// describes the buffer.
 ///
-/// Landing is the invariant: a reply is handed back only while the ticket
-/// is fresh, and only a fresh reply settles the document's quarantine
+/// Finishing is the invariant: a reply is handed back only while the ticket
+/// is fresh, and only a fresh reply resolves the document's quarantine
 /// record for its kind. A stale reply becomes ContentModified before any
 /// caller can see it — no path returns a result for a buffer that no
 /// longer exists. A request the workers could not serve — barred by a
 /// crash, or lost to deaths and outages — answers empty: the crash note on
-/// the document says why, and an error would only surface as a client
+/// the document says why, and an error would only show as a client
 /// popup.
 class Dispatcher {
 public:
@@ -50,7 +50,7 @@ public:
     /// Position.
     /// `token`, on every dispatch: the LSP request's cancellation token.
     /// Passing it into the worker send turns a client $/cancelRequest into
-    /// a wire cancel — the worker stops the parse at the next top-level
+    /// an IPC cancel — the worker stops the parse at the next top-level
     /// declaration instead of computing a result nobody will read. The
     /// shared compile a query waits on is deliberately NOT cancelled: it
     /// serves every waiter, not this request.
@@ -67,7 +67,7 @@ public:
                     kota::cancellation_token token = {});
 
     /// The main-file document links from the stateful worker holding the
-    /// AST; the preamble's live in the PCH envelope (see
+    /// AST; the preamble's live in the PCH's TU index (see
     /// PCHState::load_state).
     kota::task<std::vector<index::DocumentLink>, kota::ipc::Error>
         document_links(const Ticket& ticket, kota::cancellation_token token = {});
@@ -111,7 +111,7 @@ public:
 private:
     /// Shared body of the typed requests to the worker holding the AST
     /// (document links, folding ranges, code actions): the compile, the gate, the send
-    /// and the landing; a missing AST answers an empty result.
+    /// and the finish; a missing AST answers an empty result.
     template <typename Params>
     kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
         typed(const Ticket& ticket,
@@ -121,7 +121,7 @@ private:
               kota::cancellation_token token);
 
     /// Shared body of the interactive builds: identical inputs and
-    /// quarantine passage, different wire type, evidence slot and label.
+    /// quarantine passage, different IPC type, evidence slot and label.
     /// `wp` arrives with the fields particular to its request filled in.
     template <typename Params>
     RawResult interactive(std::uint8_t evidence,
@@ -145,7 +145,7 @@ private:
                               kota::cancellation_token token,
                               bool& unanswered);
 
-    /// The single exit of every dispatch: a fresh reply settles the kind's
+    /// The single exit of every dispatch: a fresh reply resolves the kind's
     /// quarantine record, a stale one never leaves as a value — unless it
     /// is a `snapshot` reply, which describes the buffer the request
     /// carried and which the client reconciles with the edits made
@@ -153,10 +153,10 @@ private:
     /// empty.
     template <typename Outcome>
     Outcome finish(const Ticket& ticket,
-                 std::uint8_t kind,
-                 llvm::StringRef label,
-                 Outcome result,
-                 bool snapshot = false);
+                   std::uint8_t kind,
+                   llvm::StringRef label,
+                   Outcome result,
+                   bool snapshot = false);
 
     Project& project;
     EditorContext& contexts;

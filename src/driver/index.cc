@@ -102,7 +102,7 @@ std::string format_hash(std::uint64_t hash) {
     return std::format("#{:016x}", hash);
 }
 
-/// Milliseconds since the epoch as a local wall-clock stamp.
+/// Milliseconds since the epoch as a local wall-clock timestamp.
 std::string format_time(std::uint64_t epoch_ms) {
     auto seconds = static_cast<std::time_t>(epoch_ms / 1000);
     std::tm local{};
@@ -117,8 +117,8 @@ std::string format_time(std::uint64_t epoch_ms) {
 }
 
 /// Index through the serving writer: the editor's server holds the cache
-/// directory's writer lock, so it runs the sweep and the command waits
-/// for the rows to land.
+/// directory's writer lock, so it runs the pass and the command waits
+/// for the index to be committed.
 int run_indexing_via_server(const index::ServerEndpoint& endpoint, llvm::StringRef configuration) {
     auto result = control::request_index(endpoint, configuration);
     if(!result) {
@@ -292,7 +292,8 @@ struct ShardColumns {
     std::uint64_t rel_masks = 0;
 
     std::uint64_t total() const {
-        return content + variants + symbols + locals + occ_entries + occ_masks + rel_entries + rel_masks;
+        return content + variants + symbols + locals + occ_entries + occ_masks + rel_entries +
+               rel_masks;
     }
 };
 
@@ -310,8 +311,8 @@ ShardColumns shard_columns_of(llvm::StringRef bytes) {
         return rr.masks32.size() * 4 + rr.masks64.size() * 8 + rr.roaring_offsets.size() * 4 +
                rr.roaring.size();
     };
-    columns.content = blob.content.size() + blob.line_lengths.size() +
-                      blob.long_lines.size() * 4 + blob.long_line_lengths.size() * 4;
+    columns.content = blob.content.size() + blob.line_lengths.size() + blob.long_lines.size() * 4 +
+                      blob.long_line_lengths.size() * 4;
     columns.variants = blob.variants.size() * 8;
     columns.symbols = blob.sym_hashes.size() * 8 + blob.sym_rel_offsets.size() * 4;
     columns.locals = blob.local_syms.size() * 4 + blob.local_kinds.size() +
@@ -323,13 +324,14 @@ ShardColumns shard_columns_of(llvm::StringRef bytes) {
     for(auto& args: blob.local_args) {
         columns.locals += args.size();
     }
-    columns.occ_entries = range_bytes(blob.occs) + blob.occ_syms8.size() + blob.occ_syms16.size() * 2 +
-                       blob.occ_syms32.size() * 4;
+    columns.occ_entries = range_bytes(blob.occs) + blob.occ_syms8.size() +
+                          blob.occ_syms16.size() * 2 + blob.occ_syms32.size() * 4;
     columns.occ_masks = mask_bytes(blob.occs);
-    columns.rel_entries = range_bytes(blob.rels) + blob.rel_kinds.size() + blob.rel_sym_entries.size() * 4 +
-                       blob.rel_sym8.size() + blob.rel_sym16.size() * 2 +
-                       blob.rel_sym32.size() * 4 + blob.rel_def_entries.size() * 4 +
-                       blob.rel_def_begins.size() * 4 + blob.rel_def_ends.size() * 4;
+    columns.rel_entries = range_bytes(blob.rels) + blob.rel_kinds.size() +
+                          blob.rel_sym_entries.size() * 4 + blob.rel_sym8.size() +
+                          blob.rel_sym16.size() * 2 + blob.rel_sym32.size() * 4 +
+                          blob.rel_def_entries.size() * 4 + blob.rel_def_begins.size() * 4 +
+                          blob.rel_def_ends.size() * 4;
     columns.rel_masks = mask_bytes(blob.rels);
     return columns;
 }

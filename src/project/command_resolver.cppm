@@ -9,12 +9,12 @@ import :project.project;
 
 namespace clice {
 
-/// A persisted header-mode verdict in the artifacts blob. Mirrors the
+/// A persisted header-mode result in the artifacts blob. Mirrors the
 /// on-disk JSON layout field for field — changing it changes the format.
 struct CacheModeEntry {
     std::uint32_t file;          // index into the cache path table
     std::uint32_t mode;          // HeaderMode
-    std::uint64_t content_hash;  // header contents the verdict was scored on
+    std::uint64_t content_hash;  // header contents the result was scored on
 };
 
 /// What one resolution asks for beyond the file itself. The editor fields
@@ -87,43 +87,43 @@ struct Resolution {
 /// cached header contexts on top. Around the host branch it owns the
 /// header-context synthesis (in-memory files restoring the includer's
 /// preprocessor state, see SynthesizedContext) and the self-containment
-/// verdicts that decide it, persisted in the artifacts blob.
+/// results that decide it, persisted in the artifacts blob.
 class CommandResolver {
 public:
     explicit CommandResolver(Project& project) : project(project) {}
 
     /// Effective self-containment mode for a header. X-macro style
     /// extensions are non-self-contained by construction; otherwise use
-    /// the persisted verdict. Entering or leaving SelfContained moves
+    /// the persisted result. Entering or leaving SelfContained moves
     /// Project::context_epoch: the header's context listing merges hosts
     /// only then (ContextService::contexts). Only NeedsContext is ever persisted — a
     /// "self-contained" impression is session-local and re-evaluated when
     /// compile inputs change, so it can never go stale.
     HeaderMode header_mode(Fid path_id) const;
 
-    /// Drop an in-memory SelfContained verdict (never a persisted
+    /// Drop an in-memory SelfContained result (never a persisted
     /// NeedsContext) so the next compile re-runs the trial.
     void forget_self_contained(Fid path_id);
 
-    /// Record a header trial's verdict. NeedsContext carries the content
-    /// hash it was scored on so a stale verdict is dropped on cache load;
+    /// Record a header trial's result. NeedsContext carries the content
+    /// hash it was scored on so a stale result is dropped on cache load;
     /// scored with no disk observation (hash 0) it stays session-local.
     /// Marks the artifacts blob dirty when the persisted slice changes.
     void record_header_mode(Fid path_id, HeaderMode mode, std::uint64_t content_hash = 0);
 
-    /// Drop a header's verdict entirely (its content changed); the next
+    /// Drop a header's result entirely (its content changed); the next
     /// compile re-earns it. Marks the artifacts blob dirty when a
-    /// persisted verdict is dropped.
+    /// persisted result is dropped.
     void reset_header_mode(Fid path_id);
 
     /// Fill the validation slice of the artifacts blob (header-mode
-    /// verdicts, content-hash gated at load). @param intern_id maps a
+    /// results, content-hash gated at load). @param intern_id maps a
     /// runtime path id into the blob's path table; interning order is part
     /// of the on-disk format.
     void dump_mode_slices(std::vector<CacheModeEntry>& modes,
                           llvm::function_ref<std::uint32_t(Fid)> intern_id) const;
 
-    /// Restore header-mode verdicts. @param file_of maps a path table
+    /// Restore header-mode results. @param file_of maps a path table
     /// index back to the file it names (nullopt when the index is
     /// invalid).
     void load_mode_slices(llvm::ArrayRef<CacheModeEntry> modes,
@@ -140,16 +140,16 @@ public:
                                const CommandRequest& request = {});
 
 private:
-    /// A header's self-containment verdict. NeedsContext carries the
-    /// content hash it was scored on — persisted so a stale verdict is
+    /// A header's self-containment result. NeedsContext carries the
+    /// content hash it was scored on — persisted so a stale result is
     /// dropped on cache load; 0 means scored with no disk observation,
-    /// which keeps the verdict session-local.
+    /// which keeps the result session-local.
     struct HeaderResult {
         HeaderMode mode = HeaderMode::Unknown;
         std::uint64_t content_hash = 0;
     };
 
-    /// Self-containment verdicts for headers, persisted in the artifacts
+    /// Self-containment results for headers, persisted in the artifacts
     /// blob. Reset when a closed header or a file along its include chain
     /// changes on disk.
     llvm::DenseMap<Fid, HeaderResult> header_results;
@@ -175,9 +175,9 @@ private:
     /// What dump_mode_slices would emit for this file (0 = nothing) — the
     /// before/after probe record and reset compare to mark the artifacts
     /// blob dirty exactly when the persisted slice changes. A persisted
-    /// verdict must not outlive its in-memory drop: the header's own
+    /// result must not outlive its in-memory drop: the header's own
     /// content hash still matches on restart even though a dependency
-    /// change deliberately reset the verdict.
+    /// change deliberately reset the result.
     std::uint64_t persisted_mode_hash(Fid path_id) const;
 
     Project& project;

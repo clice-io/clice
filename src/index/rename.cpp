@@ -34,7 +34,7 @@ llvm::SmallVector<std::uint32_t, 1>
     return found;
 }
 
-/// Positions in one text, for the sites of tokens no row spans.
+/// Positions in one text, for the sites of tokens no relation spans.
 struct Lines {
     llvm::StringRef text;
     std::vector<std::uint32_t> starts;
@@ -112,7 +112,7 @@ std::vector<IndexQuery::Located> all_named(const IndexQuery& query, llvm::String
     }
 }
 
-/// The newest dialect of each language; read-only once built, so sweeps
+/// The newest dialect of each language; read-only once built, so scans
 /// on other threads may share them.
 const clang::LangOptions& cxx() {
     const static auto options = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
@@ -338,7 +338,7 @@ RenamePlan plan_rename(const IndexQuery& query,
         group.insert(member.symbol.hash);
     }
     // A deduction guide relates to nothing and has no definition to find
-    // it by: the sweep meets each one where it spells the template's name.
+    // it by: the scan meets each one where it spells the template's name.
     bool guided = class_like(root.kind) && has_flag(root.flags, SymbolFlags::Template);
     auto renames = [&](SymbolHash symbol, Fid file) {
         if(group.contains(symbol)) {
@@ -357,7 +357,7 @@ RenamePlan plan_rename(const IndexQuery& query,
         return other != batch.renamed.end() && other->second == new_name;
     };
 
-    // The text every row of a file indexes, and its positions.
+    // The text every entry of a file indexes, and its positions.
     struct Text {
         std::optional<std::string> text;
         std::optional<Lines> lines;
@@ -448,7 +448,7 @@ RenamePlan plan_rename(const IndexQuery& query,
                 }
                 auto offsets = spellings(*text.text, site.range.begin, site.range.end, old_name);
                 if(offsets.empty()) {
-                    // A row on punctuation (a construction's paren) spells
+                    // A relation on punctuation (a construction's paren) spells
                     // no name; one on another name is a macro's invocation.
                     auto written =
                         llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
@@ -482,7 +482,7 @@ RenamePlan plan_rename(const IndexQuery& query,
                             edit.site.path));
             continue;
         }
-        // The edits are offsets into the text the rows index; the sweep
+        // The edits are offsets into the text the index was built from; the scan
         // below compares only the files that still spell a name.
         auto* current = scope.read(path);
         if(!current || current->text != *text_of(file).text) {

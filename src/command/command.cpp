@@ -834,7 +834,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // intact, so reload_and_diff() reports no change instead of dropping
     // every file. A file truncated mid-array is NOT caught here (the
     // entries before the cut still swap in) — the CDB poll's two-tick
-    // settle debounce is what keeps half-written files from being read.
+    // debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
     loading = id;
     auto recording = llvm::make_scope_exit([&] { loading.reset(); });

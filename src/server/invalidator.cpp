@@ -37,7 +37,7 @@ static void dedup(llvm::SmallVector<Fid>& ids) {
 /// An invalidated dependent recompiles when its session invests in an
 /// AST, reindexes when closed — and does both for an index-only session
 /// (freshness clause 4): the buffer is the compile truth, but the serving
-/// rows are the shard's, and only a reindex refreshes those.
+/// index is the shard's, and only a reindex refreshes it.
 void Invalidator::mark_dependent(Fid path_id, DirtySet& dirty) {
     if(auto session = store.find(path_id)) {
         dirty.mark_ast_dirty.push_back(path_id);
@@ -89,12 +89,12 @@ void Invalidator::cascade_compile_graph(Fid path_id, DirtySet& dirty) {
 void Invalidator::provider_appeared(llvm::StringRef module_name, DirtySet& dirty) {
     // Every consumer whose scan met the name unresolved holds a durable
     // edge to its sentinel; the graph cascade is the complete list — no
-    // side bookkeeping, no reverse-map walk. Their rows lack the
+    // side bookkeeping, no reverse-map walk. Their shards lack the
     // module's symbols and their dep snapshots never named the
     // interface, so the content-hash gate would filter a DepsOnly
     // reindex — ContentChanged bypasses it. Nothing is dropped: a
-    // rebuild replaces the rows, and a unit that can no longer build keeps
-    // its last-known ones (queries withhold those of a deleted file).
+    // rebuild replaces the shards, and a unit that can no longer build keeps
+    // its last-known one (queries withhold a deleted file's).
     for(auto id: pcm.provider_appeared(module_name)) {
         if(PCMFamily::is_unresolved(id)) {
             continue;
@@ -143,7 +143,7 @@ void Invalidator::rescan_disk_state(Fid path_id, DirtySet& dirty) {
 }
 
 void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
-    // A header's verdict was scored on the bytes it compiled: the disk's
+    // A header's result was scored on the bytes it compiled: the disk's
     // while closed, its buffer while open — which a save of that buffer
     // leaves as they were, and a change from elsewhere does not.
     auto session = store.find(path_id);
@@ -200,16 +200,16 @@ void Invalidator::cascade_disk_content_change(Fid path_id, DirtySet& dirty) {
         dirty.drop_context.push_back(header_id);
         // The chain change may have made the header self-contained (e.g. a
         // dependency now provides the missing declarations); drop the
-        // persisted verdict so the trial can downgrade it.
+        // persisted result so the trial can downgrade it.
         dirty.reset_header_mode.push_back(header_id);
         auto session = store.find(header_id);
         if(session) {
             dirty.mark_ast_dirty.push_back(header_id);
         }
-        // Contexts outlive their sessions: a closed header's shard rows
-        // were indexed under the old chain and only a background reindex
-        // can refresh them. The header's own content did not change, so
-        // its rows keep serving meanwhile. An open index-only session is
+        // Contexts outlive their sessions: a closed header's shard
+        // was indexed under the old chain and only a background reindex
+        // can refresh it. The header's own content did not change, so
+        // its shard keeps serving meanwhile. An open index-only session is
         // in the same boat — its shard is what the LSP serves.
         if(!session || session->serving == ServingMode::IndexOnly) {
             dirty.add_reindex_deps_only(header_id);
@@ -260,7 +260,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // Any reindex reason recorded before the removal — e.g. a
                 // DiskChanged observed moments earlier — is dropped: there
                 // is nothing to reindex any more, and the file's shard stays
-                // behind (queries withhold the rows of a file seen missing).
+                // behind (queries withhold the shard of a file seen missing).
                 // Emitted after the compile-graph cascade, which lists the
                 // removed module itself among its dirtied units: the removal
                 // is this event's final word for the file itself.
@@ -270,7 +270,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 // are cleaned by ContextService::drop_orphaned_choices.
                 dirty.recheck_contexts = true;
                 dirty.reschedule_indexing = true;
-                // TODO: sweep orphaned shards of files that stay deleted.
+                // TODO: remove orphaned shards of files that stay deleted.
                 break;
             }
             case FileEvent::Kind::CDBChanged: {
@@ -326,7 +326,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                         // only: drop the TU's index so the queued reindex
                         // is not filtered out as fresh — in this session
                         // or after a restart. ContentChanged: a new
-                        // command can rewrite the rows (macros, includes)
+                        // command can rewrite the index (macros, includes)
                         // as thoroughly as an edit.
                         dirty.drop_index.push_back(path_id);
                         dirty.add_reindex_content_changed(path_id);
@@ -362,9 +362,9 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                     }
                     for(auto header_id: borrowers) {
                         dirty.drop_index.push_back(header_id);
-                        // An index-only session just lost its serving rows
+                        // An index-only session just lost its serving shard
                         // with the drop; only a reindex under the new
-                        // command brings them back. An open session that
+                        // command brings it back. An open session that
                         // compiles is reindexed when it closes.
                         auto session = store.find(header_id);
                         if(!session || session->serving == ServingMode::IndexOnly) {
@@ -382,8 +382,8 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
                 for(auto path_id: delta.removed) {
                     // The database that owned the entry reloaded fine and
                     // no longer lists the file: the build stopped
-                    // compiling it, so its rows leave the index — unless a
-                    // rule's default command still claims it, which makes
+                    // compiling it, so its shard leaves the index — unless a
+                    // rule's default command still covers it, which makes
                     // this a command change. (A database that vanishes
                     // keeps serving its entries — the tracker never
                     // reloads a missing file — so this is not the
@@ -401,7 +401,7 @@ DirtySet Invalidator::apply(llvm::ArrayRef<FileEvent> events) {
             case FileEvent::Kind::WorkerCrashed: {
                 // The worker's ASTs are gone; every document it owned must
                 // recompile. Compile inputs did not change, so trial state
-                // and self-containment verdicts stay untouched.
+                // and self-containment results stay untouched.
                 for(auto path_id: event.paths) {
                     dirty.mark_lost.push_back(path_id);
                 }

@@ -12,8 +12,8 @@ class IndexPump;
 
 /// The one project loading sequence, shared by the server's initialize
 /// and the batch driver so the two can never drift apart: load the
-/// project (load_project), claim its index load's report into the pump
-/// and seed the indexing sweep. See load_project for the flags.
+/// project (load_project), take its index load's report into the pump
+/// and seed the indexing pass. See load_project for the flags.
 ProjectLoad bootstrap_project(Project& project,
                               IndexStore& store,
                               IndexPump& pump,

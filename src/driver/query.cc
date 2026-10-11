@@ -112,7 +112,7 @@ struct Reply {
 
 /// Answer the question against the opened index; the argument checks are
 /// the commands' own. `failed` are the units a --fresh refresh could not
-/// index: their rows are as absent as a withheld file's. `dropped` are
+/// index: their shards are as absent as a withheld file's. `dropped` are
 /// the units the load found unservable.
 Reply answer(Project& project,
              EditorContext& contexts,

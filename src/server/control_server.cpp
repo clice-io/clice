@@ -33,7 +33,7 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
             co_await kota::fail(
                 kota::ipc::Error{"the running clice server has background indexing disabled"});
         }
-        // Build changes land through the tracker's poll; a request right
+        // Build changes arrive through the tracker's poll; a request right
         // after a compile_commands.json edit must see the new units.
         if(srv.tracker) {
             srv.project.file_table.disk.look_flags();
@@ -63,13 +63,13 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
             }
         }
         // The round persists at its end; the asker reads the disk, so its
-        // rows must be there before the answer.
+        // index must be there before the answer.
         co_await srv.sched.pump.persist();
         if(srv.sched.store.has_unsaved_state()) {
             co_await kota::fail(
                 kota::ipc::Error{"part of the index could not be persisted; see the server log"});
         }
-        // Not current after the sweep: the attempt failed, or the serving
+        // Not current after the pass: the attempt failed, or the serving
         // side vetoed it (an open buffer diverged from the disk) and the
         // shard still describes older bytes.
         for(auto file: files) {

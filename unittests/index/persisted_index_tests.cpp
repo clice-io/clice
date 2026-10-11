@@ -105,7 +105,7 @@ ZEST_CASE(ManifestFanoutRejected) {
 }
 
 ZEST_CASE(ManifestCountMismatchRejected) {
-    // A node count claiming more nodes than the payload holds must not
+    // A node count reporting more nodes than the payload holds must not
     // decode.
     ManifestBlobMirror mirror;
     mirror.format_version = index::index_format_version;
@@ -193,7 +193,7 @@ ZEST_CASE(GlobalRoundTripRemap) {
     ZASSERT(fresh.versions.size() == pool.versions.size());
     ZASSERT(loaded.global_generation == 9u);
 
-    // The blob pins the TU's manifest at the stamp it was saved under.
+    // The blob pins the TU's manifest at the generation it was saved under.
     auto tu_fv = fresh.version_ids.find(
         {*fresh.find(Spelling::absolute("/proj/tu.cpp")), std::uint64_t(0x1111)});
     ZASSERT(tu_fv != fresh.version_ids.end());
@@ -204,9 +204,9 @@ ZEST_CASE(GlobalRoundTripRemap) {
 }
 
 ZEST_CASE(GlobalRebaseKeepsChanges) {
-    // The rows a write serialized read from the landed blob afterwards,
-    // while rows changed across the write stay changed — and a write that
-    // never landed gives its rows back.
+    // The entries a write serialized read from the committed blob afterwards,
+    // while entries changed across the write stay changed — and a write that
+    // never committed gives its entries back.
     clice::FileTable pool;
     auto project = build_project(pool, "/proj/used.h", "/proj/tu.cpp");
     auto other = pool.intern(Spelling::absolute("/proj/other.h"));
@@ -228,7 +228,7 @@ ZEST_CASE(GlobalRebaseKeepsChanges) {
     ZASSERT(project.identity_of(43)->name == "late");
     ZASSERT(project.reference_count(42) == 2u);
 
-    // The base blob's path table is kept as it is, so a base row's bitmap
+    // The base blob's path table is kept as it is, so a base entry's bitmap
     // survives the next write byte for byte.
     std::string third;
     llvm::raw_string_ostream third_os(third);
@@ -266,7 +266,7 @@ ZEST_CASE(GlobalCollectsGarbage) {
 
 ZEST_CASE(GlobalVersionGate) {
     // Only the version slot is written: every other field reads back absent,
-    // which is structurally valid — the verdict must hinge on the value.
+    // which is structurally valid — the result must hinge on the value.
     struct VersionOnly {
         std::uint32_t format_version = 0;
     };
@@ -314,7 +314,7 @@ struct GlobalBlobMirror {
     std::uint64_t search_generation = 0;
     std::vector<std::uint64_t> search_pending;
 
-    /// Append a row; hashes must arrive ascending.
+    /// Append an entry; hashes must arrive ascending.
     void add_symbol(std::uint64_t hash,
                     llvm::StringRef name,
                     const std::vector<std::byte>& image,
@@ -545,8 +545,8 @@ ZEST_CASE(UncoveredFileIdRejected) {
 }
 
 ZEST_CASE(GlobalDuplicateSymbolRejected) {
-    // Rows are looked up by binary search over the hash column, so it
-    // must ascend strictly; a repeated hash would let one row shadow the
+    // Entries are looked up by binary search over the hash column, so it
+    // must ascend strictly; a repeated hash would let one entry shadow the
     // other's identity and reference bitmap while every manifest still
     // loads as fresh.
     clice::Bitmap bits;

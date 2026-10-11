@@ -69,7 +69,7 @@ bool is_no_range(std::uint32_t begin, std::uint32_t end) {
     return LocalSourceRange{begin, end} == LocalSourceRange{};
 }
 
-/// The symbol-id column of one row table in whichever width the blob
+/// The symbol-id column of one entry table in whichever width the blob
 /// stores; validation proves exactly one width is present.
 struct SymIds {
     llvm::ArrayRef<std::uint8_t> ids8;
@@ -93,9 +93,9 @@ struct SymIds {
 
 }  // namespace
 
-/// One side of the blob's row storage as contiguous column refs,
-/// tier-agnostic: the range accessors read whichever range tier the blob
-/// stores, the mask columns whichever mask tier.
+/// One side of the blob's entry storage as contiguous column refs,
+/// encoding-agnostic: the range accessors read whichever range encoding the
+/// blob stores, the mask columns whichever mask encoding.
 struct RangeColumnsView {
     llvm::ArrayRef<std::uint32_t> packed;
     llvm::ArrayRef<std::uint32_t> begins;
@@ -122,10 +122,11 @@ struct RangeColumnsView {
         if(!packed.empty() && packed[entry] == packed_sentinel) {
             return ~std::uint32_t(0);
         }
-        auto length = packed.empty() ? lengths[entry] : static_cast<std::uint8_t>(packed[entry] & 0xff);
+        auto length =
+            packed.empty() ? lengths[entry] : static_cast<std::uint8_t>(packed[entry] & 0xff);
         if(length == length_escape) {
             // validate() proves every sentinel owns exactly one escape
-            // entry, so the search always lands.
+            // entry, so the search always finds it.
             auto it = std::ranges::lower_bound(long_entries, entry);
             return long_ends[it - long_entries.begin()];
         }
@@ -146,7 +147,7 @@ struct RangeColumnsView {
 
 /// The live mask against one side's mask columns, resolved once per query.
 struct LiveFilter {
-    /// Fast path: every stored variant is live, no per-row filtering.
+    /// Fast path: every stored variant is live, no per-entry filtering.
     bool all;
     MaskEncoding encoding;
     std::uint64_t bits;
@@ -194,7 +195,7 @@ RangeColumnsView columns_of(kota::codec::fbs::table_view<RangeColumns> view) {
     };
 }
 
-/// The occurrence table: each row's range and the symbol it names.
+/// The occurrence table: each occurrence's range and the symbol it names.
 struct OccurrenceTable {
     RangeColumnsView columns;
     SymIds syms;
@@ -219,10 +220,10 @@ struct OccurrenceTable {
     }
 };
 
-/// The relation table: rows grouped per symbol, each with its kind, range
-/// and payload. Payloads live in two sparse tables — decl/def rows carry a
-/// definition range, symbol-pair rows the target's id — walked by a cursor
-/// in row order.
+/// The relation table: relations grouped per symbol, each with its kind,
+/// range and payload. Payloads live in two sparse tables — decl/def
+/// relations carry a definition range, symbol-pair relations the target's
+/// id — walked by a cursor in stored order.
 struct RelationTable {
     RangeColumnsView columns;
     llvm::ArrayRef<std::uint8_t> kinds;
@@ -232,7 +233,7 @@ struct RelationTable {
     llvm::ArrayRef<std::uint32_t> def_begins;
     llvm::ArrayRef<std::uint32_t> def_ends;
     llvm::ArrayRef<std::uint64_t> sym_hashes;
-    /// Entry i's rows occupy [offsets[i], offsets[i + 1]).
+    /// Entry i's relations occupy [offsets[i], offsets[i + 1]).
     llvm::ArrayRef<std::uint32_t> offsets;
 
     static RelationTable of(BlobView root) {
@@ -260,7 +261,7 @@ struct RelationTable {
     }
 
     /// Positions in the two payload tables; decode() advances them, so
-    /// rows must be visited in ascending order from where the cursor was
+    /// relations must be visited in ascending order from where the cursor was
     /// seeked.
     struct Cursor {
         std::size_t sym = 0;
@@ -269,8 +270,10 @@ struct RelationTable {
 
     Cursor cursor_at(std::uint32_t entry) const {
         return {
-            static_cast<std::size_t>(std::ranges::lower_bound(sym_entries, entry) - sym_entries.begin()),
-            static_cast<std::size_t>(std::ranges::lower_bound(def_entries, entry) - def_entries.begin()),
+            static_cast<std::size_t>(std::ranges::lower_bound(sym_entries, entry) -
+                                     sym_entries.begin()),
+            static_cast<std::size_t>(std::ranges::lower_bound(def_entries, entry) -
+                                     def_entries.begin()),
         };
     }
 
@@ -347,7 +350,7 @@ struct LocalTable {
     }
 };
 
-/// The escape table must pair one-to-one, in row order, with the sentinel
+/// The escape table must pair one-to-one, in column order, with the sentinel
 /// lengths: readers trust the pairing, and a sentinel missing its entry
 /// (or a stray entry masking one elsewhere) can pass every range bound
 /// while serving a wrong value forever.
@@ -382,14 +385,14 @@ llvm::SmallVector<std::uint8_t> packed_lengths(llvm::ArrayRef<std::uint32_t> pac
     return lengths;
 }
 
-/// A sparse row table: one value per listed row, rows strictly ascending
-/// and inside the row count.
+/// A sparse entry table: one value per listed entry, entries strictly
+/// ascending and inside the entry count.
 bool sparse_ok(llvm::ArrayRef<std::uint32_t> entries, std::size_t values, std::size_t count) {
     return entries.size() == values && std::ranges::is_sorted(entries, std::less_equal{}) &&
            (entries.empty() || entries.back() < count);
 }
 
-/// Exactly one id width, chosen by the symbol table's size, one id per row
+/// Exactly one id width, chosen by the symbol table's size, one id per entry
 /// and every id inside the table.
 CheckResult sym_ids_ok(const SymIds& ids, std::size_t count, std::size_t table_size) {
     if(ids.size() != count) {
@@ -411,9 +414,9 @@ CheckResult sym_ids_ok(const SymIds& ids, std::size_t count, std::size_t table_s
 }
 
 // A variant is identified by its hash everywhere (set_live, the merge
-// keep filter), so stored hashes must be unique: rows owned only by a
-// duplicated entry would serve and survive compaction with no
-// contribution owning them.
+// keep filter), so stored hashes must be unique: occurrences and
+// relations owned only by a duplicated entry would serve and survive
+// compaction with no contribution owning them.
 CheckResult variants_ok(BlobView root) {
     auto variants = to_array_ref(root[&ShardBlob::variants]);
     llvm::SmallVector<VariantHash> sorted(variants.begin(), variants.end());
@@ -432,7 +435,7 @@ CheckResult content_ok(BlobView root) {
     // Every freshness decision compares the advertised content hash
     // (manifest FileVersions, the merge's generation checks), so content
     // bytes corrupted under an intact structure would keep loading as
-    // fresh while position mapping reads text the rows were not built
+    // fresh while position mapping reads text the shard was not built
     // from.
     if(content.size() != root[&ShardBlob::content_size] ||
        llvm::xxh3_64bits(content) != root[&ShardBlob::content_hash]) {
@@ -456,8 +459,7 @@ CheckResult line_table_ok(BlobView root) {
     auto line_lengths = to_array_ref(root[&ShardBlob::line_lengths]);
     auto long_lines = to_array_ref(root[&ShardBlob::long_lines]);
     auto long_line_lengths = to_array_ref(root[&ShardBlob::long_line_lengths]);
-    if(line_lengths.empty() ||
-       !escapes_ok(line_lengths, long_lines, long_line_lengths.size()) ||
+    if(line_lengths.empty() || !escapes_ok(line_lengths, long_lines, long_line_lengths.size()) ||
        !std::ranges::is_sorted(long_lines, std::less_equal{})) {
         return std::unexpected("line table does not pair with its escape table");
     }
@@ -521,7 +523,7 @@ CheckResult symbol_table_ok(BlobView root) {
     return {};
 }
 
-// Exactly one range tier, chosen by the content size, with its escape
+// Exactly one range encoding, chosen by the content size, with its escape
 // table paired on both sides.
 CheckResult range_encodings_ok(BlobView root) {
     auto content_size = root[&ShardBlob::content_size];
@@ -547,13 +549,13 @@ CheckResult range_encodings_ok(BlobView root) {
 }
 
 // lookup(offset) binary-searches the decoded end column and stops its
-// containment walk on begin order; rows out of either order (a corrupt
+// containment walk on begin order; occurrences out of either order (a corrupt
 // escaped end included) would silently miss or misresolve occurrences on
 // every query, forever — reject the blob so it is rebuilt instead. Ends
 // are bounded by the content size too: every decoded range is served as
 // a source range into the content.
-// The merge also two-way merges rows under the full (begin, end, sym)
-// key with equal-key rows combined at write time, so equal ranges must
+// The merge also two-way merges occurrences under the full (begin, end, sym)
+// key with equal-key occurrences combined at write time, so equal ranges must
 // carry strictly ascending symbols — sym_hashes is strictly sorted, so
 // id order stands in for hash order.
 CheckResult occurrences_ok(BlobView root) {
@@ -625,10 +627,10 @@ CheckResult relations_ok(BlobView root) {
         }
     }
 
-    // The writer splits payloads by kind — decl/def rows carry a
+    // The writer splits payloads by kind — decl/def relations carry a
     // definition range, every other payload names a target symbol — and
-    // the readers decode whichever sparse table holds the row without
-    // consulting its kind. A row in the wrong table would serve one
+    // the readers decode whichever sparse table holds the relation without
+    // consulting its kind. A relation in the wrong table would serve one
     // payload's bit pattern as the other (a source range as a symbol
     // hash, or vice versa), so enforce the partition, which also keeps
     // the tables disjoint.
@@ -643,10 +645,10 @@ CheckResult relations_ok(BlobView root) {
         }
     }
 
-    // Rows of one relation group two-way merge under the full (kind,
-    // begin, end, payload) key with equal-key rows combined at write time,
+    // Entries of one relation group two-way merge under the full (kind,
+    // begin, end, payload) key with equal-key entries combined at write time,
     // so the key must ascend strictly within each group — out-of-order or
-    // repeated rows would mis-merge silently instead of being rejected.
+    // repeated entries would mis-merge silently instead of being rejected.
     RelationTable::Cursor cursor;
     for(std::size_t id = 0; id < table.sym_hashes.size(); id += 1) {
         std::tuple<std::uint8_t, std::uint32_t, std::uint32_t, std::uint64_t> prev{};
@@ -683,8 +685,8 @@ CheckResult locals_ok(BlobView root) {
     return {};
 }
 
-// Beyond the per-tier column shape, every mask must own at least one
-// stored variant and no bits past the variant table: an ownerless row
+// Beyond the per-encoding column shape, every mask must own at least one
+// stored variant and no bits past the variant table: an ownerless entry
 // serves unconditionally while every stored variant is live (the
 // LiveFilter fast path skips the mask), vanishes once any variant dies,
 // and the next compaction erases it for real — every manifest still
@@ -737,7 +739,7 @@ CheckResult masks_ok(BlobView root) {
                     return std::unexpected("mask tier is not the canonical one");
                 }
                 // A slice failing decode would read as an empty mask — the
-                // ownerless-row corruption above in another coat. Prove
+                // ownerless-entry corruption above in another coat. Prove
                 // each slice decodes once here so queries stay check-free
                 // and the blob rebuilds instead.
                 for(std::uint32_t entry = 0; entry < count; entry += 1) {
@@ -760,7 +762,7 @@ CheckResult masks_ok(BlobView root) {
 /// readers dereference through raw column pointers or binary-search must be
 /// proven in-bounds and in order here, once, so queries stay check-free.
 /// The checks are also canonicality checks: every self-describing choice
-/// (range tier, symbol-id width, content omission, mask tier) is a strict
+/// (range encoding, symbol-id width, content omission, mask encoding) is a strict
 /// function of the data, so one logical blob has exactly one encoding and
 /// its byte hash is a usable identity. Later checks decode through columns
 /// earlier ones bounded, so the order matters.
@@ -926,8 +928,8 @@ void Shard::lookup(std::uint32_t offset,
     auto table = OccurrenceTable::of(root_of(*buffer));
     auto is_live = live_filter(table.columns);
 
-    // Binary search the first row whose end reaches the offset, then walk
-    // while rows contain it. Occurrence ranges are name-token spans,
+    // Binary search the first occurrence whose end reaches the offset, then walk
+    // while occurrences contain it. Occurrence ranges are name-token spans,
     // pairwise disjoint or identical, so under (begin, end) order the end
     // column is monotonic too.
     auto entries = std::views::iota(std::uint32_t(0), static_cast<std::uint32_t>(table.size()));
@@ -936,8 +938,8 @@ void Shard::lookup(std::uint32_t offset,
     });
 
     // A cursor between two tokens belongs to the one starting at it, so
-    // rows the offset only touches at their right edge yield after every
-    // row it is properly inside — `a+b` with the cursor before `b` must
+    // occurrences the offset only touches at their right edge yield after every
+    // occurrence it is properly inside — `a+b` with the cursor before `b` must
     // resolve to `b`, not `+`, while a cursor right after a lone token
     // still hits that token.
     llvm::SmallVector<std::uint32_t, 2> edge_entries;
@@ -967,13 +969,13 @@ void Shard::lookup(std::uint32_t offset,
 
 namespace {
 
-/// Visit the relation rows [begin_row, end_row) that pass `is_live`;
+/// Visit the relations [begin_entry, end_entry) that pass `is_live`;
 /// false when the callback stopped the walk.
 bool visit_relation_entries(const RelationTable& table,
-                         std::uint32_t begin_entry,
-                         std::uint32_t end_entry,
-                         const LiveFilter& is_live,
-                         llvm::function_ref<bool(const Relation&)> callback) {
+                            std::uint32_t begin_entry,
+                            std::uint32_t end_entry,
+                            const LiveFilter& is_live,
+                            llvm::function_ref<bool(const Relation&)> callback) {
     auto cursor = table.cursor_at(begin_entry);
     for(auto entry = begin_entry; entry < end_entry; entry += 1) {
         auto relation = table.decode(entry, cursor);
@@ -999,15 +1001,15 @@ void Shard::lookup(SymbolHash symbol,
     }
     auto id = static_cast<std::uint32_t>(it - table.sym_hashes.begin());
     visit_relation_entries(table,
-                        table.offsets[id],
-                        table.offsets[id + 1],
-                        live_filter(table.columns),
-                        [&](const Relation& relation) {
-                            if(!(RelationKind(relation.kind) & kind)) {
-                                return true;
-                            }
-                            return callback(relation);
-                        });
+                           table.offsets[id],
+                           table.offsets[id + 1],
+                           live_filter(table.columns),
+                           [&](const Relation& relation) {
+                               if(!(RelationKind(relation.kind) & kind)) {
+                                   return true;
+                               }
+                               return callback(relation);
+                           });
 }
 
 void Shard::for_each_occurrence(llvm::function_ref<bool(const Occurrence&)> callback) const {
@@ -1032,12 +1034,12 @@ void
     auto is_live = live_filter(table.columns);
     for(std::uint32_t id = 0; id < table.sym_hashes.size(); id += 1) {
         auto hash = table.sym_hashes[id];
-        bool completed =
-            visit_relation_entries(table,
-                                table.offsets[id],
-                                table.offsets[id + 1],
-                                is_live,
-                                [&](const Relation& relation) { return callback(hash, relation); });
+        bool completed = visit_relation_entries(
+            table,
+            table.offsets[id],
+            table.offsets[id + 1],
+            is_live,
+            [&](const Relation& relation) { return callback(hash, relation); });
         if(!completed) {
             return;
         }
@@ -1113,8 +1115,8 @@ PositionMap Shard::positions() const {
 
 namespace {
 
-/// Working rows during a write: the row as the readers hand it out plus
-/// its variant mask. Masks stay wide; the tier is chosen at emit time from
+/// Working entries during a write: the entry as the readers hand it out plus
+/// its variant mask. Masks stay wide; the encoding is chosen at emit time from
 /// the final variant count.
 template <typename MaskT>
 struct OccurrenceEntry {
@@ -1128,14 +1130,14 @@ struct RelationEntry {
     MaskT mask;
 };
 
-/// One symbol's relation rows, sorted by (kind, begin, end, payload).
+/// One symbol's relation entries, sorted by (kind, begin, end, payload).
 template <typename MaskT>
 struct RelGroup {
     SymbolHash symbol;
     std::vector<RelationEntry<MaskT>> entries;
 };
 
-/// Everything a write accumulates before choosing column tiers.
+/// Everything a write accumulates before choosing column encodings.
 template <typename MaskT>
 struct MergedEntries {
     std::vector<OccurrenceEntry<MaskT>> occurrences;
@@ -1144,10 +1146,12 @@ struct MergedEntries {
 };
 
 constexpr auto occ_key = [](const auto& entry) {
-    return std::tuple(entry.occurrence.range.begin, entry.occurrence.range.end, entry.occurrence.target);
+    return std::tuple(entry.occurrence.range.begin,
+                      entry.occurrence.range.end,
+                      entry.occurrence.target);
 };
 
-/// The kind as the column stores it: the wire order the readers rely on.
+/// The kind as the column stores it: the serialized order the readers rely on.
 constexpr auto rel_key = [](const auto& entry) {
     return std::tuple(static_cast<std::uint8_t>(entry.relation.kind),
                       entry.relation.range.begin,
@@ -1179,8 +1183,8 @@ bool mask_empty(const MaskT& mask) {
     }
 }
 
-/// The old blob's mask of one row, remapped through old-id -> new-id (a
-/// dropped variant's bit vanishes; an all-dropped row reads as empty and
+/// The old blob's mask of one entry, remapped through old-id -> new-id (a
+/// dropped variant's bit vanishes; an all-dropped entry reads as empty and
 /// is skipped by the caller).
 template <typename MaskT>
 MaskT remap_mask(MaskEncoding encoding,
@@ -1222,8 +1226,8 @@ MaskT remap_mask(MaskEncoding encoding,
     return result;
 }
 
-/// Two-way merge of runs sorted under `key`; rows with equal keys are one
-/// row and OR their masks — the cross-variant dedup.
+/// Two-way merge of runs sorted under `key`; entries with equal keys are
+/// one entry and OR their masks — the cross-variant dedup.
 template <typename Entry, typename Key>
 void merge_sorted(std::vector<Entry> old_entries,
                   std::vector<Entry> fresh_entries,
@@ -1248,7 +1252,7 @@ void merge_sorted(std::vector<Entry> old_entries,
     }
 }
 
-/// Combine adjacent equal-key rows of a sorted run into one row with
+/// Combine adjacent equal-key entries of a sorted run into one entry with
 /// OR-ed masks.
 template <typename Entry, typename Key>
 void combine_equal(std::vector<Entry>& entries, Key key) {
@@ -1266,14 +1270,14 @@ void combine_equal(std::vector<Entry>& entries, Key key) {
     entries.resize(out);
 }
 
-/// Sort a run and combine its equal-key rows.
+/// Sort a run and combine its equal-key entries.
 template <typename Entry, typename Key>
 void canonicalize(std::vector<Entry>& entries, Key key) {
     std::ranges::sort(entries, {}, key);
     combine_equal(entries, key);
 }
 
-/// The symbol table a set of merged rows requires: occurrence targets,
+/// The symbol table a set of merged entries requires: occurrence targets,
 /// relation group keys, and symbol payloads.
 template <typename MaskT>
 llvm::DenseSet<SymbolHash> referenced_symbols(const MergedEntries<MaskT>& merged) {
@@ -1293,10 +1297,11 @@ llvm::DenseSet<SymbolHash> referenced_symbols(const MergedEntries<MaskT>& merged
     return referenced;
 }
 
-/// Decode a blob's occurrence rows into working form; `mask_of` returns
-/// the row's mask in the output id space (empty drops the row).
+/// Decode a blob's occurrences into working form; `mask_of` returns the
+/// occurrence's mask in the output id space (empty drops the occurrence).
 template <typename MaskT, typename MaskOf>
-std::vector<OccurrenceEntry<MaskT>> decode_occurrences(const OccurrenceTable& table, MaskOf mask_of) {
+std::vector<OccurrenceEntry<MaskT>> decode_occurrences(const OccurrenceTable& table,
+                                                       MaskOf mask_of) {
     std::vector<OccurrenceEntry<MaskT>> entries;
     entries.reserve(table.size());
     for(std::uint32_t entry = 0; entry < table.size(); entry += 1) {
@@ -1312,9 +1317,9 @@ std::vector<OccurrenceEntry<MaskT>> decode_occurrences(const OccurrenceTable& ta
 /// Decode one symbol's relation slice of a blob into working form.
 template <typename MaskT, typename MaskOf>
 std::vector<RelationEntry<MaskT>> decode_relation_group(const RelationTable& table,
-                                                 std::uint32_t begin_entry,
-                                                 std::uint32_t end_entry,
-                                                 MaskOf mask_of) {
+                                                        std::uint32_t begin_entry,
+                                                        std::uint32_t end_entry,
+                                                        MaskOf mask_of) {
     std::vector<RelationEntry<MaskT>> entries;
     entries.reserve(end_entry - begin_entry);
     auto cursor = table.cursor_at(begin_entry);
@@ -1425,7 +1430,7 @@ LocalSymbol own(const SymbolIdentity& identity) {
     };
 }
 
-/// Collect one blob's local symbols; symbols the merged rows no longer
+/// Collect one blob's local symbols; symbols the merged entries no longer
 /// reference are filtered at emit time.
 void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, LocalSymbol>& locals) {
     auto table = LocalTable::of(root);
@@ -1440,8 +1445,8 @@ void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, LocalSymbol>& loca
     }
 }
 
-/// Appends one side's rows in the tiers chosen for the whole blob: the
-/// range tier by content size, the mask tier by variant count.
+/// Appends one side's entries in the encodings chosen for the whole blob:
+/// the range encoding by content size, the mask encoding by variant count.
 struct SideWriter {
     RangeColumns& side;
     bool narrow;
@@ -1455,7 +1460,7 @@ struct SideWriter {
         count += 1;
     }
 
-    /// The roaring tier's offset column ends with the size of the slices.
+    /// The roaring encoding's offset column ends with the size of the slices.
     void finish() {
         if(encoding == MaskEncoding::Roaring) {
             side.roaring_offsets.push_back(static_cast<std::uint32_t>(side.roaring.size()));
@@ -1544,9 +1549,9 @@ struct SymIdWriter {
     }
 };
 
-/// Encode merged rows, locals and content into canonical blob bytes. The
+/// Encode merged entries, locals and content into canonical blob bytes. The
 /// only entry point that writes a ShardBlob: every self-describing choice
-/// (range tier, id width, mask tier, content omission) is made here, from
+/// (range encoding, id width, mask encoding, content omission) is made here, from
 /// the data, so equal inputs produce equal bytes.
 template <typename MaskT>
 void emit_blob(const MergedEntries<MaskT>& merged,
@@ -1649,15 +1654,15 @@ void merge_shards_impl(BlobView old_root,
                        llvm::raw_ostream& os) {
     MergedEntries<MaskT> merged;
 
-    // Occurrences: concatenate every fresh blob's rows (each stamped with
-    // its new bit), sort, combine equal rows, then merge with the old
-    // rows. Fresh runs are individually sorted already; one sort over the
+    // Occurrences: concatenate every fresh blob's entries (each marked with
+    // its new bit), sort, combine equal entries, then merge with the old
+    // entries. Fresh runs are individually sorted already; one sort over the
     // concatenation keeps the merge two-way.
     std::vector<OccurrenceEntry<MaskT>> fresh_occs;
     for(std::uint32_t i = 0; i < fresh.size(); i += 1) {
         auto bit = single_bit<MaskT>(fresh_base + i);
         auto entries = decode_occurrences<MaskT>(OccurrenceTable::of(view_of(fresh[i].bytes())),
-                                              [&](std::uint32_t) { return bit; });
+                                                 [&](std::uint32_t) { return bit; });
         fresh_occs.insert(fresh_occs.end(),
                           std::make_move_iterator(entries.begin()),
                           std::make_move_iterator(entries.end()));
@@ -1682,9 +1687,9 @@ void merge_shards_impl(BlobView old_root,
         auto bit = single_bit<MaskT>(fresh_base + i);
         for(auto& group: relation_groups(table)) {
             auto entries = decode_relation_group<MaskT>(table,
-                                                     group.begin_entry,
-                                                     group.end_entry,
-                                                     [&](std::uint32_t) { return bit; });
+                                                        group.begin_entry,
+                                                        group.end_entry,
+                                                        [&](std::uint32_t) { return bit; });
             auto& into = fresh_group_map[group.hash];
             into.insert(into.end(),
                         std::make_move_iterator(entries.begin()),
@@ -1760,7 +1765,7 @@ void write_shard(const FileIndex& file_index,
                  llvm::function_ref<std::optional<SymbolIdentity>(SymbolHash)> symbols,
                  llvm::StringRef content,
                  llvm::raw_ostream& os) {
-    // Canonicalize straight from the in-memory rows: sorted, deduplicated.
+    // Canonicalize straight from the in-memory entries: sorted, deduplicated.
     // MaskT is irrelevant for a single variant (no mask columns) — use the
     // cheap one.
     MergedEntries<std::uint64_t> merged;
@@ -1829,7 +1834,7 @@ void merge_shards(const Shard& old,
 
     // Content and line table travel verbatim from any input — all inputs
     // share one content generation. Offsets from different generations
-    // must never share row storage, hence the assert.
+    // must never share entry storage, hence the assert.
     ContentInfo content = old_root.valid() ? content_info_of(old_root)
                                            : content_info_of(view_of(fresh.front().bytes()));
     for([[maybe_unused]] auto& shard: fresh) {

@@ -15,7 +15,7 @@ namespace {
 
 ZEST_SUITE(index_projection, Tester) {
 
-/// The compiled unit's envelope and the main file's rows, extracted the
+/// The compiled unit's TU index and the main file's entries, extracted the
 /// way the router's index slice does it in production.
 index::TUIndex tu;
 std::string bytes;
@@ -265,7 +265,7 @@ int compute() {
 
 ZEST_CASE(FoldsMatchAstShape) {
     // A brace below its declaration's head folds from the head, a block
-    // folds as its declaration's kind, and braces several rows share (the
+    // folds as its declaration's kind, and braces several decls share (the
     // struct's and the alias's) fold once — as the AST folds them.
     add_main("main.cpp", R"cpp(
 struct Allman
@@ -369,7 +369,7 @@ void g() {
 }
 
 ZEST_CASE(CollapsedDeclsBecomeSiblings) {
-    std::vector<feature::IndexDecl> decls = {
+    std::vector<feature::IndexDecl> input = {
         {.range = {8, 9},   .extent = {0, 100}, .symbol = 1, .definition = true},
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 2, .definition = true},
         {.range = {20, 25}, .extent = {20, 50}, .symbol = 3, .definition = true},
@@ -386,7 +386,7 @@ ZEST_CASE(CollapsedDeclsBecomeSiblings) {
         }
     };
 
-    auto symbols = feature::index_document_symbols(decls, resolve_synthetic);
+    auto symbols = feature::index_document_symbols(input, resolve_synthetic);
     ZASSERT(symbols.size() == std::size_t(1));
     ZASSERT(symbols[0].name == "outer<int>");
     ZASSERT(symbols[0].children.size() == std::size_t(2));
@@ -450,9 +450,9 @@ ZEST_CASE(ModuleNameComponents) {
 }
 
 ZEST_CASE(CDialectKeywords) {
-    // `class` is a valid C identifier: rows built by C parses must lex
+    // `class` is a valid C identifier: entries built by C parses must lex
     // under the C keyword table, or the C++ table would take `class` as
-    // a keyword and shadow the row's kind.
+    // a keyword and shadow the entry's kind.
     llvm::StringRef content = "int class;\n";
     std::vector<feature::IndexDecl> entries = {
         {.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true},
@@ -514,9 +514,9 @@ ZEST_CASE(ModuleKeywordsNeedModules) {
 }
 
 ZEST_CASE(StandardFromCommand) {
-    // `concept` is a plain identifier in C++17: rows built under an older
+    // `concept` is a plain identifier in C++17: entries built under an older
     // -std must lex with that standard's keyword table, or a newer
-    // table would take `concept` as a keyword and shadow the row.
+    // table would take `concept` as a keyword and shadow the entry.
     llvm::StringRef content = "int concept;\n";
     std::vector<feature::IndexDecl> entries = {
         {.range = {4, 11}, .extent = {0, 12}, .symbol = 1, .definition = true},
@@ -543,7 +543,7 @@ ZEST_CASE(StandardFromCommand) {
     ZASSERT(cxx20_tokens.size() == std::size_t(2));
     ZASSERT(cxx20_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Keyword).value_of());
 
-    // No -std in the command means the rows were indexed under the
+    // No -std in the command means the entries were indexed under the
     // driver's default dialect (C++17 today); the fallback matches it.
     auto default_tokens =
         feature::index_semantic_tokens(content,

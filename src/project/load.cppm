@@ -46,7 +46,7 @@ struct ProjectLoad {
     bool opened_store = false;
 
     /// The build's translation units as load_build enumerated them: the
-    /// indexing sweep's work list, so no driver walks the tree a second
+    /// indexing pass's work list, so no driver walks the tree a second
     /// time.
     std::vector<Fid> members;
 
@@ -64,7 +64,7 @@ struct ProjectLoad {
 /// instead).
 ///
 /// `read_only_index` loads the persisted index without queueing any
-/// reconciliation or sweep writes, so a later save commits nothing — for
+/// reconciliation or removal writes, so a later save commits nothing — for
 /// runs whose product must not touch the index (plain `clice lint`).
 ///
 /// `scan_tree` makes discovery search the whole tree once

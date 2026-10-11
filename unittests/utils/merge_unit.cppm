@@ -32,7 +32,7 @@ inline void merge_unit(Project& project, CompilationUnit& unit, Fid& main) {
     main = file_ids_map[view.path_count() - 1];
 
     // The consumed-content hash per TU-local path: the section's own
-    // record where rows exist, the wire's hash otherwise — mirroring the
+    // record where entries exist, the TU index's hash otherwise — mirroring the
     // indexer, so FileVersions match the shard generations they pin.
     llvm::SmallVector<std::uint64_t> consumed(view.path_count(), 0);
     for(std::uint32_t section = 0; section < view.section_count(); section += 1) {

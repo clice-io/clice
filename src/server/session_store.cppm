@@ -12,7 +12,7 @@ namespace clice {
 namespace protocol = kota::ipc::protocol;
 
 /// The table of open documents plus the buffer-synchronization logic: the
-/// single owner of editor buffer truth. Every didOpen/didChange edit lands
+/// single owner of editor buffer truth. Every didOpen/didChange edit arrives
 /// here, and every reader of an open file's text goes through the sessions
 /// this store hands out.
 ///

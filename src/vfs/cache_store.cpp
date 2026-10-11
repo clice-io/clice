@@ -30,8 +30,8 @@ namespace {
 /// Manifest checkpoint is forced after this many commits/invalidates.
 constexpr std::uint32_t checkpoint_interval = 16;
 
-/// Root-level lock file serializing open()'s version sweep against layout
-/// startup; lives beside the version directories, exempt from the sweep.
+/// Root-level lock file serializing open()'s version removal against layout
+/// startup; lives beside the version directories, exempt from the removal.
 constexpr llvm::StringLiteral store_lock_name = "store.lock";
 
 /// JSON layout of manifest.json.  Only an acceleration structure: blob
@@ -167,7 +167,7 @@ struct CacheStore::State {
         llvm::StringMap<Entry> entries;
         std::uint64_t total_size = 0;
         /// Keys a commit is publishing outside the lock: whatever lies at
-        /// their final paths is the commit's until it lands.
+        /// their final paths is the commit's until it finishes.
         llvm::StringSet<> publishing;
     };
 
@@ -194,10 +194,10 @@ struct CacheStore::State {
     bool dirty = false;
 
     /// Inspection mode (open's read_only): no directory is created or
-    /// swept, and writes are a caller bug.
+    /// removed, and writes are a caller bug.
     bool read_only = false;
 
-    /// Logical clock: strictly increasing per issued stamp so that LRU
+    /// Logical clock: strictly increasing per issued generation so that LRU
     /// ordering is deterministic even within one millisecond.
     std::int64_t last_generation = 0;
 
@@ -220,7 +220,7 @@ struct CacheStore::State {
     /// The accounting is zeroed even when the delete fails (file open on
     /// Windows) — lookup_aux must stop serving the stale blob immediately;
     /// the leftover file is overwritten by the following aux commit or
-    /// swept when the entry is eventually evicted.
+    /// removed when the entry is eventually evicted.
     void reset_aux_locked(Namespace& ns, llvm::StringRef key, Entry& entry) {
         if(ns.config.aux_extension.empty() || entry.aux_size == 0) {
             return;
@@ -272,14 +272,14 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     }
 
     // Only the parent may exist before the lock is held: it hosts the lock
-    // file and is never swept.
+    // file and is never removed.
     if(auto ec = vfs::create_directories(parent)) {
         return std::unexpected(ec);
     }
 
     // The pid marker created below is what shields a layout from another
-    // version's sweep, but it only exists at the end of this function: a
-    // sweeper scanning between our create_directories and the marker would
+    // version's removal pass, but it only exists at the end of this function: a
+    // pass scanning between our create_directories and the marker would
     // reclaim the layout we are initializing. This root-level lock covers
     // exactly that window — every writable open holds it from before its
     // version directory exists until its marker does. Best effort: on a
@@ -349,7 +349,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     }
 
     // The only crash residue are in-flight tmp files; committed blobs are
-    // complete by construction (atomic rename).  Sweep tmp directories of
+    // complete by construction (atomic rename).  Remove tmp directories of
     // instances that no longer exist.
     auto tmp_parent = path::join(state->base, "tmp");
     remove_dead_pid_dirs(tmp_parent, state->self_pid);
@@ -371,7 +371,7 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
     // must stay visible. CACHEDIR.TAG (the standard marker backup and
     // scanning tools skip) sits at the root too: it must cover generated
     // content outside the store (logs), and
-    // root-level files are safe from open()'s layout sweep, which only
+    // root-level files are safe from open()'s layout removal, which only
     // scans cache/. The known cost is that CACHEDIR-aware backups also
     // skip a config.toml kept here — git, which sees it, is the intended
     // preservation channel.

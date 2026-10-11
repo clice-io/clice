@@ -55,7 +55,7 @@ bool read_starts_with_bom(llvm::StringRef path) {
 }
 
 /// Whether the file a stamp describes starts with the mark, peeked once
-/// per stamp: adding or removing the mark changes the size, so a verdict
+/// per stamp: adding or removing the mark changes the size, so a result
 /// holds as long as clang's own size-and-mtime check of what it read.
 bool starts_with_bom(const Stamp& stamp, llvm::StringRef path) {
     using Key = std::tuple<std::uint64_t, std::uint64_t, std::uint64_t, std::int64_t, std::int64_t>;

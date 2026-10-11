@@ -18,8 +18,8 @@ bool PendingTable::record(Fid id, ReindexReason reason) {
     // Across slots it is not: a deps-only requeue after the previous slot
     // was consumed is new debt of its own kind — the in-flight (or
     // finished) pass already covers the earlier content change, and
-    // keeping ContentChanged would suppress the file's rows past that
-    // pass. The fresh ticket invalidates the settle of any attempt
+    // keeping ContentChanged would suppress the file's index past that
+    // pass. The fresh ticket invalidates the finish of any attempt
     // already in flight for this file.
     ticket += 1;
     auto [it, inserted] = entries.try_emplace(id,
@@ -69,7 +69,7 @@ bool PendingTable::superseded(const TakenDebt& taken) const {
 }
 
 PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& taken,
-                                                                 Failure failure) {
+                                                               Failure failure) {
     // Only while the entry survives: a file removed from disk mid-flight
     // was cleared and has nothing to redo.
     auto it = entries.find(taken.id);
@@ -87,9 +87,9 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& 
 
     if(failure == Failure::Crashed ||
        (failure == Failure::Lost && it->second.requeue_attempts >= max_requeue_attempts)) {
-        // Giving up accepts the staleness, so clear the ledger state
+        // Giving up accepts the staleness, so clear the table state
         // here rather than relying on the attempt's ticket-guarded
-        // settle: a deps-only recording that landed mid-flight bumped
+        // finish: a deps-only recording that arrived mid-flight bumped
         // the ticket, and the guard would leave that downgraded entry
         // booked — a doomed retry that spends one more worker.
         clear(taken.id);
@@ -102,7 +102,7 @@ PendingTable::FailureOutcome PendingTable::on_dispatch_failure(const TakenDebt& 
     // Requeue with the debt class this dispatch carried, not the entry's
     // current one; record() resets the budget on ContentChanged — right
     // for a user edit, wrong for this requeue of the same bytes — so
-    // restore the ledger afterwards.
+    // restore the table entry afterwards.
     auto reason = it->second.content_ticket == taken.ticket ? ReindexReason::ContentChanged
                                                             : it->second.reason;
     auto attempts = it->second.requeue_attempts;

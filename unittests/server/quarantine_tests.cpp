@@ -196,7 +196,7 @@ ZEST_CASE(BudgetBlocksAtThreshold) {
 }
 
 ZEST_CASE(BudgetClearsOnSuccess) {
-    // A consumer landing proves the blames were transient: without the
+    // A consumer succeeding proves the blames were transient: without the
     // clear, two unrelated hiccups far apart would block a key that
     // serves fine in between.
     BlameBudget budget;
@@ -208,7 +208,7 @@ ZEST_CASE(BudgetClearsOnSuccess) {
 
 ZEST_CASE(BudgetRearmsAfterCooldown) {
     // The poison may live in content the key cannot see (a header included
-    // by the hashed preamble text): a block is a cooldown, not a verdict.
+    // by the hashed preamble text): a block is a cooldown, not a decision.
     // Zero cooldown models "elapsed" — the key earns a fresh budget.
     BlameBudget budget{std::chrono::milliseconds(0)};
     budget.on_blame("key");

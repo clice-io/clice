@@ -62,7 +62,7 @@ std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid
 std::uint32_t count_occurrences(Project& project, Fid host, Fid header);
 
 /// The translation units that can stand in for `header` — its includers,
-/// by the lexical scan or by the rows their indexed compiles gave it, that
+/// by the lexical scan or by the entries their indexed compiles gave it, that
 /// the build compiles in a language the header can be part of (a `.h`
 /// in any, a `.hpp` in C++ and the languages built on it, a `.cuh` only
 /// in CUDA) — best first: units whose entries come from the databases

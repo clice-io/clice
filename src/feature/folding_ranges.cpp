@@ -19,7 +19,7 @@ namespace {
 /// running another RecursiveASTVisitor over the TU. Folding needs no nesting
 /// state: every recorded decl and stmt contributes its ranges independently.
 ///
-/// Fold kinds are plain strings on the wire (LSP standardizes only `comment`,
+/// Fold kinds are plain strings in the protocol (LSP standardizes only `comment`,
 /// `imports` and `region`; servers may add custom values).
 ///
 /// A delimited fold spans its delimiters, which `collapsed_text` repeats; a

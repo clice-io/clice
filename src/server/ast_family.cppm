@@ -34,13 +34,13 @@ struct EditorContext;
 /// The family owns the whole compile lifecycle the retired Compiler ran:
 /// dependency preparation (through RoundContext::depend, the only wait
 /// form that records edges), the stateful dispatch, crash accounting,
-/// trial planning, and the projection landing. Contract 16: the landed
+/// trial planning, and the projection commit. Contract 16: the committed
 /// package (projection, deps snapshot, serving bits, output push) is
 /// written inside the round with no suspension before the outcome becomes
 /// visible — a joiner must never see Success before the projection.
 ///
 /// Supersede and invalidation flow through the facade's single write
-/// points; the round distinguishes them at landing: a Lost invalidation
+/// points; the round distinguishes them at commit: a Lost invalidation
 /// (buffer unchanged) still publishes its products as bounded staleness
 /// and reports Stale, a content supersede discards wholesale.
 class ASTFamily {
@@ -74,7 +74,7 @@ public:
     kota::task<bool> ensure_compiled(std::shared_ptr<Session> session);
 
     /// Start (or join) the session's compile detached — the caller keeps
-    /// serving from the index while it lands. The graph's one-round-per-
+    /// serving from the index until it finishes. The graph's one-round-per-
     /// node discipline dedupes concurrent kicks.
     void request_compile(std::shared_ptr<Session> session);
 
@@ -114,13 +114,13 @@ public:
     /// The edit path's whole supersede (didChange): the buffer moved, so
     /// the projection is no longer current and the in-flight round's
     /// result is void. Fires the round's advisory token and cancels its
-    /// compile on the wire, which interrupts the worker's parse; the round
+    /// compile over IPC, which interrupts the worker's parse; the round
     /// still observes the real reply (crash accounting depends on it).
     void supersede(Fid path_id);
 
     /// A Lost-type invalidation (dependency changed on disk, worker
     /// crash, eviction — the buffer itself is unchanged): the projection
-    /// is no longer current and an in-flight round must not land as
+    /// is no longer current and an in-flight round must not commit as
     /// such, but its parse keeps running — the round publishes the
     /// product as bounded staleness before reporting Stale.
     void invalidate(Fid path_id);
@@ -182,7 +182,7 @@ public:
     /// didSave: every crashed kind of the document retries on its next
     /// request, the artifacts it consumes included, and so do the ones
     /// whose build failed; a header found self-contained whose compile
-    /// misses names, or has not landed, re-runs its self-containment trial.
+    /// misses names, or has not finished, re-runs its self-containment trial.
     void saved(Session& session);
 
     /// Install `output` as the document's current output and wake the
@@ -190,8 +190,8 @@ public:
     void publish_output(const std::shared_ptr<Session>& session, CompileOutput output);
 
     /// Interrupt every in-flight parse and wait for the detached compile
-    /// joins. The rounds themselves land in TaskGraph::shutdown — the
-    /// interruption is what keeps that landing prompt (a round's stateful
+    /// joins. The rounds themselves finish in TaskGraph::shutdown — the
+    /// interruption is what keeps that finish prompt (a round's stateful
     /// send carries the interrupt, not its advisory token: contract 2 wants
     /// the real reply, and the interrupt makes it arrive early).
     kota::task<> stop();
@@ -212,7 +212,7 @@ private:
     /// import through depend. Returns the imports, none when cancelled: an
     /// import whose build failed is left to the parse, which reports it on
     /// the import next to the file's own diagnostics; one whose build
-    /// crashed a worker also lands in the session's quarantine, and is
+    /// crashed a worker also goes into the session's quarantine, and is
     /// refused until the session holds a license to retry it.
     kota::task<std::optional<PCMFamily::ModuleDeps>>
         depend_modules(RoundContext& ctx,
@@ -269,7 +269,7 @@ private:
     friend struct testing::ASTFamilyFixture;
 
     /// current=false + epoch bump: the shared prefix of every
-    /// invalidation flavor.
+    /// invalidation kind.
     void touch(Fid path_id);
 
     Project& project;

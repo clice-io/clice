@@ -76,7 +76,7 @@ struct CacheNamespace {
 ///   {ns}/{pid}/{key}{ext}  Scratch blobs of one live instance
 ///
 /// A blob is complete iff it exists at its final path (atomic rename); the
-/// only crash residue is tmp files, swept on open().  Opening a root whose
+/// only crash residue is tmp files, removed on open().  Opening a root whose
 /// layout version differs discards the old directory entirely.
 ///
 /// The store is passive: it owns no timer and never blocks waiting for IO
@@ -87,7 +87,7 @@ struct CacheNamespace {
 /// to completion once started, so cancellation can never observe a torn
 /// mid-operation state.
 ///
-/// TODO: once usage settles, evaluate making commit/checkpoint coroutines
+/// TODO: once usage stabilizes, evaluate making commit/checkpoint coroutines
 /// over kota's async fs (kota::fsync/rename) with all state confined to
 /// the event loop — that removes the mutex entirely, but moves the burden
 /// from lock discipline to cancellation points inside each operation.
@@ -99,7 +99,7 @@ public:
     /// an entry destroyed without being committed removes its tmp file —
     /// kotatsu cancellation destroys a suspended coroutine frame without
     /// resuming it, so a manual abort after the await would never run on
-    /// that path and the tmp blob would leak until the next open() sweep.
+    /// that path and the tmp blob would leak until the next open() removes it.
     struct PendingEntry {
         std::string ns;
         std::string key;
@@ -147,10 +147,10 @@ public:
 
     /// Open (creating if necessary) the store under `root`.  Any sibling
     /// version directory other than v{version} is deleted.  Loads the
-    /// manifest if present and sweeps tmp directories of dead instances.
+    /// manifest if present and removes tmp directories of dead instances.
     ///
     /// `read_only` opens for inspection without touching the disk: nothing
-    /// is created, swept or discarded — a store another process (possibly
+    /// is created, removed or discarded — a store another process (possibly
     /// an older layout version) is live on must survive being inspected.
     /// Fails with `no_such_file_or_directory` when the versioned directory
     /// does not exist; only lookups may be used.
@@ -219,7 +219,7 @@ public:
     void invalidate(llvm::StringRef ns, llvm::StringRef key);
 
     /// Number of in-flight tmp blobs of this instance (files under
-    /// `tmp/{pid}`). A settled server has zero: every PendingEntry either
+    /// `tmp/{pid}`). An idle server has zero: every PendingEntry either
     /// committed (renamed away) or cleaned itself up. Memory/leak gauge
     /// for the stats endpoint; scans the directory, so not free.
     std::size_t pending_tmp_files() const;

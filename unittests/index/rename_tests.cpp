@@ -28,7 +28,7 @@ index::IndexQuery query{project.project_index, project.file_table, &gate, nullpt
 
 Fid main_id;
 
-/// The files the sweep looks at, and those the rename may not edit.
+/// The files the scan looks at, and those the rename may not edit.
 std::vector<std::string> scope;
 llvm::StringSet<> foreign;
 
@@ -64,7 +64,7 @@ void write(llvm::StringRef name, llvm::StringRef content) {
     scope.push_back(path);
 }
 
-/// The disk's files swept for the names of the renames planned, each
+/// The disk's files scanned for the names of the renames planned, each
 /// read once.
 llvm::StringSet<> names;
 llvm::StringMap<std::optional<index::ScannedText>> scanned;
@@ -735,7 +735,7 @@ int later() { return 2; }
 }
 
 ZEST_CASE(EditedFileMovedOn) {
-    // Non-ASCII text is kept with the rows, so no disk read vouches for it.
+    // Non-ASCII text is kept with the index, so no disk read confirms it.
     add_main(file("a.cpp"), R"(
         // café
         int compute(int x) { return x; }

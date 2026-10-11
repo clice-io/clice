@@ -14,7 +14,7 @@ import :worker.protocol;
 namespace clice::worker {
 
 /// Scheduling class of a stateless dispatch. Deliberately not part of the
-/// wire protocol: priority is the pool's business, passed explicitly to
+/// IPC protocol: priority is the pool's business, passed explicitly to
 /// send_stateless — the worker process never sees it.
 enum class Priority : uint8_t { High, Low };
 
@@ -53,8 +53,8 @@ struct WorkerCrashInfo {
 };
 
 /// How one worker incarnation died, shared with every request in flight on
-/// it. A sender whose link broke waits for the monitor to settle the record
-/// — the exit observed, the stderr drained — and only then learns whether
+/// it. A sender whose link broke waits for the monitor to mark the record
+/// done — the exit observed, the stderr drained — and only then learns whether
 /// its own request is the one that killed the worker.
 struct WorkerDeath {
     kota::event done;
@@ -79,7 +79,7 @@ struct WorkerDeath {
 };
 
 /// The last lines a worker wrote to stderr, kept for its crash report:
-/// the fatal diagnosis (an LLVM ERROR, an assertion) lands there seconds
+/// the fatal diagnosis (an LLVM ERROR, an assertion) arrives there seconds
 /// before the exit is observed, far from the report in the log.
 struct StderrTail {
     constexpr static std::size_t capacity = 8;
@@ -218,10 +218,10 @@ public:
     /// Send a request to a stateless worker with priority-aware scheduling.
     ///
     /// `cancel` is an advisory cancellation: when it fires, the request is
-    /// cancelled on the wire and this call KEEPS awaiting the worker's real
+    /// cancelled over IPC and this call KEEPS awaiting the worker's real
     /// answer — the slot frees only when the process is actually idle, and
     /// crash accounting keeps observing the real outcome. A cancelled
-    /// result surfaces as dispatch_errc::cancelled.
+    /// result is reported as dispatch_errc::cancelled.
     template <typename Params>
     RequestResult<Params> send_stateless(const Params& params,
                                          worker::Priority priority,
@@ -248,7 +248,7 @@ public:
     kota::task<bool> await_capacity(bool stateful);
 
     /// True when a Dead slot is not final: the running pool revives dead
-    /// slots after a cooldown, so "no capacity" is a window, not a verdict.
+    /// slots after a cooldown, so "no capacity" is a window, not a decision.
     /// Callers (the indexer's requeue) may retry work that failed with
     /// worker_unavailable instead of dropping it. Unit fixtures drive slot
     /// state without an event loop and never start the pool, so revival
@@ -300,12 +300,12 @@ private:
     /// Lifecycle of a worker slot. The generation counter is bumped on every
     /// transition out of Alive, so stale references (an in-flight request's
     /// slot guard, a dispatched-but-cancelled waiter) can detect that their
-    /// claim no longer describes the current occupant.
+    /// acquisition no longer describes the current occupant.
     enum class SlotState : std::uint8_t {
         /// Process running and accepting requests.
         Alive,
         /// Process declared dead (transport failure, preemption kill, or
-        /// observed exit); monitor_worker has not delivered its verdict yet.
+        /// observed exit); monitor_worker has not delivered its result yet.
         Dying,
         /// A respawn is scheduled, possibly sleeping out a backoff delay.
         Respawning,
@@ -383,12 +383,13 @@ private:
         /// process if it blows past cancel_grace without returning.
         std::chrono::steady_clock::time_point cancel_requested_at{};
 
-        /// Monotonic claim ordinal of the in-flight request. Victim
-        /// selection picks the largest — the actual newest claim; the slot
-        /// index says nothing about claim order once slots are reused.
+        /// Monotonic acquisition ordinal of the in-flight request. Victim
+        /// selection picks the largest — the actual newest acquisition; the
+        /// slot index says nothing about acquisition order once slots are
+        /// reused.
         std::uint64_t acquire_epoch = 0;
 
-        /// Whether the worker holds work, and with it memory: a claim, a
+        /// Whether the worker holds work, and with it memory: an acquisition, a
         /// request in flight, or documents (whose last one can close while
         /// its compile still runs).
         bool holds_work() const {
@@ -461,12 +462,12 @@ private:
     std::size_t pick_least_loaded();
 
     /// A coroutine waiting for a stateless worker slot. Lives on the frame of
-    /// acquire_stateless_slot(). Dispatch claims a worker on the waiter's
+    /// acquire_stateless_slot(). Dispatch acquires a worker on the waiter's
     /// behalf before waking it; the destructor covers cancellation:
     ///   - Still queued: removes itself from the queue.
-    ///   - Claimed but cancelled before the coroutine consumed the claim:
+    ///   - Acquired but cancelled before the coroutine consumed the acquisition:
     ///     releases the slot (unless the worker died in between — then the
-    ///     generation mismatch shows the claim was already cleaned up).
+    ///     generation mismatch shows the acquisition was already cleaned up).
     struct PendingStateless {
         WorkerPool& pool;
         worker::Priority priority;
@@ -474,11 +475,11 @@ private:
         /// Signalled by try_dispatch_pending().
         kota::event ready{};
 
-        /// Set to the claimed worker before signalling ready; stays SIZE_MAX
+        /// Set to the acquired worker before signalling ready; stays SIZE_MAX
         /// when the waiter is woken only to observe pool death or stop.
         std::size_t assigned_worker = SIZE_MAX;
 
-        /// Generation of the claimed worker at dispatch time.
+        /// Generation of the acquired worker at dispatch time.
         unsigned assigned_gen = 0;
 
         /// Points to whichever queue (high/low) this entry sits in; nullptr
@@ -596,7 +597,7 @@ private:
     void tick_deadlines();
 
     /// Cooperatively cancel up to `count` in-flight low-priority requests:
-    /// the wire cancel trips the worker's stop flag, the compile returns at
+    /// the IPC cancel trips the worker's stop flag, the compile returns at
     /// the next declaration boundary, and the sender — which
     /// keeps awaiting the worker's own reply, so the slot stays busy until
     /// the process is actually free — observes dispatch_errc::cancelled.
@@ -608,7 +609,7 @@ private:
     /// already in flight: the excess over the clamped budget, or one per
     /// queued High request while no slot is idle, minus the victims already
     /// asked to stop. Evaluated at every demand edge AND at the Low arming
-    /// point in send_stateless — the cancel sweep must skip claims whose
+    /// point in send_stateless — the cancel pass must skip acquired slots whose
     /// sender has not armed a source yet, so the arming re-check is what
     /// keeps demand from being dropped in that window. `pending_high`
     /// counts a High requester about to queue itself.
@@ -621,28 +622,28 @@ private:
                                                    kota::cancellation_token cancel);
     void release_stateless_slot(std::size_t worker_index);
 
-    /// Mark a claimed worker busy. Returns the index for chaining.
+    /// Mark an acquired worker busy. Returns the index for chaining.
     std::size_t take_stateless(std::size_t index, worker::Priority priority);
 
     /// Wake queued requests when a worker becomes available; drains the
     /// queues with a failure signal when no capacity remains.
     void try_dispatch_pending();
 
-    /// Wake all queued requests without a claim so they observe pool death.
+    /// Wake all queued requests without an acquired worker so they observe pool death.
     void fail_pending_requests();
 
     std::size_t pick_idle_stateless();
 
     /// Declare a worker's process dead right now: bump the generation, drop
-    /// the busy claim and the peer reference. Idempotent — safe to call from
+    /// the busy acquisition and the peer reference. Idempotent — safe to call from
     /// a failed send before the monitor observed the exit. `kill_process`
-    /// must be true when death is declared ahead of the verdict (failed
+    /// must be true when death is declared ahead of the result (failed
     /// send, preemption) so monitor_worker's proc.wait() is guaranteed to
     /// deliver; the monitor itself passes false — its process was already
     /// reaped, and signalling the freed pid could hit an unrelated process.
     void mark_worker_dead(std::size_t index, bool stateful, bool kill_process);
 
-    /// Handle a crash verdict: log/relay, update crash accounting, fire
+    /// Handle a crash result: log/relay, update crash accounting, fire
     /// on_crash. Returns true if the worker should be respawned; on false the
     /// slot has been given up.
     bool process_crash(std::size_t index, bool stateful, int exit_code, int exit_signal);
@@ -957,11 +958,11 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
     auto death = stateless_workers[idx].death;
 
     if(priority == worker::Priority::Low) {
-        // Reclaim demand that arose while this claim's sender was parked
+        // Reclaim demand that arose while this acquisition's sender was parked
         // (a foreground edge, a queued High) was skipped by the cancel
-        // sweep — an unarmed slot must never be stamped (see
-        // cancel_low_priority). Honor it here, before the request reaches
-        // the wire: giving the claim back costs nothing.
+        // pass — an unarmed slot must never be stamped (see
+        // cancel_low_priority). Honor it here, before the request is sent
+        // over IPC: giving the slot back costs nothing.
         if(low_reclaim_deficit() > 0) {
             co_await kota::fail(kota::ipc::Error{worker::dispatch_errc::cancelled,
                                                  "Request preempted by the scheduler"});
@@ -969,7 +970,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
     }
     // The classification channel for scheduler-initiated cancels: the
     // cooperative cancel and the caller's advisory token both mark it, and
-    // the sender consults it when the reply arrives. Firing it cancels the request on the wire,
+    // the sender consults it when the reply arrives. Firing it cancels the request over IPC,
     // which keeps awaiting the worker's real answer.
     auto preempt_src = std::make_shared<kota::cancellation_source>();
     stateless_workers[idx].preempt_source = preempt_src;
@@ -997,14 +998,14 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
         probe->answered(*gate);
     }
     // The worker link broke mid-request: declare the slot dead now so a
-    // caller-side retry cannot land on the same corpse before the monitor
+    // caller-side retry cannot arrive at the same corpse before the monitor
     // observed the exit. This must precede the cancel classification — a
     // cooperatively cancelled worker can die on its own inside the grace
     // window, and returning early would release the slot still Alive.
     bool transport_dead = !result.has_value() && worker::is_transport_error(result.error());
     if(transport_dead && stateless_workers[idx].generation == gen) {
         mark_worker_dead(idx, false, true);
-        // The dead worker's claim is gone; a queued low-priority waiter may
+        // The dead worker's acquisition is gone; a queued low-priority waiter may
         // now fit under the limit on another idle worker.
         try_dispatch_pending();
     }
@@ -1013,7 +1014,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
     // the result it had already, or the killed process's transport error:
     // the request awaits the real answer so the slot frees only once the
     // process is actually idle again, keeping the grace deadline armed and
-    // the next request off a still-stuck worker. Every shape must surface as
+    // the next request off a still-stuck worker. Every shape must be reported as
     // cancelled, so the indexer requeues instead of recording a failure —
     // unless the pool killed the worker for memory before it stopped: the
     // request may be what exhausted memory, and a free requeue would let

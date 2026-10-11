@@ -108,8 +108,8 @@ void remove_database_files(llvm::StringRef path) {
     vfs::remove(path.str() + "-lock");
 }
 
-/// The file's length against the length its newest meta page vouches
-/// for: every page up to the last one it declares.
+/// The file's length against the length its newest meta page guarantees:
+/// every page up to the last one it declares.
 struct Coverage {
     std::uint64_t length;
     std::uint64_t declared;
@@ -450,7 +450,7 @@ MetaCheck check_meta(MDB_env* env, MDB_dbi dbi, MDB_txn* txn, bool read_only) {
     }
     // Meta missing: only a provably EMPTY database may be initialized in
     // place — populated bytes without our meta are a foreign layout, and
-    // stamping them would bypass the schema gate.
+    // writing our meta into them would bypass the schema gate.
     MDB_stat stat;
     if(mdb_stat(txn, dbi, &stat) != 0) {
         return MetaCheck::Transient;
@@ -720,7 +720,7 @@ std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
     // blob, removed in PR #650 — see its history to resurrect it), but it
     // duplicated everything the database gives for free — atomic batches,
     // read snapshots, corruption detection — while the remote scenarios
-    // it claimed to serve (NFS home directories, SMB project shares,
+    // it was meant to serve (NFS home directories, SMB project shares,
     // WSL drvfs checkouts) differ enough in locking and cache-coherence
     // behavior that one untested fallback cannot honestly cover them.
     // What remote workspaces actually need is an open design question;

@@ -72,7 +72,7 @@ kota::task<RoundOutcome> PCHFamily::run(RoundContext& ctx, std::uint64_t key_id)
     auto outcome = co_await attempt(ctx, key_id);
     // A stale round's replacement respawns through join_node without
     // passing prepare(), so attempt() copies the stash instead of
-    // consuming it. Retire it only on a current round's verdict — an
+    // consuming it. Retire it only on a current round's result — an
     // overtaken or preempted round is about to be retried and the retry
     // still needs the inputs.
     if(outcome != RoundOutcome::Stale && ctx.current()) {
@@ -89,7 +89,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     const auto& pch_key = request.pch_key;
 
     // Authoritative revalidation of the registered pair. Both halves must
-    // be present in the store: a PCH whose pch.idx envelope is gone
+    // be present in the store: a PCH whose pch.idx index is gone
     // (crash between commits, failed aux commit) rebuilds whole. The
     // store lookup refreshes the blob's LRU position.
     llvm::StringRef pch_miss = "no_entry";
@@ -162,7 +162,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     }
 
     // Build a new pair via a stateless worker: it writes the PCH and its
-    // pch.idx envelope to the tmp paths allocated here; the store commits
+    // pch.idx index to the tmp paths allocated here; the store commits
     // (fsync + rename) both on success, primary first.
     std::random_device random;
     auto blob = std::format("{}-{:08x}{:08x}", pch_key, random(), random());
@@ -193,8 +193,8 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", bp.file, bp.preamble_bound, pch_key);
 
     // The advisory token rides into the pool, which cancels the request
-    // on the wire while this frame keeps awaiting the real reply
-    // (contract 2). A crash lands on the key; its
+    // over IPC while this frame keeps awaiting the real reply
+    // (contract 2). A crash is recorded on the key; its
     // consumers book it on their documents when they find it there.
     auto result = co_await deliver(
         pool,
@@ -223,7 +223,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
 
     // Commit the pair on the thread pool as one job: the fsyncs stay off
     // the event loop, and the store either publishes the whole pair or
-    // retracts it (a half pair would hand adopters a PCH whose envelope
+    // retracts it (a half pair would hand adopters a PCH whose pch.idx index
     // is gone). Opening the freshly committed blob (mmap + flatbuffer
     // verification, which walks the whole file) also happens here so no
     // later consumer pays that walk on the event loop.
@@ -251,7 +251,7 @@ kota::task<RoundOutcome> PCHFamily::attempt(RoundContext& ctx, std::uint64_t key
         }
         outcome.index_path = std::move(*index_path);
         outcome.state = load_pch_index(*outcome.index_path);
-        // A committed envelope that fails verification is as unusable as
+        // A committed pch.idx index that fails verification is as unusable as
         // an uncommitted one: retract the pair rather than publish a PCH
         // whose preamble state every consumer would fail to load.
         if(!outcome.state) {
@@ -339,7 +339,7 @@ void PCHFamily::invalidate(llvm::StringRef pch_key) {
         return;
     }
     // An in-flight rebuild owns the entry; its commit publishes a fresh
-    // pair in place of the retracted one, so only a settled entry is
+    // pair in place of the retracted one, so only an idle entry is
     // dropped.
     if(!building(pch_key)) {
         drop(it);
@@ -394,7 +394,7 @@ void PCHFamily::enforce_loaded_budget() {
     // hit keys past the working set; the reload an unlucky consumer then
     // pays (mmap + verification, on the event loop) is the accepted cost
     // of bounding tens of MB per key.
-    // Unwired (tests, tools) assumes a small editor-like working set.
+    // Unconnected (tests, tools) assumes a small editor-like working set.
     constexpr std::size_t default_open_documents = 6;
     std::size_t budget = 2 + (open_documents ? open_documents() : default_open_documents);
 

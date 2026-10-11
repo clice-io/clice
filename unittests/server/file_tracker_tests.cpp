@@ -16,7 +16,7 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
-/// Pin a file's modification time, as a rewrite landing within one mtime
+/// Pin a file's modification time, as a rewrite falling within one mtime
 /// tick of the previous stat leaves it.
 void set_mtime(llvm::StringRef path, llvm::sys::TimePoint<> time) {
     int fd = 0;
@@ -67,7 +67,7 @@ ZEST_CASE(CDBTickDebounces) {
     ZASSERT(events[0].cdb.added == llvm::SmallVector<Fid>{lib_id});
     ZASSERT(events[0].cdb.removed.empty());
 
-    // Settled: further ticks are quiet.
+    // Stable: further ticks are quiet.
     ZASSERT(tick(tracker, files).empty());
 }
 
@@ -120,7 +120,7 @@ ZEST_CASE(CDBTickDiscoversLate) {
 
 ZEST_CASE(CDBTickWatchesSubdirectory) {
     /// A database generated into an existing build directory is found
-    /// where the tick watches for it, and settles like a rewrite.
+    /// where the tick watches for it, and stabilizes like a rewrite.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     tmp.mkdir("build");
@@ -227,7 +227,7 @@ ZEST_CASE(CDBTickDeleteRecreate) {
     vfs::remove_all(tmp.path("compile_commands.json"));
     ZASSERT(tick(tracker, files, /*force=*/true).empty());
 
-    // The rewrite lands as a normal change once the file is back.
+    // The rewrite arrives as a normal change once the file is back.
     tmp.touch("compile_commands.json",
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DFOO"}}
@@ -318,7 +318,7 @@ ZEST_CASE(CDBTickRelocates) {
 
 ZEST_CASE(CDBDeletedBeforeWatch) {
     /// A database loaded, then deleted before the tracker watches it: the
-    /// load's read is the baseline, so the deletion settles like any other.
+    /// load's read is the baseline, so the deletion stabilizes like any other.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     FileTable files;
@@ -571,7 +571,7 @@ ZEST_CASE(CDBTickPhantomReplacement) {
 }
 
 ZEST_CASE(CDBTickCoalescesSources) {
-    /// Two databases settling in one tick make one delta.
+    /// Two databases stabilizing in one tick make one delta.
     TempDir tmp;
     tmp.touch("a/main.cpp", R"(int main() {})");
     tmp.touch("b/other.cpp", R"(int other() {})");
@@ -600,7 +600,7 @@ ZEST_CASE(CDBTickCoalescesSources) {
 }
 
 ZEST_CASE(CDBRewriteBeforeWatch) {
-    /// A rewrite landing between the load and the watch is a change: the
+    /// A rewrite arriving between the load and the watch is a change: the
     /// baseline is the load's own read, not a stat taken afterwards.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
@@ -629,7 +629,7 @@ ZEST_CASE(CDBRewriteBeforeWatch) {
 ZEST_CASE(CDBSameStampRewrite) {
     /// A same-size rewrite in place within the mtime granularity of the
     /// load leaves the stat untouched: the stat of a fresh load cannot
-    /// vouch for the bytes, so the ticks compare the content.
+    /// confirm the bytes, so the ticks compare the content.
     TempDir tmp;
     tmp.touch("main.cpp", R"(int main() {})");
     FileTable files;
@@ -722,7 +722,7 @@ ZEST_CASE(WorkspaceTickStateMachine) {
 
     // Content change is confirmed by hash and reported once. The new
     // content has a different LENGTH on purpose: back-to-back writes can
-    // land within one mtime tick (observed on Windows CI), and only the
+    // fall within one mtime tick (observed on Windows CI), and only the
     // size change keeps the stamp fast path deterministic.
     tmp.touch("header.h", R"(int x = 2222;)");
     auto changed = workspace_tick(tracker, files);
@@ -750,7 +750,7 @@ ZEST_CASE(WorkspaceTickStateMachine) {
 }
 
 ZEST_CASE(WorkspaceTickKeepsListedMember) {
-    /// A unit a database lists and a default command also claims keeps
+    /// A unit a database lists and a default command also covers keeps
     /// its command when deleted: the tick reports the removal, not a lost
     /// command.
     TempDir tmp;
@@ -811,7 +811,7 @@ ZEST_CASE(WorkspaceTickSeesOpen) {
 
 ZEST_CASE(WorkspaceTickAfterScan) {
     /// What the load's scan read is what the first tick compares with: a
-    /// rewrite landing before that tick is still a change.
+    /// rewrite arriving before that tick is still a change.
     TempDir tmp;
     tmp.touch("header.h", R"(int x = 1;)");
 

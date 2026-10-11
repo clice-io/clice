@@ -3,7 +3,7 @@ module;
 #include "modules/prelude.h"
 
 /// The name search index: the project's symbols laid out for lookup by
-/// name — quality-ordered rows, a posting list per name token (the
+/// name — quality-ordered entries, a posting list per name token (the
 /// matcher's paths through a name, see support/fuzzy_matcher.h), and
 /// bitmaps per container, kind and file — so a query narrows to
 /// candidates by bitmap algebra and scores only those, stopping once the
@@ -49,14 +49,14 @@ struct SearchEntry {
     std::uint32_t reference_files = 0;
 };
 
-/// The symbol table as the builder sees it: rows plus the path table
+/// The symbol table as the builder sees it: entries plus the path table
 /// their files index.
 struct SearchSnapshot {
     std::vector<SearchEntry> entries;
     /// Named the way the database names files (ProjectIndex::portable).
     std::vector<std::string> paths;
-    /// The generation of the global blob these rows will be persisted
-    /// next to; a loader finding another generation knows rows may have
+    /// The generation of the global blob these entries will be persisted
+    /// next to; a loader finding another generation knows entries may have
     /// changed under the index.
     std::uint64_t generation = 0;
 };
@@ -146,7 +146,7 @@ public:
 
     bool contains(SymbolHash hash) const;
 
-    /// The global generation the rows were snapshotted for; 0 unloaded.
+    /// The global generation the entries were snapshotted for; 0 unloaded.
     std::uint64_t generation() const;
 
     /// Whether a posting list failed to decode since the load: the

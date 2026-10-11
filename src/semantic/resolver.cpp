@@ -2495,7 +2495,7 @@ private:
     /// Resolve `scope` and ask whether it is a known template or record that
     /// definitely has no member called `name`. Unknown scopes return false.
     ///
-    /// "Definitely" requires a clean verdict: an empty lookup caused by the
+    /// "Definitely" requires a clean result: an empty lookup caused by the
     /// CTD recursion guard or by step-budget exhaustion proves nothing, and
     /// treating it as absence would prune a partial that real SFINAE keeps —
     /// a wrong answer, not a degradation. Those cases stay Unknown.
@@ -2514,7 +2514,7 @@ private:
     }
 
     /// Does any specialization of `CTD` — partial or explicit — declare
-    /// `name`? Used to gate the Absent verdict: if some specialization has
+    /// `name`? Used to gate the Absent result: if some specialization has
     /// the member, an empty lookup on dependent arguments proves nothing.
     bool any_specialization_declares(clang::ClassTemplateDecl* CTD, clang::DeclarationName name) {
         auto declares = [&](clang::CXXRecordDecl* record) {

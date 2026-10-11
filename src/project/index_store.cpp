@@ -25,7 +25,7 @@ namespace clice {
 namespace {
 
 /// Entry hash of a file's default selection — the candidate-order winner,
-/// or the default command claiming a file without entries; empty when the
+/// or the default command covering a file without entries; empty when the
 /// build does not compile it.
 std::string selected_hash(Project& project, Fid file) {
     auto commands = project.build.commands(file);
@@ -39,14 +39,14 @@ std::string selected_hash(Project& project, Fid file) {
 /// file, the sorted canonical command hashes of its entries and a hash of
 /// its matched config rules when the index state was last saved. A
 /// standalone-indexed header gets an entry too (empty hashes): its own
-/// matched rules plus the host source whose command its rows borrowed.
+/// matched rules plus the host source whose command its index borrowed.
 /// Paths are the database's names (ProjectIndex::portable).
 struct CDBSnapshotEntry {
     std::string file;
     std::vector<std::string> hashes;
 
     /// Entry hash of the file's default selection (the candidate-order
-    /// winner, or the default command claiming a file without entries).
+    /// winner, or the default command covering a file without entries).
     /// The hash multiset alone cannot see an offline flip of the winner —
     /// candidates unchanged, selection changed.
     std::string selected;
@@ -74,7 +74,7 @@ struct CDBSnapshot {
 /// clice.toml rules change the effective indexing command without touching
 /// the CDB entry, so the snapshot must cover their edits too — an offline
 /// rule edit is as stale-making as an offline command edit. A file without
-/// candidates that a rule's default command claims records that command's
+/// candidates that a rule's default command covers records that command's
 /// identity as its selection, so an offline edit of the command text is
 /// caught the same way.
 CDBSnapshot build_cdb_snapshot(Project& project,
@@ -118,7 +118,7 @@ CDBSnapshot build_cdb_snapshot(Project& project,
         });
     }
     // Standalone-indexed TUs have no CDB entry, yet their effective command
-    // depends on the default command claiming them or the host they borrow
+    // depends on the default command covering them or the host they borrow
     // from, and on the rules matching them and that host — all of it must
     // be snapshot to detect offline changes.
     auto add_standalone = [&](Fid tu) {
@@ -148,7 +148,7 @@ CDBSnapshot build_cdb_snapshot(Project& project,
     for(auto tu: llvm::make_first_range(project.project_index.manifests)) {
         add_standalone(tu);
     }
-    // A dropped standalone TU whose rebuild has not landed keeps its entry:
+    // A dropped standalone TU whose rebuild has not finished keeps its entry:
     // with no manifest pin and no CDB entry, the snapshot is the only
     // record that an index is owed (reconcile's debt pass retries it).
     for(auto tu: standalone_debt) {
@@ -176,8 +176,8 @@ std::string serialize_cdb_snapshot(Project& project,
     return std::move(*json);
 }
 
-/// The artifacts blob: a JSON envelope in the index database, the
-/// persisted form of PCH/PCM validity metadata and header-mode verdicts
+/// The artifacts blob: a JSON document in the index database, the
+/// persisted form of PCH/PCM validity metadata and header-mode results
 /// (the cache.json successor). Paths are
 /// persisted as spellings and re-interned at load — runtime fids are not
 /// stable across sessions; deps persist as (spelling, content hash), so
@@ -185,7 +185,7 @@ std::string serialize_cdb_snapshot(Project& project,
 /// state.
 
 struct CacheDepEntry {
-    std::uint32_t path;  // index into the envelope's paths table
+    std::uint32_t path;  // index into the blob's paths table
     std::uint64_t hash;
     bool missing;
 };
@@ -209,9 +209,9 @@ struct CachePCMEntry {
 struct ArtifactsData {
     std::vector<std::string> paths;
 
-    // index_format_version the .pch.idx envelopes were written with (one
+    // index_format_version the .pch.idx indexes were written with (one
     // binary writes them all). A mismatch drops every PCH entry at load so
-    // the pairs rebuild immediately, instead of the mismatch surfacing
+    // the pairs rebuild immediately, instead of the mismatch showing up
     // lazily on the first overlay query — which cannot trigger a rebuild.
     std::uint32_t pch_index_format = 0;
 
@@ -328,7 +328,7 @@ void IndexStore::load_artifacts(llvm::StringRef bytes) {
         auto pch_path = project.store->lookup("pch", *entry.blob);
         if(!pch_path)
             continue;
-        // A PCH without its pch.idx envelope is an incomplete pair
+        // A PCH without its pch.idx index is an incomplete pair
         // (crash between the two commits): drop it so the next compile
         // rebuilds both.
         auto index_path = project.store->lookup_aux("pch", *entry.blob);
@@ -372,9 +372,9 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     IndexStore::merge(const void* tu_index_data,
                       std::size_t size,
                       llvm::ArrayRef<DepState> imports) {
-    // Zero-copy consumption: the wire stays serialized; a new variant's
+    // Zero-copy consumption: the result stays serialized; a new variant's
     // blob bytes are sliced out and installed or merged without decoding
-    // the envelope, and only genuinely new symbol names are materialized.
+    // the TU index, and only genuinely new symbol names are materialized.
     auto view =
         index::TUIndex::from_bytes(llvm::StringRef(static_cast<const char*>(tu_index_data), size));
     if(!view.loaded()) {
@@ -410,12 +410,12 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     // FileVersions these will reference are interned only at commit.
     llvm::SmallVector<std::pair<std::uint32_t, std::uint64_t>> section_contributions;
     llvm::SmallVector<Fid> rebuilt_ids;
-    // TU-local path id -> content hash of the bytes each section's rows
-    // were built from (0 = no section). A section's shard already records
+    // TU-local path id -> content hash of the bytes each section's index
+    // was built from (0 = no section). A section's shard already records
     // that hash, so the FileVersion baseline below adopts it: pairing the
-    // rows with any other hash — the file behind a PCM whose disk moved
+    // index with any other hash — the file behind a PCM whose disk moved
     // on under a preserved or backdated mtime — would keep the baseline
-    // fresh while queries serve another generation's rows.
+    // fresh while queries serve another generation's index.
     llvm::SmallVector<std::uint64_t> consumed_hashes(view.path_count(), 0);
     auto record_consumed = [&](std::uint32_t local_id, std::uint64_t content_hash) {
         auto path_hash = view.path_hash(local_id);
@@ -459,10 +459,10 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
         // The recomputed hash guards the variant identity alongside the
         // structural verification below: bytes installed under a hash they
         // do not reproduce would satisfy every later hit-path check for
-        // that hash while the shard stores different rows. A mismatch (or
+        // that hash while the shard stores different entries. A mismatch (or
         // an invalid blob) leaves every recorded version matching the
         // disk, so an installed manifest would be judged fresh forever
-        // with this file's rows missing or stale — reject the whole
+        // with this file's index missing or stale — reject the whole
         // result; nothing is committed yet.
         if(llvm::xxh3_64bits(bytes) != blob_hash) {
             LOG_WARN("Reject merge for {}: rows section for {} failed verification",
@@ -493,7 +493,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
             assert(replacement.loaded() && "a freshly merged shard blob must verify");
             appended += 1;
         } else {
-            // New content generation (or no blob at all): rows from other
+            // New content generation (or no blob at all): entries from other
             // generations must never share offset storage with these, so
             // the worker's bytes become the blob verbatim. Stale
             // contributions from other TUs stop matching any stored
@@ -529,7 +529,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
         // The section's own record wins: for a hashless path (behind a
-        // PCM) it is the only hash naming the bytes the rows describe.
+        // PCM) it is the only hash naming the bytes the index describes.
         auto hash = consumed_hashes[i] != 0 ? consumed_hashes[i] : view.path_hash(i);
 
         if(hash != 0) {
@@ -538,7 +538,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
             auto status = vfs::status(path);
             if(status && status->stamp.mtime_ns <= baseline_before_ns) {
                 // The worker had no buffer to hash (e.g. behind a PCM) and
-                // no rows recorded one; the unchanged mtime proves the disk
+                // no shard recorded one; the unchanged mtime proves the disk
                 // still holds the consumed bytes, so take their hash from
                 // the last reliable read — or one read, unless the file
                 // moved between the stat and the read, which voids the
@@ -568,7 +568,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     manifest.local_fanout = std::move(*local_fanout);
 
     // The places the parse's failed lookups looked: the file table watches
-    // them from here on. One that holds a file by now makes the rows stale
+    // them from here on. One that holds a file by now makes the index stale
     // on arrival.
     Report report;
     for(std::uint32_t i = 0; i < view.absent_count(); i += 1) {
@@ -603,7 +603,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
 
     // Replace this TU's manifest wholesale: files it no longer touches lose
     // their contribution here, which is also what retires their variants —
-    // no sweep over other shards is needed.
+    // no pass over other shards is needed.
     auto affected =
         project_index.apply_manifest(project.file_table, tu_path_id, std::move(manifest));
     for(auto path_id: affected) {
@@ -619,7 +619,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     // TUs' contributions pin. Those owners are usually already pending from
     // the same content event (enqueue dedupes); one whose attempt already
     // failed — or that reads fresh by hash after a revert, which is why
-    // ContentChanged — has no in-process event left to rebuild its rows,
+    // ContentChanged — has no in-process event left to rebuild its index,
     // only a restart reaching load()'s re-enqueue.
     for(auto path_id: rebuilt_ids) {
         auto& shard = project.project_index.shards.find(path_id)->second;
@@ -676,8 +676,8 @@ void IndexStore::drop_index_into(Fid tu_path_id, Report& report) {
     if(!project_index.manifests.contains(tu_path_id)) {
         return;
     }
-    // Dropped rows change index-served answers exactly like merged rows
-    // do; without the refresh the client keeps them forever, since no
+    // Dropped entries change index-served answers exactly like merged
+    // entries do; without the refresh the client keeps them forever, since no
     // later merge or compile is owed.
     for(auto path_id: project_index.remove_manifest(project.file_table, tu_path_id)) {
         auto it = project.project_index.shards.find(path_id);
@@ -716,14 +716,14 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     }
 
     // Compact shards whose variant set shrank: queries already mask the
-    // dead rows, this erases them for real before the blob reaches disk.
+    // dead variants, this erases them for real before the blob reaches disk.
     // A file with no live variant left in its blob is retired entirely
     // below: either no contribution remains, or the remaining ones pin
     // hashes a newer content generation replaced (their TUs have not
     // reindexed yet) — compacting to those pins would write a blob with no
     // variants at all, while retiring serves the same nothing the mask
     // already does. The pinning TUs are re-enqueued: no in-process event
-    // would rebuild their rows otherwise (a reverted file even reads fresh
+    // would rebuild their variants otherwise (a reverted file even reads fresh
     // by hash), only a restart reaching load()'s re-enqueue.
     llvm::SmallVector<Fid> retired;
     for(auto& [path_id, shard]: project.project_index.shards) {
@@ -751,7 +751,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     }
 
     // Snapshot the dirty state on the loop: everything below serializes
-    // from copies, so merges landing across the write await simply re-dirty
+    // from copies, so merges committing across the write await simply re-dirty
     // for the next save. The id vectors parallel the batch so a failed
     // entry can be re-dirtied by its batch index.
     std::vector<index::BlobDatabase::Blob> batch;
@@ -774,13 +774,13 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     }
     auto shard_count = batch.size();
 
-    // One generation per persisted global blob, stamped into every
+    // One generation per persisted global blob, recorded in every
     // manifest of the batch and pinned per TU inside the global blob
     // (serialize_global): load() adopts a manifest only at its pinned
-    // stamp. Without the pin an ordering check alone cannot tell a
+    // generation. Without the pin an ordering check alone cannot tell a
     // deliberately unchanged older manifest from one whose update failed
-    // while the global landed — both FileVersion sets can stay fully
-    // resolvable (a reindex that changed rows or the include tree only).
+    // while the global committed — both FileVersion sets can stay fully
+    // resolvable (a reindex that changed entries or the include tree only).
     if(global_dirty) {
         project_index.global_generation += 1;
     }
@@ -789,7 +789,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         auto key = project.project_index.key_of(project.file_table, tu_path_id);
         // Dirty with no in-memory manifest means dropped (drop_index): the
         // persisted blob must go too, or a restart resurrects the TU's
-        // rows as fresh.
+        // index as fresh.
         if(it == project_index.manifests.end()) {
             removals.push_back({index::IndexBlobKind::Manifest, std::move(key)});
             continue;
@@ -805,8 +805,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
 
     // The global blob follows the shards and manifests: a crash mid-batch
     // then strands only manifests, which load() drops by their generation
-    // stamp — the reverse order would strand a global claiming symbols in
-    // files whose rows never landed.
+    // pin — the reverse order would strand a global reporting symbols in
+    // files whose shards never committed.
     std::optional<std::size_t> global_slot;
     if(global_dirty) {
         std::string bytes;
@@ -816,7 +816,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         batch.push_back({index::IndexBlobKind::Global, "global", std::move(bytes)});
     }
     // The search blob moves into the batch and back out if the write
-    // never lands: it is derived state, so nothing else would re-create
+    // never commits: it is derived state, so nothing else would re-create
     // it before the next rebuild.
     std::optional<std::size_t> search_slot;
     if(!search_bytes.empty()) {
@@ -826,7 +826,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     }
 
     // The CDB snapshot goes last, after the whole index state it
-    // describes: landed before the global, a crash between the two would
+    // describes: committed before the global, a crash between the two would
     // leave the old global still pinning old-command manifests under a
     // snapshot that already matches the live CDB — reconcile would then
     // never drop them. A save that commits nothing skips the recompute
@@ -834,7 +834,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     // dirties no blob on its own — the invalidator's drops do — so the
     // next dirtying save carries the fresh snapshot.
     // The debt input is the pump's snapshot at call time plus the owner
-    // debt the compaction above discovered; anything surfacing past this
+    // debt the compaction above discovered; anything showing up past this
     // point is too late for these bytes and returns in the report.
     std::string cdb_bytes;
     std::optional<std::size_t> cdb_index;
@@ -853,7 +853,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
 
     // Metadata blobs ride every save: dirty artifact records and context
     // choices flush on whatever save runs next. The contexts ticket is
-    // snapshotted here — marks landing past this point are not covered by
+    // snapshotted here — marks arriving past this point are not covered by
     // these bytes and wait for the next save. The contexts blob's fate
     // is tracked on its own: a failing artifacts blob must not park a
     // switchContext ack whose choice is already durable.
@@ -888,8 +888,8 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         contexts.dirty = false;
     }
 
-    // A deferred load-time sweep can name a key this very save re-writes:
-    // the swept TU was re-enqueued at load and has already re-indexed.
+    // A deferred load-time removal can name a key this very save re-writes:
+    // the removed TU was re-enqueued at load and has already re-indexed.
     // Puts run before removes inside write(), so the stale removal would
     // delete the fresh blob — the put wins.
     if(!removals.empty()) {
@@ -914,10 +914,10 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
         co_return report;
     }
 
-    // The dirty set was snapshot-cleared above so merges landing across
+    // The dirty set was snapshot-cleared above so merges committing across
     // the write await re-dirty for the next save; the in-flight count
     // keeps pending_shard_writes() truthful meanwhile — a stats reader
-    // polling for "shard writes settled" must not observe zero while the
+    // polling for "shard writes finished" must not observe zero while the
     // commit is still running (and saved_shards still holds its reset).
     saving_shards = shard_count;
     llvm::SmallVector<std::size_t> failed;
@@ -926,7 +926,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     // cleared dirty state must be restored or the final shutdown save
     // sees nothing to commit and reports saved progress that is absent
     // after restart. Restoration unions with whatever re-dirtied across
-    // the await; the sweep keys in `removals` go back to the deferred
+    // the await; the startup removal keys in `removals` go back to the deferred
     // list they came from.
     auto restore = llvm::make_scope_exit([&] {
         dirty_shards.insert(shard_ids.begin(), shard_ids.end());
@@ -949,7 +949,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     // retries it; discarded, the cache would trail the in-memory index
     // until an unrelated merge happens to dirty the same entry or a
     // restart rebuilds it. (Failed removals need no retry: load() drops
-    // stale manifests by their generation pin and sweeps orphan shards.)
+    // stale manifests by their generation pin and removes orphan shards.)
     std::size_t failed_shards = 0;
     for(auto i: failed) {
         if(i < shard_count) {
@@ -974,7 +974,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
             global_slot.reset();
         }
     }
-    // The rows the landed blob holds now read from it; a failed global
+    // The entries the committed blob holds now read from it; a failed global
     // write keeps them aside for the retry.
     if(global_slot) {
         project_index.rebase(llvm::MemoryBuffer::getMemBufferCopy(batch[*global_slot].bytes),
@@ -1000,7 +1000,7 @@ kota::task<IndexStore::Report> IndexStore::save(llvm::SmallVector<Fid> debt, Sea
     contexts.committed.set();
     contexts.committed.reset();
 
-    // Corruption can surface first at write time (a damaged page only the
+    // Corruption can show up first at write time (a damaged page only the
     // write's tree descent reaches): heal like load-time corruption instead
     // of writing into the damaged environment every save. The batch's
     // shards — dirty at batch build, hence memory-backed — re-dirty before
@@ -1033,8 +1033,8 @@ bool IndexStore::search_rebuild_due(SearchRebuild search) const {
     if(project.project_index.search_pending.size() > std::max<std::size_t>(10000, base / 20)) {
         return true;
     }
-    // A damaged index is replaced at the first save, settled or not: its
-    // rows may misdescribe the table until then.
+    // A damaged index is replaced at the first save, idle or not: its
+    // entries may misdescribe the table until then.
     if(index.damaged()) {
         return true;
     }
@@ -1043,7 +1043,7 @@ bool IndexStore::search_rebuild_due(SearchRebuild search) const {
     }
     // A missing one — never built, or persisted under another pin than
     // the table's — leaves searches scanning the whole table until the
-    // first settled save.
+    // first idle save.
     if(!index.loaded()) {
         return project.project_index.symbol_count() > 0;
     }
@@ -1091,8 +1091,8 @@ kota::task<> IndexStore::rebuild_search_index() {
             return true;
         });
     auto merges_in_snapshot = merges_since_search_build;
-    // Rows that change across the build stay pending: only the ones the
-    // snapshot saw are settled by the index built from it.
+    // Entries that change across the build stay pending: only the ones the
+    // snapshot saw are finished by the index built from it.
     auto pending_in_snapshot = std::move(project.project_index.search_pending);
     project.project_index.search_pending.clear();
     // Until the rebuilt index is adopted the old one still needs them:
@@ -1144,7 +1144,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
         // be dead, so everything borrowed is shed rather than left
         // dangling. The shed shards' persisted bytes stay intact but their
         // manifests still read fresh — only the owner requeue rebuilds
-        // their resident rows this session.
+        // their resident shards this session.
         LOG_ERROR("Index database growth failed: {}", grown.error());
         if(db.corrupted()) {
             recover_corrupt_database(report);
@@ -1164,7 +1164,7 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
         // stay valid across the yields and the blobs are byte-identical,
         // so queries between batches may observe a mix of old and new
         // pointers with identical meaning. Shards whose write just failed
-        // are dirty again by now (their bytes never landed) and stay
+        // are dirty again by now (their bytes never committed) and stay
         // memory-backed until a later save.
         auto advanced = db.advance_read_snapshot();
         if(!advanced) {
@@ -1199,14 +1199,14 @@ kota::task<> IndexStore::migrate_shard_views(Report& report) {
         auto blob = db.read(index::IndexBlobKind::Shard,
                             project.project_index.key_of(project.file_table, path_id));
         if(!blob || !it->second.rebind(std::move(blob.buffer))) {
-            // Corruption can also surface first here (a damaged page only
+            // Corruption can also show up first here (a damaged page only
             // this re-read reaches); the recovery below sheds the whole
             // resident set, nothing per-shard to do.
             if(db.corrupted()) {
                 break;
             }
             // Unreachable under the writer lock; the shard is dropped and
-            // its owners requeued to rebuild the rows, while keeping the
+            // its owners requeued to rebuild the shard, while keeping the
             // old view would dangle once the snapshot retires.
             LOG_ERROR("Index shard for {} diverged during snapshot migration",
                       project.file_table.resolve(path_id));
@@ -1333,10 +1333,10 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     auto global = db.read(index::IndexBlobKind::Global, "global");
     if(!global) {
         // A global blob that exists but failed to open is a transient IO
-        // error, not absence: sweeping would destroy an intact index and
+        // error, not absence: removal would destroy an intact index and
         // force a full rebuild. Run this session memory-only instead —
         // saving a fresh lineage over blobs whose anchor was never read
-        // could alias their fv ids and generation stamps — and leave
+        // could alias their fv ids and generations — and leave
         // everything for a healthier restart to load.
         if(db.contains(index::IndexBlobKind::Global, "global")) {
             // Confirmed page corruption heals through rebuildability: the
@@ -1357,7 +1357,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
             return result;
         }
         // No global table means no resolvable manifests: everything else
-        // is unreachable data, swept so it cannot survive as orphans.
+        // is unreachable data, removed so it cannot survive as orphans.
         remove_all();
         load_metadata();
         retire_snapshot();
@@ -1395,10 +1395,10 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     }
 
     // Adopt exactly the manifests the global blob pins, at exactly the
-    // pinned generation stamp and with every FileVersion resolvable. The
+    // pinned generation and with every FileVersion resolvable. The
     // rest are stale residue — a crash between batch phases, a failed
-    // write under a landed global, a dropped TU whose removal was lost —
-    // and are swept, with their TUs re-enqueued where recoverable.
+    // write under a committed global, a dropped TU whose removal was lost —
+    // and are removed, with their TUs re-enqueued where recoverable.
     llvm::DenseSet<VersionID> adopted_pins;
     llvm::SmallVector<std::string> dead_manifests;
     db.for_each_key(index::IndexBlobKind::Manifest, [&](llvm::StringRef key) {
@@ -1414,8 +1414,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         if(pin == manifest_pins.end() || pin->second != manifest->global_gen) {
             dead_manifests.push_back(key.str());
             // The manifest raced a crash ahead of the global blob (its own
-            // pin never landed). When the TU's version is still resolvable,
-            // re-enqueue it: the CDB sweep never covers standalone-indexed
+            // pin never committed). When the TU's version is still resolvable,
+            // re-enqueue it: the CDB pass never covers standalone-indexed
             // headers.
             if(tu_fv) {
                 report.add_reindex(project.file_table.version(*tu_fv).fid);
@@ -1432,8 +1432,8 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         }
     }
     // A pinned TU without an adopted manifest lost it to a failed write
-    // that the landed global outran, or to a lost removal; re-enqueue it —
-    // its rows are unservable until a reindex. Pinned fvs always resolve:
+    // that the committed global outran, or to a lost removal; re-enqueue it —
+    // its index is unservable until a reindex. Pinned fvs always resolve:
     // load_global rejects a blob whose pins its own table cannot cover.
     for(auto fv: llvm::make_first_range(manifest_pins)) {
         if(!adopted_pins.contains(fv)) {
@@ -1441,10 +1441,10 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         }
     }
 
-    // Every contributing FileVersion pins the content generation its rows
-    // were built from; the shard must store that same generation. The
+    // Every contributing FileVersion pins the content generation its variant
+    // was built from; the shard must store that same generation. The
     // variant check below cannot catch a stale shard alone when an edit
-    // past every indexed row left the rows hash identical: all recorded
+    // past every indexed entry left the variant hash identical: all recorded
     // versions would match the disk while positions map through the old
     // text, forever. A version with no consumed-content hash (0) pins
     // nothing — it is permanently stale and reindexes its TU anyway.
@@ -1463,7 +1463,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     }
 
     // Fetch exactly the shard blobs the contributions expect. A blob that
-    // is missing or fails verification leaves its contributing TUs' rows
+    // is missing or fails verification leaves its contributing TUs' variants
     // unservable, so those manifests are dropped and the TUs reindex (for
     // headers no CDB entry would ever re-enqueue them otherwise).
     llvm::StringSet<> expected_keys;
@@ -1483,7 +1483,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         // A blob can verify yet miss a contributed variant, or carry
         // another content generation than the contributions pin (crash or
         // failed write left a manifest newer than its shard); set_live
-        // would drop missing rows silently and stale content misplaces
+        // would drop missing variants silently and stale content misplaces
         // every position, so both are as unservable as an unreadable blob.
         auto generation_ok = [&] {
             auto it = generations.find(path_id);
@@ -1533,7 +1533,7 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
         }
     }
 
-    // Sweep shard blobs nothing references any more.
+    // Remove shard blobs nothing references any more.
     if(!read_only) {
         db.for_each_key(index::IndexBlobKind::Shard, [&](llvm::StringRef key) {
             if(!expected_keys.contains(key)) {
@@ -1549,13 +1549,13 @@ IndexStore::LoadResult IndexStore::load(IndexLoadOptions options) {
     // the unreadable-global case above instead of writing into a damaged
     // tree every session. The adopted state unwinds wholesale: the shard
     // views borrow from the condemned environment, and manifests kept
-    // without their views would read as fresh and gate the rebuild sweep
-    // off exactly the files whose rows were lost. Standalone-indexed TUs
-    // re-enqueue first — the CDB sweep that rebuilds everything else never
+    // without their views would read as fresh and gate the rebuild pass
+    // off exactly the files whose shards were lost. Standalone-indexed TUs
+    // re-enqueue first — the CDB pass that rebuilds everything else never
     // covers them, and the condemned database is deleting their only
     // persistent record. The dirtied snapshot carries them as debt from
     // the fresh database's first save on, so even a crash before their
-    // rebuild lands cannot lose them a second time.
+    // rebuild finishes cannot lose them a second time.
     if(!read_only && db.corrupted()) {
         LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
         for(auto tu: llvm::make_first_range(project_index.manifests)) {
@@ -1704,7 +1704,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
 
     // A standalone-indexed header borrowed a host source's command and
     // applied its own matched rules on top, so an offline change to either
-    // staled its rows exactly like the live CDB path's hosted-header
+    // staled its index exactly like the live CDB path's hosted-header
     // invalidation. A header whose recorded host survives unchanged and
     // still includes it is pinned fresh; one with no recorded host (older
     // snapshot) falls back to the include-reachability approximation below.
@@ -1724,9 +1724,9 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         auto& old = *it->second;
         auto server_id = file_of(entry.file);
         if(!old.hashes.empty()) {
-            // Its entries vanished. A default command that still claims it
+            // Its entries vanished. A default command that still covers it
             // is a command change; otherwise the retirement pass below
-            // decides whether the rows leave.
+            // decides whether the index leaves.
             if(!entry.selected.empty()) {
                 LOG_INFO("Compile command changed since the last session; reindexing {}",
                          project.file_table.resolve(server_id));
@@ -1748,10 +1748,10 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
             host_selected = selected_hash(project, host_id);
         }
         if(old.rules != rules || old.selected != entry.selected) {
-            // The command that claimed it — a rule's default command, or the
+            // The command that covered it — a rule's default command, or the
             // one a provisional member borrowed — is gone and no host
-            // vouches for it: the build stopped compiling it, so its rows
-            // leave rather than being rebuilt under the builtin fallback.
+            // confirms it: the build stopped compiling it, so its index
+            // leaves rather than being rebuilt under the builtin fallback.
             if(!old.selected.empty() && entry.selected.empty() && old.host.empty()) {
                 LOG_INFO("The build no longer compiles {}; dropping its index",
                          project.file_table.resolve(server_id));
@@ -1781,11 +1781,11 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
         // The dependency scan preceding this load saw the offline edits, so
         // a recorded host that the build no longer ranks first — it stopped
         // including the header, or a rule change moved another database
-        // ahead — cannot vouch for the borrowed command any more. Keep the
-        // rows serving (last known good, like the vanished-entry case
+        // ahead — cannot confirm the borrowed command any more. Keep the
+        // index serving (last known good, like the vanished-entry case
         // above) while a rebuild re-selects a host; a Fallback resolution
-        // then changes nothing. The retained rows were still built through
-        // the old host, so keep that association until a landed rebuild
+        // then changes nothing. The retained index was still built through
+        // the old host, so keep that association until a finished rebuild
         // overwrites it — an empty host persisted after a Fallback or
         // failed rebuild would hit the `old.host.empty()` gate next session
         // and never retry.
@@ -1803,7 +1803,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
 
     // A file no database lists any more: when every database that listed
     // it loaded fine this session, the build stopped compiling it and its
-    // rows leave, as the live reload's removed branch does; a database
+    // index leaves, as the live reload's removed branch does; a database
     // that failed to load keeps its last-known entries serving. One the
     // configuration stopped declaring is gone on purpose; one discovery no
     // longer finds may come back.
@@ -1836,7 +1836,7 @@ void IndexStore::reconcile_cdb_snapshot(Report& report) {
 
     // A persisted standalone entry whose file has no manifest is recorded
     // debt: its index was dropped for a command or rule change and no
-    // rebuild has landed since — with no manifest pin and no CDB entry,
+    // rebuild has finished since — with no manifest pin and no CDB entry,
     // nothing else would ever retry it. Re-enqueue while the file exists;
     // a vanished file's debt dies with its entry at the next save.
     for(auto& old: persisted.entries) {
@@ -1895,8 +1895,8 @@ bool IndexStore::need_update(Fid file) {
         return true;
 
     // Every referenced version must be validated: whichever a partial
-    // iteration skipped would keep serving stale rows behind a fresh
-    // verdict.
+    // iteration skipped would keep serving a stale index behind a fresh
+    // result.
     auto& manifest = manifest_it->second;
     if(file_version_stale(manifest.tu_fv)) {
         return true;

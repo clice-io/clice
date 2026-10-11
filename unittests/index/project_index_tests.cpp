@@ -21,8 +21,8 @@ ZEST_SUITE(ProjectIndex, Tester) {
 
 std::string serialized;
 
-/// Build the current unit's envelope and return the zero-copy reader the
-/// merge path consumes; `wire` keeps the bytes alive.
+/// Build the current unit's TU index and return the zero-copy reader the
+/// merge path consumes; `serialized` keeps the bytes alive.
 index::TUIndex build_view() {
     serialized = index::build_tu_index(*unit);
     return index::TUIndex::from_bytes(serialized);
@@ -201,13 +201,14 @@ ZEST_CASE(ManifestContributions) {
     auto fv_a = pool.intern_version(Fid{1}, 0xa);
     auto fv_b = pool.intern_version(Fid{2}, 0xb);
 
-    auto manifest_for = [&](VersionID tu_fv,
-                            std::initializer_list<std::pair<VersionID, std::uint64_t>> contributions) {
-        index::TUManifest manifest;
-        manifest.tu_fv = tu_fv;
-        manifest.contributions = contributions;
-        return manifest;
-    };
+    auto manifest_for =
+        [&](VersionID tu_fv,
+            std::initializer_list<std::pair<VersionID, std::uint64_t>> contributions) {
+            index::TUManifest manifest;
+            manifest.tu_fv = tu_fv;
+            manifest.contributions = contributions;
+            return manifest;
+        };
 
     auto tu1_fv = pool.intern_version(Fid{10}, 0x1);
     auto tu2_fv = pool.intern_version(Fid{11}, 0x2);
@@ -364,7 +365,7 @@ ZEST_CASE(LazyShardsStayPut) {
     }
     ZASSERT(project.shard(first) == held);
     ZASSERT(held->content_hash() == llvm::xxh3_64bits(content));
-    // A file the database holds no rows for is asked once and stays absent.
+    // A file the database holds no shard for is asked once and stays absent.
     ZASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
     ZASSERT(project.shard(files.intern(Spelling::absolute("/proj/none.cpp"))) == nullptr);
 }

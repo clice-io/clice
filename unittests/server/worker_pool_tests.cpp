@@ -263,7 +263,7 @@ struct WorkerPoolFixture {
     }
 
     /// Manually queue a waiter, as acquire_stateless_slot does when it
-    /// cannot claim directly.
+    /// cannot acquire directly.
     auto enqueue_waiter(worker::Priority p) {
         auto pending = std::make_unique<WorkerPool::PendingStateless>(pool, p);
         auto& queue = p == worker::Priority::High ? pool.high_queue : pool.low_queue;
@@ -472,7 +472,7 @@ struct WorkerPoolFixture {
     struct LowDispatchResult {
         std::size_t dispatched;
 
-        /// Busy count observed while the waiters still hold their claims;
+        /// Busy count observed while the waiters still hold their slots;
         /// destroying an unconsumed dispatched waiter releases its slot.
         std::size_t busy_at_dispatch;
     };
@@ -569,7 +569,7 @@ struct WorkerPoolFixture {
 
     bool test_pending_gen_guard() {
         // A dispatched-but-unconsumed waiter must NOT release the slot if the
-        // claimed occupant died and a new claim owns it now.
+        // acquiring occupant died and a new acquisition owns it now.
         auto pending = enqueue_waiter(worker::Priority::High);
         pool.try_dispatch_pending();
         if(!pending->ready.is_set() || pending->assigned_worker != 0)
@@ -805,7 +805,7 @@ ZEST_CASE(LowLimitEnforced) {
     auto r = f.test_low_dispatch(2);
     ZEXPECT(r.dispatched == 1u);
     ZEXPECT(r.busy_at_dispatch == 1u);
-    // Destroying the unconsumed waiters released their claims.
+    // Destroying the unconsumed waiters released their slots.
     ZEXPECT(f.busy_count() == 0u);
 }
 
@@ -947,7 +947,7 @@ ZEST_CASE(FreshAcquireRespectsQueue) {
         co_await kota::sleep(10);
 
         // The fresh acquire lined up behind the queued waiter instead of
-        // claiming the idle worker over its head.
+        // acquiring the idle worker over its head.
         ZEXPECT(!acquired);
         ZEXPECT(f.high_queue_size() == 2u);
 
@@ -956,7 +956,7 @@ ZEST_CASE(FreshAcquireRespectsQueue) {
         ZEXPECT(!acquired);
         ZEXPECT(f.is_busy(0));
 
-        // Destroying the unconsumed claim releases the slot to the fresh
+        // Destroying the unconsumed acquisition releases the slot to the fresh
         // waiter.
         queued.reset();
         co_await group.join();
@@ -1053,7 +1053,7 @@ ZEST_CASE(ForegroundCancelsExcess) {
     }
 
     // The rising edge cancels exactly the over-cap excess (4 busy − cap 1),
-    // newest claim first, cooperatively (slots stay alive).
+    // newest acquisition first, cooperatively (slots stay alive).
     f.pool.foreground_pulse();
 
     ZEXPECT((f.cancel_asked(1) && f.cancel_asked(2) && f.cancel_asked(3)));
@@ -1105,7 +1105,7 @@ ZEST_CASE(CancelSkipsUnarmedSlots) {
     f.add_stateless(true, true, true);
     f.set_acquire_epoch(0, 1);
     f.set_acquire_epoch(1, 2);
-    // Slot 1 was claimed but its sender has not resumed: no source yet.
+    // Slot 1 was acquired but its sender has not resumed: no source yet.
     auto armed = f.arm_cancel_source(0);
 
     f.cancel_low(2);
@@ -1129,7 +1129,7 @@ ZEST_CASE(CancelSkipsAskedSlots) {
     f.cancel_low(1);
     f.cancel_low(1);
 
-    // The second ask must move on to the older claim instead of re-asking.
+    // The second ask must move on to the older acquisition instead of re-asking.
     ZEXPECT((f.cancel_asked(0) && f.cancel_asked(1)));
 }
 
@@ -1140,13 +1140,13 @@ ZEST_CASE(DeficitSurvivesUnarmedPass) {
     }
     f.set_low_limit(8);
 
-    // The rising edge finds only unarmed claims: the sweep stamps nothing,
+    // The rising edge finds only unarmed acquisitions: the pass stamps nothing,
     // but the demand survives for the arming re-check to honor.
     f.pool.foreground_pulse();
     ZEXPECT((!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2) && !f.cancel_asked(3)));
     ZEXPECT(f.reclaim_deficit() == 3u);
 
-    // Once the senders arm and the asks land, the deficit is covered.
+    // Once the senders arm and the asks arrive, the deficit is covered.
     for(std::size_t i = 1; i < 4; i += 1) {
         f.arm_cancel_source(i);
     }
@@ -1210,8 +1210,8 @@ ZEST_CASE(CancelAfterAcquireReleases) {
         };
         group.spawn(waiter());
         ZEXPECT(f.low_queue_size() == 1u);
-        // The freed slot is claimed for the waiter, whose round gives up
-        // before it resumes: the claim must come back.
+        // The freed slot is acquired for the waiter, whose round gives up
+        // before it resumes: the slot must come back.
         f.release_slot(0);
         ZEXPECT(f.is_busy(0));
         source.cancel();
@@ -1544,7 +1544,7 @@ ZEST_CASE(DeathFreesDocuments) {
     ZASSERT(f.assign_worker(1) == 0u);
 
     // A request routed in the window before the crash report must not
-    // land on the corpse: the death itself frees the document.
+    // reach the corpse: the death itself frees the document.
     f.mark_dead(0, true);
     ZEXPECT(f.assign_worker(1) == 1u);
 
@@ -1665,7 +1665,7 @@ ZEST_CASE(MarkDeadRemovesSlot) {
     ZEXPECT(f.state(0) == WorkerPoolFixture::SlotState::Dying);
     ZEXPECT(f.generation(0) == 1u);
     ZEXPECT(f.busy_count() == 0u);
-    // The dying slot still counts as future capacity (its verdict is
+    // The dying slot still counts as future capacity (its result is
     // pending), but is not schedulable.
     ZEXPECT(f.capacity() == 2u);
     ZEXPECT(f.pick_idle() == 1u);
@@ -1812,7 +1812,7 @@ ZEST_CASE(CrashBudgetBoundary) {
 }
 
 ZEST_CASE(StatefulDyingUnavailable) {
-    // A request landing in the restart window never reaches a worker: the
+    // A request arriving in the restart window never reaches a worker: the
     // death freed its document, and with no other worker alive it fails
     // with worker_unavailable — no death for crash accounting to read.
     WorkerPoolFixture f;
@@ -1831,7 +1831,7 @@ ZEST_CASE(StatefulDyingUnavailable) {
 }
 
 ZEST_CASE(DyingSlotKeepsWaiters) {
-    // A slot marked dead but without a verdict still counts as future
+    // A slot marked dead but without a result still counts as future
     // capacity: waiters must keep waiting for the respawn instead of
     // failing out.
     WorkerPoolFixture f;
@@ -2143,8 +2143,8 @@ ZEST_CASE(StatelessRequest) {
 }
 
 ZEST_CASE(AdvisoryCancelCooperates) {
-    // s#1: an advisory-token fire mid-build cancels the request on the
-    // wire. The sender keeps awaiting the real reply — the slot
+    // s#1: an advisory-token fire mid-build cancels the request over
+    // IPC. The sender keeps awaiting the real reply — the slot
     // frees only once the worker is actually idle — and the result is
     // classified as a cancellation, with the worker healthy afterwards.
     TempDir tmp;
@@ -2474,8 +2474,8 @@ ZEST_CASE(CrashDuringRequest) {
     f.run([&]() -> kota::task<> {
         ZASSERT(f.start(2, 0));
 
-        // Kill both workers, then send without yielding: the claim lands on
-        // a dead-but-not-yet-reaped slot, and the pool must surface the
+        // Kill both workers, then send without yielding: the acquisition goes to
+        // a dead-but-not-yet-reaped slot, and the pool must report the
         // death instead of retrying internally — worker_died, since an
         // outside kill names no request.
         f.kill_worker(0);
@@ -2521,7 +2521,7 @@ ZEST_CASE(PreemptReportsLost) {
                 code = result.error().code;
         };
         group.spawn(sender());
-        // Wait until the claim is visible, then preempt within the same
+        // Wait until the acquisition is visible, then preempt within the same
         // loop turn: with no suspension in between, the worker's response
         // cannot be processed first, so the preemption deterministically
         // catches the request in flight.
@@ -2576,7 +2576,7 @@ ZEST_CASE(ReclaimBeatsCancel) {
         group.spawn(sender());
         while(f.low_busy() == 0)
             co_await kota::sleep(1);
-        // A memory kill landing before the cancelled request stopped is
+        // A memory kill arriving before the cancelled request stopped is
         // reported as such: the request may be what exhausted memory, and a
         // free requeue would repeat the kill.
         source.cancel();

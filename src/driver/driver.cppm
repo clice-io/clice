@@ -208,7 +208,7 @@ const inline char* plural_s(std::size_t count) {
 }
 
 /// One answer on stdout: `{"result": ..., "stale": [...]}`, the files
-/// whose rows were withheld because their content moved on from the
+/// whose shards were withheld because their content moved on from the
 /// index (or that the index never held) listed so the reader knows what
 /// the answer lacks.
 template <typename T>
@@ -249,7 +249,7 @@ inline std::expected<index::SymbolQuery, std::string>
 
 /// Bring the index up to date with the disk before a --fresh answer:
 /// through the serving writer when a server holds the lock, else by a
-/// batch run of this process. Either sweeps the build under the hash
+/// batch run of this process. Either runs a pass over the build under the hash
 /// gate, so only units whose inputs changed are recompiled — and an
 /// absent index gets built from nothing. Returns the units that failed
 /// to index, or why the refresh could not run.

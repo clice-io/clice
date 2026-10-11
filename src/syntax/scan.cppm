@@ -33,7 +33,7 @@ struct ScanResult {
 
     /// The module importers find in this unit: the declared name, empty
     /// for an implementation unit, which must neither satisfy an import —
-    /// the importer would build it as an interface — nor claim a PCM of its
+    /// the importer would build it as an interface — nor take a PCM of its
     /// own.
     llvm::StringRef provided_module() const {
         return is_implementation_unit() ? llvm::StringRef() : llvm::StringRef(module_name);

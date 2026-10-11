@@ -32,18 +32,18 @@ public:
     std::shared_ptr<index::TUIndex> preamble_blob(Fid file) const override;
 
 private:
-    /// The overlay envelope of an open buffer's PCH, or null when it has
-    /// no PCH or the envelope is unreadable.
+    /// The overlay TU index of an open buffer's PCH, or null when it has
+    /// no PCH or the index is unreadable.
     std::shared_ptr<index::TUIndex> overlay_of(Fid file) const;
 
-    /// The open buffer's own file index when its rows describe the buffer:
+    /// The open buffer's own file index when it describes the buffer:
     /// the compile is current, or it compiled these very bytes.
     const index::Shard* session_shard(Fid file, const Session& session) const;
 
     index::IndexSource buffer_source(index::IndexSource::Kind kind,
-                                   Fid file,
-                                   const Session& session,
-                                   const index::Shard& shard) const;
+                                     Fid file,
+                                     const Session& session,
+                                     const index::Shard& shard) const;
 
     Project& project;
     PCHFamily& pch;

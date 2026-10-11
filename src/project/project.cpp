@@ -300,7 +300,7 @@ std::shared_ptr<index::TUIndex> load_pch_index(llvm::StringRef path) {
     if(!buffer) {
         return nullptr;
     }
-    // A stale or truncated pair must never crash the server: the envelope
+    // A stale or truncated pair must never crash the server: the TU index
     // is deep-verified, and every embedded shard blob once — queries then
     // run unchecked. Anything failing reads as "pair missing" and the PCH
     // is rebuilt.

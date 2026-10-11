@@ -19,7 +19,7 @@ namespace clice {
 /// The scheduling stack of one project, shared by the server and the batch
 /// driver so the two assemble it the same way: the task graph with its
 /// artifact families (runners registered) over the process's worker pool,
-/// and the project's index store and pump, which a PCM landing that
+/// and the project's index store and pump, which a PCM commit that
 /// unblocks indexing kicks. The server layers its serving side — the AST
 /// family, the pump's escalation hook — on top.
 struct SchedulingStack {

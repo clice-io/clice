@@ -30,7 +30,7 @@ inline std::vector<std::byte> write_bitmap(const Bitmap& bitmap) {
 
 /// The two highest values of an id type are reserved: they were DenseMap's
 /// sentinel keys when the format was defined, so no writer has ever emitted
-/// them, and wire or disk bytes carrying one are corrupt.
+/// them, and IPC or disk bytes carrying one are corrupt.
 template <typename T>
 bool reserved_key(T value) {
     static_assert(std::is_unsigned_v<T>);
@@ -56,24 +56,24 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// regular field and every loader discards blobs with a different value —
 /// including version-less blobs from older builds, which read back as 0.
 /// Bump it whenever a persisted type's reflected layout changes, when
-/// symbol-hash semantics change (stored rows keyed by old hashes would
+/// symbol-hash semantics change (stored entries keyed by old hashes would
 /// silently stop matching newly computed ones), or when the meaning of
 /// stored data changes (v9: preamble document links are document-ordered;
 /// v10: an include location's `include` names the directive's containing
 /// file, not that file's includer; v11: file-version stamps are the file
 /// table's corroborated shared stamps, adopted verbatim at load, and the
 /// artifact metadata blobs joined the database; v12: symbol hashes are
-/// entities computed by semantic/identity; v13: symbol rows carry the bare
+/// entities computed by semantic/identity; v13: symbol entries carry the bare
 /// name, parent, specialization arguments, flags and canonical file, the
-/// include tree is one node type on the wire and in manifests, and module
+/// include tree is one node type in the TU index and in manifests, and module
 /// names are keyed by their entity; v15: the global blob is columnar in
 /// hash order with a stable path table and pins its search blob, so it
 /// is read in place; v16: entity hashes follow clang 23's node kinds;
 /// v17: file versions carry no stat stamps; v18: files under the
 /// workspace root are named, and hashed into symbols, by their portable
 /// names; v19: entity hashes follow clang 23.1.2, xclang's; v20: preamble
-/// envelopes carry the preamble's diagnostics; v21: aliases at namespace
-/// scope are global symbols, and the rows cover weak call edges, implicit
+/// indexes carry the preamble's diagnostics; v21: aliases at namespace
+/// scope are global symbols, and the entries cover weak call edges, implicit
 /// calls and the names the traversal used to skip; v22: specializations
 /// relate to their templates, manifests list the files their internal
 /// symbols span, the global blob carries the reverse include graph,
@@ -84,14 +84,14 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// fragment into a declaration carries the fragment's uses; v24: symbols a
 /// module exports carry the Exported flag, and anonymous structs, unions
 /// and enums the AnonymousScope flag; v25: shards mark the lines ending in
-/// "\r\n", whose '\r' is no longer a column of the line; v26: envelopes
+/// "\r\n", whose '\r' is no longer a column of the line; v26: TU indexes
 /// carry their symbol table as columns, without a function's locals, and
 /// name the variants their receiver stores by hash alone; v27: an importer
 /// indexes only what it parsed, and its manifest lists what the modules it
 /// imports were built from; v28: references that modify what they name
-/// carry a Write row; v29: `auto` and `decltype` keywords carry an occurrence
-/// of the type they stand for, with a Deduced row; v30: entity hashes name
-/// a partition's module, not the partition).
+/// carry a Write relation; v29: `auto` and `decltype` keywords carry an
+/// occurrence of the type they stand for, with a Deduced relation; v30:
+/// entity hashes name a partition's module, not the partition).
 constexpr inline std::uint32_t index_format_version = 30;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
@@ -108,7 +108,7 @@ void serialize_blob(const T& value, llvm::raw_ostream& os) {
 /// Persisted blob layouts. Shared by writers, load-time validation and the
 /// hand-built blobs of corruption tests; everything else consumes blobs
 /// through their readers.
-/// Sentinel in a length column (row ranges, line lengths): the real end
+/// Sentinel in a length column (entry ranges, line lengths): the real end
 /// lives in the sparse escape table.
 constexpr inline std::uint8_t length_escape = 0xff;
 
@@ -116,24 +116,24 @@ constexpr inline std::uint8_t length_escape = 0xff;
 /// larger files fall back to the wide begin/length columns.
 constexpr inline std::uint32_t packed_range_limit = 0xffffff;
 
-/// One row range in the packed column: begin in the high 24 bits, length
+/// One entry range in the packed column: begin in the high 24 bits, length
 /// in the low 8. Raw u32 order equals (begin, length) lexicographic order.
 constexpr inline std::uint32_t pack_range(std::uint32_t begin, std::uint8_t length) {
     return (begin << 8) | length;
 }
 
 /// The packed spelling of the no-range sentinel pair relations carry (the
-/// default LocalSourceRange, ~0u/~0u). Unambiguous: a real packed row with
+/// default LocalSourceRange, ~0u/~0u). Unambiguous: a real packed entry with
 /// begin 0xffffff and an escaped length would need an end at least 255
 /// past a begin that already sits at the content limit.
 constexpr inline std::uint32_t packed_sentinel = 0xffffffff;
 
-/// One side of the blob's row storage (occurrences or relations).
+/// One side of the blob's entry storage (occurrences or relations).
 ///
-/// Ranges use exactly one of two self-describing tiers:
-///   - packed: `(begin << 8) | length` per row (content < 16MB)
+/// Ranges use exactly one of two self-describing encodings:
+///   - packed: `(begin << 8) | length` per entry (content < 16MB)
 ///   - wide: begin u32 + length u8 columns
-/// Lengths >= 255 escape to the sparse (row, end) table in either tier.
+/// Lengths >= 255 escape to the sparse (entry, end) table in either encoding.
 ///
 /// Variant masks are absent for a single variant, then u32 / u64 /
 /// concatenated roaring bitmaps by variant count.
@@ -152,7 +152,7 @@ struct RangeColumns {
     std::vector<std::uint8_t> roaring;
 };
 
-/// A file's index rows as one persisted blob.
+/// A file's index as one persisted blob.
 ///
 /// The worker encodes one blob per file per TU: single variant (an empty
 /// `variants` table), self-contained (content, line table, local symbol
@@ -161,17 +161,17 @@ struct RangeColumns {
 /// stores first variants verbatim and merges only when a second distinct
 /// variant of the same content generation arrives; merged blobs list the
 /// original single-variant identities in `variants` (mask bit position ->
-/// identity) and deduplicate rows shared between variants via the masks.
+/// identity) and deduplicate entries shared between variants via the masks.
 ///
-/// Symbol ids used by the row columns index `sym_hashes`; the id column
+/// Symbol ids used by the entry columns index `sym_hashes`; the id column
 /// width is chosen from the table size (u8 / u16 / u32).
 struct ShardBlob {
-    /// Persisted-blob schema version (index_format_version), stamped by
+    /// Persisted-blob schema version (index_format_version), set by
     /// the writer and gated by Shard::from_bytes.
     std::uint32_t format_version = 0;
 
     /// xxh3 of the content bytes the indexing compile consumed — the
-    /// content generation these rows were built from. Variants of
+    /// content generation this shard was built from. Variants of
     /// different generations never share a blob.
     std::uint64_t content_hash = 0;
 
@@ -203,10 +203,10 @@ struct ShardBlob {
     std::vector<std::uint64_t> crlf_lines;
 
     /// Referenced symbols, sorted by hash; the index into this table is
-    /// the symbol id the row columns use.
+    /// the symbol id the entry columns use.
     std::vector<std::uint64_t> sym_hashes;
 
-    /// Relation slice per symbol: entry i's relations occupy rows
+    /// Relation slice per symbol: entry i's relations occupy positions
     /// [sym_rel_offsets[i], sym_rel_offsets[i + 1]). Size is table size + 1.
     std::vector<std::uint32_t> sym_rel_offsets;
 
