@@ -375,11 +375,17 @@ written by hand that a case can show.
   (`tools/testing/docs/site.ts`): each documented case of the subtopic, in
   case order, a card with its title, status, summary and prose. Status and
   `issues` feed the support matrix.
-- **Cards.** Run with `CLICE_CARDS_DIR`, the cases write each documented
-  case's card, `<id>.json`: its page, its sources without markers and the
-  markers' offsets, and its output with every place's range, so the site
-  draws the answers into the code without reading `snap.toml`. A case's
-  sources are what the card shows: maintainer notes go in its `test.ts`.
+- **Cards.** Each documented case has a card, `docs/cards/<id>.json`: its
+  page, its sources without markers and the markers' offsets, each test's
+  `config`, and its output with every place's range, so the site draws the
+  answers into the code without reading `snap.toml`. Every run checks the
+  card as it checks `snap.toml`, and `UPDATE_SNAPSHOTS=1` rewrites both. A
+  case's sources are what the card shows: maintainer notes go in its
+  `test.ts`.
+- **Checks.** `pixi run check-feature-docs` fails where pages, cases and cards
+  disagree: a stale region, a documented subtopic on no page, a card no case
+  owns; `pixi run update-feature-docs` rewrites the regions and drops the
+  orphan cards.
 - **Command pages**: documented cases of a command topic are its examples, in
   order: the commands and their transcripts.
 - **Configuration page**: a documented case whose `---` block names

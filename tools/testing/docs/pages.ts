@@ -17,7 +17,7 @@ function documented(cases: readonly Case[]): Case[] {
 }
 
 /// How much of the case's output is right, by its known-wrong flags.
-function status(c: Case): string {
+export function status(c: Case): string {
     const file = path.join(c.dir, SNAPSHOT);
     return statusOf(fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "");
 }

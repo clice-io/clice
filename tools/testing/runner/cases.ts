@@ -1,6 +1,6 @@
 /// Every case under tests-next/: each registered test a vitest test, and once
 /// they all ran, the case's output against its snap.toml, and a documented
-/// case's card under CLICE_CARDS_DIR. CLICE_CASES=<path prefix> runs the
+/// case's card against docs/cards. CLICE_CASES=<path prefix> runs the
 /// cases under it, CLICE_CASES_SHARD=i/n one of n shards.
 
 import { afterAll, describe, test } from "vitest";
@@ -9,7 +9,7 @@ import { runRegistered } from "@clice/tools/testing/cases/context";
 import { checkOutput, recorded, type Blocks } from "@clice/tools/testing/cases/output";
 import { CASES_DIR } from "@clice/tools/testing/cases/project";
 import { loadScript, type Registered } from "@clice/tools/testing/cases/script";
-import { writeCard } from "@clice/tools/testing/docs/cards";
+import { checkCard } from "@clice/tools/testing/docs/cards";
 
 const prefix = process.env["CLICE_CASES"] ?? "";
 const under = loadCases(CASES_DIR).filter((c) => c.id.startsWith(prefix));
@@ -62,7 +62,14 @@ for (const c of cases) {
                     return [name, results.get(name) ?? kept.get(name) ?? new Map()];
                 }),
             );
-            writeCard(c, checkOutput(c, snapshot));
+            const configs = new Map(
+                registered.flatMap((entry) =>
+                    entry.kind === "answers" && entry.options.config !== undefined
+                        ? [[nameOf(entry), entry.options.config] as const]
+                        : [],
+                ),
+            );
+            checkCard(c, checkOutput(c, snapshot), configs);
         });
     });
 }

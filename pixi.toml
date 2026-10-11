@@ -121,11 +121,11 @@ cmd = "python3 scripts/check_layers.py"
 # Workspace-level (default feature) so every environment can run them —
 # the lint job uses the bare `node` env, local runs use `default`.
 [tasks.check-feature-docs]
-cmd = "node tools/docs/feature.ts check"
+cmd = "node tools/testing/docs/site.ts check"
 depends-on = ["install-tests"]
 
 [tasks.update-feature-docs]
-cmd = "node tools/docs/feature.ts update"
+cmd = "node tools/testing/docs/site.ts update"
 depends-on = ["install-tests"]
 
 [tasks.check-config-docs]

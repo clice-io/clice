@@ -207,8 +207,9 @@ function hintDetails(
 }
 
 /// Each line carrying hints, with every hint inserted where it shows, in
-/// the source's order: `draw(⟨width:⟩ 800)`. The parts asked (`kind`,
-/// `padding`, `links`) list the line's hints with them.
+/// the source's order: `draw(⟨width:⟩ 800)`, a place on the line's text so
+/// a reader of the card finds its hints without matching the text. The
+/// parts asked (`kind`, `padding`, `links`) list the line's hints with them.
 export function renderInlayHints(
     path: string,
     hints: readonly InlayHint[],
@@ -238,8 +239,15 @@ export function renderInlayHints(
             at = hint.position.character;
         }
         rendered += text.slice(at);
+        const indent = text.length - text.trimStart().length;
         out.push({
-            line: rendered.trim(),
+            line: new Place(rendered.trim(), {
+                path,
+                range: {
+                    start: { line, character: indent },
+                    end: { line, character: text.trimEnd().length },
+                },
+            }),
             ...(parts.size === 0
                 ? {}
                 : { hints: ordered.map(({ hint }) => hintDetails(path, hint, parts, scope)) }),
