@@ -46,58 +46,158 @@ Outcome<std::optional<Fid>> indexed_file(Context& ctx, const Spelling& path) {
     return file;
 }
 
-/// Anchor a query's paths in the workspace: a rooted path filter names
-/// its file by identity, however the command line spelled it, and the
-/// place's path becomes absolute the way the command's own path arguments
-/// do. False when the place's file is not indexed, which the caller
-/// answers as not found with the path noted.
+/// Anchor a query's paths in the workspace. The file of a place, and the
+/// one holding an id's rows, is one file, workspace-relative or absolute
+/// as the command's own path arguments are; false when the index holds no
+/// rows for it, which the caller answers as not found with the file
+/// noted. A rooted path filter names its file by identity, however the
+/// command line spelled it.
 Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
+    auto anchor = [&](std::string& path) -> Outcome<bool> {
+        Spelling spelled(path, Spelling(ctx.project.config.workspace_root));
+        auto file = indexed_file(ctx, spelled);
+        if(!file) {
+            return std::unexpected(file.error());
+        }
+        path = spelled.str();
+        return file->has_value();
+    };
+    if(query.handle) {
+        for(auto& path: query.paths) {
+            if(auto anchored = anchor(path); !anchored || !*anchored) {
+                return anchored;
+            }
+        }
+        return true;
+    }
     for(auto& wanted: query.paths) {
         if(path::is_absolute(wanted)) {
             wanted = CanonicalPath(Spelling::absolute(wanted)).str();
         }
     }
-    if(!query.position) {
-        return true;
-    }
-    auto& place = *query.position;
-    Spelling spelled(place.path, Spelling(ctx.project.config.workspace_root));
-    place.path = spelled.str();
-    auto file = indexed_file(ctx, spelled);
-    if(!file) {
-        return std::unexpected(file.error());
-    }
-    return file->has_value();
+    return query.position ? anchor(query.position->path) : true;
 }
 
-/// Resolve a locator to exactly one symbol: no candidate is an unknown
-/// symbol, several ask the caller to disambiguate by id. A locator naming
-/// a path the index has no rows for answers as unknown and notes the path.
-Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
+/// The locator an answer names a symbol by: its id, and for a symbol no
+/// project table lists the file holding its rows, which an id alone does
+/// not reach.
+std::string locator_of(const index::IndexQuery::Located& located) {
+    auto id = index::symbol_id(located.symbol.hash);
+    if(located.symbol.scope == index::SymbolScope::External) {
+        return id;
+    }
+    llvm::StringRef path = located.site.path;
+    bool spaced = llvm::any_of(path, [](char c) { return c == ' ' || c == '\t'; });
+    return spaced ? std::format(R"({} path:"{}")", id, std::string_view(path))
+                  : std::format("{} path:{}", id, std::string_view(path));
+}
+
+template <typename Entry>
+Entry graph_entry(const index::IndexQuery::Located& located) {
+    return {
+        .name = located.symbol.display_name(),
+        .kind = kind_name(located.symbol.kind),
+        .file = std::string(located.site.path),
+        .line = lines_of(located.site).start,
+        .symbol = locator_of(located),
+    };
+}
+
+SymbolEntry symbol_entry(Context& ctx, const index::IndexQuery::Located& located) {
+    auto entry = graph_entry<SymbolEntry>(located);
+    if(auto container = ctx.query.container_name(located.symbol.hash); !container.empty()) {
+        entry.container = std::move(container);
+    }
+    return entry;
+}
+
+/// The symbols a locator names; none is an unknown symbol. A locator
+/// naming a file the index has no rows for answers as unknown and notes
+/// the file.
+Outcome<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::SymbolQuery query) {
     auto anchored = anchor_paths(ctx, query);
     if(!anchored) {
         return std::unexpected(anchored.error());
     }
-    if(!*anchored) {
-        return std::unexpected("symbol not found");
-    }
-    auto candidates = ctx.query.locate(query);
+    auto candidates =
+        *anchored ? ctx.query.locate(query) : std::vector<index::IndexQuery::Located>();
     if(candidates.empty()) {
         return std::unexpected("symbol not found");
     }
-    if(candidates.size() > 1) {
-        std::string listed;
-        for(auto& candidate: llvm::ArrayRef(candidates).take_front(5)) {
-            listed += std::format("{}{} ({})",
-                                  listed.empty() ? "" : ", ",
-                                  ctx.query.qualified_name(candidate.symbol.hash),
-                                  index::symbol_id(candidate.symbol.hash));
-        }
-        return std::unexpected(std::format("ambiguous: {} candidates, use --symbol to pick one: {}",
-                                           candidates.size(),
-                                           listed));
+    return candidates;
+}
+
+/// Several symbols where one is wanted: listed for the caller to pick by
+/// locator.
+std::unexpected<std::string> ambiguous(Context& ctx,
+                                       llvm::ArrayRef<index::IndexQuery::Located> candidates) {
+    for(auto& candidate: candidates) {
+        ctx.candidates.push_back(symbol_entry(ctx, candidate));
     }
-    return std::move(candidates[0]);
+    return std::unexpected(
+        std::format("ambiguous: {} symbols match; name one by the `symbol` of a candidate",
+                    candidates.size()));
+}
+
+/// Resolve a locator to exactly one symbol.
+Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQuery query) {
+    auto candidates = resolve(ctx, std::move(query));
+    if(!candidates) {
+        return std::unexpected(candidates.error());
+    }
+    if(candidates->size() > 1) {
+        return ambiguous(ctx, *candidates);
+    }
+    return std::move(candidates->front());
+}
+
+/// The rename target of the symbols a locator names: one symbol's, or,
+/// for a name the overloads of one scope spell, all of theirs — renamed
+/// together, a call a template leaves open between them stays theirs.
+Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
+    using Mode = index::SymbolQuery::Mode;
+    bool by_name = locator.by_pattern();
+    // A near match is no symbol to rewrite a workspace for.
+    if(by_name && locator.mode == Mode::Fuzzy) {
+        locator.mode = Mode::Exact;
+    } else if(by_name && locator.mode != Mode::Exact) {
+        return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
+    }
+    auto candidates = resolve(ctx, std::move(locator));
+    if(!candidates) {
+        return std::unexpected(candidates.error());
+    }
+    std::vector<index::RenameTarget> targets;
+    for(auto& candidate: *candidates) {
+        auto target = index::rename_target(ctx.query, candidate);
+        if(!target) {
+            if(candidates->size() == 1) {
+                return std::unexpected(target.error());
+            }
+            return ambiguous(ctx, *candidates);
+        }
+        auto root = target->symbol.symbol.hash;
+        if(llvm::none_of(targets, [&](const index::RenameTarget& known) {
+               return known.symbol.symbol.hash == root;
+           })) {
+            targets.push_back(std::move(*target));
+        }
+    }
+    auto scope = targets.front().symbol.symbol.parent;
+    bool overloads =
+        by_name && llvm::all_of(targets, [&](const index::RenameTarget& target) {
+            auto& symbol = target.symbol.symbol;
+            return (symbol.kind == SymbolKind::Function || symbol.kind == SymbolKind::Method) &&
+                   symbol.parent == scope;
+        });
+    if(targets.size() > 1 && !overloads) {
+        return ambiguous(ctx, *candidates);
+    }
+    auto merged = std::move(targets.front());
+    for(auto& other: llvm::drop_begin(targets)) {
+        llvm::append_range(merged.group, other.group);
+    }
+    return merged;
 }
 
 /// The files reachable from `root` along `adjacent`, breadth first and
@@ -126,17 +226,6 @@ std::vector<DepEntry> collect_deps(Project& ws,
         }
     }
     return entries;
-}
-
-template <typename Entry>
-Entry graph_entry(const index::IndexQuery::Located& located) {
-    return {
-        .name = located.symbol.display_name(),
-        .kind = kind_name(located.symbol.kind),
-        .file = std::string(located.site.path),
-        .line = lines_of(located.site).start,
-        .symbol_id = index::symbol_id(located.symbol.hash),
-    };
 }
 
 std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Located> symbols) {
@@ -300,20 +389,10 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
     return result;
 }
 
-Outcome<SymbolSearchResult> symbol_search(Context& ctx,
-                                          llvm::StringRef text,
-                                          std::size_t limit,
-                                          llvm::ArrayRef<std::string> kinds) {
+Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit) {
     auto query = index::SymbolQuery::parse(text);
     if(!query) {
         return std::unexpected(query.error());
-    }
-    for(auto& kind: kinds) {
-        auto parsed = index::SymbolQuery::parse_kind(kind);
-        if(!parsed) {
-            return std::unexpected(std::format("unknown symbol kind '{}'", kind));
-        }
-        query->kinds.push_back(*parsed);
     }
     SymbolSearchResult result;
     auto anchored = anchor_paths(ctx, *query);
@@ -342,11 +421,7 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx,
         }
     }
     for(auto& hit: located) {
-        auto entry = graph_entry<SymbolEntry>(hit);
-        if(auto container = ctx.query.container_name(hit.symbol.hash); !container.empty()) {
-            entry.container = std::move(container);
-        }
-        result.symbols.push_back(std::move(entry));
+        result.symbols.push_back(symbol_entry(ctx, hit));
     }
     return result;
 }
@@ -368,7 +443,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
         .start_line = lines.start,
         .end_line = lines.end,
         .text = std::move(definition->text),
-        .symbol_id = index::symbol_id(resolved->symbol.hash),
+        .symbol = locator_of(*resolved),
     };
 }
 
@@ -401,7 +476,7 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
             .kind = kind_name(located.symbol.kind),
             .start_line = lines.start,
             .end_line = lines.end,
-            .symbol_id = index::symbol_id(located.symbol.hash),
+            .symbol = locator_of(located),
         });
     }
     return result;
@@ -415,7 +490,7 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     DefinitionResult result{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
-        .symbol_id = index::symbol_id(resolved->symbol.hash),
+        .symbol = locator_of(*resolved),
     };
     if(auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file)) {
         auto lines = lines_of(definition->extent);
@@ -439,7 +514,7 @@ Outcome<ReferencesResult> references(Context& ctx,
     ReferencesResult result{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
-        .symbol_id = index::symbol_id(resolved->symbol.hash),
+        .symbol = locator_of(*resolved),
     };
     index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
     for(auto& site: ctx.query.references(cursor, include_declaration)) {
@@ -461,11 +536,7 @@ bool units_pending(Project& project) {
 }
 
 Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::StringRef new_name) {
-    auto resolved = resolve_unique(ctx, std::move(locator));
-    if(!resolved) {
-        return std::unexpected(resolved.error());
-    }
-    auto target = index::rename_target(ctx.query, *resolved);
+    auto target = target_of(ctx, std::move(locator));
     if(!target) {
         return std::unexpected(target.error());
     }
@@ -502,7 +573,7 @@ Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::St
     RenameResult result{
         .name = symbol.display_name(),
         .kind = kind_name(symbol.kind),
-        .symbol_id = index::symbol_id(symbol.hash),
+        .symbol = locator_of(target->symbol),
         .new_name = new_name.str(),
         .conflicts = plan.conflicts,
         .warnings = plan.warnings,

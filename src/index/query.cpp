@@ -98,6 +98,18 @@ llvm::SmallVector<SymbolRef, 4>
     return chain;
 }
 
+/// Whether the rows declare or define the symbol, not only name it.
+bool declares(const Shard& rows, SymbolHash hash) {
+    bool found = false;
+    for(auto kind: {RelationKind::Definition, RelationKind::Declaration}) {
+        rows.lookup(hash, kind, [&](const Relation&) {
+            found = true;
+            return false;
+        });
+    }
+    return found;
+}
+
 }  // namespace
 
 bool covers(const Site& row, const Site& cursor) {
@@ -992,7 +1004,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
             }
             auto info = symbol_info(hit.hash);
             if(info && seen.insert(hit.hash).second) {
-                hits.push_back({hit.rank, std::move(*info)});
+                hits.push_back({.rank = hit.rank, .symbol = std::move(*info)});
             }
         }
     }
@@ -1006,17 +1018,18 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
     // Candidates share their containers: each is looked up once per
     // search, not once per candidate through every open session's table.
     llvm::DenseMap<SymbolHash, std::optional<SymbolRef>> scopes;
-    auto scope_info = [&](SymbolHash scope) {
+    auto scope_info = [&](SymbolHash scope, Fid anchor) {
         auto [it, inserted] = scopes.try_emplace(scope);
         if(inserted) {
-            it->second = symbol_info(scope);
+            it->second = symbol_info(scope, anchor);
         }
         return it->second;
     };
     auto consider = [&](SymbolHash hash,
                         const SymbolIdentity& identity,
                         llvm::StringRef path,
-                        std::uint32_t reference_files) {
+                        std::uint32_t reference_files,
+                        Fid anchor) {
         if(!is_searchable_kind(identity.kind) || identity.name.empty() ||
            has_flag(identity.flags, SymbolFlags::Unnamed) || seen.contains(hash)) {
             return;
@@ -1036,7 +1049,9 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
             return;
         }
         if(scoped) {
-            auto containers = scope_chain(hash, identity.parent, scope_info);
+            auto containers = scope_chain(hash, identity.parent, [&](SymbolHash scope) {
+                return scope_info(scope, anchor);
+            });
             llvm::SmallVector<ScopeEntry, 4> chain;
             for(auto& container: containers) {
                 chain.push_back({.name = container.name, .args = container.args});
@@ -1046,7 +1061,8 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
             }
         }
         seen.insert(hash);
-        hits.push_back({*rank, SymbolRef::from(hash, identity)});
+        hits.push_back(
+            {.rank = *rank, .symbol = SymbolRef::from(hash, identity), .anchor = anchor});
     };
     auto references_of = [&](SymbolHash hash) -> std::uint32_t {
         return index.reference_count(hash);
@@ -1057,7 +1073,7 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
             if(symbol.file != no_file) {
                 path = files.resolve(Fid{symbol.file});
             }
-            consider(hash, symbol, path, references);
+            consider(hash, symbol, path, references, {});
         };
     if(scan_table) {
         index.for_each_symbol(
@@ -1081,11 +1097,36 @@ IndexQuery::RankedHits IndexQuery::ranked_search(const SymbolQuery& query,
                 if(identity.file != no_file) {
                     path = state.path(identity.file);
                 }
-                consider(hash, identity, path, references_of(hash));
+                consider(hash, identity, path, references_of(hash), {});
                 return true;
             });
             return true;
         });
+    }
+    // A file's own symbols — locals, parameters, internal-linkage
+    // entities — are in no table but the file's rows, which hold every
+    // such symbol they name: a query naming files looks for the ones each
+    // of them declares.
+    if(!query.paths.empty()) {
+        for(std::uint32_t raw = 0; raw < files.spellings.size(); raw += 1) {
+            Fid file{raw};
+            llvm::StringRef path = files.resolve(file);
+            if(llvm::none_of(query.paths, [&](const std::string& wanted) {
+                   return path_matches(wanted, path);
+               })) {
+                continue;
+            }
+            auto* rows = declaring_rows(file);
+            if(!rows) {
+                continue;
+            }
+            rows->for_each_local_symbol([&](SymbolHash hash, const SymbolIdentity& identity) {
+                if(declares(*rows, hash)) {
+                    consider(hash, identity, path, 0, file);
+                }
+                return true;
+            });
+        }
     }
 
     std::ranges::sort(hits, [](const Ranked& lhs, const Ranked& rhs) {
@@ -1121,7 +1162,7 @@ std::vector<IndexQuery::Located> IndexQuery::search(const SymbolQuery& query,
             if(results.size() == limit) {
                 break;
             }
-            if(auto placed = canonical_placed(hit.symbol.hash, Fid{})) {
+            if(auto placed = canonical_placed(hit.symbol.hash, hit.anchor)) {
                 results.push_back({.symbol = std::move(hit.symbol),
                                    .site = placed->site,
                                    .extent = placed->extent});
@@ -1207,18 +1248,26 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
         return defined;
     }
 
-    auto ranked = ranked_search(query, 50).hits;
+    // Every symbol spelling the name exactly is wanted, however many: the
+    // ranking is fetched wider until a match of a lower tier ends it.
+    RankedHits ranked;
+    for(std::size_t limit = 64;; limit *= 4) {
+        ranked = ranked_search(query, limit);
+        if(ranked.exhausted || (!ranked.hits.empty() && ranked.hits.back().rank.tier > 1)) {
+            break;
+        }
+    }
     // Spelling the name exactly settles it; otherwise every match stands.
     // A class and its constructors spell one name: asked by it, the class
     // answers.
     llvm::DenseSet<SymbolHash> exact;
-    for(auto& hit: ranked) {
+    for(auto& hit: ranked.hits) {
         if(hit.rank.tier <= 1) {
             exact.insert(hit.symbol.hash);
         }
     }
     std::vector<Located> results;
-    for(auto& hit: ranked) {
+    for(auto& hit: ranked.hits) {
         if(!exact.empty() && hit.rank.tier > 1) {
             continue;
         }
@@ -1226,7 +1275,7 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
            exact.contains(hit.symbol.parent)) {
             continue;
         }
-        if(auto placed = canonical_placed(hit.symbol.hash, Fid{})) {
+        if(auto placed = canonical_placed(hit.symbol.hash, hit.anchor)) {
             results.push_back(
                 {.symbol = std::move(hit.symbol), .site = placed->site, .extent = placed->extent});
         }

@@ -81,7 +81,7 @@ test("deleted source withdraws its rows", async ({ session }) => {
     const exe = process.env["CLICE_EXECUTABLE"]!;
     const run = await runProcess(
         exe,
-        ["query", "--workspace", ws.root, "--method", "symbolSearch", "--query", "only_in_b"],
+        ["query", "--workspace", ws.root, "--method", "symbolSearch", "--symbol", "only_in_b"],
         { timeout: 120_000 },
     );
     expect(run.status, run.stderr).toBe(0);

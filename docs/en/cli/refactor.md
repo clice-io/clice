@@ -4,11 +4,11 @@
 
 `clice refactor` rewrites the workspace's sources from the persisted index, the same index `clice query` reads. Nothing is compiled, so a refactoring over a large tree takes about as long as a query. `rename` is the one refactoring today; an editor's rename runs the same engine.
 
-**Usage**: `clice refactor rename --to <name> (--name <query> | --symbol <id> | --path <file> --line <n>) [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
+**Usage**: `clice refactor rename --symbol <locator> --to <name> [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
 
 ## Rename
 
-The symbol is named as `clice query` names one: by a [name query](./query.md#name-queries), by the `#<hex>` id an earlier answer carried, or by the file and line defining it. A name several symbols spell lists them and asks for an id.
+The symbol is named by a [locator](./query.md#locators), as `clice query` takes one: by its whole name, case included — a near match or a pattern names nothing to rewrite a workspace for —, by the `symbol` an answer of `clice query` carried, or by a place, `file:line[:column]`. A name the overloads of one scope spell renames them all; the `symbol` of one of them renames that one. A name several other symbols spell lists them as `candidates`.
 
 A rename changes every declaration, definition and reference the index ties to the symbol, and the symbols that must keep its name:
 

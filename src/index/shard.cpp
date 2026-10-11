@@ -1060,6 +1060,19 @@ std::optional<SymbolIdentity> Shard::find_symbol(SymbolHash hash) const {
     return table.at(*local);
 }
 
+void Shard::for_each_local_symbol(
+    llvm::function_ref<bool(SymbolHash, const SymbolIdentity&)> callback) const {
+    if(!buffer) {
+        return;
+    }
+    auto table = LocalTable::of(root_of(*buffer));
+    for(std::size_t k = 0; k < table.size(); k += 1) {
+        if(!callback(table.hash_of(k), table.at(k))) {
+            return;
+        }
+    }
+}
+
 std::span<const std::uint32_t> Shard::line_starts() const {
     if(!buffer) {
         return {};

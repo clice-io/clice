@@ -117,6 +117,10 @@ public:
     /// Look up a local symbol's identity; the strings borrow the blob.
     std::optional<SymbolIdentity> find_symbol(SymbolHash hash) const;
 
+    /// Visit every local symbol the blob names, with its identity.
+    void for_each_local_symbol(
+        llvm::function_ref<bool(SymbolHash, const SymbolIdentity&)> callback) const;
+
     /// Line start offsets for position mapping, materialized from the
     /// blob's line-length columns on first use.
     std::span<const std::uint32_t> line_starts() const;

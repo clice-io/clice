@@ -10,20 +10,6 @@ import :server.editor_context;
 
 namespace clice::query {
 
-/// What the commands read: the workspace's persisted index through an
-/// index::IndexQuery and, for the build questions (compile commands, the file
-/// set, include dependencies), the loaded build. Paths in and out are
-/// absolute filesystem paths, not URIs.
-struct Context {
-    Project& project;
-    EditorContext& contexts;
-    const index::IndexQuery& query;
-
-    /// Files a command was asked about that the index holds no rows for;
-    /// the caller reports them next to the rows the query withheld.
-    std::vector<std::string> unindexed;
-};
-
 /// A command's answer, or the message for the user when the question
 /// cannot be answered (an unknown file, an ambiguous name, an invalid
 /// argument).
@@ -82,11 +68,32 @@ struct SymbolEntry {
     std::string file;
     int line = 0;
     std::optional<std::string> container;
-    std::string symbol_id;
+
+    /// The locator naming the symbol back: its `#<hex>` id, with the
+    /// file holding its rows for a symbol only some files see.
+    std::string symbol;
 };
 
 struct SymbolSearchResult {
     std::vector<SymbolEntry> symbols;
+};
+
+/// What the commands read: the workspace's persisted index through an
+/// index::IndexQuery and, for the build questions (compile commands, the file
+/// set, include dependencies), the loaded build. Paths in and out are
+/// absolute filesystem paths, not URIs.
+struct Context {
+    Project& project;
+    EditorContext& contexts;
+    const index::IndexQuery& query;
+
+    /// Files a command was asked about that the index holds no rows for;
+    /// the caller reports them next to the rows the query withheld.
+    std::vector<std::string> unindexed;
+
+    /// The symbols a locator named when it had to name one; the caller
+    /// lists them next to the error.
+    std::vector<SymbolEntry> candidates;
 };
 
 struct ReadSymbolResult {
@@ -96,7 +103,7 @@ struct ReadSymbolResult {
     int start_line = 0;
     int end_line = 0;
     std::string text;
-    std::string symbol_id;
+    std::string symbol;
 };
 
 struct DocumentSymbolEntry {
@@ -104,7 +111,7 @@ struct DocumentSymbolEntry {
     std::string kind;
     int start_line = 0;
     int end_line = 0;
-    std::string symbol_id;
+    std::string symbol;
 };
 
 struct DocumentSymbolsResult {
@@ -121,7 +128,7 @@ struct LocationEntry {
 struct DefinitionResult {
     std::string name;
     std::string kind;
-    std::string symbol_id;
+    std::string symbol;
     std::optional<LocationEntry> definition;
 };
 
@@ -134,7 +141,7 @@ struct ReferenceEntry {
 struct ReferencesResult {
     std::string name;
     std::string kind;
-    std::string symbol_id;
+    std::string symbol;
     std::vector<ReferenceEntry> references;
     int total = 0;
 };
@@ -144,7 +151,7 @@ struct GraphEntry {
     std::string kind;
     std::string file;
     int line = 0;
-    std::string symbol_id;
+    std::string symbol;
 };
 
 struct CallGraphResult {
@@ -185,7 +192,7 @@ struct RenameNoteEntry {
 struct RenameResult {
     std::string name;
     std::string kind;
-    std::string symbol_id;
+    std::string symbol;
     std::string new_name;
 
     /// Whether the edits were written.
@@ -229,18 +236,14 @@ Outcome<FileDepsResult>
 /// hosting it, and the modules among them. Needs the build.
 Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path);
 
-/// The symbols a name query (index/symbol_query.h) matches, best first,
-/// at most `limit` of them, narrowed to `kinds` (SymbolKind names) when
-/// non-empty.
-Outcome<SymbolSearchResult> symbol_search(Context& ctx,
-                                          llvm::StringRef text,
-                                          std::size_t limit,
-                                          llvm::ArrayRef<std::string> kinds);
+/// The symbols a locator (index/symbol_query.h) matches, best first, at
+/// most `limit` of them.
+Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit);
 
 /// A `locator` names one symbol (index/symbol_query.h): by its id (the
-/// `#<hex>` the answers carry), by a name query optionally narrowed to a
-/// path, or by a place. Several candidates ask the caller to disambiguate
-/// by id; none is "symbol not found".
+/// `symbol` the answers carry), by a name query, or by a place. Several
+/// candidates are an error listing them in Context::candidates; none is
+/// "symbol not found".
 
 /// The symbol's definition as text.
 Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator);
@@ -266,7 +269,9 @@ bool units_pending(Project& project);
 /// Rename the symbol the locator names to `new_name`, planned against the
 /// workspace on disk (see index::RenameScope): what would change, what the
 /// index cannot vouch for, and what keeps the change from being safe.
-/// Nothing is written.
+/// Nothing is written. A rename names its symbol by its whole name, never
+/// a pattern; the overloads of one scope that name spells are renamed
+/// together.
 Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::StringRef new_name);
 
 /// `direction` one of supertypes, subtypes, both.

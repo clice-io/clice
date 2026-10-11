@@ -237,6 +237,7 @@ struct SymbolRef {
     std::string args;
     SymbolHash parent = 0;
     SymbolKind kind;
+    SymbolScope scope = SymbolScope::External;
     SymbolFlags flags = SymbolFlags::None;
 
     static SymbolRef from(SymbolHash hash, const SymbolIdentity& identity) {
@@ -246,6 +247,7 @@ struct SymbolRef {
             .args = identity.args.str(),
             .parent = identity.parent,
             .kind = identity.kind,
+            .scope = identity.scope,
             .flags = identity.flags,
         };
     }

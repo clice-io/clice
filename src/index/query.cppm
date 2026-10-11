@@ -451,15 +451,17 @@ public:
     /// The symbols a name query (index/symbol_query.h) matches, best
     /// first, at most `limit`: the search index's hits, the symbols merged
     /// since it was built and the open sessions' own symbols — scanned
-    /// directly — under one ranking, each with its canonical site. A
-    /// symbol no source places is left out. Empty for a query by id or
+    /// directly — under one ranking, each with its canonical site. A query
+    /// naming files also finds the symbols only those files see — locals,
+    /// parameters, internal-linkage entities — among what each declares.
+    /// A symbol no source places is left out. Empty for a query by id or
     /// place.
     std::vector<Located> search(const SymbolQuery& query, std::size_t limit) const;
 
     /// The symbols a locator query names: by id; by place — the symbol
     /// under a cursor, or those defined on a line of the file's serving
-    /// source; or by pattern, where the symbols spelling the name exactly
-    /// (in any case) are the answer when there are any, and the ranked
+    /// source; or by pattern, where every symbol spelling the name exactly
+    /// (in any case) is the answer when there is one, and the ranked
     /// matches stand as candidates otherwise.
     std::vector<Located> locate(const SymbolQuery& query) const;
 
@@ -497,6 +499,9 @@ private:
     struct Ranked {
         NameRank rank;
         SymbolRef symbol;
+        /// The file a file's own symbol was found in, which holds its
+        /// rows; invalid for a project symbol.
+        Fid anchor;
     };
 
     struct RankedHits {

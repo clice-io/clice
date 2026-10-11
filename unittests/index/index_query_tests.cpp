@@ -443,6 +443,26 @@ ZEST_CASE(LocalSymbolName) {
     ZASSERT(info->name == "hidden");
 }
 
+ZEST_CASE(LocalsByPath) {
+    add_main("main.cpp", R"(
+        struct S { int operator()() { int hidden = 0; return hidden; } };
+        static void helper(int hidden) {}
+        void use() { helper(1); }
+    )");
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    ZASSERT(search("hidden").empty());
+    ZASSERT(search("hidden path:main.cpp").size() == 2U);
+    ZASSERT(search("hidden path:other.cpp").empty());
+    ZASSERT(search("helper::hidden path:main.cpp").size() == 1U);
+
+    auto helper = locate(R"("helper" path:main.cpp)");
+    ZASSERT(helper.size() == 1U);
+    ZEXPECT(helper.front().symbol.scope == index::SymbolScope::TULocal);
+    ZEXPECT(helper.front().site.path.ends_with("main.cpp"));
+}
+
 ZEST_CASE(OpenSessionServedByShard) {
     add_file("header.h", R"(
         struct §(def)⟦§(def)Widget⟧ { int value; };

@@ -55,6 +55,7 @@ interface Renamed {
 interface Answer {
     result?: Renamed;
     error?: string;
+    candidates?: { name: string; symbol: string }[];
     stale: string[];
 }
 
@@ -97,7 +98,7 @@ test("plans without writing", async ({ session }) => {
     const ws = writeProject(session);
     await index(ws);
 
-    const answer = await rename(ws, "--name", "compute", "--to", "evaluate", "--dry-run");
+    const answer = await rename(ws, "--symbol", "compute", "--to", "evaluate", "--dry-run");
     expect(answer.status).toBe(0);
     const renamed = answer.result!;
     expect(renamed.kind).toBe("Function");
@@ -116,7 +117,7 @@ test("writes the edits", async ({ session }) => {
     const ws = writeProject(session);
     await index(ws);
 
-    const answer = await rename(ws, "--name", "Widget", "--to", "Gadget");
+    const answer = await rename(ws, "--symbol", "Widget", "--to", "Gadget");
     expect(answer.status, answer.error).toBe(0);
     expect(answer.result!.applied).toBe(true);
     expect(ws.read("a.h")).toBe(HEADER.replace("Widget { Widget()", "Gadget { Gadget()"));
@@ -130,7 +131,7 @@ test("conflicts block the write", async ({ session }) => {
     const ws = writeProject(session);
     await index(ws);
 
-    const answer = await rename(ws, "--name", "compute", "--to", "Widget");
+    const answer = await rename(ws, "--symbol", "compute", "--to", "Widget");
     expect(answer.status).toBe(1);
     expect(answer.result!.applied).toBe(false);
     expect(answer.result!.conflicts.join("\n")).toContain("already declared in the same scope");
@@ -142,13 +143,21 @@ test("a stale index blocks the write", async ({ session }) => {
     await index(ws);
     ws.write("other.cpp", OTHER + "int more() { return compute(4); }\n");
 
-    const stale = await rename(ws, "--name", "compute", "--to", "evaluate");
+    const stale = await rename(ws, "--symbol", "compute", "--to", "evaluate");
     expect(stale.status).toBe(1);
     expect(stale.result!.applied).toBe(false);
     expect(stale.result!.stale.map((file) => basename(file))).toContain("other.cpp");
     expect(ws.read("main.cpp")).toBe(MAIN);
 
-    const fresh = await rename(ws, "--name", "compute", "--to", "evaluate", "--fresh", "--dry-run");
+    const fresh = await rename(
+        ws,
+        "--symbol",
+        "compute",
+        "--to",
+        "evaluate",
+        "--fresh",
+        "--dry-run",
+    );
     expect(fresh.status, fresh.error).toBe(0);
     expect(places(fresh.result!)).toContain("other.cpp:3:21");
 });
@@ -157,18 +166,104 @@ test("refuses what it cannot rename", async ({ session }) => {
     const ws = writeProject(session);
     await index(ws);
 
-    const keyword = await rename(ws, "--name", "compute", "--to", "int");
+    const keyword = await rename(ws, "--symbol", "compute", "--to", "int");
     expect(keyword.status).toBe(1);
     expect(keyword.result!.conflicts).toEqual(["`int` is a keyword"]);
 
-    const macro = await rename(ws, "--name", "CALL", "--to", "INVOKE");
+    const macro = await rename(ws, "--symbol", "CALL", "--to", "INVOKE");
     expect(macro.status).toBe(1);
     expect(macro.error).toContain("macro");
 
-    expect((await rename(ws, "--name", "compute")).error).toContain("--to");
+    expect((await rename(ws, "--symbol", "compute")).error).toContain("--to");
     const unknown = await runClice("refactor", "extract", "--workspace", ws.root);
     expect(unknown.status).toBe(1);
     expect(unknown.stdout).toContain("unknown refactoring");
+});
+
+test("names its symbol exactly", async ({ session }) => {
+    const ws = writeProject(session);
+    await index(ws);
+
+    for (const near of ["comput", "Compute"]) {
+        const answer = await rename(ws, "--symbol", near, "--to", "evaluate", "--dry-run");
+        expect(answer.status).toBe(1);
+        expect(answer.error).toBe("symbol not found");
+    }
+    const pattern = await rename(ws, "--symbol", "comp*", "--to", "evaluate", "--dry-run");
+    expect(pattern.status).toBe(1);
+    expect(pattern.error).toContain("whole name");
+
+    // The place a name is written names the symbol too; a file the index
+    // never held is named with the answer.
+    const byPlace = await rename(ws, "--symbol", "other.cpp:2:22", "--to", "evaluate", "--dry-run");
+    expect(byPlace.status, byPlace.error).toBe(0);
+    expect(byPlace.result!.name).toBe("compute");
+    ws.write("new.cpp", "int fresh() { return 1; }\n");
+    const unindexed = await rename(ws, "--symbol", "new.cpp:1:5", "--to", "evaluate");
+    expect(unindexed.status).toBe(1);
+    expect(unindexed.stale.map((file) => basename(file))).toContain("new.cpp");
+});
+
+test("lists the symbols a name spells", async ({ session }) => {
+    const ws = session.tmpdir();
+    const text =
+        "namespace a { int value; }\nnamespace b { int value; }\nint use() { return a::value + b::value; }\n";
+    ws.write("main.cpp", text);
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    await index(ws);
+
+    const ambiguous = await rename(ws, "--symbol", "value", "--to", "amount", "--dry-run");
+    expect(ambiguous.status).toBe(1);
+    expect(ambiguous.error).toContain("2 symbols match");
+    expect(ambiguous.candidates!.map((c) => c.name)).toEqual(["value", "value"]);
+
+    const scoped = await rename(ws, "--symbol", "a::value", "--to", "amount", "--dry-run");
+    expect(scoped.status, scoped.error).toBe(0);
+    const picked = await rename(ws, "--symbol", ambiguous.candidates![1]!.symbol, "--to", "amount");
+    expect(picked.status, picked.error).toBe(0);
+    expect(picked.result!.files.flatMap((file) => file.edits)).toHaveLength(2);
+});
+
+test("renames the overloads a name spells", async ({ session }) => {
+    const ws = session.tmpdir();
+    const text = [
+        "int scale(int x) { return x; }",
+        "double scale(double x) { return x; }",
+        "template <typename T> T twice(T v) { return scale(v) * 2; }",
+        "int use() { return scale(1) + twice(2); }",
+        "",
+    ].join("\n");
+    ws.write("main.cpp", text);
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    await index(ws);
+
+    // Renamed together, the template's open call keeps naming them.
+    const all = await rename(ws, "--symbol", "scale", "--to", "resize", "--dry-run");
+    expect(all.status, all.error).toBe(0);
+    expect(places(all.result!)).toEqual([
+        "main.cpp:1:5",
+        "main.cpp:2:8",
+        "main.cpp:3:45",
+        "main.cpp:4:20",
+    ]);
+    expect(all.result!.unconfirmed).toEqual([]);
+
+    const search = await runClice(
+        "query",
+        "--workspace",
+        ws.root,
+        "--method",
+        "definition",
+        "--symbol",
+        "main.cpp:2:8",
+    );
+    const { symbol } = (JSON.parse(search.stdout) as { result: { symbol: string } }).result;
+    const one = await rename(ws, "--symbol", symbol, "--to", "resize", "--dry-run");
+    expect(one.status, one.error).toBe(0);
+    expect(places(one.result!)).toEqual(["main.cpp:2:8"]);
+    expect(one.result!.unconfirmed.map((note) => `${note.line}:${note.column}`)).toEqual(["3:45"]);
 });
 
 /// The edits a rename reply makes to `file`, and the buffer version they
