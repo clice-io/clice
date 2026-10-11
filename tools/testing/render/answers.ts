@@ -425,14 +425,14 @@ export function renderActions(
     file: (path: string) => SourceText,
 ): string[] {
     return actions.flatMap((action) => {
-        const verdict =
+        const outcome =
             action.errors === undefined
                 ? ""
                 : action.errors.length === 0
                   ? " → compiles"
                   : " → does not compile";
         return [
-            `[${action.kind}] ${action.title}${verdict}`,
+            `[${action.kind}] ${action.title}${outcome}`,
             ...renderWorkspaceEdit(action.edits, file).map(indent),
             ...(action.errors ?? []).map((error) => `  error: ${error}`),
             ...(action.host.length === 0

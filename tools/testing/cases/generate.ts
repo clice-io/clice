@@ -1,4 +1,4 @@
-/// Generated inputs, for a case whose claim is about quantity: many units,
+/// Generated inputs, for a case whose point is quantity: many units,
 /// many symbols, a large file. Every generated name carries its number, so
 /// answers about one item never match another.
 

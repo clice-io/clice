@@ -8,7 +8,7 @@ import { URI } from "vscode-uri";
 import type { Serve } from "./serve.ts";
 
 /// One line of a trace: when the editor sent the message, in milliseconds
-/// from the start, and the message as it went on the wire.
+/// from the start, and the message as it was sent.
 interface Line {
     ts: number;
     msg: string;

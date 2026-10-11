@@ -22,7 +22,7 @@ export interface Root {
 const URI_ILLEGAL_CHAR = /[^A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]/;
 const URI_BAD_PERCENT = /%(?![0-9A-Fa-f]{2})/;
 
-/// The decoded absolute path of a wire URI.
+/// The decoded absolute path of a URI as the protocol carries it.
 export function uriToPath(uri: string): string {
     const illegal = URI_ILLEGAL_CHAR.exec(uri);
     if (illegal) {

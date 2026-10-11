@@ -66,7 +66,7 @@ function asError(error: unknown): Error {
 
 /// The end of a test: the script's own failure, what teardown found then
 /// printed after it; else every teardown failure at once.
-export function settle(
+export function throwFailures(
     failure: { error: unknown } | undefined,
     teardown: readonly unknown[],
 ): void {

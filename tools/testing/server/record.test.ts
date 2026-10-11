@@ -43,12 +43,12 @@ test("recorded lines replay", async () => {
     ]);
     let echoed = "";
     echo.stdout.setEncoding("utf8").on("data", (chunk: string) => (echoed += chunk));
-    const wire = sent.map(frame).join("");
-    echo.stdin.write(wire.slice(0, 10));
-    echo.stdin.end(wire.slice(10));
+    const stream = sent.map(frame).join("");
+    echo.stdin.write(stream.slice(0, 10));
+    echo.stdin.end(stream.slice(10));
     const status = await new Promise((resolve) => echo.on("close", resolve));
     expect(status).toBe(0);
-    expect(echoed).toBe(wire);
+    expect(echoed).toBe(stream);
     const root = path.join(dir, "copy");
     const played = readTrace(trace, root).map(({ message }) => message);
     expect(played).toHaveLength(2);

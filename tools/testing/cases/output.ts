@@ -56,7 +56,7 @@ export class Output {
     readonly lines: string[] = [];
     private readonly labels = new Set<string>();
 
-    private claim(label: string): void {
+    private reserve(label: string): void {
         if (this.labels.has(label)) {
             throw new Error(`two blocks labeled '${label}'`);
         }
@@ -64,7 +64,7 @@ export class Output {
     }
 
     block(label: string, body: string | readonly string[]): void {
-        this.claim(label);
+        this.reserve(label);
         this.lines.push(...formatBlock(label, body));
     }
 
@@ -81,7 +81,7 @@ export class Output {
             if (line.startsWith("--- ")) {
                 section = `${line} ▸ `;
             } else if (line !== "" && !line.startsWith(" ")) {
-                this.claim(`${section}${headerLabel(line)}`);
+                this.reserve(`${section}${headerLabel(line)}`);
             }
         }
         this.lines.push(...lines);

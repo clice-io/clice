@@ -10,7 +10,7 @@ import { runCommand, splitCommand, type CommandOptions, type CommandRun } from "
 import { replay } from "../server/replay.ts";
 import { render, type Shown } from "../render/shown.ts";
 import { Serve, gateLogs, type ServerOptions } from "../server/serve.ts";
-import { SCRIPT_DEADLINE_MS, StepRecord, settle } from "../server/steps.ts";
+import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { markerOf, runAnswers } from "./answers.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
@@ -40,7 +40,7 @@ export interface TestContext {
     /// A marker of the case's sources, valid while its file reads as the
     /// case wrote it.
     marker(name: string): MarkerAnchor;
-    /// Let `ms` pass, where time is the claim; `why` names the product's
+    /// Let `ms` pass, where time is what the test checks; `why` names the product's
     /// interval it waits out.
     elapse(ms: number, why: string): Promise<void>;
 }
@@ -166,6 +166,6 @@ export async function runRegistered(c: Case, registered: Registered): Promise<st
     } catch (error) {
         failure = { error };
     }
-    settle(failure, await run.finish(failure !== undefined));
+    throwFailures(failure, await run.finish(failure !== undefined));
     return run.output.lines;
 }

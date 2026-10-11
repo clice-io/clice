@@ -12,7 +12,7 @@ import { Inspect } from "../inspect/inspect.ts";
 import type { Client } from "../render/client.ts";
 import { render, type ShowOptions, type Shown } from "../render/shown.ts";
 import { Serve, gateLogs } from "../server/serve.ts";
-import { SCRIPT_DEADLINE_MS, StepRecord, settle } from "../server/steps.ts";
+import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
@@ -220,7 +220,7 @@ async function onServer(
     const failed = failure !== undefined;
     const gated = [...(await s.finish(failed)), ...gateLogs(workspace, {}, failed)];
     remove(root);
-    settle(failure, gated);
+    throwFailures(failure, gated);
     return shows;
 }
 

@@ -81,7 +81,7 @@ export async function render(
 
 /// Every request of a record is under way already: one failing behind an
 /// earlier failure is handled, not left unobserved. The entries still
-/// render in order, each after the one before has settled.
+/// render in order, each after the one before has finished.
 function observe(value: Shown): void {
     if (value instanceof Promise) {
         value.catch(() => undefined);

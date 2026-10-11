@@ -4,7 +4,7 @@
 /// Actions are of three kinds. Basic actions send one message, touch the
 /// disk once or call one test hook. Combined actions are built from actions
 /// only and end on a server event: a reply, the diagnostics of a version, a
-/// settled `sync`, a hold or gate reached, a process exit. Nothing sleeps
+/// finished `sync`, a hold or gate reached, a process exit. Nothing sleeps
 /// or polls. Every action is recorded as a step; a failing test prints the
 /// steps, what the server still had to do, and the log lines that matter.
 
@@ -294,7 +294,7 @@ export class Serve extends Client {
         return shown(reply, (diagnostics) => this.renderDiagnostics(file, diagnostics));
     }
 
-    /// Every diagnostics push `file` received, oldest first, once settled.
+    /// Every diagnostics push `file` received, oldest first, once idle.
     /// It starts no compile.
     pushes(file: string): Promise<Diagnostic[][]> {
         const reply = this.steps.run(`pushes of ${file}`, async () => {
@@ -314,7 +314,7 @@ export class Serve extends Client {
     }
 
     /// What the server told the user about the setup ([guidance] messages),
-    /// once settled.
+    /// once idle.
     guidance(): Promise<string[]> {
         return this.steps.run("guidance", async () => {
             await this.sync();
@@ -327,7 +327,7 @@ export class Serve extends Client {
     }
 
     /// How many workers crashed running the crash the server was started
-    /// with, or `request` on `file`, once settled.
+    /// with, or `request` on `file`, once idle.
     crashes(fault: WorkerFault | undefined = this.options.crash): Promise<number> {
         if (fault === undefined) {
             throw new Error("crashes() counts a declared crash: start the server with crash");
@@ -340,7 +340,7 @@ export class Serve extends Client {
         });
     }
 
-    /// How many `method` requests the server sent the client, once settled.
+    /// How many `method` requests the server sent the client, once idle.
     serverRequests(method: string): Promise<number> {
         return this.steps.run(`${method} requests from the server`, async () => {
             await this.sync();
@@ -787,7 +787,7 @@ export class Serve extends Client {
     /// reply, for a build ("compile", "pch", "pcm", "index"; held in the
     /// master as clice/internal/hold), or where it starts in its worker
     /// ("compile", "completion", "tuRun", "query:Hover"; gated as
-    /// clice/internal/gate), so a cancel, an edit or a death lands mid-work.
+    /// clice/internal/gate), so a cancel, an edit or a death arrives mid-work.
     /// Resolves once placed; a park left unreleased goes with the server.
     async park(work: string, file: string, options: { at: "reply" | "worker" }): Promise<Park> {
         const where =
@@ -946,7 +946,7 @@ export class Serve extends Client {
 
     // Combined actions.
 
-    /// The server settled with every unit indexed.
+    /// The server went idle with every unit indexed.
     indexed(): Promise<void> {
         return this.steps.run("indexed", async () => {
             const { failed } = await this.sync();
