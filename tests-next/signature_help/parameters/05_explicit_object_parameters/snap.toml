@@ -1,0 +1,6 @@
+[answers.first]
+wrong = "the object parameter is listed and marked, while the cursor is on the argument for dx (clangd#2284)"
+
+[answers.first.signature_help]
+signatures = ["move(⟦this Shape &self⟧, int dx, int dy) -> void"]
+active = 0

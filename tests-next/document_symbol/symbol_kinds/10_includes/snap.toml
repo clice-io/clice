@@ -1,0 +1,11 @@
+[answers.outline]
+wrong = "#include directives do not appear in the outline (clangd#2226)"
+document_symbols = [
+    { name = "uses_config", kind = "Function", at = "int ⟦uses_config⟧();", detail = "int ()" },
+]
+
+[answers.extents]
+wrong = "#include directives do not appear in the outline (clangd#2226)"
+document_symbols = [
+    { name = "uses_config", kind = "Function", at = "int ⟦uses_config⟧();", range = "⟦int uses_config()⟧;" },
+]

@@ -1,0 +1,36 @@
+[answers.outline]
+document_symbols = [
+    { name = "c_api", kind = "Function", at = "void ⟦c_api⟧(int handle);", detail = "void (int)" },
+    { name = "single_c", kind = "Function", at = 'extern "C" void ⟦single_c⟧(int);', detail = "void (int)" },
+    {
+        name = "lib",
+        kind = "Namespace",
+        at = "namespace ⟦lib⟧ {",
+        children = [
+            { name = "Thing", kind = "Struct", at = "struct ⟦Thing⟧ {};", detail = "struct" },
+        ],
+    },
+    { name = "first_value", kind = "Variable", at = "int ⟦first_value⟧, second_value;", detail = "int" },
+    { name = "second_value", kind = "Variable", at = "int first_value, ⟦second_value⟧;", detail = "int" },
+    { name = "declared_then_defined", kind = "Function", at = "void ⟦declared_then_defined⟧();", detail = "void ()" },
+    { name = "declared_then_defined", kind = "Function", at = "void ⟦declared_then_defined⟧() {}", detail = "void ()" },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "c_api", kind = "Function", at = "void ⟦c_api⟧(int handle);", range = "⟦void c_api(int handle)⟧;" },
+    { name = "single_c", kind = "Function", at = 'extern "C" void ⟦single_c⟧(int);', range = 'extern "C" ⟦void single_c(int)⟧;' },
+    {
+        name = "lib",
+        kind = "Namespace",
+        at = "namespace ⟦lib⟧ {",
+        range = "⟦namespace lib { … }⟧ (3 lines)",
+        children = [
+            { name = "Thing", kind = "Struct", at = "struct ⟦Thing⟧ {};", range = "⟦struct Thing {}⟧;" },
+        ],
+    },
+    { name = "first_value", kind = "Variable", at = "int ⟦first_value⟧, second_value;", range = "⟦int first_value⟧, second_value;" },
+    { name = "second_value", kind = "Variable", at = "int first_value, ⟦second_value⟧;", range = "⟦int first_value, second_value⟧;" },
+    { name = "declared_then_defined", kind = "Function", at = "void ⟦declared_then_defined⟧();", range = "⟦void declared_then_defined()⟧;" },
+    { name = "declared_then_defined", kind = "Function", at = "void ⟦declared_then_defined⟧() {}", range = "⟦void declared_then_defined() {}⟧" },
+]

@@ -1,0 +1,32 @@
+[answers.function_def.hover]
+markdown = '''
+### function `backoff`
+
+---
+→ `int`
+Parameters:
+- `int attempt = 1`
+
+---
+```cpp
+// In namespace retry
+int backoff(int attempt = 1)
+```
+'''
+range = "int ⟦backoff⟧(int attempt = 1) {"
+
+[answers.var_ref.hover]
+markdown = '''
+### variable `max_retries`
+
+---
+Type: `const int`
+Value = `3`
+
+---
+```cpp
+// In namespace retry
+constexpr int max_retries = 3
+```
+'''
+range = "return attempt * ⟦max_retries⟧;"

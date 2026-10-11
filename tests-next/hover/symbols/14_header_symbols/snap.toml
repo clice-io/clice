@@ -1,0 +1,71 @@
+[answers.inspect.type.hover]
+markdown = '''
+### struct `Point`
+
+---
+A point in the plane.
+
+---
+```cpp
+// In namespace geometry
+struct Point {
+  int x;
+  int y;
+}
+```
+'''
+range = "geometry::⟦Point⟧ corner{3, 4};"
+
+[answers.inspect.function.hover]
+markdown = '''
+### function `norm`
+
+---
+→ `int`
+Parameters:
+- `Point p`
+
+Distance from the origin, in taxicab steps.
+
+---
+```cpp
+// In namespace geometry
+int norm(Point p)
+```
+'''
+range = "return geometry::⟦norm⟧(corner);"
+
+[answers.server]
+wrong = "the server's preamble keeps no comments, so symbols from a header lose their documentation"
+
+[answers.server.type.hover]
+markdown = '''
+### struct `Point`
+
+---
+```cpp
+// In namespace geometry
+struct Point {
+  int x;
+  int y;
+}
+```
+'''
+range = "geometry::⟦Point⟧ corner{3, 4};"
+
+[answers.server.function.hover]
+markdown = '''
+### function `norm`
+
+---
+→ `int`
+Parameters:
+- `Point p`
+
+---
+```cpp
+// In namespace geometry
+int norm(Point p)
+```
+'''
+range = "return geometry::⟦norm⟧(corner);"

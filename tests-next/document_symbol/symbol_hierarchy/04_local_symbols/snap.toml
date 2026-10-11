@@ -1,0 +1,69 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "compute",
+        kind = "Function",
+        at = "int ⟦compute⟧() {",
+        detail = "int ()",
+        children = [
+            { name = "local_sum", kind = "Variable", at = "int ⟦local_sum⟧ = 0;", detail = "int" },
+            {
+                name = "Accumulator",
+                kind = "Struct",
+                at = "struct ⟦Accumulator⟧ {",
+                detail = "struct",
+                children = [
+                    { name = "total", kind = "Field", at = "int ⟦total⟧;", detail = "int" },
+                ],
+            },
+            { name = "twice", kind = "Variable", at = "auto ⟦twice⟧ = [](int x) {", detail = "(lambda)" },
+            {
+                name = "Pair",
+                kind = "Struct",
+                at = "struct ⟦Pair⟧ {",
+                detail = "struct",
+                children = [
+                    { name = "a", kind = "Field", at = "int ⟦a⟧;", detail = "int" },
+                    { name = "b", kind = "Field", at = "int ⟦b⟧;", detail = "int" },
+                ],
+            },
+            { name = "first", kind = "Variable", at = "auto [⟦first⟧, second] = Pair{1, 2};", detail = "int" },
+            { name = "second", kind = "Variable", at = "auto [first, ⟦second⟧] = Pair{1, 2};", detail = "int" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "compute",
+        kind = "Function",
+        at = "int ⟦compute⟧() {",
+        range = "⟦int compute() { … }⟧ (20 lines)",
+        children = [
+            { name = "local_sum", kind = "Variable", at = "int ⟦local_sum⟧ = 0;", range = "⟦int local_sum = 0⟧;" },
+            {
+                name = "Accumulator",
+                kind = "Struct",
+                at = "struct ⟦Accumulator⟧ {",
+                range = "⟦struct Accumulator { … }⟧ (3 lines)",
+                children = [
+                    { name = "total", kind = "Field", at = "int ⟦total⟧;", range = "⟦int total⟧;" },
+                ],
+            },
+            { name = "twice", kind = "Variable", at = "auto ⟦twice⟧ = [](int x) {", range = "⟦auto twice = [](int x) { … }⟧ (3 lines)" },
+            {
+                name = "Pair",
+                kind = "Struct",
+                at = "struct ⟦Pair⟧ {",
+                range = "⟦struct Pair { … }⟧ (4 lines)",
+                children = [
+                    { name = "a", kind = "Field", at = "int ⟦a⟧;", range = "⟦int a⟧;" },
+                    { name = "b", kind = "Field", at = "int ⟦b⟧;", range = "⟦int b⟧;" },
+                ],
+            },
+            { name = "first", kind = "Variable", at = "auto [⟦first⟧, second] = Pair{1, 2};", range = "auto [⟦first⟧, second] = Pair{1, 2};" },
+            { name = "second", kind = "Variable", at = "auto [first, ⟦second⟧] = Pair{1, 2};", range = "auto [first, ⟦second⟧] = Pair{1, 2};" },
+        ],
+    },
+]

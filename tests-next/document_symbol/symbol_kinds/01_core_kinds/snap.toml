@@ -1,0 +1,130 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "kinds",
+        kind = "Namespace",
+        at = "namespace ⟦kinds⟧ {",
+        children = [
+            {
+                name = "Value",
+                kind = "Class",
+                at = "union ⟦Value⟧ {",
+                detail = "union",
+                children = [
+                    { name = "i", kind = "Field", at = "int ⟦i⟧;", detail = "int" },
+                    { name = "f", kind = "Field", at = "float ⟦f⟧;", detail = "float" },
+                ],
+            },
+            {
+                name = "Flags",
+                kind = "Enum",
+                at = "enum ⟦Flags⟧ { FlagA, FlagB };",
+                detail = "enum",
+                children = [
+                    { name = "FlagA", kind = "EnumMember", at = "enum Flags { ⟦FlagA⟧, FlagB };", detail = "Flags" },
+                    { name = "FlagB", kind = "EnumMember", at = "enum Flags { FlagA, ⟦FlagB⟧ };", detail = "Flags" },
+                ],
+            },
+            {
+                name = "Mode",
+                kind = "Enum",
+                at = "enum class ⟦Mode⟧ : unsigned char { Fast, Safe };",
+                detail = "enum",
+                children = [
+                    { name = "Fast", kind = "EnumMember", at = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };", detail = "Mode" },
+                    { name = "Safe", kind = "EnumMember", at = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };", detail = "Mode" },
+                ],
+            },
+            {
+                name = "Pair",
+                kind = "Struct",
+                at = "struct ⟦Pair⟧ {",
+                detail = "struct",
+                children = [
+                    {
+                        name = "Meta",
+                        kind = "Struct",
+                        at = "struct ⟦Meta⟧ {",
+                        detail = "struct",
+                        children = [
+                            { name = "tag", kind = "Field", at = "int ⟦tag⟧;", detail = "int" },
+                        ],
+                    },
+                    { name = "first", kind = "Field", at = "int ⟦first⟧;", detail = "int" },
+                    { name = "second", kind = "Field", at = "int ⟦second⟧;", detail = "int" },
+                    { name = "instances", kind = "Variable", at = "static int ⟦instances⟧;", detail = "int" },
+                ],
+            },
+            { name = "make_pair", kind = "Function", at = "Pair ⟦make_pair⟧();", detail = "Pair ()" },
+            { name = "bound_first", kind = "Variable", at = "auto [⟦bound_first⟧, bound_second] = make_pair();", detail = "int" },
+            { name = "bound_second", kind = "Variable", at = "auto [bound_first, ⟦bound_second⟧] = make_pair();", detail = "int" },
+            { name = "lambda", kind = "Variable", at = "auto ⟦lambda⟧ = [](int x) {", detail = "(lambda)" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "kinds",
+        kind = "Namespace",
+        at = "namespace ⟦kinds⟧ {",
+        range = "⟦namespace kinds { … }⟧ (30 lines)",
+        children = [
+            {
+                name = "Value",
+                kind = "Class",
+                at = "union ⟦Value⟧ {",
+                range = "⟦union Value { … }⟧ (4 lines)",
+                children = [
+                    { name = "i", kind = "Field", at = "int ⟦i⟧;", range = "⟦int i⟧;" },
+                    { name = "f", kind = "Field", at = "float ⟦f⟧;", range = "⟦float f⟧;" },
+                ],
+            },
+            {
+                name = "Flags",
+                kind = "Enum",
+                at = "enum ⟦Flags⟧ { FlagA, FlagB };",
+                range = "⟦enum Flags { FlagA, FlagB }⟧;",
+                children = [
+                    { name = "FlagA", kind = "EnumMember", at = "enum Flags { ⟦FlagA⟧, FlagB };", range = "enum Flags { ⟦FlagA⟧, FlagB };" },
+                    { name = "FlagB", kind = "EnumMember", at = "enum Flags { FlagA, ⟦FlagB⟧ };", range = "enum Flags { FlagA, ⟦FlagB⟧ };" },
+                ],
+            },
+            {
+                name = "Mode",
+                kind = "Enum",
+                at = "enum class ⟦Mode⟧ : unsigned char { Fast, Safe };",
+                range = "⟦enum class Mode : unsigned char { Fast, Safe }⟧;",
+                children = [
+                    { name = "Fast", kind = "EnumMember", at = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };", range = "enum class Mode : unsigned char { ⟦Fast⟧, Safe };" },
+                    { name = "Safe", kind = "EnumMember", at = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };", range = "enum class Mode : unsigned char { Fast, ⟦Safe⟧ };" },
+                ],
+            },
+            {
+                name = "Pair",
+                kind = "Struct",
+                at = "struct ⟦Pair⟧ {",
+                range = "⟦struct Pair { … }⟧ (9 lines)",
+                children = [
+                    {
+                        name = "Meta",
+                        kind = "Struct",
+                        at = "struct ⟦Meta⟧ {",
+                        range = "⟦struct Meta { … }⟧ (3 lines)",
+                        children = [
+                            { name = "tag", kind = "Field", at = "int ⟦tag⟧;", range = "⟦int tag⟧;" },
+                        ],
+                    },
+                    { name = "first", kind = "Field", at = "int ⟦first⟧;", range = "⟦int first⟧;" },
+                    { name = "second", kind = "Field", at = "int ⟦second⟧;", range = "⟦int second⟧;" },
+                    { name = "instances", kind = "Variable", at = "static int ⟦instances⟧;", range = "⟦static int instances⟧;" },
+                ],
+            },
+            { name = "make_pair", kind = "Function", at = "Pair ⟦make_pair⟧();", range = "⟦Pair make_pair()⟧;" },
+            { name = "bound_first", kind = "Variable", at = "auto [⟦bound_first⟧, bound_second] = make_pair();", range = "auto [⟦bound_first⟧, bound_second] = make_pair();" },
+            { name = "bound_second", kind = "Variable", at = "auto [bound_first, ⟦bound_second⟧] = make_pair();", range = "auto [bound_first, ⟦bound_second⟧] = make_pair();" },
+            { name = "lambda", kind = "Variable", at = "auto ⟦lambda⟧ = [](int x) {", range = "⟦auto lambda = [](int x) { … }⟧ (3 lines)" },
+        ],
+    },
+]

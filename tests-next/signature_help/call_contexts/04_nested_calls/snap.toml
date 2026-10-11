@@ -1,0 +1,7 @@
+[answers.deep.signature_help]
+signatures = ["inner(⟦int a⟧) -> int"]
+active = 0
+
+[answers.shallow.signature_help]
+signatures = ["outer(int b, ⟦int c⟧) -> int"]
+active = 0

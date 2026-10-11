@@ -1,0 +1,42 @@
+[answers.by_name.hover]
+markdown = '''
+### variable `height`
+
+---
+Type: `long`
+Value = `720 (0x2d0)`
+Passed as height
+
+---
+```cpp
+// In apply
+long height = 720
+```
+'''
+range = "resize(⟦height⟧, previous, 2);"
+
+[answers.by_ref.hover]
+markdown = '''
+### variable `previous`
+
+---
+Type: `long`
+Value = `0`
+Passed by reference as previous
+
+---
+```cpp
+// In apply
+long previous = 0
+```
+'''
+range = "resize(height, ⟦previous⟧, 2);"
+
+[answers.literal.hover]
+markdown = '''
+### `literal`
+
+---
+Passed as flags (converted to long)
+'''
+range = "resize(height, previous, ⟦2⟧);"

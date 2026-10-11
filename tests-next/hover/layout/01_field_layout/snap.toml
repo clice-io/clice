@@ -1,0 +1,67 @@
+[answers.plain_field.hover]
+markdown = '''
+### field `kind`
+
+---
+Type: `char`
+Offset: 0 bytes
+Size: 1 byte (+7 bytes padding), alignment 1 byte
+
+---
+```cpp
+// In Frame
+public: char kind
+```
+'''
+range = "char ⟦kind⟧;"
+
+[answers.padded_field.hover]
+markdown = '''
+### field `sequence`
+
+---
+Type: `long`
+Offset: 8 bytes
+Size: 8 bytes, alignment 8 bytes
+
+---
+```cpp
+// In Frame
+public: long sequence
+```
+'''
+range = "long ⟦sequence⟧;"
+
+[answers.bitfield.hover]
+markdown = '''
+### field `enabled`
+
+---
+Type: `unsigned int`
+Offset: 0 bytes
+Size: 1 bit, alignment 4 bytes
+
+---
+```cpp
+// In Options
+public: unsigned int enabled : 1
+```
+'''
+range = "unsigned int ⟦enabled⟧ : 1;"
+
+[answers.bitfield_padding.hover]
+markdown = '''
+### field `last`
+
+---
+Type: `unsigned int`
+Offset: 0 bytes and 1 bit
+Size: 1 bit (+30 bits padding), alignment 4 bytes
+
+---
+```cpp
+// In Options
+public: unsigned int last : 1
+```
+'''
+range = "unsigned int ⟦last⟧ : 1;"

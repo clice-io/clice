@@ -1,0 +1,101 @@
+[answers.enum_var_value.hover]
+markdown = '''
+### variable `source`
+
+---
+Type: `Status`
+Value = `Idle (0xfffffffc)`
+
+---
+```cpp
+// In namespace symbolic_enum_value
+Status source = Status::Idle
+```
+'''
+range = "Status copy = ⟦source⟧;"
+
+[answers.static_member_value.hover]
+markdown = '''
+### variable `value`
+
+---
+Type: `const long`
+Value = `16 (0x10)`
+
+---
+```cpp
+// In Offset<10>
+public: static constexpr long value = Base + 6
+```
+'''
+range = "long result = Offset<10>::⟦value⟧;"
+
+[answers.constexpr_fn_value.hover]
+markdown = '''
+### function `total`
+
+---
+→ `count_type (aka long)`
+Value = `18 (0x12)`
+
+---
+```cpp
+// In namespace aliased_result
+constexpr count_type total()
+```
+'''
+range = "long result = ⟦total⟧();"
+
+[answers.string_pointer_value.hover]
+markdown = '''
+### variable `message`
+
+---
+Type: `const char *`
+Value = `&"ready"[0]`
+
+---
+```cpp
+// In namespace pointer_value
+const char *message = "ready"
+```
+'''
+range = 'const char* ⟦message⟧ = "ready";'
+
+[answers.dependent_ctor_arg.hover]
+markdown = '''
+### parameter `identifier`
+
+---
+Type: `long`
+
+---
+```cpp
+// In create
+long identifier
+```
+'''
+range = "new Holder<T>(⟦identifier⟧);"
+
+[answers.skip_inline_anon_ns.hover]
+markdown = '''
+### class `Response`
+
+---
+```cpp
+// In namespace product::api::detail
+class Response {}
+```
+'''
+range = "product::api::detail::⟦Response⟧ response;"
+
+[answers.auto_incomplete_arg.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Wrapper<Forward>
+```
+'''
+range = "⟦auto⟧ wrapper = Wrapper<Forward>{};"

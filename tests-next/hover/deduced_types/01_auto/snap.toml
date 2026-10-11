@@ -1,0 +1,123 @@
+[answers.simple.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "⟦auto⟧ first = 4L;"
+
+[answers.const.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "const ⟦auto⟧ second = 5L;"
+
+[answers.ref.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "⟦auto⟧& third = source;"
+
+[answers.ptr.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "⟦auto⟧* fourth = &source;"
+
+[answers.from_pointer.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long *
+```
+'''
+range = "⟦auto⟧ fifth = &source;"
+
+[answers.lambda]
+wrong = "the closure type prints as class(lambda)"
+
+[answers.lambda.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+class(lambda)
+```
+'''
+range = "⟦auto⟧ sixth = [](long value) { return value; };"
+
+[answers.instantiation.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Holder<long>
+```
+'''
+range = "⟦auto⟧ seventh = Holder<long>{};"
+
+[answers.structured.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Dimensions
+```
+'''
+range = "⟦auto⟧ [rows, columns] = Dimensions{};"
+
+[answers.trailing_return.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "⟦auto⟧ explicit_result() -> long {"
+
+[answers.fn_return.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Result
+```
+'''
+range = "⟦auto⟧ inferred_result() {"
+
+[answers.undeduced.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+/* not deduced */
+```
+'''
+range = "⟦auto⟧ value = T{};"

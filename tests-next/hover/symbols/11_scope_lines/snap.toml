@@ -1,0 +1,144 @@
+[answers.local_var.hover]
+markdown = '''
+### variable `counter`
+
+---
+Type: `int`
+Value = `0`
+
+---
+```cpp
+// In update
+int counter = 0
+```
+'''
+range = "⟦counter⟧ = 3;"
+
+[answers.method_local_var.hover]
+markdown = '''
+### variable `position`
+
+---
+Type: `long`
+Value = `0`
+
+---
+```cpp
+// In Tracker::update
+long position = 0
+```
+'''
+range = "⟦position⟧ = 8;"
+
+[answers.global_var.hover]
+markdown = '''
+### variable `requests`
+
+---
+Type: `int`
+Value = `4`
+
+---
+```cpp
+static int requests = 4
+```
+'''
+range = "⟦requests⟧++;"
+
+[answers.ns_global_var.hover]
+markdown = '''
+### variable `bytes`
+
+---
+Type: `long long`
+Value = `-36637162602497 (0xffffdeadbeefffff)`
+
+---
+```cpp
+// In namespace metrics
+static long long bytes = -36637162602497
+```
+'''
+range = "metrics::⟦bytes⟧++;"
+
+[answers.anon_ns_var]
+wrong = "the scope line leaves out the anonymous namespace (clangd#436)"
+
+[answers.anon_ns_var.hover]
+markdown = '''
+### variable `generation`
+
+---
+Type: `int`
+
+---
+```cpp
+// In namespace service
+int generation
+```
+'''
+range = "return ++service::⟦generation⟧;"
+
+[answers.global_func.hover]
+markdown = '''
+### function `render`
+
+---
+→ `void`
+Describes a free function.
+
+---
+```cpp
+void render()
+```
+'''
+range = "void ⟦render⟧() {}"
+
+[answers.ns_func.hover]
+markdown = '''
+### function `flush`
+
+---
+→ `void`
+Describes a namespaced function.
+
+---
+```cpp
+// In namespace studio::detail
+void flush()
+```
+'''
+range = "void ⟦flush⟧() {}"
+
+[answers.method_local.hover]
+markdown = '''
+### variable `brushes`
+
+---
+Type: `int`
+Value = `0`
+
+---
+```cpp
+// In Painter::paint
+int brushes = 0
+```
+'''
+range = "int ⟦brushes⟧ = 0;"
+
+[answers.anon_struct_field.hover]
+markdown = '''
+### field `mode`
+
+---
+Type: `char`
+Offset: 0 bytes
+Size: 1 byte, alignment 1 byte
+
+---
+```cpp
+// In (anonymous struct)
+public: char mode
+```
+'''
+range = "char ⟦mode⟧;"

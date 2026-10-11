@@ -1,0 +1,18 @@
+[answers.macro_template]
+wrong = "the documentation is missing when the template keyword comes from a macro (clangd#1226)"
+
+[answers.macro_template.hover]
+markdown = '''
+### function `run`
+
+---
+→ `void`
+Parameters:
+- `T value`
+
+---
+```cpp
+template <typename T> void run(T value)
+```
+'''
+range = "TEMPLATE <typename T> void ⟦run⟧(T value);"

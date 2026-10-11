@@ -1,0 +1,15 @@
+[answers.outline]
+document_symbols = [
+    { name = "VAR", kind = "Constant", at = "#define ⟦VAR⟧(X) int X = 1;", detail = "(X)" },
+    { name = "from_argument", kind = "Variable", at = "VAR(⟦from_argument⟧)", detail = "int" },
+    { name = "COUNTER", kind = "Constant", at = "#define ⟦COUNTER⟧() int counter_from_body = 0;", detail = "()" },
+    { name = "counter_from_body", kind = "Variable", at = "⟦COUNTER⟧()", detail = "int" },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "VAR", kind = "Constant", at = "#define ⟦VAR⟧(X) int X = 1;", range = "#define ⟦VAR(X) int X = 1;⟧" },
+    { name = "from_argument", kind = "Variable", at = "VAR(⟦from_argument⟧)", range = "⟦VAR(from_argument)⟧" },
+    { name = "COUNTER", kind = "Constant", at = "#define ⟦COUNTER⟧() int counter_from_body = 0;", range = "#define ⟦COUNTER() int counter_from_body = 0;⟧" },
+    { name = "counter_from_body", kind = "Variable", at = "⟦COUNTER⟧()", range = "⟦COUNTER()⟧" },
+]

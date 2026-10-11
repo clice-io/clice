@@ -1,0 +1,376 @@
+[answers.int_value_literal.hover]
+markdown = '''
+### `literal`
+
+---
+Passed as value
+'''
+range = "take_int(⟦456⟧);"
+
+[answers.int_const_ref_literal.hover]
+markdown = '''
+### `literal`
+
+---
+Passed by const reference as value
+'''
+range = "view_int(⟦456⟧);"
+
+[answers.int_value_from_ref.hover]
+markdown = '''
+### variable `code_ref`
+
+---
+Type: `int &`
+Passed as value
+
+---
+```cpp
+// In exercise_pass_types
+int &code_ref = code
+```
+'''
+range = "take_int(⟦code_ref⟧);"
+
+[answers.int_const_ref_from_ref.hover]
+markdown = '''
+### variable `code_ref`
+
+---
+Type: `int &`
+Passed by const reference as value
+
+---
+```cpp
+// In exercise_pass_types
+int &code_ref = code
+```
+'''
+range = "view_int(⟦code_ref⟧);"
+
+[answers.int_const_ref_from_const_ref.hover]
+markdown = '''
+### variable `code_view`
+
+---
+Type: `const int &`
+Passed by const reference as value
+
+---
+```cpp
+// In exercise_pass_types
+const int &code_view = code
+```
+'''
+range = "view_int(⟦code_view⟧);"
+
+[answers.base_ref.hover]
+markdown = '''
+### variable `message`
+
+---
+Type: `Message`
+Passed by reference as value
+
+---
+```cpp
+// In exercise_pass_types
+Message message
+```
+'''
+range = "borrow_message(⟦message⟧);"
+
+[answers.base_const_ref.hover]
+markdown = '''
+### variable `message`
+
+---
+Type: `Message`
+Passed by const reference as value
+
+---
+```cpp
+// In exercise_pass_types
+Message message
+```
+'''
+range = "view_message(⟦message⟧);"
+
+[answers.base_const_ref_from_const_ref.hover]
+markdown = '''
+### variable `message_view`
+
+---
+Type: `const Message &`
+Passed by const reference as value
+
+---
+```cpp
+// In exercise_pass_types
+const Message &message_view = message
+```
+'''
+range = "view_message(⟦message_view⟧);"
+
+[answers.base_value.hover]
+markdown = '''
+### variable `message`
+
+---
+Type: `Message`
+Passed as value
+
+---
+```cpp
+// In exercise_pass_types
+Message message
+```
+'''
+range = "take_message(⟦message⟧);"
+
+[answers.base_value_from_const_ref.hover]
+markdown = '''
+### variable `message_view`
+
+---
+Type: `const Message &`
+Passed as value
+
+---
+```cpp
+// In exercise_pass_types
+const Message &message_view = message
+```
+'''
+range = "take_message(⟦message_view⟧);"
+
+[answers.derived_to_base_ref.hover]
+markdown = '''
+### variable `alert`
+
+---
+Type: `Alert`
+Passed by reference as value
+
+---
+```cpp
+// In exercise_pass_types
+Alert alert
+```
+'''
+range = "borrow_message(⟦alert⟧);"
+
+[answers.derived_to_base_const_ref.hover]
+markdown = '''
+### variable `alert`
+
+---
+Type: `Alert`
+Passed by const reference as value
+
+---
+```cpp
+// In exercise_pass_types
+Alert alert
+```
+'''
+range = "view_message(⟦alert⟧);"
+
+[answers.derived_to_base_value.hover]
+markdown = '''
+### variable `alert`
+
+---
+Type: `Alert`
+Passed as value
+
+---
+```cpp
+// In exercise_pass_types
+Alert alert
+```
+'''
+range = "take_message(⟦alert⟧);"
+
+[answers.ctor_base_const_ref.hover]
+markdown = '''
+### variable `message`
+
+---
+Type: `Message`
+Passed by const reference as message
+
+---
+```cpp
+// In exercise_pass_types
+Message message
+```
+'''
+range = "Envelope first(⟦message⟧);"
+
+[answers.new_ctor_base_const_ref.hover]
+markdown = '''
+### variable `message`
+
+---
+Type: `Message`
+Passed by const reference as message
+
+---
+```cpp
+// In exercise_pass_types
+Message message
+```
+'''
+range = "auto* second = new Envelope(⟦message⟧);"
+
+[answers.ctor_int_ref.hover]
+markdown = '''
+### variable `code`
+
+---
+Type: `int`
+Value = `7`
+Passed by reference as code
+
+---
+```cpp
+// In exercise_pass_types
+int code = 7
+```
+'''
+range = "Envelope third(⟦code⟧);"
+
+[answers.ctor_int_value.hover]
+markdown = '''
+### variable `code`
+
+---
+Type: `int`
+Value = `7`
+Passed as priority
+
+---
+```cpp
+// In exercise_pass_types
+int code = 7
+```
+'''
+range = "Envelope fourth(code, ⟦code⟧);"
+
+[answers.converted_int_var.hover]
+markdown = '''
+### variable `code`
+
+---
+Type: `int`
+Value = `7`
+Passed as value (converted to double)
+
+---
+```cpp
+// In exercise_pass_types
+int code = 7
+```
+'''
+range = "take_double(⟦code⟧);"
+
+[answers.converted_int_ref.hover]
+markdown = '''
+### variable `code_ref`
+
+---
+Type: `int &`
+Passed as value (converted to double)
+
+---
+```cpp
+// In exercise_pass_types
+int &code_ref = code
+```
+'''
+range = "take_double(⟦code_ref⟧);"
+
+[answers.converted_int_const_ref.hover]
+markdown = '''
+### variable `code_view`
+
+---
+Type: `const int &`
+Passed as value (converted to double)
+
+---
+```cpp
+// In exercise_pass_types
+const int &code_view = code
+```
+'''
+range = "take_double(⟦code_view⟧);"
+
+[answers.float_literal.hover]
+markdown = '''
+### `literal`
+
+---
+Passed as value
+'''
+range = "take_double(⟦456.0⟧);"
+
+[answers.converted_int_literal.hover]
+markdown = '''
+### `literal`
+
+---
+Passed as value (converted to double)
+'''
+range = "take_double(⟦456⟧);"
+
+[answers.converted_custom_from_int.hover]
+markdown = '''
+### variable `code`
+
+---
+Type: `int`
+Value = `7`
+Passed by reference as value (converted to Envelope)
+
+---
+```cpp
+// In exercise_pass_types
+int code = 7
+```
+'''
+range = "take_envelope(⟦code⟧);"
+
+[answers.converted_custom_from_float.hover]
+markdown = '''
+### variable `weight`
+
+---
+Type: `double`
+Value = `2.500000e+00`
+Passed as value (converted to Envelope)
+
+---
+```cpp
+// In exercise_pass_types
+double weight = 2.5
+```
+'''
+range = "take_envelope(⟦weight⟧);"
+
+[answers.converted_custom_from_base.hover]
+markdown = '''
+### variable `message`
+
+---
+Type: `Message`
+Passed by const reference as value (converted to Envelope)
+
+---
+```cpp
+// In exercise_pass_types
+Message message
+```
+'''
+range = "take_envelope(⟦message⟧);"

@@ -1,0 +1,28 @@
+[answers.outline]
+wrong = "Circle's detail does not name its base class Shape"
+document_symbols = [
+    { name = "Shape", kind = "Struct", at = "struct ⟦Shape⟧ {};", detail = "struct" },
+    {
+        name = "Circle",
+        kind = "Struct",
+        at = "struct ⟦Circle⟧ : Shape {",
+        detail = "struct",
+        children = [
+            { name = "radius", kind = "Field", at = "double ⟦radius⟧;", detail = "double" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "Shape", kind = "Struct", at = "struct ⟦Shape⟧ {};", range = "⟦struct Shape {}⟧;" },
+    {
+        name = "Circle",
+        kind = "Struct",
+        at = "struct ⟦Circle⟧ : Shape {",
+        range = "⟦struct Circle : Shape { … }⟧ (3 lines)",
+        children = [
+            { name = "radius", kind = "Field", at = "double ⟦radius⟧;", range = "⟦double radius⟧;" },
+        ],
+    },
+]

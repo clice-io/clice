@@ -1,0 +1,33 @@
+[answers.arithmetic.hover]
+markdown = '''
+### variable `n`
+
+---
+Type: `int`
+Value = `0`
+Passed as x (converted to float)
+
+---
+```cpp
+// In demo
+int n = 0
+```
+'''
+range = "take_float(⟦n⟧);"
+
+[answers.user_defined.hover]
+markdown = '''
+### variable `n`
+
+---
+Type: `int`
+Value = `0`
+Passed as w (converted to Wrapper)
+
+---
+```cpp
+// In demo
+int n = 0
+```
+'''
+range = "take_wrapper(⟦n⟧);"

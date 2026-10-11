@@ -1,0 +1,39 @@
+[answers.first.hover]
+markdown = '''
+### function `open`
+
+---
+→ `void`
+Parameters:
+- `const char * path`
+
+Opens a file.
+
+---
+```cpp
+// In namespace overloads
+void open(const char *path)
+```
+'''
+range = "void ⟦open⟧(const char* path);"
+
+[answers.second]
+wrong = "the second overload shows no description, where the first one's applies (clangd#2506)"
+
+[answers.second.hover]
+markdown = '''
+### function `open`
+
+---
+→ `void`
+Parameters:
+- `const char * path`
+- `int flags`
+
+---
+```cpp
+// In namespace overloads
+void open(const char *path, int flags)
+```
+'''
+range = "void ⟦open⟧(const char* path, int flags);"

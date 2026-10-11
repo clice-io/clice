@@ -1,4 +1,4 @@
-[answers."main.cpp"]
+[answers.outline]
 document_symbols = [
     {
         name = "garden",
@@ -9,21 +9,56 @@ document_symbols = [
                 name = "Season",
                 kind = "Enum",
                 at = "enum class ⟦Season⟧ { spring, autumn };",
+                detail = "enum",
                 children = [
-                    { name = "spring", kind = "EnumMember", at = "enum class Season { ⟦spring⟧, autumn };" },
-                    { name = "autumn", kind = "EnumMember", at = "enum class Season { spring, ⟦autumn⟧ };" },
+                    { name = "spring", kind = "EnumMember", at = "enum class Season { ⟦spring⟧, autumn };", detail = "Season" },
+                    { name = "autumn", kind = "EnumMember", at = "enum class Season { spring, ⟦autumn⟧ };", detail = "Season" },
                 ],
             },
             {
                 name = "Bed",
                 kind = "Struct",
                 at = "struct ⟦Bed⟧ {",
+                detail = "struct",
                 children = [
-                    { name = "width", kind = "Field", at = "int ⟦width⟧;" },
-                    { name = "plant", kind = "Method", at = "void ⟦plant⟧(Season season);" },
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;", detail = "int" },
+                    { name = "plant", kind = "Method", at = "void ⟦plant⟧(Season season);", detail = "void (Season)" },
                 ],
             },
-            { name = "water", kind = "Function", at = "void ⟦water⟧(Bed& bed);" },
+            { name = "water", kind = "Function", at = "void ⟦water⟧(Bed& bed);", detail = "void (Bed &)" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "garden",
+        kind = "Namespace",
+        at = "namespace ⟦garden⟧ {",
+        range = "⟦namespace garden { … }⟧ (12 lines)",
+        children = [
+            {
+                name = "Season",
+                kind = "Enum",
+                at = "enum class ⟦Season⟧ { spring, autumn };",
+                range = "⟦enum class Season { spring, autumn }⟧;",
+                children = [
+                    { name = "spring", kind = "EnumMember", at = "enum class Season { ⟦spring⟧, autumn };", range = "enum class Season { ⟦spring⟧, autumn };" },
+                    { name = "autumn", kind = "EnumMember", at = "enum class Season { spring, ⟦autumn⟧ };", range = "enum class Season { spring, ⟦autumn⟧ };" },
+                ],
+            },
+            {
+                name = "Bed",
+                kind = "Struct",
+                at = "struct ⟦Bed⟧ {",
+                range = "⟦struct Bed { … }⟧ (4 lines)",
+                children = [
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
+                    { name = "plant", kind = "Method", at = "void ⟦plant⟧(Season season);", range = "⟦void plant(Season season)⟧;" },
+                ],
+            },
+            { name = "water", kind = "Function", at = "void ⟦water⟧(Bed& bed);", range = "⟦void water(Bed& bed)⟧;" },
         ],
     },
 ]

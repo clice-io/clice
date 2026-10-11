@@ -1,0 +1,31 @@
+[answers.outline]
+wrong = "the friend class Undeclared lists as a class nested in Owner"
+document_symbols = [
+    { name = "Declared", kind = "Class", at = "class ⟦Declared⟧;", detail = "class" },
+    {
+        name = "Owner",
+        kind = "Class",
+        at = "class ⟦Owner⟧ {",
+        detail = "class",
+        children = [
+            { name = "Undeclared", kind = "Class", at = "friend class ⟦Undeclared⟧;", detail = "class" },
+            { name = "secret", kind = "Field", at = "int ⟦secret⟧;", detail = "int" },
+        ],
+    },
+]
+
+[answers.extents]
+wrong = "the friend class Undeclared lists as a class nested in Owner"
+document_symbols = [
+    { name = "Declared", kind = "Class", at = "class ⟦Declared⟧;", range = "⟦class Declared⟧;" },
+    {
+        name = "Owner",
+        kind = "Class",
+        at = "class ⟦Owner⟧ {",
+        range = "⟦class Owner { … }⟧ (5 lines)",
+        children = [
+            { name = "Undeclared", kind = "Class", at = "friend class ⟦Undeclared⟧;", range = "friend ⟦class Undeclared⟧;" },
+            { name = "secret", kind = "Field", at = "int ⟦secret⟧;", range = "⟦int secret⟧;" },
+        ],
+    },
+]

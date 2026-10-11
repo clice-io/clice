@@ -1,0 +1,81 @@
+["declaration first".at_decl.hover]
+markdown = '''
+### function `process`
+
+---
+→ `void`
+Parameters:
+- `int x`
+
+Public API documentation.
+
+---
+```cpp
+// In namespace decldef
+void process(int x)
+```
+'''
+range = "void ⟦process⟧(int x);"
+
+["declaration first".at_def.hover]
+markdown = '''
+### function `process`
+
+---
+→ `void`
+Parameters:
+- `int x`
+
+Public API documentation.
+
+---
+```cpp
+// In namespace decldef
+void process(int x)
+```
+'''
+range = "void ⟦process⟧(int x) { (void)x; }"
+
+["definition first".at_def]
+wrong = "hovered first, the definition's plain comment replaces the declaration's documentation"
+
+["definition first".at_def.hover]
+markdown = '''
+### function `process`
+
+---
+→ `void`
+Parameters:
+- `int x`
+
+Internal implementation note.
+
+---
+```cpp
+// In namespace decldef
+void process(int x)
+```
+'''
+range = "void ⟦process⟧(int x) { (void)x; }"
+
+["definition first".at_decl]
+wrong = "after the definition was hovered, its plain comment replaces the declaration's documentation here too"
+
+["definition first".at_decl.hover]
+markdown = '''
+### function `process`
+
+---
+→ `void`
+Parameters:
+- `int x`
+
+Internal implementation note.
+
+---
+```cpp
+// In namespace decldef
+void process(int x)
+```
+'''
+range = "void ⟦process⟧(int x);"

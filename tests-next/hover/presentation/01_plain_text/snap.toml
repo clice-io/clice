@@ -1,0 +1,86 @@
+[default.function.hover]
+markdown = '''
+### function `answer`
+
+---
+→ `int`
+Parameters:
+- `int p`
+
+Computes the answer. Tests primality of `p`.
+
+---
+```cpp
+constexpr int answer(int p)
+```
+'''
+range = "constexpr int ⟦answer⟧(int p) {"
+
+[default.variable.hover]
+markdown = '''
+### variable `value`
+
+---
+Type: `int`
+Value = `42 (0x2a)`
+
+---
+```cpp
+int value = answer(1)
+```
+'''
+range = "int ⟦value⟧ = answer(1);"
+
+[default.field.hover]
+markdown = '''
+### field `second`
+
+---
+Type: `int`
+Offset: 4 bytes
+Size: 4 bytes, alignment 4 bytes
+
+---
+```cpp
+// In Layout
+public: int second
+```
+'''
+range = "int ⟦second⟧;"
+
+[configured.function.hover]
+markdown = '''
+function answer
+
+→ int
+Parameters:
+- int p
+Computes the answer. Tests primality of `p`.
+
+constexpr int answer(int p)
+'''
+range = "constexpr int ⟦answer⟧(int p) {"
+
+[configured.variable.hover]
+markdown = '''
+variable value
+
+Type: int
+Value = 42 (0x2a)
+
+int value = answer(1)
+'''
+range = "int ⟦value⟧ = answer(1);"
+
+[configured.field.hover]
+markdown = '''
+field second
+
+Type: int
+Offset: 4 bytes
+Size: 4 bytes, alignment 4 bytes
+
+// In Layout
+public: int second
+'''
+range = "int ⟦second⟧;"

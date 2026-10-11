@@ -1,0 +1,70 @@
+[answers.binding]
+wrong = "a structured binding's card shows neither its scope nor its declaration, unlike other variables"
+
+[answers.binding.hover]
+markdown = '''
+### variable `first`
+
+---
+Type: `int`
+'''
+range = "auto [⟦first⟧, second] = make();"
+
+[answers.binding_use]
+wrong = "a structured binding's card shows neither its scope nor its declaration, unlike other variables"
+
+[answers.binding_use.hover]
+markdown = '''
+### variable `first`
+
+---
+Type: `int`
+'''
+range = "(void)⟦first⟧;"
+
+[answers.range_variable.hover]
+markdown = '''
+### variable `item`
+
+---
+Type: `int &`
+
+---
+```cpp
+// In bindings
+auto &item
+```
+'''
+range = "for (auto& ⟦item⟧ : items) {"
+
+[answers.capture.hover]
+markdown = '''
+### variable `threshold`
+
+---
+Type: `int`
+Value = `3`
+
+---
+```cpp
+// In bindings
+int threshold = 3
+```
+'''
+range = "auto above = [&⟦threshold⟧](int v) { return v > threshold; };"
+
+[answers.capture_use.hover]
+markdown = '''
+### variable `threshold`
+
+---
+Type: `int`
+Value = `3`
+
+---
+```cpp
+// In bindings
+int threshold = 3
+```
+'''
+range = "auto above = [&threshold](int v) { return v > ⟦threshold⟧; };"

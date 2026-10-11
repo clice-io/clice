@@ -1,0 +1,3 @@
+{
+  "flags": ["-DFROM_CLI=7"]
+}

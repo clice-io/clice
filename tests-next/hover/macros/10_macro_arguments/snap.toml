@@ -1,0 +1,29 @@
+[answers.pointer.hover]
+markdown = '''
+### parameter `pointer`
+
+---
+Type: `int *`
+
+---
+```cpp
+// In check
+int *pointer
+```
+'''
+range = "int ok = CHECK(⟦pointer⟧ != nullptr);"
+
+[answers.variable.hover]
+markdown = '''
+### variable `limit`
+
+---
+Type: `int`
+Value = `4`
+
+---
+```cpp
+int limit = 4
+```
+'''
+range = "return MAX(ok, ⟦limit⟧);"

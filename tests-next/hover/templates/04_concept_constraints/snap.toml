@@ -1,0 +1,73 @@
+[answers.concept_name.hover]
+markdown = '''
+### concept `Addable`
+
+---
+```cpp
+// In namespace concept_constraints
+template <typename T>
+concept Addable = requires(T a) { a + a; }
+```
+'''
+range = "template <⟦Addable⟧ U>"
+
+[answers.param_name.hover]
+markdown = '''
+### type `U`
+
+---
+Type: `class`
+
+---
+```cpp
+// In sum
+Addable U
+```
+'''
+range = "template <Addable ⟦U⟧>"
+
+[answers.concept_ref.hover]
+markdown = '''
+### concept `Addable`
+
+---
+Value = `true`
+
+---
+```cpp
+// In namespace concept_constraints
+template <typename T>
+concept Addable = requires(T a) { a + a; }
+```
+'''
+range = "auto flag = ⟦Addable⟧<int>;"
+
+[answers.constrained_auto]
+wrong = "the placeholder drops its Addable constraint, showing only the deduced int"
+
+[answers.constrained_auto.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+int
+```
+'''
+range = "Addable ⟦auto⟧ total = 1;"
+
+[answers.constrained_var.hover]
+markdown = '''
+### variable `total`
+
+---
+Type: `int`
+Value = `1`
+
+---
+```cpp
+// In namespace concept_constraints
+Addable auto total = 1
+```
+'''
+range = "Addable auto ⟦total⟧ = 1;"

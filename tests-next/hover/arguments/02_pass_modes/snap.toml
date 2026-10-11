@@ -1,0 +1,50 @@
+[answers.value.hover]
+markdown = '''
+### variable `count`
+
+---
+Type: `long`
+Value = `1`
+Passed as value
+
+---
+```cpp
+// In apply
+long count = 1
+```
+'''
+range = "consume(⟦count⟧);"
+
+[answers.ref.hover]
+markdown = '''
+### variable `count`
+
+---
+Type: `long`
+Value = `1`
+Passed by reference as value
+
+---
+```cpp
+// In apply
+long count = 1
+```
+'''
+range = "mutate(⟦count⟧);"
+
+[answers.const_ref.hover]
+markdown = '''
+### variable `count`
+
+---
+Type: `long`
+Value = `1`
+Passed by const reference as value
+
+---
+```cpp
+// In apply
+long count = 1
+```
+'''
+range = "observe(⟦count⟧);"

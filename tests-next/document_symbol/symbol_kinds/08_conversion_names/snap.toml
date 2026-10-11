@@ -1,0 +1,53 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "lib",
+        kind = "Namespace",
+        at = "namespace ⟦lib⟧ {",
+        children = [
+            { name = "basic_string", kind = "Struct", at = "struct ⟦basic_string⟧ {};", detail = "struct" },
+            { name = "string", kind = "Class", at = "using ⟦string⟧ = basic_string;", detail = "type alias" },
+        ],
+    },
+    { name = "Handle", kind = "Class", at = "using ⟦Handle⟧ = int*;", detail = "type alias" },
+    {
+        name = "Box",
+        kind = "Struct",
+        at = "struct ⟦Box⟧ {",
+        detail = "template struct",
+        children = [
+            { name = "operator T &", kind = "Method", at = "⟦operator T&⟧();", detail = "T &()" },
+            { name = "operator Handle", kind = "Method", at = "⟦operator Handle⟧();", detail = "Handle ()" },
+            { name = "operator lib::string", kind = "Method", at = "⟦operator lib::string⟧();", detail = "lib::string ()" },
+            { name = "operator bool", kind = "Method", at = "explicit ⟦operator bool⟧();", detail = "bool ()" },
+        ],
+    },
+]
+
+[answers.extents]
+wrong = "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it"
+document_symbols = [
+    {
+        name = "lib",
+        kind = "Namespace",
+        at = "namespace ⟦lib⟧ {",
+        range = "⟦namespace lib { … }⟧ (4 lines)",
+        children = [
+            { name = "basic_string", kind = "Struct", at = "struct ⟦basic_string⟧ {};", range = "⟦struct basic_string {}⟧;" },
+            { name = "string", kind = "Class", at = "using ⟦string⟧ = basic_string;", range = "⟦using string = basic_string⟧;" },
+        ],
+    },
+    { name = "Handle", kind = "Class", at = "using ⟦Handle⟧ = int*;", range = "⟦using Handle = int*⟧;" },
+    {
+        name = "Box",
+        kind = "Struct",
+        at = "struct ⟦Box⟧ {",
+        range = "⟦struct Box { … }⟧ (6 lines)",
+        children = [
+            { name = "operator T &", kind = "Method", at = "⟦operator T&⟧();", range = "⟦operator T&()⟧;" },
+            { name = "operator Handle", kind = "Method", at = "⟦operator Handle⟧();", range = "⟦operator Handle()⟧;" },
+            { name = "operator lib::string", kind = "Method", at = "⟦operator lib::string⟧();", range = "⟦operator lib::string()⟧;" },
+            { name = "operator bool", kind = "Method", at = "explicit ⟦operator bool⟧();", range = "⟦explicit operator bool()⟧;" },
+        ],
+    },
+]

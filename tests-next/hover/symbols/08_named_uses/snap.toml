@@ -1,0 +1,258 @@
+[answers.struct.hover]
+markdown = '''
+### struct `Coordinate`
+
+---
+```cpp
+// In namespace structure_use::model
+struct Coordinate {}
+```
+'''
+range = "model::⟦Coordinate⟧* current;"
+
+[answers.class.hover]
+markdown = '''
+### class `Controller`
+
+---
+```cpp
+// In namespace class_use::model
+class Controller {}
+```
+'''
+range = "model::⟦Controller⟧* current;"
+
+[answers.union.hover]
+markdown = '''
+### union `Storage`
+
+---
+```cpp
+// In namespace union_use::model
+union Storage {
+  long integer;
+  double decimal;
+}
+```
+'''
+range = "model::⟦Storage⟧ current;"
+
+[answers.forward_class.hover]
+markdown = '''
+### class `Session`
+
+---
+```cpp
+// In namespace forward_use
+class Session {}
+```
+'''
+range = "⟦Session⟧* active();"
+
+[answers.enum.hover]
+markdown = '''
+### enum `Direction`
+
+---
+```cpp
+// In namespace enum_use
+enum Direction { North = 0, East = 1, South = 2, West = 3 }
+```
+'''
+range = "⟦Direction⟧ current = North;"
+
+[answers.enumerator.hover]
+markdown = '''
+### enumerator `High`
+
+---
+Type: `enum enumerator_use::Priority`
+Value = `2`
+
+---
+```cpp
+// In Priority
+High
+```
+'''
+range = "Priority current = ⟦High⟧;"
+
+[answers.using_enum.hover]
+markdown = '''
+### enumerator `Write`
+
+---
+Type: `enum imported_enumerator::Mode`
+Value = `1`
+
+---
+```cpp
+// In Mode
+Write
+```
+'''
+range = "Mode current = ⟦Write⟧;"
+
+[answers.anon_enumerator.hover]
+markdown = '''
+### enumerator `Complete`
+
+---
+Type: `enum anonymous_enumerator::(unnamed enum)`
+Value = `8`
+
+---
+```cpp
+// In namespace anonymous_enumerator
+Complete = 8
+```
+'''
+range = "int state = ⟦Complete⟧;"
+
+[answers.typedef.hover]
+markdown = '''
+### type `Identifier`
+
+---
+Type: `long`
+
+---
+```cpp
+// In namespace alias_use
+typedef long Identifier
+```
+'''
+range = "⟦Identifier⟧ next;"
+
+[answers.typedef_embedded.hover]
+markdown = '''
+### type `Packet`
+
+---
+Type: `struct embedded_alias_use::Payload`
+
+---
+```cpp
+// In namespace embedded_alias_use
+typedef struct Payload Packet
+```
+'''
+range = "⟦Packet⟧ queued;"
+
+[answers.namespace.hover]
+markdown = '''
+### namespace `protocol`
+
+---
+```cpp
+// In namespace namespace_use
+namespace protocol {}
+```
+'''
+range = "⟦protocol⟧::Client::connect();"
+
+[answers.anon_struct_field.hover]
+markdown = '''
+### field `total`
+
+---
+Type: `long`
+
+---
+```cpp
+// In (anonymous struct)
+public: long total
+```
+'''
+range = "metrics.⟦total⟧++;"
+
+[answers.anon_union_field.hover]
+markdown = '''
+### field `count`
+
+---
+Type: `long`
+
+---
+```cpp
+// In Result::(anonymous union)
+public: long count
+```
+'''
+range = "result.data.⟦count⟧++;"
+
+[answers.templated_function.hover]
+markdown = '''
+### function `default_value`
+
+---
+→ `long`
+
+---
+```cpp
+// In namespace function_template_use
+template <> long default_value<long>()
+```
+'''
+range = "long value = ⟦default_value⟧<long>();"
+
+[answers.template_method.hover]
+markdown = '''
+### method `size`
+
+---
+→ `long`
+
+---
+```cpp
+// In Container<int>
+public: long size()
+```
+'''
+range = "auto size = Container<int>{}.⟦size⟧();"
+
+[answers.nested_template_var.hover]
+markdown = '''
+### variable `value`
+
+---
+Type: `Wrapper<Wrapper<Wrapper<long>>>`
+
+---
+```cpp
+// In namespace nested_instance_value
+Wrapper<Wrapper<Wrapper<long>>> value
+```
+'''
+range = "Wrapper<Wrapper<Wrapper<long>>> ⟦value⟧; @+0"
+
+[answers.nested_template_class.hover]
+markdown = '''
+### struct `Wrapper<nested_instance_type::Wrapper<nested_instance_type::Wrapper<long>>>`
+
+---
+```cpp
+// In namespace nested_instance_type
+template <>
+struct Wrapper<
+    nested_instance_type::Wrapper<nested_instance_type::Wrapper<long>>> {}
+```
+'''
+range = "⟦Wrapper⟧<Wrapper<Wrapper<long>>> value; @+0"
+
+[answers.forward_struct_value]
+wrong = "a type's card shows the value of the cast it is named in"
+
+[answers.forward_struct_value.hover]
+markdown = '''
+### struct `Incomplete`
+
+---
+Value = `&storage`
+
+---
+```cpp
+struct Incomplete
+```
+'''
+range = "auto incomplete_pointer = (⟦Incomplete⟧*)&storage;"

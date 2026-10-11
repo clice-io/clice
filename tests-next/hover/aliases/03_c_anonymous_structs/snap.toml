@@ -1,0 +1,31 @@
+[answers.typedef]
+wrong = "the definition names a struct Point that does not exist: the struct is anonymous"
+
+[answers.typedef.hover]
+markdown = '''
+### type `Point`
+
+---
+Type: `Point`
+A 2-D point.
+
+---
+```cpp
+typedef struct Point Point
+```
+'''
+range = "} ⟦Point⟧;"
+
+[answers.var.hover]
+markdown = '''
+### variable `origin`
+
+---
+Type: `Point`
+
+---
+```cpp
+Point origin = {.y = 2, .x = 1}
+```
+'''
+range = "Point ⟦origin⟧ = {.y = 2, .x = 1};"

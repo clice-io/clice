@@ -1,0 +1,137 @@
+[answers.const_ref_decltype_auto.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+const long &
+```
+'''
+range = "⟦decltype⟧(auto) value = reference;"
+
+[answers.decltype_auto_fn_return.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+Message
+```
+'''
+range = "⟦decltype⟧(auto) create() {"
+
+[answers.decltype_auto_ref_return.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long &
+```
+'''
+range = "⟦decltype⟧(auto) current() {"
+
+[answers.decltype_lvalue_ref.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long &
+```
+'''
+range = "⟦decltype⟧(reference) alias = source;"
+
+[answers.decltype_rvalue_call.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long &&
+```
+'''
+range = "⟦decltype⟧(acquire()) moved = acquire();"
+
+[answers.decltype_trailing_return.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+Message
+```
+'''
+range = "⟦decltype⟧(create()) message = create();"
+
+[answers.decltype_of_decltype.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long
+```
+'''
+range = "⟦decltype⟧(intermediate) copy = source; @+0"
+
+[answers.var_decltype_chain.hover]
+markdown = '''
+### variable `copy`
+
+---
+Type: `long`
+
+---
+```cpp
+// In namespace variable_type_chain
+decltype(intermediate) copy = source
+```
+'''
+range = "decltype(intermediate) ⟦copy⟧ = source; @+0"
+
+[answers.var_const_decltype]
+wrong = "copy is a const long: the card drops the const written before decltype"
+
+[answers.var_const_decltype.hover]
+markdown = '''
+### variable `copy`
+
+---
+Type: `long`
+
+---
+```cpp
+// In namespace const_variable_type
+const decltype(source) copy = source
+```
+'''
+range = "const decltype(source) ⟦copy⟧ = source;"
+
+[answers.fn_decltype_signature.hover]
+markdown = '''
+### function `convert`
+
+---
+→ `long`
+Parameters:
+- `long value`
+
+---
+```cpp
+// In namespace signature_type
+auto convert(decltype(source) value) -> decltype(source)
+```
+'''
+range = "auto ⟦convert⟧(decltype(source) value) -> decltype(source) {"
+
+[answers.decltype_auto_inner.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "decltype(⟦auto⟧) value = 34L;"

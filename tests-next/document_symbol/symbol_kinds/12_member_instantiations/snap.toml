@@ -1,0 +1,46 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "Outer",
+        kind = "Struct",
+        at = "struct ⟦Outer⟧ {",
+        detail = "template struct",
+        children = [
+            {
+                name = "Inner",
+                kind = "Struct",
+                at = "struct ⟦Inner⟧ {",
+                detail = "struct",
+                children = [
+                    { name = "k", kind = "Field", at = "int ⟦k⟧;", detail = "int" },
+                    { name = "f", kind = "Method", at = "void ⟦f⟧() {}", detail = "void ()" },
+                ],
+            },
+        ],
+    },
+    { name = "Inner", kind = "Struct", at = "template struct Outer<int>::⟦Inner⟧;", detail = "struct" },
+]
+
+[answers.extents]
+wrong = "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it"
+document_symbols = [
+    {
+        name = "Outer",
+        kind = "Struct",
+        at = "struct ⟦Outer⟧ {",
+        range = "⟦struct Outer { … }⟧ (6 lines)",
+        children = [
+            {
+                name = "Inner",
+                kind = "Struct",
+                at = "struct ⟦Inner⟧ {",
+                range = "⟦struct Inner { … }⟧ (4 lines)",
+                children = [
+                    { name = "k", kind = "Field", at = "int ⟦k⟧;", range = "⟦int k⟧;" },
+                    { name = "f", kind = "Method", at = "void ⟦f⟧() {}", range = "⟦void f() {}⟧" },
+                ],
+            },
+        ],
+    },
+    { name = "Inner", kind = "Struct", at = "template struct Outer<int>::⟦Inner⟧;", range = "⟦template struct Outer<int>::Inner⟧;" },
+]

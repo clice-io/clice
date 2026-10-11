@@ -1,0 +1,72 @@
+[answers.getter.hover]
+markdown = '''
+### method `getLevel`
+
+---
+→ `double`
+Trivial accessor for `level`.
+
+---
+```cpp
+// In Gauge
+public: double getLevel()
+```
+'''
+range = "double ⟦getLevel⟧() { return level; }"
+
+[answers.setter.hover]
+markdown = '''
+### method `setAngle`
+
+---
+→ `void`
+Parameters:
+- `double value`
+
+Trivial setter for `angle`.
+
+---
+```cpp
+// In Dial
+public: void setAngle(double value)
+```
+'''
+range = "void ⟦setAngle⟧(double value) { angle = value; }"
+
+[answers.setter_builder.hover]
+markdown = '''
+### method `setWidth`
+
+---
+→ `Builder &`
+Parameters:
+- `double value`
+
+Trivial setter for `width`.
+
+---
+```cpp
+// In Builder
+public: Builder &setWidth(double value)
+```
+'''
+range = "Builder& ⟦setWidth⟧(double value) {"
+
+[answers.setter_move.hover]
+markdown = '''
+### method `setOffset`
+
+---
+→ `void`
+Parameters:
+- `double value`
+
+Trivial setter for `offset`.
+
+---
+```cpp
+// In Mover
+public: void setOffset(double value)
+```
+'''
+range = "void ⟦setOffset⟧(double value) { offset = std::move(value); }"

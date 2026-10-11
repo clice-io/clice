@@ -1,0 +1,83 @@
+[answers.char_literal.hover]
+markdown = '''
+### `expression`
+
+---
+Type: `char`
+Value = `58 (0x3a)`
+'''
+range = "auto delimiter = ⟦':'⟧;"
+
+[answers.string_literal.hover]
+markdown = '''
+### `string-literal`
+
+---
+Type: `const char[8]`
+Size: 8 bytes
+'''
+range = 'auto greeting = ⟦"welcome"⟧;'
+
+[answers.sizeof_expr.hover]
+markdown = '''
+### `expression`
+
+---
+Type: `__size_t (aka unsigned long)`
+Value = `8`
+'''
+range = "(void)⟦sizeof⟧(long);"
+
+[answers.alignof_expr.hover]
+markdown = '''
+### `expression`
+
+---
+Type: `__size_t (aka unsigned long)`
+Value = `8`
+'''
+range = "(void)⟦alignof⟧(double);"
+
+[answers.udl_digits.hover]
+markdown = '''
+### function `operator""_unit`
+
+---
+→ `int`
+Parameters:
+- `unsigned long long value`
+
+---
+```cpp
+int operator""_unit(unsigned long long value)
+```
+'''
+range = "return ⟦12_unit⟧ + 12_unit;"
+
+[answers.udl_suffix.hover]
+markdown = '''
+### function `operator""_unit`
+
+---
+→ `int`
+Parameters:
+- `unsigned long long value`
+
+---
+```cpp
+int operator""_unit(unsigned long long value)
+```
+'''
+range = "return 12_unit + ⟦12_unit⟧;"
+
+[answers.float_literal]
+wrong = "a numeric literal has no card, where its type and value could show (clangd#1669)"
+hover = {}
+
+[answers.imaginary_literal]
+wrong = "a numeric literal has no card, where its type and value could show (clangd#1669)"
+hover = {}
+
+[answers.int_literal]
+wrong = "a numeric literal has no card, where its type and value could show (clangd#1669)"
+hover = {}

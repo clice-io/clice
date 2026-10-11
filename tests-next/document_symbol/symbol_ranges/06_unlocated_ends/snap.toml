@@ -1,0 +1,13 @@
+[answers.outline]
+document_symbols = [
+    { name = "First", kind = "Class", at = "using ⟦First⟧ = Ts...[0];", detail = "template type alias" },
+    { name = "v8hi", kind = "Class", at = "using ⟦v8hi⟧ = short __attribute__((vector_size(16)));", detail = "type alias" },
+    { name = "after", kind = "Variable", at = "int ⟦after⟧ = 0;", detail = "int" },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "First", kind = "Class", at = "using ⟦First⟧ = Ts...[0];", range = "⟦using First⟧ = Ts...[0];" },
+    { name = "v8hi", kind = "Class", at = "using ⟦v8hi⟧ = short __attribute__((vector_size(16)));", range = "⟦using v8hi⟧ = short __attribute__((vector_size(16)));" },
+    { name = "after", kind = "Variable", at = "int ⟦after⟧ = 0;", range = "⟦int after = 0⟧;" },
+]

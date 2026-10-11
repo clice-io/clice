@@ -1,0 +1,130 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "(anonymous namespace)",
+        kind = "Namespace",
+        at = "namespace ⟦{⟧",
+        children = [
+            { name = "hidden_counter", kind = "Variable", at = "int ⟦hidden_counter⟧ = 0;", detail = "int" },
+        ],
+    },
+    {
+        name = "(anonymous union)",
+        kind = "Class",
+        at = "static ⟦union⟧ {",
+        detail = "union",
+        children = [
+            { name = "global_int", kind = "Field", at = "int ⟦global_int⟧;", detail = "int" },
+            { name = "global_float", kind = "Field", at = "float ⟦global_float⟧;", detail = "float" },
+        ],
+    },
+    {
+        name = "misc",
+        kind = "Namespace",
+        at = "namespace ⟦misc⟧ {",
+        children = [
+            {
+                name = "v1",
+                kind = "Namespace",
+                at = "inline namespace ⟦v1⟧ {",
+                children = [
+                    { name = "versioned", kind = "Function", at = "int ⟦versioned⟧();", detail = "int ()" },
+                ],
+            },
+            {
+                name = "Outer",
+                kind = "Struct",
+                at = "struct ⟦Outer⟧ {",
+                detail = "struct",
+                children = [
+                    {
+                        name = "(anonymous struct)",
+                        kind = "Struct",
+                        at = "⟦struct⟧ {",
+                        detail = "struct",
+                        children = [
+                            { name = "anonymous_member", kind = "Field", at = "int ⟦anonymous_member⟧;", detail = "int" },
+                        ],
+                    },
+                    {
+                        name = "(anonymous union)",
+                        kind = "Class",
+                        at = "⟦union⟧ {",
+                        detail = "union",
+                        children = [
+                            { name = "as_int", kind = "Field", at = "int ⟦as_int⟧;", detail = "int" },
+                            { name = "as_float", kind = "Field", at = "float ⟦as_float⟧;", detail = "float" },
+                        ],
+                    },
+                ],
+            },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "(anonymous namespace)",
+        kind = "Namespace",
+        at = "namespace ⟦{⟧",
+        range = "⟦namespace { … }⟧ (5 lines)",
+        children = [
+            { name = "hidden_counter", kind = "Variable", at = "int ⟦hidden_counter⟧ = 0;", range = "⟦int hidden_counter = 0⟧;" },
+        ],
+    },
+    {
+        name = "(anonymous union)",
+        kind = "Class",
+        at = "static ⟦union⟧ {",
+        range = "static ⟦union { … }⟧ (4 lines)",
+        children = [
+            { name = "global_int", kind = "Field", at = "int ⟦global_int⟧;", range = "⟦int global_int⟧;" },
+            { name = "global_float", kind = "Field", at = "float ⟦global_float⟧;", range = "⟦float global_float⟧;" },
+        ],
+    },
+    {
+        name = "misc",
+        kind = "Namespace",
+        at = "namespace ⟦misc⟧ {",
+        range = "⟦namespace misc { … }⟧ (20 lines)",
+        children = [
+            {
+                name = "v1",
+                kind = "Namespace",
+                at = "inline namespace ⟦v1⟧ {",
+                range = "⟦inline namespace v1 { … }⟧ (5 lines)",
+                children = [
+                    { name = "versioned", kind = "Function", at = "int ⟦versioned⟧();", range = "⟦int versioned()⟧;" },
+                ],
+            },
+            {
+                name = "Outer",
+                kind = "Struct",
+                at = "struct ⟦Outer⟧ {",
+                range = "⟦struct Outer { … }⟧ (10 lines)",
+                children = [
+                    {
+                        name = "(anonymous struct)",
+                        kind = "Struct",
+                        at = "⟦struct⟧ {",
+                        range = "⟦struct { … }⟧ (3 lines)",
+                        children = [
+                            { name = "anonymous_member", kind = "Field", at = "int ⟦anonymous_member⟧;", range = "⟦int anonymous_member⟧;" },
+                        ],
+                    },
+                    {
+                        name = "(anonymous union)",
+                        kind = "Class",
+                        at = "⟦union⟧ {",
+                        range = "⟦union { … }⟧ (4 lines)",
+                        children = [
+                            { name = "as_int", kind = "Field", at = "int ⟦as_int⟧;", range = "⟦int as_int⟧;" },
+                            { name = "as_float", kind = "Field", at = "float ⟦as_float⟧;", range = "⟦float as_float⟧;" },
+                        ],
+                    },
+                ],
+            },
+        ],
+    },
+]

@@ -1,0 +1,57 @@
+[answers.define_site.hover]
+markdown = '''
+### macro `LIMIT`
+
+---
+```cpp
+#define LIMIT 64
+```
+'''
+range = "#define ⟦LIMIT⟧ 64"
+
+[answers.use_site.hover]
+markdown = '''
+### macro `LIMIT`
+
+---
+```cpp
+#define LIMIT 64
+
+// Expands to
+64
+```
+'''
+range = "int use = ⟦LIMIT⟧;"
+
+[answers.ifdef_site.hover]
+markdown = '''
+### macro `LIMIT`
+
+---
+```cpp
+#define LIMIT 64
+```
+'''
+range = "#ifdef ⟦LIMIT⟧"
+
+[answers.defined_site.hover]
+markdown = '''
+### macro `LIMIT`
+
+---
+```cpp
+#define LIMIT 64
+```
+'''
+range = "#if defined(⟦LIMIT⟧)"
+
+[answers.undef_site.hover]
+markdown = '''
+### macro `LIMIT`
+
+---
+```cpp
+#define LIMIT 64
+```
+'''
+range = "#undef ⟦LIMIT⟧"

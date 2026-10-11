@@ -1,0 +1,175 @@
+[answers.constrained_auto.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "Scalar ⟦auto⟧ count = 2L;"
+
+[answers.auto_specialized.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Container<long>
+```
+'''
+range = "⟦auto⟧ container = Container<long>{};"
+
+[answers.const_auto_ref.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "const ⟦auto⟧& value = 23L;"
+
+[answers.auto_init_list.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+std::initializer_list<long>
+```
+'''
+range = "⟦auto⟧ values = {1L, 2L, 3L};"
+
+[answers.auto_conversion.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "operator ⟦auto⟧() const { return 27L; }"
+
+[answers.auto_trailing_decltype.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Token
+```
+'''
+range = "⟦auto⟧ create() -> decltype(Token{}) {"
+
+[answers.auto_ref_fn_return.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Token
+```
+'''
+range = "⟦auto⟧& current() {"
+
+[answers.auto_ptr_fn_return.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Token
+```
+'''
+range = "⟦auto⟧* current() {"
+
+[answers.const_auto_ref_fn_return.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Token
+```
+'''
+range = "const ⟦auto⟧& current() {"
+
+[answers.auto_fn_pointer.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "⟦auto⟧ (*callback)() = compute;"
+
+[answers.auto_alias_int.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+distance_type // aka: long
+```
+'''
+range = "⟦auto⟧ distance = distance_type{};"
+
+[answers.auto_alias_class.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+state_type // aka: State
+```
+'''
+range = "⟦auto⟧ state = state_type{};"
+
+[answers.auto_alias_template.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Wrapper<long>
+```
+'''
+range = "⟦auto⟧ wrapper = Wrapper<long>{};"
+
+[answers.undeduced_auto_return.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+/* not deduced */
+```
+'''
+range = "template <typename T> ⟦auto⟧ create() {"
+
+[answers.template_auto_param.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+/* not deduced */
+```
+'''
+range = "template <⟦auto⟧ Value> void inspect() {}"
+
+[answers.abbreviated_param.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+long
+```
+'''
+range = "void inspect(⟦auto⟧ value) {}"

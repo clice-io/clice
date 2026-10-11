@@ -1,0 +1,94 @@
+[answers.lambda_ptr_ptr]
+wrong = "outer is a pointer to a pointer to the lambda: the card shows no type and reads as the lambda itself"
+
+[answers.lambda_ptr_ptr.hover]
+markdown = '''
+### variable `outer`
+
+---
+→ `bool`
+Parameters:
+- `long value`
+- `bool ready`
+
+---
+```cpp
+// In inspect
+auto *outer = &pointer
+```
+'''
+range = "auto* ⟦outer⟧ = &pointer;"
+
+[answers.lambda_decltype_ref_param.hover]
+markdown = '''
+### parameter `callable`
+
+---
+→ `bool`
+Parameters:
+- `long value`
+- `bool ready`
+
+---
+```cpp
+// In invoke
+decltype(operation) &callable
+```
+'''
+range = "⟦callable⟧(1, true); @+0"
+
+[answers.lambda_decltype_param]
+wrong = "the card shows the value of the call around the parameter as the parameter's own"
+
+[answers.lambda_decltype_param.hover]
+markdown = '''
+### parameter `callable`
+
+---
+→ `bool`
+Parameters:
+- `long value`
+- `bool ready`
+
+Value = `true`
+
+---
+```cpp
+// In invoke
+decltype(operation) callable
+```
+'''
+range = "⟦callable⟧(1, true); @+0"
+
+[answers.lambda_variable.hover]
+markdown = '''
+### variable `above`
+
+---
+→ `bool`
+Parameters:
+- `int value`
+
+---
+```cpp
+// In inspect
+auto above = [&threshold](int value) {}
+```
+'''
+range = "return ⟦above⟧(9);"
+
+[answers.local_in_lambda.hover]
+markdown = '''
+### variable `local`
+
+---
+Type: `long`
+Value = `1`
+
+---
+```cpp
+// In inspect::(anonymous class)::operator()
+long local = 1
+```
+'''
+range = "long ⟦local⟧ = 1;"

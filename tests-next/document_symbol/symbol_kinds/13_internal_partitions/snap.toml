@@ -1,0 +1,11 @@
+[answers.outline]
+document_symbols = [
+    { name = "app.core:detail", kind = "Module", at = "module ⟦app.core:detail⟧;" },
+    { name = "helper", kind = "Function", at = "int ⟦helper⟧();", detail = "int ()" },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "app.core:detail", kind = "Module", at = "module ⟦app.core:detail⟧;", range = "module ⟦app.core:detail⟧;" },
+    { name = "helper", kind = "Function", at = "int ⟦helper⟧();", range = "⟦int helper()⟧;" },
+]

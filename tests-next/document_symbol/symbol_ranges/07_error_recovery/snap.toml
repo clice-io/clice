@@ -1,0 +1,44 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "f",
+        kind = "Function",
+        at = "void ⟦f⟧() {",
+        detail = "void ()",
+        children = [
+            { name = "v", kind = "Variable", at = "int ⟦v⟧[3];", detail = "int[3]" },
+            { name = "x", kind = "Variable", at = "for(⟦x⟧ : v) {}", detail = "int &" },
+        ],
+    },
+    {
+        name = "a",
+        kind = "Namespace",
+        at = "namespace ⟦a⟧ {",
+        children = [
+            { name = "x", kind = "Variable", at = "int ⟦x⟧;", detail = "int" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "f",
+        kind = "Function",
+        at = "void ⟦f⟧() {",
+        range = "⟦void f() { … }⟧ (4 lines)",
+        children = [
+            { name = "v", kind = "Variable", at = "int ⟦v⟧[3];", range = "⟦int v[3]⟧;" },
+            { name = "x", kind = "Variable", at = "for(⟦x⟧ : v) {}", range = "for(⟦x :⟧ v) {}" },
+        ],
+    },
+    {
+        name = "a",
+        kind = "Namespace",
+        at = "namespace ⟦a⟧ {",
+        range = "⟦namespace a⟧ {",
+        children = [
+            { name = "x", kind = "Variable", at = "int ⟦x⟧;", range = "⟦int x⟧;" },
+        ],
+    },
+]

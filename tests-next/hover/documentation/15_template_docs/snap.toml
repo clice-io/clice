@@ -1,0 +1,152 @@
+[answers.auto_class_doc.hover]
+markdown = '''
+### type `auto`
+
+---
+Holds one payload.
+
+---
+```cpp
+Packet<long>
+```
+'''
+range = "⟦auto⟧ packet = Packet<long>();"
+
+[answers.class_ref_doc.hover]
+markdown = '''
+### class `Packet<long>`
+
+---
+Holds one payload.
+
+---
+```cpp
+// In namespace template_docs
+template <> class Packet<long> {}
+```
+'''
+range = "⟦Packet⟧<long> other;"
+
+[answers.function_doc.hover]
+markdown = '''
+### function `send`
+
+---
+→ `void`
+Sends one payload.
+
+---
+```cpp
+// In namespace template_docs
+template <> void send<long>()
+```
+'''
+range = "⟦send⟧<long>();"
+
+[answers.auto_var_tmpl_doc.hover]
+markdown = '''
+### type `auto`
+
+---
+Holds one payload.
+
+---
+```cpp
+template_docs::Packet<long>
+```
+'''
+range = "⟦auto⟧ count = counter<Packet<long>>;"
+
+[answers.var_tmpl_ref_doc.hover]
+markdown = '''
+### variable `counter<template_docs::Packet<long>>`
+
+---
+Type: `template_docs::Packet<long>`
+Counts payloads.
+
+---
+```cpp
+// In namespace template_docs
+template_docs::Packet<long> counter
+```
+'''
+range = "auto count = ⟦counter⟧<Packet<long>>;"
+
+[answers.var_tmpl_assign_doc.hover]
+markdown = '''
+### variable `counter<int>`
+
+---
+Type: `int`
+Counts payloads.
+
+---
+```cpp
+// In namespace template_docs
+int counter
+```
+'''
+range = "⟦counter⟧<int> = 1;"
+
+[answers.full_spec_doc.hover]
+markdown = '''
+### class `Storage<int>`
+
+---
+Size: 1 byte, alignment 1 byte
+Integer storage.
+
+---
+```cpp
+// In namespace specialization_docs
+template <> class Storage<int> {}
+```
+'''
+range = "template <> class ⟦Storage⟧<int> {};"
+
+[answers.full_spec_ref_doc.hover]
+markdown = '''
+### class `Storage<int>`
+
+---
+Integer storage.
+
+---
+```cpp
+// In namespace specialization_docs
+template <> class Storage<int> {}
+```
+'''
+range = "⟦Storage⟧<int> integer;"
+
+[answers.primary_template_doc.hover]
+markdown = '''
+### class `Channel<long *>`
+
+---
+Pointer channel.
+
+---
+```cpp
+// In namespace selected_specialization_docs
+template <> class Channel<long *>
+```
+'''
+range = "⟦Channel⟧<long*>* channel;"
+
+[answers.variable_template_doc.hover]
+markdown = '''
+### variable `cache<long *>`
+
+---
+Type: `long`
+Pointer cache slot.
+
+---
+```cpp
+// In namespace selected_variable_docs
+long cache
+```
+'''
+range = "using result_type = decltype(⟦cache⟧<long*>);"

@@ -1,0 +1,62 @@
+[answers.pure_virtual.hover]
+markdown = '''
+### method `draw`
+
+---
+→ `void`
+
+---
+```cpp
+// In Base
+public: virtual void draw() = 0
+```
+'''
+range = "virtual void ⟦draw⟧() = 0;"
+
+[answers.override_method.hover]
+markdown = '''
+### method `draw`
+
+---
+→ `void`
+
+---
+```cpp
+// In Circle
+public: void draw() override
+```
+'''
+range = "void ⟦draw⟧() override;"
+
+[answers.final_method.hover]
+markdown = '''
+### method `draw`
+
+---
+→ `void`
+
+---
+```cpp
+// In Dot
+public: void draw() final
+```
+'''
+range = "void ⟦draw⟧() final;"
+
+[answers.implicit_override]
+wrong = "draw overrides Base::draw, but without the override keyword the card gives no sign it is virtual (clangd#2474)"
+
+[answers.implicit_override.hover]
+markdown = '''
+### method `draw`
+
+---
+→ `void`
+
+---
+```cpp
+// In Square
+public: void draw()
+```
+'''
+range = "void ⟦draw⟧();"

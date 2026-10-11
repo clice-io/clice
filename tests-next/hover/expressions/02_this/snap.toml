@@ -1,0 +1,21 @@
+[answers.plain_this.hover]
+markdown = '''
+### `this`
+
+---
+```cpp
+this_hover::Widget *
+```
+'''
+range = "return ⟦this⟧; @+0"
+
+[answers.template_this.hover]
+markdown = '''
+### `this`
+
+---
+```cpp
+const this_hover::Box<T> *
+```
+'''
+range = "return ⟦this⟧; @+0"

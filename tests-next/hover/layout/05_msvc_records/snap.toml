@@ -1,0 +1,31 @@
+[answers.struct_hover]
+wrong = "once a member pointer is formed, the MSVC inheritance model hides the struct's size and alignment"
+
+[answers.struct_hover.hover]
+markdown = '''
+### struct `Widget`
+
+---
+```cpp
+// In namespace ms
+struct Widget {
+  int value;
+}
+```
+'''
+range = "struct ⟦Widget⟧ {"
+
+[answers.method_hover.hover]
+markdown = '''
+### method `update`
+
+---
+→ `void`
+
+---
+```cpp
+// In Widget
+public: void update()
+```
+'''
+range = "void ⟦update⟧();"

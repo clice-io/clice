@@ -1,0 +1,6 @@
+[answers.inherited]
+wrong = "the inherited Base(int, int) is missing: only the implicit copy and move constructors show (clangd#1363)"
+
+[answers.inherited.signature_help]
+signatures = ["Derived(⟦const Derived &⟧)", "Derived(⟦Derived &&⟧)"]
+active = 0

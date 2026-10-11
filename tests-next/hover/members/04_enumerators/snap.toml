@@ -1,0 +1,64 @@
+[answers.implicit_values.hover]
+markdown = '''
+### enum `Level`
+
+---
+```cpp
+// In namespace implicit_values
+enum Level { Low = 0, Medium = 10, High = 11 }
+```
+'''
+range = "⟦Level⟧ level;"
+
+[answers.written_values.hover]
+markdown = '''
+### enum `Permission`
+
+---
+```cpp
+// In namespace written_values
+enum Permission : unsigned int {
+  Read = 1 << 0,
+  Write = 1 << 1,
+  Execute = 1 << 2,
+  All = Read | Write | Execute
+}
+```
+'''
+range = "⟦Permission⟧ permission;"
+
+[answers.scoped.hover]
+markdown = '''
+### enum `Ordering`
+
+---
+```cpp
+// In namespace scoped
+enum class Ordering : signed char { Less = -1, Equal = 0, Greater = 1 }
+```
+'''
+range = "⟦Ordering⟧ ordering;"
+
+[answers.empty.hover]
+markdown = '''
+### enum `Tag`
+
+---
+```cpp
+// In namespace empty
+enum class Tag : int {}
+```
+'''
+range = "⟦Tag⟧ tag;"
+
+[answers.dependent.hover]
+markdown = '''
+### enum `Size`
+
+---
+```cpp
+// In Holder<T>
+public: enum Size { None, Bytes = sizeof(T), Twice }
+```
+'''
+range = "⟦Size⟧ size;"

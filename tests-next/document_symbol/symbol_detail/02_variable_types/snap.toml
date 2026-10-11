@@ -1,0 +1,48 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "detail",
+        kind = "Namespace",
+        at = "namespace ⟦detail⟧ {",
+        children = [
+            { name = "timeout", kind = "Variable", at = "int ⟦timeout⟧ = 30;", detail = "int" },
+            { name = "logger_name", kind = "Variable", at = 'const char* ⟦logger_name⟧ = "core";', detail = "const char *" },
+            {
+                name = "Config",
+                kind = "Struct",
+                at = "struct ⟦Config⟧ {",
+                detail = "struct",
+                children = [
+                    { name = "retries", kind = "Field", at = "unsigned ⟦retries⟧;", detail = "unsigned int" },
+                    { name = "backoff", kind = "Field", at = "double ⟦backoff⟧;", detail = "double" },
+                ],
+            },
+            { name = "on_error", kind = "Variable", at = "auto ⟦on_error⟧ = [](int code) {", detail = "(lambda)" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "detail",
+        kind = "Namespace",
+        at = "namespace ⟦detail⟧ {",
+        range = "⟦namespace detail { … }⟧ (15 lines)",
+        children = [
+            { name = "timeout", kind = "Variable", at = "int ⟦timeout⟧ = 30;", range = "⟦int timeout = 30⟧;" },
+            { name = "logger_name", kind = "Variable", at = 'const char* ⟦logger_name⟧ = "core";', range = '⟦const char* logger_name = "core"⟧;' },
+            {
+                name = "Config",
+                kind = "Struct",
+                at = "struct ⟦Config⟧ {",
+                range = "⟦struct Config { … }⟧ (4 lines)",
+                children = [
+                    { name = "retries", kind = "Field", at = "unsigned ⟦retries⟧;", range = "⟦unsigned retries⟧;" },
+                    { name = "backoff", kind = "Field", at = "double ⟦backoff⟧;", range = "⟦double backoff⟧;" },
+                ],
+            },
+            { name = "on_error", kind = "Variable", at = "auto ⟦on_error⟧ = [](int code) {", range = "⟦auto on_error = [](int code) { … }⟧ (3 lines)" },
+        ],
+    },
+]

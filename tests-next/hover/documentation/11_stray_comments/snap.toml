@@ -1,0 +1,18 @@
+[answers.misattributed_note]
+wrong = "a stray note separated by a blank line shows as the variable's documentation (clangd#2148)"
+
+[answers.misattributed_note.hover]
+markdown = '''
+### variable `counter`
+
+---
+Type: `int`
+TODO: tidy this file up.
+
+---
+```cpp
+// In namespace suppression
+int counter
+```
+'''
+range = "int ⟦counter⟧;"

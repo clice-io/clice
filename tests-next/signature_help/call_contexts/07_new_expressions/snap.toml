@@ -1,0 +1,9 @@
+[answers.pos.signature_help]
+signatures = ["Node(⟦int value⟧, Node *next)", "Node(⟦const Node &⟧)", "Node(⟦Node &&⟧)"]
+active = 0
+
+[answers.braces]
+wrong = "a braced new-expression shows no constructors (clangd#1967)"
+
+[answers.braces.signature_help]
+signatures = []

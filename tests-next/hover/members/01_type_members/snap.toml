@@ -1,0 +1,92 @@
+[default.enum_type.hover]
+markdown = '''
+### enum `Color`
+
+---
+```cpp
+// In namespace members
+enum Color { Red = 0, Green = 4, Blue = 5 }
+```
+'''
+range = "enum ⟦Color⟧ {"
+
+[default.struct_type.hover]
+markdown = '''
+### struct `Point`
+
+---
+Size: 16 bytes, alignment 8 bytes
+
+---
+```cpp
+// In namespace members
+struct Point {
+  using Scalar = double;
+  Scalar x;
+  Scalar y;
+}
+```
+'''
+range = "struct ⟦Point⟧ {"
+
+[configured.enum_type.hover]
+markdown = '''
+### enum `Color`
+
+---
+```cpp
+// In namespace members
+enum Color {
+  Red = 0,
+  Green = 4,
+  // ...
+}
+```
+'''
+range = "enum ⟦Color⟧ {"
+
+[configured.struct_type.hover]
+markdown = '''
+### struct `Point`
+
+---
+Size: 16 bytes, alignment 8 bytes
+
+---
+```cpp
+// In namespace members
+struct Point {
+  using Scalar = double;
+  Scalar x;
+  // ...
+}
+```
+'''
+range = "struct ⟦Point⟧ {"
+
+[disabled.enum_type.hover]
+markdown = '''
+### enum `Color`
+
+---
+```cpp
+// In namespace members
+enum Color
+```
+'''
+range = "enum ⟦Color⟧ {"
+
+[disabled.struct_type.hover]
+markdown = '''
+### struct `Point`
+
+---
+Size: 16 bytes, alignment 8 bytes
+
+---
+```cpp
+// In namespace members
+struct Point
+```
+'''
+range = "struct ⟦Point⟧ {"

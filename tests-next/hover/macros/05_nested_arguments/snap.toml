@@ -1,0 +1,13 @@
+[answers.nested_arg]
+wrong = "a macro inside another macro's arguments shows no expansion, 99 here"
+
+[answers.nested_arg.hover]
+markdown = '''
+### macro `INNER_VAL`
+
+---
+```cpp
+#define INNER_VAL 99
+```
+'''
+range = "int nested = ECHO(⟦INNER_VAL⟧);"

@@ -1,0 +1,3 @@
+[answers.pos.signature_help]
+signatures = ["draw(int x, ⟦int y⟧) -> void"]
+active = 0

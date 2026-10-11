@@ -1,0 +1,36 @@
+[answers.type_use]
+wrong = "the card does not say which argument each template parameter is bound to, T = int (clangd#230)"
+
+[answers.type_use.hover]
+markdown = '''
+### struct `Wrapper<int>`
+
+---
+```cpp
+// In namespace instantiation_args
+template <> struct Wrapper<int> {
+  int value;
+}
+```
+'''
+range = "⟦Wrapper⟧<int> holder;"
+
+[answers.call]
+wrong = "the card does not say which argument each template parameter is bound to, T = int (clangd#230)"
+
+[answers.call.hover]
+markdown = '''
+### function `identity`
+
+---
+→ `int`
+Parameters:
+- `int x`
+
+---
+```cpp
+// In namespace instantiation_args
+template <> int identity<int>(int x)
+```
+'''
+range = "int r = ⟦identity⟧(42);"

@@ -1,0 +1,19 @@
+[answers.record_arg]
+wrong = "the card shows the call's value 7 as the variable's own (clangd#1622)"
+
+[answers.record_arg.hover]
+markdown = '''
+### variable `t`
+
+---
+Type: `Tag`
+Value = `7`
+Passed by value
+
+---
+```cpp
+// In demo
+Tag t
+```
+'''
+range = "int r = rank(⟦t⟧);"

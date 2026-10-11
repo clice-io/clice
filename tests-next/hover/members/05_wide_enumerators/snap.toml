@@ -1,0 +1,60 @@
+[answers.wide.hover]
+markdown = '''
+### variable `wide`
+
+---
+Type: `const Wide`
+Value = `Max (0xffffffffffffffff)`
+
+---
+```cpp
+constexpr Wide wide = Max
+```
+'''
+range = "constexpr Wide ⟦wide⟧ = Max;"
+
+[answers.narrow.hover]
+markdown = '''
+### variable `narrow`
+
+---
+Type: `const Narrow`
+Value = `Small (0x5)`
+
+---
+```cpp
+constexpr Narrow narrow = Small
+```
+'''
+range = "constexpr Narrow ⟦narrow⟧ = Small;"
+
+[answers.huge.hover]
+markdown = '''
+### variable `huge`
+
+---
+Type: `const Huge`
+Value = `Top`
+
+---
+```cpp
+constexpr Huge huge = Top
+```
+'''
+range = "constexpr Huge ⟦huge⟧ = Top;"
+
+[answers.max_value.hover]
+markdown = '''
+### enumerator `Max`
+
+---
+Type: `enum big_enum::Flags`
+Value = `18446744073709551615`
+
+---
+```cpp
+// In Flags
+Max = 0xFFFFFFFFFFFFFFFFULL
+```
+'''
+range = "⟦Max⟧ = 0xFFFFFFFFFFFFFFFFULL,"

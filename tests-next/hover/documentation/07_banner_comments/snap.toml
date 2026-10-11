@@ -1,0 +1,18 @@
+[answers.after_banner]
+wrong = "a banner separated by a blank line shows as the function's documentation (clangd#974)"
+
+[answers.after_banner.hover]
+markdown = '''
+### function `foo`
+
+---
+→ `void`
+==== Section Banner ====
+
+---
+```cpp
+// In namespace banners
+void foo()
+```
+'''
+range = "void ⟦foo⟧();"

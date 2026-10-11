@@ -1,0 +1,13 @@
+namespace app::detail {
+
+struct Engine {
+    void tick() {
+        int co§(method_local)unt = 0;
+    }
+};
+
+int wor§(ns_var)kers = 4;
+
+}
+
+int glo§(global_var)bal = 1;

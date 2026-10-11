@@ -1,0 +1,13 @@
+[answers.cli_use.hover]
+markdown = '''
+### macro `FROM_CLI`
+
+---
+```cpp
+#define FROM_CLI 7
+
+// Expands to
+7
+```
+'''
+range = "int cli = ⟦FROM_CLI⟧;"

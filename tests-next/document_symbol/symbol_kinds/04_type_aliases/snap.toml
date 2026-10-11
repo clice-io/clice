@@ -1,0 +1,51 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "aliases",
+        kind = "Namespace",
+        at = "namespace ⟦aliases⟧ {",
+        children = [
+            { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ {};", detail = "struct" },
+            { name = "LegacyWidget", kind = "Class", at = "typedef Widget ⟦LegacyWidget⟧;", detail = "type alias" },
+            { name = "ModernWidget", kind = "Class", at = "using ⟦ModernWidget⟧ = Widget;", detail = "type alias" },
+            { name = "Box", kind = "Struct", at = "struct ⟦Box⟧ {};", detail = "template struct" },
+            { name = "BoxOf", kind = "Class", at = "using ⟦BoxOf⟧ = Box<T>;", detail = "template type alias" },
+            {
+                name = "Holder",
+                kind = "Struct",
+                at = "struct ⟦Holder⟧ {",
+                detail = "struct",
+                children = [
+                    { name = "Inner", kind = "Class", at = "using ⟦Inner⟧ = Widget;", detail = "type alias" },
+                ],
+            },
+        ],
+    },
+]
+
+[answers.extents]
+wrong = "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it"
+document_symbols = [
+    {
+        name = "aliases",
+        kind = "Namespace",
+        at = "namespace ⟦aliases⟧ {",
+        range = "⟦namespace aliases { … }⟧ (19 lines)",
+        children = [
+            { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ {};", range = "⟦struct Widget {}⟧;" },
+            { name = "LegacyWidget", kind = "Class", at = "typedef Widget ⟦LegacyWidget⟧;", range = "⟦typedef Widget LegacyWidget⟧;" },
+            { name = "ModernWidget", kind = "Class", at = "using ⟦ModernWidget⟧ = Widget;", range = "⟦using ModernWidget = Widget⟧;" },
+            { name = "Box", kind = "Struct", at = "struct ⟦Box⟧ {};", range = "⟦struct Box {}⟧;" },
+            { name = "BoxOf", kind = "Class", at = "using ⟦BoxOf⟧ = Box<T>;", range = "⟦using BoxOf = Box<T>⟧;" },
+            {
+                name = "Holder",
+                kind = "Struct",
+                at = "struct ⟦Holder⟧ {",
+                range = "⟦struct Holder { … }⟧ (3 lines)",
+                children = [
+                    { name = "Inner", kind = "Class", at = "using ⟦Inner⟧ = Widget;", range = "⟦using Inner = Widget⟧;" },
+                ],
+            },
+        ],
+    },
+]

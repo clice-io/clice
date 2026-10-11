@@ -1,0 +1,5 @@
+[answers.index]
+wrong = "an overloaded operator[] shows no signature (clangd#2472)"
+
+[answers.index.signature_help]
+signatures = []

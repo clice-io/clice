@@ -1,0 +1,102 @@
+[answers.value.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long
+```
+'''
+range = "⟦decltype⟧(auto) first = 3L;"
+
+[answers.const.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+const long
+```
+'''
+range = "⟦decltype⟧(auto) second = constant;"
+
+[answers.ref.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long &
+```
+'''
+range = "⟦decltype⟧(auto) third = reference;"
+
+[answers.of_lvalue.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long
+```
+'''
+range = "⟦decltype⟧(value) fourth = value;"
+
+[answers.of_paren.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long &
+```
+'''
+range = "⟦decltype⟧((value)) fifth = value;"
+
+[answers.of_rvalue.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+long &&
+```
+'''
+range = "⟦decltype⟧(static_cast<long&&>(value)) sixth = static_cast<long&&>(value);"
+
+[answers.var_type.hover]
+markdown = '''
+### variable `copy`
+
+---
+Type: `long`
+
+---
+```cpp
+// In namespace declared_types
+decltype(source) copy = source
+```
+'''
+range = "decltype(source) ⟦copy⟧ = source;"
+
+[answers.undeduced.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+/* not deduced */
+```
+'''
+range = "template <typename T> ⟦decltype⟧(auto) pending() {"
+
+[answers.dependent.hover]
+markdown = '''
+### type `decltype`
+
+---
+```cpp
+<dependent type>
+```
+'''
+range = "using type = ⟦decltype⟧(T::value);"

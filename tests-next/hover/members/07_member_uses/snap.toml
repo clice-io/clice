@@ -1,0 +1,119 @@
+[answers.field.hover]
+markdown = '''
+### field `row`
+
+---
+Type: `int`
+
+---
+```cpp
+// In Point
+public: int row
+```
+'''
+range = "return point.⟦row⟧;"
+
+[answers.field_init.hover]
+markdown = '''
+### field `value`
+
+---
+Type: `int`
+
+---
+```cpp
+// In Counter
+public: int value = 12
+```
+'''
+range = "return counter.⟦value⟧;"
+
+[answers.static_field.hover]
+markdown = '''
+### variable `maximum`
+
+---
+Type: `int`
+
+---
+```cpp
+// In Limits
+public: static int maximum
+```
+'''
+range = "return Limits::⟦maximum⟧;"
+
+[answers.member_initializer.hover]
+markdown = '''
+### field `height`
+
+---
+Type: `int`
+
+---
+```cpp
+// In Window
+public: int height
+```
+'''
+range = "Window() : ⟦height⟧(480) {}"
+
+[answers.gnu_designator.hover]
+markdown = '''
+### field `column`
+
+---
+Type: `int`
+
+---
+```cpp
+// In Coordinates
+public: int column
+```
+'''
+range = "Coordinates point = {⟦column⟧ : 3};"
+
+[answers.field_designator.hover]
+markdown = '''
+### field `column`
+
+---
+Type: `int`
+
+---
+```cpp
+// In Coordinates
+public: int column
+```
+'''
+range = "Coordinates point = {.⟦column⟧ = 3, .row = 4};"
+
+[answers.method_call.hover]
+markdown = '''
+### method `size`
+
+---
+→ `int`
+
+---
+```cpp
+// In Queue
+public: int size()
+```
+'''
+range = "return queue.⟦size⟧();"
+
+[answers.static_method_call.hover]
+markdown = '''
+### method `now`
+
+---
+→ `int`
+
+---
+```cpp
+// In Clock
+public: static int now()
+```
+'''
+range = "return Clock::⟦now⟧();"

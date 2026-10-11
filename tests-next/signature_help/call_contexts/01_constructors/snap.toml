@@ -1,0 +1,7 @@
+[answers.aggregate.signature_help]
+signatures = ["Point{int x, ⟦int y⟧}"]
+active = 0
+
+[answers.ctor.signature_help]
+signatures = ["Widget(⟦int a⟧, double b)", "Widget(⟦const Widget &⟧)", "Widget(⟦Widget &&⟧)"]
+active = 0

@@ -1,0 +1,181 @@
+[answers.dependent_type.hover]
+markdown = '''
+### type `value_type`
+
+---
+Type: `T`
+
+---
+```cpp
+// In Source<T>
+public: using value_type = T
+```
+'''
+range = "typename Source<T>::⟦value_type⟧ value;"
+
+[answers.dependent_value.hover]
+markdown = '''
+### variable `count`
+
+---
+Type: `const long`
+Value = `2`
+
+---
+```cpp
+// In Source<T>
+public: static constexpr long count = 2
+```
+'''
+range = "static constexpr long size = Source<T>::⟦count⟧;"
+
+[answers.using_typename.hover]
+markdown = '''
+### type `value_type`
+
+---
+Type: `T`
+
+---
+```cpp
+// In Source<T>
+public: using value_type = T
+```
+'''
+range = "using typename Source<T>::⟦value_type⟧;"
+
+[answers.using_value.hover]
+markdown = '''
+### variable `count`
+
+---
+Type: `const long`
+Value = `2`
+
+---
+```cpp
+// In Source<T>
+public: static constexpr long count = 2
+```
+'''
+range = "using Source<T>::⟦count⟧;"
+
+[answers.unresolved_member.hover]
+markdown = '''
+### method `write`
+
+---
+→ `void`
+Parameters:
+- `long`
+
+---
+```cpp
+// In Writer
+public: void write(long)
+```
+'''
+range = "writer.⟦write⟧(value);"
+
+[answers.dependent_method.hover]
+markdown = '''
+### method `reset`
+
+---
+→ `void`
+
+---
+```cpp
+// In Base<T>
+public: void reset()
+```
+'''
+range = "this->⟦reset⟧();"
+
+[answers.dependent_field.hover]
+markdown = '''
+### field `value`
+
+---
+Type: `long`
+
+---
+```cpp
+// In Base<T>
+public: long value
+```
+'''
+range = "return this->⟦value⟧;"
+
+[answers.fixed_base.hover]
+markdown = '''
+### type `index_type`
+
+---
+Type: `long`
+
+---
+```cpp
+// In Common
+public: using index_type = long
+```
+'''
+range = "template <typename T> typename Table<T>::⟦index_type⟧ index();"
+
+[answers.partial_order.hover]
+markdown = '''
+### variable `value`
+
+---
+Type: `const long`
+Value = `2`
+
+---
+```cpp
+// In Rank<Type *, Type *>
+public: static constexpr long value = 2
+```
+'''
+range = "return Rank<T*, T*>::⟦value⟧;"
+
+[answers.arrow_chain.hover]
+markdown = '''
+### method `visit`
+
+---
+→ `void`
+
+---
+```cpp
+// In Node<T>
+public: void visit()
+```
+'''
+range = "pointer->⟦visit⟧();"
+
+[answers.unresolved_using_use.hover]
+markdown = '''
+### `item_type`
+
+---
+```cpp
+// In Destination<T>
+public: using typename Source<T>::item_type
+```
+'''
+range = "⟦item_type⟧ item;"
+
+[answers.dependent_member_alias.hover]
+markdown = '''
+### type `reference`
+
+---
+Type: `const T &`
+
+---
+```cpp
+// In View<T>
+public: using reference = const T &
+```
+'''
+range = "using ⟦reference⟧ = const T&;"

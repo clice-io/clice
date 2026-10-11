@@ -1,0 +1,62 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "members",
+        kind = "Namespace",
+        at = "namespace ⟦members⟧ {",
+        children = [
+            {
+                name = "Widget",
+                kind = "Struct",
+                at = "struct ⟦Widget⟧ {",
+                detail = "struct",
+                children = [
+                    { name = "Widget", kind = "Method", at = "⟦Widget⟧();", detail = "()" },
+                    { name = "Widget", kind = "Method", at = "explicit ⟦Widget⟧(int size);", detail = "(int)" },
+                    { name = "~Widget", kind = "Method", at = "⟦~Widget⟧();" },
+                    { name = "operator=", kind = "Operator", at = "Widget& ⟦operator=⟧(const Widget& other);", detail = "Widget &(const Widget &)" },
+                    { name = "operator==", kind = "Operator", at = "bool ⟦operator==⟧(const Widget& other) const;", detail = "bool (const Widget &) const" },
+                    { name = "operator bool", kind = "Method", at = "⟦operator bool⟧() const;", detail = "bool () const" },
+                    { name = "instances", kind = "Method", at = "static int ⟦instances⟧();", detail = "int ()" },
+                    { name = "size", kind = "Field", at = "int ⟦size⟧;", detail = "int" },
+                    { name = "bits", kind = "Field", at = "unsigned ⟦bits⟧ : 3;", detail = "unsigned int" },
+                    { name = "name", kind = "Field", at = 'const char* ⟦name⟧ = "widget";', detail = "const char *" },
+                ],
+            },
+            { name = "Widget::Widget", kind = "Method", at = "Widget::⟦Widget⟧(int size) : size(size), bits(0) {}", detail = "(int)" },
+            { name = "Widget::instances", kind = "Method", at = "int Widget::⟦instances⟧() {", detail = "int ()" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "members",
+        kind = "Namespace",
+        at = "namespace ⟦members⟧ {",
+        range = "⟦namespace members { … }⟧ (25 lines)",
+        children = [
+            {
+                name = "Widget",
+                kind = "Struct",
+                at = "struct ⟦Widget⟧ {",
+                range = "⟦struct Widget { … }⟧ (15 lines)",
+                children = [
+                    { name = "Widget", kind = "Method", at = "⟦Widget⟧();", range = "⟦Widget()⟧;" },
+                    { name = "Widget", kind = "Method", at = "explicit ⟦Widget⟧(int size);", range = "⟦explicit Widget(int size)⟧;" },
+                    { name = "~Widget", kind = "Method", at = "⟦~Widget⟧();", range = "⟦~Widget()⟧;" },
+                    { name = "operator=", kind = "Operator", at = "Widget& ⟦operator=⟧(const Widget& other);", range = "⟦Widget& operator=(const Widget& other)⟧;" },
+                    { name = "operator==", kind = "Operator", at = "bool ⟦operator==⟧(const Widget& other) const;", range = "⟦bool operator==(const Widget& other) const⟧;" },
+                    { name = "operator bool", kind = "Method", at = "⟦operator bool⟧() const;", range = "⟦operator bool() const⟧;" },
+                    { name = "instances", kind = "Method", at = "static int ⟦instances⟧();", range = "⟦static int instances()⟧;" },
+                    { name = "size", kind = "Field", at = "int ⟦size⟧;", range = "⟦int size⟧;" },
+                    { name = "bits", kind = "Field", at = "unsigned ⟦bits⟧ : 3;", range = "⟦unsigned bits : 3⟧;" },
+                    { name = "name", kind = "Field", at = 'const char* ⟦name⟧ = "widget";', range = '⟦const char* name = "widget"⟧;' },
+                ],
+            },
+            { name = "Widget::Widget", kind = "Method", at = "Widget::⟦Widget⟧(int size) : size(size), bits(0) {}", range = "⟦Widget::Widget(int size) : size(size), bits(0) {}⟧" },
+            { name = "Widget::instances", kind = "Method", at = "int Widget::⟦instances⟧() {", range = "⟦int Widget::instances() { … }⟧ (3 lines)" },
+        ],
+    },
+]

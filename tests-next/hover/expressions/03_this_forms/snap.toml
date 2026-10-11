@@ -1,0 +1,21 @@
+[answers.this_specialization.hover]
+markdown = '''
+### `this`
+
+---
+```cpp
+full_specialization::Holder<long> *
+```
+'''
+range = "return ⟦this⟧; @+0"
+
+[answers.this_partial_specialization.hover]
+markdown = '''
+### `this`
+
+---
+```cpp
+const partial_specialization::Pair<long, U> *
+```
+'''
+range = "return ⟦this⟧; @+0"

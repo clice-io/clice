@@ -1,0 +1,24 @@
+[answers.definition.hover]
+markdown = '''
+### macro `EARLY`
+
+---
+```cpp
+#define EARLY 1
+```
+'''
+range = "#define ⟦EARLY⟧ 1"
+
+[answers.use.hover]
+markdown = '''
+### macro `EARLY`
+
+---
+```cpp
+#define EARLY 1
+
+// Expands to
+1
+```
+'''
+range = "int use = ⟦EARLY⟧;"

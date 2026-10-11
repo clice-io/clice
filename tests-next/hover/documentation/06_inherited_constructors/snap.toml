@@ -1,0 +1,18 @@
+[answers.inherited_ctor]
+wrong = "names Base's implicit move constructor instead of the inherited Base(int) and its documentation (clangd#1936)"
+
+[answers.inherited_ctor.hover]
+markdown = '''
+### method `Base`
+
+---
+Parameters:
+- `Base &&`
+
+---
+```cpp
+// In Base
+public: inline constexpr Base(Base &&)
+```
+'''
+range = "using Base::⟦Base⟧;"

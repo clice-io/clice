@@ -1,0 +1,10 @@
+[answers.auto.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Outer // aka: int
+```
+'''
+range = "⟦auto⟧ value = make();"

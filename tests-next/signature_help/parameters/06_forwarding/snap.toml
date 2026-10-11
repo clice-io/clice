@@ -1,0 +1,6 @@
+[answers.forwarded]
+wrong = "shows the forwarding pack instead of Widget's width and height (clangd#517)"
+
+[answers.forwarded.signature_help]
+signatures = ["make(⟦Args &&...args⟧) -> T *"]
+active = 0

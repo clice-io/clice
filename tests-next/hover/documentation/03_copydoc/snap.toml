@@ -1,0 +1,34 @@
+[answers.base.hover]
+markdown = '''
+### function `base_func`
+
+---
+→ `void`
+Detailed documentation.
+
+---
+```cpp
+// In namespace copydoc
+void base_func()
+```
+'''
+range = "void ⟦base_func⟧();"
+
+[answers.wrapper]
+wrong = "the @copydoc tag shows as written instead of base_func's documentation (clangd#1320)"
+
+[answers.wrapper.hover]
+markdown = '''
+### function `wrapper`
+
+---
+→ `void`
+@copydoc base_func()
+
+---
+```cpp
+// In namespace copydoc
+void wrapper()
+```
+'''
+range = "void ⟦wrapper⟧();"

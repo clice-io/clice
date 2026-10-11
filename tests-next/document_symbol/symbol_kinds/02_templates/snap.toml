@@ -1,0 +1,53 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "templates",
+        kind = "Namespace",
+        at = "namespace ⟦templates⟧ {",
+        children = [
+            {
+                name = "Box",
+                kind = "Struct",
+                at = "struct ⟦Box⟧ {",
+                detail = "template struct",
+                children = [
+                    { name = "value", kind = "Field", at = "T ⟦value⟧;", detail = "T" },
+                    { name = "reset", kind = "Method", at = "void ⟦reset⟧();", detail = "void ()" },
+                ],
+            },
+            { name = "Box<T>::reset", kind = "Method", at = "void Box<T>::⟦reset⟧() {}", detail = "void ()" },
+            { name = "zero", kind = "Function", at = "T ⟦zero⟧() {", detail = "template T ()" },
+            { name = "pi", kind = "Variable", at = "constexpr T ⟦pi⟧ = T(3.14159);", detail = "template const T" },
+            { name = "Small", kind = "TypeParameter", at = "concept ⟦Small⟧ = sizeof(T) <= 4;", detail = "concept" },
+            { name = "takes_concept", kind = "Function", at = "void ⟦takes_concept⟧(Small auto x);", detail = "template void (Small auto)" },
+        ],
+    },
+]
+
+[answers.extents]
+wrong = "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it"
+document_symbols = [
+    {
+        name = "templates",
+        kind = "Namespace",
+        at = "namespace ⟦templates⟧ {",
+        range = "⟦namespace templates { … }⟧ (26 lines)",
+        children = [
+            {
+                name = "Box",
+                kind = "Struct",
+                at = "struct ⟦Box⟧ {",
+                range = "⟦struct Box { … }⟧ (5 lines)",
+                children = [
+                    { name = "value", kind = "Field", at = "T ⟦value⟧;", range = "⟦T value⟧;" },
+                    { name = "reset", kind = "Method", at = "void ⟦reset⟧();", range = "⟦void reset()⟧;" },
+                ],
+            },
+            { name = "Box<T>::reset", kind = "Method", at = "void Box<T>::⟦reset⟧() {}", range = "⟦template <typename T> … void Box<T>::reset() {}⟧ (2 lines)" },
+            { name = "zero", kind = "Function", at = "T ⟦zero⟧() {", range = "⟦T zero() { … }⟧ (3 lines)" },
+            { name = "pi", kind = "Variable", at = "constexpr T ⟦pi⟧ = T(3.14159);", range = "⟦constexpr T pi = T(3.14159)⟧;" },
+            { name = "Small", kind = "TypeParameter", at = "concept ⟦Small⟧ = sizeof(T) <= 4;", range = "⟦template <typename T> … concept Small = sizeof(T) <= 4⟧ (2 lines)" },
+            { name = "takes_concept", kind = "Function", at = "void ⟦takes_concept⟧(Small auto x);", range = "⟦void takes_concept(Small auto x)⟧;" },
+        ],
+    },
+]

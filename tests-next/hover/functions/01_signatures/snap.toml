@@ -1,0 +1,35 @@
+[answers.params.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int lhs`
+- `int rhs`
+
+---
+```cpp
+// In namespace function_signature
+int add(int lhs, int rhs)
+```
+'''
+range = "int ⟦add⟧(int lhs, int rhs);"
+
+[answers.defaults.hover]
+markdown = '''
+### function `configure`
+
+---
+→ `void`
+Parameters:
+- `int width`
+- `bool visible = true`
+
+---
+```cpp
+// In namespace function_signature
+void configure(int width, bool visible = true)
+```
+'''
+range = "void ⟦configure⟧(int width, bool visible = true);"

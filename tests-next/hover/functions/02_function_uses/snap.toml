@@ -1,0 +1,84 @@
+[answers.fn_via_pointer.hover]
+markdown = '''
+### function `schedule`
+
+---
+→ `void`
+Parameters:
+- `long`
+
+---
+```cpp
+// In namespace address_use
+void schedule(long)
+```
+'''
+range = "auto* callback = &⟦schedule⟧;"
+
+[answers.fn_via_call.hover]
+markdown = '''
+### function `calculate`
+
+---
+→ `int`
+Parameters:
+- `int`
+
+---
+```cpp
+// In namespace call_use
+int calculate(int)
+```
+'''
+range = "return ⟦calculate⟧(9);"
+
+[answers.fn_decl.hover]
+markdown = '''
+### function `publish`
+
+---
+→ `void`
+
+---
+```cpp
+// In namespace declaration_use
+void publish()
+```
+'''
+range = "⟦publish⟧();"
+
+[answers.fn_default_tmpl_arg.hover]
+markdown = '''
+### function `consume`
+
+---
+→ `void`
+Parameters:
+- `const long & = T()`
+
+---
+```cpp
+// In namespace default_template_argument
+template <> void consume<long>(const long &)
+```
+'''
+range = "⟦consume⟧<>(4L);"
+
+[answers.call_site.hover]
+markdown = '''
+### function `compute`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b = 10`
+- `int c = 20`
+
+---
+```cpp
+// In namespace defaults
+int compute(int a, int b = 10, int c = 20)
+```
+'''
+range = "int result = ⟦compute⟧(1);"

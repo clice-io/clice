@@ -1,0 +1,5 @@
+[answers.condition]
+wrong = "a function-like macro shows no parameters (clangd#795)"
+
+[answers.condition.signature_help]
+signatures = []

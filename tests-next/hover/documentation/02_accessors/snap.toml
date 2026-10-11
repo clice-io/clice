@@ -1,0 +1,34 @@
+[answers.getter.hover]
+markdown = '''
+### method `getReading`
+
+---
+→ `long`
+Trivial accessor for `reading`.
+
+---
+```cpp
+// In Meter
+public: long getReading()
+```
+'''
+range = "long ⟦getReading⟧() { return reading; }"
+
+[answers.setter.hover]
+markdown = '''
+### method `setReading`
+
+---
+→ `void`
+Parameters:
+- `long next`
+
+Trivial setter for `reading`.
+
+---
+```cpp
+// In Meter
+public: void setReading(long next)
+```
+'''
+range = "void ⟦setReading⟧(long next) { reading = next; }"

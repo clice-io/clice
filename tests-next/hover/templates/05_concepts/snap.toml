@@ -1,0 +1,69 @@
+[answers.concept_on_var.hover]
+markdown = '''
+### concept `Numeric`
+
+---
+```cpp
+// In namespace constrained_object
+template <typename T>
+concept Numeric = true
+```
+'''
+range = "⟦Numeric⟧ auto total = 7;"
+
+[answers.concept_on_tparam.hover]
+markdown = '''
+### concept `Printable`
+
+---
+```cpp
+// In namespace constrained_parameter
+template <typename T>
+concept Printable = true
+```
+'''
+range = "template <⟦Printable⟧ T> void emit(T value) {}"
+
+[answers.constrained_tparam.hover]
+markdown = '''
+### type `Payload`
+
+---
+Type: `class`
+
+---
+```cpp
+// In send
+Serializable Payload
+```
+'''
+range = "template <Serializable ⟦Payload⟧> void send(Payload value) {}"
+
+[answers.concept_on_auto_param.hover]
+markdown = '''
+### concept `Hashable`
+
+---
+```cpp
+// In namespace abbreviated_parameter
+template <typename T>
+concept Hashable = true
+```
+'''
+range = "void store(⟦Hashable⟧ auto value) {}"
+
+[answers.concept_reference.hover]
+markdown = '''
+### concept `Ordered`
+
+---
+Value = `true`
+
+---
+```cpp
+// In namespace concept_expression
+template <typename T>
+concept Ordered = true
+```
+'''
+range = "constexpr bool ordered_int = ⟦Ordered⟧<int>;"

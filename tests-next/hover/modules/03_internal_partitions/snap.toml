@@ -1,0 +1,27 @@
+[answers.declared.hover]
+markdown = '''
+### function `helper`
+
+---
+→ `int`
+
+---
+```cpp
+int helper()
+```
+'''
+range = "int ⟦helper⟧() {"
+
+[answers.use.hover]
+markdown = '''
+### function `helper`
+
+---
+→ `int`
+
+---
+```cpp
+int helper()
+```
+'''
+range = "return ⟦helper⟧();"

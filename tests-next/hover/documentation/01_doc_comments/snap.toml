@@ -1,0 +1,79 @@
+[answers.function.hover]
+markdown = '''
+### function `join`
+
+---
+→ `long`
+Parameters:
+- `long left`
+- `long right`
+
+Joins two counters.
+
+---
+```cpp
+// In namespace reference_docs
+long join(long left, long right)
+```
+'''
+range = "long ⟦join⟧(long left, long right);"
+
+[answers.primary_def.hover]
+markdown = '''
+### struct `Store`
+
+---
+Stores an ordinary value.
+
+---
+```cpp
+// In namespace reference_docs
+template <typename T> struct Store {}
+```
+'''
+range = "template <typename T> struct ⟦Store⟧ {};"
+
+[answers.spec_def.hover]
+markdown = '''
+### struct `Store<T *>`
+
+---
+Stores an indirect value.
+
+---
+```cpp
+// In namespace reference_docs
+template <typename T> struct Store<T *> {}
+```
+'''
+range = "template <typename T> struct ⟦Store⟧<T*> {};"
+
+[answers.primary_ref.hover]
+markdown = '''
+### struct `Store<long>`
+
+---
+Stores an ordinary value.
+
+---
+```cpp
+// In namespace reference_docs
+template <> struct Store<long> {}
+```
+'''
+range = "⟦Store⟧<long> ordinary;"
+
+[answers.spec_ref.hover]
+markdown = '''
+### struct `Store<long *>`
+
+---
+Stores an indirect value.
+
+---
+```cpp
+// In namespace reference_docs
+template <> struct Store<long *> {}
+```
+'''
+range = "⟦Store⟧<long*> indirect;"

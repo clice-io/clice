@@ -1,0 +1,70 @@
+[answers.using_function.hover]
+markdown = '''
+### function `open`
+
+---
+→ `void`
+
+---
+```cpp
+// In namespace imported_function::library
+void open()
+```
+'''
+range = "⟦open⟧();"
+
+[answers.using_overloads.hover]
+markdown = '''
+### `write`
+
+---
+```cpp
+// In namespace imported_overloads
+using library::write
+```
+'''
+range = "⟦write⟧(T{});"
+
+[answers.using_decl_site.hover]
+markdown = '''
+### function `close`
+
+---
+→ `void`
+Parameters:
+- `long`
+
+---
+```cpp
+// In namespace declaration_site::library
+void close(long)
+```
+'''
+range = "using library::⟦close⟧;"
+
+[answers.using_type.hover]
+markdown = '''
+### type `index_type`
+
+---
+Type: `long`
+
+---
+```cpp
+// In Base
+public: using index_type = long
+```
+'''
+range = "⟦index_type⟧ index;"
+
+[answers.alias_directive.hover]
+markdown = '''
+### namespace `api`
+
+---
+```cpp
+// In namespace namespace_alias
+namespace api = implementation
+```
+'''
+range = "using namespace ⟦api⟧;"

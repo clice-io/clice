@@ -1,0 +1,6 @@
+[answers.pos]
+wrong = "names the call operator instead of the lambda, square (clangd#86)"
+
+[answers.pos.signature_help]
+signatures = ["operator()(⟦int n⟧) -> int"]
+active = 0

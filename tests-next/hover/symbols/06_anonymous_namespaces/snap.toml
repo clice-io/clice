@@ -1,0 +1,36 @@
+[answers.anon_var]
+wrong = "the scope line leaves out the anonymous namespace (clangd#436)"
+
+[answers.anon_var.hover]
+markdown = '''
+### variable `hidden`
+
+---
+Type: `int`
+Value = `1`
+
+---
+```cpp
+int hidden = 1
+```
+'''
+range = "int ⟦hidden⟧ = 1;"
+
+[answers.nested_anon_var]
+wrong = "the scope line leaves out the anonymous namespace (clangd#436)"
+
+[answers.nested_anon_var.hover]
+markdown = '''
+### variable `nested`
+
+---
+Type: `int`
+Value = `2`
+
+---
+```cpp
+// In namespace outer
+int nested = 2
+```
+'''
+range = "int ⟦nested⟧ = 2;"

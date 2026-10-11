@@ -1,0 +1,13 @@
+[answers.outline]
+wrong = "#pragma mark sections do not appear in the outline"
+document_symbols = [
+    { name = "setup", kind = "Function", at = "void ⟦setup⟧();", detail = "void ()" },
+    { name = "draw", kind = "Function", at = "void ⟦draw⟧();", detail = "void ()" },
+]
+
+[answers.extents]
+wrong = "#pragma mark sections do not appear in the outline"
+document_symbols = [
+    { name = "setup", kind = "Function", at = "void ⟦setup⟧();", range = "⟦void setup()⟧;" },
+    { name = "draw", kind = "Function", at = "void ⟦draw⟧();", range = "⟦void draw()⟧;" },
+]

@@ -1,0 +1,154 @@
+[answers.dtor_tilde.hover]
+markdown = '''
+### method `~Vec`
+
+---
+```cpp
+// In Vec
+public: ~Vec()
+```
+'''
+range = "⟦~⟧Vec();"
+
+[answers.dtor_class.hover]
+markdown = '''
+### method `~Vec`
+
+---
+```cpp
+// In Vec
+public: ~Vec()
+```
+'''
+range = "~⟦Vec⟧();"
+
+[answers.eq_keyword]
+wrong = "the heading names no kind for an operator function"
+
+[answers.eq_keyword.hover]
+markdown = '''
+### `operator==`
+
+---
+→ `bool`
+Parameters:
+- `const Vec & other`
+
+---
+```cpp
+// In Vec
+public: bool operator==(const Vec &other) const
+```
+'''
+range = "bool ⟦operator⟧==(const Vec& other) const;"
+
+[answers.eq_symbol]
+wrong = "the heading names no kind for an operator function"
+
+[answers.eq_symbol.hover]
+markdown = '''
+### `operator==`
+
+---
+→ `bool`
+Parameters:
+- `const Vec & other`
+
+---
+```cpp
+// In Vec
+public: bool operator==(const Vec &other) const
+```
+'''
+range = "bool operator⟦==⟧(const Vec& other) const;"
+
+[answers.conv_keyword.hover]
+markdown = '''
+### method `operator Handle *`
+
+---
+```cpp
+// In Vec
+public: operator Handle *() const
+```
+'''
+range = "⟦operator⟧ Handle*() const;"
+
+[answers.conv_type.hover]
+markdown = '''
+### struct `Handle`
+
+---
+```cpp
+struct Handle {}
+```
+'''
+range = "operator ⟦Handle⟧*() const;"
+
+[answers.literal_keyword.hover]
+markdown = '''
+### function `operator""_km`
+
+---
+→ `unsigned long long`
+Parameters:
+- `unsigned long long value`
+
+---
+```cpp
+unsigned long long operator""_km(unsigned long long value)
+```
+'''
+range = 'unsigned long long ⟦operator⟧""_km(unsigned long long value);'
+
+[answers.literal_suffix.hover]
+markdown = '''
+### function `operator""_km`
+
+---
+→ `unsigned long long`
+Parameters:
+- `unsigned long long value`
+
+---
+```cpp
+unsigned long long operator""_km(unsigned long long value)
+```
+'''
+range = 'unsigned long long operator⟦""_km⟧(unsigned long long value);'
+
+[answers.destructor.hover]
+markdown = '''
+### method `~Resource`
+
+---
+```cpp
+// In Resource
+public: ~Resource()
+```
+'''
+range = "⟦~⟧Resource();"
+
+[answers.conversion_operator.hover]
+markdown = '''
+### method `operator long`
+
+---
+```cpp
+// In Conversion
+public: operator long()
+```
+'''
+range = "⟦operator⟧ long();"
+
+[answers.conversion_target.hover]
+markdown = '''
+### class `SelfConversion`
+
+---
+```cpp
+// In namespace special_members
+class SelfConversion {}
+```
+'''
+range = "operator ⟦SelfConversion⟧();"

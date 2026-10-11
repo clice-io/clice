@@ -1,0 +1,50 @@
+[answers.placeholder.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+struct lambda_auto_params::Point
+```
+'''
+range = "auto norm = [](⟦auto⟧ point) {"
+
+[answers.parameter]
+wrong = "the parameter's type shows as auto, not the Point the lambda is called with (clangd#493)"
+
+[answers.parameter.hover]
+markdown = '''
+### parameter `point`
+
+---
+Type: `auto`
+
+---
+```cpp
+// In (anonymous class)::operator()
+auto point
+```
+'''
+range = "auto norm = [](auto ⟦point⟧) {"
+
+[answers.parameter_use]
+wrong = "the parameter's type shows as auto, not the Point the lambda is called with (clangd#493)"
+
+[answers.parameter_use.hover]
+markdown = '''
+### parameter `point`
+
+---
+Type: `auto`
+
+---
+```cpp
+// In (anonymous class)::operator()
+auto point
+```
+'''
+range = "return ⟦point⟧.x + point.y;"
+
+[answers.member_use]
+wrong = "a member of the parameter has no card inside the body (clangd#1768)"
+hover = {}

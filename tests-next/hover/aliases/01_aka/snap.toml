@@ -1,0 +1,63 @@
+[default.alias.hover]
+markdown = '''
+### variable `direct`
+
+---
+Type: `Handle (aka int)`
+Value = `0`
+
+---
+```cpp
+// In namespace aka_desugar
+Handle direct = 0
+```
+'''
+range = "Handle ⟦direct⟧ = 0;"
+
+[default.alias_chain.hover]
+markdown = '''
+### variable `chained`
+
+---
+Type: `Alias (aka int)`
+Value = `0`
+
+---
+```cpp
+// In namespace aka_desugar
+Alias chained = 0
+```
+'''
+range = "Alias ⟦chained⟧ = 0;"
+
+[configured.alias.hover]
+markdown = '''
+### variable `direct`
+
+---
+Type: `Handle`
+Value = `0`
+
+---
+```cpp
+// In namespace aka_desugar
+Handle direct = 0
+```
+'''
+range = "Handle ⟦direct⟧ = 0;"
+
+[configured.alias_chain.hover]
+markdown = '''
+### variable `chained`
+
+---
+Type: `Alias`
+Value = `0`
+
+---
+```cpp
+// In namespace aka_desugar
+Alias chained = 0
+```
+'''
+range = "Alias ⟦chained⟧ = 0;"

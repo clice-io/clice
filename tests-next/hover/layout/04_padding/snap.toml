@@ -1,0 +1,80 @@
+[answers.field.hover]
+markdown = '''
+### field `layer`
+
+---
+Type: `char`
+Offset: 0 bytes
+Size: 1 byte (+7 bytes padding), alignment 1 byte
+
+---
+```cpp
+// In Canvas
+private: char layer
+```
+'''
+range = "char ⟦layer⟧;"
+
+[answers.union_field.hover]
+markdown = '''
+### field `channel`
+
+---
+Type: `char`
+Size: 1 byte (+7 bytes padding), alignment 1 byte
+
+---
+```cpp
+// In Pixel
+public: char channel
+```
+'''
+range = "char ⟦channel⟧;"
+
+[answers.bitfield.hover]
+markdown = '''
+### field `read`
+
+---
+Type: `unsigned int`
+Offset: 0 bytes
+Size: 1 bit (+31 bits padding), alignment 4 bytes
+
+---
+```cpp
+// In Permissions
+public: unsigned int read : 1
+```
+'''
+range = "unsigned int ⟦read⟧ : 1;"
+
+[answers.bitfield_padding.hover]
+markdown = '''
+### field `write`
+
+---
+Type: `unsigned int`
+Offset: 1 byte
+Size: 1 bit (+23 bits padding), alignment 4 bytes
+
+---
+```cpp
+// In PackedPermissions
+public: unsigned int write : 1
+```
+'''
+range = "unsigned int ⟦write⟧ : 1;"
+
+[answers.struct_size.hover]
+markdown = '''
+### struct `EmptyCanvas`
+
+---
+Size: 1 byte, alignment 1 byte
+
+---
+```cpp
+struct EmptyCanvas {}
+```
+'''
+range = "struct ⟦EmptyCanvas⟧ {};"

@@ -1,0 +1,46 @@
+[answers.method_local.hover]
+markdown = '''
+### variable `count`
+
+---
+Type: `int`
+Value = `0`
+
+---
+```cpp
+// In Engine::tick
+int count = 0
+```
+'''
+range = "int ⟦count⟧ = 0;"
+
+[answers.ns_var.hover]
+markdown = '''
+### variable `workers`
+
+---
+Type: `int`
+Value = `4`
+
+---
+```cpp
+// In namespace app::detail
+int workers = 4
+```
+'''
+range = "int ⟦workers⟧ = 4;"
+
+[answers.global_var.hover]
+markdown = '''
+### variable `global`
+
+---
+Type: `int`
+Value = `1`
+
+---
+```cpp
+int global = 1
+```
+'''
+range = "int ⟦global⟧ = 1;"

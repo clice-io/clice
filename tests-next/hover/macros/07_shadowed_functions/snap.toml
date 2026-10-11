@@ -1,0 +1,13 @@
+[answers.shadowed_use.hover]
+markdown = '''
+### macro `lookup`
+
+---
+```cpp
+#define lookup(key) ((key) + 100)
+
+// Expands to
+( ( 5 ) + 100 )
+```
+'''
+range = "int value = ⟦lookup⟧(5);"

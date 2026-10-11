@@ -1,0 +1,42 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "detail",
+        kind = "Namespace",
+        at = "namespace ⟦detail⟧ {",
+        children = [
+            { name = "open_file", kind = "Function", at = "void ⟦open_file⟧(const char* path, int mode = 0644);", detail = "void (const char *, int)" },
+            {
+                name = "Server",
+                kind = "Struct",
+                at = "struct ⟦Server⟧ {",
+                detail = "struct",
+                children = [
+                    { name = "listen", kind = "Method", at = "void ⟦listen⟧(int port = 8080, int backlog = 128);", detail = "void (int, int)" },
+                ],
+            },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "detail",
+        kind = "Namespace",
+        at = "namespace ⟦detail⟧ {",
+        range = "⟦namespace detail { … }⟧ (9 lines)",
+        children = [
+            { name = "open_file", kind = "Function", at = "void ⟦open_file⟧(const char* path, int mode = 0644);", range = "⟦void open_file(const char* path, int mode = 0644)⟧;" },
+            {
+                name = "Server",
+                kind = "Struct",
+                at = "struct ⟦Server⟧ {",
+                range = "⟦struct Server { … }⟧ (3 lines)",
+                children = [
+                    { name = "listen", kind = "Method", at = "void ⟦listen⟧(int port = 8080, int backlog = 128);", range = "⟦void listen(int port = 8080, int backlog = 128)⟧;" },
+                ],
+            },
+        ],
+    },
+]

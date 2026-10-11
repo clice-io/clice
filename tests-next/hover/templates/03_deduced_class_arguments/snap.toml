@@ -1,0 +1,32 @@
+[answers.ctad_type]
+wrong = "the class name of a declaration with deduced arguments shows the primary template, not Box<int> (clangd#435)"
+
+[answers.ctad_type.hover]
+markdown = '''
+### struct `Box`
+
+---
+```cpp
+// In namespace ctad_arguments
+template <typename T> struct Box {}
+```
+'''
+range = "⟦Box⟧ picked(42);"
+
+[answers.ctad_var]
+wrong = "the aka repeats the same type, only qualified with its namespace"
+
+[answers.ctad_var.hover]
+markdown = '''
+### variable `picked`
+
+---
+Type: `Box<int> (aka ctad_arguments::Box<int>)`
+
+---
+```cpp
+// In namespace ctad_arguments
+Box picked(42)
+```
+'''
+range = "Box ⟦picked⟧(42);"

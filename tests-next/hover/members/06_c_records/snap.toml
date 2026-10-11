@@ -1,0 +1,53 @@
+[answers.struct.hover]
+markdown = '''
+### struct `Point`
+
+---
+```cpp
+struct Point {
+  int x;
+  union {
+    int tag;
+    float weight;
+  };
+  struct {
+    int width;
+    int height;
+  } size;
+  enum { Small = 0, Large = 1 } scale;
+}
+```
+'''
+range = "struct ⟦Point⟧ point;"
+
+[answers.mentions.hover]
+markdown = '''
+### struct `ops`
+
+---
+```cpp
+struct ops {
+  int (*open)(struct inode *, struct file *);
+  const struct item *first;
+  int count;
+}
+```
+'''
+range = "struct ⟦ops⟧ table;"
+
+[answers.inner_tags.hover]
+markdown = '''
+### struct `Packed`
+
+---
+```cpp
+struct Packed {
+  char raw[16];
+  typeof(struct(unnamed)) typed;
+  void (*callback)(struct(unnamed) *);
+  _Atomic(struct(unnamed)) atomic;
+  int tail;
+}
+```
+'''
+range = "struct ⟦Packed⟧ packed;"

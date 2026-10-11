@@ -1,0 +1,136 @@
+[answers.operator_new]
+wrong = "the heading names no kind for an operator function"
+
+[answers.operator_new.hover]
+markdown = '''
+### `operator new`
+
+---
+→ `void *`
+Parameters:
+- `unsigned long count`
+
+---
+```cpp
+// In ArenaObject
+public: static void *operator new(unsigned long count)
+```
+'''
+range = "ArenaObject* object = ⟦new⟧ ArenaObject;"
+
+[answers.operator_delete]
+wrong = "the heading names no kind for an operator function"
+
+[answers.operator_delete.hover]
+markdown = '''
+### `operator delete`
+
+---
+→ `void`
+Parameters:
+- `void * memory`
+
+---
+```cpp
+// In ArenaObject
+public: static void operator delete(void *memory) noexcept
+```
+'''
+range = "⟦delete⟧ object;"
+
+[answers.global_new]
+wrong = "the heading names no kind for an operator function"
+
+[answers.global_new.hover]
+markdown = '''
+### `operator new`
+
+---
+→ `void *`
+Parameters:
+- `__size_t (aka unsigned long)`
+
+---
+```cpp
+void *operator new(__size_t)
+```
+'''
+range = "Record* record = ::⟦new⟧ Record(4);"
+
+[answers.ctor_paren.hover]
+markdown = '''
+### method `Record`
+
+---
+Parameters:
+- `long`
+
+---
+```cpp
+// In Record
+public: Record(long)
+```
+'''
+range = "Record ⟦direct⟧(5);"
+
+[answers.op_call]
+wrong = "the heading names no kind for an operator function"
+
+[answers.op_call.hover]
+markdown = '''
+### `operator()`
+
+---
+→ `int`
+Parameters:
+- `int row`
+
+---
+```cpp
+// In Table
+public: int operator()(int row)
+```
+'''
+range = "return ⟦table⟧(3) + table[4];"
+
+[answers.op_subscript]
+wrong = "the heading names no kind for an operator function"
+
+[answers.op_subscript.hover]
+markdown = '''
+### `operator[]`
+
+---
+→ `int`
+Parameters:
+- `int row`
+
+---
+```cpp
+// In Table
+public: int operator[](int row)
+```
+'''
+range = "return table(3) + ⟦table⟧[4];"
+
+[answers.spaceship_neq]
+wrong = "the heading names no kind for an operator function"
+
+[answers.spaceship_neq.hover]
+markdown = '''
+### `operator==`
+
+---
+→ `bool`
+Parameters:
+- `const Revision &`
+
+Value = `true`
+
+---
+```cpp
+// In Revision
+public: bool operator==(const Revision &) const noexcept = default
+```
+'''
+range = "bool changed = Revision{2} ⟦!=⟧ Revision{3};"

@@ -1,0 +1,121 @@
+[answers.namespace.hover]
+markdown = '''
+### namespace `kinds`
+
+---
+```cpp
+namespace kinds {}
+```
+'''
+range = "namespace ⟦kinds⟧ {"
+
+[answers.struct.hover]
+markdown = '''
+### struct `Point`
+
+---
+Size: 4 bytes, alignment 4 bytes
+
+---
+```cpp
+// In namespace kinds
+struct Point {
+  int x;
+}
+```
+'''
+range = "struct ⟦Point⟧ {"
+
+[answers.field.hover]
+markdown = '''
+### field `x`
+
+---
+Type: `int`
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+
+---
+```cpp
+// In Point
+public: int x
+```
+'''
+range = "int ⟦x⟧;"
+
+[answers.union.hover]
+markdown = '''
+### union `Packet`
+
+---
+Size: 4 bytes, alignment 4 bytes
+
+---
+```cpp
+// In namespace kinds
+union Packet {
+  int raw;
+}
+```
+'''
+range = "union ⟦Packet⟧ {"
+
+[answers.enum.hover]
+markdown = '''
+### enum `Color`
+
+---
+```cpp
+// In namespace kinds
+enum class Color : int { Red = 0 }
+```
+'''
+range = "enum class ⟦Color⟧ {"
+
+[answers.enumerator.hover]
+markdown = '''
+### enumerator `Red`
+
+---
+Type: `enum kinds::Color`
+Value = `0`
+
+---
+```cpp
+// In Color
+Red
+```
+'''
+range = "⟦Red⟧,"
+
+[answers.typedef.hover]
+markdown = '''
+### type `Alias`
+
+---
+Type: `struct kinds::Point`
+
+---
+```cpp
+// In namespace kinds
+using Alias = Point
+```
+'''
+range = "using ⟦Alias⟧ = Point;"
+
+[answers.function.hover]
+markdown = '''
+### function `length`
+
+---
+→ `int`
+Parameters:
+- `Point p`
+
+---
+```cpp
+// In namespace kinds
+int length(Point p)
+```
+'''
+range = "int ⟦length⟧(Point p) {"

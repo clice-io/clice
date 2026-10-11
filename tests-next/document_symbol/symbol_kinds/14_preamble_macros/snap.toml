@@ -1,0 +1,26 @@
+[answers.inspect.outline]
+document_symbols = [
+    { name = "PREAMBLE_LIMIT", kind = "Constant", at = "#define ⟦PREAMBLE_LIMIT⟧ 8" },
+    { name = "PREAMBLE_CHECK", kind = "Constant", at = "#define ⟦PREAMBLE_CHECK⟧(cond) (!!(cond))", detail = "(cond)" },
+    { name = "after", kind = "Variable", at = "int ⟦after⟧ = PREAMBLE_LIMIT;", detail = "int" },
+]
+
+[answers.inspect.extents]
+document_symbols = [
+    { name = "PREAMBLE_LIMIT", kind = "Constant", at = "#define ⟦PREAMBLE_LIMIT⟧ 8", range = "#define ⟦PREAMBLE_LIMIT 8⟧" },
+    { name = "PREAMBLE_CHECK", kind = "Constant", at = "#define ⟦PREAMBLE_CHECK⟧(cond) (!!(cond))", range = "#define ⟦PREAMBLE_CHECK(cond) (!!(cond))⟧" },
+    { name = "after", kind = "Variable", at = "int ⟦after⟧ = PREAMBLE_LIMIT;", range = "⟦int after = PREAMBLE_LIMIT⟧;" },
+]
+
+[answers.server]
+wrong = "the server's outline misses the macros its preamble holds"
+
+[answers.server.outline]
+document_symbols = [
+    { name = "after", kind = "Variable", at = "int ⟦after⟧ = PREAMBLE_LIMIT;", detail = "int" },
+]
+
+[answers.server.extents]
+document_symbols = [
+    { name = "after", kind = "Variable", at = "int ⟦after⟧ = PREAMBLE_LIMIT;", range = "⟦int after = PREAMBLE_LIMIT⟧;" },
+]

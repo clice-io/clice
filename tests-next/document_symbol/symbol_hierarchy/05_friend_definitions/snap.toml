@@ -1,0 +1,27 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "Owner",
+        kind = "Struct",
+        at = "struct ⟦Owner⟧ {",
+        detail = "struct",
+        children = [
+            { name = "inline_friend", kind = "Function", at = "friend void ⟦inline_friend⟧(Owner& o) {}", detail = "void (Owner &)" },
+            { name = "operator==", kind = "Operator", at = "friend bool ⟦operator==⟧(const Owner& lhs, const Owner& rhs) {", detail = "bool (const Owner &, const Owner &)" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "Owner",
+        kind = "Struct",
+        at = "struct ⟦Owner⟧ {",
+        range = "⟦struct Owner { … }⟧ (7 lines)",
+        children = [
+            { name = "inline_friend", kind = "Function", at = "friend void ⟦inline_friend⟧(Owner& o) {}", range = "⟦friend void inline_friend(Owner& o) {}⟧" },
+            { name = "operator==", kind = "Operator", at = "friend bool ⟦operator==⟧(const Owner& lhs, const Owner& rhs) {", range = "⟦friend bool operator==(const Owner& lhs, const Owner& rhs) { … }⟧ (3 lines)" },
+        ],
+    },
+]

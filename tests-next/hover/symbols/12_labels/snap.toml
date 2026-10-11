@@ -1,0 +1,23 @@
+[answers.goto_label.hover]
+markdown = '''
+### label `finish`
+
+---
+```cpp
+// In adjust
+finish:
+```
+'''
+range = "goto ⟦finish⟧;"
+
+[answers.label_def.hover]
+markdown = '''
+### label `finish`
+
+---
+```cpp
+// In adjust
+finish:
+```
+'''
+range = "⟦finish⟧:"

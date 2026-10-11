@@ -1,0 +1,64 @@
+[answers.exported_fn.hover]
+markdown = '''
+### function `area`
+
+---
+→ `int`
+Parameters:
+- `int side`
+
+---
+```cpp
+export int area(int side)
+```
+'''
+range = "export int ⟦area⟧(int side) {"
+
+[answers.exported_struct.hover]
+markdown = '''
+### struct `Square`
+
+---
+Size: 4 bytes, alignment 4 bytes
+
+---
+```cpp
+export struct Square {
+  int side;
+}
+```
+'''
+range = "struct ⟦Square⟧ {"
+
+[answers.member.hover]
+markdown = '''
+### field `side`
+
+---
+Type: `int`
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+
+---
+```cpp
+// In Square
+public: int side
+```
+'''
+range = "int ⟦side⟧;"
+
+[answers.internal_fn.hover]
+markdown = '''
+### function `perimeter`
+
+---
+→ `int`
+Parameters:
+- `int side`
+
+---
+```cpp
+int perimeter(int side)
+```
+'''
+range = "int ⟦perimeter⟧(int side) {"

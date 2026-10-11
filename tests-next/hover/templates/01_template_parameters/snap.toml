@@ -1,0 +1,44 @@
+[answers.type_param.hover]
+markdown = '''
+### type `Value`
+
+---
+Type: `typename`
+
+---
+```cpp
+// In accept_type
+typename Value = long
+```
+'''
+range = "template <typename ⟦Value⟧ = long> void accept_type();"
+
+[answers.template_template_param.hover]
+markdown = '''
+### type `Container`
+
+---
+Type: `template <typename> class`
+
+---
+```cpp
+// In accept_template
+template <typename> class Container
+```
+'''
+range = "template <template <typename> class ⟦Container⟧>"
+
+[answers.non_type_param.hover]
+markdown = '''
+### variable `Count`
+
+---
+Type: `long`
+
+---
+```cpp
+// In accept_value
+long Count = 8
+```
+'''
+range = "template <long ⟦Count⟧ = 8> void accept_value();"

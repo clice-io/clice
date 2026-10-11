@@ -1,0 +1,20 @@
+[answers.string]
+wrong = "the size in bytes counts the terminator, and the string's length is not shown (clangd#1016)"
+
+[answers.string.hover]
+markdown = '''
+### `string-literal`
+
+---
+Type: `const char[6]`
+Size: 6 bytes
+'''
+range = 'const char *greeting = ⟦"hello"⟧;'
+
+[answers.integer]
+wrong = "a numeric literal has no card, where its type and value could show (clangd#1669)"
+hover = {}
+
+[answers.floating]
+wrong = "a numeric literal has no card, where its type and value could show (clangd#1669)"
+hover = {}

@@ -1,0 +1,44 @@
+[answers.embedded.hover]
+markdown = '''
+### variable `embedded`
+
+---
+Type: `const byte[630] (aka const unsigned char[630])`
+Value = `{84, 104, 101, 32, 113, 117, 105, 99, 107, 32, ...}`
+
+---
+```cpp
+static const byte embedded[]
+```
+'''
+range = "static const byte ⟦embedded⟧[] = {"
+
+[answers.literal.hover]
+markdown = '''
+### variable `literal`
+
+---
+Type: `const char[601]`
+Value = `{120, 120, 120, 120, 120, 120, 120, 120, 120, 120, ...}`
+
+---
+```cpp
+const char literal[]
+```
+'''
+range = 'const char ⟦literal⟧[] = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";'
+
+[answers.token_limit.hover]
+markdown = '''
+### variable `values`
+
+---
+Type: `int[128]`
+Value = `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`
+
+---
+```cpp
+int values[]
+```
+'''
+range = "int ⟦values⟧[] = {DUPLICATE_64(3), DUPLICATE_64(3)};"

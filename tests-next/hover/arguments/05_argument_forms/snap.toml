@@ -1,0 +1,124 @@
+[answers.forwarded_arg.hover]
+markdown = '''
+### variable `identifier`
+
+---
+Type: `long`
+Value = `4`
+Passed as identifier
+
+---
+```cpp
+// In run
+long identifier = 4
+```
+'''
+range = "auto record = construct<Record>(⟦identifier⟧);"
+
+[answers.converted_arg.hover]
+markdown = '''
+### variable `distance`
+
+---
+Type: `int`
+Value = `5`
+Passed as distance (converted to const double &)
+
+---
+```cpp
+// In run
+int distance = 5
+```
+'''
+range = "measure(⟦distance⟧);"
+
+[answers.converted_ctor_arg.hover]
+markdown = '''
+### variable `distance`
+
+---
+Type: `int`
+Value = `6`
+Passed as distance (converted to const double &)
+
+---
+```cpp
+// In run
+int distance = 6
+```
+'''
+range = "Measurement measurement(⟦distance⟧);"
+
+[answers.literal_arg.hover]
+markdown = '''
+### `literal`
+
+---
+Passed as expected (converted to const long &)
+'''
+range = "compare(7, ⟦8⟧);"
+
+[answers.expression_arg.hover]
+markdown = '''
+### `expression`
+
+---
+Type: `int`
+Value = `17 (0x11)`
+Passed as expected (converted to const long &)
+'''
+range = "compare(7, 8 ⟦+⟧ 9);"
+
+[answers.expression_by_value.hover]
+markdown = '''
+### `expression`
+
+---
+Type: `int`
+Value = `5`
+Passed as left (converted to long)
+'''
+range = "return add(2 ⟦+⟧ 3, 4);"
+
+[answers.converted_literal.hover]
+markdown = '''
+### `literal`
+
+---
+Passed as distance (converted to const double &)
+'''
+range = "measure(⟦10⟧);"
+
+[answers.method_arg_default.hover]
+markdown = '''
+### variable `level`
+
+---
+Type: `long`
+Value = `2`
+Passed as level
+
+---
+```cpp
+// In run
+long level = 2
+```
+'''
+range = "logger.write(⟦level⟧);"
+
+[answers.converting_ctor_arg.hover]
+markdown = '''
+### variable `value`
+
+---
+Type: `const int`
+Value = `11 (0xb)`
+Passed by const reference as key (converted to Key)
+
+---
+```cpp
+// In run
+const int value = 11
+```
+'''
+range = "lookup(⟦value⟧);"

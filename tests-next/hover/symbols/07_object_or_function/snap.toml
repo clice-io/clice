@@ -1,0 +1,29 @@
+[answers.object_init.hover]
+markdown = '''
+### variable `active`
+
+---
+Type: `Timer`
+
+---
+```cpp
+// In demo
+Timer active(seconds)
+```
+'''
+range = "Timer ⟦active⟧(seconds);"
+
+[answers.vexing_decl.hover]
+markdown = '''
+### function `empty`
+
+---
+→ `Timer`
+
+---
+```cpp
+// In namespace mvp
+Timer empty()
+```
+'''
+range = "Timer ⟦empty⟧();"

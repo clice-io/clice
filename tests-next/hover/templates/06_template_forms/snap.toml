@@ -1,0 +1,294 @@
+[answers.var_of_template_type.hover]
+markdown = '''
+### variable `bundle`
+
+---
+Type: `Bundle<long, char, bool>`
+
+---
+```cpp
+// In namespace object_instance
+Bundle<long, char, bool> bundle{7}
+```
+'''
+range = "Bundle<long, char, bool> ⟦bundle⟧{7};"
+
+[answers.implicit_instantiation.hover]
+markdown = '''
+### class `Sequence<long>`
+
+---
+```cpp
+// In namespace implicit_instance
+template <> class Sequence<long> {}
+```
+'''
+range = "⟦Sequence⟧<long> values;"
+
+[answers.class_template.hover]
+markdown = '''
+### class `Registry`
+
+---
+```cpp
+// In namespace class_template_declaration
+template <template <typename, bool...> class Strategy, typename Value = char,
+          long Size = 4, bool Enabled = true, typename... Rest>
+class Registry final {}
+```
+'''
+range = "⟦Registry⟧<Strategy> registry;"
+
+[answers.function_template.hover]
+markdown = '''
+### function `register_type`
+
+---
+→ `void`
+
+---
+```cpp
+// In namespace function_template_call
+template <>
+void register_type<function_template_call::Policy, char, 4L, true, <>>()
+```
+'''
+range = "⟦register_type⟧<Policy>();"
+
+[answers.function_decl.hover]
+markdown = '''
+### function `evaluate`
+
+---
+→ `Policy<long, true, false>`
+Parameters:
+- `long`
+- `bool enabled = true`
+
+---
+```cpp
+// In namespace function_declaration_call
+Policy<long, true, false> evaluate(long, bool enabled = true)
+```
+'''
+range = "⟦evaluate⟧(5);"
+
+[answers.partial_specialization.hover]
+markdown = '''
+### class `Container<T *>`
+
+---
+```cpp
+// In namespace partial_specialization_declaration
+template <typename T> class Container<T *> {}
+```
+'''
+range = "template <typename T> class ⟦Container⟧<T*> {};"
+
+[answers.partial_spec_constructor.hover]
+markdown = '''
+### method `Container`
+
+---
+```cpp
+// In Container<T *>
+public: Container()
+```
+'''
+range = "⟦Container⟧();"
+
+[answers.variable_template.hover]
+markdown = '''
+### variable `items`
+
+---
+Type: `count_type[Size] (aka long[Size])`
+
+---
+```cpp
+// In namespace variable_template_declaration
+template <long Size> count_type items[Size]
+```
+'''
+range = "template <long Size> count_type ⟦items⟧[Size]; @+0"
+
+[answers.variable_template_spec.hover]
+markdown = '''
+### variable `items<6>`
+
+---
+Type: `count_type[6] (aka long[6])`
+
+---
+```cpp
+// In namespace variable_template_specialization
+count_type items[6]
+```
+'''
+range = "template <> count_type ⟦items⟧<6>[6];"
+
+[answers.canonical_type.hover]
+markdown = '''
+### variable `value`
+
+---
+Type: `Identity<long>::type (aka long)`
+
+---
+```cpp
+// In namespace canonical_member_type
+Identity<long>::type value
+```
+'''
+range = "Identity<long>::type ⟦value⟧;"
+
+[answers.function_template_type.hover]
+markdown = '''
+### function `consume`
+
+---
+→ `void`
+Parameters:
+- `T value`
+
+---
+```cpp
+// In namespace canonical_function_parameter
+template <typename T> void consume(T value)
+```
+'''
+range = "template <typename T> void ⟦consume⟧(T value) {}"
+
+[answers.alias_template.hover]
+markdown = '''
+### type `identity`
+
+---
+Type: `T`
+
+---
+```cpp
+// In namespace alias_template_declaration
+template <typename T> using identity = T
+```
+'''
+range = "template <typename T> using ⟦identity⟧ = T; @+0"
+
+[answers.alias_template_chain.hover]
+markdown = '''
+### type `const_identity`
+
+---
+Type: `const identity<T> (aka const T)`
+
+---
+```cpp
+// In namespace alias_template_chain
+template <typename T> using const_identity = const identity<T>
+```
+'''
+range = "template <typename T> using ⟦const_identity⟧ = const identity<T>;"
+
+[answers.constant_array.hover]
+markdown = '''
+### variable `fixed`
+
+---
+Type: `element_type[12] (aka long[12])`
+
+---
+```cpp
+// In namespace array_types
+element_type fixed[12]
+```
+'''
+range = "element_type ⟦fixed⟧[12];"
+
+[answers.incomplete_array.hover]
+markdown = '''
+### variable `open`
+
+---
+Type: `element_type[] (aka long[])`
+
+---
+```cpp
+// In namespace array_types
+extern element_type open[]
+```
+'''
+range = "extern element_type ⟦open⟧[];"
+
+[answers.dependent_size_array.hover]
+markdown = '''
+### field `data`
+
+---
+Type: `element_type[Size] (aka long[Size])`
+
+---
+```cpp
+// In Buffer<Size>
+public: element_type data[Size]
+```
+'''
+range = "element_type ⟦data⟧[Size];"
+
+[answers.template_template_arg]
+wrong = "the heading names no kind for a class template"
+
+[answers.template_template_arg.hover]
+markdown = '''
+### `Allocator`
+
+---
+```cpp
+// In namespace template_argument
+template <typename T> struct Allocator {}
+```
+'''
+range = "Owner<⟦Allocator⟧> owner;"
+
+[answers.ctad]
+wrong = "the class name of a declaration with deduced arguments shows the primary template, not Wrapper<long> (clangd#435)"
+
+[answers.ctad.hover]
+markdown = '''
+### struct `Wrapper`
+
+---
+```cpp
+// In namespace deduction_placeholder
+template <typename T> struct Wrapper {}
+```
+'''
+range = "⟦Wrapper⟧ wrapper(9L);"
+
+[answers.sizeof_pack.hover]
+markdown = '''
+### type `Types`
+
+---
+Type: `typename...`
+
+---
+```cpp
+// In namespace pack_size
+typename... Types
+```
+'''
+range = "template <typename... Types> constexpr auto count = sizeof...(⟦Types⟧);"
+
+[answers.injected_class_name.hover]
+markdown = '''
+### struct `Link`
+
+---
+```cpp
+// In namespace injected_name
+template <typename T> struct Link {
+  Link<T> *next;
+}
+```
+'''
+range = "⟦Link⟧* next;"

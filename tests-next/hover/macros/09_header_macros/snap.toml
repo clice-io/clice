@@ -1,0 +1,27 @@
+[answers.object.hover]
+markdown = '''
+### macro `BUFFER_SIZE`
+
+---
+```cpp
+#define BUFFER_SIZE 64
+
+// Expands to
+64
+```
+'''
+range = "char buffer[⟦BUFFER_SIZE⟧];"
+
+[answers.function.hover]
+markdown = '''
+### macro `SQUARE`
+
+---
+```cpp
+#define SQUARE(x) ((x) * (x))
+
+// Expands to
+( ( 64 ) * ( 64 ) )
+```
+'''
+range = "int area = ⟦SQUARE⟧(BUFFER_SIZE);"

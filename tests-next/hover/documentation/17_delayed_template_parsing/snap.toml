@@ -1,0 +1,69 @@
+[answers.inspect.dependent_getter.hover]
+markdown = '''
+### method `getLevel`
+
+---
+→ `T`
+Trivial accessor for `level`.
+
+---
+```cpp
+// In Gauge<T>
+public: T getLevel()
+```
+'''
+range = "return gauge.⟦getLevel⟧();"
+
+[answers.inspect.dependent_setter.hover]
+markdown = '''
+### method `setLevel`
+
+---
+→ `void`
+Parameters:
+- `T value`
+
+Trivial setter for `level`.
+
+---
+```cpp
+// In Gauge<T>
+public: void setLevel(T value)
+```
+'''
+range = "gauge.⟦setLevel⟧(value);"
+
+[answers.server]
+wrong = "the server never parses the deferred bodies, so the accessors get no description"
+
+[answers.server.dependent_getter.hover]
+markdown = '''
+### method `getLevel`
+
+---
+→ `T`
+
+---
+```cpp
+// In Gauge<T>
+public: T getLevel()
+```
+'''
+range = "return gauge.⟦getLevel⟧();"
+
+[answers.server.dependent_setter.hover]
+markdown = '''
+### method `setLevel`
+
+---
+→ `void`
+Parameters:
+- `T value`
+
+---
+```cpp
+// In Gauge<T>
+public: void setLevel(T value)
+```
+'''
+range = "gauge.⟦setLevel⟧(value);"

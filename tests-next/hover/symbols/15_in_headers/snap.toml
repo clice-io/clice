@@ -1,0 +1,30 @@
+[answers.parameter_type.hover]
+markdown = '''
+### struct `Square`
+
+---
+A square with integer sides.
+
+---
+```cpp
+struct Square {
+  int side;
+}
+```
+'''
+range = "inline int area(⟦Square⟧ square) {"
+
+[answers.member.hover]
+markdown = '''
+### field `side`
+
+---
+Type: `int`
+
+---
+```cpp
+// In Square
+public: int side
+```
+'''
+range = "return square.⟦side⟧ * square.side;"

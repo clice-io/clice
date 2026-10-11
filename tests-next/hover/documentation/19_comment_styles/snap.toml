@@ -1,0 +1,30 @@
+[answers.block.hover]
+markdown = '''
+### function `block`
+
+---
+→ `int`
+Block comment documentation.
+Second line.
+
+---
+```cpp
+int block()
+```
+'''
+range = "int ⟦block⟧();"
+
+[answers.qt.hover]
+markdown = '''
+### function `qt`
+
+---
+→ `int`
+Qt-style documentation.
+
+---
+```cpp
+int qt()
+```
+'''
+range = "int ⟦qt⟧();"
