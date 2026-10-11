@@ -10,28 +10,21 @@ import :support.logging;
 
 namespace clice::driver {
 
-using kota::deco::decl::KVStyle;
-
 namespace {
 
 struct LintOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (default: current directory)",
-           required = false)
+    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
     <std::string> workspace;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Build configuration to activate, one of the tags declared on rules "
                "(default: the selected one, else default_configuration)",
            required = false)
     <std::string> configuration;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Number of lint workers (default: from config)",
-           required = false)
+    DecoKV(help = "Number of lint workers (default: from config)", required = false)
     <std::uint32_t> workers;
 
     DecoFlag(names = {"--index"},

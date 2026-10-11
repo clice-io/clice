@@ -20,28 +20,21 @@ import :support.timer;
 
 namespace clice::driver {
 
-using kota::deco::decl::KVStyle;
-
 namespace {
 
 struct IndexOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (default: current directory)",
-           required = false)
+    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
     <std::string> workspace;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Build configuration to activate, one of the tags declared on rules "
                "(default: the selected one, else default_configuration)",
            required = false)
     <std::string> configuration;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Number of indexing workers (default: from config)",
-           required = false)
+    DecoKV(help = "Number of indexing workers (default: from config)", required = false)
     <std::uint32_t> workers;
 
     DecoFlag(names = {"--stats"},
@@ -49,9 +42,7 @@ struct IndexOptions {
              required = false)
     stats;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "How many of the largest file shards --stats lists",
-           required = false)
+    DecoKV(help = "How many of the largest file shards --stats lists", required = false)
     <std::uint32_t> top;
 
     DecoFlag(names = {"--variants"},
@@ -61,25 +52,19 @@ struct IndexOptions {
              required = false)
     variants;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--show-symbol", "--show-symbol="},
-           help =
+    DecoKV(help =
                "Print what the persisted index records about a symbol, named by its "
                "name, qualified name or #hash, instead of indexing",
            required = false)
     <std::string> show_symbol;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--show-file", "--show-file="},
-           help =
+    DecoKV(help =
                "Print a file's persisted rows: variants, contributing units and row "
                "counts, instead of indexing",
            required = false)
     <std::string> show_file;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--show-tu", "--show-tu="},
-           help =
+    DecoKV(help =
                "Print a translation unit's persisted manifest: include tree and "
                "contributions, instead of indexing",
            required = false)

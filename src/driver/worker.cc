@@ -17,8 +17,6 @@ namespace clice::driver {
 
 namespace {
 
-using kota::deco::decl::KVStyle;
-
 struct WorkerOptions {
     kota::deco::decl::HelpOption help;
 
@@ -27,23 +25,17 @@ struct WorkerOptions {
              required = false)
     stateful;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--max-documents", "--max-documents="},
-           help = "Max compiled documents kept before LRU eviction (stateful worker only)",
+    DecoKV(help = "Max compiled documents kept before LRU eviction (stateful worker only)",
            required = false)
     <std::uint64_t> max_documents;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--worker-name", "--worker-name="},
-           required = false)
+    DecoKV(required = false)
     <std::string> worker_name;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, names = {"--log-dir", "--log-dir="}, required = false)
+    DecoKV(required = false)
     <std::string> log_dir;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--master-pid", "--master-pid="},
-           required = false)
+    DecoKV(required = false)
     <std::uint32_t> master_pid;
 };
 

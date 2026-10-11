@@ -150,9 +150,7 @@ enum class LogLevel : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
 /// The --log-level option every subcommand's options hold; a subcommand
 /// that logs less unless asked gives it a default of its own.
 struct LogLevelOption {
-    DecoKV(style = kota::deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Log level",
-           required = false)
+    DecoKV(help = "Log level", required = false)
     <LogLevel> log_level = LogLevel::Info;
 
     /// Make the level given the global log level.

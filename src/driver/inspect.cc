@@ -53,36 +53,28 @@ struct InspectOptions {
              required = false)
     annotations;
 
-    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
-                 names = {"--markers", "--markers="},
-                 help = R"(JSON file of the markers in the inspected source file, at byte )"
-                        R"(offsets: {"points": {"name": 12}, "ranges": {"name": )"
-                        R"({"begin": 3, "end": 7}}}; results are keyed by these names)",
-                 required = false)
+    DecoKV(help = R"(JSON file of the markers in the inspected source file, at byte )"
+                  R"(offsets: {"points": {"name": 12}, "ranges": {"name": )"
+                  R"({"begin": 3, "end": 7}}}; results are keyed by these names)",
+           required = false)
     <std::string> markers;
 
-    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
-                 names = {"--flags", "--flags="},
-                 help =
-                     "Compile flags for the inputs as a JSON string array; "
-                     "replaces the compile_commands.json lookup",
-                 required = false)
+    DecoKV(help =
+               "Compile flags for the inputs as a JSON string array; "
+               "replaces the compile_commands.json lookup",
+           required = false)
     <std::string> flags;
 
-    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
-                 names = {"--config", "--config="},
-                 help =
-                     "Feature options overlay as a JSON object "
-                     "(only features that take options accept it)",
-                 required = false)
+    DecoKV(help =
+               "Feature options overlay as a JSON object "
+               "(only features that take options accept it)",
+           required = false)
     <std::string> config;
 
-    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
-                 names = {"--configuration", "--configuration="},
-                 help =
-                     "Build configuration to activate, one of the tags declared on "
-                     "rules (default: the selected one, else default_configuration)",
-                 required = false)
+    DecoKV(help =
+               "Build configuration to activate, one of the tags declared on "
+               "rules (default: the selected one, else default_configuration)",
+           required = false)
     <std::string> configuration;
 
     LogLevelOption log{.log_level = LogLevel::Warn};

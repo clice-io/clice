@@ -11,8 +11,6 @@ import :vfs.file_system;
 
 namespace clice::driver {
 
-using kota::deco::decl::KVStyle;
-
 namespace {
 
 struct RefactorOptions {
@@ -21,30 +19,25 @@ struct RefactorOptions {
     DecoInput(meta_var = "<ACTION>", help = "Refactoring to run: rename", required = false)
     <std::vector<std::string>> inputs;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (default: current directory)",
-           required = false)
+    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
     <std::string> workspace;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Build configuration to read, one of the tags declared on rules "
                "(default: the selected one, else default_configuration)",
            required = false)
     <std::string> configuration;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "rename: the symbol, as a locator: its whole name, an answer's symbol, or "
                "file:line[:column]",
            required = false)
     <std::string> symbol;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "rename: the new name", required = false)
+    DecoKV(help = "rename: the new name", required = false)
     <std::string> to;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "rename: a file listing renames to make at once, `<locator> => <new name>` a "
                "line; - reads them from stdin",
            required = false)

@@ -13,8 +13,6 @@ import :vfs.file_system;
 
 namespace clice::driver {
 
-using kota::deco::decl::KVStyle;
-
 namespace {
 
 /// What the build needs: the wrapped modules, and the program modules the
@@ -27,27 +25,22 @@ struct Plan {
 struct ModularizeOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (default: current directory)",
-           required = false)
+    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
     <std::string> workspace;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Build configuration to read, one of the tags declared on rules "
                "(default: the selected one, else default_configuration)",
            required = false)
     <std::string> configuration;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Comma-separated globs over workspace-relative paths, absolute ones outside "
                "the workspace: the files the partition and the program span",
            required = false)
     <std::string> scope;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "JSON file assigning modules by globs, first match wins; a module is wrapped, "
                R"("textual": true stays headers, "external": true is std, "provides": )"
                R"("std.compat" names who exports its names, "rewrite": true rewrites a )"
@@ -55,20 +48,17 @@ struct ModularizeOptions {
            required = false)
     <std::string> partition;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "libc++'s module sources (share/libc++/v1): the partition's std module is "
                "imported as std.compat",
            required = false)
     <std::string> std;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Directory to write the modules, macro headers, mirrors and prelude into",
+    DecoKV(help = "Directory to write the modules, macro headers, mirrors and prelude into",
            required = false)
     <std::string> out;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "JSON file listing build configurations to merge instead, each a name, the "
                "preprocessor condition holding in its compilations alone and the --out "
                "directory a run for it wrote",

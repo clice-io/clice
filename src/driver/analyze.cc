@@ -20,112 +20,86 @@ import :support.text;
 
 namespace clice::driver {
 
-using kota::deco::decl::KVStyle;
-
 namespace {
 
 struct ModulesOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (default: current directory)",
-           required = false)
+    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
     <std::string> workspace;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Build configuration to read, one of the tags declared on rules "
                "(default: the selected one, else default_configuration)",
            required = false)
     <std::string> configuration;
 
     DecoKV(
-        style = KVStyle::JoinedOrSeparate,
         help =
             "What to show: overview (default), edge, module, file, obstacles, macros, impact, interface",
         required = false)
     <std::string> view;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "edge: the module whose files name the other's entities",
-           required = false)
+    DecoKV(help = "edge: the module whose files name the other's entities", required = false)
     <std::string> from;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate, help = "edge: the module named", required = false)
+    DecoKV(help = "edge: the module named", required = false)
     <std::string> to;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "module, interface: the module to show",
-           required = false)
+    DecoKV(help = "module, interface: the module to show", required = false)
     <std::string> module;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "file: the file to show, relative to the workspace",
-           required = false)
+    DecoKV(help = "file: the file to show, relative to the workspace", required = false)
     <std::string> file;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Comma-separated globs over workspace-relative paths, absolute ones outside "
                "the workspace: analyze only the files they match (default: every indexed file "
                "under the workspace outside a dot directory)",
            required = false)
     <std::string> scope;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Directory segments naming a file's default module (default 0: its whole "
                "directory)",
            required = false)
     <int> depth;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "JSON file assigning modules by globs, first match wins: "
                R"({"modules": [{"name": "core", "files": ["src/support/**"]}]})",
            required = false)
     <std::string> partition;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "libc++'s module sources (share/libc++/v1), for a partition module provided "
                "by std.compat",
            required = false)
     <std::string> std;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Comma-separated hypothetical moves: <path>=<module>",
-           required = false)
+    DecoKV(help = "Comma-separated hypothetical moves: <path>=<module>", required = false)
     <std::string> move;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Comma-separated hypothetical merges: <module>+<module>[+...] into the first",
+    DecoKV(help = "Comma-separated hypothetical merges: <module>+<module>[+...] into the first",
            required = false)
     <std::string> merge;
 
-    DecoKV(names = {"--move-entity", "--move-entity="},
-           style = KVStyle::JoinedOrSeparate,
-           help = "A hypothetical declaration move: <locator>=<header>",
-           required = false)
+    DecoKV(help = "A hypothetical declaration move: <locator>=<header>", required = false)
     <std::vector<std::string>> move_entity;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Comma-separated annotation files weighing the results: "
                R"({"name": "compile_time", "unit": "s", "values": {"src/a.cpp": 1.5}})",
            required = false)
     <std::string> annotation;
 
-    DecoKV(names = {"--churn-since", "--churn-since="},
-           style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "git log --since value of the churn annotation (default 6.months; empty "
                "leaves it out)",
            required = false)
     <std::string> churn_since;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Most hotspots, move and split candidates the overview lists (default 20)",
+    DecoKV(help = "Most hotspots, move and split candidates the overview lists (default 20)",
            required = false)
     <int> limit;
 

@@ -15,38 +15,25 @@ import :worker.probe;
 
 namespace clice {
 
-namespace deco = kota::deco;
-
 enum class ServerMode : std::uint8_t { Pipe, Socket };
 
 struct ServerOptions {
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Server mode: pipe (default) or socket (debug)",
-           required = false)
+    DecoKV(help = "Server mode: pipe (default) or socket (debug)", required = false)
     <ServerMode> mode = ServerMode::Pipe;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Socket mode address",
-           required = false)
+    DecoKV(help = "Socket mode address", required = false)
     <std::string> host = "127.0.0.1";
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Socket mode TCP port",
-           required = false)
+    DecoKV(help = "Socket mode TCP port", required = false)
     <int> port = 0;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Record LSP input to file for replay testing",
-           required = false)
+    DecoKV(help = "Record LSP input to file for replay testing", required = false)
     <std::string> record;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (optional, skips LSP initialize)",
-           required = false)
+    DecoKV(help = "Workspace root directory (optional, skips LSP initialize)", required = false)
     <std::string> workspace;
 
-    DecoKV(style = deco::decl::KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Build configuration to activate, one of the tags declared on rules "
                "(default: the selected one, else default_configuration)",
            required = false)

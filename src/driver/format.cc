@@ -11,20 +11,15 @@ import :vfs.path;
 
 namespace clice::driver {
 
-using kota::deco::decl::KVStyle;
-
 namespace {
 
 struct FormatOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (default: current directory)",
-           required = false)
+    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
     <std::string> workspace;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Build configuration to activate, one of the tags declared on rules "
                "(default: the selected one, else default_configuration)",
            required = false)
@@ -35,14 +30,11 @@ struct FormatOptions {
              required = false)
     check;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           names = {"--clang-format", "--clang-format="},
-           help = "The clang-format executable to run (default: clang-format from PATH)",
+    DecoKV(help = "The clang-format executable to run (default: clang-format from PATH)",
            required = false)
     <std::string> clang_format;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Number of clang-format processes to run at once (default: the CPU count)",
+    DecoKV(help = "Number of clang-format processes to run at once (default: the CPU count)",
            required = false)
     <std::uint32_t> jobs;
 

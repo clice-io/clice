@@ -12,67 +12,52 @@ import :server.query_commands;
 
 namespace clice::driver {
 
-using kota::deco::decl::KVStyle;
-
 namespace {
 
 struct QueryOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "Workspace root directory (default: current directory)",
-           required = false)
+    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
     <std::string> workspace;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Build configuration to read, one of the tags declared on rules "
                "(default: the selected one, else default_configuration)",
            required = false)
     <std::string> configuration;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Question to ask: compileCommand, projectFiles, fileDeps, impactAnalysis, "
                "counterparts, symbolSearch, readSymbol, documentSymbols, definition, "
                "references, callGraph, typeHierarchy",
            required = false)
     <std::string> method;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "File a file question is about (relative to the workspace): compileCommand, "
                "fileDeps, impactAnalysis, counterparts, documentSymbols",
            required = false)
     <std::string> path;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "Symbol a symbol question is about, or the symbols symbolSearch lists, as a "
                "locator: a name, an answer's symbol, or file:line[:column]",
            required = false)
     <std::string> symbol;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "symbolSearch: at most this many symbols (default 100)",
-           required = false)
+    DecoKV(help = "symbolSearch: at most this many symbols (default 100)", required = false)
     <int> limit;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "projectFiles: all (default), source, header or module",
-           required = false)
+    DecoKV(help = "projectFiles: all (default), source, header or module", required = false)
     <std::string> filter;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help =
+    DecoKV(help =
                "fileDeps: includes, includers or both (default); callGraph: callers, "
                "callees or both; typeHierarchy: supertypes, subtypes or both",
            required = false)
     <std::string> direction;
 
-    DecoKV(style = KVStyle::JoinedOrSeparate,
-           help = "fileDeps: levels to follow (default 1, 0 for all)",
-           required = false)
+    DecoKV(help = "fileDeps: levels to follow (default 1, 0 for all)", required = false)
     <int> depth;
 
     DecoFlag(names = {"--include-declaration"},
