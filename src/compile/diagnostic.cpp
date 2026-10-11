@@ -307,7 +307,10 @@ public:
 
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
                           const clang::Diagnostic& raw_diagnostic) override {
-        auto& diagnostic = unit.diagnostics().emplace_back();
+        /// Formatting can deserialize declarations, and the AST reader
+        /// reports the ODR mismatches it meets there as diagnostics of their
+        /// own, reentrantly: this one is built aside while theirs append.
+        Diagnostic diagnostic;
         diagnostic.id.value = raw_diagnostic.getID();
         diagnostic.error_by_default =
             raw_diagnostic.getDiags()->getDiagnosticIDs()->isDefaultMappingAsError(
@@ -351,6 +354,7 @@ public:
         if(unit->checker) {
             unit->checker->adjust_diag(diagnostic);
         }
+        unit.diagnostics().push_back(std::move(diagnostic));
     }
 
     void EndSourceFile() override {}
