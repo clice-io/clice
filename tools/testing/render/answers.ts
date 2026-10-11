@@ -2,7 +2,7 @@
 /// `clice inspect` and a server both decode into these, so the two can
 /// differ only in data, never in layout.
 
-import { renderWorkspaceEdit, type TextEdit } from "./edits.ts";
+import { applyEdits, renderDiff, renderWorkspaceEdit, type TextEdit } from "./edits.ts";
 import {
     renderLocation,
     type Location,
@@ -43,10 +43,27 @@ export interface Item {
     kind: string;
     /// The item's name; its whole extent renders only when asked.
     selection: Location;
+    detail?: string | undefined;
 }
 
 export function renderItem(item: Item, scope: RenderScope): Table {
     return { name: item.name, kind: item.kind, at: place(item.selection, scope) };
+}
+
+/// A call or type hierarchy item, with the detail an editor shows beside
+/// its name when the server sends one.
+export function renderHierarchyItem(item: Item, scope: RenderScope): Table {
+    return {
+        ...renderItem(item, scope),
+        ...(item.detail === undefined || item.detail === "" ? {} : { detail: item.detail }),
+    };
+}
+
+/// Hierarchy items in file and position order.
+export function renderHierarchyItems(items: readonly Item[], scope: RenderScope): Table[] {
+    return [...items]
+        .sort((a, b) => compareLocations(a.selection, b.selection))
+        .map((item) => renderHierarchyItem(item, scope));
 }
 
 export interface Call {
@@ -60,7 +77,7 @@ export function renderCalls(calls: readonly Call[], scope: RenderScope): Table[]
     return [...calls]
         .sort((a, b) => compareLocations(a.item.selection, b.item.selection))
         .map((call) => ({
-            ...renderItem(call.item, scope),
+            ...renderHierarchyItem(call.item, scope),
             sites: renderLocations(call.sites, scope),
         }));
 }
@@ -102,20 +119,51 @@ export interface Diagnostic {
     message: string;
     source?: string | undefined;
     code?: string | undefined;
+    /// The notes it carries, as related information.
+    related?: { location: Location; message: string }[] | undefined;
+    /// Its codeDescription: the page that explains it.
+    link?: string | undefined;
+    /// Its tags by name (`Unnecessary`, `Deprecated`).
+    tags?: string[] | undefined;
 }
 
-export function renderDiagnostics(diagnostics: readonly Diagnostic[], scope: RenderScope): Table[] {
+/// The diagnostics in position order; the parts asked (`related`, `link`,
+/// `tags`) join each one, `related` and `tags` even when empty.
+export function renderDiagnostics(
+    diagnostics: readonly Diagnostic[],
+    scope: RenderScope,
+    parts: ReadonlySet<string> = new Set(),
+): Table[] {
     return [...diagnostics]
         .sort(
             (a, b) => compareLocations(a.location, b.location) || (a.message < b.message ? -1 : 1),
         )
-        .map((diagnostic) => ({
-            at: place(diagnostic.location, scope),
-            severity: diagnostic.severity,
-            message: diagnostic.message,
-            ...(diagnostic.source === undefined ? {} : { source: diagnostic.source }),
-            ...(diagnostic.code === undefined ? {} : { code: diagnostic.code }),
-        }));
+        .map((diagnostic) => {
+            const here = anchored(
+                scope,
+                diagnostic.location.path,
+                diagnostic.location.range.start.line,
+            );
+            return {
+                at: place(diagnostic.location, scope),
+                severity: diagnostic.severity,
+                message: diagnostic.message,
+                ...(diagnostic.source === undefined ? {} : { source: diagnostic.source }),
+                ...(diagnostic.code === undefined ? {} : { code: diagnostic.code }),
+                ...(parts.has("related")
+                    ? {
+                          related: (diagnostic.related ?? []).map((info) => ({
+                              at: place(info.location, here),
+                              message: info.message,
+                          })),
+                      }
+                    : {}),
+                ...(parts.has("link") && diagnostic.link !== undefined
+                    ? { link: diagnostic.link }
+                    : {}),
+                ...(parts.has("tags") ? { tags: diagnostic.tags ?? [] } : {}),
+            };
+        });
 }
 
 export interface InlayHint {
@@ -220,11 +268,14 @@ export interface OutlineSymbol extends Item {
     detail?: string | undefined;
     /// The symbol's whole extent.
     range?: Location | undefined;
+    /// Its symbol tags by name (`Deprecated`).
+    tags?: string[] | undefined;
     children: OutlineSymbol[];
 }
 
 /// The symbol tree, each symbol's children under it; the parts asked
-/// (`detail`, `range`) join each symbol.
+/// (`detail`, `range`, `tags`) join each symbol, `tags` even when there
+/// are none.
 export function renderOutline(
     symbols: readonly OutlineSymbol[],
     scope: RenderScope,
@@ -240,6 +291,7 @@ export function renderOutline(
             ...(parts.has("range") && symbol.range !== undefined
                 ? { range: place(symbol.range, anchored(scope, path, range.start.line)) }
                 : {}),
+            ...(parts.has("tags") ? { tags: symbol.tags ?? [] } : {}),
             ...(symbol.children.length === 0
                 ? {}
                 : { children: renderOutline(symbol.children, scope, parts) }),
@@ -478,5 +530,85 @@ export function renderCounterparts({ preferred, candidates }: Counterparts): Tab
     return {
         ...(preferred === undefined ? {} : { preferred }),
         candidates: candidates.map(({ path, reasons }) => ({ path, reasons })),
+    };
+}
+
+/// The file formatting leaves, as a diff of the text the edits were asked
+/// for; a reply of null is no answer at all.
+export function renderFormatting(source: SourceText, edits: readonly TextEdit[] | null): string {
+    if (edits === null) {
+        return "(no answer)";
+    }
+    return renderDiff(source.path, source.text, applyEdits(source, edits));
+}
+
+/// A request the server refused, with the message an editor shows.
+export interface Refused {
+    error: string;
+}
+
+/// Where a rename at a place would apply: the name's range and the text the
+/// editor offers to edit.
+export interface Renameable {
+    location: Location;
+    placeholder: string;
+}
+
+/// The range and placeholder; nothing to rename is an empty table.
+export function renderPrepareRename(
+    answer: Renameable | Refused | null,
+    scope: RenderScope,
+): Table {
+    if (answer === null) {
+        return {};
+    }
+    if ("error" in answer) {
+        return { error: answer.error };
+    }
+    return { at: place(answer.location, scope), placeholder: answer.placeholder };
+}
+
+export interface Renamed {
+    edits: Map<string, TextEdit[]>;
+    /// The version of the open buffer each file's edits are for; null where
+    /// they are for the disk.
+    versions: Map<string, number | null>;
+    /// What the server showed beside the edits (window/showMessage).
+    notice?: string | undefined;
+    /// The errors the file renamed at compiles with once the edits apply,
+    /// when checked.
+    errors?: string[] | undefined;
+}
+
+/// Each changed file's diff and the notice beside them, and checked,
+/// whether the file renamed at compiles. Part `versions`: the buffer
+/// version each file's edits are for, `disk` for a file not open.
+export function renderRename(
+    answer: Renamed | Refused | null,
+    file: (path: string) => SourceText,
+    parts: ReadonlySet<string>,
+): Table {
+    if (answer === null) {
+        return {};
+    }
+    if ("error" in answer) {
+        return { error: answer.error };
+    }
+    return {
+        edits: renderWorkspaceEdit(answer.edits, file),
+        ...(parts.has("versions")
+            ? {
+                  versions: Object.fromEntries(
+                      [...answer.versions.keys()]
+                          .sort()
+                          .map((path) => [path, answer.versions.get(path) ?? "disk"]),
+                  ),
+              }
+            : {}),
+        ...(answer.notice === undefined ? {} : { notice: answer.notice }),
+        ...(answer.errors === undefined ? {} : { compiles: answer.errors.length === 0 }),
+        ...(answer.errors === undefined || answer.errors.length === 0
+            ? {}
+            : { errors: answer.errors }),
     };
 }

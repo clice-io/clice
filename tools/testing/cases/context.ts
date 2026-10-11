@@ -8,8 +8,8 @@ import { Workspace } from "../../client/workspace.ts";
 import { withTimeout } from "../../promise.ts";
 import { runCommand, splitCommand, type CommandOptions, type CommandRun } from "../cli/run.ts";
 import { replay } from "../server/replay.ts";
-import { block, type Shown } from "../render/shown.ts";
-import { Serve, gateLogs, type ServerOptions } from "../server/serve.ts";
+import { block, type ShowOptions, type Shown } from "../render/shown.ts";
+import { Serve, gateLogs, type Faults, type ServerOptions } from "../server/serve.ts";
 import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { markerOf, runAnswers } from "./answers.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
@@ -25,6 +25,9 @@ export interface TestContext {
     /// Start a server on the copy; every one is shut down and gated at the
     /// end. Its restarts take the same options.
     start(options?: ServerOptions): Promise<Serve>;
+    /// Start a server that waits for the client to speak first: the test
+    /// sends the handshake, `s.initialize()` or its own through `s.client`.
+    spawn(options?: ServerOptions): Promise<Serve>;
     /// Run a command in the copy; its transcript joins the output.
     cli(command: string | readonly string[], options?: CommandOptions): Promise<CommandRun>;
     /// Play the case's trace.jsonl, an editor's recorded session, to a new
@@ -34,7 +37,7 @@ export interface TestContext {
     /// the request itself, `t.show("hover", s.hover(at))`; text, lines or a
     /// number as they are; or a record of these, one block each. The copy
     /// reads `${WS}`, a worker's death `${CRASH}`.
-    show(label: string, value: Shown): Promise<void>;
+    show(label: string, value: Shown, options?: ShowOptions): Promise<void>;
     readonly disk: Disk;
     at(file: string, anchor: string): TextAnchor;
     /// A marker of the case's sources, valid while its file reads as the
@@ -54,6 +57,8 @@ class TestRun implements TestContext {
     private readonly steps = new StepRecord();
     private readonly errors: RegExp[];
     private readonly serves: Serve[] = [];
+    /// The crashes the test's commands provoke on purpose.
+    private readonly commandFaults: Faults[] = [];
 
     constructor(c: Case, options: TestOptions) {
         this.case = c;
@@ -89,14 +94,32 @@ class TestRun implements TestContext {
         return s;
     }
 
+    async spawn(options: ServerOptions = {}): Promise<Serve> {
+        const s = this.serve(options);
+        await s.spawn();
+        return s;
+    }
+
     async cli(
         command: string | readonly string[],
         options: CommandOptions = {},
     ): Promise<CommandRun> {
         this.prepare();
         const args = typeof command === "string" ? splitCommand(command) : command;
+        const crash = options.crash;
+        if (crash !== undefined) {
+            this.commandFaults.push({ crash });
+        }
+        const env =
+            crash === undefined
+                ? options.env
+                : {
+                      ...options.env,
+                      CLICE_ANOMALY_NO_TRAP: "1",
+                      CLICE_TEST_CRASH_REQUEST: `${crash.request} ${this.workspace.displayPath(crash.file)}`,
+                  };
         const run = await this.steps.run(`clice ${args.join(" ")}`, () =>
-            runCommand(this.root, args, options),
+            runCommand(this.root, args, { ...options, ...(env === undefined ? {} : { env }) }),
         );
         this.output.transcript(run.label, run.transcript);
         return run;
@@ -108,10 +131,10 @@ class TestRun implements TestContext {
         await replay(s, path.join(this.case.dir, "trace.jsonl"));
     }
 
-    async show(label: string, value: Shown): Promise<void> {
+    async show(label: string, value: Shown, options: ShowOptions = {}): Promise<void> {
         this.output.block(
             label,
-            await block(value, { parts: new Set(), full: false }, this.root, label),
+            await block(value, { parts: new Set(options.parts), full: false }, this.root, label),
         );
     }
 
@@ -141,7 +164,11 @@ class TestRun implements TestContext {
         errors.push(
             ...gateLogs(
                 this.workspace,
-                { errors: this.errors, servers: this.serves.map((s) => s.faults()) },
+                {
+                    errors: this.errors,
+                    servers: this.serves.map((s) => s.faults()),
+                    commands: this.commandFaults,
+                },
                 failed,
             ),
         );

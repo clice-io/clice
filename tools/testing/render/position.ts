@@ -31,6 +31,12 @@ export interface Location {
     range: Range;
 }
 
+/// A file's text as an editor shows and sends it, and clice addresses it:
+/// without a leading byte order mark.
+export function withoutBom(text: string): string {
+    return text.startsWith("\uFEFF") ? text.slice(1) : text;
+}
+
 /// A file as answers address it: lines split at "\n", a trailing "\r"
 /// belonging to the line ending.
 export class SourceText {

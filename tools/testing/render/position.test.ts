@@ -11,6 +11,7 @@ import {
     SourceText,
     renderLocation,
     resolveLocation,
+    withoutBom,
 } from "./position.ts";
 import { parseAnnotations } from "../../snap/annotation.ts";
 import { loadCases } from "../cases/case.ts";
@@ -139,5 +140,12 @@ describe("positions", () => {
                 query: { path: "t.cpp", line: 0 },
             }),
         ).toThrow(/names no unique range/);
+    });
+});
+
+describe("byte order mark", () => {
+    test("only a leading mark is dropped", () => {
+        expect(withoutBom("\uFEFFint x;\n")).toBe("int x;\n");
+        expect(withoutBom("int x; // \uFEFF\n")).toBe("int x; // \uFEFF\n");
     });
 });

@@ -44,15 +44,18 @@ import {
     type Item,
     type Link,
     type OutlineSymbol,
+    type Refused,
+    type Renameable,
+    type Renamed,
     type Signatures,
     type Token,
     type WorkspaceSymbol,
 } from "../render/answers.ts";
-import { Client, type LocationRequest } from "../render/client.ts";
+import { Client, type LocationRequest, type ReferenceOptions } from "../render/client.ts";
 import { applyEdits, type TextEdit } from "../render/edits.ts";
 import { AnswerContext, completionItems, selection, signatures, tokens } from "../render/lsp.ts";
 import { uriToPath } from "../render/paths.ts";
-import type { Location, Range } from "../render/position.ts";
+import { withoutBom, type Location, type Range } from "../render/position.ts";
 import { shown } from "../render/shown.ts";
 import type { Table } from "../render/value.ts";
 import {
@@ -72,6 +75,17 @@ import { StepRecord } from "./steps.ts";
 export interface WorkerFault {
     request: string;
     file: string;
+    /// A crash the file's text decides: the request crashes where the text
+    /// holds `#pragma clang __debug crash` (CLICE_TEST_PRAGMA_CRASH), and a
+    /// text without it is served.
+    pragma?: true;
+    /// A crash of the clang-tidy pass, over a main file whose text holds
+    /// this string (CLICE_TEST_TIDY_CRASH); the compile running it is the
+    /// request.
+    tidy?: string;
+    /// A crash the copy's files provoke on their own, as a damaged cache
+    /// blob does: nothing is injected, the crash is only declared.
+    input?: true;
 }
 
 /// How the test's servers start: `t.start(options)`, and every restart of
@@ -83,6 +97,9 @@ export interface ServerOptions {
     capabilities?: proto.ClientCapabilities;
     /// Workspace folders, workspace-relative; null announces only the root.
     folders?: string[] | null;
+    /// Folders the client announces coming and going between its
+    /// initialize request and the initialized notification.
+    foldersBeforeInitialized?: { added?: string[]; removed?: string[] };
     /// The command line after the executable; `serve` by default.
     args?: string[];
     env?: Record<string, string>;
@@ -95,6 +112,12 @@ export interface ServerOptions {
     /// The test misleads the server on purpose: anomalies do not fail it,
     /// and Debug builds do not trap on them. It asserts those it expects.
     anomalies?: true;
+    /// The client never reads the server's stderr, as an editor that does
+    /// not drain it; `s.client.spawnStderrPump()` starts reading.
+    stderr?: "unread";
+    /// The test kills workers from outside (`s.killWorkers`): Debug builds
+    /// do not trap on the crashes the server reports for them.
+    killWorkers?: true;
 }
 
 /// Work the server holds where the test parked it (`s.park`).
@@ -175,6 +198,10 @@ export class Serve extends Client {
     /// Where the kill this server may cause is armed, once.
     private readonly killFile = path.join(".clice", `kill-request-${String((serves += 1))}`);
     private killArmed = false;
+    /// The workers the test killed from outside (`killWorkers`).
+    private killed = 0;
+    /// Every window/showMessage the servers sent, oldest first.
+    private readonly shownMessages: string[] = [];
 
     /// Server actions over a copy the caller owns, whose case has `marks`;
     /// nothing starts yet.
@@ -200,6 +227,7 @@ export class Serve extends Client {
                 ? {}
                 : { kill: { ...kill, taken: this.workspace.exists(`${this.killFile}.taken`) } }),
             ...(anomalies === undefined ? {} : { anomalies }),
+            ...(this.killed === 0 ? {} : { killed: this.killed }),
         };
     }
 
@@ -227,7 +255,7 @@ export class Serve extends Client {
     /// hold; then a diagnostics pull a compile starts on, unless `pull` is
     /// false. Nothing waits.
     open(file: string, options: { text?: string; version?: number; pull?: false } = {}): void {
-        this.openWith(file, options.text ?? this.workspace.read(file), options);
+        this.openWith(file, options.text ?? withoutBom(this.workspace.read(file)), options);
     }
 
     isOpen(file: string): boolean {
@@ -284,8 +312,8 @@ export class Serve extends Client {
             );
             return this.context().diagnostics(file, pulled);
         });
-        return shown(reply, "diagnostics", (diagnostics) =>
-            this.renderDiagnostics(file, diagnostics),
+        return shown(reply, "diagnostics", (diagnostics, { parts }) =>
+            this.renderDiagnostics(file, diagnostics, parts),
         );
     }
 
@@ -294,7 +322,9 @@ export class Serve extends Client {
         const reply = this.diagnostics(file).then((diagnostics) =>
             diagnostics.filter((diagnostic) => diagnostic.severity === "error"),
         );
-        return shown(reply, "errors", (diagnostics) => this.renderDiagnostics(file, diagnostics));
+        return shown(reply, "errors", (diagnostics, { parts }) =>
+            this.renderDiagnostics(file, diagnostics, parts),
+        );
     }
 
     /// Every diagnostics push `file` received, oldest first, once idle.
@@ -309,8 +339,8 @@ export class Serve extends Client {
                 .filter((params) => client.normalizeUri(params.uri) === uri)
                 .map((params) => context.diagnostics(context.path(params.uri), params.diagnostics));
         });
-        return shown(reply, "pushes", (pushes) =>
-            pushes.map((push) => this.renderDiagnostics(file, push)),
+        return shown(reply, "pushes", (pushes, { parts }) =>
+            pushes.map((push) => this.renderDiagnostics(file, push, parts)),
         );
     }
 
@@ -415,10 +445,19 @@ export class Serve extends Client {
         );
     }
 
+    /// The configuration menu of the project serving `file`, else of the
+    /// first folder's.
     configurations(file?: string): Promise<ListConfigurationsResult> {
-        return this.ask(`configurations${file === undefined ? "" : ` of ${file}`}`, (client) =>
-            client.listConfigurations(file === undefined ? undefined : this.uri(file)),
+        const reply = this.ask(
+            `configurations${file === undefined ? "" : ` of ${file}`}`,
+            (client) => client.listConfigurations(file === undefined ? undefined : this.uri(file)),
         );
+        return shown(reply, "configurations", (result) => ({
+            menu: result.configurations,
+            active: result.active,
+            selected: result.selected,
+            default: result.defaultConfiguration,
+        }));
     }
 
     switchConfiguration(name: string, file?: string): Promise<SwitchConfigurationResult> {
@@ -427,8 +466,12 @@ export class Serve extends Client {
         );
     }
 
-    private renderDiagnostics(file: string, diagnostics: readonly Diagnostic[]): Table[] {
-        return renderDiagnostics(diagnostics, this.scopeOf(file));
+    private renderDiagnostics(
+        file: string,
+        diagnostics: readonly Diagnostic[],
+        parts?: ReadonlySet<string>,
+    ): Table[] {
+        return renderDiagnostics(diagnostics, this.scopeOf(file), parts);
     }
 
     // Requests: what each one answers is decoded here and rendered by Client.
@@ -520,7 +563,11 @@ export class Serve extends Client {
         return found;
     }
 
-    protected fetchLocations(request: LocationRequest, at: Anchor): Promise<Location[]> {
+    protected fetchLocations(
+        request: LocationRequest,
+        at: Anchor,
+        options: ReferenceOptions = {},
+    ): Promise<Location[]> {
         const { uri, position } = this.position(at);
         const { line, character } = position;
         return this.ask(`${request} ${describeAnchor(at)}`, async (client) => {
@@ -543,9 +590,23 @@ export class Serve extends Client {
                     );
                 case "references":
                     return this.context().locations(
-                        await client.referencesAt(uri, line, character),
+                        await client.referencesAt(uri, line, character, {
+                            includeDeclaration: options.declarations !== false,
+                        }),
                     );
             }
+        });
+    }
+
+    protected fetchHierarchy(hierarchy: "call" | "type", at: Anchor): Promise<Item[]> {
+        const { uri, position } = this.position(at);
+        const { line, character } = position;
+        return this.ask(`${hierarchy} hierarchy ${describeAnchor(at)}`, async (client) => {
+            const items =
+                hierarchy === "call"
+                    ? await client.prepareCallHierarchy(uri, line, character)
+                    : await client.prepareTypeHierarchy(uri, line, character);
+            return (items ?? []).map((item) => this.context().item(item));
         });
     }
 
@@ -662,6 +723,71 @@ export class Serve extends Client {
             }
             return symbols;
         });
+    }
+
+    protected fetchFormatting(file: string, range: Range | undefined): Promise<TextEdit[] | null> {
+        const uri = this.uri(file);
+        if (range === undefined) {
+            return this.ask(`formatting ${file}`, (client) => client.formatDocument(uri));
+        }
+        return this.ask(`formatting ${file} ${JSON.stringify(range)}`, (client) =>
+            client.formatRange(uri, range),
+        );
+    }
+
+    protected fetchPrepareRename(at: Anchor): Promise<Renameable | Refused | null> {
+        const { uri, position } = this.position(at);
+        return this.ask(`prepareRename ${describeAnchor(at)}`, (client) =>
+            refusable(async () => {
+                const reply = await client.prepareRenameAt(uri, position.line, position.character);
+                if (reply === null) {
+                    return null;
+                }
+                if (!("placeholder" in reply)) {
+                    throw new Error("clice answers prepareRename with a range and a placeholder");
+                }
+                return {
+                    location: { path: at.path, range: reply.range },
+                    placeholder: reply.placeholder,
+                };
+            }),
+        );
+    }
+
+    /// The rename's edits, and the messages the server showed while it
+    /// answered: it shows its notice before it replies.
+    protected fetchRename(at: Anchor, newName: string): Promise<Renamed | Refused | null> {
+        const { uri, position } = this.position(at);
+        return this.ask(`rename ${describeAnchor(at)} to ${newName}`, (client) =>
+            refusable(async () => {
+                const shown = this.shownMessages.length;
+                const reply = await client.renameAt(
+                    uri,
+                    position.line,
+                    position.character,
+                    newName,
+                );
+                if (reply === null) {
+                    return null;
+                }
+                const context = this.context();
+                const versions = new Map<string, number | null>();
+                for (const change of reply.documentChanges ?? []) {
+                    if ("textDocument" in change) {
+                        versions.set(
+                            context.path(change.textDocument.uri),
+                            change.textDocument.version,
+                        );
+                    }
+                }
+                const notices = this.shownMessages.slice(shown);
+                return {
+                    edits: context.workspaceEdit(reply),
+                    versions,
+                    ...(notices.length === 0 ? {} : { notice: notices.join("\n") }),
+                };
+            }),
+        );
     }
 
     private actionsOf(
@@ -828,9 +954,18 @@ export class Serve extends Client {
     /// left, with the options the test gave.
     start(): Promise<void> {
         return this.steps.run("start the server", async () => {
-            const client = this.launch();
+            this.launch();
+            await this.initialize();
+        });
+    }
+
+    /// The handshake, initialize and initialized, with the test's options:
+    /// part of a start, or what a test sends a spawned server.
+    initialize(): Promise<void> {
+        return this.steps.run("initialize", async () => {
+            const client = this.live();
             this.recordToml("clice.toml");
-            const { config, capabilities, folders } = this.options;
+            const { config, capabilities, folders, foldersBeforeInitialized } = this.options;
             if (config !== undefined) {
                 recordConfig(config);
             }
@@ -838,13 +973,19 @@ export class Serve extends Client {
                 initializationOptions: config,
                 capabilities,
                 folders,
+                ...(foldersBeforeInitialized === undefined
+                    ? {}
+                    : {
+                          beforeInitialized: () =>
+                              client.changeWorkspaceFolders(foldersBeforeInitialized),
+                      }),
             };
             await client.initialize(this.workspace, initialize);
         });
     }
 
     /// Start a server that waits for the client to speak first: a replay
-    /// sends the initialize it recorded.
+    /// sends the initialize it recorded, a test `initialize()` or its own.
     spawn(): Promise<void> {
         return this.steps.run("spawn the server", () => {
             this.launch();
@@ -854,7 +995,11 @@ export class Serve extends Client {
 
     private launch(): CliceClient {
         const env: Record<string, string> = { ...this.options.env };
-        if (this.options.anomalies === true || this.options.crash !== undefined) {
+        if (
+            this.options.anomalies === true ||
+            this.options.crash !== undefined ||
+            this.options.killWorkers === true
+        ) {
             env["CLICE_ANOMALY_NO_TRAP"] = "1";
         }
         const { kill, crash } = this.options;
@@ -869,7 +1014,11 @@ export class Serve extends Client {
             env["CLICE_ANOMALY_NO_TRAP"] = "1";
             env["CLICE_TEST_KILL_REQUEST"] = this.workspace.path(this.killFile);
         }
-        if (crash !== undefined) {
+        if (crash?.tidy !== undefined) {
+            env["CLICE_TEST_TIDY_CRASH"] = crash.tidy;
+        } else if (crash?.pragma === true) {
+            env["CLICE_TEST_PRAGMA_CRASH"] = "1";
+        } else if (crash !== undefined && crash.input !== true) {
             env["CLICE_TEST_CRASH_REQUEST"] =
                 `${crash.request} ${this.workspace.displayPath(crash.file)}`;
         }
@@ -879,8 +1028,12 @@ export class Serve extends Client {
             CliceClient.start(cliceExecutable(), {
                 args,
                 env: { ...(serverEnv() as Record<string, string>), ...env },
+                drainStderr: this.options.stderr !== "unread",
             }),
         );
+        client.onNotification(proto.ShowMessageNotification.type, (params) => {
+            this.shownMessages.push(params.message);
+        });
         this.server = client;
         this.servers.push(client);
         return client;
@@ -892,6 +1045,23 @@ export class Serve extends Client {
             await this.live().shutdown();
             this.server = null;
             this.documents.clear();
+        });
+    }
+
+    /// Kill every worker of `kind` from outside, as the OOM killer or a
+    /// user would: the death names no request. Placed after a park is
+    /// reached, it lands mid-work. Linux only (/proc); returns how many.
+    killWorkers(kind: "stateful" | "stateless"): Promise<number> {
+        if (this.options.killWorkers !== true) {
+            throw new Error("killWorkers() needs the server started with killWorkers: true");
+        }
+        return this.steps.run(`kill the ${kind} workers`, () => {
+            const pids = this.live().workerPids(kind === "stateful" ? "SF-" : "SL-");
+            for (const pid of pids) {
+                process.kill(pid, "SIGKILL");
+            }
+            this.killed += pids.length;
+            return Promise.resolve(pids.length);
         });
     }
 
@@ -1023,8 +1193,8 @@ export class Serve extends Client {
                 return this.diagnostics(anchor.path);
             },
         );
-        return shown(reply, "diagnostics", (diagnostics) =>
-            this.renderDiagnostics(anchor.path, diagnostics),
+        return shown(reply, "diagnostics", (diagnostics, { parts }) =>
+            this.renderDiagnostics(anchor.path, diagnostics, parts),
         );
     }
 
@@ -1091,7 +1261,7 @@ export class Serve extends Client {
 
     /// The text requests about `file` see: its buffer, else its disk.
     private text(file: string): string {
-        return this.documents.get(file)?.text ?? this.workspace.read(file);
+        return this.documents.get(file)?.text ?? withoutBom(this.workspace.read(file));
     }
 
     private openWith(
@@ -1102,7 +1272,9 @@ export class Serve extends Client {
         const version = options.version ?? 0;
         this.steps.note(`open ${file}${version === 0 ? "" : ` v${version}`}`);
         const client = this.live();
-        const [uri] = client.open(file, version, { text });
+        // Absolute: a spawned server's client has no workspace bound before
+        // its handshake.
+        const [uri] = client.open(this.workspace.path(file), version, { text });
         this.documents.set(file, { version, text });
         if (options.pull !== false) {
             // The pull starts the compile; its answer is not the point.
@@ -1133,11 +1305,26 @@ export class Serve extends Client {
 
 let serves = 0;
 
+/// A request whose refusal is an answer: the error the server replies with
+/// becomes the message an editor shows.
+async function refusable<T>(body: () => Promise<T>): Promise<T | Refused> {
+    try {
+        return await body();
+    } catch (error) {
+        if (error instanceof proto.ResponseError) {
+            return { error: error.message };
+        }
+        throw error;
+    }
+}
+
 /// What a server of the test was told to cause.
 export interface Faults {
     crash?: WorkerFault;
     kill?: WorkerFault & { taken: boolean };
     anomalies?: true;
+    /// Workers the test killed from outside.
+    killed?: number;
 }
 
 /// What a test declared about the copy's logs: the error lines it provokes
@@ -1145,20 +1332,27 @@ export interface Faults {
 export interface Declared {
     errors?: readonly RegExp[];
     servers?: readonly Faults[];
+    /// The crashes the test's batch commands provoke, `t.cli(…, { crash })`.
+    commands?: readonly Faults[];
 }
 
 const CRASHED_IN = /\] clice worker crashed in: clice\/worker\/(\S+) (.*)$/;
+
+/// The logs a worker's crash is told in: a server's, and a batch command's
+/// that runs workers of its own.
+const SUPERVISOR_LOGS = new Set(["master.log", "index.log", "lint.log"]);
 
 /// The error-level log lines, crashes, kills and anomalies a copy's servers
 /// left, against what the test declared: each declared fault happened, and
 /// nothing else did. On failure, the servers' warnings and errors.
 export function gateLogs(workspace: Workspace, declared: Declared, failed: boolean): unknown[] {
     const errors: unknown[] = [];
-    const servers = declared.servers ?? [];
+    const servers = [...(declared.servers ?? []), ...(declared.commands ?? [])];
     const crashes = servers.flatMap(({ crash }) => (crash === undefined ? [] : [crash]));
     const kills = servers.flatMap(({ kill }) => (kill === undefined ? [] : [kill]));
+    const killed = servers.reduce((sum, server) => sum + (server.killed ?? 0), 0);
     const expected = [...(declared.errors ?? [])];
-    if (crashes.length + kills.length > 0) {
+    if (crashes.length + kills.length + killed > 0) {
         expected.push(
             /\[anomaly:WorkerCrash\] |Worker \S+ lost|Last (stderr|output) of crashed worker/,
         );
@@ -1173,7 +1367,7 @@ export function gateLogs(workspace: Workspace, declared: Declared, failed: boole
         );
     }
     const crashedIn = logs
-        .filter((line) => line.file === "master.log")
+        .filter((line) => SUPERVISOR_LOGS.has(line.file))
         .flatMap((line) => {
             const match = CRASHED_IN.exec(line.text);
             return match === null ? [] : [`${match[1] ?? ""} ${match[2] ?? ""}`];
@@ -1197,7 +1391,7 @@ export function gateLogs(workspace: Workspace, declared: Declared, failed: boole
     }
     if (!servers.some(({ anomalies }) => anomalies === true)) {
         const anomalies = anomaliesInLogFiles(workspace.root);
-        const explained = crashedIn.length + kills.length - untaken.length;
+        const explained = crashedIn.length + kills.length - untaken.length + killed;
         const crashed = anomalies.filter((anomaly) => anomaly.startsWith("WorkerCrash "));
         if (crashed.length !== anomalies.length || crashed.length !== explained) {
             errors.push(

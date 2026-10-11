@@ -34,6 +34,8 @@ const REQUESTS = [
     "typeDefinition",
     "implementation",
     "references",
+    "callHierarchy",
+    "typeHierarchy",
     "incomingCalls",
     "outgoingCalls",
     "supertypes",
@@ -45,6 +47,9 @@ const REQUESTS = [
     "documentLinks",
     "counterparts",
     "workspaceSymbols",
+    "formatting",
+    "prepareRename",
+    "rename",
 ] as const;
 
 export type Requests = Pick<Client, (typeof REQUESTS)[number]>;

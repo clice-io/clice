@@ -53,6 +53,12 @@ describe("renderDiff", () => {
         );
     });
 
+    test("carriage returns show", () => {
+        expect(renderDiff("a.cpp", "int  x;\r\n\r\nint y;\r\n", "int x;\r\n\r\nint y;\r\n")).toBe(
+            ["-int  x;␍", "+int x;␍", " ␍", " int y;␍"].join("\n"),
+        );
+    });
+
     test("no change says so", () => {
         expect(renderDiff("a.cpp", "x\n", "x\n")).toBe("(no change)");
     });

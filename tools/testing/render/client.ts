@@ -9,19 +9,21 @@ import {
     renderCompletion,
     renderCounterparts,
     renderFolds,
+    renderFormatting,
     renderHighlights,
     renderHover,
     renderInlayHints,
-    renderItem,
+    renderHierarchyItems,
     renderLinks,
     renderLocations,
     renderOutline,
+    renderPrepareRename,
+    renderRename,
     renderSelection,
     renderSignatures,
     renderTokenAt,
     renderTokens,
     renderWorkspaceSymbols,
-    compareLocations,
     type Action,
     type Call,
     type CompletionItem,
@@ -33,6 +35,9 @@ import {
     type Item,
     type Link,
     type OutlineSymbol,
+    type Refused,
+    type Renameable,
+    type Renamed,
     type Signatures,
     type Token,
     type WorkspaceSymbol,
@@ -91,7 +96,13 @@ export abstract class Client {
         file: string,
         edits: ReadonlyMap<string, readonly TextEdit[]>,
     ): Promise<string[]>;
-    protected abstract fetchLocations(request: LocationRequest, at: Anchor): Promise<Location[]>;
+    protected abstract fetchLocations(
+        request: LocationRequest,
+        at: Anchor,
+        options?: ReferenceOptions,
+    ): Promise<Location[]>;
+    /// The items a call or type hierarchy opens on at `at`.
+    protected abstract fetchHierarchy(hierarchy: "call" | "type", at: Anchor): Promise<Item[]>;
     protected abstract fetchCalls(direction: "incoming" | "outgoing", at: Anchor): Promise<Call[]>;
     protected abstract fetchTypes(
         direction: "supertypes" | "subtypes",
@@ -104,6 +115,13 @@ export abstract class Client {
     protected abstract fetchLinks(file: string): Promise<Link[]>;
     protected abstract fetchCounterparts(file: string): Promise<Counterparts>;
     protected abstract fetchWorkspaceSymbols(query: string): Promise<WorkspaceSymbol[]>;
+    /// The edits formatting `file`, or `range` of it, makes.
+    protected abstract fetchFormatting(
+        file: string,
+        range: Range | undefined,
+    ): Promise<TextEdit[] | null>;
+    protected abstract fetchPrepareRename(at: Anchor): Promise<Renameable | Refused | null>;
+    protected abstract fetchRename(at: Anchor, newName: string): Promise<Renamed | Refused | null>;
 
     // The requests.
 
@@ -197,8 +215,20 @@ export abstract class Client {
         return this.locations("implementation", at);
     }
 
-    references(at: Anchor): Promise<Location[]> {
-        return this.locations("references", at);
+    /// The references at `at`, the declarations and the definition among
+    /// them unless `declarations: false` asks as an editor's
+    /// includeDeclaration off does.
+    references(at: Anchor, options: ReferenceOptions = {}): Promise<Location[]> {
+        return this.locations("references", at, options);
+    }
+
+    /// The items a call hierarchy opens on at `at`, before any call.
+    callHierarchy(at: Anchor): Promise<Item[]> {
+        return this.hierarchy("call", at);
+    }
+
+    typeHierarchy(at: Anchor): Promise<Item[]> {
+        return this.hierarchy("type", at);
     }
 
     /// The calls into each call hierarchy item at `at`.
@@ -298,6 +328,63 @@ export abstract class Client {
         );
     }
 
+    /// What formatting a whole file, or the range of a place (a range
+    /// marker's range, a snippet's text), does to the file.
+    formatting(place: Place): Promise<TextEdit[] | null> {
+        const file = typeof place === "string" ? place : place.path;
+        const source = this.context().file(file);
+        let range: Range | undefined;
+        if (typeof place !== "string") {
+            const { begin, end } = spanOf(source.text, place);
+            range = { start: source.positionAt(begin), end: source.positionAt(end) };
+        }
+        return shown(this.fetchFormatting(file, range), "formatting", (edits) =>
+            renderFormatting(source, edits),
+        );
+    }
+
+    /// Whether the name at `at` can be renamed: its range and placeholder,
+    /// or why not.
+    prepareRename(at: Anchor): Promise<Renameable | Refused | null> {
+        const scope = this.scopeAt(at);
+        return shown(this.fetchPrepareRename(at), "prepare_rename", (answer) =>
+            renderPrepareRename(answer, scope),
+        );
+    }
+
+    /// The edits renaming the symbol at `at` to `newName` makes, or why not;
+    /// `compile` checks what the file at `at` compiles to with them.
+    rename(
+        at: Anchor,
+        newName: string,
+        options: { compile?: true } = {},
+    ): Promise<Renamed | Refused | null> {
+        const context = this.context();
+        // What the edits apply to, read as the reply arrives, before a check
+        // rewrites the files.
+        const before = new Map<string, SourceText>();
+        const reply = this.fetchRename(at, newName).then((answer) => {
+            if (answer === null || "error" in answer) {
+                return answer;
+            }
+            for (const file of answer.edits.keys()) {
+                before.set(file, context.file(file));
+            }
+            if (options.compile !== true) {
+                return answer;
+            }
+            const check = this.checks.then(async () => ({
+                ...answer,
+                errors: await this.compileWith(at.path, answer.edits),
+            }));
+            this.checks = check.catch(() => undefined);
+            return check;
+        });
+        return shown(reply, "rename", (answer, { parts }) =>
+            renderRename(answer, (file) => before.get(file) ?? context.file(file), parts),
+        );
+    }
+
     // Rendering.
 
     /// The named ranges whose file reads as the case wrote it.
@@ -330,10 +417,16 @@ export abstract class Client {
         return context.scope({ path: at.path, line }, this.names());
     }
 
-    private locations(request: LocationRequest, at: Anchor): Promise<Location[]> {
+    private locations(
+        request: LocationRequest,
+        at: Anchor,
+        options: ReferenceOptions = {},
+    ): Promise<Location[]> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchLocations(request, at), request.replace(" ", "_"), (locations) =>
-            renderLocations(locations, scope),
+        return shown(
+            this.fetchLocations(request, at, options),
+            request.replace(" ", "_"),
+            (locations) => renderLocations(locations, scope),
         );
     }
 
@@ -344,12 +437,17 @@ export abstract class Client {
         );
     }
 
+    private hierarchy(hierarchy: "call" | "type", at: Anchor): Promise<Item[]> {
+        const scope = this.scopeAt(at);
+        return shown(this.fetchHierarchy(hierarchy, at), `${hierarchy}_hierarchy`, (items) =>
+            renderHierarchyItems(items, scope),
+        );
+    }
+
     private types(direction: "supertypes" | "subtypes", at: Anchor): Promise<Item[]> {
         const scope = this.scopeAt(at);
         return shown(this.fetchTypes(direction, at), direction, (items) =>
-            [...items]
-                .sort((a, b) => compareLocations(a.selection, b.selection))
-                .map((item) => renderItem(item, scope)),
+            renderHierarchyItems(items, scope),
         );
     }
 }
@@ -360,3 +458,9 @@ export type LocationRequest =
     | "type definition"
     | "implementation"
     | "references";
+
+/// How a references request asks: `declarations: false` leaves out the
+/// declarations and the definition (LSP includeDeclaration).
+export interface ReferenceOptions {
+    declarations?: false;
+}

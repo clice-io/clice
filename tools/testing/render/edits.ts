@@ -1,7 +1,8 @@
 /// Edits rendered as what they do: the files after applying them, as a
 /// diff with two lines of context and no line numbers. Whitespace a line
-/// ends with shows (`·` a space, `→` a tab), and so does a last line with
-/// no newline, so no change to either disappears from the rendering.
+/// ends with shows (`·` a space, `→` a tab, `␍` the carriage return of a
+/// CRLF line), and so does a last line with no newline, so no change to
+/// either disappears from the rendering.
 
 import { structuredPatch } from "diff";
 import type { Range, SourceText } from "./position.ts";
@@ -36,7 +37,9 @@ export function applyEdits(source: SourceText, edits: readonly TextEdit[]): stri
 }
 
 function visibleEnd(line: string): string {
-    return line.replace(/[ \t]+$/, (run) => run.replaceAll(" ", "·").replaceAll("\t", "→"));
+    return line.replace(/[ \t\r]+$/, (run) =>
+        run.replaceAll(" ", "·").replaceAll("\t", "→").replaceAll("\r", "␍"),
+    );
 }
 
 /// The diff from `before` to `after` of a file.

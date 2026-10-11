@@ -102,6 +102,7 @@ export class AnswerContext {
             name: item.name,
             kind: enumName(proto.SymbolKind, item.kind),
             selection: { path: this.path(item.uri), range: item.selectionRange },
+            detail: item.detail,
         };
     }
 
@@ -171,6 +172,12 @@ export class AnswerContext {
             ),
             source: diagnostic.source,
             code: diagnostic.code === undefined ? undefined : String(diagnostic.code),
+            related: (diagnostic.relatedInformation ?? []).map((info) => ({
+                location: this.location(info.location),
+                message: info.message,
+            })),
+            link: diagnostic.codeDescription?.href,
+            tags: (diagnostic.tags ?? []).map((tag) => enumName(proto.DiagnosticTag, tag)),
         }));
     }
 
@@ -218,6 +225,7 @@ export class AnswerContext {
             selection: { path, range: symbol.selectionRange },
             detail: symbol.detail,
             range: { path, range: symbol.range },
+            tags: (symbol.tags ?? []).map((tag) => enumName(proto.SymbolTag, tag)),
             children: (symbol.children ?? []).map(convert),
         });
         return (reply ?? []).map(convert);
@@ -301,10 +309,12 @@ export class AnswerContext {
 }
 
 /// A worker's way of dying differs by platform (a signal, a Windows
-/// exception): the text names it `${CRASH}`.
+/// exception): the text names it `${CRASH}`. The pool's crash report
+/// gives the bare number, a signal or a Windows exit code, before the
+/// crash streak.
 export function elideCrash(text: string): string {
     return text.replace(
-        /killed by signal \d+ \(\w+\)|terminated by (?:exception )?0x[0-9A-Fa-f]+(?: \([^)]*\))?/g,
+        /killed by signal \d+ \(\w+\)|terminated by (?:exception )?0x[0-9A-Fa-f]+(?: \([^)]*\))?|(?:killed by signal|exited with code) \d+(?= \(crash streak)/g,
         "${CRASH}",
     );
 }

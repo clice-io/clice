@@ -24,6 +24,9 @@ import type {
     Item,
     Link,
     OutlineSymbol,
+    Refused,
+    Renameable,
+    Renamed,
     Signatures,
     Token,
     WorkspaceSymbol,
@@ -31,7 +34,7 @@ import type {
 import { Client, type LocationRequest, type Place } from "../render/client.ts";
 import { applyEdits, type TextEdit } from "../render/edits.ts";
 import { AnswerContext, signatures } from "../render/lsp.ts";
-import type { Location, Range, SourceText } from "../render/position.ts";
+import { withoutBom, type Location, type Range, type SourceText } from "../render/position.ts";
 
 /// One file entry of the output: a document feature fills `result`, a
 /// marker feature `markers` by the names --markers gave (null for a place
@@ -132,6 +135,8 @@ interface RawSymbol {
     kind: string;
     range: RawRange;
     selection_range: RawRange;
+    /// Symbol tag names, should clice inspect report them.
+    tags?: string[] | null;
     children: RawSymbol[];
 }
 
@@ -395,6 +400,10 @@ export class Inspect extends Client {
         return this.cannot(request, at);
     }
 
+    protected fetchHierarchy(hierarchy: "call" | "type", at: Anchor): Promise<Item[]> {
+        return this.cannot(`${hierarchy} hierarchy`, at);
+    }
+
     protected fetchCalls(direction: "incoming" | "outgoing", at: Anchor): Promise<Call[]> {
         return this.cannot(`${direction} calls`, at);
     }
@@ -458,6 +467,7 @@ export class Inspect extends Client {
             selection: this.location(file, raw.selection_range),
             detail: raw.detail,
             range: this.location(file, raw.range),
+            tags: raw.tags ?? [],
             children: raw.children.map(convert),
         });
         return ((await this.document("document_symbol", file)) as RawSymbol[]).map(convert);
@@ -479,6 +489,18 @@ export class Inspect extends Client {
         return this.cannot("workspace symbols", query);
     }
 
+    protected fetchFormatting(file: string): Promise<TextEdit[] | null> {
+        return this.cannot("formatting", file);
+    }
+
+    protected fetchPrepareRename(at: Anchor): Promise<Renameable | Refused | null> {
+        return this.cannot("prepareRename", at);
+    }
+
+    protected fetchRename(at: Anchor): Promise<Renamed | Refused | null> {
+        return this.cannot("rename", at);
+    }
+
     /// A request inspect cannot answer fails at once.
     private cannot(request: string, where: Place): never {
         const place = typeof where === "string" ? where : where.path;
@@ -488,7 +510,7 @@ export class Inspect extends Client {
     }
 
     private text(file: string): string {
-        return fs.readFileSync(path.join(this.root, file), "utf8");
+        return withoutBom(fs.readFileSync(path.join(this.root, file), "utf8"));
     }
 
     private range(file: string, raw: RawRange): Range {

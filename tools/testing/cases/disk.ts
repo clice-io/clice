@@ -85,6 +85,19 @@ export class Disk {
         fs.rmSync(this.path(file), { recursive: true });
     }
 
+    /// Move a file or a directory with what it holds.
+    move(from: string, to: string): void {
+        this.steps.note(`disk: move ${from} to ${to}`);
+        fs.mkdirSync(path.dirname(this.path(to)), { recursive: true });
+        fs.renameSync(this.path(from), this.path(to));
+    }
+
+    /// Cut a file short at `bytes`, as a crash mid-write leaves it.
+    truncate(file: string, bytes: number): void {
+        this.steps.note(`disk: truncate ${file} to ${String(bytes)} bytes`);
+        fs.truncateSync(this.path(file), bytes);
+    }
+
     symlink(link: string, target: string): void {
         this.steps.note(`disk: link ${link} to ${target}`);
         fs.mkdirSync(path.dirname(this.path(link)), { recursive: true });

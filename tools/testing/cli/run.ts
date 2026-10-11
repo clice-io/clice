@@ -3,7 +3,7 @@
 /// `${WS}`, a session's log directory `${SESSION}`, durations and sizes are
 /// elided.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,6 +13,7 @@ import { serverEnv } from "../../process_gate.ts";
 import { recordInvocation, recordToml } from "../coverage/record.ts";
 import { renderDiff } from "../render/edits.ts";
 import { elideCrash } from "../render/lsp.ts";
+import { resourceRoot } from "../render/paths.ts";
 import type { Table } from "../render/value.ts";
 
 const LOG_LINE = /^\[[^\]]+\] \[(\w+)\] \[thread \d+\] \[[^\]]+\] (.*)$/;
@@ -72,13 +73,42 @@ export function portable(text: string, root: string): string {
     );
 }
 
+/// What a command printed with clang's resource directory beside the clice
+/// that ran it read `${RESOURCE}`, in every spelling the output may use.
+function resourceless(text: string): string {
+    let out = text;
+    for (const dir of resourceRoot().dirs) {
+        for (const form of rootForms(dir)) {
+            out = out.replaceAll(form, "${RESOURCE}");
+        }
+    }
+    return out;
+}
+
 /// A command's output as it reads on every host and every run: portable, a
-/// session's log directory `${SESSION}`, durations and sizes elided.
+/// session's log directory `${SESSION}`, times of day, durations and sizes
+/// elided.
 export function normalize(text: string, root: string): string {
     return portable(text, root)
         .replace(/\.clice\/logs\/[^/\s"']+/g, ".clice/logs/${SESSION}")
+        .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b/g, "#time")
         .replace(/\b\d+(\.\d+)?(ms|s)\b/g, "#$2")
-        .replace(/\b\d+(\.\d+)? (B|KB|MB|GB)\b/g, "# $2");
+        .replace(/\b\d+(\.\d+)? (B|KB|MB|GB)\b/g, "# $2")
+        .replace(/\(pid \d+\)/g, "(pid #)");
+}
+
+let version: string | undefined;
+
+/// The version the build under test reports, which every commit changes:
+/// a command's output reads it `${VERSION}`.
+export function buildVersion(): string {
+    version ??= /^clice version (\S+)/m.exec(
+        execFileSync(cliceExecutable(), ["--version"], { encoding: "utf8" }),
+    )?.[1];
+    if (version === undefined) {
+        throw new Error("clice --version names no version");
+    }
+    return version;
 }
 
 /// Warnings and errors from stderr, the log decoration dropped; plain lines
@@ -194,6 +224,103 @@ export interface CommandOptions {
     /// Signal the run once it parked after `units` indexed units
     /// (CLICE_TEST_PAUSE): each signal in turn, at once.
     interrupt?: { units: number; signals: NodeJS.Signals[] };
+    /// A worker of the run crashes on every such request of the file
+    /// (CLICE_TEST_CRASH_REQUEST), as a server's `crash` does; the test's
+    /// gate then expects that crash in the command's log. Set by `t.cli`.
+    crash?: { request: string; file: string };
+    /// Where stdout goes instead of a pipe read to its end: a pipe whose
+    /// reader leaves after the first chunk; a FIFO whose reader left before
+    /// the run (POSIX); a nonblocking FIFO nobody reads (Linux); a
+    /// descriptor open only for reading; or the pipe with stderr joined into
+    /// it, as `2>&1` does (POSIX). The transcript then shows no stdout;
+    /// with `merged` the run's `stdout` holds what arrived.
+    stdout?: StdoutMode;
+    /// What the run reads on stdin, as a list piped to `--spec -` is;
+    /// nothing when unset.
+    input?: string;
+}
+
+export type StdoutMode = "closed early" | "fifo gone" | "fifo unread" | "read only" | "merged";
+
+/// Run clice with its stdout where `mode` puts it, until it exits.
+function spawnRedirected(
+    args: readonly string[],
+    cwd: string,
+    env: NodeJS.ProcessEnv,
+    mode: StdoutMode,
+): Promise<{
+    status: number | null;
+    signal: NodeJS.Signals | null;
+    stdout: string;
+    stderr: string;
+}> {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clice-stdout-"));
+    const fifo = path.join(dir, "out.fifo");
+    const opened: number[] = [];
+    const open = (file: string, flags: number): number => {
+        const fd = fs.openSync(file, flags);
+        opened.push(fd);
+        return fd;
+    };
+    // Node makes a child's descriptors 0-2 blocking: a nonblocking one goes
+    // in as fd 3 for the shell to put in place.
+    const viaShell = (redirect: string): [string, string[]] => [
+        "sh",
+        ["-c", `exec "$0" "$@" ${redirect}`, cliceExecutable(), ...args],
+    ];
+    let command: [string, string[]] = [cliceExecutable(), [...args]];
+    let stdio: (string | number)[] = ["ignore", "pipe", "pipe"];
+    if (mode === "fifo gone" || mode === "fifo unread") {
+        execFileSync("mkfifo", [fifo]);
+        const reader = open(fifo, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+        if (mode === "fifo gone") {
+            stdio = ["ignore", open(fifo, fs.constants.O_WRONLY), "pipe"];
+            fs.closeSync(reader);
+            opened.splice(opened.indexOf(reader), 1);
+        } else {
+            const writer = open(fifo, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+            command = viaShell(">&3");
+            stdio = ["ignore", "ignore", "pipe", writer];
+        }
+    } else if (mode === "read only") {
+        const file = path.join(dir, "input");
+        fs.writeFileSync(file, "");
+        stdio = ["ignore", open(file, fs.constants.O_RDONLY), "pipe"];
+    } else if (mode === "merged") {
+        command = viaShell("2>&1");
+    }
+    return new Promise((resolve, reject) => {
+        const child = spawn(command[0], command[1], {
+            cwd,
+            env,
+            timeout: 300_000,
+            stdio: stdio as ("ignore" | "pipe" | number)[],
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout?.setEncoding("utf8").on("data", (chunk: string) => {
+            stdout += chunk;
+            if (mode === "closed early") {
+                child.stdout?.destroy();
+            }
+        });
+        child.stderr?.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+        // The child holds its own copies: the writer's last one must be
+        // its, so that a reader sees the end.
+        if (mode !== "fifo unread") {
+            for (const fd of opened.splice(0)) {
+                fs.closeSync(fd);
+            }
+        }
+        child.on("error", reject);
+        child.on("close", (status, signal) => {
+            for (const fd of opened) {
+                fs.closeSync(fd);
+            }
+            fs.rmSync(dir, { recursive: true, force: true });
+            resolve({ status, signal, stdout, stderr });
+        });
+    });
 }
 
 /// Run clice until it exits; with `interrupt`, signal it once the pause
@@ -203,6 +330,7 @@ function spawnClice(
     cwd: string,
     env: NodeJS.ProcessEnv,
     interrupt: CommandOptions["interrupt"],
+    input?: string,
 ): Promise<{
     status: number | null;
     signal: NodeJS.Signals | null;
@@ -210,7 +338,12 @@ function spawnClice(
     stderr: string;
 }> {
     if (interrupt === undefined) {
-        return runProcess(cliceExecutable(), args, { cwd, env, timeout: 300_000 });
+        return runProcess(cliceExecutable(), args, {
+            cwd,
+            env,
+            timeout: 300_000,
+            ...(input === undefined ? {} : { input }),
+        });
     }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clice-pause-"));
     const marker = path.join(dir, "paused");
@@ -277,10 +410,13 @@ function written(before: Map<string, Buffer>, after: Map<string, Buffer>): Table
         if (old !== undefined && now !== undefined && old.equals(now)) {
             continue;
         }
+        // A file created empty has no line a diff could show.
         out[name] =
             now === undefined
                 ? "(removed)"
-                : renderDiff(name, old?.toString("utf8") ?? "", now.toString("utf8"));
+                : old === undefined && now.length === 0
+                  ? "(created empty)"
+                  : renderDiff(name, old?.toString("utf8") ?? "", now.toString("utf8"));
     }
     return out;
 }
@@ -296,25 +432,30 @@ export async function runCommand(
     }
     recordInvocation(args);
     const before = contents(root);
-    const result = await spawnClice(
-        args,
-        path.join(root, options.cwd ?? "."),
-        { ...serverEnv(), ...options.env },
-        options.interrupt,
-    );
+    const cwd = path.join(root, options.cwd ?? ".");
+    const env = { ...serverEnv(), ...options.env };
+    const result =
+        options.stdout === undefined
+            ? await spawnClice(args, cwd, env, options.interrupt, options.input)
+            : await spawnRedirected(args, cwd, env, options.stdout);
     let json: unknown;
     try {
         json = JSON.parse(result.stdout);
     } catch {
         // Not JSON.
     }
-    const stdout = stdoutText(result.stdout, root);
-    const stderr = stderrLines(normalize(result.stderr, root));
+    const versioned = (text: string): string => text.replaceAll(buildVersion(), "${VERSION}");
+    const stdout = stdoutText(resourceless(versioned(result.stdout)), root);
+    const stderr = stderrLines(normalize(resourceless(versioned(result.stderr)), root));
     const files = written(before, contents(root));
     return {
-        label: ["$ clice", ...args.map((arg) => quote(normalize(arg, root)))].join(" "),
+        label: [
+            "$ clice",
+            ...args.map((arg) => quote(normalize(arg, root))),
+            ...(options.stdout === undefined ? [] : [`(stdout: ${options.stdout})`]),
+        ].join(" "),
         transcript: {
-            ...(stdout === "" ? {} : { stdout }),
+            ...(stdout === "" || options.stdout !== undefined ? {} : { stdout }),
             ...(stderr.length === 0 ? {} : { stderr }),
             ...(result.status === null
                 ? { killed: String(result.signal) }

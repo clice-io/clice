@@ -53,6 +53,21 @@ describe("gateLogs", () => {
         workspace.remove();
     });
 
+    test("a command's declared crash passes", () => {
+        const workspace = logged([]);
+        workspace.write(
+            ".clice/logs/session/lint.log",
+            `${[
+                `[t] [warning] [thread 1] [pool.cpp:39] [SL-0] clice worker crashed in: clice/worker/tuRun ${workspace.displayPath("a.cpp")}`,
+                "[t] [error] [thread 1] [pool.cpp:575] [anomaly:WorkerCrash] Worker SL-0 killed by signal 4 (crash streak: 0)",
+            ].join("\n")}\n`,
+        );
+        expect(gateLogs(workspace, {}, false)).not.toEqual([]);
+        const tuRun = { crash: { request: "tuRun", file: "a.cpp" } };
+        expect(gateLogs(workspace, { commands: [tuRun] }, false)).toEqual([]);
+        workspace.remove();
+    });
+
     test("undeclared error lines fail", () => {
         const workspace = logged(["[t] [error] [thread 1] [x.cpp:1] something broke"]);
         expect(gateLogs(workspace, {}, false)).toHaveLength(1);
