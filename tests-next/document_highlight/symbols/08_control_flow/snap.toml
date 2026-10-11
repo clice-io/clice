@@ -1,0 +1,7 @@
+[answers.break]
+wrong = "should highlight the loop it leaves (clangd#1921)"
+highlights = []
+
+[answers.continue]
+wrong = "should highlight the loop it continues (clangd#1921)"
+highlights = []

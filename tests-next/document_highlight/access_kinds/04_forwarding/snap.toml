@@ -1,0 +1,19 @@
+[answers.level]
+highlights = [
+    { at = "int ⟦level⟧ = 0;", kind = "text" },
+    { at = "forward_one(⟦level⟧);", kind = "read" },
+    { at = "forward_auto(⟦level⟧);", kind = "read" },
+    { at = "make<Gauge>(⟦level⟧);", kind = "write" },
+]
+
+[answers.varargs]
+highlights = [
+    { at = "int ⟦first⟧; @+0", kind = "text" },
+    { at = "Packet packet = build(⟦first⟧, second);", kind = "read" },
+]
+
+[answers.short_calls]
+highlights = [
+    { at = "int ⟦first⟧; @+0", kind = "text" },
+    { at = "relay(⟦first⟧, second, third);", kind = "write" },
+]

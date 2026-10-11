@@ -1,0 +1,28 @@
+[answers.value]
+highlights = [
+    { at = "int ⟦value⟧;", kind = "text" },
+    { at = "node->⟦value⟧ = 1;", kind = "write" },
+    { at = "node->next->⟦value⟧ += 2;", kind = "write" },
+    { at = "(*node).⟦value⟧ = 3;", kind = "write" },
+]
+
+[answers.node]
+highlights = [
+    { at = "void store(Node* ⟦node⟧, int* slot, int (&cells)[4]) {", kind = "text" },
+    { at = "⟦node⟧->value = 1;", kind = "read" },
+    { at = "⟦node⟧->next->value += 2;", kind = "read" },
+    { at = "(*⟦node⟧).value = 3;", kind = "read" },
+]
+
+[answers.slot]
+highlights = [
+    { at = "void store(Node* node, int* ⟦slot⟧, int (&cells)[4]) {", kind = "text" },
+    { at = "*⟦slot⟧ = 4;", kind = "read" },
+    { at = "(*⟦slot⟧)++;", kind = "read" },
+]
+
+[answers.cells]
+highlights = [
+    { at = "void store(Node* node, int* slot, int (&⟦cells⟧)[4]) {", kind = "text" },
+    { at = "⟦cells⟧[0] = 5;", kind = "read" },
+]

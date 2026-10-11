@@ -1,0 +1,21 @@
+[answers.count]
+highlights = [
+    { at = "int ⟦count⟧ = 0;", kind = "text" },
+    { at = "int next = ⟦count⟧;", kind = "read" },
+    { at = "⟦count⟧ = next;", kind = "write" },
+    { at = "⟦count⟧ += limit;", kind = "write" },
+    { at = "++⟦count⟧;", kind = "write" },
+    { at = "⟦count⟧--;", kind = "write" },
+    { at = "(⟦count⟧) = count * 2;", kind = "write" },
+    { at = "(count) = ⟦count⟧ * 2;", kind = "read" },
+    { at = "next = ⟦count⟧ = limit;", kind = "write" },
+    { at = "spare = ⟦count⟧;", kind = "read" },
+    { at = "return ⟦count⟧ + spare;", kind = "read" },
+]
+
+[answers.spare]
+highlights = [
+    { at = "int ⟦spare⟧;", kind = "text" },
+    { at = "⟦spare⟧ = count;", kind = "write" },
+    { at = "return count + ⟦spare⟧;", kind = "read" },
+]

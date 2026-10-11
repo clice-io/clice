@@ -1,0 +1,42 @@
+[answers.plus_decl]
+highlights = [
+    { at = "Meter ⟦operator+⟧(int value) const;", kind = "text" },
+    { at = "Meter total = meter ⟦+⟧ 2;", kind = "read" },
+    { at = "Meter more = meter.⟦operator+⟧(3);", kind = "read" },
+]
+
+[answers.stream]
+highlights = [
+    { at = "void measure(Stream& ⟦in⟧) {", kind = "text" },
+    { at = "⟦in⟧ >> reading;", kind = "read" },
+]
+
+[answers.meter]
+highlights = [
+    { at = "Meter ⟦meter⟧;", kind = "text" },
+    { at = "⟦meter⟧ = reading;", kind = "write" },
+    { at = "⟦meter⟧ += 1;", kind = "write" },
+    { at = "++⟦meter⟧;", kind = "write" },
+    { at = "⟦meter⟧--;", kind = "write" },
+    { at = "Meter total = ⟦meter⟧ + 2;", kind = "read" },
+    { at = "Meter more = ⟦meter⟧.operator+(3);", kind = "read" },
+    { at = "⟦meter⟧ -= 1;", kind = "write" },
+    { at = "⟦meter⟧(reading);", kind = "read" },
+    { at = "⟦meter⟧.bump(reading);", kind = "read" },
+]
+
+[answers.reading]
+highlights = [
+    { at = "int ⟦reading⟧ = 0;", kind = "text" },
+    { at = "in >> ⟦reading⟧;", kind = "write" },
+    { at = "meter = ⟦reading⟧;", kind = "read" },
+    { at = "meter(⟦reading⟧);", kind = "write" },
+    { at = "meter.bump(⟦reading⟧);", kind = "write" },
+]
+
+[answers.plus_use]
+highlights = [
+    { at = "Meter ⟦operator+⟧(int value) const;", kind = "text" },
+    { at = "Meter total = meter ⟦+⟧ 2;", kind = "read" },
+    { at = "Meter more = meter.⟦operator+⟧(3);", kind = "read" },
+]

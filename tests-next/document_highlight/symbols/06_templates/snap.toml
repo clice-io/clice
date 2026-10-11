@@ -1,0 +1,33 @@
+[answers.param]
+highlights = [
+    { at = "template <class ⟦T⟧> @+0", kind = "text" },
+    { at = "⟦T⟧ value;", kind = "read" },
+    { at = "⟦T⟧ get() const { return value; }", kind = "read" },
+]
+
+[answers.primary]
+highlights = [
+    { at = "struct ⟦Box⟧ {", kind = "text" },
+    { at = "T unwrap(const ⟦Box⟧<T>& box) {", kind = "read" },
+    { at = "⟦Box⟧<int> number{1};", kind = "read" },
+    { at = "return unwrap(number) + unwrap<int>(⟦Box⟧<int>{2});", kind = "read" },
+]
+
+[answers.explicit_spec]
+highlights = [
+    { at = "struct ⟦Box⟧<bool> {", kind = "text" },
+    { at = "⟦Box⟧<bool> toggle{true};", kind = "read" },
+]
+
+[answers.unwrap]
+highlights = [
+    { at = "T ⟦unwrap⟧(const Box<T>& box) {", kind = "text" },
+    { at = "return ⟦unwrap⟧(number) + unwrap<int>(Box<int>{2});", kind = "read" },
+    { at = "return unwrap(number) + ⟦unwrap⟧<int>(Box<int>{2});", kind = "read" },
+]
+
+[answers.dependent]
+highlights = [
+    { at = "T ⟦get⟧() const { return value; }", kind = "text" },
+    { at = "return box.⟦get⟧();", kind = "read" },
+]

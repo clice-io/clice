@@ -1,0 +1,47 @@
+[answers.class_decl]
+highlights = [
+    { at = "struct ⟦Session⟧ {", kind = "text" },
+    { at = "~⟦Session⟧();", kind = "read" },
+    { at = "⟦Session⟧::Session(int id) : id(id) {}", kind = "read" },
+    { at = "⟦Session⟧::~Session() {}", kind = "read" },
+    { at = "Session::~⟦Session⟧() {}", kind = "read" },
+    { at = "⟦Session⟧ open() {", kind = "read" },
+    { at = "return ⟦Session⟧(7);", kind = "read" },
+    { at = "void close(⟦Session⟧& session) {", kind = "read" },
+    { at = "session.~⟦Session⟧();", kind = "read" },
+]
+
+[answers.ctor_decl]
+highlights = [
+    { at = "⟦Session⟧(int id);", kind = "text" },
+    { at = "Session::⟦Session⟧(int id) : id(id) {}", kind = "text" },
+    { at = "return Session⟦(⟧7);", kind = "read" },
+]
+
+[answers.dtor_decl]
+highlights = [
+    { at = "⟦~Session⟧();", kind = "text" },
+    { at = "Session::⟦~Session⟧() {}", kind = "text" },
+    { at = "session.⟦~Session⟧();", kind = "read" },
+]
+
+[answers.dtor_def]
+highlights = [
+    { at = "⟦~Session⟧();", kind = "text" },
+    { at = "Session::⟦~Session⟧() {}", kind = "text" },
+    { at = "session.⟦~Session⟧();", kind = "read" },
+]
+
+[answers.ctor_call]
+highlights = [
+    { at = "⟦Session⟧(int id);", kind = "text" },
+    { at = "Session::⟦Session⟧(int id) : id(id) {}", kind = "text" },
+    { at = "return Session⟦(⟧7);", kind = "read" },
+]
+
+[answers.dtor_call]
+highlights = [
+    { at = "⟦~Session⟧();", kind = "text" },
+    { at = "Session::⟦~Session⟧() {}", kind = "text" },
+    { at = "session.⟦~Session⟧();", kind = "read" },
+]

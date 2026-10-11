@@ -1,0 +1,6 @@
+[answers.implicit]
+highlights = [
+    { at = "int ⟦implicit⟧ = 0;", kind = "text" },
+    { at = "auto bump = [&] { ⟦implicit⟧ += 1; };", kind = "write" },
+    { at = "auto peek = [=] { return ⟦implicit⟧; };", kind = "read" },
+]

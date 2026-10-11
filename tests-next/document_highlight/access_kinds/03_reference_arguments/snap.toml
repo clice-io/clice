@@ -1,0 +1,10 @@
+[answers.level]
+highlights = [
+    { at = "int ⟦level⟧ = 0;", kind = "text" },
+    { at = "reset(⟦level⟧);", kind = "write" },
+    { at = "inspect(⟦level⟧);", kind = "read" },
+    { at = "copy(⟦level⟧);", kind = "read" },
+    { at = "exchange(⟦level⟧, other);", kind = "write" },
+    { at = "Gauge gauge(⟦level⟧);", kind = "write" },
+    { at = "int* pointer = &⟦level⟧;", kind = "read" },
+]

@@ -1,0 +1,45 @@
+[answers.global_decl]
+highlights = [
+    { at = "int ⟦total⟧ = 0;", kind = "text" },
+    { at = "⟦total⟧ = total + amount;", kind = "write" },
+    { at = "total = ⟦total⟧ + amount;", kind = "read" },
+    { at = "return ⟦total⟧ * amount;", kind = "read" },
+]
+
+[answers.function_decl]
+highlights = [
+    { at = "int ⟦accumulate⟧(int amount);", kind = "text" },
+    { at = "int ⟦accumulate⟧(int amount) {", kind = "text" },
+    { at = "return ⟦accumulate⟧(1) + accumulate(2);", kind = "read" },
+    { at = "return accumulate(1) + ⟦accumulate⟧(2);", kind = "read" },
+]
+
+[answers.param_decl]
+highlights = [
+    { at = "int accumulate(int ⟦amount⟧) {", kind = "text" },
+    { at = "total = total + ⟦amount⟧;", kind = "read" },
+    { at = "return total * ⟦amount⟧;", kind = "read" },
+]
+
+[answers.global_use]
+highlights = [
+    { at = "int ⟦total⟧ = 0;", kind = "text" },
+    { at = "⟦total⟧ = total + amount;", kind = "write" },
+    { at = "total = ⟦total⟧ + amount;", kind = "read" },
+    { at = "return ⟦total⟧ * amount;", kind = "read" },
+]
+
+[answers.param_use]
+highlights = [
+    { at = "int accumulate(int ⟦amount⟧) {", kind = "text" },
+    { at = "total = total + ⟦amount⟧;", kind = "read" },
+    { at = "return total * ⟦amount⟧;", kind = "read" },
+]
+
+[answers.function_use]
+highlights = [
+    { at = "int ⟦accumulate⟧(int amount);", kind = "text" },
+    { at = "int ⟦accumulate⟧(int amount) {", kind = "text" },
+    { at = "return ⟦accumulate⟧(1) + accumulate(2);", kind = "read" },
+    { at = "return accumulate(1) + ⟦accumulate⟧(2);", kind = "read" },
+]

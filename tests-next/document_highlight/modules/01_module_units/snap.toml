@@ -1,0 +1,27 @@
+[answers.module_import]
+highlights = [
+    { at = "import ⟦shapes⟧;", kind = "read" },
+]
+
+[answers.area_use]
+highlights = [
+    { at = "return ⟦area⟧(1, 2) + area(3, 4);", kind = "read" },
+    { at = "return area(1, 2) + ⟦area⟧(3, 4);", kind = "read" },
+]
+
+[answers.module_decl]
+highlights = [
+    { at = "export module ⟦shapes⟧;", kind = "text" },
+]
+
+[answers.area_decl]
+highlights = [
+    { at = "export int ⟦area⟧(int width, int height) {", kind = "text" },
+]
+
+[answers.result]
+highlights = [
+    { at = "int ⟦result⟧ = width * height;", kind = "text" },
+    { at = "⟦result⟧ += 0;", kind = "write" },
+    { at = "return ⟦result⟧;", kind = "read" },
+]

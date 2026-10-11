@@ -1,0 +1,22 @@
+[answers.base]
+highlights = [
+    { at = "int ⟦base⟧ = 1;", kind = "text" },
+    { at = "auto add = [&⟦base⟧](int step) { base += step; return base; };", kind = "read" },
+    { at = "auto add = [&base](int step) { ⟦base⟧ += step; return base; };", kind = "write" },
+    { at = "auto add = [&base](int step) { base += step; return ⟦base⟧; };", kind = "read" },
+    { at = "auto copy = [renamed = ⟦base⟧] { return renamed + 1; };", kind = "read" },
+    { at = "return add(left) + copy() + ⟦base⟧;", kind = "read" },
+]
+
+[answers.init_capture]
+highlights = [
+    { at = "auto copy = [⟦renamed⟧ = base] { return renamed + 1; };", kind = "text" },
+    { at = "auto copy = [renamed = base] { return ⟦renamed⟧ + 1; };", kind = "read" },
+]
+
+[answers.binding]
+highlights = [
+    { at = "auto [⟦left⟧, right] = pair;", kind = "text" },
+    { at = "⟦left⟧ = right;", kind = "write" },
+    { at = "return add(⟦left⟧) + copy() + base;", kind = "read" },
+]

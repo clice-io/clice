@@ -1,0 +1,30 @@
+[answers.x]
+highlights = [
+    { at = "int ⟦x⟧; @+0", kind = "text" },
+    { at = "point.⟦x⟧ = point.y;", kind = "write" },
+    { at = "point.⟦x⟧ += 1;", kind = "write" },
+    { at = "point.raw = point.⟦x⟧;", kind = "read" },
+    { at = "Point corner{.⟦x⟧ = 0, .y = 0};", kind = "read" },
+]
+
+[answers.raw]
+highlights = [
+    { at = "int ⟦raw⟧;", kind = "text" },
+    { at = "point.⟦raw⟧ = point.x;", kind = "write" },
+]
+
+[answers.init]
+highlights = [
+    { at = "int ⟦x⟧; @-1", kind = "text" },
+    { at = "Origin(int start) : ⟦x⟧(start) {}", kind = "read" },
+]
+
+[answers.point]
+highlights = [
+    { at = "void shift(Point& ⟦point⟧) {", kind = "text" },
+    { at = "⟦point⟧.x = point.y;", kind = "read" },
+    { at = "point.x = ⟦point⟧.y;", kind = "read" },
+    { at = "⟦point⟧.x += 1;", kind = "read" },
+    { at = "⟦point⟧.raw = point.x;", kind = "read" },
+    { at = "point.raw = ⟦point⟧.x;", kind = "read" },
+]

@@ -1,0 +1,15 @@
+[answers.name_end]
+highlights = [
+    { at = "Sample ⟦sample⟧;", kind = "text" },
+    { at = "⟦sample⟧.member = 42;", kind = "read" },
+    { at = "return ⟦sample⟧.member + 1;", kind = "read" },
+]
+
+[answers.keyword]
+highlights = []
+
+[answers.literal]
+highlights = []
+
+[answers.blank]
+highlights = []

@@ -1,0 +1,30 @@
+[answers.in_if]
+highlights = [
+    { at = "if (int ⟦in_if⟧ = fetch()) {", kind = "text" },
+    { at = "total += ⟦in_if⟧;", kind = "read" },
+]
+
+[answers.with_init]
+highlights = [
+    { at = "if (int ⟦with_init⟧ = fetch(); with_init > 0) {", kind = "text" },
+    { at = "if (int with_init = fetch(); ⟦with_init⟧ > 0) {", kind = "read" },
+    { at = "total += ⟦with_init⟧;", kind = "read" },
+]
+
+[answers.in_switch]
+highlights = [
+    { at = "switch (int ⟦in_switch⟧ = fetch()) {", kind = "text" },
+    { at = "total += ⟦in_switch⟧;", kind = "read" },
+]
+
+[answers.in_for]
+highlights = [
+    { at = "for (; int ⟦in_for⟧ = fetch();) {", kind = "text" },
+    { at = "total += ⟦in_for⟧;", kind = "read" },
+]
+
+[answers.flag]
+highlights = [
+    { at = "while (bool ⟦flag⟧ = fetch() > 0) {", kind = "text" },
+    { at = "total += ⟦flag⟧;", kind = "read" },
+]
