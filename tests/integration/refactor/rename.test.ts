@@ -373,11 +373,30 @@ test("renames a list at once", async ({ session }) => {
     expect(answer.status, answer.error).toBe(0);
     const renamed = answer.result!;
     expect(renamed.applied).toBe(true);
-    expect(renamed.renames.map((entry) => [entry.line, entry.locator, entry.newName])).toEqual([
-        [2, "compute", "evaluate"],
-        [4, "Widget", "Gadget"],
-        [5, "use", "apply"],
+    expect(
+        renamed.renames.map((entry) => [entry.line, entry.locator, entry.name, entry.newName]),
+    ).toEqual([
+        [2, "compute", "compute", "evaluate"],
+        [4, "Widget", "Widget", "Gadget"],
+        [5, "use", "use", "apply"],
     ]);
+    expect(renamed.renames.map((entry) => entry.edits)).toEqual([4, 5, 2]);
+    expect(
+        renamed.files
+            .find((file) => basename(file.file) === "main.cpp")!
+            .edits.map((edit) => `${edit.line}:${edit.column} ${edit.name}=>${edit.newName}`),
+    ).toEqual([
+        "2:5 compute=>evaluate",
+        "3:1 Widget=>Gadget",
+        "3:9 Widget=>Gadget",
+        "4:5 use=>apply",
+        "4:20 compute=>evaluate",
+        "5:14 Widget=>Gadget",
+        "5:31 use=>apply",
+    ]);
+    expect(
+        renamed.unconfirmed.map((note) => `${basename(note.file)}:${note.line} ${note.name}`),
+    ).toEqual(["a.h:4 compute", "main.cpp:4 compute"]);
     expect(ws.read("a.h")).toBe(
         HEADER.replace("int compute", "int evaluate").replace(
             "Widget { Widget()",
@@ -401,9 +420,10 @@ test("renames a list at once", async ({ session }) => {
     );
     expect(piped.status, piped.stdout).toBe(0);
     const edits = (JSON.parse(piped.stdout) as Answer).result!.files.flatMap((file) => file.edits);
-    expect(edits.every((edit) => edit.name === "evaluate" && edit.newName === "compute")).toBe(
-        true,
+    expect(new Set(edits.map((edit) => `${edit.name}=>${edit.newName}`))).toEqual(
+        new Set(["evaluate=>compute"]),
     );
+    expect(edits).toHaveLength(4);
 });
 
 test("swaps and chains names", async ({ session }) => {
@@ -425,20 +445,75 @@ test("one stopped rename stops the list", async ({ session }) => {
     const ws = writeProject(session);
     await index(ws);
 
-    const answer = await renameList(ws, "compute => evaluate\nWidget => evaluate\nnope => none\n");
+    const answer = await renameList(ws, "nope => none\ncompute => evaluate\nWidget => evaluate\n");
     expect(answer.status).toBe(1);
-    const [compute, widget, nope] = answer.result!.renames;
+    const [nope, compute, widget] = answer.result!.renames;
+    expect(nope!.error).toBe("symbol not found");
+    expect(nope!.conflicts).toEqual([]);
     expect(compute!.conflicts.join("\n")).toContain("already declared in the same scope");
     expect(widget!.conflicts.join("\n")).toContain("already declared in the same scope");
-    expect(nope!.error).toBe("symbol not found");
     expect(answer.result!.applied).toBe(false);
     expect(ws.read("main.cpp")).toBe(MAIN);
 
-    const malformed = await renameList(ws, "compute evaluate\n");
-    expect(malformed.status).toBe(1);
-    expect(malformed.error).toBe("line 1: expected `<locator> => <new name>`");
+    // A line naming no symbol alone stops the others.
+    const unknown = await renameList(ws, "compute => evaluate\nnope => none\n");
+    expect(unknown.status).toBe(1);
+    expect(unknown.result!.renames[0]!.conflicts).toEqual([]);
+    expect(unknown.result!.applied).toBe(false);
+    expect(ws.read("main.cpp")).toBe(MAIN);
+
+    for (const [list, error] of [
+        ["compute evaluate\n", "line 1: expected `<locator> => <new name>`"],
+        ["// none\n\n", "the rename list names no rename"],
+        ["\n => evaluate\n", "line 2: expected `<locator> => <new name>`"],
+        ["compute =>\n", "line 1: expected `<locator> => <new name>`"],
+        ["compute => evaluate\n#xyz => other\n", "line 2: invalid symbol id '#xyz'"],
+    ] as const) {
+        const malformed = await renameList(ws, list);
+        expect(malformed.status).toBe(1);
+        expect(malformed.error).toBe(error);
+    }
+    const missing = await rename(ws, "--spec", ws.path("missing.txt"));
+    expect(missing.error).toContain("cannot read");
     const both = await rename(ws, "--spec", "-", "--symbol", "compute", "--to", "evaluate");
+    expect(both.status).toBe(1);
     expect(both.error).toContain("--spec");
+});
+
+test("notes each name once", async ({ session }) => {
+    const ws = session.tmpdir();
+    const text = [
+        "int scale(int x) { return x; }",
+        "double scale(double x) { return x; }",
+        "#define CALL scale(1)",
+        "int use() { return scale(2); }",
+        "",
+    ].join("\n");
+    ws.write("main.cpp", text);
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    await index(ws);
+
+    const symbols: string[] = [];
+    for (const place of ["main.cpp:1:5", "main.cpp:2:8"]) {
+        const run = await runClice(
+            "query",
+            "--workspace",
+            ws.root,
+            "--method",
+            "definition",
+            "--symbol",
+            place,
+        );
+        symbols.push((JSON.parse(run.stdout) as { result: { symbol: string } }).result.symbol);
+    }
+    const list = symbols.map((symbol) => `${symbol} => resize\n`).join("");
+    const answer = await renameList(ws, list, "--dry-run");
+    expect(answer.status, answer.error).toBe(0);
+    expect(answer.result!.unconfirmed.map((note) => [note.line, note.name])).toEqual([
+        [3, "scale"],
+    ]);
+    expect(answer.result!.conflicts).toEqual([]);
 });
 
 /// The edits a rename reply makes to `file`, and the buffer version they
@@ -483,6 +558,26 @@ test("renames from the editor", async ({ session }) => {
     const other = changeOf(edit, ws, "other.cpp");
     expect(applyTextEdits(OTHER, other!.edits)).toBe(OTHER.replace("compute", "evaluate"));
     await expect.poll(() => notices.join("\n")).toContain("#define CALL compute(1)");
+});
+
+test("renames an unsaved buffer", async ({ session }) => {
+    const ws = writeProject(session);
+    const client = await session.spawn(ws).initialize(ws);
+    const [uri] = await client.openAndWait("main.cpp");
+    expect(await client.waitForIndex(uri, "again"), "other.cpp not indexed").toBe(true);
+
+    const edited = MAIN.replace("int main()", "int more() { return compute(5); }\nint main()");
+    client.change(uri, 1, edited);
+    await client.waitForRecompile(uri);
+    const edit = await client.renameAt(uri, 1, 6, "evaluate");
+    const main = changeOf(edit, ws, "main.cpp");
+    expect(main?.version).toBe(1);
+    expect(applyTextEdits(edited, main!.edits)).toBe(
+        edited
+            .replace("int compute", "int evaluate")
+            .replace("compute(2)", "evaluate(2)")
+            .replace("compute(5)", "evaluate(5)"),
+    );
 });
 
 test("the editor hears why not", async ({ session }) => {

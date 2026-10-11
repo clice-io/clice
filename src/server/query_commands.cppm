@@ -237,8 +237,9 @@ struct RenameResult {
     std::vector<RenameFileEntry> files;
     std::vector<RenameNoteEntry> unconfirmed;
 
-    /// What keeps the renames from being written beyond each one's own:
-    /// a token two of them would change to different names.
+    /// What keeps the renames from being written beyond each one's own: a
+    /// token two of them would change to different names, a file the
+    /// writing could not rewrite.
     std::vector<std::string> conflicts;
 
     /// Files spelling an old or a new name whose rows are not current; the

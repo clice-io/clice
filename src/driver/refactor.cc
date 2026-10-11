@@ -154,8 +154,9 @@ std::expected<void, std::string> apply(FileTable& files, const index::BatchPlan&
 
     std::vector<Rewrite> rewrites;
     llvm::DenseSet<Fid> seen;
-    for(auto& [edit, index]: plan.edits) {
-        auto file = edit.site.file;
+    for(auto& batch_edit: plan.edits) {
+        auto& site = batch_edit.edit.site;
+        auto file = site.file;
         if(!seen.insert(file).second) {
             continue;
         }
@@ -164,15 +165,14 @@ std::expected<void, std::string> apply(FileTable& files, const index::BatchPlan&
         auto bytes = vfs::read(path, vfs::Read::Bytes);
         if(!status || !bytes) {
             auto error = status ? bytes.error() : status.error();
-            return std::unexpected(
-                std::format("cannot read {}: {}", edit.site.path, error.message()));
+            return std::unexpected(std::format("cannot read {}: {}", site.path, error.message()));
         }
         auto content = (*bytes)->getBuffer();
         auto text = vfs::without_bom(content);
         auto renamed = index::apply_renames(text, plan, file);
         if(!renamed) {
             return std::unexpected(
-                std::format("{} changed since it was indexed; run with --fresh", edit.site.path));
+                std::format("{} changed since it was indexed; run with --fresh", site.path));
         }
         rewrites.push_back({
             .path = std::move(path),

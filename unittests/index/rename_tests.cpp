@@ -912,6 +912,8 @@ ZEST_CASE(BatchJudgesFinalNames) {
         int second;
         int taken;
         struct Row { int entry; };
+        void shrink(int);
+        void grow(double);
     )");
     merge();
 
@@ -938,6 +940,20 @@ ZEST_CASE(BatchJudgesFinalNames) {
     });
     ZASSERT(member.plans[1].conflicts.size() == 1U);
     ZEXPECT(member.plans[1].conflicts.front().contains("names the class the member belongs to"));
+    auto vacated = batch({
+        {.target = target("Row"),        .new_name = "Table"},
+        {.target = target("Row::entry"), .new_name = "Row"  },
+    });
+    ZEXPECT(!vacated.blocked());
+
+    // Two functions given one name overload each other.
+    auto overloaded = batch({
+        {.target = target("shrink"), .new_name = "resize"},
+        {.target = target("grow"),   .new_name = "resize"},
+    });
+    ZEXPECT(!overloaded.blocked());
+    ZASSERT(overloaded.plans[0].warnings.size() == 1U);
+    ZEXPECT(overloaded.plans[0].warnings.front().contains("already names a function"));
 }
 
 ZEST_CASE(BatchRenamesOnce) {

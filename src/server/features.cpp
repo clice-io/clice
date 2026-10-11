@@ -1113,12 +1113,9 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     if(!config.project.cache_dir.empty()) {
         cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
     }
-    auto swept = co_await kota::queue([root = config.workspace_root,
-                                       cache_dir,
-                                       old_name = at->target.symbol.symbol.name,
-                                       new_name] {
+    llvm::StringSet<> names{at->target.symbol.symbol.name, new_name};
+    auto swept = co_await kota::queue([root = config.workspace_root, cache_dir, names] {
         Swept result;
-        llvm::StringSet<> names{old_name, new_name};
         for(auto& source: workspace_sources(root, cache_dir)) {
             auto path = source.str();
             if(auto text = vfs::read(path)) {
@@ -1158,7 +1155,6 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
     };
     // Open buffers, and edited files the walk's suffixes left out, are
     // swept on first read.
-    llvm::StringSet<> names{old_name, new_name};
     llvm::StringMap<std::optional<index::SweptText>> late;
     auto read = [&](llvm::StringRef path) -> const index::SweptText* {
         auto file = project.file_table.find(Spelling::absolute(path));
@@ -1172,10 +1168,10 @@ kota::task<std::optional<Features::Renamed>, kota::ipc::Error>
             }
         }
         auto [it, inserted] = late.try_emplace(path);
-        if(inserted && document) {
-            it->second = index::sweep_text(document->text, names);
-        } else if(inserted) {
-            if(auto text = vfs::read(path)) {
+        if(inserted) {
+            if(document) {
+                it->second = index::sweep_text(document->text, names);
+            } else if(auto text = vfs::read(path)) {
                 it->second = index::sweep_text((*text)->getBuffer().str(), names);
             }
         }

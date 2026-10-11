@@ -506,8 +506,12 @@ RenamePlan plan_rename(const IndexQuery& query,
             stale.insert(display);
             continue;
         }
+        auto spelled = current->tokens.find(old_name);
+        if(spelled == current->tokens.end()) {
+            continue;
+        }
         Lines lines(current->text);
-        for(auto [offset, directive]: current->spelling(old_name)) {
+        for(auto [offset, directive]: spelled->second) {
             if(!indexed) {
                 plan.unconfirmed.push_back(
                     {.site = lines.site(file, display, offset, old_name.size()),
@@ -602,6 +606,11 @@ RenamePlan plan_rename(const IndexQuery& query,
     llvm::DenseSet<SymbolHash> hierarchy;
     auto parent = query.symbol_info(home, anchor);
     if(parent && class_like(parent->kind)) {
+        auto renamed = batch.renamed.find(home);
+        if((renamed == batch.renamed.end() ? parent->name : renamed->second) == new_name) {
+            plan.conflicts.push_back(std::format("`{}` names the class the member belongs to",
+                                                 std::string_view(new_name)));
+        }
         if(auto located = query.resolve(home, anchor)) {
             hierarchy.insert(located->symbol.hash);
             for(bool up: {true, false}) {
@@ -628,13 +637,6 @@ RenamePlan plan_rename(const IndexQuery& query,
         plan.warnings.push_back(
             std::format("`{}` is reserved for the implementation", std::string_view(new_name)));
     }
-    if(parent && class_like(parent->kind)) {
-        auto renamed = batch.renamed.find(home);
-        if((renamed == batch.renamed.end() ? parent->name : renamed->second) == new_name) {
-            plan.conflicts.push_back(std::format("`{}` names the class the member belongs to",
-                                                 std::string_view(new_name)));
-        }
-    }
 
     for(auto& other: named) {
         auto& symbol = other.symbol;
@@ -650,11 +652,11 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
         auto other_home = scope_of(symbol, other.site.file);
         if(other_home == home) {
-            // Overloads of the old name renamed alike stay overloads.
-            if(function_like(symbol.kind) && function_like(root.kind) && symbol.name == old_name) {
-                continue;
-            }
             if(function_like(symbol.kind) && function_like(root.kind)) {
+                // Overloads of the old name renamed alike stay overloads.
+                if(symbol.name == old_name) {
+                    continue;
+                }
                 plan.warnings.push_back(
                     std::format("`{}` already names a function in the same scope ({}): the "
                                 "renamed function overloads it, which fails to build in C or "
@@ -754,22 +756,20 @@ BatchPlan plan_renames(const IndexQuery& query,
     // A renaming whose symbol an earlier one renames already is planned
     // as nothing: the earlier plan holds its edits.
     RenameBatch batch;
-    llvm::DenseMap<SymbolHash, std::uint32_t> owners;
-    std::vector<std::optional<std::uint32_t>> repeats(renamings.size());
+    std::vector<std::optional<std::string>> repeats(renamings.size());
     for(std::uint32_t i = 0; i < renamings.size(); i += 1) {
         auto& [target, new_name] = renamings[i];
-        if(auto owner = owners.find(target.symbol.symbol.hash); owner != owners.end()) {
-            repeats[i] = owner->second;
+        if(auto earlier = batch.renamed.find(target.symbol.symbol.hash);
+           earlier != batch.renamed.end()) {
+            repeats[i] = earlier->second;
             continue;
         }
         for(auto& member: target.group) {
-            owners.try_emplace(member.symbol.hash, i);
             batch.renamed.try_emplace(member.symbol.hash, new_name);
             batch.named[new_name].push_back(member);
         }
     }
 
-    // Each plan looks only at the files spelling its own two names.
     llvm::StringMap<std::vector<std::string>> spelled;
     for(auto& path: scope.files) {
         if(auto* swept = scope.read(path)) {
@@ -783,18 +783,17 @@ BatchPlan plan_renames(const IndexQuery& query,
     for(std::uint32_t i = 0; i < renamings.size(); i += 1) {
         auto& [target, new_name] = renamings[i];
         auto& old_name = target.symbol.symbol.name;
-        if(repeats[i]) {
-            auto& earlier = renamings[*repeats[i]].new_name;
+        if(auto& earlier = repeats[i]) {
             auto& plan =
                 result.plans.emplace_back(RenamePlan{.old_name = old_name, .new_name = new_name});
-            if(earlier == new_name) {
+            if(*earlier == new_name) {
                 plan.warnings.push_back(std::format("`{}` is renamed to `{}` already",
                                                     target.symbol.symbol.display_name(),
                                                     new_name));
             } else {
                 plan.conflicts.push_back(std::format("`{}` is renamed to `{}` as well",
                                                      target.symbol.symbol.display_name(),
-                                                     earlier));
+                                                     *earlier));
             }
             continue;
         }
@@ -806,22 +805,16 @@ BatchPlan plan_renames(const IndexQuery& query,
         }
         std::ranges::sort(own);
         own.erase(std::ranges::unique(own).begin(), own.end());
-        result.plans.push_back(plan_rename(query,
-                                           files,
-                                           target,
-                                           new_name,
-                                           {.files = own,
-                                            .editable = scope.editable,
-                                            .read = scope.read,
-                                            .units_pending = scope.units_pending},
-                                           batch));
+        auto narrowed = scope;
+        narrowed.files = own;
+        result.plans.push_back(plan_rename(query, files, target, new_name, narrowed, batch));
     }
 
     std::map<std::pair<std::string, std::uint32_t>, BatchEdit> edits;
     for(std::uint32_t i = 0; i < result.plans.size(); i += 1) {
         for(auto& edit: result.plans[i].edits) {
-            auto [it, inserted] =
-                edits.try_emplace({edit.site.path, edit.site.range.begin}, BatchEdit{edit, i});
+            auto [it, inserted] = edits.try_emplace({edit.site.path, edit.site.range.begin},
+                                                    BatchEdit{.edit = edit, .plan = i});
             if(inserted) {
                 continue;
             }
@@ -845,11 +838,11 @@ BatchPlan plan_renames(const IndexQuery& query,
 std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& batch, Fid file) {
     std::string result;
     std::uint32_t copied = 0;
-    for(auto& [edit, index]: batch.edits) {
+    for(auto& [edit, owner]: batch.edits) {
         if(edit.site.file != file) {
             continue;
         }
-        auto& plan = batch.plans[index];
+        auto& plan = batch.plans[owner];
         auto begin = edit.site.range.begin;
         auto end = begin + static_cast<std::uint32_t>(plan.old_name.size());
         if(spellings(text, begin, end, plan.old_name).empty()) {

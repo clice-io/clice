@@ -583,12 +583,10 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
     if(!config.project.cache_dir.empty()) {
         cache_dir = CanonicalPath(Spelling::absolute(config.project.cache_dir));
     }
-    // Every workspace file is read once, swept for the names of all the
-    // renames together.
     std::vector<std::string> sources;
     llvm::StringSet<> walked;
     llvm::StringMap<index::SweptText> swept;
-    auto sweep = [&](const std::string& path) -> const index::SweptText* {
+    auto sweep = [&](llvm::StringRef path) -> const index::SweptText* {
         walked.insert(path);
         auto text = vfs::read(path);
         if(!text) {
@@ -608,7 +606,7 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
             return &found->second;
         }
         // An edited file the walk's suffixes left out.
-        return walked.contains(path) ? nullptr : sweep(path.str());
+        return walked.contains(path) ? nullptr : sweep(path);
     };
     planned.plan = index::plan_renames(ctx.query,
                                        ctx.project.file_table,
@@ -647,7 +645,7 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
                           return std::tie(lhs.file, lhs.line, lhs.column, lhs.name) <
                                  std::tie(rhs.file, rhs.line, rhs.column, rhs.name);
                       });
-    for(auto& [edit, index]: planned.plan.edits) {
+    for(auto& [edit, owner]: planned.plan.edits) {
         auto& site = edit.site;
         if(result.files.empty() || result.files.back().file != site.path) {
             result.files.push_back({.file = site.path});
@@ -655,8 +653,8 @@ PlannedRename rename(Context& ctx, llvm::ArrayRef<RenameRequest> requests) {
         result.files.back().edits.push_back({
             .line = static_cast<int>(site.begin.line) + 1,
             .column = static_cast<int>(site.begin.column) + 1,
-            .name = plans[index].old_name,
-            .new_name = plans[index].new_name,
+            .name = plans[owner].old_name,
+            .new_name = plans[owner].new_name,
             .heuristic = edit.heuristic,
         });
     }

@@ -61,14 +61,6 @@ struct SweptText {
     };
 
     llvm::StringMap<std::vector<Token>> tokens;
-
-    llvm::ArrayRef<Token> spelling(llvm::StringRef name) const {
-        auto found = tokens.find(name);
-        if(found == tokens.end()) {
-            return {};
-        }
-        return found->second;
-    }
 };
 
 /// Sweep `text` for `names`; nullopt when it spells none of them as a
@@ -131,9 +123,9 @@ struct RenamePlan {
 
     std::vector<std::string> warnings;
 
-    /// Files spelling the old name whose rows are not current — their text
-    /// moved on, or the build compiles them but the index never did.
-    /// Nothing is written while any stands.
+    /// Files the rename edits, or that spell its old or new name, whose
+    /// rows are not current — their text moved on, or the build compiles
+    /// them but the index never did. Nothing is written while any stands.
     std::vector<std::string> stale;
 
     bool blocked() const {
