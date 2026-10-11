@@ -48,8 +48,8 @@ struct QueryOptions {
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help =
-               "Symbol a symbol question is about, or the symbols symbolSearch lists: a name "
-               "query, an answer's #<hex> symbol, or file:line[:column]",
+               "Symbol a symbol question is about, or the symbols symbolSearch lists, as a "
+               "locator: a name, an answer's symbol, or file:line[:column]",
            required = false)
     <std::string> symbol;
 
@@ -95,6 +95,8 @@ constexpr llvm::StringLiteral build_methods[] = {"compileCommand",
                                                  "fileDeps",
                                                  "impactAnalysis",
                                                  "counterparts"};
+constexpr llvm::StringLiteral symbol_methods[] =
+    {"symbolSearch", "readSymbol", "definition", "references", "callGraph", "typeHierarchy"};
 constexpr llvm::StringLiteral index_methods[] = {"symbolSearch",
                                                  "readSymbol",
                                                  "documentSymbols",
@@ -145,22 +147,15 @@ Reply answer(Project& project,
                 render_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
         } else {
             reply.exit_code = 1;
-            Failure failure{.error = std::move(outcome.error()), .stale = std::move(stale)};
-            if(!ctx.candidates.empty()) {
-                failure.candidates = std::move(ctx.candidates);
-            }
-            reply.json = render_json(failure);
+            reply.json =
+                render_json(symbol_failure(std::move(outcome.error()), ctx, std::move(stale)));
         }
-    };
-    auto locator = [&]() -> std::expected<index::SymbolQuery, std::string> {
-        if(opts.path) {
-            return std::unexpected(
-                "--path names the file of a file question; narrow a symbol with path: in --symbol");
-        }
-        return locator_of(opts.symbol.as_optional());
     };
 
-    if(method == "compileCommand") {
+    if(opts.path && llvm::is_contained(symbol_methods, method)) {
+        emit(query::Outcome<int>(std::unexpected(
+            "--path names the file of a file question; narrow a symbol with path: in --symbol")));
+    } else if(method == "compileCommand") {
         emit(query::compile_command(ctx, absolute));
     } else if(method == "projectFiles") {
         emit(query::project_files(ctx, opts.filter.value_or("all")));
@@ -177,7 +172,7 @@ Reply answer(Project& project,
                                   static_cast<std::size_t>(std::max(limit, 0))));
     } else if(method == "documentSymbols") {
         emit(query::document_symbols(ctx, absolute));
-    } else if(auto query = locator(); !query) {
+    } else if(auto query = locator_of(opts.symbol.as_optional()); !query) {
         emit(query::Outcome<int>(std::unexpected(query.error())));
     } else if(method == "readSymbol") {
         emit(query::read_symbol(ctx, std::move(*query)));

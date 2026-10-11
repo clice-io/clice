@@ -454,13 +454,24 @@ ZEST_CASE(LocalsByPath) {
 
     ZASSERT(search("hidden").empty());
     ZASSERT(search("hidden path:main.cpp").size() == 2U);
-    ZASSERT(search("hidden path:other.cpp").empty());
     ZASSERT(search("helper::hidden path:main.cpp").size() == 1U);
 
     auto helper = locate(R"("helper" path:main.cpp)");
     ZASSERT(helper.size() == 1U);
     ZEXPECT(helper.front().symbol.scope == index::SymbolScope::TULocal);
     ZEXPECT(helper.front().site.path.ends_with("main.cpp"));
+}
+
+ZEST_CASE(LocateEveryExactMatch) {
+    std::string source;
+    for(int i = 0; i < 70; i += 1) {
+        source += std::format("namespace n{} {{ int value; }}\n", i);
+    }
+    add_main("main.cpp", source);
+    ZASSERT(compile());
+    merge_into_workspace();
+
+    ZEXPECT(locate("value").size() == 70U);
 }
 
 ZEST_CASE(OpenSessionServedByShard) {

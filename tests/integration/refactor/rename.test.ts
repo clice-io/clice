@@ -55,7 +55,7 @@ interface Renamed {
 interface Answer {
     result?: Renamed;
     error?: string;
-    candidates?: { name: string; symbol: string }[];
+    candidates?: { name: string; line: number; symbol: string }[];
     stale: string[];
 }
 
@@ -220,9 +220,57 @@ test("lists the symbols a name spells", async ({ session }) => {
 
     const scoped = await rename(ws, "--symbol", "a::value", "--to", "amount", "--dry-run");
     expect(scoped.status, scoped.error).toBe(0);
-    const picked = await rename(ws, "--symbol", ambiguous.candidates![1]!.symbol, "--to", "amount");
+    expect(places(scoped.result!)).toEqual(["main.cpp:1:19", "main.cpp:3:23"]);
+    const [, candidate] = ambiguous.candidates!;
+    const picked = await rename(ws, "--symbol", candidate!.symbol, "--to", "amount");
     expect(picked.status, picked.error).toBe(0);
+    expect(places(picked.result!)[0]).toBe(`main.cpp:${candidate!.line}:19`);
     expect(picked.result!.files.flatMap((file) => file.edits)).toHaveLength(2);
+});
+
+test("keeps other scopes' functions apart", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write(
+        "src/main.cpp",
+        [
+            "namespace a { int f(int x) { return x; } }",
+            "namespace b { int f(double x) { return 1; } }",
+            "struct S { int g(int x); int g(double x); };",
+            "int S::g(int x) { return x; }",
+            "int S::g(double x) { return 1; }",
+            "int use(S s) { return a::f(1) + b::f(2.0) + s.g(1) + s.g(2.0); }",
+            "",
+        ].join("\n"),
+    );
+    ws.write(
+        "src/one.cpp",
+        "static int helper(int x) { return x; }\nint one() { return helper(1); }\n",
+    );
+    ws.write(
+        "src/two.cpp",
+        "static int helper(double x) { return 2; }\nint two() { return helper(2); }\n",
+    );
+    ws.writeCDB(["src/main.cpp", "src/one.cpp", "src/two.cpp"]);
+    ws.pinCacheDir();
+    await index(ws);
+
+    const scopes = await rename(ws, "--symbol", "f", "--to", "h", "--dry-run");
+    expect(scopes.error).toContain("2 symbols match");
+    const units = await rename(ws, "--symbol", "helper path:src/", "--to", "h", "--dry-run");
+    expect(units.error, "two units' static functions are no overload set").toContain(
+        "2 symbols match",
+    );
+
+    const methods = await rename(ws, "--symbol", "S::g", "--to", "h", "--dry-run");
+    expect(methods.status, methods.error).toBe(0);
+    expect(places(methods.result!)).toEqual([
+        "main.cpp:3:16",
+        "main.cpp:3:30",
+        "main.cpp:4:8",
+        "main.cpp:5:8",
+        "main.cpp:6:47",
+        "main.cpp:6:56",
+    ]);
 });
 
 test("renames the overloads a name spells", async ({ session }) => {
@@ -250,7 +298,7 @@ test("renames the overloads a name spells", async ({ session }) => {
     ]);
     expect(all.result!.unconfirmed).toEqual([]);
 
-    const search = await runClice(
+    const definition = await runClice(
         "query",
         "--workspace",
         ws.root,
@@ -259,7 +307,7 @@ test("renames the overloads a name spells", async ({ session }) => {
         "--symbol",
         "main.cpp:2:8",
     );
-    const { symbol } = (JSON.parse(search.stdout) as { result: { symbol: string } }).result;
+    const { symbol } = (JSON.parse(definition.stdout) as { result: { symbol: string } }).result;
     const one = await rename(ws, "--symbol", symbol, "--to", "resize", "--dry-run");
     expect(one.status, one.error).toBe(0);
     expect(places(one.result!)).toEqual(["main.cpp:2:8"]);

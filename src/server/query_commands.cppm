@@ -236,14 +236,14 @@ Outcome<FileDepsResult>
 /// hosting it, and the modules among them. Needs the build.
 Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path);
 
-/// The symbols a locator (index/symbol_query.h) matches, best first, at
-/// most `limit` of them.
+/// The symbols a locator (index::SymbolQuery) matches, best first, at most
+/// `limit` of them.
 Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, std::size_t limit);
 
-/// A `locator` names one symbol (index/symbol_query.h): by its id (the
-/// `symbol` the answers carry), by a name query, or by a place. Several
-/// candidates are an error listing them in Context::candidates; none is
-/// "symbol not found".
+/// A `locator` (index::SymbolQuery) names one symbol: by the `symbol` an
+/// answer carries, by a name query, or by a place. Several candidates are
+/// an error listing them in Context::candidates; none is "symbol not
+/// found".
 
 /// The symbol's definition as text.
 Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator);

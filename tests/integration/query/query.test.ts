@@ -24,6 +24,7 @@ const MAIN = [
 interface Answer<T> {
     result?: T;
     error?: string;
+    candidates?: { name: string; symbol: string }[];
     stale: string[];
 }
 
@@ -418,9 +419,55 @@ test("references reach internal and local symbols", async ({ session }) => {
     expect(listed?.name).toBe("helper");
     expect((await outline("b.cpp")).map((s) => s.name)).toEqual(["b"]);
 
-    // An internal symbol's locator names the file holding its rows too.
+    // An internal symbol's locator names the file holding its rows too:
+    // any file seeing it, workspace-relative or absolute.
     expect(listed!.symbol).toMatch(/^#[0-9a-f]{16} path:.*util\.h$/);
-    const byId = await query<{ name: string }>(ws, "definition", "--symbol", listed!.symbol);
+    const id = listed!.symbol.split(" ")[0]!;
+    for (const locator of [listed!.symbol, `${id} path:util.h`, `${id} path:a.cpp`]) {
+        const byId = await query<{ name: string }>(ws, "definition", "--symbol", locator);
+        expect(byId.status, `${locator}: ${byId.error}`).toBe(0);
+        expect(byId.result?.name).toBe("helper");
+    }
+    const listedById = await query<{ symbols: { name: string }[] }>(
+        ws,
+        "symbolSearch",
+        "--symbol",
+        `${id} path:a.cpp`,
+    );
+    expect(listedById.result?.symbols.map((s) => s.name)).toEqual(["helper"]);
+    const gone = await query(ws, "definition", "--symbol", `${id} path:gone.cpp`);
+    expect(gone.error).toContain("no such file");
+    ws.write("new.cpp", "int fresh() { return 1; }\n");
+    const unindexed = await query(ws, "definition", "--symbol", `${id} path:new.cpp`);
+    expect(unindexed.error).toBe("symbol not found");
+    expect(unindexed.stale.map(asUri)).toContain(ws.uri("new.cpp"));
+
+    // By name, a file's own symbol is found where it is declared.
+    const named = async (text: string) =>
+        (
+            await query<{ symbols: { name: string }[] }>(ws, "symbolSearch", "--symbol", text)
+        ).result!.symbols.map((s) => s.name);
+    expect(await named('"helper" path:util.h')).toEqual(["helper"]);
+    expect(await named('"helper" path:a.cpp')).toEqual([]);
+});
+
+test("names a file under a spaced path", async ({ session }) => {
+    const ws = session.tmpdir();
+    ws.write("my dir/util.h", "#pragma once\nstatic int helper(int x) { return x; }\n");
+    ws.write("main.cpp", '#include "my dir/util.h"\nint main() { return helper(1); }\n');
+    ws.writeCDB(["main.cpp"]);
+    ws.pinCacheDir();
+    expect((await runIndex(ws)).status).toBe(0);
+
+    const outline = await query<{ symbols: { symbol: string }[] }>(
+        ws,
+        "documentSymbols",
+        "--path",
+        "my dir/util.h",
+    );
+    const symbol = outline.result!.symbols[0]!.symbol;
+    expect(symbol).toMatch(/ path:".*my dir\/util\.h"$/);
+    const byId = await query<{ name: string }>(ws, "definition", "--symbol", symbol);
     expect(byId.status, byId.error).toBe(0);
     expect(byId.result?.name).toBe("helper");
 });
@@ -438,14 +485,14 @@ test("finds a file's own symbols by name", async ({ session }) => {
 
     const search = async (text: string) =>
         (
-            await query<{ symbols: { name: string; kind: string; container?: string }[] }>(
+            await query<{ symbols: { name: string; kind: string; container: string | null }[] }>(
                 ws,
                 "symbolSearch",
                 "--symbol",
                 text,
             )
         ).result!.symbols.map((s) => `${s.container ?? ""}::${s.name}:${s.kind}`);
-    expect(await search('"rows"'), "only a project symbol without a file").toEqual([]);
+    expect(await search('"rows"'), "a file's own symbols need path:").toEqual([]);
     expect((await search('"rows" path:a.cpp')).sort()).toEqual([
         "a::rows:Variable",
         "helper::rows:Parameter",
@@ -465,18 +512,19 @@ test("finds a file's own symbols by name", async ({ session }) => {
     const ambiguous = await query<unknown>(ws, "definition", "--symbol", '"rows" path:a.cpp');
     expect(ambiguous.status).toBe(1);
     expect(ambiguous.error).toContain("2 symbols match");
-    const candidates = (ambiguous as { candidates?: { name: string; symbol: string }[] })
-        .candidates!;
-    expect(candidates.map((c) => c.name)).toEqual(["rows", "rows"]);
-    for (const candidate of candidates) {
-        const picked = await query<{ name: string }>(
+    expect(ambiguous.candidates!.map((c) => c.name)).toEqual(["rows", "rows"]);
+    const lines: number[] = [];
+    for (const candidate of ambiguous.candidates!) {
+        const picked = await query<{ definition: { startLine: number } }>(
             ws,
             "definition",
             "--symbol",
             candidate.symbol,
         );
         expect(picked.status, picked.error).toBe(0);
+        lines.push(picked.result!.definition.startLine);
     }
+    expect(lines.sort()).toEqual([2, 4]);
 });
 
 test("references reach enumerators of every file", async ({ session }) => {
@@ -628,9 +676,11 @@ test("rejects bad questions", async ({ session }) => {
     expect(typo.status).toBe(1);
     expect(typo.error).toContain("no such file");
 
-    const path = await query(ws, "definition", "--symbol", "add", "--path", "main.cpp");
-    expect(path.status).toBe(1);
-    expect(path.error).toContain("path:");
+    for (const method of ["definition", "symbolSearch"]) {
+        const path = await query(ws, method, "--symbol", "add", "--path", "main.cpp");
+        expect(path.status).toBe(1);
+        expect(path.error).toContain("path:");
+    }
 
     const unnamed = await query(ws, "definition");
     expect(unnamed.status).toBe(1);

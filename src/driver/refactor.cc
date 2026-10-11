@@ -35,7 +35,7 @@ struct RefactorOptions {
 
     DecoKV(style = KVStyle::JoinedOrSeparate,
            help =
-               "rename: the symbol, by its whole name, a query's #<hex> symbol, or "
+               "rename: the symbol, as a locator: its whole name, an answer's symbol, or "
                "file:line[:column]",
            required = false)
     <std::string> symbol;
@@ -187,11 +187,7 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
 
     auto planned = query::rename(ctx, std::move(*locator), *opts.to);
     if(!planned) {
-        Failure failure{.error = planned.error(), .stale = stale({})};
-        if(!ctx.candidates.empty()) {
-            failure.candidates = std::move(ctx.candidates);
-        }
-        print_json(failure);
+        print_json(symbol_failure(std::move(planned.error()), ctx, stale({})));
         return 1;
     }
 

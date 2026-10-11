@@ -129,6 +129,17 @@ std::optional<SymbolQuery::Position> parse_position(llvm::StringRef term) {
     return position;
 }
 
+/// The symbol kind a `kind:` term names, case-insensitively.
+std::optional<SymbolKind> parse_kind(llvm::StringRef name) {
+    constexpr auto names = kota::meta::reflection<SymbolKind::Kind>::member_names;
+    for(std::size_t i = 0; i < names.size(); i += 1) {
+        if(name.equals_insensitive(llvm::StringRef(names[i].data(), names[i].size()))) {
+            return SymbolKind(static_cast<SymbolKind::Kind>(i));
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<SymbolHash> parse_handle(llvm::StringRef term) {
     SymbolHash hash = 0;
     if(!term.consume_front("#") || term.empty() || term.size() > 16 ||
@@ -293,14 +304,14 @@ std::expected<SymbolQuery, std::string> SymbolQuery::parse(llvm::StringRef text)
     return query;
 }
 
-std::optional<SymbolKind> SymbolQuery::parse_kind(llvm::StringRef name) {
-    constexpr auto names = kota::meta::reflection<SymbolKind::Kind>::member_names;
-    for(std::size_t i = 0; i < names.size(); i += 1) {
-        if(name.equals_insensitive(llvm::StringRef(names[i].data(), names[i].size()))) {
-            return SymbolKind(static_cast<SymbolKind::Kind>(i));
-        }
+std::string symbol_locator(SymbolHash hash, llvm::StringRef anchor) {
+    auto id = symbol_id(hash);
+    if(anchor.empty()) {
+        return id;
     }
-    return std::nullopt;
+    return llvm::any_of(anchor, is_space)
+               ? std::format(R"({} path:"{}")", id, std::string_view(anchor))
+               : std::format("{} path:{}", id, std::string_view(anchor));
 }
 
 bool args_match(llvm::StringRef wanted, llvm::StringRef actual) {

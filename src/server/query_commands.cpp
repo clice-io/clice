@@ -78,18 +78,12 @@ Outcome<bool> anchor_paths(Context& ctx, index::SymbolQuery& query) {
     return query.position ? anchor(query.position->path) : true;
 }
 
-/// The locator an answer names a symbol by: its id, and for a symbol no
-/// project table lists the file holding its rows, which an id alone does
-/// not reach.
-std::string locator_of(const index::IndexQuery::Located& located) {
-    auto id = index::symbol_id(located.symbol.hash);
-    if(located.symbol.scope == index::SymbolScope::External) {
-        return id;
-    }
-    llvm::StringRef path = located.site.path;
-    bool spaced = llvm::any_of(path, [](char c) { return c == ' ' || c == '\t'; });
-    return spaced ? std::format(R"({} path:"{}")", id, std::string_view(path))
-                  : std::format("{} path:{}", id, std::string_view(path));
+/// The locator an answer names a symbol by: one only some files see is
+/// anchored at the file of its site, which holds its rows.
+std::string symbol_of(const index::IndexQuery::Located& located) {
+    bool external = located.symbol.scope == index::SymbolScope::External;
+    return index::symbol_locator(located.symbol.hash,
+                                 external ? llvm::StringRef() : located.site.path);
 }
 
 template <typename Entry>
@@ -99,7 +93,7 @@ Entry graph_entry(const index::IndexQuery::Located& located) {
         .kind = kind_name(located.symbol.kind),
         .file = std::string(located.site.path),
         .line = lines_of(located.site).start,
-        .symbol = locator_of(located),
+        .symbol = symbol_of(located),
     };
 }
 
@@ -156,11 +150,11 @@ Outcome<index::IndexQuery::Located> resolve_unique(Context& ctx, index::SymbolQu
 /// together, a call a template leaves open between them stays theirs.
 Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator) {
     using Mode = index::SymbolQuery::Mode;
-    bool by_name = locator.by_pattern();
+    bool by_pattern = locator.by_pattern();
     // A near match is no symbol to rewrite a workspace for.
-    if(by_name && locator.mode == Mode::Fuzzy) {
+    if(by_pattern && locator.mode == Mode::Fuzzy) {
         locator.mode = Mode::Exact;
-    } else if(by_name && locator.mode != Mode::Exact) {
+    } else if(by_pattern && locator.mode != Mode::Exact) {
         return std::unexpected("a rename names its symbol by its whole name, not by a pattern");
     }
     auto candidates = resolve(ctx, std::move(locator));
@@ -183,12 +177,17 @@ Outcome<index::RenameTarget> target_of(Context& ctx, index::SymbolQuery locator)
             targets.push_back(std::move(*target));
         }
     }
-    auto scope = targets.front().symbol.symbol.parent;
+    // Overloads share a scope; functions of internal linkage share it only
+    // within their file — two units' `static` helpers are no overload set.
+    auto& first = targets.front().symbol;
     bool overloads =
-        by_name && llvm::all_of(targets, [&](const index::RenameTarget& target) {
-            auto& symbol = target.symbol.symbol;
+        by_pattern && llvm::all_of(targets, [&](const index::RenameTarget& target) {
+            auto& [symbol, site, extent] = target.symbol;
             return (symbol.kind == SymbolKind::Function || symbol.kind == SymbolKind::Method) &&
-                   symbol.parent == scope;
+                   symbol.parent == first.symbol.parent &&
+                   (symbol.scope == index::SymbolScope::External
+                        ? first.symbol.scope == symbol.scope
+                        : site.file == first.site.file);
         });
     if(targets.size() > 1 && !overloads) {
         return ambiguous(ctx, *candidates);
@@ -403,13 +402,14 @@ Outcome<SymbolSearchResult> symbol_search(Context& ctx, llvm::StringRef text, st
         return result;
     }
     auto located = query->by_pattern() ? ctx.query.search(*query, limit) : ctx.query.locate(*query);
-    // A locator names its symbols outright; the filters still apply.
+    // A locator names its symbols outright; the filters still apply, but
+    // an id's paths name the file holding its rows instead.
     if(!query->by_pattern()) {
         llvm::erase_if(located, [&](const index::IndexQuery::Located& hit) {
             if(!query->kinds.empty() && !llvm::is_contained(query->kinds, hit.symbol.kind)) {
                 return true;
             }
-            return !query->paths.empty() &&
+            return !query->handle && !query->paths.empty() &&
                    llvm::none_of(query->paths, [&](const std::string& wanted) {
                        return hit.site.file.valid() &&
                               index::path_matches(wanted,
@@ -443,7 +443,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
         .start_line = lines.start,
         .end_line = lines.end,
         .text = std::move(definition->text),
-        .symbol = locator_of(*resolved),
+        .symbol = symbol_of(*resolved),
     };
 }
 
@@ -476,7 +476,7 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
             .kind = kind_name(located.symbol.kind),
             .start_line = lines.start,
             .end_line = lines.end,
-            .symbol = locator_of(located),
+            .symbol = symbol_of(located),
         });
     }
     return result;
@@ -490,7 +490,7 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
     DefinitionResult result{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
-        .symbol = locator_of(*resolved),
+        .symbol = symbol_of(*resolved),
     };
     if(auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file)) {
         auto lines = lines_of(definition->extent);
@@ -514,7 +514,7 @@ Outcome<ReferencesResult> references(Context& ctx,
     ReferencesResult result{
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
-        .symbol = locator_of(*resolved),
+        .symbol = symbol_of(*resolved),
     };
     index::IndexQuery::Cursor cursor{.symbols = {resolved->symbol.hash}, .site = resolved->site};
     for(auto& site: ctx.query.references(cursor, include_declaration)) {
@@ -573,7 +573,7 @@ Outcome<PlannedRename> rename(Context& ctx, index::SymbolQuery locator, llvm::St
     RenameResult result{
         .name = symbol.display_name(),
         .kind = kind_name(symbol.kind),
-        .symbol = locator_of(target->symbol),
+        .symbol = symbol_of(target->symbol),
         .new_name = new_name.str(),
         .conflicts = plan.conflicts,
         .warnings = plan.warnings,

@@ -2,9 +2,8 @@ module;
 
 #include "modules/prelude.h"
 
-/// The one grammar every symbol lookup speaks: `clice query`'s --query
-/// and --name, workspace/symbol, and the locators of the questions about
-/// one symbol.
+/// The one grammar every symbol lookup speaks: the `--symbol` of
+/// `clice query` and `clice refactor`, and workspace/symbol.
 ///
 ///   foo                  fuzzy; the exact name ranks first, then prefixes
 ///   "foo"                the whole name, case-sensitive
@@ -13,7 +12,8 @@ module;
 ///   ::ns::Foo::bar       inside exactly that container
 ///   ns::*   ns::**       the container's members; its whole subtree
 ///   Widget<int>          a specialization, by its arguments
-///   #1a2b3c              the symbol id an earlier answer carried
+///   #1a2b3c              the symbol id an earlier answer carried, with `path:`
+///                        naming the file of a symbol only some files see
 ///   src/a.cpp:120        the symbols defined on that line
 ///   src/a.cpp:120:8      the symbol under that cursor (1-based line and byte column)
 ///   kind:function        of these kinds (comma-separated, or the term repeated)
@@ -74,8 +74,8 @@ struct SymbolQuery {
 
     std::vector<SymbolKind> kinds;
 
-    /// Path filters; with a handle, the file whose rows anchor it — an
-    /// internal-linkage symbol has no project-wide row.
+    /// Path filters; with a handle, the file whose rows anchor it — a
+    /// symbol only some files see has no project-wide row.
     std::vector<std::string> paths;
 
     /// Set instead of a pattern: the symbol with this id.
@@ -86,9 +86,6 @@ struct SymbolQuery {
 
     /// Parse a query; the error names what could not be read.
     static std::expected<SymbolQuery, std::string> parse(llvm::StringRef text);
-
-    /// The symbol kind a `kind:` term names, case-insensitively.
-    static std::optional<SymbolKind> parse_kind(llvm::StringRef name);
 
     /// Whether the query names symbols by pattern rather than by id or
     /// place.
@@ -103,6 +100,11 @@ struct SymbolQuery {
         return mode == Mode::Members || (mode != Mode::Subtree && absolute);
     }
 };
+
+/// The locator naming a symbol back: its `#<hex>` id, followed by `path:`
+/// and `anchor` when there is one — for a symbol only some files see, a
+/// file holding its rows.
+std::string symbol_locator(SymbolHash hash, llvm::StringRef anchor);
 
 /// Whether a symbol's arguments satisfy the query's: any when the query
 /// spells none, else the same modulo whitespace.

@@ -8,7 +8,7 @@
 
 ## Rename
 
-The symbol is named by a [locator](./query.md#locators), as `clice query` takes one: by its whole name, case included — a near match or a pattern names nothing to rewrite a workspace for —, by the `symbol` an answer of `clice query` carried, or by a place, `file:line[:column]`. A name the overloads of one scope spell renames them all; the `symbol` of one of them renames that one. A name several other symbols spell lists them as `candidates`.
+The symbol is named by a [locator](./query.md#locators), as `clice query` takes one: by its name, spelled exactly, case included, by the `symbol` an answer of `clice query` carried, or by a place, `file:line[:column]`. A near match or a pattern names nothing to rewrite a workspace for. A name the overloads of one scope spell renames them all; the `symbol` of one of them renames that one. A name several other symbols spell lists them as `candidates`.
 
 A rename changes every declaration, definition and reference the index ties to the symbol, and the symbols that must keep its name:
 

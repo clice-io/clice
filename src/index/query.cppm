@@ -448,7 +448,7 @@ public:
 
     TypeHierarchy type_hierarchy(SymbolHash root, Fid anchor, TypeHierarchyOptions options) const;
 
-    /// The symbols a name query (index/symbol_query.h) matches, best
+    /// The symbols a name query (SymbolQuery) matches, best
     /// first, at most `limit`: the search index's hits, the symbols merged
     /// since it was built and the open sessions' own symbols — scanned
     /// directly — under one ranking, each with its canonical site. A query

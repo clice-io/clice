@@ -106,8 +106,11 @@ bool declares(const Shard& rows, SymbolHash hash) {
             found = true;
             return false;
         });
+        if(found) {
+            return true;
+        }
     }
-    return found;
+    return false;
 }
 
 }  // namespace
