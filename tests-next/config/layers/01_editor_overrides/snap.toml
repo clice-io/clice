@@ -1,0 +1,24 @@
+["rules from the file".symbols]
+document_symbols = [
+    { name = "value", kind = "Function", at = "int ⟦value⟧() {" },
+    { name = "main", kind = "Function", at = "int ⟦main⟧() {" },
+]
+
+["rules from the file".hover.hover]
+markdown = '''
+### function `main`
+
+---
+→ `int`
+
+---
+```cpp
+int main()
+```
+'''
+range = "int ⟦main⟧() {"
+
+["rules from the editor"."main.cpp"]
+diagnostics = [
+    { at = "return ⟦FROM_TOML⟧;", severity = "error", message = "use of undeclared identifier 'FROM_TOML'", source = "clang", code = "err_undeclared_var_use" },
+]

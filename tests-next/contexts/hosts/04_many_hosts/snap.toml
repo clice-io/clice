@@ -1,0 +1,18 @@
+[test."first page"]
+contexts = [
+    { label = "s00.cpp", description = "${WS}/s00.cpp", host = "s00.cpp" },
+    { label = "s01.cpp", description = "${WS}/s01.cpp", host = "s01.cpp" },
+    { label = "s02.cpp", description = "${WS}/s02.cpp", host = "s02.cpp" },
+    { label = "s03.cpp", description = "${WS}/s03.cpp", host = "s03.cpp" },
+    { label = "s04.cpp", description = "${WS}/s04.cpp", host = "s04.cpp" },
+    { label = "s05.cpp", description = "${WS}/s05.cpp", host = "s05.cpp" },
+    { label = "s06.cpp", description = "${WS}/s06.cpp", host = "s06.cpp" },
+    { label = "s07.cpp", description = "${WS}/s07.cpp", host = "s07.cpp" },
+    { label = "s08.cpp", description = "${WS}/s08.cpp", host = "s08.cpp" },
+    { label = "s09.cpp", description = "${WS}/s09.cpp", host = "s09.cpp" },
+]
+
+[test."second page"]
+contexts = [
+    { label = "s10.cpp", description = "${WS}/s10.cpp", host = "s10.cpp" },
+]

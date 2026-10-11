@@ -1,0 +1,11 @@
+[test.symbols]
+document_symbols = [
+    {
+        name = "S",
+        kind = "Struct",
+        at = "struct ⟦S⟧ {",
+        children = [
+            { name = "a", kind = "Field", at = "int ⟦a⟧;" },
+        ],
+    },
+]

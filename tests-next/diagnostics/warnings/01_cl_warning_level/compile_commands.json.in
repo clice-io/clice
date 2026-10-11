@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.cpp",
+    "arguments": ["cl.exe", "/nologo", "/TP", "/std:c++17", "/W3", "-c", "${WS}/main.cpp"]
+  }
+]

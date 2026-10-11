@@ -1,0 +1,22 @@
+["the hosts of each file"."utils.h"]
+contexts = [
+    { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+]
+
+["the hosts of each file"."inner.h"]
+contexts = [
+    { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+]
+
+["the hosts of each file"."main.cpp"]
+contexts = [
+    { label = "-std=c++20", description = "${WS}", host = "main.cpp" },
+]
+
+["the automatic pick".current.current_context]
+automatic = true
+
+["the automatic pick".current.current_context.context]
+label = "main.cpp"
+description = "${WS}/main.cpp"
+host = "main.cpp"

@@ -1,0 +1,16 @@
+{
+  // Every host has flags of its own, so none folds into another.
+  "units": {
+    "s00.cpp": ["-DFLAVOR=0"],
+    "s01.cpp": ["-DFLAVOR=1"],
+    "s02.cpp": ["-DFLAVOR=2"],
+    "s03.cpp": ["-DFLAVOR=3"],
+    "s04.cpp": ["-DFLAVOR=4"],
+    "s05.cpp": ["-DFLAVOR=5"],
+    "s06.cpp": ["-DFLAVOR=6"],
+    "s07.cpp": ["-DFLAVOR=7"],
+    "s08.cpp": ["-DFLAVOR=8"],
+    "s09.cpp": ["-DFLAVOR=9"],
+    "s10.cpp": ["-DFLAVOR=10"]
+  }
+}

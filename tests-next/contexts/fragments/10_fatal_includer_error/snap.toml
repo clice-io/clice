@@ -1,0 +1,6 @@
+[test."ops.def"]
+wrong = "the warning blames a missing database entry for the fragment, but the header that is not found is its includer's, which the database lists: no setup change would help"
+diagnostics = [
+    { at = "⟦⟧OP(add)", severity = "error", message = "In includer context: 'missing.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    { at = "⟦⟧OP(add)", severity = "warning", message = "No compilation database entry for this file (compile command was inferred from an including file), so some includes may not be found. Configure compile_commands.json for accurate diagnostics.", source = "clice", code = "inferred-compile-command" },
+]

@@ -1,0 +1,17 @@
+[test.before]
+diagnostics = [
+    { at = "int* p = ⟦0⟧;", severity = "warning", message = "use nullptr", source = "clang-tidy", code = "modernize-use-nullptr" },
+]
+
+[[test.fixes.code_actions]]
+kind = "quickfix"
+title = "change '0' to 'nullptr'"
+
+[test.fixes.code_actions.edits]
+"main.cpp" = '''
+-int* p = 0;
++int* p = nullptr;
+'''
+
+[test.after]
+diagnostics = []

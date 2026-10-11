@@ -1,0 +1,3 @@
+[project]
+clang_tdy = true
+enable_indexing = false

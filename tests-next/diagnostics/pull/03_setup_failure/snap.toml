@@ -1,0 +1,10 @@
+[test.pulled]
+wrong = "the command fails before parsing (an unknown target) and nothing says so: the file gets no diagnostic with the reason, only silence"
+diagnostics = []
+
+[test.hover]
+hover = {}
+
+[test."pulled again"]
+wrong = "the command fails before parsing (an unknown target) and nothing says so: the file gets no diagnostic with the reason, only silence"
+diagnostics = []

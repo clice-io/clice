@@ -1,0 +1,2 @@
+[test.definition]
+definition = ["main.cpp │ #define ⟦ITEM⟧(name) int name;"]

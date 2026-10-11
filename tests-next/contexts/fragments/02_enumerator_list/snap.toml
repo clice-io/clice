@@ -1,0 +1,24 @@
+[test.diagnostics]
+diagnostics = []
+
+[test.symbols]
+document_symbols = [
+    { name = "NotFound", kind = "EnumMember", at = "ERROR(⟦NotFound⟧, 404)" },
+    { name = "Forbidden", kind = "EnumMember", at = "ERROR(⟦Forbidden⟧, 403)" },
+]
+
+[test.hover.hover]
+markdown = '''
+### enumerator `NotFound`
+
+---
+Type: `enum Code`
+Value = `404`
+
+---
+```cpp
+// In Code
+NotFound = 404
+```
+'''
+range = "ERROR(⟦NotFound⟧, 404)"

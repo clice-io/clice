@@ -1,0 +1,33 @@
+[test."a.cpp"]
+diagnostics = [
+    { at = "⟦⟧#define M 1", severity = "warning", message = "unknown warning option '-Wlogical-op'; did you mean '-Wlong-long'?", source = "clang", code = "warn_unknown_diag_option", related = [] },
+    {
+        at = "#define ⟦M⟧ 2",
+        severity = "warning",
+        message = "'M' macro redefined",
+        source = "clang",
+        code = "ext_pp_macro_redef",
+        related = [
+            { at = "#define ⟦M⟧ 1", message = "previous definition is here" },
+        ],
+    },
+    { at = '#pragma ⟦message⟧("built")', severity = "warning", message = "built", source = "clang", code = "warn_pragma_message", related = [] },
+    { at = '#⟦warning⟧ "pending"', severity = "warning", message = '"pending"', source = "clang", code = "pp_hash_warning", related = [] },
+]
+
+[test."b.cpp"]
+diagnostics = [
+    { at = "⟦⟧#define M 1", severity = "warning", message = "unknown warning option '-Wlogical-op'; did you mean '-Wlong-long'?", source = "clang", code = "warn_unknown_diag_option", related = [] },
+    {
+        at = "#define ⟦M⟧ 2",
+        severity = "warning",
+        message = "'M' macro redefined",
+        source = "clang",
+        code = "ext_pp_macro_redef",
+        related = [
+            { at = "#define ⟦M⟧ 1", message = "previous definition is here" },
+        ],
+    },
+    { at = '#pragma ⟦message⟧("built")', severity = "warning", message = "built", source = "clang", code = "warn_pragma_message", related = [] },
+    { at = '#⟦warning⟧ "pending"', severity = "warning", message = '"pending"', source = "clang", code = "pp_hash_warning", related = [] },
+]

@@ -1,0 +1,1 @@
+Checks: "-*,bugprone-integer-division,bugprone-use-after-move,misc-const-correctness"

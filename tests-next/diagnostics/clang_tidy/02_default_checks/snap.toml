@@ -1,0 +1,12 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦namespace geo = geometry; … ⟧ (2 lines)",
+        severity = "warning",
+        message = "namespace alias decl 'geo' is unused",
+        source = "clang-tidy",
+        code = "misc-unused-alias-decls",
+        link = "https://clang.llvm.org/extra/clang-tidy/checks/misc/unused-alias-decls.html",
+        tags = ["Unnecessary"],
+    },
+]

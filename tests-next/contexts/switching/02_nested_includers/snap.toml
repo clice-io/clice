@@ -1,0 +1,79 @@
+["a switch is current".automatic.current_context]
+automatic = true
+
+["a switch is current".automatic.current_context.context]
+label = "main.cpp"
+description = "${WS}/main.cpp"
+host = "main.cpp"
+
+["a switch is current".switched.current_context]
+automatic = false
+
+["a switch is current".switched.current_context.context]
+label = "main.cpp"
+description = "${WS}/main.cpp"
+host = "main.cpp"
+
+["a switch is current".diagnostics]
+diagnostics = []
+
+["a switch is current".hover.hover]
+markdown = '''
+### function `calc`
+
+---
+→ `int`
+Parameters:
+- `Point p`
+
+---
+```cpp
+inline int calc(Point p)
+```
+'''
+range = "inline int ⟦calc⟧(Point p) {"
+
+["a nested header switches".diagnostics]
+diagnostics = []
+
+["a nested header switches".hover.hover]
+markdown = '''
+### function `inner_origin`
+
+---
+→ `Point`
+
+---
+```cpp
+inline Point inner_origin()
+```
+'''
+range = "inline Point ⟦inner_origin⟧() {"
+
+["a switch publishes again".opened]
+pushes = [[]]
+
+["a switch publishes again".switched]
+pushes = [[], []]
+
+["a switch publishes again".reset]
+pushes = [[], [], []]
+
+["a switch publishes again".current.current_context]
+automatic = true
+
+["a switch publishes again".current.current_context.context]
+label = "main.cpp"
+description = "${WS}/main.cpp"
+host = "main.cpp"
+
+["names in the includer's context".type]
+highlights = [
+    { at = "inline int calc(⟦Point⟧ p) {", kind = "read" },
+]
+
+["names in the includer's context".param]
+highlights = [
+    { at = "inline int calc(Point ⟦p⟧) {", kind = "text" },
+    { at = "return distance(⟦p⟧, inner_origin());", kind = "read" },
+]

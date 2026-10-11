@@ -1,0 +1,1 @@
+inline Posix make() { return {}; }

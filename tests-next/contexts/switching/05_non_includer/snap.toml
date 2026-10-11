@@ -1,0 +1,7 @@
+[test.current.current_context]
+automatic = true
+
+[test.current.current_context.context]
+label = "main.cpp"
+description = "${WS}/main.cpp"
+host = "main.cpp"

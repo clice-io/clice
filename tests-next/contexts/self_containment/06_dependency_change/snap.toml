@@ -1,0 +1,5 @@
+[test.before]
+diagnostics = []
+
+[test.after]
+diagnostics = []

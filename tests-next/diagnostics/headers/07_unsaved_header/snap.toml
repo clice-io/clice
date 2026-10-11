@@ -1,0 +1,5 @@
+[test."main.cpp"]
+wrong = "main.cpp compiles against the header on disk, not the open header's unsaved text that declares new_func (clangd#488)"
+diagnostics = [
+    { at = "int main() { return old_func() + ⟦new_func⟧(); }", severity = "error", message = "use of undeclared identifier 'new_func'", source = "clang", code = "err_undeclared_var_use" },
+]

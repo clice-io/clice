@@ -1,0 +1,3 @@
+{
+  "units": { "host.cpp": [["-DUSE_VULKAN"], ["-DUSE_METAL"]] }
+}

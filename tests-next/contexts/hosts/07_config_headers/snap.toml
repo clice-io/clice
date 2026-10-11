@@ -1,0 +1,7 @@
+[test.diagnostics]
+diagnostics = []
+
+[test.contexts]
+contexts = [
+    { label = "b.cpp", description = "${WS}/b.cpp", host = "b.cpp" },
+]

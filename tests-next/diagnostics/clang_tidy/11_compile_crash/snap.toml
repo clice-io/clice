@@ -1,0 +1,16 @@
+[test.hover]
+hover = {}
+
+[test."main.cpp"]
+diagnostics = [
+    { at = "⟦⟧int add(int a, int b) { return a + b; }", severity = "warning", message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+]
+
+[test.crashes]
+value = 2
+
+[test."hover after a save"]
+hover = {}
+
+[test."crashes after a save"]
+value = 3

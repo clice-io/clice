@@ -1,0 +1,4 @@
+[test."vec.tpp"]
+diagnostics = [
+    { at = "namespace detail ⟦{⟧", severity = "error", message = "expected '}'", source = "clang", code = "err_expected" },
+]

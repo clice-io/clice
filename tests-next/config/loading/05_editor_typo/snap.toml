@@ -1,0 +1,3 @@
+[test.guidance]
+wrong = "a misspelled key in the editor's settings is ignored without a word, where the same key in clice.toml warns"
+value = []

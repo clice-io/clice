@@ -1,4 +1,4 @@
-[answers.macro.hover]
+["hover in the header".macro.hover]
 markdown = '''
 ### macro `SCALE`
 
@@ -12,7 +12,7 @@ markdown = '''
 '''
 range = "return Meters{⟦SCALE⟧ * 0.5};"
 
-[answers.variable.hover]
+["hover in the header".variable.hover]
 markdown = '''
 ### variable `unit_length`
 
@@ -25,3 +25,6 @@ Meters unit_length{1.0}
 ```
 '''
 range = "inline Meters ⟦unit_length⟧{1.0};"
+
+["the includer's context"."ruler.h"]
+diagnostics = []

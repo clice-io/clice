@@ -1,0 +1,7 @@
+[test."no includer"]
+contexts = []
+
+[test.included]
+contexts = [
+    { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+]

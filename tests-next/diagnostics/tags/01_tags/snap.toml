@@ -1,0 +1,19 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "int ⟦unused⟧ = 0;",
+        severity = "warning",
+        message = "unused variable 'unused'",
+        source = "clang",
+        code = "warn_unused_variable",
+        tags = ["Unnecessary"],
+    },
+    {
+        at = "return ⟦stale⟧();",
+        severity = "warning",
+        message = "'stale' is deprecated: use fresh",
+        source = "clang",
+        code = "warn_deprecated_message",
+        tags = ["Deprecated"],
+    },
+]

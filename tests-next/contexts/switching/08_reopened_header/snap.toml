@@ -1,0 +1,24 @@
+["a reopen keeps the choice".current.current_context]
+automatic = false
+
+["a reopen keeps the choice".current.current_context.context]
+label = "main.cpp (#2)"
+description = "${WS}/main.cpp"
+host = "main.cpp"
+
+["a reopen keeps the choice".diagnostics]
+diagnostics = []
+
+["a changed includer is read again".current.current_context]
+automatic = false
+
+["a changed includer is read again".current.current_context.context]
+label = "main.cpp (#2)"
+description = "${WS}/main.cpp"
+host = "main.cpp"
+
+["a changed includer is read again".diagnostics]
+diagnostics = [
+    { at = "⟦X⟧(alpha)", severity = "error", message = "use of undeclared identifier 'missing_value'", source = "clang", code = "err_undeclared_var_use" },
+    { at = "⟦X⟧(beta)", severity = "error", message = "use of undeclared identifier 'missing_value'", source = "clang", code = "err_undeclared_var_use" },
+]

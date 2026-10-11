@@ -1,0 +1,44 @@
+[test.before.hover]
+markdown = '''
+### macro `SCALE`
+
+---
+```cpp
+#define SCALE 3
+
+// Expands to
+3
+```
+'''
+range = "return ⟦SCALE⟧ * 2;"
+
+[test.edited]
+wrong = "the header still reads its includer as saved, not the includer's unsaved text"
+
+[test.edited.hover]
+markdown = '''
+### macro `SCALE`
+
+---
+```cpp
+#define SCALE 3
+
+// Expands to
+3
+```
+'''
+range = "return ⟦SCALE⟧ * 2;"
+
+[test.saved.hover]
+markdown = '''
+### macro `SCALE`
+
+---
+```cpp
+#define SCALE 4
+
+// Expands to
+4
+```
+'''
+range = "return ⟦SCALE⟧ * 2;"

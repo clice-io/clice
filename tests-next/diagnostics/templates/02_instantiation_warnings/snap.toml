@@ -1,0 +1,13 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "bool b = ⟦less⟧(-1, 1u);",
+        severity = "warning",
+        message = "comparison of integers of different signs: 'int' and 'unsigned int'",
+        source = "clang",
+        code = "warn_mixed_sign_comparison",
+        related = [
+            { at = "bool b = ⟦less⟧(-1, 1u);", message = "in instantiation of function template specialization 'less<int>' requested here" },
+        ],
+    },
+]

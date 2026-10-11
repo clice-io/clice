@@ -1,10 +1,17 @@
-["each host gives the header its own reading"."int host".hover]
+["each host gives the header its own reading".automatic.context]
+automatic = true
+
+["each host gives the header its own reading".automatic.context.context]
+label = "int_host.cpp"
+description = "${WS}/int_host.cpp"
+host = "int_host.cpp"
+
+["each host gives the header its own reading".automatic.hover]
 markdown = '''
 ### function `get_value`
 
 ---
 → `int`
-Not self-contained: each includer chooses VALUE_TYPE first.
 
 ---
 ```cpp
@@ -13,13 +20,20 @@ int get_value()
 '''
 range = "VALUE_TYPE ⟦get_value⟧();"
 
+["each host gives the header its own reading"."real host".context]
+automatic = false
+
+["each host gives the header its own reading"."real host".context.context]
+label = "real_host.cpp"
+description = "${WS}/real_host.cpp"
+host = "real_host.cpp"
+
 ["each host gives the header its own reading"."real host".hover]
 markdown = '''
 ### function `get_value`
 
 ---
 → `float`
-Not self-contained: each includer chooses VALUE_TYPE first.
 
 ---
 ```cpp
@@ -27,3 +41,63 @@ float get_value()
 ```
 '''
 range = "VALUE_TYPE ⟦get_value⟧();"
+
+["each host gives the header its own reading"."int host".context]
+automatic = false
+
+["each host gives the header its own reading"."int host".context.context]
+label = "int_host.cpp"
+description = "${WS}/int_host.cpp"
+host = "int_host.cpp"
+
+["each host gives the header its own reading"."int host".hover]
+markdown = '''
+### function `get_value`
+
+---
+→ `int`
+
+---
+```cpp
+int get_value()
+```
+'''
+range = "VALUE_TYPE ⟦get_value⟧();"
+
+["each host gives the header its own reading".reset.context]
+automatic = true
+
+["each host gives the header its own reading".reset.context.context]
+label = "int_host.cpp"
+description = "${WS}/int_host.cpp"
+host = "int_host.cpp"
+
+["each host gives the header its own reading".reset.hover]
+markdown = '''
+### function `get_value`
+
+---
+→ `int`
+
+---
+```cpp
+int get_value()
+```
+'''
+range = "VALUE_TYPE ⟦get_value⟧();"
+
+["a choice survives a restart".chosen.current_context]
+automatic = false
+
+["a choice survives a restart".chosen.current_context.context]
+label = "real_host.cpp"
+description = "${WS}/real_host.cpp"
+host = "real_host.cpp"
+
+["a choice survives a restart".reset.current_context]
+automatic = true
+
+["a choice survives a restart".reset.current_context.context]
+label = "int_host.cpp"
+description = "${WS}/int_host.cpp"
+host = "int_host.cpp"

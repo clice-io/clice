@@ -1,0 +1,11 @@
+[test."src/hdr.h"]
+diagnostics = [
+    { at = "⟦⟧#pragma once", severity = "warning", message = "No compilation database entry for this file (compile command was inferred from an including file), so some includes may not be found. Configure compile_commands.json for accurate diagnostics.", source = "clice", code = "inferred-compile-command" },
+    { at = '#include ⟦"nothere.h"⟧', severity = "error", message = "'nothere.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+]
+
+[test."src/util.h"]
+diagnostics = []
+
+[test."src/mylib"]
+diagnostics = []

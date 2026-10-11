@@ -1,0 +1,34 @@
+["in the editor".diagnostics]
+diagnostics = []
+
+["in the editor".symbols]
+document_symbols = [
+    { name = "field_a", kind = "Field", at = "int ⟦field_a⟧;" },
+    { name = "field_b", kind = "Field", at = "int ⟦field_b⟧;" },
+    { name = "sum", kind = "Method", at = "int ⟦sum⟧() const { return field_a + field_b; }" },
+]
+
+["in the editor".hover.hover]
+markdown = '''
+### field `field_a`
+
+---
+Type: `int`
+
+---
+```cpp
+// In Record
+public: int field_a
+```
+'''
+range = "int sum() const { return ⟦field_a⟧ + field_b; }"
+
+["in the editor".definition]
+definition = ["int ⟦field_a⟧;"]
+
+["on the command line".symbols]
+document_symbols = [
+    { name = "field_a", kind = "Field", at = "int ⟦field_a⟧;" },
+    { name = "field_b", kind = "Field", at = "int ⟦field_b⟧;" },
+    { name = "sum", kind = "Method", at = "int ⟦sum⟧() const { return field_a + field_b; }" },
+]

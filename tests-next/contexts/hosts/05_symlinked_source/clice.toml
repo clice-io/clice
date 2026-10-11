@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["real/**"]
+append = ["-DFROM_RULE"]

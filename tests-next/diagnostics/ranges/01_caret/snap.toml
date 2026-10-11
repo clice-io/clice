@@ -1,0 +1,5 @@
+[test."main.cpp"]
+diagnostics = [
+    { at = 'return 1.0 ⟦+⟧ "a";', severity = "error", message = "invalid operands to binary expression ('double' and 'const char[2]')", source = "clang", code = "err_typecheck_invalid_operands", related = [] },
+    { at = "⟦value()⟧;", severity = "warning", message = "ignoring return value of function declared with 'nodiscard' attribute", source = "clang", code = "warn_unused_result", related = [] },
+]

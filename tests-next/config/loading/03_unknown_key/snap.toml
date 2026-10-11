@@ -1,0 +1,10 @@
+[test."clice.toml"]
+wrong = "only the key's first character is underlined, not the key"
+pushes = [
+    [
+        { at = "⟦c⟧lang_tdy = true", severity = "warning", message = "unknown field 'clang_tdy' at project (line 2, column 1)", source = "clice" },
+    ],
+]
+
+[test."main.cpp"]
+diagnostics = []

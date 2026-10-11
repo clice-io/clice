@@ -1,0 +1,4 @@
+[test."widget.h"]
+contexts = [
+    { label = "widget.cpp", description = "${WS}/widget.cpp", host = "widget.cpp" },
+]

@@ -1,0 +1,9 @@
+[test.diagnostics]
+diagnostics = [
+    { at = "⟦X⟧(alpha)", severity = "error", message = "expected identifier", source = "clang", code = "err_expected" },
+]
+
+[test.contexts]
+contexts = [
+    { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+]

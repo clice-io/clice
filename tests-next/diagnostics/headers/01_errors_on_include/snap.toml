@@ -1,0 +1,35 @@
+[test."body.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"bad.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'undefined_one'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+        related = [
+            { at = "bad.h │ int one = ⟦undefined_one⟧;", message = "error occurred here" },
+        ],
+    },
+    { at = "int c = ⟦undeclared_main⟧;", severity = "error", message = "use of undeclared identifier 'undeclared_main'", source = "clang", code = "err_undeclared_var_use", related = [] },
+]
+
+[test."pre.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"bad.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'undefined_one'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+        related = [
+            { at = "bad.h │ int one = ⟦undefined_one⟧;", message = "error occurred here" },
+        ],
+    },
+    { at = "int c = ⟦undeclared_main⟧;", severity = "error", message = "use of undeclared identifier 'undeclared_main'", source = "clang", code = "err_undeclared_var_use", related = [] },
+]
+
+[test."bad.h"]
+diagnostics = [
+    { at = "int one = ⟦undefined_one⟧;", severity = "error", message = "use of undeclared identifier 'undefined_one'", source = "clang", code = "err_undeclared_var_use", related = [] },
+    { at = "int two = ⟦undefined_two⟧;", severity = "error", message = "use of undeclared identifier 'undefined_two'", source = "clang", code = "err_undeclared_var_use", related = [] },
+]

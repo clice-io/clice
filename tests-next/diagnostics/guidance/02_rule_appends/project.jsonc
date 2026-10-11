@@ -1,0 +1,4 @@
+{
+  // No database: the rule's include path must reach the guessed command.
+  "databases": {}
+}

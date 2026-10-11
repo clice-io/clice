@@ -1,0 +1,7 @@
+[test."with USE_A"]
+diagnostics = []
+
+[test.reopened]
+diagnostics = [
+    { at = "int broken() { return ⟦undefined_b_symbol⟧; }", severity = "error", message = "use of undeclared identifier 'undefined_b_symbol'", source = "clang", code = "err_undeclared_var_use" },
+]

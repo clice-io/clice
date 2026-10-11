@@ -1,0 +1,6 @@
+[test."link/main.cpp"]
+wrong = "each label lists every -D, -O, -std and -g flag of its command, the shared -std=c++20 included, rather than only the flags that set the commands apart"
+contexts = [
+    { label = "-std=c++20 -DFIRST -DFROM_RULE", description = "${WS}", host = "link/main.cpp" },
+    { label = "-std=c++20 -DSECOND -DFROM_RULE", description = "${WS}", host = "link/main.cpp" },
+]

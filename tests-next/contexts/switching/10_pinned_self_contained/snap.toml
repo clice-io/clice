@@ -1,0 +1,5 @@
+[test.alone]
+inactive_lines = ["⟦inline int mode() { return 1; }⟧"]
+
+[test."in a.cpp"]
+inactive_lines = ["⟦inline int mode() { return 2; }⟧"]

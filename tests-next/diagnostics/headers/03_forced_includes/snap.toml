@@ -1,0 +1,18 @@
+[test."missing.cpp"]
+diagnostics = [
+    { at = "⟦⟧int a = 0;", severity = "error", message = "'missing.h' file not found", source = "clang", code = "err_pp_file_not_found", related = [] },
+]
+
+[test."forced.cpp"]
+diagnostics = [
+    {
+        at = "⟦⟧int b = 0;",
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'undeclared_forced'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+        related = [
+            { at = "forced.h │ int forced = ⟦undeclared_forced⟧;", message = "error occurred here" },
+        ],
+    },
+]

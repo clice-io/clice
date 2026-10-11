@@ -1,0 +1,5 @@
+[test."bar.h"]
+diagnostics = []
+
+[test.moved]
+diagnostics = []

@@ -1,0 +1,3 @@
+{
+  "units": { "main.cpp": [["-DCONFIG_A"], ["-DCONFIG_B"]] }
+}

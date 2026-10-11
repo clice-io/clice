@@ -1,0 +1,4 @@
+[test."m.inc"]
+diagnostics = [
+    { at = "void ⟦f⟧(int) {}", severity = "error", message = "In includer context: too few arguments to function call, expected 1, have 0", source = "clang", code = "err_typecheck_call_too_few_args" },
+]

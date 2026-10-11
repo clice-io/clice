@@ -1,0 +1,18 @@
+[test."main.cpp"]
+diagnostics = [
+    { at = 'int x;⟦ … #include "a.h"⟧ (2 lines)', severity = "warning", message = "duplicate include", source = "clang-tidy", code = "readability-duplicate-include" },
+]
+
+[test.fixes]
+wrong = "the fix is titled remove '…': the text it removes starts with a line break, and the title shows only the empty first line"
+
+[[test.fixes.code_actions]]
+kind = "quickfix"
+title = "remove '…'"
+
+[test.fixes.code_actions.edits]
+"main.cpp" = '''
+ #include "a.h"
+ int x;
+-#include "a.h"
+'''

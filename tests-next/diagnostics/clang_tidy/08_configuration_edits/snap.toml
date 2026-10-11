@@ -1,0 +1,10 @@
+[test.none]
+diagnostics = []
+
+[test.created]
+diagnostics = [
+    { at = "int* p = ⟦0⟧;", severity = "warning", message = "use nullptr", source = "clang-tidy", code = "modernize-use-nullptr" },
+]
+
+[test.edited]
+diagnostics = []

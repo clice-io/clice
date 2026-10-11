@@ -1,0 +1,17 @@
+[test.contexts]
+wrong = "each label lists every -D, -O, -std and -g flag of its command, the shared -std=c++20 included, rather than only the flags that set the commands apart"
+contexts = [
+    { label = "-std=c++20 -DEXPECTED", description = "${WS}", host = "main.cpp" },
+    { label = "-std=c++20", description = "${WS}", host = "main.cpp" },
+]
+
+[test."with the define"]
+diagnostics = []
+
+[test."without it"]
+diagnostics = [
+    { at = "#⟦error⟧ missing EXPECTED", severity = "error", message = "missing EXPECTED", source = "clang", code = "err_pp_hash_error" },
+]
+
+[test."with it again"]
+diagnostics = []

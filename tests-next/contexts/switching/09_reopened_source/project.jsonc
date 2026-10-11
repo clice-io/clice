@@ -1,0 +1,3 @@
+{
+  "units": { "main.cpp": [["-DUSE_A"], ["-DUSE_B"]] }
+}

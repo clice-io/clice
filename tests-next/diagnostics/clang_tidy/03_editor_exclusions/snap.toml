@@ -1,0 +1,4 @@
+[test."main.cpp"]
+diagnostics = [
+    { at = "double ratio(int a, int b) { return ⟦a⟧ / b; }", severity = "warning", message = "result of integer division used in a floating point context; possible loss of precision", source = "clang-tidy", code = "bugprone-integer-division", link = "https://clang.llvm.org/extra/clang-tidy/checks/bugprone/integer-division.html", tags = [] },
+]

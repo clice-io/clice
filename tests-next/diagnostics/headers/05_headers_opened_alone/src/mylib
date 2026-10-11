@@ -1,0 +1,3 @@
+#pragma once
+#pragma GCC system_header
+static inline int other() { return 2; }

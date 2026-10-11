@@ -1,0 +1,25 @@
+["each include is a context".contexts]
+contexts = [
+    { label = "main.cpp (#1)", description = "${WS}/main.cpp", host = "main.cpp" },
+    { label = "main.cpp (#2)", description = "${WS}/main.cpp", host = "main.cpp" },
+]
+
+["each include is a context"."include 1"]
+diagnostics = []
+symbols = [
+    { name = "alpha", kind = "Variable", at = "X(⟦alpha⟧)" },
+]
+
+["each include is a context"."include 2"]
+diagnostics = []
+symbols = [
+    { name = "get_alpha", kind = "Function", at = "⟦X⟧(alpha)" },
+]
+
+["an include past the last is refused".current.current_context]
+automatic = true
+
+["an include past the last is refused".current.current_context.context]
+label = "main.cpp (#1)"
+description = "${WS}/main.cpp"
+host = "main.cpp"
