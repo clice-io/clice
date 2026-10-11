@@ -141,7 +141,7 @@ void EXPECT_TOKEN(llvm::StringRef name,
 ZEST_CASE(PreambleDefineUnderPch) {
     // The leading `#define` sits in the preamble, so under the PCH split no
     // MacroDefine record exists in the main compile; the macro name must
-    // still classify through the lexical directive fallback.
+    // still classify as a definition through the lexical directive fallback.
     run_utf8(R"cpp(
 §(d1)⟦#define⟧ §(m0)⟦FOO⟧
 §(k0)⟦int⟧ main() { §(k1)⟦return⟧ 0; }
@@ -149,7 +149,7 @@ ZEST_CASE(PreambleDefineUnderPch) {
 )cpp");
 
     EXPECT_TOKEN("d1", SymbolKind::Directive);
-    EXPECT_TOKEN("m0", SymbolKind::Macro);
+    EXPECT_TOKEN("m0", SymbolKind::Macro, SymbolModifiers::to_mask(SymbolModifiers::Definition));
     EXPECT_TOKEN("k0", SymbolKind::Primitive);
     EXPECT_TOKEN("k1", SymbolKind::Keyword);
     EXPECT_TOKEN("c0", SymbolKind::Comment);

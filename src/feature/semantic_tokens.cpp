@@ -170,6 +170,18 @@ bool is_virtual(const clang::Decl* decl) {
 /// The classification a decl occurrence contributes: the decl's symbol kind
 /// plus modifiers derived from the decl and the occurrence role.
 Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
+    /// Vec(It, It) -> Vec<int>;
+    /// ^~~ a deduction guide is written as the name of its template
+    if(auto* guide = llvm::dyn_cast<clang::CXXDeductionGuideDecl>(decl)) {
+        return classify_decl(guide->getDeducedTemplate()->getTemplatedDecl(),
+                             RelationKind::Reference);
+    }
+
+    if(relation.isReference() &&
+       decl->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName) {
+        return {SymbolKind::Operator, SymbolModifiers::to_mask(SymbolModifiers::UserDefined)};
+    }
+
     if(relation.isReference() && !can_highlight_name(decl->getDeclName())) {
         return {};
     }
@@ -354,7 +366,8 @@ private:
                 /// defines under a PCH, where no MacroDefine node exists
                 /// (the preamble's directives live in the PCH compile).
                 if(is_identifier_like) {
-                    lexical.kind = SymbolKind::Macro;
+                    lexical = {SymbolKind::Macro,
+                               SymbolModifiers::to_mask(SymbolModifiers::Definition)};
                 }
                 directive_context = DirectiveContext::InDirective;
                 break;
@@ -432,11 +445,12 @@ private:
             };
 
         /// Anchor a declaration-name candidate. A written name can only be
-        /// spelled as an identifier or a destructor's `~`; an occurrence
-        /// resolving to any other token names nothing written — an anonymous
-        /// parameter's trailing `)`, the `[` of a structured binding, the
-        /// `(` of a constructor call written as the type name, an operator
-        /// declaration's `operator` keyword — and must not paint it.
+        /// spelled as an identifier, a destructor's `~` or the punctuation of
+        /// an overloaded operator's use; an occurrence resolving to any other
+        /// token names nothing written — an anonymous parameter's trailing
+        /// `)`, the `[` of a structured binding, the `(` of a constructor
+        /// call written as the type name, an operator declaration's
+        /// `operator` keyword — and must not paint it.
         auto anchor_name = [&](clang::SourceLocation location, Classified candidate) {
             if(candidate.kind == SymbolKind::Invalid) {
                 return;
@@ -446,7 +460,9 @@ private:
                 return;
             }
             auto kind = spelled[*index].kind();
-            if(kind != clang::tok::identifier && kind != clang::tok::tilde) {
+            if(kind != clang::tok::identifier && kind != clang::tok::tilde &&
+               !(candidate.kind == SymbolKind::Operator &&
+                 clang::tok::getPunctuatorSpelling(kind))) {
                 return;
             }
             if(semantics.token_preprocessed_away(*index)) {
