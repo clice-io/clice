@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs";
 import {
-    IDLE_WAIT,
+    STABILIZE_DELAY,
     asLocations,
     runProcess,
     waitUntil,
@@ -24,7 +24,7 @@ async function waitForDefinitionOf(client: CliceClient, name: string, uri?: stri
             ((await client.workspaceSymbols(name)) ?? []).some(
                 (symbol) => symbol.name === name && (!uri || symbol.location.uri === uri),
             ),
-        { timeout: INDEX_TIMEOUT, interval: IDLE_WAIT, description: `${name} indexed` },
+        { timeout: INDEX_TIMEOUT, interval: STABILIZE_DELAY, description: `${name} indexed` },
     );
 }
 
@@ -170,7 +170,7 @@ test("nested folder joins its project", async ({ session }) => {
     const diagnosed = (errors: boolean, description: string) =>
         waitUntil(() => client.errors(inner).length > 0 === errors, {
             timeout: INDEX_TIMEOUT,
-            interval: IDLE_WAIT,
+            interval: STABILIZE_DELAY,
             description,
         });
     // Alone, the nested folder is a project that knows no command for it.
@@ -325,7 +325,7 @@ test("removed folder releases its files", async ({ session }) => {
     const diagnosed = (errors: boolean, description: string) =>
         waitUntil(() => client.errors(beta).length > 0 === errors, {
             timeout: INDEX_TIMEOUT,
-            interval: IDLE_WAIT,
+            interval: STABILIZE_DELAY,
             description,
         });
     await client.changeWorkspaceFolders({ removed: ["beta"] });
@@ -368,7 +368,7 @@ test("folder re-added at once keeps its cache", async ({ session }) => {
         },
         {
             timeout: INDEX_TIMEOUT,
-            interval: IDLE_WAIT,
+            interval: STABILIZE_DELAY,
             description: "the re-added folder to take its cache directory back",
         },
     );
@@ -391,7 +391,7 @@ test("database change moves a document", async ({ session }) => {
     await client.poll("cdb");
     await waitUntil(() => client.errors(shared).length === 0, {
         timeout: INDEX_TIMEOUT,
-        interval: IDLE_WAIT,
+        interval: STABILIZE_DELAY,
         description: "beta to compile the file its database lists now",
     });
 });
@@ -613,7 +613,7 @@ test("context from another folder", async ({ session }) => {
     expect((await client.resetContext(header)).success).toBe(true);
     await waitUntil(() => client.errors(header).length > 0, {
         timeout: INDEX_TIMEOUT,
-        interval: IDLE_WAIT,
+        interval: STABILIZE_DELAY,
         description: "the library does not define IN_APP",
     });
     const current = await client.currentContext(header);
@@ -690,7 +690,11 @@ test("save reaches every folder", async ({ session }) => {
                 .map((location) => location.range.start.line);
             return lines.length === 1 && lines[0] === 2;
         },
-        { timeout: INDEX_TIMEOUT, interval: IDLE_WAIT, description: "both folders reindexed" },
+        {
+            timeout: INDEX_TIMEOUT,
+            interval: STABILIZE_DELAY,
+            description: "both folders reindexed",
+        },
     );
 });
 
@@ -747,7 +751,7 @@ test("indexing progress ends across folders", async ({ session }) => {
             .map((event) => event.value as { kind: string; message?: string });
     await waitUntil(() => [undefined, "end"].includes(events().at(-1)?.kind), {
         timeout: INDEX_TIMEOUT,
-        interval: IDLE_WAIT,
+        interval: STABILIZE_DELAY,
         description: "the indexing progress to end",
     });
     let completed = 0;

@@ -271,7 +271,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
         return CacheStore(std::move(state));
     }
 
-    // Only the parent may exist before the lock is held: it hosts the lock
+    // Only the parent may exist before the lock is held: it holds the lock
     // file and is never removed.
     if(auto ec = vfs::create_directories(parent)) {
         return std::unexpected(ec);

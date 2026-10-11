@@ -1338,12 +1338,12 @@ std::string build_preamble_index(CompilationUnitRef unit,
 
 namespace {
 
-using BlobView = kota::codec::fbs::table_view<TUIndexBlob>;
+using TUIndexView = kota::codec::fbs::table_view<TUIndexBlob>;
 
 /// The buffer was fully verified at TUIndex::from_bytes; per-accessor
 /// views skip that cost.
-BlobView blob_root(llvm::StringRef data) {
-    return BlobView::from_verified_bytes(blob_bytes(data));
+TUIndexView blob_root(llvm::StringRef data) {
+    return TUIndexView::from_verified_bytes(blob_bytes(data));
 }
 
 /// The symbol table columns of a TU index blob, borrowing its bytes.
@@ -1361,7 +1361,7 @@ struct SymbolColumns {
     llvm::ArrayRef<std::uint32_t> reference_ends;
     llvm::ArrayRef<std::uint32_t> references;
 
-    static SymbolColumns of(BlobView root) {
+    static SymbolColumns of(TUIndexView root) {
         return {
             .hashes = to_array_ref(root[&TUIndexBlob::sym_hashes]),
             .names = to_ref(root[&TUIndexBlob::sym_names]),
@@ -1406,7 +1406,7 @@ struct SymbolColumns {
 }  // namespace
 
 TUIndex TUIndex::from_bytes(llvm::StringRef data) {
-    auto root = BlobView::from_bytes(blob_bytes(data));
+    auto root = TUIndexView::from_bytes(blob_bytes(data));
     if(!root.valid()) {
         LOG_DEBUG("Rejecting TU index: structural verification failed");
         return {};

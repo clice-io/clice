@@ -62,7 +62,7 @@ ZEST_CASE(hold_parks_until_release) {
     ZEXPECT(probe.holds().empty());
 }
 
-ZEST_CASE(hold_takes_one_reply) {
+ZEST_CASE(hold_parks_one_reply) {
     // A hold parks the first matching reply only; replies of another kind
     // or file never park.
     auto id = probe.hold(BuildKind::Index, "/w/lib.cpp");

@@ -21,7 +21,7 @@ ProjectLoad bootstrap_project(Project& project,
     auto load =
         load_project(project, store, root, requested_configuration, read_only_index, scan_tree);
     bool owed = !load.index.report.reindex().empty();
-    pump.take_report(load.index.report);
+    pump.apply_report(load.index.report);
 
     if(project.config.project.enable_indexing.value && (!load.members.empty() || owed)) {
         for(auto member: load.members) {

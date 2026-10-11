@@ -1276,7 +1276,7 @@ Facts collect(Project& project, llvm::function_ref<bool(llvm::StringRef)> in_sco
             if(open.empty() || used == none || facts.entities[used].kind == SymbolKind::Macro) {
                 continue;
             }
-            // Only relations the uses or self-uses count.
+            // Only relations that are uses or self-uses count.
             auto& use = raw[id][hash];
             if(facts.entities[used].owner == id ||
                (!defines(id, hash) && (use.strong || !operators[used]))) {

@@ -149,11 +149,11 @@ bool is_implicit(const clang::Stmt* statement) {
 //   [-]    CXXConstructExpr
 // For our purposes, we don't want the second MemberExpr to own any tokens,
 // so we reduce its range to match the CXXConstructExpr.
-clang::SourceRange owned_source_range(const SemanticNode& node) {
+clang::SourceRange taken_source_range(const SemanticNode& node) {
     if(const auto* ME = node.get<clang::MemberExpr>()) {
         if(!ME->getMemberDecl()->getDeclName()) {
             if(auto* base = ME->getBase()) {
-                return owned_source_range(SemanticNode(static_cast<const clang::Stmt*>(base)));
+                return taken_source_range(SemanticNode(static_cast<const clang::Stmt*>(base)));
             }
             return clang::SourceRange();
         }
@@ -630,7 +630,7 @@ private:
             }
         }
 
-        take_range(owned_source_range(N), self);
+        take_range(taken_source_range(N), self);
     }
 
     /// clang finds a binary operator's ends by recursing down its operands,

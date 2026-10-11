@@ -1099,6 +1099,52 @@ void §(use)use(Widget&);
     ZEXPECT(entity("use") == entity_at(other, "main.cpp", "use"));
 }
 
+ZEST_CASE(MemberAcrossModuleUnits) {
+    llvm::StringRef definition = R"cpp(
+export module m:def;
+export class Widget {
+public:
+    void §(run)run();
+};
+)cpp";
+    add_main("def.cppm", definition);
+    ZASSERT(compile_with_modules());
+
+    Tester other;
+    other.add_file("fwd.cppm", "export module m:fwd;\nexport class Widget;\n");
+    other.add_file("def.cppm", definition);
+    other.add_file("m.cppm", "export module m;\nexport import :fwd;\nexport import :def;\n");
+    other.add_main("impl.cpp", "module m;\nvoid Widget::§(run)run() {}\n");
+    ZASSERT(other.compile_with_modules());
+
+    ZEXPECT(entity_at(*this, "def.cppm", "run") == entity_at(other, "impl.cpp", "run"));
+}
+
+ZEST_CASE(ModulesKeepEntitiesApart) {
+    auto sources = [](llvm::StringRef module) {
+        return std::format(R"cpp(
+#[mod.cppm]
+export module {};
+export class Widget {{}};
+
+#[main.cpp]
+import {};
+void §(use)use(Widget&);
+)cpp",
+                           module,
+                           module);
+    };
+
+    add_files("main.cpp", sources("m"));
+    ZASSERT(compile_with_modules());
+
+    Tester other;
+    other.add_files("main.cpp", sources("n"));
+    ZASSERT(other.compile_with_modules());
+
+    ZEXPECT(entity("use") != entity_at(other, "main.cpp", "use"));
+}
+
 ZEST_CASE(ParentChain) {
     add_main("main.cpp", R"cpp(
 namespace §(ns)ns {

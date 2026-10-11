@@ -1107,7 +1107,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
 
 ZEST_CASE(StaleReplyBecomesContentModified) {
     // A reply for a buffer the client edited away never leaves as a value:
-    // the finish turns it into ContentModified even when the worker
+    // it becomes ContentModified even when the worker
     // answered after the compile had finished — the edit arrived while the
     // query itself was in flight.
     logging::set_anomaly_trap_for_testing([](logging::AnomalyId) {});

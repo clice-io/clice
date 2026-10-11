@@ -63,7 +63,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
         index_attempt_finished(path_id);
     };
     index_changed_conn = sched.pump.on_index_changed.connect(
-        [this](llvm::ArrayRef<Fid> path_ids) { index_changed(path_ids); });
+        [this](llvm::ArrayRef<Fid> path_ids) { on_index_changed(path_ids); });
 
     // The AST family's pull-side staleness check found an input of an open
     // document changed on disk: the document gets the treatment the
@@ -389,16 +389,16 @@ void ProjectServer::index_attempt_finished(Fid path_id) {
     }
 }
 
-bool ProjectServer::serves_session_index(Fid path_id) const {
+bool ProjectServer::session_served_by_shard(Fid path_id) const {
     auto session = sessions.find(path_id);
     return session && !ast.projections.index_current(path_id) && session->index_served;
 }
 
-void ProjectServer::index_changed(llvm::ArrayRef<Fid> path_ids) {
+void ProjectServer::on_index_changed(llvm::ArrayRef<Fid> path_ids) {
     // Sessions without a current file index serve these very shards
     // (freshness clause 4); index_served says the client pulled from
     // them. Tell subscribers so those results get re-pulled.
-    if(llvm::any_of(path_ids, [&](Fid id) { return serves_session_index(id); })) {
+    if(llvm::any_of(path_ids, [&](Fid id) { return session_served_by_shard(id); })) {
         server.on_serving_index_changed.emit();
     }
 }
@@ -451,7 +451,7 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     }
 
     for(auto path_id: dirty.drop_index) {
-        sched.pump.take_report(sched.store.drop_index(path_id));
+        sched.pump.apply_report(sched.store.drop_index(path_id));
     }
 
     for(auto path_id: dirty.reindex_content_changed) {

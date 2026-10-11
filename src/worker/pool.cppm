@@ -623,7 +623,7 @@ private:
     void release_stateless_slot(std::size_t worker_index);
 
     /// Mark an acquired worker busy. Returns the index for chaining.
-    std::size_t take_stateless(std::size_t index, worker::Priority priority);
+    std::size_t mark_busy(std::size_t index, worker::Priority priority);
 
     /// Wake queued requests when a worker becomes available; drains the
     /// queues with a failure signal when no capacity remains.
@@ -960,7 +960,7 @@ RequestResult<Params> WorkerPool::dispatch_stateless(const Params& params,
     if(priority == worker::Priority::Low) {
         // Reclaim demand that arose while this acquisition's sender was parked
         // (a foreground edge, a queued High) was skipped by the cancel
-        // pass — an unarmed slot must never be stamped (see
+        // pass — an unarmed slot must never be marked cancelled (see
         // cancel_low_priority). Honor it here, before the request is sent
         // over IPC: giving the slot back costs nothing.
         if(low_reclaim_deficit() > 0) {

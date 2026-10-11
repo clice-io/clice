@@ -67,7 +67,7 @@ private:
 
     /// Ask the client to re-pull semantic tokens and folding ranges after
     /// a background merge replaced a shard an index-served session was
-    /// serving. Invoked by the indexer's on_serving_index_changed signal;
+    /// serving. Invoked by MasterServer's on_serving_index_changed signal;
     /// capability-gated.
     void refresh_index_served();
 

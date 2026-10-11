@@ -148,7 +148,7 @@ struct BatchLifetime {
         return stop.token();
     }
 
-    /// Shuts the stack down and finishes the watchers; whether the run was
+    /// Shuts the stack down and stops the watchers; whether the run was
     /// interrupted.
     kota::task<bool> finish() {
         co_await shutdown(stack);
@@ -357,7 +357,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
                 pass.checked += 1;
             }
             if(with_index) {
-                stack.sched.pump.take_report(outcome.report);
+                stack.sched.pump.apply_report(outcome.report);
             }
             // The lint set applies to the findings too: a header outside
             // it reports nothing. A compiler error stays wherever it is:
@@ -507,7 +507,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         // The pass's merges can owe other TUs a reindex (a rebuilt shared
         // shard dropped their variants), and bootstrap may have taken
         // prior-session debt — the pass runs outside the pump, so nothing
-        // finished any of it. Drain it through the pump like the index
+        // drained any of it. Drain it through the pump like the index
         // batch does, or an already-linted owner's index stays missing while
         // the run exits clean.
         project.config.project.enable_indexing.value = true;

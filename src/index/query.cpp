@@ -210,7 +210,7 @@ IndexQuery::IndexQuery(const ProjectIndex& index,
 
 std::optional<IndexSource> IndexQuery::serving(Fid file) const {
     if(live && live->is_open(file)) {
-        return live->serving_buffer(file);
+        return live->buffer_index(file);
     }
     auto* shard = index.shard(file);
     if(!shard || (gate && gate->stale(file, shard->content_hash()))) {
@@ -440,7 +440,7 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
     if(hit(*source->shard)) {
         return cursor;
     }
-    if(source->kind != IndexSource::Kind::SessionIndex) {
+    if(source->kind != IndexSource::Kind::SessionShard) {
         return std::nullopt;
     }
     // The preamble region is compiled into the PCH and invisible to the
@@ -812,7 +812,7 @@ std::vector<IndexQuery::PlacedHighlight>
     };
     // The preamble index lives only as long as the visit.
     bool placed = false;
-    if(source->kind == IndexSource::Kind::SessionIndex) {
+    if(source->kind == IndexSource::Kind::SessionShard) {
         live->each_preamble([&](const IndexSource& preamble) {
             if(preamble.file != cursor.site.file) {
                 return true;
@@ -849,7 +849,7 @@ bool IndexQuery::deduced(const Cursor& cursor, SymbolHash symbol) const {
         });
         return found;
     };
-    if(hit(*source->shard) || source->kind != IndexSource::Kind::SessionIndex) {
+    if(hit(*source->shard) || source->kind != IndexSource::Kind::SessionShard) {
         return found;
     }
     live->each_preamble([&](const IndexSource& preamble) {
@@ -900,8 +900,8 @@ std::optional<llvm::StringRef>
     // Buffer-backed sources and non-ASCII blobs carry their text; an
     // open session served by its shard reads in buffer coordinates, so it
     // ends up here too.
-    if(source.kind == IndexSource::Kind::SessionIndex ||
-       source.kind == IndexSource::Kind::PreambleIndex || !source.positions.text().empty()) {
+    if(source.kind == IndexSource::Kind::SessionShard ||
+       source.kind == IndexSource::Kind::PreambleShard || !source.positions.text().empty()) {
         return source.positions.text();
     }
     return disk_text(source.path, *source.shard, storage);

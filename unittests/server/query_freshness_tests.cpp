@@ -108,7 +108,7 @@ ZEST_CASE(PendingReasonUpgrade) {
     ZASSERT(indexer.pending_reason(file) == ReindexReason::ContentChanged);
 }
 
-ZEST_CASE(GateSplitsShards) {
+ZEST_CASE(GateWithholdsStaleShard) {
     add_file("header.h", R"(
         int helper() { return 1; }
     )");

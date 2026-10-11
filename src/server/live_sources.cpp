@@ -51,13 +51,13 @@ const index::Shard* ServerLiveSources::session_shard(Fid file, const Session& se
     return nullptr;
 }
 
-std::optional<index::IndexSource> ServerLiveSources::serving_buffer(Fid file) const {
+std::optional<index::IndexSource> ServerLiveSources::buffer_index(Fid file) const {
     auto session = sessions.find(file);
     if(!session) {
         return std::nullopt;
     }
     if(auto* shard = session_shard(file, *session)) {
-        return buffer_source(index::IndexSource::Kind::SessionIndex, file, *session, *shard);
+        return buffer_source(index::IndexSource::Kind::SessionShard, file, *session, *shard);
     }
     auto it = project.project_index.shards.find(file);
     if(it == project.project_index.shards.end() ||
@@ -72,7 +72,7 @@ void ServerLiveSources::each_session(
     sessions.for_each([&](Fid file, const Session& session) -> bool {
         auto* shard = session_shard(file, session);
         return !shard ||
-               visit(buffer_source(index::IndexSource::Kind::SessionIndex, file, session, *shard));
+               visit(buffer_source(index::IndexSource::Kind::SessionShard, file, session, *shard));
     });
 }
 
@@ -111,7 +111,7 @@ void ServerLiveSources::each_preamble(
            !state->matches_prefix(session.text)) {
             return true;
         }
-        return visit(buffer_source(index::IndexSource::Kind::PreambleIndex,
+        return visit(buffer_source(index::IndexSource::Kind::PreambleShard,
                                    file,
                                    session,
                                    preamble_shard(*state)));

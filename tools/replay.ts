@@ -171,7 +171,7 @@ function rewriteRecords(records: TraceRecord[], originalWs: string, newWs: strin
 
 /// The replaying process is the client now: the server exits with the
 /// process its initialize names, which in a recording is long gone.
-function takeClientProcess(records: TraceRecord[]): TraceRecord[] {
+function adoptClientProcess(records: TraceRecord[]): TraceRecord[] {
     return records.map((rec) => {
         const parsed = asObject(JSON.parse(rec.msg) as unknown);
         const params = asObject(parsed["params"]);
@@ -357,7 +357,7 @@ async function replayOne(
             displayWs = newWs;
         }
     }
-    records = takeClientProcess(records);
+    records = adoptClientProcess(records);
 
     printTraceInfo(name, records, displayWs);
 

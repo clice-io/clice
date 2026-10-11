@@ -114,7 +114,7 @@ bool template_compatible(const clang::TemplateTemplateParmDecl* TTP, clang::Temp
 
 /// Indices of the deduction-depth parameter packs referenced inside an
 /// expansion pattern; a zero-length expansion must still bind them (to the
-/// empty pack) so cardinality conflicts with other occurrences show.
+/// empty pack) so cardinality conflicts with other occurrences show up.
 struct PackIndexCollector : clang::RecursiveASTVisitor<PackIndexCollector> {
     unsigned depth;
     llvm::SmallVector<unsigned, 2> indices;

@@ -37,7 +37,7 @@ void age_file(llvm::StringRef path) {
 }
 
 /// Whether the file table answers the file's current stat without a read.
-bool vouched(FileTable& pool, llvm::StringRef path) {
+bool confirmed(FileTable& pool, llvm::StringRef path) {
     auto status = vfs::status(path);
     return status && pool.cached_hash(pool.intern(Spelling::absolute(path)), status->stamp);
 }
@@ -61,7 +61,7 @@ ZEST_CASE(FreshWhenUntouched) {
 
     // The check's read left the file's pair behind: the next check is a
     // stat.
-    ZASSERT(vouched(pool, dep));
+    ZASSERT(confirmed(pool, dep));
 }
 
 ZEST_CASE(SnapshotsShareOneVersion) {
@@ -86,7 +86,7 @@ ZEST_CASE(SnapshotsShareOneVersion) {
 
     // One check's read serves the other snapshot.
     ZASSERT(!deps_changed(pool, first));
-    ZASSERT(vouched(pool, dep));
+    ZASSERT(confirmed(pool, dep));
     ZASSERT(!deps_changed(pool, second));
 }
 
@@ -149,7 +149,7 @@ ZEST_CASE(BackdatedEditDetected) {
     },
                                       generous_build_at());
     auto recorded_mtime = file_mtime_ns(dep);
-    ZASSERT(vouched(pool, dep));
+    ZASSERT(confirmed(pool, dep));
 
     tmp.touch("dep.h", "int new_name();\n");  // same length
     ZASSERT(set_file_mtime(dep, recorded_mtime - 5'000'000'000));
@@ -174,11 +174,11 @@ ZEST_CASE(TouchRepairsFastPath) {
     auto before = file_mtime_ns(dep);
     tmp.touch("dep.h", "int f();\n");
     ZASSERT(set_file_mtime(dep, before + 5'000'000'000));
-    ZASSERT(!vouched(pool, dep));
+    ZASSERT(!confirmed(pool, dep));
     ZASSERT(!deps_changed(pool, snap));
 
     // The check's read moved the pair to the new stat.
-    ZASSERT(vouched(pool, dep));
+    ZASSERT(confirmed(pool, dep));
 }
 
 ZEST_CASE(PoisonedCaptureDetected) {
@@ -224,9 +224,9 @@ ZEST_CASE(StalePairRereads) {
                                           DepFile{dep, consumed_hash(dep)}
     },
                                       generous_build_at());
-    ZASSERT(!vouched(pool, dep));
+    ZASSERT(!confirmed(pool, dep));
     ZASSERT(!deps_changed(pool, snap));
-    ZASSERT(vouched(pool, dep));
+    ZASSERT(confirmed(pool, dep));
 }
 
 ZEST_CASE(MissingTransitions) {

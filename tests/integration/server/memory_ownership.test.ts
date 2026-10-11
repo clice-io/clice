@@ -7,7 +7,7 @@
 
 import {
     MTIME_GRANULARITY,
-    IDLE_WAIT,
+    STABILIZE_DELAY,
     sleep,
     waitUntil,
     type CliceClient,
@@ -113,7 +113,7 @@ test("save writes only dirty shards", async ({ session }) => {
     // alone and saving the same bytes queues nothing; closing it hands the
     // file back to the background index.
     client.save(uri);
-    await sleep(IDLE_WAIT);
+    await sleep(STABILIZE_DELAY);
     const settled = await waitStats(
         client,
         (s) => s.indexInmemoryShards === 0,

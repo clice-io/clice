@@ -71,7 +71,7 @@ export { withTimeout } from "../promise.ts";
 
 // Standard timing constants — use these instead of hardcoded sleep values.
 export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
-export const IDLE_WAIT = 500; // Server stabilization after an operation
+export const STABILIZE_DELAY = 500; // Server stabilization after an operation
 export const IDLE_TIMEOUT = 5_000; // Idle soak time in lifecycle tests
 export const EDIT_SUPERSEDE_DELAY = 300; // An edit arrives while SLOW_SOURCE still parses
 

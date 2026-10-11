@@ -147,7 +147,7 @@ ZEST_CASE(own_crash_gives_up) {
     ZEXPECT(table.empty());
 }
 
-ZEST_CASE(cleared_take_drops) {
+ZEST_CASE(cleared_entry_drops) {
     // A file removed mid-flight has nothing to redo.
     table.record(Fid{1}, ReindexReason::ContentChanged);
     auto taken = table.take(Fid{1});

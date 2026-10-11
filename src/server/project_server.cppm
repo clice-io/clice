@@ -172,11 +172,11 @@ private:
     /// Whether an open session serves this file's project shard (freshness
     /// clause 4) and a client already pulled from it — the emit
     /// condition of MasterServer::on_serving_index_changed.
-    bool serves_session_index(Fid path_id) const;
+    bool session_served_by_shard(Fid path_id) const;
 
     /// Filter a store index-change report down to the sessions actually
     /// serving those shards and wake the transports.
-    void index_changed(llvm::ArrayRef<Fid> path_ids);
+    void on_index_changed(llvm::ArrayRef<Fid> path_ids);
 
     Signal<llvm::ArrayRef<Fid>>::Connection index_changed_conn;
 

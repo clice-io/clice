@@ -182,7 +182,7 @@ ZEST_CASE(RootClimbPastSymlink) {
 }
 #endif
 
-ZEST_CASE(FreshReadNotVouched) {
+ZEST_CASE(FreshReadNotConfirmed) {
     // A check that reads a just-written file gets the right result but
     // must not keep the stat as the fast path: on a coarse-mtime
     // filesystem a same-tick write could later forge it.

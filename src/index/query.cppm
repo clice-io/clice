@@ -24,10 +24,10 @@ struct IndexSource {
         /// or of an open buffer byte-identical to that text.
         Shard,
         /// An open buffer's own file index, in buffer coordinates.
-        SessionIndex,
+        SessionShard,
         /// An open buffer's preamble region as its PCH overlay indexed it,
         /// in buffer coordinates.
-        PreambleIndex,
+        PreambleShard,
         /// A header entry of a PCH overlay, in the coordinates of the text
         /// the overlay indexed.
         Overlay,
@@ -63,14 +63,14 @@ public:
     virtual ~LiveSources() = default;
 
     /// Whether the file is an open buffer. An open buffer is served by
-    /// serving_buffer() or by nothing at all — never by its shard as a closed file.
+    /// buffer_index() or by nothing at all — never by its shard as a closed file.
     virtual bool is_open(Fid file) const = 0;
 
     /// The index serving an open buffer right now: its own file index
     /// (freshness clauses 1 and 3), else its shard while the buffer is
     /// byte-identical to the text the shard indexed (clause 4), both in
     /// buffer coordinates. Nullopt while the buffer has moved on from both.
-    virtual std::optional<IndexSource> serving_buffer(Fid file) const = 0;
+    virtual std::optional<IndexSource> buffer_index(Fid file) const = 0;
 
     /// Every open buffer whose file index serves it (clause 3), as its index.
     virtual void each_session(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
@@ -234,7 +234,7 @@ public:
                const LiveSources* live);
 
     /// The freshness contract's single arbitration: the index serving
-    /// `file` right now, with the coordinates they are expressed in.
+    /// `file` right now, with the coordinates it is expressed in.
     std::optional<IndexSource> serving(Fid file) const;
 
     /// Whether the project index holds a shard of `file`.

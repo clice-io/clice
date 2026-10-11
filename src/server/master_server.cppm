@@ -337,9 +337,9 @@ private:
 
     /// The project a file belongs to: its compiler, else the deepest root
     /// holding it; null when none covers it.
-    ProjectServer* project_of(Fid path_id);
+    ProjectServer* covering_project(Fid path_id);
 
-    /// The file's project (project_of), else the first project.
+    /// The file's project (covering_project), else the first project.
     ProjectServer& route(Fid path_id);
 
     /// Move the open documents of `from` routing now sends elsewhere,

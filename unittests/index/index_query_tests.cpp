@@ -35,7 +35,7 @@ struct CountingSessions : index::LiveSources {
         return false;
     }
 
-    std::optional<index::IndexSource> serving_buffer(Fid) const override {
+    std::optional<index::IndexSource> buffer_index(Fid) const override {
         return std::nullopt;
     }
 

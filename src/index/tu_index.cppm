@@ -61,8 +61,8 @@ std::string build_preamble_index(CompilationUnitRef unit,
 /// merged without ever decoding the TU index around them — and symbol
 /// names are touched only when a consumer genuinely needs them. TU-wide
 /// accessors on an empty reader answer empty/zero; per-element accessors
-/// require a valid index, and no index is valid on an empty reader (every
-/// count is 0).
+/// require an in-range position, and none is in range on an empty reader
+/// (every count is 0).
 class TUIndex {
 public:
     TUIndex() = default;

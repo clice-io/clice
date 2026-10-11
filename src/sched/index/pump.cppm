@@ -48,7 +48,7 @@ public:
     std::function<void(Fid path_id)> on_attempt_finished;
 
     /// Whether an open document's own compile serves the file: debt other
-    /// than a change of its own content then is finished without a background
+    /// than a change of its own content then is cleared without a background
     /// compile, which would compile the file a second time. The serving
     /// side enqueues the file again when the document closes.
     std::function<bool(Fid path_id)> compiled_by_session;
@@ -146,9 +146,9 @@ public:
 
     /// Take a store report: book its reindex debt into the table — before
     /// the current attempt finishes and its waiters wake, so a waker never
-    /// observes an index as finished that the report just declared stale —
+    /// observes an index as current that the report just declared stale —
     /// and report its serving-index changes through on_index_changed.
-    void take_report(const IndexStore::Report& report);
+    void apply_report(const IndexStore::Report& report);
 
     /// The pump debt a save()'s CDB snapshot persists: files whose latest
     /// attempt failed for good plus everything still booked in the table.
@@ -180,8 +180,8 @@ public:
         return failed_ids;
     }
 
-    /// TUs actually indexed and merged this session — dispatched taken debts
-    /// the freshness gate skipped do not count. The one-shot `clice index`
+    /// TUs actually indexed and merged this session — dispatches the
+    /// freshness gate skipped do not count. The one-shot `clice index`
     /// reports its work from this, so a warm rerun honestly says 0.
     std::size_t indexed_files() const {
         return indexed_total;

@@ -930,7 +930,7 @@ ZEST_CASE(RangesBeyondContentRejected) {
 
 ZEST_CASE(WrongRangeEncodingRejected) {
     // The range encoding is a strict function of the content size — a second
-    // spelling of the same entries would fork the byte identity.
+    // encoding of the same entries would fork the byte identity.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     fill_content(blob, "aaaaaaaaaaaaaaaa");

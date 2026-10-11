@@ -341,7 +341,7 @@ ZEST_CASE(LruStaleBlobReplaced) {
     ZASSERT(store.lookup("pch", "k1"));
 }
 
-ZEST_CASE(CommitFailureSurfaces) {
+ZEST_CASE(CommitFailureReported) {
     TempDir tmp;
     auto store = open_store(tmp);
     register_lru(store);

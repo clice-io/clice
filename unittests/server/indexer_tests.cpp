@@ -62,7 +62,7 @@ struct IndexerFixture {
     bool merge(const void* data, std::size_t size) {
         auto report = index_store.merge(data, size, {});
         if(report) {
-            pump.take_report(*report);
+            pump.apply_report(*report);
         }
         return report.has_value();
     }
@@ -70,19 +70,19 @@ struct IndexerFixture {
     /// One save with the pump's debt snapshot, its report taken back —
     /// without persist()'s retry, so a test observes each save.
     kota::task<> async_save(IndexStore::SearchRebuild search = IndexStore::SearchRebuild::Behind) {
-        pump.take_report(co_await index_store.save(pump.save_debt(), search));
+        pump.apply_report(co_await index_store.save(pump.save_debt(), search));
     }
 
     /// Load and take the report, as the workspace load does. Returns the
     /// decode result (false = old-format or corrupt global).
     bool load(bool read_only = false) {
         auto result = index_store.load({.read_only = read_only});
-        pump.take_report(result.report);
+        pump.apply_report(result.report);
         return result.decoded;
     }
 
     void drop_index(Fid id) {
-        pump.take_report(index_store.drop_index(id));
+        pump.apply_report(index_store.drop_index(id));
     }
 
     /// Replace the database with a fresh one, as corruption recovery does.
@@ -129,7 +129,7 @@ struct IndexerFixture {
 
     /// Complete an attempt for `ticket` on the loop, as run_index_task's
     /// tail does — waking waiters requires a running loop.
-    void finish(Fid id, std::uint64_t ticket) {
+    void wake_waiters(Fid id, std::uint64_t ticket) {
         auto body = [&]() -> kota::task<> {
             pump.wake_attempt_waits(id, ticket);
             co_return;
@@ -141,11 +141,11 @@ struct IndexerFixture {
 
     /// Start a fresh staleness round: per-round FileVersion results are
     /// cleared by run_background_indexing, which these tests bypass.
-    void clear_round() {
+    void begin_round() {
         index_store.begin_round();
     }
 
-    /// Judge staleness inside the current round (see clear_round).
+    /// Judge staleness inside the current round (see begin_round).
     bool need_update(llvm::StringRef path) {
         return index_store.need_update(project.file_table.intern(Spelling::absolute(path)));
     }
@@ -564,7 +564,7 @@ ZEST_CASE(MidSaveMergeKept) {
     ZASSERT(!fresh.data.empty());
 
     // The merge task runs when save() suspends at its write await: it
-    // commits after the dirty snapshot was taken and cleared, exactly the
+    // merges after the dirty snapshot was taken and cleared, exactly the
     // window re-dirtying exists for.
     auto save_body = [&]() -> kota::task<> {
         co_await async_save();
@@ -1285,7 +1285,7 @@ ZEST_CASE(CreatedHeaderStales) {
     ZASSERT(!f.need_update(src));
 
     tmp.touch("gen.h", "int make();\n");
-    f.clear_round();
+    f.begin_round();
     ZASSERT(f.need_update(src));
 }
 
@@ -1321,7 +1321,7 @@ ZEST_CASE(TouchStaysFresh) {
     // mere touch, and nothing persisted needs rewriting.
     ZASSERT(set_file_mtime(x.header, file_mtime_ns(x.header) + 5'000'000'000));
     x.f.reset_global_dirty();
-    x.f.clear_round();
+    x.f.begin_round();
     ZASSERT(!x.f.need_update(x.src));
     ZASSERT(!x.f.global_dirty());
 }
@@ -1336,7 +1336,7 @@ ZEST_CASE(PreservedMtimeEditStale) {
     // and the hash check must catch the edit.
     x.tmp.touch("dep.h", "#pragma once\ninline int dep() { return 12345; }\n");
     ZASSERT(set_file_mtime(x.header, recorded));
-    x.f.clear_round();
+    x.f.begin_round();
     ZASSERT(x.f.need_update(x.src));
 }
 
@@ -1358,7 +1358,7 @@ ZEST_CASE(AllDepsChecked) {
     auto recorded = file_mtime_ns(tmp.path("second.h"));
     tmp.touch("second.h", "#pragma once\ninline int second() { return 22222; }\n");
     ZASSERT(set_file_mtime(tmp.path("second.h"), recorded));
-    f.clear_round();
+    f.begin_round();
     ZASSERT(f.need_update(tmp.path("main.cpp")));
 }
 
@@ -3202,11 +3202,11 @@ ZEST_CASE(AttemptWaitPerTicket) {
     // matter the requeue: await_attempt promises one attempt, and holding
     // the waiter through every follow-up would park a feature request for
     // as long as edits keep arriving.
-    f.finish(id, launch);
+    f.wake_waiters(id, launch);
     ZASSERT(first_woke);
     ZASSERT(!second_woke);
 
-    f.finish(id, f.ticket(id));
+    f.wake_waiters(id, f.ticket(id));
     ZASSERT(second_woke);
 }
 
@@ -3359,7 +3359,7 @@ ZEST_CASE(DropReportsServedIndex) {
     ZASSERT(llvm::is_contained(report.index_changed(), tu_id));
     ZASSERT(llvm::is_contained(report.index_changed(), header_id));
 
-    f.pump.take_report(report);
+    f.pump.apply_report(report);
     ZASSERT(llvm::is_contained(notified, header_id));
 }
 
@@ -3495,7 +3495,7 @@ ZEST_CASE(LateDebtShutdownRetry) {
     f.loop.run();
 
     ZASSERT(report.owes_retry);
-    f.pump.take_report(report);
+    f.pump.apply_report(report);
 
     // The retry persists into the freshly reopened database, snapshot
     // included.
@@ -3669,7 +3669,7 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
     ZASSERT(!indexed.data.empty());
     auto report = stack.store.merge(indexed.data.data(), indexed.data.size(), {});
     ZASSERT(report);
-    stack.pump.take_report(*report);
+    stack.pump.apply_report(*report);
 
     auto task = stack.shutdown();
     loop.schedule(task);

@@ -6,7 +6,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { MTIME_GRANULARITY, IDLE_WAIT, sleep, withTimeout } from "@clice/tools/client";
+import { MTIME_GRANULARITY, STABILIZE_DELAY, sleep, withTimeout } from "@clice/tools/client";
 import { DATA_DIR } from "@clice/tools/compile-commands";
 import { expect, test } from "../fixtures.ts";
 
@@ -106,7 +106,7 @@ test("touch without content change skips recompile", async ({ session }) => {
         if (hover !== null) {
             break;
         }
-        await sleep(IDLE_WAIT);
+        await sleep(STABILIZE_DELAY);
     }
     expect(hover).not.toBeNull();
 

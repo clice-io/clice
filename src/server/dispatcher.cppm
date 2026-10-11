@@ -31,7 +31,7 @@ kota::ipc::Error content_modified();
 /// admits it, whose crash a death is, and whether the reply still
 /// describes the buffer.
 ///
-/// Finishing is the invariant: a reply is handed back only while the ticket
+/// The single exit holds the invariant: a reply is handed back only while the ticket
 /// is fresh, and only a fresh reply resolves the document's quarantine
 /// record for its kind. A stale reply becomes ContentModified before any
 /// caller can see it — no path returns a result for a buffer that no

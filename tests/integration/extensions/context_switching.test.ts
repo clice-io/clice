@@ -5,7 +5,7 @@
 /// by canonical flags, host ranking, and switch validation.
 
 import * as fs from "node:fs";
-import { MTIME_GRANULARITY, IDLE_WAIT, sleep, waitUntil } from "@clice/tools/client";
+import { MTIME_GRANULARITY, STABILIZE_DELAY, sleep, waitUntil } from "@clice/tools/client";
 import { expect, test } from "../fixtures.ts";
 
 /// Snapshot files as path -> mtime (nanoseconds).
@@ -230,7 +230,7 @@ test("stale epoch rejected", async ({ session }) => {
     workspace.write("main.cpp", saved);
     client.change(mainUri, 2, saved);
     client.save(mainUri);
-    await sleep(IDLE_WAIT);
+    await sleep(STABILIZE_DELAY);
 
     let switched = await client.switchContext(sharedUri, mainUri, { epoch: oldEpoch });
     expect(switched.success).toBe(false);
@@ -462,7 +462,7 @@ test("switched context survives reopen", async ({ session }) => {
     expect(switched.success, `switch failed: ${JSON.stringify(switched)}`).toBe(true);
 
     client.close(uri);
-    await sleep(IDLE_WAIT);
+    await sleep(STABILIZE_DELAY);
     client.diagnostics.delete(uri);
 
     // The close publishes an empty retract that can race the reopen's

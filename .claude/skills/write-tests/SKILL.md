@@ -167,7 +167,7 @@ protocol (typed): `queryContext` `currentContext` `switchContext` `poll`
 `onNotification`. Custom protocol types live in `@clice/tools/protocol` —
 NEVER redeclare them locally (the VSCode extension shares them).
 
-Timing: use `sleep`, `MTIME_GRANULARITY`, `IDLE_WAIT`, `IDLE_TIMEOUT`
+Timing: use `sleep`, `MTIME_GRANULARITY`, `STABILIZE_DELAY`, `IDLE_TIMEOUT`
 from `@clice/tools/client` — never bare magic-number sleeps, and prefer
 deterministic waits (`poll("cdb")`, `armDiagnostics`) over sleeping.
 

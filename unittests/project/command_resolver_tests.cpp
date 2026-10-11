@@ -48,7 +48,7 @@ ZEST_CASE(DefaultSourceKeepsOwnCommand) {
     ZEXPECT(header_resolution.host == main);
 }
 
-ZEST_CASE(UnboundResultStaysLocal) {
+ZEST_CASE(UnboundModeStaysLocal) {
     // A NeedsContext result scored with no disk observation has no hash
     // to validate on load: it serves this session but must neither
     // persist nor, if found in a blob, bypass the content gate — the next
@@ -105,7 +105,7 @@ ZEST_CASE(ModeSliceContentGate) {
     ZASSERT(edited.header_mode(id) == HeaderMode::Unknown);
 }
 
-ZEST_CASE(ResultPersistenceMarksDirty) {
+ZEST_CASE(ModePersistenceMarksDirty) {
     // The persisted mode slice and the artifacts blob move together: any
     // transition of a content-bound NeedsContext — earned, downgraded by
     // a trial, or reset by a dependency change — must rewrite the blob,

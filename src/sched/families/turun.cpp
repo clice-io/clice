@@ -157,10 +157,10 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
 
     ScopedTimer timer;
-    auto result = co_await pool.send_stateless(params, worker::Priority::Low, ctx.token());
-    if(result.has_value() && result.value().success) {
+    auto reply = co_await pool.send_stateless(params, worker::Priority::Low, ctx.token());
+    if(reply.has_value() && reply.value().success) {
         auto run_ms = timer.ms();
-        auto& value = result.value();
+        auto& value = reply.value();
         llvm::StringRef index_bytes = value.tu_index_data;
         // Declared after `transfer`: the mapping must close before the
         // entry removes the file, which Windows refuses while it is mapped.
@@ -231,32 +231,32 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         co_return RoundOutcome::Success;
     }
 
-    if(result.has_value()) {
-        finished[path_id] = {.result = Result::Failed, .error = result.value().error};
+    if(reply.has_value()) {
+        finished[path_id] = {.result = Result::Failed, .error = reply.value().error};
         co_return RoundOutcome::Failed;
     }
-    if(result.error().code == worker::dispatch_errc::cancelled) {
-        finished[path_id] = {.result = Result::Preempted, .error = result.error().message};
+    if(reply.error().code == worker::dispatch_errc::cancelled) {
+        finished[path_id] = {.result = Result::Preempted, .error = reply.error().message};
         co_return RoundOutcome::Stale;
     }
-    if(result.error().code == worker::dispatch_errc::worker_crashed) {
+    if(reply.error().code == worker::dispatch_errc::worker_crashed) {
         finished[path_id] = {.result = Result::Crashed,
-                             .error = "it crashed the worker: " + result.error().message};
+                             .error = "it crashed the worker: " + reply.error().message};
         co_return RoundOutcome::Stale;
     }
-    if(result.error().code == worker::dispatch_errc::worker_died ||
-       result.error().code == worker::dispatch_errc::worker_lost) {
-        finished[path_id] = {.result = Result::Lost, .error = result.error().message};
+    if(reply.error().code == worker::dispatch_errc::worker_died ||
+       reply.error().code == worker::dispatch_errc::worker_lost) {
+        finished[path_id] = {.result = Result::Lost, .error = reply.error().message};
         co_return RoundOutcome::Stale;
     }
-    if(result.error().code == worker::dispatch_errc::worker_unavailable && pool.revives_slots()) {
+    if(reply.error().code == worker::dispatch_errc::worker_unavailable && pool.revives_slots()) {
         // The outage is a window, not a decision: the pool revives dead
         // slots, so the requeued attempt can succeed once one returns to
         // service. Without revival the failure below is terminal.
-        finished[path_id] = {.result = Result::Preempted, .error = result.error().message};
+        finished[path_id] = {.result = Result::Preempted, .error = reply.error().message};
         co_return RoundOutcome::Stale;
     }
-    finished[path_id] = {.result = Result::Failed, .error = result.error().message};
+    finished[path_id] = {.result = Result::Failed, .error = reply.error().message};
     co_return RoundOutcome::Failed;
 }
 

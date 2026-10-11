@@ -767,7 +767,7 @@ kota::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
     worker_tasks.spawn(respawn_after(index, stateful, std::chrono::milliseconds(0)));
 }
 
-std::size_t WorkerPool::take_stateless(std::size_t index, worker::Priority priority) {
+std::size_t WorkerPool::mark_busy(std::size_t index, worker::Priority priority) {
     auto& w = stateless_workers[index];
     w.busy = true;
     w.low_priority = priority == worker::Priority::Low;
@@ -790,7 +790,7 @@ kota::task<std::size_t> WorkerPool::acquire_stateless_slot(worker::Priority prio
             priority == P::High ? high_queue.empty() : high_queue.empty() && low_queue.empty();
         if(fifo_clear && (priority == P::High || low_busy_count() < effective_low_limit())) {
             if(auto idx = pick_idle_stateless(); idx != SIZE_MAX)
-                co_return take_stateless(idx, priority);
+                co_return mark_busy(idx, priority);
         }
 
         // A queued High request needs a process, not just CPU: with every
@@ -859,7 +859,7 @@ void WorkerPool::try_dispatch_pending() {
             auto* next = queue.front();
             queue.pop_front();
             next->queue = nullptr;
-            take_stateless(idx, priority);
+            mark_busy(idx, priority);
             next->assigned_worker = idx;
             next->assigned_gen = stateless_workers[idx].generation;
             LOG_DEBUG("Dispatch {} -> {} (busy={}, low_busy={})",
@@ -1122,7 +1122,7 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
         if(w.cancel_requested_at != std::chrono::steady_clock::time_point{})
             continue;
         // An acquired slot whose sender has not resumed yet has no cancellation
-        // source installed; skip it entirely — stamping it would leave a
+        // source installed; skip it entirely — marking it cancelled would leave a
         // request that never saw a cancel to be grace-killed as if it had
         // ignored one. The demand is not dropped: the sender re-checks the
         // deficit when it arms and gives the slot back on the spot.
@@ -1139,7 +1139,7 @@ void WorkerPool::cancel_low_priority(std::size_t count) {
             break;
         auto& w = stateless_workers[i];
         // Cancels the request over IPC; a slot that dies before the
-        // grace expires has its stamp cleared by the respawn.
+        // grace expires has its cancel time cleared by the respawn.
         w.preempt_source->cancel();
         w.cancel_requested_at = std::chrono::steady_clock::now();
         cancelled += 1;

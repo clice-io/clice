@@ -275,7 +275,7 @@ ProjectServer* MasterServer::compiler(Fid path_id) {
     return borrowed != projects.end() ? borrowed->get() : nullptr;
 }
 
-ProjectServer* MasterServer::project_of(Fid path_id) {
+ProjectServer* MasterServer::covering_project(Fid path_id) {
     if(auto* compiling = compiler(path_id)) {
         return compiling;
     }
@@ -283,7 +283,7 @@ ProjectServer* MasterServer::project_of(Fid path_id) {
 }
 
 ProjectServer& MasterServer::route(Fid path_id) {
-    auto* project = project_of(path_id);
+    auto* project = covering_project(path_id);
     return project ? *project : *projects.front();
 }
 

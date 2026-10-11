@@ -24,7 +24,7 @@ public:
         project(project), pch(pch), sessions(sessions), projections(projections) {}
 
     bool is_open(Fid file) const override;
-    std::optional<index::IndexSource> serving_buffer(Fid file) const override;
+    std::optional<index::IndexSource> buffer_index(Fid file) const override;
     void each_session(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;
     void each_session_index(llvm::function_ref<bool(const index::TUIndex&)> visit) const override;
     void each_preamble(llvm::function_ref<bool(const index::IndexSource&)> visit) const override;

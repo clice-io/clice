@@ -1092,7 +1092,7 @@ kota::task<> IndexStore::rebuild_search_index() {
         });
     auto merges_in_snapshot = merges_since_search_build;
     // Entries that change across the build stay pending: only the ones the
-    // snapshot saw are finished by the index built from it.
+    // snapshot saw are cleared by the index built from it.
     auto pending_in_snapshot = std::move(project.project_index.search_pending);
     project.project_index.search_pending.clear();
     // Until the rebuilt index is adopted the old one still needs them:

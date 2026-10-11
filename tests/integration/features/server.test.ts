@@ -1,7 +1,7 @@
 /// Integration tests for the clice MasterServer.
 
 import * as proto from "vscode-languageserver-protocol";
-import { runProcess, sleep, IDLE_WAIT, withTimeout } from "@clice/tools/client";
+import { runProcess, sleep, STABILIZE_DELAY, withTimeout } from "@clice/tools/client";
 import { cliceExecutable, cliceTest, expect } from "../fixtures.ts";
 
 const test = cliceTest("hello_world");
@@ -79,7 +79,7 @@ test("semantic token modifier legend", ({ client }) => {
 
 test("did open close cycle", async ({ client }) => {
     const [uri] = client.open("main.cpp");
-    await sleep(IDLE_WAIT);
+    await sleep(STABILIZE_DELAY);
     client.close(uri);
 });
 
@@ -101,7 +101,7 @@ test("incremental change", async ({ client }) => {
         client.change(uri, i + 1, content);
         await sleep(EDIT_INTERVAL);
     }
-    await sleep(IDLE_WAIT * 2);
+    await sleep(STABILIZE_DELAY * 2);
     client.close(uri);
 });
 
@@ -196,15 +196,15 @@ test("rapid changes stress", async ({ client }) => {
         content += `\n// stress change ${i}\n`;
         client.change(uri, i + 1, content);
     }
-    await sleep(IDLE_WAIT * 4);
+    await sleep(STABILIZE_DELAY * 4);
     client.close(uri);
 });
 
 test("save notification", async ({ client }) => {
     const [uri] = client.open("main.cpp");
-    await sleep(IDLE_WAIT);
+    await sleep(STABILIZE_DELAY);
     client.save(uri);
-    await sleep(IDLE_WAIT);
+    await sleep(STABILIZE_DELAY);
     client.close(uri);
 });
 

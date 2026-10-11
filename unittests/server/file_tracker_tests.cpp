@@ -642,8 +642,8 @@ ZEST_CASE(CDBSameStampRewrite) {
     }));
     // An mtime not yet safely in the past, however long the load takes.
     auto database = tmp.path("compile_commands.json");
-    auto stamp = std::chrono::system_clock::now() + std::chrono::hours(1);
-    set_mtime(database, stamp);
+    auto mtime = std::chrono::system_clock::now() + std::chrono::hours(1);
+    set_mtime(database, mtime);
     ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ZASSERT(tick(tracker, files).empty());
@@ -652,7 +652,7 @@ ZEST_CASE(CDBSameStampRewrite) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
-    set_mtime(database, stamp);
+    set_mtime(database, mtime);
 
     ZASSERT(tick(tracker, files).empty());
     auto events = tick(tracker, files);
@@ -676,8 +676,8 @@ ZEST_CASE(CDBForgedStampSeen) {
                   {tmp.root, tmp.path("main.cpp"), {"-DAAA"}}
     }));
     auto database = tmp.path("compile_commands.json");
-    auto stamp = std::chrono::system_clock::now() - std::chrono::hours(1);
-    set_mtime(database, stamp);
+    auto mtime = std::chrono::system_clock::now() - std::chrono::hours(1);
+    set_mtime(database, mtime);
     ZASSERT(project.cdb.reload_and_diff(SourceID(0)));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ZASSERT(tick(tracker, files).empty());
@@ -689,7 +689,7 @@ ZEST_CASE(CDBForgedStampSeen) {
               build_cdb_json({
                   {tmp.root, tmp.path("main.cpp"), {"-DBBB"}}
     }));
-    set_mtime(database, stamp);
+    set_mtime(database, mtime);
     ZASSERT(tick(tracker, files).empty());
     ZASSERT(tick(tracker, files).size() == 1u);
 }

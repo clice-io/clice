@@ -84,7 +84,7 @@ struct WorkerPoolFixture {
             std::chrono::steady_clock::now() - WorkerPool::fg_hold - std::chrono::seconds(1);
     }
 
-    /// Stamp a cooperative cancel as having happened past the grace window.
+    /// Date a cooperative cancel past the grace window.
     void expire_cancel_grace(std::size_t idx) {
         pool.stateless_workers[idx].cancel_requested_at =
             std::chrono::steady_clock::now() - WorkerPool::cancel_grace - std::chrono::seconds(1);
@@ -569,7 +569,7 @@ struct WorkerPoolFixture {
 
     bool test_pending_gen_guard() {
         // A dispatched-but-unconsumed waiter must NOT release the slot if the
-        // acquiring occupant died and a new acquisition owns it now.
+        // acquired worker died and a new acquisition owns the slot now.
         auto pending = enqueue_waiter(worker::Priority::High);
         pool.try_dispatch_pending();
         if(!pending->ready.is_set() || pending->assigned_worker != 0)
@@ -1110,7 +1110,7 @@ ZEST_CASE(CancelSkipsUnarmedSlots) {
 
     f.cancel_low(2);
 
-    // Only the armed slot may be stamped — stamping the un-asked one would
+    // Only the armed slot may be marked cancelled — marking the un-asked one would
     // get a request that never saw a cancel grace-killed.
     ZEXPECT(f.cancel_asked(0));
     ZEXPECT(armed->cancelled());
@@ -1140,7 +1140,7 @@ ZEST_CASE(DeficitSurvivesUnarmedPass) {
     }
     f.set_low_limit(8);
 
-    // The rising edge finds only unarmed acquisitions: the pass stamps nothing,
+    // The rising edge finds only unarmed acquisitions: the pass marks nothing,
     // but the demand survives for the arming re-check to honor.
     f.pool.foreground_pulse();
     ZEXPECT((!f.cancel_asked(0) && !f.cancel_asked(1) && !f.cancel_asked(2) && !f.cancel_asked(3)));

@@ -67,7 +67,7 @@ bool IndexPump::enqueue(Fid server_path_id, ReindexReason reason) {
     return true;
 }
 
-void IndexPump::take_report(const IndexStore::Report& report) {
+void IndexPump::apply_report(const IndexStore::Report& report) {
     for(auto id: report.reindex()) {
         enqueue(id, ReindexReason::ContentChanged);
     }
@@ -88,7 +88,7 @@ kota::task<> IndexPump::persist(IndexStore::SearchRebuild search) {
     while(retry) {
         auto report = co_await store.save(save_debt(), search);
         retry = report.owes_retry;
-        take_report(report);
+        apply_report(report);
     }
 }
 
@@ -326,9 +326,9 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
         }
         // The report's debt is taken before the finish and the
         // waiter wake-ups below: a waker re-deriving its route must
-        // never observe an index as finished that the merge just declared
+        // never observe an index as current that the merge just declared
         // stale.
-        take_report(outcome.report);
+        apply_report(outcome.report);
         switch(outcome.result) {
             case TURunFamily::Result::Completed: {
                 failed_ids.erase(server_path_id);

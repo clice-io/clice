@@ -129,7 +129,7 @@ struct Session {
     std::optional<kota::ipc::Error> tidy_crash;
 };
 
-/// What a request takes of the buffer it was asked about: the generation
+/// A request's hold on the buffer it was asked about: the generation
 /// snapshot taken as the request is dispatched.
 /// Every later decision — adopting a compile product, committing a worker
 /// reply, answering at all — asks `fresh()` first; a didChange or

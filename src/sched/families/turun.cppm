@@ -28,7 +28,7 @@ class PCMFamily;
 /// The family owns the run policy: command resolution, module-PCM edges,
 /// the worker dispatch, and the store merge with its supersede gate. The
 /// pump owns the debt table, the queue and the requeue budget; it reads
-/// this family's per-attempt outcome to finish them.
+/// this family's per-attempt outcome to update them.
 class TURunFamily {
 public:
     TURunFamily(TaskGraph& graph,

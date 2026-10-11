@@ -385,7 +385,7 @@ bool Build::default_source(CanonicalRef path) {
         return true;
     }
     // A header is no translation unit of its own; an extensionless file
-    // is when its rule's command forces a source language.
+    // is one when its rule's command forces a source language.
     if(suffix_type(path) != clang::driver::types::TY_INVALID || path::extension(path) == ".cuh") {
         return false;
     }
