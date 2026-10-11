@@ -561,6 +561,18 @@ Features::RawResult Features::hover(Ticket ticket,
         case Route::Ast: break;
     }
 
+    // A module name's card names the unit defining the module, which the
+    // worker cannot see across files: this side answers it, from the index.
+    if(auto cursor = cursor_at(path_id, position)) {
+        auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
+        if(info && info->kind == SymbolKind::Module) {
+            co_return to_raw(feature::to_protocol_hover(module_hover_card(*cursor, *info),
+                                                        project.config.hover,
+                                                        session->positions(),
+                                                        PositionEncoding::UTF16));
+        }
+    }
+
     // A directive's card names its target, which the worker knows only by
     // identity: this side answers it, from the links.
     auto offset = session->positions().offset(position, PositionEncoding::UTF16);
@@ -573,18 +585,6 @@ Features::RawResult Features::hover(Ticket ticket,
         if(auto* link = link_at(links, *offset)) {
             auto hover = directive_hover(*session, *link);
             co_return hover ? to_raw(*hover) : serde_raw{"null"};
-        }
-    }
-
-    // A module name's card names the unit defining the module, which the
-    // worker cannot see across files: this side answers it, from the index.
-    if(auto cursor = cursor_at(path_id, position)) {
-        auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
-        if(info && info->kind == SymbolKind::Module) {
-            co_return to_raw(feature::to_protocol_hover(module_hover_card(*cursor, *info),
-                                                        project.config.hover,
-                                                        session->positions(),
-                                                        PositionEncoding::UTF16));
         }
     }
 
