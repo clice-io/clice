@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "measure",
     "kind": "Method",
-    "symbol": "#e3182553b7d9af30",
+    "symbol": "#c9fbbb30710c2348",
     "references": [
       {
         "file": "${WS}/include/shapes/circle.h",
