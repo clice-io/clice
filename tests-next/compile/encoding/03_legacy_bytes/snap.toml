@@ -1,0 +1,38 @@
+[answers.after.hover]
+markdown = '''
+### variable `after`
+
+---
+Type: `int`
+Value = `1`
+
+---
+```cpp
+int after = 1
+```
+'''
+range = 'const char* label = "caf�"; int ⟦after⟧ = 1;'
+
+[answers.tokens]
+semantic_tokens = [
+    { at = "⟦// R�sum� of the build, saved as Latin-1⟧", type = "comment" },
+    { at = '⟦const⟧ char* label = "caf�"; int after = 1;', type = "keyword" },
+    { at = 'const ⟦char⟧* label = "caf�"; int after = 1;', type = "primitive" },
+    {
+        at = 'const char* ⟦label⟧ = "caf�"; int after = 1;',
+        type = "variable",
+        modifiers = ["definition", "readonly"],
+    },
+    { at = 'const char* label = ⟦"caf�"⟧; int after = 1;', type = "string" },
+    { at = 'const char* label = "caf�"; ⟦int⟧ after = 1;', type = "primitive" },
+    {
+        at = 'const char* label = "caf�"; int ⟦after⟧ = 1;',
+        type = "variable",
+        modifiers = ["definition"],
+    },
+    { at = 'const char* label = "caf�"; int after = ⟦1⟧;', type = "number" },
+    { at = "⟦int⟧ use() {", type = "primitive" },
+    { at = "int ⟦use⟧() {", type = "function", modifiers = ["definition"] },
+    { at = "⟦return⟧ after;", type = "keyword" },
+    { at = "return ⟦after⟧;", type = "variable" },
+]

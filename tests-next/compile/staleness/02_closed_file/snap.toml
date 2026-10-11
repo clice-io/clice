@@ -1,0 +1,7 @@
+["edited while closed".reopened]
+errors = [
+    { at = "return v.⟦b⟧;", severity = "error", message = "no member named 'b' in 'V1'", source = "clang", code = "err_no_member" },
+]
+
+["closed file answers nothing".hover]
+value = "Document not open"

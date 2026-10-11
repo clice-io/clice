@@ -1,0 +1,15 @@
+["store layout".store]
+value = [
+    "store.lock",
+    "v#/",
+    "v#/index/",
+    "v#/index/default/",
+    "v#/index/default/index.mdb",
+    "v#/index/default/index.mdb-lock",
+    "v#/manifest.json",
+    "v#/pch/",
+    "v#/pch/<key>-<nonce>.pch",
+    "v#/pch/<key>-<nonce>.pch.idx",
+    "v#/pcm/",
+    "v#/tmp/",
+]

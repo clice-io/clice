@@ -1,0 +1,2 @@
+["buffer branch reaches the header".only_a]
+definition = ["crypto.h │ inline void ⟦only_a⟧() {}"]

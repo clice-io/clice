@@ -1,0 +1,9 @@
+[answers."main.cpp"]
+document_links = [
+    { at = '#include ⟦"util.h"⟧', target = "util.h" },
+]
+
+[answers."sub/main.cpp"]
+document_links = [
+    { at = '#include ⟦"../util.h"⟧', target = "util.h" },
+]

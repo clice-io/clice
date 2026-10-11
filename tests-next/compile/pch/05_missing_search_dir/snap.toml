@@ -1,0 +1,12 @@
+["generated search directory".missing]
+errors = [
+    { at = '#include ⟦"generated.h"⟧', severity = "error", message = "'generated.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    { at = "return ⟦generated⟧();", severity = "error", message = "use of undeclared identifier 'generated'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["generated search directory".generated]
+wrong = "a header generated into a search directory that did not exist yet is not found until the file is saved"
+errors = [
+    { at = '#include ⟦"generated.h"⟧', severity = "error", message = "'generated.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    { at = "return ⟦generated⟧();", severity = "error", message = "use of undeclared identifier 'generated'", source = "clang", code = "err_undeclared_var_use" },
+]

@@ -1,0 +1,8 @@
+{
+  "units": {
+    "main.cpp": [],
+    "c.cpp": [],
+    // #embed comes with C++26.
+    "embed.cpp": ["-std=c++26"]
+  }
+}

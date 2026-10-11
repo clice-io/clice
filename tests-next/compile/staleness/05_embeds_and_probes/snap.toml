@@ -1,0 +1,13 @@
+["embedded data changes"."table.bin"]
+errors = [
+    { at = 'static_assert(⟦sizeof(table) == 2⟧, "the table has two entries");', severity = "error", message = "static assertion failed due to requirement 'sizeof (table) == 2': the table has two entries", source = "clang", code = "err_static_assert_requirement_failed" },
+]
+
+["probed header appears"."config.h"]
+errors = [
+    { at = "#⟦error⟧ config.h is there", severity = "error", message = "config.h is there", source = "clang", code = "err_pp_hash_error" },
+]
+
+["probed data appears"."data.bin"]
+wrong = "a file created where `__has_embed` looked for it is never noticed: the branch it guards stays as compiled"
+errors = []

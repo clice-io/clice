@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/entry.S",
+    "arguments": ["clang", "-c", "${WS}/entry.S", "-o", "entry.o"]
+  }
+]

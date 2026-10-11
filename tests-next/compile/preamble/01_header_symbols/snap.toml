@@ -1,0 +1,37 @@
+[include.include.hover]
+markdown = '''
+### `foo.h`
+
+---
+```cpp
+${WS}/foo.h
+```
+'''
+range = '#include ⟦"foo.h"⟧'
+
+[include.past]
+hover = {}
+
+[unindexed.call]
+definition = ["foo.h │ inline void ⟦foo⟧() {}"]
+references = [
+    "foo.h │ inline void ⟦foo⟧() {}",
+    "foo.h │ inline void bar() { ⟦foo⟧(); }",
+    "⟦foo⟧();",
+]
+
+[unindexed.macro]
+definition = ["#define ⟦ANSWER⟧ 42"]
+
+[indexed.call]
+references = [
+    "foo.h │ inline void ⟦foo⟧() {}",
+    "foo.h │ inline void bar() { ⟦foo⟧(); }",
+    "⟦foo⟧();",
+]
+
+["header edit refreshes".before]
+definition = ["foo.h │ inline void ⟦foo⟧() {}"]
+
+["header edit refreshes".after]
+definition = ["foo.h │ inline void ⟦foo⟧() {}"]

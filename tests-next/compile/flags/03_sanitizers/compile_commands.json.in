@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-fsanitize=address", "-c", "main.cpp", "-o", "main.o"]
+  },
+  {
+    "directory": "${WS}/sub",
+    "file": "main.cpp",
+    "arguments": ["clang++", "-std=c++20", "-fsanitize=address", "-fsanitize-ignorelist=ignore.txt", "-c", "main.cpp", "-o", "main.o"]
+  }
+]

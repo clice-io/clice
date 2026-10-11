@@ -1,0 +1,28 @@
+[answers.helper.hover]
+markdown = '''
+### function `helper`
+
+---
+→ `int`
+
+---
+```cpp
+inline int helper()
+```
+'''
+range = "return ⟦helper⟧();"
+
+[answers.links]
+document_links = [
+    { at = '#include ⟦"h.h"⟧', target = "h.h" },
+]
+
+[answers.tokens]
+semantic_tokens = [
+    { at = '⟦#include⟧ "h.h"', type = "directive" },
+    { at = '#include ⟦"h.h"⟧', type = "header" },
+    { at = "⟦int⟧ main() {", type = "primitive" },
+    { at = "int ⟦main⟧() {", type = "function", modifiers = ["definition"] },
+    { at = "⟦return⟧ helper();", type = "keyword" },
+    { at = "return ⟦helper⟧();", type = "function" },
+]

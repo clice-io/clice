@@ -1,0 +1,9 @@
+["damaged pch is rebuilt".errors]
+errors = [
+    { at = "return known_func() + ⟦undeclared_symbol⟧;", severity = "error", message = "use of undeclared identifier 'undeclared_symbol'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["damage past the checks".errors]
+errors = [
+    { at = "return known_func() + ⟦undeclared_symbol⟧;", severity = "error", message = "use of undeclared identifier 'undeclared_symbol'", source = "clang", code = "err_undeclared_var_use" },
+]

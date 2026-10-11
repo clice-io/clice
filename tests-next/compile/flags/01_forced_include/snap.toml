@@ -1,0 +1,30 @@
+[hover.forced.hover]
+markdown = '''
+### macro `FORCED`
+
+---
+```cpp
+#define FORCED 1
+
+// Expands to
+1
+```
+'''
+range = "return ⟦FORCED⟧;"
+
+[navigation.forced]
+definition = ["force.h │ #define ⟦FORCED⟧ 1"]
+
+["edits pay no import scan".other]
+workspace_symbols = [
+    { name = "other", kind = "Function", at = "other.cpp │ int ⟦other⟧() {" },
+]
+
+["forced header edit".renamed]
+errors = [
+    { at = '#include ⟦"header.h"⟧', severity = "error", message = "In included file: use of undeclared identifier 'FORCED'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["forced header edit".failed]
+wrong = "a change to a header forced in with -include sends the header itself to be indexed, which fails for want of a command of its own"
+value = ["force.h"]

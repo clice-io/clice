@@ -1,0 +1,5 @@
+["missing header waits for its file".missing]
+errors = [
+    { at = '#include ⟦"generated.h"⟧', severity = "error", message = "'generated.h' file not found", source = "clang", code = "err_pp_file_not_found" },
+    { at = "return ⟦generated⟧() + 0;", severity = "error", message = "use of undeclared identifier 'generated'", source = "clang", code = "err_undeclared_var_use" },
+]

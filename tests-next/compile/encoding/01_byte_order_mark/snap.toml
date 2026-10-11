@@ -1,0 +1,26 @@
+["first line".user3.hover]
+markdown = '''
+### function `user3`
+
+---
+→ `int`
+
+---
+```cpp
+int user3()
+```
+'''
+range = "int ⟦user3⟧() {"
+
+[navigation.shared_fn]
+definition = ["a.h │ int ⟦shared_fn⟧();"]
+
+[navigation.user3]
+workspace_symbols = [
+    { name = "user3", kind = "Function", at = "c.cpp │ int ⟦user3⟧() {" },
+]
+
+["marked host keeps the context"."utils.h"]
+contexts = [
+    { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+]

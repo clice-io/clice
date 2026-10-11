@@ -1,0 +1,8 @@
+{
+  "units": {
+    "a.cpp": [],
+    "b.cpp": [],
+    "c.cpp": [],
+    "d.cpp": ["-DMODE=1"]
+  }
+}

@@ -1,0 +1,4 @@
+["broken module drops its pcm"."mid.cppm"]
+errors = [
+    { at = "import ⟦Leaf;⟧", severity = "error", message = "module 'Leaf' not found", source = "clang", code = "err_module_not_found" },
+]

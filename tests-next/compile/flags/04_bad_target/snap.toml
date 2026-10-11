@@ -1,0 +1,7 @@
+["unrunnable command stays dirty".first]
+wrong = "a command clang cannot run (here an unknown target) leaves the file without diagnostics and without a word of why"
+diagnostics = []
+
+["unrunnable command stays dirty".retried]
+wrong = "a command clang cannot run (here an unknown target) leaves the file without diagnostics and without a word of why"
+diagnostics = []

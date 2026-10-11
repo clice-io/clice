@@ -1,0 +1,32 @@
+[answers.links]
+document_links = [
+    { at = '#include ⟦"foo.h"⟧', target = "foo.h" },
+    { at = '#include ⟦"list.def"⟧', target = "list.def" },
+]
+
+[answers.late.hover]
+markdown = '''
+### `foo.h`
+
+---
+```cpp
+${WS}/foo.h
+```
+'''
+range = '#include ⟦"foo.h"⟧'
+
+[answers.call.hover]
+markdown = '''
+### function `include`
+
+---
+→ `int`
+Parameters:
+- `int value`
+
+---
+```cpp
+int include(int value)
+```
+'''
+range = "return ⟦include⟧(value) + alpha + foo();"

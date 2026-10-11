@@ -1,0 +1,7 @@
+{
+  "units": {
+    "main.cpp": ["-include", "force.h"],
+    "a.cppm": [],
+    "user.cpp": []
+  }
+}

@@ -1,0 +1,5 @@
+["damaged index is rebuilt".foo]
+definition = ["foo.h │ inline void ⟦foo⟧() {}"]
+
+["missing index is rebuilt".foo]
+definition = ["foo.h │ inline void ⟦foo⟧() {}"]

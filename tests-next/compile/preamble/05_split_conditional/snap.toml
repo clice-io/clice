@@ -1,0 +1,13 @@
+[answers.other.hover]
+markdown = '''
+### function `other`
+
+---
+→ `int`
+
+---
+```cpp
+inline int other()
+```
+'''
+range = "int in_branch = helper() + ⟦other⟧();"

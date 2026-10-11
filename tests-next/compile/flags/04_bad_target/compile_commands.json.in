@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.cpp",
+    "arguments": ["clang++", "--target=bogus-unknown-none", "-fsyntax-only", "${WS}/main.cpp"]
+  }
+]

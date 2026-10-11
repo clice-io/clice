@@ -1,0 +1,46 @@
+["precompiled header edit".renamed]
+errors = [
+    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["transitive header edit".broken]
+errors = [
+    { at = '#include ⟦"pre.h"⟧', severity = "error", message = "In included file: non-void function 'base' should return a value", source = "clang", code = "warn_return_missing_expr" },
+]
+
+["body header edit".renamed]
+errors = [
+    { at = "return ⟦late⟧();", severity = "error", message = "use of undeclared identifier 'late'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["both edits compile once".renamed]
+errors = [
+    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+    { at = "return ⟦late⟧();", severity = "error", message = "use of undeclared identifier 'late'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["shared header edit".renamed]
+main = [
+    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+]
+other = [
+    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["same bytes are no change".member.completion]
+items = [
+    { label = "Widget", kind = "Class" },
+    { label = "alpha_member", kind = "Field", detail = "int" },
+    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "~Widget()", kind = "Method", detail = "void" },
+]
+
+["backdated edit".renamed]
+errors = [
+    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["saved at once".renamed]
+errors = [
+    { at = "return ⟦pre⟧();", severity = "error", message = "use of undeclared identifier 'pre'", source = "clang", code = "err_undeclared_var_use" },
+]

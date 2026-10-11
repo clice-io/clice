@@ -1,0 +1,17 @@
+["orphan header compiles alone".contexts]
+contexts = []
+
+["orphan header compiles alone".hover.hover]
+markdown = '''
+### function `value`
+
+---
+→ `int`
+
+---
+```cpp
+// In namespace orphan
+inline int value()
+```
+'''
+range = "inline int ⟦value⟧() {"
