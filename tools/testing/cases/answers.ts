@@ -10,13 +10,14 @@ import { Workspace } from "../../client/workspace.ts";
 import { withTimeout } from "../../promise.ts";
 import { Inspect } from "../inspect/inspect.ts";
 import type { Client } from "../render/client.ts";
-import { render, type ShowOptions, type Shown } from "../render/shown.ts";
+import { block, type ShowOptions, type Shown } from "../render/shown.ts";
+import { plain, type Table } from "../render/value.ts";
 import { Serve, gateLogs } from "../server/serve.ts";
 import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
-import { Output, formatBlock } from "./output.ts";
+import { Output, writeSnapshot, type Blocks } from "./output.ts";
 import { materialize, writeDatabases } from "./project.ts";
 import type { AnswersOptions } from "./script.ts";
 
@@ -73,15 +74,14 @@ const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
 const HEADER = /\.(h|hh|hpp|hxx)$/;
 const SOURCE = /\.(c|cc|cpp|cxx|cppm|ixx)$/;
 
-/// What one client showed, and the lines the two must agree on beyond it.
+/// What one client showed, and the same rendered whole: what the two must
+/// agree on beyond what shows.
 interface Shows {
-    lines: string[];
-    compared: string[];
+    output: Output;
+    compared: Output;
 }
 
 function contextOf(c: Case, client: Client, root: string, shows: Shows): AnswersContext {
-    const output = new Output();
-    shows.lines = output.lines;
     const requests = Object.fromEntries(
         REQUESTS.map((name) => [name, client[name].bind(client)]),
     ) as unknown as Requests;
@@ -89,10 +89,8 @@ function contextOf(c: Case, client: Client, root: string, shows: Shows): Answers
         ...requests,
         async show(label, value, options = {}) {
             const parts = new Set(options.parts);
-            output.block(label, await render(value, { parts, full: false }, root, label));
-            shows.compared.push(
-                ...formatBlock(label, await render(value, { parts, full: true }, root, label)),
-            );
+            shows.output.block(label, await block(value, { parts, full: false }, root, label));
+            shows.compared.block(label, await block(value, { parts, full: true }, root, label));
         },
         markers: () => c.markers,
         marker: (name) => markerOf(c, name),
@@ -147,7 +145,7 @@ async function onInspect(
         sources: copied.filter((file) => SOURCE.test(file)),
         config: options.config,
     });
-    const shows: Shows = { lines: [], compared: [] };
+    const shows: Shows = { output: new Output(), compared: new Output() };
     const run = async (): Promise<void> => {
         await fn(contextOf(c, client, root, shows));
         gateCompile(c, "clice inspect", await client.compileErrors());
@@ -196,7 +194,7 @@ async function onServer(
         },
         { marks: c.markers, steps, disk: new Disk(root, c.project, steps) },
     );
-    const shows: Shows = { lines: [], compared: [] };
+    const shows: Shows = { output: new Output(), compared: new Output() };
     const run = async (): Promise<void> => {
         await s.start();
         const errors: string[] = [];
@@ -224,12 +222,21 @@ async function onServer(
     return shows;
 }
 
-/// Run an answers test on the clients it names; returns its output.
+/// The blocks of each client under its name, for paths pinned apart: a
+/// known-wrong reason then goes on the client that answers wrong.
+function apart(inspect: Blocks, server: Blocks): Blocks {
+    return new Map<string, Table>([
+        ["inspect", Object.fromEntries(inspect)],
+        ["server", Object.fromEntries(server)],
+    ]);
+}
+
+/// Run an answers test on the clients it names; returns its blocks.
 export async function runAnswers(
     c: Case,
     options: AnswersOptions,
     fn: (a: AnswersContext) => Promise<void>,
-): Promise<string[]> {
+): Promise<Blocks> {
     const only = options.paths;
     const runs: Promise<{ client: string; shows: Shows }>[] = [];
     if (only === undefined || !("server" in only)) {
@@ -250,18 +257,21 @@ export async function runAnswers(
     if (first === undefined) {
         throw new Error(`${c.id}: the test runs on no client`);
     }
-    const whole = ({ shows }: { shows: Shows }): string => shows.compared.join("\n");
+    const whole = ({ shows }: { shows: Shows }): string =>
+        JSON.stringify([...shows.compared.blocks].map(([label, table]) => [label, plain(table)]));
     const separate = only !== undefined && "separate" in only;
     if (second !== undefined && separate && whole(first) === whole(second)) {
         throw new Error(`${c.id}: inspect and server agree; the paths are not separate`);
     }
     if (second === undefined || whole(first) === whole(second)) {
-        return first.shows.lines;
+        return first.shows.output.blocks;
     }
     if (separate) {
-        return [first, second].flatMap(({ client, shows }) => formatBlock(client, shows.lines));
+        return apart(first.shows.output.blocks, second.shows.output.blocks);
     }
+    const shown = ({ client, shows }: { client: string; shows: Shows }): string =>
+        writeSnapshot(new Map([[client, shows.compared.blocks]]));
     throw new Error(
-        `${c.id}: inspect and server answer differently\n--- inspect\n${whole(first)}\n--- server\n${whole(second)}`,
+        `${c.id}: inspect and server answer differently\n${shown(first)}\n${shown(second)}`,
     );
 }

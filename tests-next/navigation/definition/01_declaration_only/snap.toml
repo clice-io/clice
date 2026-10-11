@@ -1,0 +1,8 @@
+[answers.method]
+definition = ["virtual void ⟦draw⟧() = 0;"]
+
+[answers.function]
+definition = ["int ⟦measure⟧(int value);"]
+
+[answers.variable]
+definition = ["extern int ⟦quota⟧;"]

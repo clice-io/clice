@@ -1,0 +1,18 @@
+[answers.kettle]
+workspace_symbols = [
+    { name = "Kettle", kind = "Struct", at = "main.cpp │ struct ⟦Kettle⟧ {" },
+]
+
+[answers.boil]
+workspace_symbols = [
+    { name = "boil", kind = "Function", at = "main.cpp │ void ⟦boil⟧(Kettle& kettle);" },
+    { name = "boiling_point", kind = "Function", at = "main.cpp │ int ⟦boiling_point⟧();" },
+]
+
+[answers.refill]
+workspace_symbols = [
+    { name = "refill", kind = "Method", at = "main.cpp │ void ⟦refill⟧();", container = "Kettle" },
+]
+
+[answers.steam]
+workspace_symbols = []

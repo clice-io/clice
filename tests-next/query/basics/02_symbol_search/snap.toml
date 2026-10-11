@@ -1,0 +1,42 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 5 file shards (# KB), 10 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method symbolSearch --symbol circ --limit 5"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "Circle",
+        "kind": "Class",
+        "file": "${WS}/include/shapes/circle.h",
+        "line": 7,
+        "container": "shapes",
+        "symbol": "#4f5847a7bd27b561"
+      },
+      {
+        "name": "circumference",
+        "kind": "Method",
+        "file": "${WS}/src/circle.cpp",
+        "line": 9,
+        "container": "shapes::Circle",
+        "symbol": "#6bc05367cb3d24ae"
+      },
+      {
+        "name": "Circle",
+        "kind": "Method",
+        "file": "${WS}/include/shapes/circle.h",
+        "line": 9,
+        "container": "shapes::Circle",
+        "symbol": "#bd709bd890bbcc53"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

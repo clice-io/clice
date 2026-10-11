@@ -29,7 +29,8 @@
     "./testing/coverage/*": "./testing/coverage/*.ts",
     "./testing/logs/*": "./testing/logs/*.ts",
     "./testing": "./testing/index.ts",
-    "./testing/cases/*": "./testing/cases/*.ts"
+    "./testing/cases/*": "./testing/cases/*.ts",
+    "./testing/docs/*": "./testing/docs/*.ts"
   },
   "scripts": {
     "test": "vitest run --config testing/vitest.config.ts",
@@ -42,6 +43,7 @@
     "js-yaml": "^4.3.2",
     "jsonc-parser": "^3.3.1",
     "shell-quote": "^1.11.0",
+    "smol-toml": "^1.9.1",
     "vscode-languageserver-protocol": "^3.17.5",
     "vscode-uri": "^3.1.0"
   },

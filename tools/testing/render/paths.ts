@@ -9,11 +9,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { URI } from "vscode-uri";
+import { cliceExecutable } from "../../client/session.ts";
 
-/// Directories outside the workspace answers may point into, and the name
-/// their files render under (`${RESOURCE}/include/stddef.h`).
+/// A directory outside the workspace answers may point into, by every path
+/// that reaches it, and the name its files render under
+/// (`${RESOURCE}/include/stddef.h`).
 export interface Root {
-    dir: string;
+    dirs: string[];
     name: string;
 }
 
@@ -49,21 +51,57 @@ export function uriToPath(uri: string): string {
     return parsed.fsPath;
 }
 
-/// The name a file renders under: workspace-relative POSIX, or under the
-/// name of the root holding it.
-export function displayPath(file: string, workspace: string, roots: readonly Root[] = []): string {
-    if (!fs.existsSync(file)) {
-        throw new Error(`answer names a file that does not exist: ${file}`);
+let resource: Root | undefined;
+
+/// clang's resource directory beside the clice under test, `${RESOURCE}`:
+/// the builtin headers (`stddef.h`, `stdint.h`) every compile finds.
+export function resourceRoot(): Root {
+    if (resource === undefined) {
+        // clice finds it from its own resolved path; a build links each
+        // header to where the toolchain unpacked it.
+        const exe = fs.realpathSync.native(cliceExecutable());
+        const lib = path.join(path.dirname(exe), "..", "lib", "clang");
+        const [version] = fs.readdirSync(lib);
+        if (version === undefined) {
+            throw new Error(`no clang resource directory in ${lib}`);
+        }
+        const dir = path.join(lib, version);
+        const header = fs.realpathSync.native(path.join(dir, "include", "stddef.h"));
+        resource = {
+            dirs: [dir, path.dirname(path.dirname(header))],
+            name: "${RESOURCE}",
+        };
     }
-    const resolved = fs.realpathSync.native(file);
-    for (const root of [{ dir: workspace, name: "" }, ...roots]) {
-        const relative = path.relative(fs.realpathSync.native(root.dir), resolved);
-        if (!relative.startsWith("..") && !path.isAbsolute(relative)) {
-            const posix = relative.split(path.sep).join("/");
-            return root.name === "" ? posix : `${root.name}/${posix}`;
+    return resource;
+}
+
+/// The name a file renders under: workspace-relative POSIX, under the name
+/// of the root holding it, or else its absolute path. A file only an open
+/// buffer holds is named as it is; reading it is what proves it.
+export function displayPath(file: string, workspace: string, roots: readonly Root[] = []): string {
+    const resolved = fs.existsSync(file) ? fs.realpathSync.native(file) : file;
+    for (const root of [{ dirs: [fs.realpathSync.native(workspace)], name: "" }, ...roots]) {
+        for (const dir of root.dirs) {
+            const relative = path.relative(dir, root.name === "" ? resolved : file);
+            if (!relative.startsWith("..") && !path.isAbsolute(relative)) {
+                const posix = relative.split(path.sep).join("/");
+                return root.name === "" ? posix : `${root.name}/${posix}`;
+            }
         }
     }
-    throw new Error(`answer names a file outside the workspace: ${file}`);
+    return resolved.split(path.sep).join("/");
+}
+
+/// The file a name outside the workspace stands for, or undefined for a
+/// workspace file.
+export function outsidePath(name: string, roots: readonly Root[]): string | undefined {
+    for (const root of roots) {
+        const [dir] = root.dirs;
+        if (dir !== undefined && name.startsWith(`${root.name}/`)) {
+            return path.join(dir, name.slice(root.name.length + 1));
+        }
+    }
+    return path.isAbsolute(name) ? name : undefined;
 }
 
 export function displayUri(uri: string, workspace: string, roots: readonly Root[] = []): string {

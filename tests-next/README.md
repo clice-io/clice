@@ -23,7 +23,7 @@ tests-next/<topic>/<subtopic>/NN_name/
   project.jsonc    optional: how the inputs compile
   test.ts         optional: what to check
   README.md       optional: the case's page in the docs
-  output.snap     every product output the case pins
+  snap.toml       every product output the case pins
 ```
 
 - **Two levels, always.** A topic is a product area (the list below), a
@@ -208,7 +208,6 @@ declared fails the test, and so does a declared one that never happened.
 | -------------------------- | ------------------------------------------------------------------------------------------------- |
 | `except: { win32: "…" }`   | platforms the test has no meaning on, each with the reason; there it is listed as not applicable  |
 | `errors: ["…"]`            | the error-level log lines the test provokes; any other fails                                      |
-| `long: "…"`                | why the test's output may exceed the size budget                                                  |
 | `paths: { server: "…" }`   | (answers) one client alone, where the other cannot answer; `inspect` likewise                     |
 | `paths: { separate: "…" }` | (answers) both clients pinned apart where they answer differently on purpose; agreeing then fails |
 | `config: { … }`            | (answers) options in clice.toml's shape: the server takes all, inspect each feature's table       |
@@ -235,26 +234,55 @@ runs.
 
 ## Output
 
-`output.snap` is the case's output in run order: per test (headed `=== name`
-when the script has several), every `show` and every command's transcript.
+`snap.toml` is the case's output: per test, every `show` and every command's
+transcript in run order, each a block, the table `[<test>.<label>]`. A test
+is named by its script, an unnamed one by its kind (`answers`, `test`).
 
-- **Blocks.** Every line at the left margin heads a block: a label, then its
-  body indented two spaces, or `label: text` when the body is one line; nested
-  blocks follow the same rule. A label is what the script names it, a
-  marker's name or a file's path as a rule; it holds no `: ` and is unique in
-  its test.
-- **`show(label, value, options?)`** writes text, lines or a number as they
-  are; for an answer it takes the request itself, `s.hover(at)`, which knows
-  what it asked and renders it by the table below; a record of these,
-  `{ definition: a.definition(m), declaration: … }`, a block each. `parts`
-  picks an answer's optional parts (a completion's `insert`, `filter`,
-  `edit`; a symbol's `detail`, `range`; a hint's `kind`, `padding`, `links`).
-  Everything shown reads the copy's root `${WS}`, a worker's cause of death
-  `${CRASH}`.
-- **Commands** render as a transcript headed `$ clice …`: stdout (JSON
-  pretty-printed), stderr lines at warning and above, then `exit N`, then each
-  file the command wrote as a diff. Paths read `${WS}/…`, a worker's cause of
-  death `${CRASH}`, durations and sizes `#ms`, `# KB`.
+```toml
+[answers.local]
+highlights = [
+    { at = "int ⟦remaining⟧ = start;", kind = "text" },
+    { at = "⟦remaining⟧ = remaining - 1;", kind = "write" },
+]
+
+[answers.after.hover]
+markdown = '''
+### macro `LIMIT`
+'''
+range = "int capacity = ⟦LIMIT⟧;"
+
+[test."$ clice format main.cpp"]
+exit = 0
+
+[test."$ clice format main.cpp".files]
+"main.cpp" = '''
+-int  x;
++int x;
+'''
+```
+
+- **Blocks.** A label is what the script names it, a marker's name or a
+  file's path as a rule, unique in its test. Short values stay on a line, a
+  table of plain values as one row; text of several lines (markdown, diffs,
+  a command's output) is a raw `'''` string, unescaped; a table follows as
+  `[…]` of its own.
+- **`show(label, value, options?)`** takes a request itself, `s.hover(at)`,
+  which knows what it asked: its answer goes under the request's kind
+  (`hover`, `highlights`, `definition`, …) as the table below shapes it. A
+  record of requests, `{ definition: a.definition(m), declaration: … }`,
+  puts each answer under its own label; text, lines or a number go under
+  `value`. `parts` picks an answer's optional parts (a completion's
+  `insert`, `filter`, `edit`; a symbol's `detail`, `range`; a hint's `kind`,
+  `padding`, `links`). Everything shown reads the copy's root `${WS}`, a
+  worker's cause of death `${CRASH}`.
+- **Commands** are a block under the command line, `$ clice …`: `stdout`
+  (JSON pretty-printed), `stderr` lines at warning and above, `exit` (or
+  `killed` and the signal), and `files`, each file the command wrote as a
+  diff. A command run again in one test is `#2`. Paths read `${WS}/…`, a
+  worker's cause of death `${CRASH}`, durations and sizes `#ms`, `# KB`.
+- **Paths apart.** An answers test whose clients answer differently on
+  purpose (`paths: { separate }`) has an `inspect` and a `server` block,
+  each holding the blocks of its client.
 - **Hand-written checks are for state** (`expect(counts.pch).toBe(0)`,
   equality of two observations, clean or failing compiles), through vitest's
   `expect`. An upper bound on builds is a state check only for a claim that
@@ -262,24 +290,21 @@ when the script has several), every `show` and every command's transcript.
   comes from.
 - **Banned**: writing product output in a test, or matching it partially —
   `toContain` on an answer, `toBeGreaterThan(0)` on a result count, a regular
-  expression over a summary line. Either the whole rendering is in the output,
+  expression over a summary line. Either the whole answer is in the output,
   or the claim is an exact state check.
-- **Known wrong.** A block whose current output is wrong carries the reason on
-  its label at the margin in `output.snap`:
-  `before  ✗ known wrong: clang 22 drops it (#696)`.
-  Every update keeps the flag while the label exists. A case's status in the
-  docs follows its flags: none `supported`, some `partial`, all
-  `unsupported`.
-- **Size.** A test's output over 50 lines needs `long:` with a reason; breadth
-  is the nightly run's job.
-- **Updating.** `UPDATE_SNAPSHOTS=1` rewrites every output and prints, per case,
-  the labels whose output changed — those flagged known wrong (likely fixed)
-  apart from the rest (likely regressed) — and the labels added and removed.
-  A pull request carries that summary.
+- **Known wrong.** A block whose current output is wrong carries the reason
+  in `snap.toml`, written for a reader of the docs:
+  `wrong = "clang 22 drops it (clangd#696)"`. Every update keeps it while the
+  block exists. A case's status in the docs follows its flags: none
+  `supported`, some `partial`, all `unsupported`.
+- **Updating.** `UPDATE_SNAPSHOTS=1` rewrites every output and prints, per
+  case, the blocks whose output changed — those flagged known wrong (likely
+  fixed) apart from the rest (likely regressed) — and the blocks added and
+  removed. A pull request carries that summary.
 
 ### Rendering
 
-Product answers render as text a person reads the way an editor shows them.
+Product answers are values a person reads the way an editor shows them.
 Line and column numbers never appear.
 
 A position or range renders by what is there:
@@ -295,28 +320,28 @@ A position or range renders by what is there:
 6. When the line's text is not unique in its file, an offset follows: `@-9`
    from the query line in the same file, `@12` (1-based) elsewhere.
 
-Every rendering resolves back to exactly the range it came from; the docs site
-uses that to draw its cards.
+Every rendering resolves back to exactly the range it came from. The docs do
+not read it back: the run that checks a documented case writes the case's
+card with each place's range (below).
 
-| Answer                                   | Rendering                                                                                                                                                       |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| locations                                | one position per line, sorted                                                                                                                                   |
-| document highlights                      | position and kind (`read`, `write`, `text`)                                                                                                                     |
-| call and type hierarchy                  | item name and kind at its position; calls with their call sites                                                                                                 |
-| hover                                    | the markdown as the client receives it, then the symbol range                                                                                                   |
-| completion                               | the first ten items by rank: label, kind, detail; `… +N more` (the clients agree on all). Parts: `insert`, `filter`, `edit`                                     |
-| signature help                           | signatures, the active one marked `▶`, the active parameter in `⟦⟧`                                                                                             |
-| inlay hints                              | the line with each hint in place: `draw(⟨width:⟩ 800)`. Parts: `kind`, `padding`, `links`                                                                       |
-| semantic tokens                          | at a place: the token's text, type, modifiers, or the word there and `none`; of a file: every token                                                             |
-| contexts                                 | label, description and host per context                                                                                                                         |
-| folding ranges                           | kind, range, collapsed text                                                                                                                                     |
-| document symbols                         | the outline as an indented tree. Parts: `detail`, `range`                                                                                                       |
-| selection ranges                         | the ranges around a marker, innermost first                                                                                                                     |
-| document links                           | the linked text and its target                                                                                                                                  |
-| diagnostics                              | position, severity, message, source and code                                                                                                                    |
-| edits (code actions, rename, formatting) | each changed file as `--- path` and a diff with two lines of context, trailing whitespace shown `·`; a checked action adds `→ compiles` or `→ does not compile` |
-| workspace symbols                        | name, kind, container, position                                                                                                                                 |
-| counterparts                             | each candidate with its reasons, best first, the preferred one marked `▶`                                                                                       |
+| Answer (kind)                                                                                                  | Shape                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| locations (`definition`, `declaration`, `type_definition`, `implementation`, `references`), `selection_ranges` | positions, sorted; selection ranges innermost first                                                                                                               |
+| `highlights`                                                                                                   | `{ at, kind }`, kind `read`, `write` or `text`                                                                                                                    |
+| `incoming_calls`, `outgoing_calls`, `supertypes`, `subtypes`                                                   | `{ name, kind, at }`; calls add their `sites`                                                                                                                     |
+| `hover`                                                                                                        | `markdown` as the client receives it and the symbol's `range`; no card is `{}`                                                                                    |
+| `completion`                                                                                                   | `items`, the first ten by rank: `label`, `kind`, `detail`; `more` counts the rest (the clients agree on all). Parts: `insert`, `filter`, `edit`                   |
+| `signature_help`                                                                                               | `signatures`, the active parameter in `⟦⟧`, and the `active` one                                                                                                  |
+| `inlay_hints`                                                                                                  | each line with its hints in place, `draw(⟨width:⟩ 800)`. Parts list the line's `hints` with `kind`, `padding`, `links`                                            |
+| `semantic_tokens`, `semantic_token`                                                                            | of a file every token, `{ at, type, modifiers }`; at a place the token's `text` and `type`, or the word there and `none`                                          |
+| `contexts`                                                                                                     | `{ label, description, host }` per context                                                                                                                        |
+| `folding_ranges`                                                                                               | `{ kind, at, collapsed }`                                                                                                                                         |
+| `document_symbols`                                                                                             | the outline, `{ name, kind, at }` with `children`. Parts: `detail`, `range`                                                                                       |
+| `document_links`                                                                                               | `{ at, target }`                                                                                                                                                  |
+| `diagnostics`, `errors`, `pushes`                                                                              | `{ at, severity, message, source, code }`; pushes a list per push                                                                                                 |
+| edits (`code_actions`, rename, formatting)                                                                     | each changed file's diff with two lines of context, trailing whitespace shown `·`; an action has `kind`, `title`, its `edits`, and checked, whether it `compiles` |
+| `workspace_symbols`                                                                                            | `{ name, kind, at, container }`                                                                                                                                   |
+| `counterparts`                                                                                                 | the `candidates`, best first, each with its `reasons`, and the `preferred` one                                                                                    |
 
 ## Docs
 
@@ -343,10 +368,18 @@ written by hand that a case can show.
   once fixed has no README: it sits in the subtopic of the aspect it pins and
   never reaches the docs.
 
-- **Feature pages**: every subtopic of a feature topic with a documented case
-  is a section of that feature's page; each documented case is a card (title,
-  status, summary, the sources, the output) in case order. Status and `issues`
-  feed the support matrix.
+- **Feature pages** keep their own text: what the feature is, each
+  section's heading and lead, the order of the sections, which features
+  share a page. A section's cards fill its generated region, keyed
+  `<!-- BEGIN GENERATED ITEMS: <topic>/<subtopic> -->`
+  (`tools/testing/docs/site.ts`): each documented case of the subtopic, in
+  case order, a card with its title, status, summary and prose. Status and
+  `issues` feed the support matrix.
+- **Cards.** Run with `CLICE_CARDS_DIR`, the cases write each documented
+  case's card, `<id>.json`: its page, its sources without markers and the
+  markers' offsets, and its output with every place's range, so the site
+  draws the answers into the code without reading `snap.toml`. A case's
+  sources are what the card shows: maintainer notes go in its `test.ts`.
 - **Command pages**: documented cases of a command topic are its examples, in
   order: the commands and their transcripts.
 - **Configuration page**: a documented case whose `---` block names
@@ -413,7 +446,6 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 
 - Pull-request CI under 20 minutes wall clock; no job over 10 minutes on the
   slowest leg.
-- A test's output at most 50 lines unless `long:` says why.
 - A test under 30 seconds in Debug on four cores.
 - The nightly run fits the free runners.
 
@@ -448,7 +480,7 @@ data, formatted the way the case needs them.
 
 ```
 tools/testing/
-  cases/          discovery, project.jsonc, copies, scripts, answers tests, output.snap
+  cases/          discovery, project.jsonc, copies, scripts, answers tests, snap.toml
   render/         the requests both clients answer, answers to text and back to ranges
   server/         the server client and its actions over the test hooks
   inspect/        the clice inspect client

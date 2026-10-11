@@ -1,0 +1,33 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 5 file shards (# KB), 10 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol measure"]
+stdout = '''
+{
+  "error": "ambiguous: 2 symbols match; name one by the `symbol` of a candidate",
+  "candidates": [
+    {
+      "name": "measure",
+      "kind": "Method",
+      "file": "${WS}/src/circle.cpp",
+      "line": 5,
+      "container": "shapes::Circle",
+      "symbol": "#e3182553b7d9af30"
+    },
+    {
+      "name": "measure",
+      "kind": "Method",
+      "file": "${WS}/include/shapes/shape.h",
+      "line": 9,
+      "container": "shapes::Shape",
+      "symbol": "#b0521cb8664a11d0"
+    }
+  ],
+  "stale": []
+}
+'''
+exit = 1

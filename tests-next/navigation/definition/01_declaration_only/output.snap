@@ -1,3 +1,0 @@
-method: virtual void ⟦draw⟧() = 0;
-function: int ⟦measure⟧(int value);
-variable: extern int ⟦quota⟧;

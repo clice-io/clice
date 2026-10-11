@@ -1,6 +1,0 @@
-$ clice format
-  Formatted 1 file in #s.
-  exit 0
-  --- main.cpp
-  -int  main( ) { return 0 ; }
-  +int main() { return 0; }

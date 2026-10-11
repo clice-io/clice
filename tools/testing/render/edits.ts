@@ -5,6 +5,7 @@
 
 import { structuredPatch } from "diff";
 import type { Range, SourceText } from "./position.ts";
+import type { Table } from "./value.ts";
 
 export interface TextEdit {
     range: Range;
@@ -38,10 +39,10 @@ function visibleEnd(line: string): string {
     return line.replace(/[ \t]+$/, (run) => run.replaceAll(" ", "·").replaceAll("\t", "→"));
 }
 
-/// The lines of a diff from `before` to `after`, headed by the file.
-export function renderDiff(path: string, before: string, after: string): string[] {
+/// The diff from `before` to `after` of a file.
+export function renderDiff(path: string, before: string, after: string): string {
     const patch = structuredPatch(path, path, before, after, undefined, undefined, { context: 2 });
-    const out = [`--- ${path}`];
+    const out: string[] = [];
     patch.hunks.forEach((hunk, index) => {
         if (index > 0) {
             out.push("…");
@@ -58,18 +59,18 @@ export function renderDiff(path: string, before: string, after: string): string[
     if (patch.hunks.length === 0) {
         out.push("(no change)");
     }
-    return out;
+    return out.join("\n");
 }
 
-/// The diff of every file a workspace edit touches, files sorted.
+/// The diff of every file a workspace edit touches, by file.
 export function renderWorkspaceEdit(
     edits: ReadonlyMap<string, readonly TextEdit[]>,
     file: (path: string) => SourceText,
-): string[] {
-    const out: string[] = [];
-    for (const path of [...edits.keys()].sort()) {
-        const source = file(path);
-        out.push(...renderDiff(path, source.text, applyEdits(source, edits.get(path) ?? [])));
-    }
-    return out;
+): Table {
+    return Object.fromEntries(
+        [...edits.keys()].sort().map((path) => {
+            const source = file(path);
+            return [path, renderDiff(path, source.text, applyEdits(source, edits.get(path) ?? []))];
+        }),
+    );
 }

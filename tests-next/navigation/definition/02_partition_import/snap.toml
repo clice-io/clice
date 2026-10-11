@@ -1,0 +1,5 @@
+[answers.partition]
+definition = ["catalog_items.cppm │ export module ⟦catalog:items⟧;"]
+
+[answers.use]
+definition = ["catalog_items.cppm │ export int ⟦entries⟧() {"]

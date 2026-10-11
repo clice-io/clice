@@ -1,4 +1,0 @@
-$ clice index
-  Indexed 2 translation units in #s: 4 file shards (# KB), 10 symbols.
-  Session log: ${WS}/.clice/logs/${SESSION}
-  exit 0

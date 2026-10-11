@@ -31,7 +31,7 @@ export const RESERVED = new Set([
     "project.jsonc",
     "test.ts",
     "README.md",
-    "output.snap",
+    "snap.toml",
     "trace.jsonl",
 ]);
 

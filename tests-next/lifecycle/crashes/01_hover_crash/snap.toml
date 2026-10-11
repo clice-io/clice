@@ -1,0 +1,35 @@
+["hover alone pauses".hover]
+hover = {}
+
+["hover alone pauses".pushes]
+pushes = [
+    [],
+    [
+        { at = "⟦⟧int add(int a, int b) {", severity = "warning", message = "clice's worker crashed while computing hover for this file (${CRASH}). Hover is paused here until this file or a header it includes changes, or until you save it.", source = "clice" },
+    ],
+]
+
+["hover alone pauses"."hover while paused".hover]
+markdown = '''
+### function `add`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["hover alone pauses".highlights]
+highlights = [
+    { at = "int ⟦add⟧(int a, int b) {", kind = "text" },
+]
+
+["hover alone pauses".crashes]
+value = 1
+
+["hover alone pauses"."hover after a save"]
+hover = {}
+
+["hover alone pauses"."crashes after a save"]
+value = 2

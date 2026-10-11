@@ -1,14 +1,15 @@
 /// Every case under tests-next/: each registered test a vitest test, and once
-/// they all ran, the case's output against its output.snap.
-/// CLICE_CASES=<path prefix> runs the cases under it, CLICE_CASES_SHARD=i/n
-/// one of n shards.
+/// they all ran, the case's output against its snap.toml, and a documented
+/// case's card under CLICE_CARDS_DIR. CLICE_CASES=<path prefix> runs the
+/// cases under it, CLICE_CASES_SHARD=i/n one of n shards.
 
 import { afterAll, describe, test } from "vitest";
 import { loadCases, shard } from "@clice/tools/testing/cases/case";
 import { runRegistered } from "@clice/tools/testing/cases/context";
-import { assemble, checkOutput, checkSize, sections } from "@clice/tools/testing/cases/output";
+import { checkOutput, recorded, type Blocks } from "@clice/tools/testing/cases/output";
 import { CASES_DIR } from "@clice/tools/testing/cases/project";
 import { loadScript, type Registered } from "@clice/tools/testing/cases/script";
+import { writeCard } from "@clice/tools/testing/docs/cards";
 
 const prefix = process.env["CLICE_CASES"] ?? "";
 const under = loadCases(CASES_DIR).filter((c) => c.id.startsWith(prefix));
@@ -42,30 +43,26 @@ for (const c of cases) {
         continue;
     }
     describe(c.id, () => {
-        const results = new Map<string, string[]>();
+        const results = new Map<string, Blocks>();
         for (const entry of ran) {
             test.concurrent(nameOf(entry), async () => {
-                const lines = await runRegistered(c, entry);
-                checkSize(c, entry.name, lines.length, entry.options.long);
-                results.set(entry.name, lines);
+                results.set(nameOf(entry), await runRegistered(c, entry));
             });
         }
         afterAll(() => {
-            if (ran.some((entry) => !results.has(entry.name))) {
+            if (ran.some((entry) => !results.has(nameOf(entry)))) {
                 return;
             }
-            // A test that has no meaning here keeps the section it left
+            // A test that has no meaning here keeps the blocks it left
             // where it runs.
-            const kept = sections(c);
-            checkOutput(
-                c,
-                assemble(
-                    registered.map((entry) => ({
-                        name: entry.name,
-                        lines: results.get(entry.name) ?? kept.get(entry.name) ?? [],
-                    })),
-                ),
+            const kept = recorded(c);
+            const snapshot = new Map(
+                registered.map((entry) => {
+                    const name = nameOf(entry);
+                    return [name, results.get(name) ?? kept.get(name) ?? new Map()];
+                }),
             );
+            writeCard(c, checkOutput(c, snapshot));
         });
     });
 }

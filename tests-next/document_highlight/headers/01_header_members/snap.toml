@@ -1,0 +1,11 @@
+[answers.member]
+highlights = [
+    { at = "int ⟦count⟧ = 0;", kind = "text" },
+    { at = "⟦count⟧ = count + 1;", kind = "write" },
+    { at = "count = ⟦count⟧ + 1;", kind = "read" },
+]
+
+[answers.use]
+highlights = [
+    { at = "return counter.⟦count⟧;", kind = "read" },
+]

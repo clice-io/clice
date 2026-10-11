@@ -30,6 +30,7 @@ import { portable } from "../cli/run.ts";
 import { record, recordConfig, recordInvocation, recordToml } from "../coverage/record.ts";
 import { failureExcerpt, readLogs, undeclaredErrors } from "../logs/logs.ts";
 import {
+    place,
     renderDiagnostics,
     type Action,
     type Call,
@@ -51,8 +52,9 @@ import { Client, type LocationRequest } from "../render/client.ts";
 import { applyEdits, type TextEdit } from "../render/edits.ts";
 import { AnswerContext, completionItems, selection, signatures, tokens } from "../render/lsp.ts";
 import { uriToPath } from "../render/paths.ts";
-import { renderLocation, type Location, type Range } from "../render/position.ts";
+import type { Location, Range } from "../render/position.ts";
 import { shown } from "../render/shown.ts";
+import type { Table } from "../render/value.ts";
 import {
     applyChange,
     describeAnchor,
@@ -63,7 +65,6 @@ import {
     type MarkerAnchor,
 } from "../cases/anchors.ts";
 import { describeChange, type Disk } from "../cases/disk.ts";
-import { formatBlock } from "../cases/output.ts";
 import { StepRecord } from "./steps.ts";
 
 /// A crash or kill the test provokes in the worker running `request` on
@@ -283,7 +284,9 @@ export class Serve extends Client {
             );
             return this.context().diagnostics(file, pulled);
         });
-        return shown(reply, (diagnostics) => this.renderDiagnostics(file, diagnostics));
+        return shown(reply, "diagnostics", (diagnostics) =>
+            this.renderDiagnostics(file, diagnostics),
+        );
     }
 
     /// The errors `file` compiles with.
@@ -291,7 +294,7 @@ export class Serve extends Client {
         const reply = this.diagnostics(file).then((diagnostics) =>
             diagnostics.filter((diagnostic) => diagnostic.severity === "error"),
         );
-        return shown(reply, (diagnostics) => this.renderDiagnostics(file, diagnostics));
+        return shown(reply, "errors", (diagnostics) => this.renderDiagnostics(file, diagnostics));
     }
 
     /// Every diagnostics push `file` received, oldest first, once idle.
@@ -306,10 +309,8 @@ export class Serve extends Client {
                 .filter((params) => client.normalizeUri(params.uri) === uri)
                 .map((params) => context.diagnostics(context.path(params.uri), params.diagnostics));
         });
-        return shown(reply, (pushes) =>
-            pushes.flatMap((push, index) =>
-                formatBlock(`push ${String(index + 1)}`, this.renderDiagnostics(file, push)),
-            ),
+        return shown(reply, "pushes", (pushes) =>
+            pushes.map((push) => this.renderDiagnostics(file, push)),
         );
     }
 
@@ -354,10 +355,10 @@ export class Serve extends Client {
             client.inactiveLines(this.uri(file)),
         );
         const scope = this.scopeOf(file);
-        return shown(reply, (lines) => {
+        return shown(reply, "inactive_lines", (lines) => {
             const source = scope.file(file);
             return lines.map((line) =>
-                renderLocation(
+                place(
                     {
                         path: file,
                         range: {
@@ -371,24 +372,31 @@ export class Serve extends Client {
         });
     }
 
-    private contextLine(item: ContextItem): string {
-        return `${item.label} │ ${portable(item.description, this.workspace.root)} │ ${this.relative(item.uri)}`;
+    private contextItem(item: ContextItem): Table {
+        return {
+            label: item.label,
+            description: portable(item.description, this.workspace.root),
+            host: this.relative(item.uri),
+        };
     }
 
     contexts(file: string, options: { offset?: number } = {}): Promise<QueryContextResult> {
         const reply = this.ask(`contexts of ${file}`, (client) =>
             client.queryContext(this.uri(file), options),
         );
-        return shown(reply, (result) => result.contexts.map((item) => this.contextLine(item)));
+        return shown(reply, "contexts", (result) =>
+            result.contexts.map((item) => this.contextItem(item)),
+        );
     }
 
     currentContext(file: string): Promise<CurrentContextResult> {
         const reply = this.ask(`current context of ${file}`, (client) =>
             client.currentContext(this.uri(file)),
         );
-        return shown(reply, (result) => [
-            `${result.context === null ? "(none)" : this.contextLine(result.context)}${result.automatic ? "  (automatic)" : ""}`,
-        ]);
+        return shown(reply, "current_context", (result) => ({
+            ...(result.context === null ? {} : { context: this.contextItem(result.context) }),
+            automatic: result.automatic,
+        }));
     }
 
     switchContext(
@@ -419,7 +427,7 @@ export class Serve extends Client {
         );
     }
 
-    private renderDiagnostics(file: string, diagnostics: readonly Diagnostic[]): string[] {
+    private renderDiagnostics(file: string, diagnostics: readonly Diagnostic[]): Table[] {
         return renderDiagnostics(diagnostics, this.scopeOf(file));
     }
 
@@ -1015,7 +1023,9 @@ export class Serve extends Client {
                 return this.diagnostics(anchor.path);
             },
         );
-        return shown(reply, (diagnostics) => this.renderDiagnostics(anchor.path, diagnostics));
+        return shown(reply, "diagnostics", (diagnostics) =>
+            this.renderDiagnostics(anchor.path, diagnostics),
+        );
     }
 
     // Teardown.

@@ -1,0 +1,10 @@
+["deleted source withdraws its rows".before]
+definition = ["src/registry.cpp │ int ⟦registry_count⟧() {"]
+
+["deleted source withdraws its rows".after]
+definition = ["include/registry.h │ int ⟦registry_count⟧();"]
+
+["closed header edit reaches its includers".symbols]
+workspace_symbols = [
+    { name = "registry_size", kind = "Function", at = "include/registry.h │ int ⟦registry_size⟧();" },
+]

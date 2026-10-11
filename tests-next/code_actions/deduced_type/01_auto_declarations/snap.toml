@@ -1,0 +1,29 @@
+[[answers.number.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'int'"
+compiles = true
+
+[answers.number.code_actions.edits]
+"main.cpp" = '''
+
+ int weigh() {
+-    auto tonnes = 12;
++    int tonnes = 12;
+     const auto& cargo = fleet::unload();
+     return tonnes;
+'''
+
+[[answers.reference.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'fleet::Truck::Load'"
+compiles = true
+
+[answers.reference.code_actions.edits]
+"main.cpp" = '''
+ int weigh() {
+     auto tonnes = 12;
+-    const auto& cargo = fleet::unload();
++    const fleet::Truck::Load& cargo = fleet::unload();
+     return tonnes;
+ }
+'''

@@ -1,0 +1,24 @@
+[answers."main.cpp"]
+inlay_hints = [
+    {
+        line = "auto entry⟨: List<Widget>::Widget⟩ = []⟨-> List<Widget>::Widget⟩ { return List<Widget>::Widget{}; }();",
+        hints = [
+            {
+                label = ": List<Widget>::Widget",
+                links = [
+                    { value = "List", target = "struct ⟦List⟧ {" },
+                    { value = "Widget", target = "struct ⟦Widget⟧ {}; @-7" },
+                    { value = "Widget", target = "struct ⟦Widget⟧ {}; @-3" },
+                ],
+            },
+            {
+                label = "-> List<Widget>::Widget",
+                links = [
+                    { value = "List", target = "struct ⟦List⟧ {" },
+                    { value = "Widget", target = "struct ⟦Widget⟧ {}; @-7" },
+                    { value = "Widget", target = "struct ⟦Widget⟧ {}; @-3" },
+                ],
+            },
+        ],
+    },
+]

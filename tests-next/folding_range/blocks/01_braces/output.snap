@@ -1,5 +1,0 @@
-main.cpp
-  namespace: namespace store ⟦{ … }⟧ (15 lines)  "{...}"
-  struct: struct Item ⟦{ … }⟧ (4 lines)  "{...}"
-  functionBody: int total(const Item& item) ⟦{ … }⟧ (6 lines)  "{...}"
-  compoundStmt: auto twice = [](int value) ⟦{ … }⟧ (3 lines)  "{...}"

@@ -14,8 +14,6 @@ export interface TestOptions {
     except?: Except;
     /// Error-level log lines the test provokes, as regular expressions.
     errors?: string[];
-    /// Why the test's output may exceed the size budget.
-    long?: string;
 }
 
 export interface AnswersOptions {
@@ -28,7 +26,6 @@ export interface AnswersOptions {
     config?: Record<string, unknown>;
     /// Background indexing on the server.
     indexing?: boolean;
-    long?: string;
 }
 
 export type Registered =

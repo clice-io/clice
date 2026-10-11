@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+document_links = [
+    { at = '#include ⟦"gauge.h"⟧', target = "gauge.h" },
+    { at = "#include ⟦<panel/dial.h>⟧", target = "panel/dial.h" },
+]

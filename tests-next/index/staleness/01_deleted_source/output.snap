@@ -1,6 +1,0 @@
-=== deleted source withdraws its rows
-before: src/registry.cpp │ int ⟦registry_count⟧() {
-after: include/registry.h │ int ⟦registry_count⟧();
-
-=== closed header edit reaches its includers
-symbols: registry_size (Function) include/registry.h │ int ⟦registry_size⟧();

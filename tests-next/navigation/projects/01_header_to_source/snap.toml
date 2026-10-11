@@ -1,0 +1,6 @@
+[answers.call]
+definition = ["src/circle.cpp │ double ⟦area⟧(const Circle& circle) {"]
+declaration = [
+    "include/shapes/circle.h │ double ⟦area⟧(const Circle& circle);",
+    "src/circle.cpp │ double ⟦area⟧(const Circle& circle) {",
+]

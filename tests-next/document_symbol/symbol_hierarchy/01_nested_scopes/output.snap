@@ -1,9 +1,0 @@
-main.cpp
-  garden (Namespace) namespace ⟦garden⟧ {
-    Season (Enum) enum class ⟦Season⟧ { spring, autumn };
-      spring (EnumMember) enum class Season { ⟦spring⟧, autumn };
-      autumn (EnumMember) enum class Season { spring, ⟦autumn⟧ };
-    Bed (Struct) struct ⟦Bed⟧ {
-      width (Field) int ⟦width⟧;
-      plant (Method) void ⟦plant⟧(Season season);
-    water (Function) void ⟦water⟧(Bed& bed);

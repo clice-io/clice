@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseAnnotations } from "../../snap/annotation.ts";
 import type { Case } from "../cases/case.ts";
-import { statusOf } from "../cases/output.ts";
+import { SNAPSHOT, statusOf } from "../cases/output.ts";
 import { CASES_DIR, MARKED, copyName } from "../cases/project.ts";
 import { TOPICS } from "../cases/topics.ts";
 
@@ -18,7 +18,7 @@ function documented(cases: readonly Case[]): Case[] {
 
 /// How much of the case's output is right, by its known-wrong flags.
 function status(c: Case): string {
-    const file = path.join(c.dir, "output.snap");
+    const file = path.join(c.dir, SNAPSHOT);
     return statusOf(fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "");
 }
 
@@ -60,18 +60,34 @@ function item(c: Case, body: readonly string[]): string[] {
 }
 
 /// The generated region of section `subtopic` of a page: one card per
-/// documented case, in case order.
+/// documented case, in case order, in the docs site's card frame (status
+/// and issues in the opening comment, the title the first paragraph).
 export function regionItems(cases: readonly Case[], topic: string, subtopic: string): string {
     return documented(cases)
         .filter((c) => c.topic === topic && c.subtopic === subtopic)
-        .flatMap((c) => [
-            `<!-- BEGIN CAPABILITY: ${status(c)} -->`,
-            "",
-            ...item(c, ["```case", `${path.basename(CASES_DIR)}/${c.id}`, "```", ""]),
-            "<!-- END CAPABILITY -->",
-            "",
-        ])
-        .join("\n");
+        .flatMap((c) => {
+            const readme = c.readme;
+            if (readme === undefined) {
+                return [];
+            }
+            return [
+                `<!-- BEGIN CAPABILITY: ${[status(c), ...readme.issues].join(" ")} -->`,
+                "",
+                `**${readme.title}**`,
+                "",
+                readme.summary,
+                "",
+                ...(readme.prose === "" ? [] : [readme.prose, ""]),
+                "```case",
+                `${path.basename(CASES_DIR)}/${c.id}`,
+                "```",
+                "",
+                "<!-- END CAPABILITY -->",
+                "",
+            ];
+        })
+        .join("\n")
+        .trimEnd();
 }
 
 /// A fence longer than any run of backticks in `text`.
@@ -92,9 +108,9 @@ function inline(c: Case, files: "all" | "config"): string[] {
         const text = MARKED.test(name) ? parseAnnotations(raw).content : raw;
         out.push(`\`${name}\``, "", ...fence(text.trimEnd(), language(name)), "");
     }
-    const output = path.join(c.dir, "output.snap");
+    const output = path.join(c.dir, SNAPSHOT);
     if (fs.existsSync(output)) {
-        out.push(...fence(fs.readFileSync(output, "utf8").trimEnd(), "text"), "");
+        out.push(...fence(fs.readFileSync(output, "utf8").trimEnd(), "toml"), "");
     }
     return out;
 }

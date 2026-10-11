@@ -1,0 +1,29 @@
+[answers."main.cpp"]
+document_symbols = [
+    {
+        name = "garden",
+        kind = "Namespace",
+        at = "namespace ⟦garden⟧ {",
+        children = [
+            {
+                name = "Season",
+                kind = "Enum",
+                at = "enum class ⟦Season⟧ { spring, autumn };",
+                children = [
+                    { name = "spring", kind = "EnumMember", at = "enum class Season { ⟦spring⟧, autumn };" },
+                    { name = "autumn", kind = "EnumMember", at = "enum class Season { spring, ⟦autumn⟧ };" },
+                ],
+            },
+            {
+                name = "Bed",
+                kind = "Struct",
+                at = "struct ⟦Bed⟧ {",
+                children = [
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;" },
+                    { name = "plant", kind = "Method", at = "void ⟦plant⟧(Season season);" },
+                ],
+            },
+            { name = "water", kind = "Function", at = "void ⟦water⟧(Bed& bed);" },
+        ],
+    },
+]

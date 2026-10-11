@@ -1,0 +1,5 @@
+[answers.calls]
+inlay_hints = [
+    { line = "int small = resize(⟨width:⟩320, ⟨height:⟩240, ⟨keep_ratio:⟩true);" },
+    { line = "int large = resize(⟨width:⟩1920, ⟨height:⟩1080, ⟨keep_ratio:⟩false);" },
+]

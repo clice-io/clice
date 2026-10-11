@@ -1,0 +1,21 @@
+["a second SIGTERM still saves"."$ clice index --workers 1"]
+stdout = "Indexing interrupted; progress saved. Rerun `clice index` to resume."
+exit = 130
+
+["a second SIGTERM still saves"."$ clice index"]
+stdout = '''
+Indexed 5 translation units in #s: 6 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["SIGHUP saves"."$ clice index --workers 1"]
+stdout = "Indexing interrupted; progress saved. Rerun `clice index` to resume."
+exit = 130
+
+["SIGHUP saves"."$ clice index"]
+stdout = '''
+Indexed 5 translation units in #s: 6 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

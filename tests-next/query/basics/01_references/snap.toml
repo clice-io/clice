@@ -1,0 +1,37 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 5 file shards (# KB), 10 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method references --symbol shapes::Circle::measure --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "measure",
+    "kind": "Method",
+    "symbol": "#e3182553b7d9af30",
+    "references": [
+      {
+        "file": "${WS}/include/shapes/circle.h",
+        "line": 11,
+        "context": "    double measure() const override;"
+      },
+      {
+        "file": "${WS}/src/circle.cpp",
+        "line": 5,
+        "context": "double Circle::measure() const {"
+      },
+      {
+        "file": "${WS}/test/circle_test.cpp",
+        "line": 4,
+        "context": "    return shapes::Circle(1.0).measure() > 3 ? 0 : 1;"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0

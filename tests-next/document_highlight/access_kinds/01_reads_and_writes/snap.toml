@@ -1,0 +1,15 @@
+[answers.local]
+highlights = [
+    { at = "int ⟦remaining⟧ = start;", kind = "text" },
+    { at = "while (⟦remaining⟧ > 0) {", kind = "read" },
+    { at = "⟦remaining⟧ = remaining - 1;", kind = "write" },
+    { at = "remaining = ⟦remaining⟧ - 1;", kind = "read" },
+    { at = "return ⟦remaining⟧ + start;", kind = "read" },
+]
+
+[answers.parameter]
+highlights = [
+    { at = "int countdown(int ⟦start⟧) {", kind = "text" },
+    { at = "int remaining = ⟦start⟧;", kind = "read" },
+    { at = "return remaining + ⟦start⟧;", kind = "read" },
+]

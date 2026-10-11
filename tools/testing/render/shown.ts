@@ -1,10 +1,10 @@
 /// How `show` renders what a request answers: a client registers the
-/// rendering on the promise its request returns, so a test passes the
-/// request itself, `show("hover", s.hover(at))`, and every client renders
-/// one answer one way.
+/// rendering, and the request's kind, on the promise its request returns,
+/// so a test passes the request itself, `show("hover", s.hover(at))`, and
+/// every client renders one answer one way.
 
 import { portable } from "../cli/run.ts";
-import { formatBlock } from "../cases/output.ts";
+import { mapText, type Table, type Value } from "./value.ts";
 
 export interface RenderOptions {
     /// The optional parts of the answer to render (a completion's insert
@@ -15,24 +15,26 @@ export interface RenderOptions {
     full: boolean;
 }
 
-export type Render<T> = (value: T, options: RenderOptions) => string[];
+export type Render<T> = (value: T, options: RenderOptions) => Value;
 
-const RENDERINGS = new WeakMap<Promise<unknown>, Render<never>>();
+interface Rendering {
+    /// The request, as the block names its answer: `hover`, `highlights`.
+    kind: string;
+    render: Render<never>;
+}
 
-export function shown<T>(reply: Promise<T>, render: Render<T>): Promise<T> {
-    RENDERINGS.set(reply, render);
+const RENDERINGS = new WeakMap<Promise<unknown>, Rendering>();
+
+export function shown<T>(reply: Promise<T>, kind: string, render: Render<T>): Promise<T> {
+    RENDERINGS.set(reply, { kind, render });
     return reply;
 }
 
-/// The rendering of `value`, a request of a client, or undefined for any
-/// other promise.
-function renderingOf(value: Promise<unknown>): Render<unknown> | undefined {
-    return RENDERINGS.get(value) as Render<unknown> | undefined;
-}
+/// The label a block's known-wrong reason takes, which no answer may use.
+export const WRONG = "wrong";
 
 /// What a test shows: what a request answers, passed as the request
-/// itself; text, lines or a number as they are; or a record of these, one
-/// block each.
+/// itself; text, lines or a number as they are; or a record of these.
 export type Shown =
     | Promise<unknown>
     | string
@@ -45,38 +47,55 @@ export interface ShowOptions {
     parts?: readonly string[];
 }
 
-/// The lines `value` shows as, the copy at `root` reading `${WS}` and a
-/// worker's death `${CRASH}`.
-export async function render(
+function renderingOf(value: Promise<unknown>, where: string): Rendering {
+    const rendering = RENDERINGS.get(value);
+    if (rendering === undefined) {
+        throw new Error(
+            `show("${where}"): the promise is no request of a client; pass s.hover(...) itself, or text`,
+        );
+    }
+    return rendering;
+}
+
+/// What `value` shows as: a request its answer, text and numbers as they
+/// are, a record a table of these.
+async function answer(value: Shown, options: RenderOptions, where: string): Promise<Value> {
+    if (value instanceof Promise) {
+        const { render } = renderingOf(value, where);
+        return (render as Render<unknown>)(await value, options);
+    }
+    if (typeof value === "string" || typeof value === "number" || isLines(value)) {
+        return value;
+    }
+    observe(value);
+    const out: Record<string, Value> = {};
+    for (const [label, entry] of Object.entries(value)) {
+        if (label === WRONG) {
+            throw new Error(`show("${where}"): '${WRONG}' is the known-wrong reason's key`);
+        }
+        out[label] = await answer(entry, options, label);
+    }
+    return out;
+}
+
+/// A block of the output: a request's answer under its kind, a record's
+/// entries under their labels, anything else under `value`. The copy at
+/// `root` reads `${WS}`, a worker's death `${CRASH}`.
+export async function block(
     value: Shown,
     options: RenderOptions,
     root: string,
     where: string,
-): Promise<string[]> {
-    let lines: readonly string[];
+): Promise<Table> {
+    let table: Table;
     if (value instanceof Promise) {
-        const rendering = renderingOf(value);
-        if (rendering === undefined) {
-            throw new Error(
-                `show("${where}"): the promise is no request of a client; pass s.hover(...) itself, or text`,
-            );
-        }
-        lines = rendering(await value, options);
-    } else if (typeof value === "string") {
-        lines = value.split("\n");
-    } else if (typeof value === "number") {
-        lines = [String(value)];
-    } else if (isLines(value)) {
-        lines = value;
+        table = { [renderingOf(value, where).kind]: await answer(value, options, where) };
+    } else if (typeof value === "object" && !isLines(value)) {
+        table = (await answer(value, options, where)) as Table;
     } else {
-        observe(value);
-        const out: string[] = [];
-        for (const [label, entry] of Object.entries(value)) {
-            out.push(...formatBlock(label, await render(entry, options, root, label)));
-        }
-        return out;
+        table = { value: await answer(value, options, where) };
     }
-    return lines.map((line) => portable(line, root));
+    return mapText(table, (text) => portable(text, root)) as Table;
 }
 
 /// Every request of a record is under way already: one failing behind an

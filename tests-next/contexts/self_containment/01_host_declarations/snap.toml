@@ -1,0 +1,27 @@
+[answers.macro.hover]
+markdown = '''
+### macro `SCALE`
+
+---
+```cpp
+#define SCALE 3
+
+// Expands to
+3
+```
+'''
+range = "return Meters{⟦SCALE⟧ * 0.5};"
+
+[answers.variable.hover]
+markdown = '''
+### variable `unit_length`
+
+---
+Type: `Meters`
+
+---
+```cpp
+Meters unit_length{1.0}
+```
+'''
+range = "inline Meters ⟦unit_length⟧{1.0};"

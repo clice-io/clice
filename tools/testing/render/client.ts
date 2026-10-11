@@ -109,30 +109,32 @@ export abstract class Client {
 
     hover(at: Anchor): Promise<Hover | null> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchHover(at), (hover) => renderHover(hover, scope));
+        return shown(this.fetchHover(at), "hover", (hover) => renderHover(hover, scope));
     }
 
     /// The completion at `at`, as typing `trigger` asks for it.
     completion(at: Anchor, trigger?: string): Promise<CompletionItem[]> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchCompletion(at, trigger), (items, { parts, full }) =>
+        return shown(this.fetchCompletion(at, trigger), "completion", (items, { parts, full }) =>
             renderCompletion(items, { scope, parts, ...(full ? { limit: items.length } : {}) }),
         );
     }
 
     signatureHelp(at: Anchor): Promise<Signatures> {
-        return shown(this.fetchSignatureHelp(at), renderSignatures);
+        return shown(this.fetchSignatureHelp(at), "signature_help", renderSignatures);
     }
 
     highlights(at: Anchor): Promise<Highlight[]> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchHighlights(at), (highlights) => renderHighlights(highlights, scope));
+        return shown(this.fetchHighlights(at), "highlights", (highlights) =>
+            renderHighlights(highlights, scope),
+        );
     }
 
     /// The ranges around `at`, innermost first.
     selectionRange(at: Anchor): Promise<Range[]> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchSelectionRange(at), (ranges) =>
+        return shown(this.fetchSelectionRange(at), "selection_ranges", (ranges) =>
             renderSelection(at.path, ranges, scope),
         );
     }
@@ -174,7 +176,7 @@ export abstract class Client {
                 return check;
             },
         );
-        return shown(reply, (actions) =>
+        return shown(reply, "code_actions", (actions) =>
             renderActions(actions, (file) => before.get(file) ?? context.file(file)),
         );
     }
@@ -224,7 +226,9 @@ export abstract class Client {
     semanticTokens(place: Place): Promise<Token[] | Token | null> {
         if (typeof place === "string") {
             const scope = this.scopeOf(place);
-            return shown(this.fetchTokens(place), (tokens) => renderTokens(place, tokens, scope));
+            return shown(this.fetchTokens(place), "semantic_tokens", (tokens) =>
+                renderTokens(place, tokens, scope),
+            );
         }
         const source = this.context().file(place.path);
         const { line, character } = source.positionAt(locate(source.text, place));
@@ -237,7 +241,9 @@ export abstract class Client {
                         character < token.character + token.length,
                 ) ?? null,
         );
-        return shown(reply, (token) => [renderTokenAt(source.line(line), character, token)]);
+        return shown(reply, "semantic_token", (token) =>
+            renderTokenAt(source.line(line), character, token),
+        );
     }
 
     /// The inlay hints of a whole file, or over a place: a range marker's
@@ -256,36 +262,38 @@ export abstract class Client {
             range = { start: source.positionAt(begin), end: source.positionAt(end) };
         }
         const scope = this.scopeOf(file);
-        return shown(this.fetchInlayHints(file, range), (hints, { parts }) =>
+        return shown(this.fetchInlayHints(file, range), "inlay_hints", (hints, { parts }) =>
             renderInlayHints(file, hints, scope, parts),
         );
     }
 
     foldingRanges(file: string): Promise<Fold[]> {
         const scope = this.scopeOf(file);
-        return shown(this.fetchFolds(file), (folds) => renderFolds(file, folds, scope));
+        return shown(this.fetchFolds(file), "folding_ranges", (folds) =>
+            renderFolds(file, folds, scope),
+        );
     }
 
     documentSymbols(file: string): Promise<OutlineSymbol[]> {
         const scope = this.scopeOf(file);
-        return shown(this.fetchSymbols(file), (symbols, { parts }) =>
+        return shown(this.fetchSymbols(file), "document_symbols", (symbols, { parts }) =>
             renderOutline(symbols, scope, parts),
         );
     }
 
     documentLinks(file: string): Promise<Link[]> {
         const scope = this.scopeOf(file);
-        return shown(this.fetchLinks(file), (links) => renderLinks(links, scope));
+        return shown(this.fetchLinks(file), "document_links", (links) => renderLinks(links, scope));
     }
 
     /// The files `file` switches to (clice/counterparts), best first.
     counterparts(file: string): Promise<Counterparts> {
-        return shown(this.fetchCounterparts(file), renderCounterparts);
+        return shown(this.fetchCounterparts(file), "counterparts", renderCounterparts);
     }
 
     workspaceSymbols(query: string): Promise<WorkspaceSymbol[]> {
         const scope = this.context().scope(undefined, this.names());
-        return shown(this.fetchWorkspaceSymbols(query), (symbols) =>
+        return shown(this.fetchWorkspaceSymbols(query), "workspace_symbols", (symbols) =>
             renderWorkspaceSymbols(symbols, scope),
         );
     }
@@ -324,19 +332,21 @@ export abstract class Client {
 
     private locations(request: LocationRequest, at: Anchor): Promise<Location[]> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchLocations(request, at), (locations) =>
+        return shown(this.fetchLocations(request, at), request.replace(" ", "_"), (locations) =>
             renderLocations(locations, scope),
         );
     }
 
     private calls(direction: "incoming" | "outgoing", at: Anchor): Promise<Call[]> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchCalls(direction, at), (calls) => renderCalls(calls, scope));
+        return shown(this.fetchCalls(direction, at), `${direction}_calls`, (calls) =>
+            renderCalls(calls, scope),
+        );
     }
 
     private types(direction: "supertypes" | "subtypes", at: Anchor): Promise<Item[]> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchTypes(direction, at), (items) =>
+        return shown(this.fetchTypes(direction, at), direction, (items) =>
             [...items]
                 .sort((a, b) => compareLocations(a.selection, b.selection))
                 .map((item) => renderItem(item, scope)),

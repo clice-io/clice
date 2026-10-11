@@ -1,0 +1,24 @@
+[answers.ns.semantic_token]
+text = "orchard"
+type = "namespace"
+modifiers = ["definition"]
+
+[answers.type.semantic_token]
+text = "Tree"
+type = "struct"
+modifiers = ["definition"]
+
+[answers.field.semantic_token]
+text = "height"
+type = "field"
+modifiers = ["definition"]
+
+[answers.function.semantic_token]
+text = "grow"
+type = "function"
+modifiers = ["declaration"]
+
+[answers.param.semantic_token]
+text = "tree"
+type = "parameter"
+modifiers = ["definition"]

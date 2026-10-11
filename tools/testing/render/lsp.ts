@@ -1,5 +1,6 @@
 /// LSP replies converted into the shapes `answers.ts` renders.
 
+import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
 import type { CounterpartsResult } from "../../protocol/protocol.ts";
 import type {
@@ -20,7 +21,14 @@ import type {
     WorkspaceSymbol,
 } from "./answers.ts";
 import type { TextEdit } from "./edits.ts";
-import { displayPath, displayUri, uriToPath, type Root } from "./paths.ts";
+import {
+    displayPath,
+    displayUri,
+    outsidePath,
+    resourceRoot,
+    uriToPath,
+    type Root,
+} from "./paths.ts";
 import { SourceText, type Location, type Named, type Range, type RenderScope } from "./position.ts";
 
 /// What converting and rendering a reply needs to know about the
@@ -31,12 +39,12 @@ export class AnswerContext {
     private readonly read: (path: string) => string;
     private readonly cache = new Map<string, SourceText>();
 
-    /// `read` returns the text requests see for a rendered path: the open
-    /// buffer, else the disk.
-    constructor(workspace: string, read: (path: string) => string, roots: readonly Root[] = []) {
+    /// `read` returns the text requests see for a workspace path: the open
+    /// buffer, else the disk. A file outside reads from the disk.
+    constructor(workspace: string, read: (path: string) => string) {
         this.workspace = workspace;
         this.read = read;
-        this.roots = roots;
+        this.roots = [resourceRoot()];
     }
 
     path(uri: string): string {
@@ -48,7 +56,8 @@ export class AnswerContext {
     }
 
     file(path: string): SourceText {
-        const text = this.read(path);
+        const outside = outsidePath(path, this.roots);
+        const text = outside === undefined ? this.read(path) : fs.readFileSync(outside, "utf8");
         const cached = this.cache.get(path);
         if (cached?.text === text) {
             return cached;

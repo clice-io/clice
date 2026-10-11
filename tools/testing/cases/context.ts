@@ -8,14 +8,14 @@ import { Workspace } from "../../client/workspace.ts";
 import { withTimeout } from "../../promise.ts";
 import { runCommand, splitCommand, type CommandOptions, type CommandRun } from "../cli/run.ts";
 import { replay } from "../server/replay.ts";
-import { render, type Shown } from "../render/shown.ts";
+import { block, type Shown } from "../render/shown.ts";
 import { Serve, gateLogs, type ServerOptions } from "../server/serve.ts";
 import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { markerOf, runAnswers } from "./answers.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
-import { Output } from "./output.ts";
+import { Output, type Blocks } from "./output.ts";
 import { materialize } from "./project.ts";
 import type { Registered, TestOptions } from "./script.ts";
 
@@ -98,7 +98,7 @@ class TestRun implements TestContext {
         const run = await this.steps.run(`clice ${args.join(" ")}`, () =>
             runCommand(this.root, args, options),
         );
-        this.output.transcript(run.header, run.body);
+        this.output.transcript(run.label, run.transcript);
         return run;
     }
 
@@ -111,7 +111,7 @@ class TestRun implements TestContext {
     async show(label: string, value: Shown): Promise<void> {
         this.output.block(
             label,
-            await render(value, { parts: new Set(), full: false }, this.root, label),
+            await block(value, { parts: new Set(), full: false }, this.root, label),
         );
     }
 
@@ -154,8 +154,8 @@ class TestRun implements TestContext {
     }
 }
 
-/// Run one registered test of a case; returns its output lines.
-export async function runRegistered(c: Case, registered: Registered): Promise<string[]> {
+/// Run one registered test of a case; returns its blocks.
+export async function runRegistered(c: Case, registered: Registered): Promise<Blocks> {
     if (registered.kind === "answers") {
         return runAnswers(c, registered.options, registered.fn);
     }
@@ -167,5 +167,5 @@ export async function runRegistered(c: Case, registered: Registered): Promise<st
         failure = { error };
     }
     throwFailures(failure, await run.finish(failure !== undefined));
-    return run.output.lines;
+    return run.output.blocks;
 }

@@ -1,0 +1,6 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 12 translation units in #s: 12 file shards (# KB), 12 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

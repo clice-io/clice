@@ -13,6 +13,7 @@ import { serverEnv } from "../../process_gate.ts";
 import { recordInvocation, recordToml } from "../coverage/record.ts";
 import { renderDiff } from "../render/edits.ts";
 import { elideCrash } from "../render/lsp.ts";
+import type { Table } from "../render/value.ts";
 
 const LOG_LINE = /^\[[^\]]+\] \[(\w+)\] \[thread \d+\] \[[^\]]+\] (.*)$/;
 
@@ -118,24 +119,22 @@ function mapStrings(value: unknown, map: (text: string) => string): unknown {
 
 /// stdout normalized, JSON pretty-printed: its strings are normalized as
 /// parsed, so an escape is never read as part of a path.
-function stdoutLines(stdout: string, root: string): string[] {
+function stdoutText(stdout: string, root: string): string {
     const trimmed = stdout.trimEnd();
-    if (trimmed === "") {
-        return [];
-    }
     let json: unknown;
     try {
         json = JSON.parse(trimmed);
     } catch {
         return normalize(trimmed, root)
             .split("\n")
-            .map((line) => line.trimEnd());
+            .map((line) => line.trimEnd())
+            .join("\n");
     }
     return JSON.stringify(
         mapStrings(json, (text) => normalize(text, root)),
         null,
         2,
-    ).split("\n");
+    );
 }
 
 /// Split a command line as a POSIX shell does for plain words and double
@@ -176,10 +175,10 @@ export function splitCommand(line: string): string[] {
 }
 
 export interface CommandRun {
-    /// `$ clice …`, the transcript block's header.
-    header: string;
-    /// stdout, stderr at warning and above, the files written, the exit.
-    body: string[];
+    /// `$ clice …`, the transcript block's label.
+    label: string;
+    /// stdout, stderr at warning and above, the exit, the files written.
+    transcript: Table;
     status: number | null;
     signal: NodeJS.Signals | null;
     stdout: string;
@@ -269,20 +268,19 @@ function contents(root: string): Map<string, Buffer> {
     return out;
 }
 
-/// The files a command changed, as diffs.
-function written(before: Map<string, Buffer>, after: Map<string, Buffer>): string[] {
-    const out: string[] = [];
+/// The files a command changed, each as a diff.
+function written(before: Map<string, Buffer>, after: Map<string, Buffer>): Table {
+    const out: Record<string, string> = {};
     for (const name of [...new Set([...before.keys(), ...after.keys()])].sort()) {
         const old = before.get(name);
         const now = after.get(name);
         if (old !== undefined && now !== undefined && old.equals(now)) {
             continue;
         }
-        if (now === undefined) {
-            out.push(`--- ${name}`, "(removed)");
-            continue;
-        }
-        out.push(...renderDiff(name, old?.toString("utf8") ?? "", now.toString("utf8")));
+        out[name] =
+            now === undefined
+                ? "(removed)"
+                : renderDiff(name, old?.toString("utf8") ?? "", now.toString("utf8"));
     }
     return out;
 }
@@ -310,14 +308,19 @@ export async function runCommand(
     } catch {
         // Not JSON.
     }
+    const stdout = stdoutText(result.stdout, root);
+    const stderr = stderrLines(normalize(result.stderr, root));
+    const files = written(before, contents(root));
     return {
-        header: ["$ clice", ...args.map((arg) => quote(normalize(arg, root)))].join(" "),
-        body: [
-            ...stdoutLines(result.stdout, root),
-            ...stderrLines(normalize(result.stderr, root)),
-            result.signal === null ? `exit ${String(result.status)}` : `killed by ${result.signal}`,
-            ...written(before, contents(root)),
-        ],
+        label: ["$ clice", ...args.map((arg) => quote(normalize(arg, root)))].join(" "),
+        transcript: {
+            ...(stdout === "" ? {} : { stdout }),
+            ...(stderr.length === 0 ? {} : { stderr }),
+            ...(result.status === null
+                ? { killed: String(result.signal) }
+                : { exit: result.status }),
+            ...(Object.keys(files).length === 0 ? {} : { files }),
+        },
         status: result.status,
         signal: result.signal,
         stdout: result.stdout,

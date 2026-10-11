@@ -1,0 +1,19 @@
+["nobody is blamed".hover.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"
+
+["nobody is blamed".pushes]
+pushes = [[], []]

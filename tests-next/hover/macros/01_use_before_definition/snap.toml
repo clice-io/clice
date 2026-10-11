@@ -1,0 +1,17 @@
+[answers.before]
+wrong = "a name the preprocessor tests before its #define has no card yet"
+hover = {}
+
+[answers.after.hover]
+markdown = '''
+### macro `LIMIT`
+
+---
+```cpp
+#define LIMIT 8
+
+// Expands to
+8
+```
+'''
+range = "int capacity = ⟦LIMIT⟧;"

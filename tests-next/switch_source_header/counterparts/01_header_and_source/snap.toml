@@ -1,0 +1,14 @@
+[answers."lamp.cpp".counterparts]
+preferred = "lamp.h"
+candidates = [
+    { path = "lamp.h", reasons = ["declares 2 of 2 definitions", "same name"] },
+]
+
+[answers."lamp.h".counterparts]
+preferred = "lamp.cpp"
+candidates = [
+    { path = "lamp.cpp", reasons = ["defines 2 of 2 declarations", "same name"] },
+]
+
+[answers."main.cpp".counterparts]
+candidates = []

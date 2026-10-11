@@ -1,0 +1,107 @@
+["root usage"."$ clice"]
+stdout = '''
+A C++ development toolkit built on LLVM/Clang
+
+Subcommands:
+  serve       Start LSP server
+  query       Ask the persisted index about the workspace
+  refactor    Rewrite the workspace's sources through the persisted index
+  worker
+  index       Index a workspace ahead of time
+  lint        Lint C++ source files
+  format      Format C++ source files
+  inspect     Run a feature on source files and print raw results as JSON
+  analyze     Analyze the indexed workspace for refactoring
+  modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
+'''
+exit = 0
+
+["unknown subcommand"."$ clice bogus"]
+stderr = [
+    "stderr: at argv[0]:",
+    "stderr:   bogus",
+    "stderr:   ^~~~~",
+    "stderr:   unknown subcommand 'bogus'",
+]
+exit = 2
+
+["unknown option"."$ clice serve --bogus"]
+stderr = [
+    "stderr: at argv[0]:",
+    "stderr:   --bogus",
+    "stderr:   ^~~~~~~",
+    "stderr:   unknown option '--bogus'",
+]
+exit = 2
+
+["unknown option"."$ clice query --bogus"]
+stdout = '''
+{
+  "error": "at argv[0]:\n  --bogus\n  ^~~~~~~\n  unknown option '--bogus'",
+  "stale": []
+}
+'''
+exit = 2
+
+["unknown option"."$ clice refactor --bogus"]
+stdout = '''
+{
+  "error": "at argv[0]:\n  --bogus\n  ^~~~~~~\n  unknown option '--bogus'",
+  "stale": []
+}
+'''
+exit = 2
+
+["unknown option"."$ clice index --bogus"]
+stderr = [
+    "stderr: at argv[0]:",
+    "stderr:   --bogus",
+    "stderr:   ^~~~~~~",
+    "stderr:   unknown option '--bogus'",
+]
+exit = 2
+
+["unknown option"."$ clice lint --bogus"]
+stderr = [
+    "stderr: at argv[0]:",
+    "stderr:   --bogus",
+    "stderr:   ^~~~~~~",
+    "stderr:   unknown option '--bogus'",
+]
+exit = 2
+
+["unknown option"."$ clice format --bogus"]
+stderr = [
+    "stderr: at argv[0]:",
+    "stderr:   --bogus",
+    "stderr:   ^~~~~~~",
+    "stderr:   unknown option '--bogus'",
+]
+exit = 2
+
+["unknown option"."$ clice inspect --bogus"]
+stderr = [
+    "stderr: at argv[0]:",
+    "stderr:   --bogus",
+    "stderr:   ^~~~~~~",
+    "stderr:   unknown option '--bogus'",
+]
+exit = 2
+
+["unknown option"."$ clice analyze --bogus"]
+stderr = [
+    "stderr: at argv[0]:",
+    "stderr:   --bogus",
+    "stderr:   ^~~~~~~",
+    "stderr:   unknown subcommand '--bogus'",
+]
+exit = 2
+
+["unknown option"."$ clice modularize --bogus"]
+stdout = '''
+{
+  "error": "at argv[0]:\n  --bogus\n  ^~~~~~~\n  unknown option '--bogus'",
+  "stale": []
+}
+'''
+exit = 2

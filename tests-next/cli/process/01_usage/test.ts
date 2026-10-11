@@ -20,7 +20,7 @@ test("unknown subcommand", async (t) => {
     await t.cli("bogus");
 });
 
-test("unknown option", { long: "one usage error per command" }, async (t) => {
+test("unknown option", async (t) => {
     for (const command of COMMANDS) {
         await t.cli([command, "--bogus"]);
     }

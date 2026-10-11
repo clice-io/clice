@@ -1,6 +1,6 @@
-/// Feature answers rendered as text, from shapes no client owns: `clice
-/// inspect` and a server both decode into these, so the two can differ only
-/// in data, never in layout.
+/// Feature answers as values of the output, from shapes no client owns:
+/// `clice inspect` and a server both decode into these, so the two can
+/// differ only in data, never in layout.
 
 import { renderWorkspaceEdit, type TextEdit } from "./edits.ts";
 import {
@@ -10,6 +10,7 @@ import {
     type RenderScope,
     type SourceText,
 } from "./position.ts";
+import { Place, type Table } from "./value.ts";
 
 /// `scope` with same-file offsets counted from `line` of `path`: a detail
 /// rendered under an item reads relative to the item.
@@ -27,9 +28,14 @@ export function compareLocations(a: Location, b: Location): number {
     );
 }
 
-/// One location a line, in file and position order.
-export function renderLocations(locations: readonly Location[], scope: RenderScope): string[] {
-    return [...locations].sort(compareLocations).map((location) => renderLocation(location, scope));
+/// A location as the output writes it, its range kept.
+export function place(location: Location, scope: RenderScope): Place {
+    return new Place(renderLocation(location, scope), location);
+}
+
+/// The locations in file and position order.
+export function renderLocations(locations: readonly Location[], scope: RenderScope): Place[] {
+    return [...locations].sort(compareLocations).map((location) => place(location, scope));
 }
 
 export interface Item {
@@ -39,8 +45,8 @@ export interface Item {
     selection: Location;
 }
 
-export function renderItem(item: Item, scope: RenderScope): string {
-    return `${item.name} (${item.kind}) ${renderLocation(item.selection, scope)}`;
+export function renderItem(item: Item, scope: RenderScope): Table {
+    return { name: item.name, kind: item.kind, at: place(item.selection, scope) };
 }
 
 export interface Call {
@@ -50,17 +56,13 @@ export interface Call {
     sites: Location[];
 }
 
-export function renderCalls(calls: readonly Call[], scope: RenderScope): string[] {
-    const out: string[] = [];
-    for (const call of [...calls].sort((a, b) =>
-        compareLocations(a.item.selection, b.item.selection),
-    )) {
-        out.push(renderItem(call.item, scope));
-        for (const site of renderLocations(call.sites, scope)) {
-            out.push(`  at ${site}`);
-        }
-    }
-    return out;
+export function renderCalls(calls: readonly Call[], scope: RenderScope): Table[] {
+    return [...calls]
+        .sort((a, b) => compareLocations(a.item.selection, b.item.selection))
+        .map((call) => ({
+            ...renderItem(call.item, scope),
+            sites: renderLocations(call.sites, scope),
+        }));
 }
 
 export interface Highlight {
@@ -68,10 +70,10 @@ export interface Highlight {
     kind: "text" | "read" | "write";
 }
 
-export function renderHighlights(highlights: readonly Highlight[], scope: RenderScope): string[] {
+export function renderHighlights(highlights: readonly Highlight[], scope: RenderScope): Table[] {
     return [...highlights]
         .sort((a, b) => compareLocations(a.location, b.location))
-        .map((highlight) => `${renderLocation(highlight.location, scope)}  ${highlight.kind}`);
+        .map((highlight) => ({ at: place(highlight.location, scope), kind: highlight.kind }));
 }
 
 export interface Hover {
@@ -79,15 +81,19 @@ export interface Hover {
     range?: Location | undefined;
 }
 
-export function renderHover(hover: Hover | null, scope: RenderScope): string[] {
+/// The markdown as the client receives it and the symbol's range; no card
+/// is an empty table.
+export function renderHover(hover: Hover | null, scope: RenderScope): Table {
     if (hover === null) {
-        return ["(none)"];
+        return {};
     }
-    const out = hover.markdown.split("\n").map((line) => line.trimEnd());
-    if (hover.range !== undefined) {
-        out.push(`range: ${renderLocation(hover.range, scope)}`);
-    }
-    return out;
+    const markdown = hover.markdown
+        .split("\n")
+        .map((line) => line.trimEnd())
+        .join("\n");
+    return hover.range === undefined
+        ? { markdown }
+        : { markdown, range: place(hover.range, scope) };
 }
 
 export interface Diagnostic {
@@ -98,21 +104,18 @@ export interface Diagnostic {
     code?: string | undefined;
 }
 
-export function renderDiagnostics(
-    diagnostics: readonly Diagnostic[],
-    scope: RenderScope,
-): string[] {
+export function renderDiagnostics(diagnostics: readonly Diagnostic[], scope: RenderScope): Table[] {
     return [...diagnostics]
         .sort(
             (a, b) => compareLocations(a.location, b.location) || (a.message < b.message ? -1 : 1),
         )
-        .map((diagnostic) => {
-            const origin = [diagnostic.source, diagnostic.code].filter(
-                (part) => part !== undefined,
-            );
-            const tail = origin.length > 0 ? ` [${origin.join(" ")}]` : "";
-            return `${renderLocation(diagnostic.location, scope)}  ${diagnostic.severity}: ${diagnostic.message}${tail}`;
-        });
+        .map((diagnostic) => ({
+            at: place(diagnostic.location, scope),
+            severity: diagnostic.severity,
+            message: diagnostic.message,
+            ...(diagnostic.source === undefined ? {} : { source: diagnostic.source }),
+            ...(diagnostic.code === undefined ? {} : { code: diagnostic.code }),
+        }));
 }
 
 export interface InlayHint {
@@ -125,41 +128,45 @@ export interface InlayHint {
     links?: { value: string; location: Location }[] | undefined;
 }
 
+/// What the parts asked show of a hint: its kind, padding and links.
 function hintDetails(
     path: string,
     hint: InlayHint,
     parts: ReadonlySet<string>,
     scope: RenderScope,
-): string[] {
+): Table {
     const here = anchored(scope, path, hint.position.line);
-    const fields: string[] = [];
-    if (parts.has("kind") && hint.kind !== undefined) {
-        fields.push(hint.kind);
-    }
-    if (parts.has("padding")) {
-        const sides = [hint.paddingLeft ? "left" : "", hint.paddingRight ? "right" : ""].filter(
-            (side) => side !== "",
-        );
-        fields.push(sides.length === 0 ? "no padding" : `padding ${sides.join(" ")}`);
-    }
-    const out = fields.length === 0 ? [] : [`  ⟨${hint.label}⟩ ${fields.join(", ")}`];
-    if (parts.has("links")) {
-        for (const link of hint.links ?? []) {
-            out.push(`  ⟨${hint.label}⟩ ${link.value} → ${renderLocation(link.location, here)}`);
-        }
-    }
-    return out;
+    return {
+        label: hint.label,
+        ...(parts.has("kind") && hint.kind !== undefined ? { kind: hint.kind } : {}),
+        ...(parts.has("padding")
+            ? {
+                  padding: [
+                      ...(hint.paddingLeft === true ? ["left"] : []),
+                      ...(hint.paddingRight === true ? ["right"] : []),
+                  ],
+              }
+            : {}),
+        ...(parts.has("links")
+            ? {
+                  links: (hint.links ?? []).map((link) => ({
+                      value: link.value,
+                      target: place(link.location, here),
+                  })),
+              }
+            : {}),
+    };
 }
 
 /// Each line carrying hints, with every hint inserted where it shows, in
 /// the source's order: `draw(⟨width:⟩ 800)`. The parts asked (`kind`,
-/// `padding`, `links`) add a line per hint below it.
+/// `padding`, `links`) list the line's hints with them.
 export function renderInlayHints(
     path: string,
     hints: readonly InlayHint[],
     scope: RenderScope,
     parts: ReadonlySet<string> = new Set(),
-): string[] {
+): Table[] {
     const source = scope.file(path);
     const byLine = new Map<number, InlayHint[]>();
     for (const hint of hints) {
@@ -167,7 +174,7 @@ export function renderInlayHints(
         list.push(hint);
         byLine.set(hint.position.line, list);
     }
-    const out: string[] = [];
+    const out: Table[] = [];
     for (const line of [...byLine.keys()].sort((a, b) => a - b)) {
         const text = source.line(line);
         const ordered = (byLine.get(line) ?? [])
@@ -183,10 +190,12 @@ export function renderInlayHints(
             at = hint.position.character;
         }
         rendered += text.slice(at);
-        out.push(rendered.trim());
-        for (const { hint } of ordered) {
-            out.push(...hintDetails(path, hint, parts, scope));
-        }
+        out.push({
+            line: rendered.trim(),
+            ...(parts.size === 0
+                ? {}
+                : { hints: ordered.map(({ hint }) => hintDetails(path, hint, parts, scope)) }),
+        });
     }
     return out;
 }
@@ -197,13 +206,14 @@ export interface Fold {
     collapsedText?: string | undefined;
 }
 
-export function renderFolds(path: string, folds: readonly Fold[], scope: RenderScope): string[] {
+export function renderFolds(path: string, folds: readonly Fold[], scope: RenderScope): Table[] {
     return [...folds]
         .sort((a, b) => compareLocations({ path, range: a.range }, { path, range: b.range }))
-        .map((fold) => {
-            const collapsed = fold.collapsedText === undefined ? "" : `  "${fold.collapsedText}"`;
-            return `${fold.kind}: ${renderLocation({ path, range: fold.range }, scope)}${collapsed}`;
-        });
+        .map((fold) => ({
+            kind: fold.kind,
+            at: place({ path, range: fold.range }, scope),
+            ...(fold.collapsedText === undefined ? {} : { collapsed: fold.collapsedText }),
+        }));
 }
 
 export interface OutlineSymbol extends Item {
@@ -213,28 +223,28 @@ export interface OutlineSymbol extends Item {
     children: OutlineSymbol[];
 }
 
-/// The symbol tree, a child indented under its parent; the parts asked
-/// (`detail`, `range`) follow on each symbol's line.
+/// The symbol tree, each symbol's children under it; the parts asked
+/// (`detail`, `range`) join each symbol.
 export function renderOutline(
     symbols: readonly OutlineSymbol[],
     scope: RenderScope,
     parts: ReadonlySet<string> = new Set(),
-    depth = 0,
-): string[] {
-    const out: string[] = [];
-    for (const symbol of symbols) {
-        let line = `${"  ".repeat(depth)}${renderItem(symbol, scope)}`;
-        if (parts.has("detail") && symbol.detail !== undefined && symbol.detail !== "") {
-            line += `  detail: ${symbol.detail}`;
-        }
-        if (parts.has("range") && symbol.range !== undefined) {
-            const { path, range } = symbol.selection;
-            line += `  range: ${renderLocation(symbol.range, anchored(scope, path, range.start.line))}`;
-        }
-        out.push(line);
-        out.push(...renderOutline(symbol.children, scope, parts, depth + 1));
-    }
-    return out;
+): Table[] {
+    return symbols.map((symbol) => {
+        const { path, range } = symbol.selection;
+        return {
+            ...renderItem(symbol, scope),
+            ...(parts.has("detail") && symbol.detail !== undefined && symbol.detail !== ""
+                ? { detail: symbol.detail }
+                : {}),
+            ...(parts.has("range") && symbol.range !== undefined
+                ? { range: place(symbol.range, anchored(scope, path, range.start.line)) }
+                : {}),
+            ...(symbol.children.length === 0
+                ? {}
+                : { children: renderOutline(symbol.children, scope, parts) }),
+        };
+    });
 }
 
 /// The ranges around one place, from the innermost out.
@@ -242,8 +252,8 @@ export function renderSelection(
     path: string,
     ranges: readonly Range[],
     scope: RenderScope,
-): string[] {
-    return ranges.map((range) => renderLocation({ path, range }, scope));
+): Place[] {
+    return ranges.map((range) => place({ path, range }, scope));
 }
 
 export interface Link {
@@ -251,10 +261,10 @@ export interface Link {
     target: string;
 }
 
-export function renderLinks(links: readonly Link[], scope: RenderScope): string[] {
+export function renderLinks(links: readonly Link[], scope: RenderScope): Table[] {
     return [...links]
         .sort((a, b) => compareLocations(a.location, b.location))
-        .map((link) => `${renderLocation(link.location, scope)} → ${link.target}`);
+        .map((link) => ({ at: place(link.location, scope), target: link.target }));
 }
 
 export interface CompletionItem {
@@ -291,41 +301,38 @@ function rank(items: readonly CompletionItem[]): CompletionItem[] {
     );
 }
 
-/// The first items by rank; the cut is announced so a short list never
-/// reads as "nothing else matched". The parts asked (`insert`, `filter`,
-/// `edit`) add lines below each item.
+/// The first items by rank, and how many more there are, so a short list
+/// never reads as "nothing else matched". The parts asked (`insert`,
+/// `filter`, `edit`) join each item.
 export function renderCompletion(
     items: readonly CompletionItem[],
     options: { scope?: RenderScope; parts?: ReadonlySet<string>; limit?: number } = {},
-): string[] {
-    if (items.length === 0) {
-        return ["(none)"];
-    }
+): Table {
     const { scope, parts = new Set<string>(), limit = 10 } = options;
-    const out: string[] = [];
-    for (const item of rank(items).slice(0, limit)) {
-        const detail = item.detail === undefined || item.detail === "" ? "" : `  ${item.detail}`;
-        out.push(`${item.label}  (${item.kind})${detail}${item.deprecated ? "  deprecated" : ""}`);
-        if (parts.has("insert")) {
-            const text = JSON.stringify(item.insert ?? item.label);
-            out.push(`  inserts ${text}${item.snippet ? " as a snippet" : ""}`);
-        }
-        if (parts.has("filter") && item.filter !== undefined && item.filter !== item.label) {
-            out.push(`  filters by ${JSON.stringify(item.filter)}`);
-        }
-        if (parts.has("edit") && scope !== undefined) {
-            if (item.replace !== undefined) {
-                out.push(`  replaces ${renderLocation(item.replace, scope)}`);
-            }
-            if (item.insertRange !== undefined) {
-                out.push(`  inserts over ${renderLocation(item.insertRange, scope)}`);
-            }
-        }
-    }
-    if (items.length > limit) {
-        out.push(`… +${items.length - limit} more`);
-    }
-    return out;
+    const shown = rank(items)
+        .slice(0, limit)
+        .map((item) => ({
+            label: item.label,
+            kind: item.kind,
+            ...(item.detail === undefined || item.detail === "" ? {} : { detail: item.detail }),
+            ...(item.deprecated === true ? { deprecated: true } : {}),
+            ...(parts.has("insert")
+                ? {
+                      insert: item.insert ?? item.label,
+                      ...(item.snippet === true ? { snippet: true } : {}),
+                  }
+                : {}),
+            ...(parts.has("filter") && item.filter !== undefined && item.filter !== item.label
+                ? { filter: item.filter }
+                : {}),
+            ...(parts.has("edit") && scope !== undefined && item.replace !== undefined
+                ? { replace: place(item.replace, scope) }
+                : {}),
+            ...(parts.has("edit") && scope !== undefined && item.insertRange !== undefined
+                ? { insert_range: place(item.insertRange, scope) }
+                : {}),
+        }));
+    return items.length > limit ? { items: shown, more: items.length - limit } : { items: shown };
 }
 
 export interface Signature {
@@ -339,15 +346,15 @@ export interface Signatures {
     active: number;
 }
 
-export function renderSignatures({ signatures, active: activeSignature }: Signatures): string[] {
-    return signatures.map((signature, index) => {
-        const { label, active } = signature;
-        const text =
-            active === undefined
-                ? label
-                : `${label.slice(0, active.begin)}⟦${label.slice(active.begin, active.end)}⟧${label.slice(active.end)}`;
-        return `${index === activeSignature ? "▶" : " "} ${text}`;
-    });
+/// Each signature with its active parameter in ⟦⟧, and which one is
+/// active.
+export function renderSignatures({ signatures, active }: Signatures): Table {
+    const labels = signatures.map(({ label, active: parameter }) =>
+        parameter === undefined
+            ? label
+            : `${label.slice(0, parameter.begin)}⟦${label.slice(parameter.begin, parameter.end)}⟧${label.slice(parameter.end)}`,
+    );
+    return labels.length === 0 ? { signatures: [] } : { signatures: labels, active };
 }
 
 /// A semantic token on one line, as the server sends it: a multiline token
@@ -360,19 +367,19 @@ export interface Token {
     modifiers: string[];
 }
 
-function describeToken(token: Token): string {
+function describeToken(token: Token): Table {
     return token.modifiers.length === 0
-        ? token.type
-        : `${token.type} [${token.modifiers.join(", ")}]`;
+        ? { type: token.type }
+        : { type: token.type, modifiers: token.modifiers };
 }
 
-export function renderTokens(path: string, tokens: readonly Token[], scope: RenderScope): string[] {
+export function renderTokens(path: string, tokens: readonly Token[], scope: RenderScope): Table[] {
     return tokens.map((token) => {
         const range = {
             start: { line: token.line, character: token.character },
             end: { line: token.line, character: token.character + token.length },
         };
-        return `${describeToken(token)}: ${renderLocation({ path, range }, scope)}`;
+        return { at: place({ path, range }, scope), ...describeToken(token) };
     });
 }
 
@@ -398,10 +405,13 @@ function wordAt(line: string, character: number): string {
 
 /// The token a place lies in, as an editor's token inspector shows it:
 /// its text and what it is, or the word there and `none`.
-export function renderTokenAt(line: string, character: number, token: Token | null): string {
+export function renderTokenAt(line: string, character: number, token: Token | null): Table {
     return token === null
-        ? `${wordAt(line, character)}  none`
-        : `${line.slice(token.character, token.character + token.length)}  ${describeToken(token)}`;
+        ? { text: wordAt(line, character), type: "none" }
+        : {
+              text: line.slice(token.character, token.character + token.length),
+              ...describeToken(token),
+          };
 }
 
 export interface Action {
@@ -416,35 +426,22 @@ export interface Action {
     errors?: string[] | undefined;
 }
 
-function indent(line: string): string {
-    return line === "" ? "" : `  ${line}`;
-}
-
+/// Each action with what it does to every file it edits, and, checked,
+/// whether the result compiles.
 export function renderActions(
     actions: readonly Action[],
     file: (path: string) => SourceText,
-): string[] {
-    return actions.flatMap((action) => {
-        const outcome =
-            action.errors === undefined
-                ? ""
-                : action.errors.length === 0
-                  ? " → compiles"
-                  : " → does not compile";
-        return [
-            `[${action.kind}] ${action.title}${outcome}`,
-            ...renderWorkspaceEdit(action.edits, file).map(indent),
-            ...(action.errors ?? []).map((error) => `  error: ${error}`),
-            ...(action.host.length === 0
-                ? []
-                : [
-                      "  into the host source:",
-                      ...action.host.flatMap((piece) =>
-                          piece.split("\n").map((line) => indent(indent(line))),
-                      ),
-                  ]),
-        ];
-    });
+): Table[] {
+    return actions.map((action) => ({
+        kind: action.kind,
+        title: action.title,
+        ...(action.errors === undefined ? {} : { compiles: action.errors.length === 0 }),
+        ...(action.edits.size === 0 ? {} : { edits: renderWorkspaceEdit(action.edits, file) }),
+        ...(action.errors === undefined || action.errors.length === 0
+            ? {}
+            : { errors: action.errors }),
+        ...(action.host.length === 0 ? {} : { host: action.host }),
+    }));
 }
 
 export interface WorkspaceSymbol extends Item {
@@ -456,15 +453,19 @@ export interface WorkspaceSymbol extends Item {
 export function renderWorkspaceSymbols(
     symbols: readonly WorkspaceSymbol[],
     scope: RenderScope,
-): string[] {
-    const lines = symbols.map((symbol) => ({
-        symbol,
-        line: `${renderItem(symbol, scope)}${symbol.container === undefined ? "" : `  in ${symbol.container}`}`,
-    }));
-    lines.sort(
-        (a, b) => compareLocations(a.symbol.selection, b.symbol.selection) || order(a.line, b.line),
-    );
-    return lines.map(({ line }) => line);
+): Table[] {
+    return [...symbols]
+        .sort(
+            (a, b) =>
+                compareLocations(a.selection, b.selection) ||
+                order(a.name, b.name) ||
+                order(a.kind, b.kind) ||
+                order(a.container ?? "", b.container ?? ""),
+        )
+        .map((symbol) => ({
+            ...renderItem(symbol, scope),
+            ...(symbol.container === undefined ? {} : { container: symbol.container }),
+        }));
 }
 
 /// The files a file switches to, best first; the preferred one marked.
@@ -473,8 +474,9 @@ export interface Counterparts {
     candidates: { path: string; reasons: string[] }[];
 }
 
-export function renderCounterparts({ preferred, candidates }: Counterparts): string[] {
-    return candidates.map(
-        ({ path, reasons }) => `${path === preferred ? "▶" : " "} ${path}  (${reasons.join(", ")})`,
-    );
+export function renderCounterparts({ preferred, candidates }: Counterparts): Table {
+    return {
+        ...(preferred === undefined ? {} : { preferred }),
+        candidates: candidates.map(({ path, reasons }) => ({ path, reasons })),
+    };
 }

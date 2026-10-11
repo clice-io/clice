@@ -1,8 +1,0 @@
-main.cpp
-  auto entry⟨: List<Widget>::Widget⟩ = []⟨-> List<Widget>::Widget⟩ { return List<Widget>::Widget{}; }();
-    ⟨: List<Widget>::Widget⟩ List → struct ⟦List⟧ {
-    ⟨: List<Widget>::Widget⟩ Widget → struct ⟦Widget⟧ {}; @-7
-    ⟨: List<Widget>::Widget⟩ Widget → struct ⟦Widget⟧ {}; @-3
-    ⟨-> List<Widget>::Widget⟩ List → struct ⟦List⟧ {
-    ⟨-> List<Widget>::Widget⟩ Widget → struct ⟦Widget⟧ {}; @-7
-    ⟨-> List<Widget>::Widget⟩ Widget → struct ⟦Widget⟧ {}; @-3

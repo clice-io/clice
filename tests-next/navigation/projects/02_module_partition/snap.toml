@@ -1,0 +1,6 @@
+[answers.call]
+definition = ["src/circle_impl.cpp │ double ⟦area⟧(const Circle& circle) {"]
+declaration = [
+    "src/circle.cppm │ double ⟦area⟧(const Circle& circle);",
+    "src/circle_impl.cpp │ double ⟦area⟧(const Circle& circle) {",
+]

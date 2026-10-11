@@ -1,3 +1,0 @@
-lamp.cpp: ▶ lamp.h  (declares 2 of 2 definitions, same name)
-lamp.h: ▶ lamp.cpp  (defines 2 of 2 declarations, same name)
-main.cpp: (none)

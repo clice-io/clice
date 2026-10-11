@@ -1,79 +1,100 @@
 import { describe, expect, test } from "vitest";
-import { Output, applyFlags, assemble, blocks, flags, formatBlock, statusOf } from "./output.ts";
+import { Place } from "../render/value.ts";
+import { Output, readSnapshot, statusOf, writeSnapshot } from "./output.ts";
+
+const where = {
+    path: "main.cpp",
+    range: { start: { line: 0, character: 4 }, end: { line: 0, character: 5 } },
+};
 
 describe("Output", () => {
-    test("blocks indent their body, one line stays on the label", () => {
+    test("labels are unique, a command run again counts", () => {
         const output = new Output();
-        output.block("after", "int");
-        output.block("before", ["(none)", "  more"]);
-        output.transcript("$ clice index", ["exit 0"]);
-        expect(output.lines).toEqual([
-            "after: int",
-            "before",
-            "  (none)",
-            "    more",
-            "$ clice index",
-            "  exit 0",
-        ]);
+        output.block("after", { hover: {} });
+        output.transcript("$ clice index", { exit: 0 });
+        output.transcript("$ clice index", { exit: 1 });
+        expect([...output.blocks.keys()]).toEqual(["after", "$ clice index", "$ clice index #2"]);
         expect(() => {
-            output.block("after", "long");
+            output.block("after", { hover: {} });
         }).toThrow(/two blocks/);
     });
+});
 
-    test("labels are unique in their file's section", () => {
-        const output = new Output();
-        output.blocks(["--- a.cpp", "nameless_0: x", "", "--- b.cpp", "nameless_0: y"]);
-        expect(() => {
-            output.blocks(["--- a.cpp", "nameless_0: z"]);
-        }).toThrow(/two blocks/);
-    });
-
-    test("labels are names", () => {
-        expect(formatBlock("hover", [])).toEqual(["hover: (none)"]);
-        for (const label of ["a: b", "$ clice", "--- x", "=== y", " lead", ""]) {
-            expect(() => formatBlock(label, "x")).toThrow(/no label/);
-        }
-    });
-
-    test("tests head their sections when there are several", () => {
-        expect(assemble([{ name: "", lines: ["a: 1"] }])).toBe("a: 1\n");
-        expect(
-            assemble([
-                { name: "one", lines: ["a: 1"] },
-                { name: "two", lines: ["b: 2"] },
-            ]),
-        ).toBe("=== one\na: 1\n\n=== two\nb: 2\n");
-    });
-
-    test("blocks key by test, file and label", () => {
-        const text =
-            "=== edit\n--- main.cpp\ncall\n  definition: x\n$ clice index\n  exit 0\n$ clice index\n  exit 1\n";
-        expect([...blocks(text).keys()]).toEqual([
-            "edit ▸ main.cpp ▸ call",
-            "edit ▸ main.cpp ▸ $ clice index",
-            "edit ▸ main.cpp ▸ $ clice index #2",
+describe("snap.toml", () => {
+    test("blocks are tables under their test", () => {
+        const snapshot = new Map([
+            [
+                "answers",
+                new Map([
+                    [
+                        "local",
+                        {
+                            highlights: [
+                                { at: new Place("int ⟦x⟧ = 0;", where), kind: "text" },
+                                { at: new Place('f("⟦x⟧");', where), kind: "read" },
+                            ],
+                        },
+                    ],
+                    ["hover while paused", { hover: {} }],
+                ]),
+            ],
         ]);
+        expect(writeSnapshot(snapshot)).toBe(
+            [
+                "[answers.local]",
+                "highlights = [",
+                '    { at = "int ⟦x⟧ = 0;", kind = "text" },',
+                `    { at = 'f("⟦x⟧");', kind = "read" },`,
+                "]",
+                "",
+                '[answers."hover while paused"]',
+                "hover = {}",
+                "",
+            ].join("\n"),
+        );
+    });
+
+    test("text spanning lines stays raw", () => {
+        const text = writeSnapshot(
+            new Map([["test", new Map([["$ clice format", { stdout: 'say("\\n");\nnext' }]])]]),
+        );
+        expect(text).toBe(
+            ['[test."$ clice format"]', "stdout = '''", 'say("\\n");', "next", "'''", ""].join(
+                "\n",
+            ),
+        );
+        expect(readSnapshot(text).get("test")?.get("$ clice format")).toEqual({
+            stdout: 'say("\\n");\nnext',
+        });
+    });
+
+    test("long lists take a line per item", () => {
+        const items = Array.from(
+            { length: 4 },
+            (_, i) => `a fairly long location line ${String(i)}`,
+        );
+        expect(writeSnapshot(new Map([["t", new Map([["use", { definition: items }]])]]))).toBe(
+            ["[t.use]", "definition = [", ...items.map((item) => `    "${item}",`), "]", ""].join(
+                "\n",
+            ),
+        );
     });
 });
 
 describe("known wrong", () => {
-    const flagged = "a: 1\nb  ✗ known wrong: not yet\n  2\nc\n  3\n";
-
-    test("flags survive a new rendering", () => {
-        expect([...flags(flagged)]).toEqual([["b", "not yet"]]);
-        expect(applyFlags("a: 1\nb: 4\nc\n  3\n", flags(flagged))).toBe(
-            "a: 1\nb  ✗ known wrong: not yet\n  4\nc\n  3\n",
-        );
-        expect(blocks(flagged).get("b")).toBe("2");
-    });
-
-    test("a hand-written flag on one line reads the same", () => {
-        expect([...flags("b: 2  ✗ known wrong: not yet\n")]).toEqual([["b", "not yet"]]);
-    });
+    const flagged = [
+        "[answers.a]",
+        "hover = {}",
+        "",
+        "[answers.b]",
+        'wrong = "not yet"',
+        "hover = {}",
+        "",
+    ].join("\n");
 
     test("status follows the flags", () => {
-        expect(statusOf("a: 1\n")).toBe("supported");
+        expect(statusOf("[answers.a]\nhover = {}\n")).toBe("supported");
         expect(statusOf(flagged)).toBe("partial");
-        expect(statusOf("b  ✗ known wrong: no\n  2\n")).toBe("unsupported");
+        expect(statusOf('[answers.b]\nwrong = "no"\nhover = {}\n')).toBe("unsupported");
     });
 });

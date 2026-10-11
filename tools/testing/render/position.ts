@@ -111,7 +111,7 @@ const OPEN = "⟦";
 const CLOSE = "⟧";
 const FILE_SEPARATOR = " │ ";
 const SPAN = " … ";
-const NAME = /^[A-Za-z_]\w*$/;
+const NAME = /^\w+$/;
 const SUFFIX = / @([+-]?\d+)$/;
 const SPANNED = / \((\d+) lines\)$/;
 

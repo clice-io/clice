@@ -1,0 +1,34 @@
+[answers.inspect."main.cpp"]
+semantic_tokens = [
+    { at = "⟦#define⟧ KEEP 1", type = "directive" },
+    { at = "#define ⟦KEEP⟧ 1", type = "macro", modifiers = ["definition"] },
+    { at = "#define KEEP ⟦1⟧", type = "number" },
+    { at = "⟦#if⟧ 0", type = "directive" },
+    { at = "#if ⟦0⟧", type = "number" },
+    { at = "⟦#define⟧ DEAD 2", type = "directive", modifiers = ["inactive"] },
+    { at = "#define ⟦DEAD⟧ 2", type = "macro", modifiers = ["inactive"] },
+    { at = "#define DEAD ⟦2⟧", type = "number", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧", type = "directive" },
+    { at = "⟦int⟧ after = KEEP;", type = "primitive" },
+    { at = "int ⟦after⟧ = KEEP;", type = "variable", modifiers = ["definition"] },
+    { at = "int after = ⟦KEEP⟧;", type = "macro" },
+]
+
+[answers.server]
+wrong = "KEEP loses its definition modifier when the defines sit in the preamble"
+
+[answers.server."main.cpp"]
+semantic_tokens = [
+    { at = "⟦#define⟧ KEEP 1", type = "directive" },
+    { at = "#define ⟦KEEP⟧ 1", type = "macro" },
+    { at = "#define KEEP ⟦1⟧", type = "number" },
+    { at = "⟦#if⟧ 0", type = "directive" },
+    { at = "#if ⟦0⟧", type = "number" },
+    { at = "⟦#define⟧ DEAD 2", type = "directive", modifiers = ["inactive"] },
+    { at = "#define ⟦DEAD⟧ 2", type = "macro", modifiers = ["inactive"] },
+    { at = "#define DEAD ⟦2⟧", type = "number", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧", type = "directive" },
+    { at = "⟦int⟧ after = KEEP;", type = "primitive" },
+    { at = "int ⟦after⟧ = KEEP;", type = "variable", modifiers = ["definition"] },
+    { at = "int after = ⟦KEEP⟧;", type = "macro" },
+]
