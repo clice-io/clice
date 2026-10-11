@@ -206,6 +206,10 @@ private:
     /// destruction.
     Signal<>::Connection notify_conn;
 
+    /// Subscription to the test hook's parked replies (clice/internal/held);
+    /// disconnects on destruction.
+    Signal<std::uint64_t>::Connection held_conn;
+
     /// Sequence number of the next notify-log message to forward (see
     /// MasterServer::notify_seq).
     std::uint64_t notify_cursor = 0;

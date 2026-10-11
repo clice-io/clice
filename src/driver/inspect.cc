@@ -41,7 +41,7 @@ struct InspectOptions {
               help =
                   "Feature to run (code_action, code_completion, document_highlight, "
                   "document_links, document_symbol, folding_range, hover, inlay_hint, "
-                  "selection_range, semantic_tokens, signature_help, tu_index) and a "
+                  "selection_range, semantic_tokens, signature_help) and a "
                   "source file or directory",
               required = false)
     <std::vector<std::string>> inputs;
@@ -52,6 +52,15 @@ struct InspectOptions {
                  "§-markers before compiling (the snap-test grammar)",
              required = false)
     annotations;
+
+    DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
+                 names = {"--markers", "--markers="},
+                 help =
+                     "JSON file of the markers in the inspected source file, at byte "
+                     "offsets: {\"points\": {\"name\": 12}, \"ranges\": {\"name\": "
+                     "{\"begin\": 3, \"end\": 7}}}; results are keyed by these names",
+                 required = false)
+    <std::string> markers;
 
     DecoKVStyled(kota::deco::decl::KVStyle::JoinedOrSeparate,
                  names = {"--flags", "--flags="},
@@ -100,14 +109,28 @@ struct FileEntry {
     /// directory unit (hashed but not inspected).
     std::optional<kota::codec::RawValue> result;
 
-    /// Marker-driven payloads, keyed by annotation name (`nameless_<i>`
-    /// for unnamed markers): position features run once per `§` point,
+    /// Marker-driven payloads, keyed by marker name (`nameless_<i>` for
+    /// an unnamed annotation): position features run once per `§` point,
     /// range features once per `§⟦...⟧` range. A null value records a
     /// position with no result (e.g. hover on whitespace).
     std::optional<std::map<std::string, kota::codec::RawValue>> markers;
 
     std::optional<std::string> error;
     std::optional<std::vector<std::string>> diagnostics;
+};
+
+struct MarkerRange {
+    std::uint32_t begin;
+    std::uint32_t end;
+};
+
+/// The inspected file's markers, as --markers gives them.
+struct FileMarkers {
+    KOTATSU_ANNOTATE(defaulted = true)
+    <std::map<std::string, std::uint32_t>> points;
+
+    KOTATSU_ANNOTATE(defaulted = true)
+    <std::map<std::string, MarkerRange>> ranges;
 };
 
 /// `files` keys are POSIX-style paths relative to the input directory (the
@@ -349,47 +372,6 @@ std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& param
     return to_raw_json(feature::signature_help(params));
 }
 
-/// Occurrence dump of the TU index for the compiled file — the
-/// inspect-path pin of the index layer — each with the kinds of its
-/// symbol's rows spanning it. No LSP request carries this shape, so
-/// tu_index fixtures are `verify: inspect`.
-struct RawOccurrence {
-    LocalSourceRange range;
-    SymbolKind kind;
-    std::vector<std::string> relations;
-};
-
-std::optional<kota::codec::RawValue> run_tu_index(CompilationUnitRef unit,
-                                                  [[maybe_unused]] llvm::StringRef config) {
-    auto envelope = index::build_tu_index(unit);
-    auto index = index::TUIndex::from_bytes(envelope);
-    const index::Shard& rows = index.shard_of(index.path_count() - 1);
-
-    llvm::DenseMap<index::SymbolHash, std::vector<index::Relation>> relations;
-    rows.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
-        relations[hash].push_back(relation);
-        return true;
-    });
-
-    std::vector<RawOccurrence> out;
-    rows.for_each_occurrence([&](const index::Occurrence& occurrence) {
-        RawOccurrence raw;
-        raw.range = occurrence.range;
-        auto symbol = index.find_symbol(occurrence.target);
-        raw.kind = symbol ? symbol->kind : SymbolKind(SymbolKind::Invalid);
-        if(auto found = relations.find(occurrence.target); found != relations.end()) {
-            for(const auto& relation: found->second) {
-                if(relation.range.contains(occurrence.range)) {
-                    raw.relations.emplace_back(kota::meta::enum_name(relation.kind, "Invalid"));
-                }
-            }
-        }
-        out.push_back(std::move(raw));
-        return true;
-    });
-    return to_raw_json(out);
-}
-
 /// Marker payload for document_highlight: the unit's own TU index stands
 /// in for the server's file index, the cursor resolved by the same rule.
 std::optional<kota::codec::RawValue>
@@ -457,7 +439,6 @@ constexpr std::array features = {
     FeatureSpec{.name = "selection_range", .run_at = run_selection_range},
     FeatureSpec{.name = "semantic_tokens", .run = run_semantic_tokens},
     FeatureSpec{.name = "signature_help", .run_complete = run_signature_help},
-    FeatureSpec{.name = "tu_index", .run = run_tu_index},
 };
 
 const FeatureSpec* find_feature(llvm::StringRef name) {
@@ -860,6 +841,32 @@ int run_inspect(const InspectOptions& opts) {
     InspectOutput output;
     output.feature = feature.str();
 
+    std::optional<FileMarkers> marked;
+    if(opts.markers.has_value()) {
+        if(is_dir || opts.annotations) {
+            LOG_ERROR("--markers places markers in one source file, unannotated");
+            return 1;
+        }
+        auto buffer = vfs::read(*opts.markers);
+        if(!buffer) {
+            LOG_ERROR("cannot read --markers {}: {}", *opts.markers, buffer.error().message());
+            return 1;
+        }
+        auto result =
+            kota::codec::json::from_string<StrictJson>((*buffer)->getBuffer(), marked.emplace());
+        if(!result) {
+            LOG_ERROR("invalid --markers: {}", result.error().message);
+            return 1;
+        }
+        // A selection feature answers points and ranges under one name each.
+        for(const auto& name: marked->points | std::views::keys) {
+            if(marked->ranges.contains(name)) {
+                LOG_ERROR("--markers names a point and a range {}", name);
+                return 1;
+            }
+        }
+    }
+
     std::vector<std::string> flags;
     if(opts.flags.has_value()) {
         if(auto result = kota::codec::json::from_string(*opts.flags, flags); !result) {
@@ -947,6 +954,25 @@ int run_inspect(const InspectOptions& opts) {
             source = AnnotatedSource::from(text);
         } else {
             source.content = text.str();
+        }
+        if(marked) {
+            auto inside = [&](std::uint32_t offset) {
+                return offset <= source.content.size();
+            };
+            const auto& [points, ranges] = *marked;
+            if(!std::ranges::all_of(points | std::views::values, inside) ||
+               !std::ranges::all_of(ranges | std::views::values, [&](const MarkerRange& range) {
+                   return range.begin <= range.end && inside(range.end);
+               })) {
+                LOG_ERROR("--markers puts a marker outside the text of {}", rel);
+                return 1;
+            }
+            for(const auto& [name, offset]: points) {
+                source.offsets[name] = offset;
+            }
+            for(const auto& [name, range]: ranges) {
+                source.ranges[name] = LocalSourceRange{range.begin, range.end};
+            }
         }
         FileEntry entry;
         entry.stripped_hash = sha256_hex(source.content);

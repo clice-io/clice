@@ -460,6 +460,16 @@ bool TaskGraph::idle() const {
     });
 }
 
+llvm::SmallVector<NodeId> TaskGraph::compiling() const {
+    llvm::SmallVector<NodeId> ids;
+    for(auto& [id, node]: nodes) {
+        if(node.compiling) {
+            ids.push_back(id);
+        }
+    }
+    return ids;
+}
+
 bool TaskGraph::consistent() const {
     return ranges::all_of(nodes, [](const auto& entry) {
         const auto& node = entry.second;

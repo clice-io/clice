@@ -458,6 +458,23 @@ struct EvictedParams {
     std::string path;
 };
 
+/// Test hook (see BuildProbe::gate): park the work of the next request
+/// whose crash_tag is `tag` where it starts, until released.
+struct GateParams {
+    std::uint64_t id = 0;
+    std::string tag;
+};
+
+/// Test hook: the gate parked a request's work.
+struct GateParkedParams {
+    std::uint64_t id = 0;
+};
+
+/// Test hook: let the work the gate parked go on, or drop the gate.
+struct GateReleaseParams {
+    std::uint64_t id = 0;
+};
+
 /// Whether a request builds — a compile, a PCH or PCM, an indexing run:
 /// work whose time grows with the translation unit, where a query's never
 /// should.
@@ -566,6 +583,21 @@ struct NotificationTraits<clice::worker::EvictParams> {
 template <>
 struct NotificationTraits<clice::worker::EvictedParams> {
     constexpr inline static std::string_view method = "clice/worker/evicted";
+};
+
+template <>
+struct NotificationTraits<clice::worker::GateParams> {
+    constexpr inline static std::string_view method = "clice/worker/gate";
+};
+
+template <>
+struct NotificationTraits<clice::worker::GateParkedParams> {
+    constexpr inline static std::string_view method = "clice/worker/gateParked";
+};
+
+template <>
+struct NotificationTraits<clice::worker::GateReleaseParams> {
+    constexpr inline static std::string_view method = "clice/worker/gateRelease";
 };
 
 }  // namespace kota::ipc::protocol

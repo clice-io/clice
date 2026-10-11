@@ -8,6 +8,7 @@ module;
 
 module clice;
 
+import :sched.graph;
 import :server.features;
 import :server.lsp_client;
 import :server.master_server;
@@ -17,6 +18,7 @@ import :support.logging;
 import :support.process;
 import :vfs.file_system;
 import :vfs.path;
+import :worker.probe;
 
 namespace clice {
 
@@ -161,6 +163,9 @@ void MasterServer::initialize() {
              pool_opts.stateless_count);
 
     pool_opts.log_dir = session_log_dir;
+    if(projects.front()->project.config.project.test_hooks.value) {
+        pool.probe = &probe;
+    }
     if(pool.start(pool_opts)) {
         lifecycle = ServerLifecycle::Ready;
         wire();
@@ -847,6 +852,95 @@ void MasterServer::schedule_shutdown() {
         return;
     lifecycle = ServerLifecycle::ShuttingDown;
     shutdown_source.cancel();
+}
+
+bool MasterServer::test_hooks() const {
+    return pool.probe != nullptr;
+}
+
+/// Whether the project has work settle() waits for. A queue no round will
+/// take, indexing being off, is none.
+static bool working(ProjectServer& project) {
+    return !project.sched.graph.compiling().empty() ||
+           (project.project.config.project.enable_indexing.value && !project.sched.pump.is_idle());
+}
+
+/// The requests of `editor` settle() waits for: all but syncs.
+static auto awaited_requests(const kota::ipc::JSONPeer& editor) {
+    auto requests = editor.incoming_requests();
+    std::erase_if(requests,
+                  [](const auto& request) { return request.method == "clice/internal/sync"; });
+    return requests;
+}
+
+kota::task<> MasterServer::settle(const kota::ipc::JSONPeer& editor) {
+    auto quiet = [&] {
+        drain_disk_changes();
+        return awaited_requests(editor).empty() &&
+               llvm::none_of(projects, [](auto& project) { return working(*project); }) &&
+               llvm::all_of(retired, [](auto& weak) { return weak.expired(); });
+    };
+    while(true) {
+        if(quiet()) {
+            // What a landing scheduled on the loop — a refresh request, a
+            // progress handshake — goes out before the answer.
+            co_await kota::yield();
+            if(quiet()) {
+                co_return;
+            }
+        }
+        // None of them announces its end.
+        co_await kota::sleep(std::chrono::milliseconds(1), loop);
+    }
+}
+
+std::vector<std::string> MasterServer::pending_work(const kota::ipc::JSONPeer& editor) {
+    std::vector<std::string> lines;
+    for(auto& request: awaited_requests(editor)) {
+        lines.push_back(std::visit(
+            [&](const auto& id) { return std::format("request {} {}", request.method, id); },
+            request.id));
+    }
+    for(auto& weak: retired) {
+        if(auto project = weak.lock()) {
+            lines.push_back(std::format("removed project {} shutting down", project->root));
+        }
+    }
+    for(auto& hold: probe.holds()) {
+        if(hold.parked) {
+            lines.push_back(std::format("{} {}: reply parked by hold {}",
+                                        build_kind_name(hold.kind),
+                                        files.display(files.intern(Spelling::absolute(hold.file))),
+                                        hold.id));
+        }
+    }
+    for(auto& gate: probe.gates()) {
+        if(gate.parked && !gate.worker.expired()) {
+            lines.push_back(
+                std::format("{}: work parked in its worker by gate {}", gate.tag, gate.id));
+        }
+    }
+    for(auto& project: projects) {
+        for(auto id: project->sched.graph.compiling()) {
+            auto file = [&] {
+                return files.display(Fid{static_cast<std::uint32_t>(id.key)});
+            };
+            switch(id.family) {
+                case Family::AST: lines.push_back(std::format("compile {}", file())); break;
+                case Family::TURun: lines.push_back(std::format("index {}", file())); break;
+                case Family::PCM: lines.push_back(std::format("pcm {}", file())); break;
+                case Family::PCH: lines.push_back(std::format("pch #{}", id.key)); break;
+            }
+        }
+        auto& pump = project->sched.pump;
+        if(project->project.config.project.enable_indexing.value && !pump.is_idle()) {
+            lines.push_back(std::format("index round at {}/{}, {} files queued",
+                                        pump.progress().completed,
+                                        pump.progress().total,
+                                        pump.pending_files()));
+        }
+    }
+    return lines;
 }
 
 kota::task<> MasterServer::drain() {

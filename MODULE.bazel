@@ -10,7 +10,7 @@ bazel_dep(name = "compdb", version = "0.1.0")
 # kotatsu and the third-party libraries, as the clice Bazel registry
 # (bazel/clice.bazelrc) packages them. kotatsu's version is 0.1.0.<n> for the
 # n-th commit of its main.
-bazel_dep(name = "kotatsu", version = "0.1.0.228")
+bazel_dep(name = "kotatsu", version = "0.1.0.229")
 bazel_dep(name = "croaring", version = "5.2.2.clice.1")
 bazel_dep(name = "lmdb", version = "0.9.31.clice.1")
 bazel_dep(name = "mimalloc", version = "3.5.3.clice.1")

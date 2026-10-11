@@ -16,7 +16,9 @@ test("log flood gated", async ({ session }) => {
     workspace.write("probe.cpp", "int value = 42;\n");
     workspace.writeCDB(["probe.cpp"]);
     const client = session.spawn(workspace);
-    await client.initialize(workspace);
+    await client.initialize(workspace, {
+        initializationOptions: { project: { test_hooks: false } },
+    });
     await expect(withTimeout(client.logFlood(1, 16), 10_000, "logFlood")).rejects.toThrow();
 });
 
@@ -32,9 +34,7 @@ test("stderr flood never wedges", async ({ session }) => {
     workspace.writeCDB(["probe.cpp"]);
 
     const client = session.spawn(workspace, { drainStderr: false });
-    await client.initialize(workspace, {
-        initializationOptions: { project: { test_hooks: true } },
-    });
+    await client.initialize(workspace);
     try {
         const [uri] = client.open("probe.cpp");
         // ~1MB in ten batches, far past the pipe (~196KB with asyncio's

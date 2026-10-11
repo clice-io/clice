@@ -17,6 +17,7 @@ import :support.process;
 import :vfs.file_system;
 import :worker.common;
 import :worker.crash_report;
+import :worker.gate;
 import :worker.protocol;
 import :worker.stateless;
 
@@ -573,6 +574,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     (*transport_result)->set_remote_max_payload(kota::ipc::default_max_payload);
 
     kota::ipc::BincodePeer peer(loop, std::move(*transport_result));
+    install_test_gates(peer, loop);
 
     const worker::ArtifactBuildResult cancelled_build{.success = false, .error = "Build cancelled"};
     serve<worker::BuildPCHParams>(peer, cancelled_build, &handle_build_pch);

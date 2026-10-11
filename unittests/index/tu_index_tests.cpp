@@ -203,6 +203,39 @@ bool has_pair(llvm::StringRef source, RelationKind::Kind kind, llvm::StringRef t
     });
 }
 
+/// One main-file occurrence: the text it covers, its symbol's kind and the
+/// kinds of that symbol's rows whose range holds it.
+struct Spelled {
+    std::string text;
+    SymbolKind::Kind kind;
+    std::vector<RelationKind::Kind> relations{};
+
+    bool operator==(const Spelled&) const = default;
+};
+
+/// Every main-file occurrence inside range `name`, in file order.
+std::vector<Spelled> spelled_in(llvm::StringRef name) {
+    auto scope = range(name);
+    llvm::StringRef content = sources.all_files[src_path].content;
+    std::vector<Spelled> spelled;
+    for(auto& occurrence: tu_index.main_file_index.occurrences) {
+        if(!scope.contains(occurrence.range)) {
+            continue;
+        }
+        Spelled entry{
+            .text = content.slice(occurrence.range.begin, occurrence.range.end).str(),
+            .kind = tu_index.symbols.lookup(occurrence.target).kind,
+        };
+        for(auto& relation: tu_index.main_file_index.relations.lookup(occurrence.target)) {
+            if(relation.range.contains(occurrence.range)) {
+                entry.relations.push_back(relation.kind);
+            }
+        }
+        spelled.push_back(std::move(entry));
+    }
+    return spelled;
+}
+
 void GO_TO_DEFINITION(llvm::StringRef pos,
                       llvm::StringRef definition,
                       std::source_location location = std::source_location::current()) {
@@ -1853,6 +1886,418 @@ ZEST_CASE(SuperQualifierRef) {
     decode_index(index::build_tu_index(*unit));
 
     GO_TO_DEFINITION("use", "def");
+}
+
+ZEST_CASE(HierarchyOccurrenceRelations) {
+    build_index(R"(
+        §(all)⟦namespace demo {
+
+        struct Base {
+            virtual ~Base() = default;
+            virtual int value() const;
+        };
+
+        struct Derived : Base {
+            int value() const override;
+        };
+
+        int use(const Base& b) {
+            return b.value();
+        }
+
+        }⟧
+    )");
+
+    ZEXPECT(spelled_in("all") ==
+            std::vector<Spelled>{
+                {"demo",    SymbolKind::Namespace, {RelationKind::Definition}                     },
+                {"Base",    SymbolKind::Struct,    {RelationKind::Definition}                     },
+                {"~Base",   SymbolKind::Method,    {RelationKind::Definition}                     },
+                {"value",   SymbolKind::Method,    {RelationKind::Declaration}                    },
+                {"Derived", SymbolKind::Struct,    {RelationKind::Definition}                     },
+                {"Base",    SymbolKind::Struct,    {RelationKind::Reference}                      },
+                {"value",   SymbolKind::Method,    {RelationKind::Declaration}                    },
+                {"use",     SymbolKind::Function,  {RelationKind::Definition}                     },
+                {"Base",    SymbolKind::Struct,    {RelationKind::Reference}                      },
+                {"b",       SymbolKind::Parameter, {RelationKind::Definition}                     },
+                {"b",       SymbolKind::Parameter, {RelationKind::Reference}                      },
+                {"value",   SymbolKind::Method,    {RelationKind::Reference, RelationKind::Caller}},
+    });
+}
+
+ZEST_CASE(CoAwaitReferencesOperator) {
+    build_index(R"(
+        namespace std {
+        template <typename Ret, typename...>
+        struct coroutine_traits {
+            using promise_type = typename Ret::promise_type;
+        };
+
+        template <typename = void>
+        struct coroutine_handle {
+            coroutine_handle() = default;
+            template <typename Promise>
+            coroutine_handle(coroutine_handle<Promise>) noexcept;
+            static coroutine_handle from_address(void*) noexcept;
+        };
+
+        struct suspend_never {
+            bool await_ready() const noexcept;
+            void await_suspend(coroutine_handle<>) const noexcept;
+            void await_resume() const noexcept;
+        };
+        }  // namespace std
+
+        struct Task {
+            struct promise_type {
+                Task get_return_object();
+                std::suspend_never initial_suspend();
+                std::suspend_never final_suspend() noexcept;
+                void return_void();
+                void unhandled_exception();
+            };
+        };
+
+        struct Awaitable {
+            std::suspend_never §(operator)⟦§(operator)operator co_await⟧() const;
+        };
+
+        Task coro(Awaitable value) {
+            §(await)⟦§(await)co_await value⟧;
+        }
+    )");
+
+    ZEXPECT(spelled_in("operator") ==
+            std::vector<Spelled>{
+                {"operator co_await", SymbolKind::Operator, {RelationKind::Declaration}},
+    });
+    ZEXPECT(spelled_in("await") ==
+            std::vector<Spelled>{
+                {"co_await", SymbolKind::Operator,  {RelationKind::Reference}},
+                {"value",    SymbolKind::Parameter, {RelationKind::Reference}},
+    });
+    auto keyword = select("await");
+    auto declaration = select("operator");
+    ZASSERT(keyword.size() == 1U);
+    ZASSERT(declaration.size() == 1U);
+    ZEXPECT(keyword.front().target == declaration.front().target);
+}
+
+ZEST_CASE(InvalidBindingKeepsFile) {
+    build_index(R"(
+        void broken() {
+            §(broken)⟦auto [a, b] = 0⟧;
+        }
+
+        struct Pair {
+            int first;
+            int second;
+        };
+
+        int fine() {
+            §(fine)⟦auto [left, right] = Pair{};
+            return left + right⟧;
+        }
+    )");
+
+    ZEXPECT(spelled_in("broken") == std::vector<Spelled>{
+                                        {"a", SymbolKind::Variable, {RelationKind::Definition}},
+                                        {"b", SymbolKind::Variable, {RelationKind::Definition}},
+    });
+    ZEXPECT(spelled_in("fine") == std::vector<Spelled>{
+                                      {"auto",  SymbolKind::Struct,   {RelationKind::Deduced}   },
+                                      {"left",  SymbolKind::Variable, {RelationKind::Definition}},
+                                      {"right", SymbolKind::Variable, {RelationKind::Definition}},
+                                      {"Pair",  SymbolKind::Struct,   {RelationKind::Reference} },
+                                      {"left",  SymbolKind::Variable, {RelationKind::Reference} },
+                                      {"right", SymbolKind::Variable, {RelationKind::Reference} },
+    });
+}
+
+ZEST_CASE(MacroSpelledNameFirstToken) {
+    build_index(R"(
+        #define NAME Widget
+
+        struct Widget {
+            §(destructor)⟦~NAME()⟧;
+        };
+    )");
+
+    ZEXPECT(spelled_in("destructor") == std::vector<Spelled>{
+                                            {"~",    SymbolKind::Method, {RelationKind::Declaration}},
+                                            {"NAME", SymbolKind::Macro,  {RelationKind::Reference}  },
+    });
+}
+
+ZEST_CASE(GlobalAllocationAtKeyword) {
+    build_index(R"(
+        struct Widget {};
+
+        void make() {
+            §(new)⟦Widget* widget = ::new Widget⟧;
+            §(delete)⟦::delete widget⟧;
+        }
+    )");
+
+    ZEXPECT(spelled_in("new") ==
+            std::vector<Spelled>{
+                {"Widget", SymbolKind::Struct,   {RelationKind::Reference}                      },
+                {"widget", SymbolKind::Variable, {RelationKind::Definition}                     },
+                {"new",    SymbolKind::Operator, {RelationKind::Reference, RelationKind::Caller}},
+                {"Widget", SymbolKind::Struct,   {RelationKind::Reference}                      },
+    });
+    ZEXPECT(spelled_in("delete") ==
+            std::vector<Spelled>{
+                {"delete", SymbolKind::Operator, {RelationKind::Reference, RelationKind::Caller}},
+                {"widget", SymbolKind::Variable, {RelationKind::Reference}                      },
+    });
+}
+
+ZEST_CASE(OccurrenceCoverage) {
+    add_main("main.cpp", R"cpp(
+        struct S {
+            int first;
+            int field;
+        };
+
+        int by_offsetof() {
+            return §(offsetof)⟦__builtin_offsetof(S, field)⟧;
+        }
+
+        int §(literal_operator)⟦operator""_unit⟧(unsigned long long value);
+
+        int literal() {
+            return §(literal)⟦12_unit⟧;
+        }
+
+        void cleanup_target(int* pointer);
+
+        void attributes(int value) {
+            §(cleanup)⟦int x __attribute__((cleanup(cleanup_target)))⟧;
+            §(assume)⟦[[assume(value > 0)]]⟧;
+        }
+
+        void jump(int n) {
+            §(asm_goto)⟦asm goto("" : : : : done);
+            if(n) {
+                goto done;
+            }
+        done:⟧
+            return;
+        }
+
+        constexpr bool enabled = true;
+
+        struct Explicit {
+            §(explicit)⟦explicit(enabled) Explicit(int);
+            explicit(enabled) operator bool() const⟧;
+        };
+
+        struct Property {
+            int get_value();
+            void put_value(int);
+            __declspec(property(get = get_value, put = put_value)) §(property)⟦int value⟧;
+        };
+
+        int property(Property p) {
+            §(property_uses)⟦p.value = 1;
+            return p.value⟧;
+        }
+
+        template <class T>
+        struct Delegating {
+            Delegating(T);
+            §(delegating)⟦Delegating() : Delegating(T{}) {}⟧
+        };
+    )cpp");
+    triple = "x86_64-unknown-linux-gnu";
+    ZASSERT(compile("-std=c++23"));
+    decode_index(index::build_tu_index(*unit));
+
+    ZEXPECT(spelled_in("offsetof") == std::vector<Spelled>{
+                                          {"S",     SymbolKind::Struct, {RelationKind::Reference}},
+                                          {"field", SymbolKind::Field,  {RelationKind::Reference}},
+    });
+    ZEXPECT(spelled_in("literal_operator") ==
+            std::vector<Spelled>{
+                {R"(operator""_unit)", SymbolKind::Function, {RelationKind::Declaration}},
+    });
+    ZEXPECT(spelled_in("literal") ==
+            std::vector<Spelled>{
+                {"12_unit", SymbolKind::Function, {RelationKind::Reference, RelationKind::Caller}},
+    });
+    ZEXPECT(spelled_in("cleanup") ==
+            std::vector<Spelled>{
+                {"x",              SymbolKind::Variable, {RelationKind::Definition}},
+                {"cleanup_target", SymbolKind::Function, {RelationKind::Reference} },
+    });
+    ZEXPECT(spelled_in("assume") == std::vector<Spelled>{
+                                        {"value", SymbolKind::Parameter, {RelationKind::Reference}},
+    });
+    ZEXPECT(spelled_in("asm_goto") == std::vector<Spelled>{
+                                          {"done", SymbolKind::Label,     {RelationKind::Reference} },
+                                          {"n",    SymbolKind::Parameter, {RelationKind::Reference} },
+                                          {"done", SymbolKind::Label,     {RelationKind::Reference} },
+                                          {"done", SymbolKind::Label,     {RelationKind::Definition}},
+    });
+    ZEXPECT(spelled_in("explicit") ==
+            std::vector<Spelled>{
+                {"enabled",  SymbolKind::Variable, {RelationKind::Reference}  },
+                {"Explicit", SymbolKind::Method,   {RelationKind::Declaration}},
+                {"enabled",  SymbolKind::Variable, {RelationKind::Reference}  },
+                {"operator", SymbolKind::Method,   {RelationKind::Declaration}},
+    });
+    ZEXPECT(spelled_in("property") == std::vector<Spelled>{
+                                          {"value", SymbolKind::Field, {RelationKind::Definition}},
+    });
+    ZEXPECT(spelled_in("property_uses") ==
+            std::vector<Spelled>{
+                {"p",     SymbolKind::Parameter, {RelationKind::Reference}},
+                {"value", SymbolKind::Field,     {RelationKind::Reference}},
+                {"p",     SymbolKind::Parameter, {RelationKind::Reference}},
+                {"value", SymbolKind::Field,     {RelationKind::Reference}},
+    });
+    ZEXPECT(spelled_in("delegating") ==
+            std::vector<Spelled>{
+                {"Delegating", SymbolKind::Method, {RelationKind::Definition}   },
+                {"Delegating", SymbolKind::Struct, {RelationKind::Reference}    },
+                {"(",          SymbolKind::Method, {RelationKind::WeakReference}},
+                {"T",          SymbolKind::Type,   {RelationKind::Reference}    },
+    });
+}
+
+ZEST_CASE(UnnamedDeclarationsUnrecorded) {
+    build_index(R"(
+        struct Pair {
+            int first;
+            int second;
+        };
+
+        int use() {
+            §(binding)⟦auto [left, right] = Pair{}⟧;
+            return left + right;
+        }
+
+        template <class T>
+        int pack(T source) {
+            §(pack)⟦auto [... elements] = source⟧;
+            return (elements + ...);
+        }
+
+        §(template_template)⟦template <template <class> class TT>
+        struct Holder⟧;
+
+        auto lambda = §(lambda)⟦[]<class T>(T) -> int { return 0; }⟧;
+
+        §(parameters)⟦int f(unsigned);
+        int g(int, char*);⟧
+    )");
+
+    ZEXPECT(spelled_in("binding") ==
+            std::vector<Spelled>{
+                {"auto",  SymbolKind::Struct,   {RelationKind::Deduced}   },
+                {"left",  SymbolKind::Variable, {RelationKind::Definition}},
+                {"right", SymbolKind::Variable, {RelationKind::Definition}},
+                {"Pair",  SymbolKind::Struct,   {RelationKind::Reference} },
+    });
+    ZEXPECT(spelled_in("pack") ==
+            std::vector<Spelled>{
+                {"auto",     SymbolKind::Type,      {RelationKind::Deduced}   },
+                {"elements", SymbolKind::Variable,  {RelationKind::Definition}},
+                {"source",   SymbolKind::Parameter, {RelationKind::Reference} },
+    });
+    ZEXPECT(spelled_in("template_template") ==
+            std::vector<Spelled>{
+                {"TT",     SymbolKind::Type,   {RelationKind::Definition} },
+                {"Holder", SymbolKind::Struct, {RelationKind::Declaration}},
+    });
+    ZEXPECT(spelled_in("lambda") == std::vector<Spelled>{
+                                        {"T", SymbolKind::Type, {RelationKind::Definition}},
+                                        {"T", SymbolKind::Type, {RelationKind::Reference} },
+    });
+    ZEXPECT(spelled_in("parameters") ==
+            std::vector<Spelled>{
+                {"f", SymbolKind::Function, {RelationKind::Declaration}},
+                {"g", SymbolKind::Function, {RelationKind::Declaration}},
+    });
+}
+
+ZEST_CASE(ConstrainedParameterOneDefinition) {
+    build_index(R"(
+        template <class T>
+        concept Concept = true;
+
+        §(constrained)⟦template <Concept T>
+        void constrained(T value);⟧
+
+        §(abbreviated)⟦void abbreviated(Concept auto value);⟧
+    )");
+
+    ZEXPECT(spelled_in("constrained") ==
+            std::vector<Spelled>{
+                {"Concept",     SymbolKind::Concept,   {RelationKind::Reference}  },
+                {"T",           SymbolKind::Type,      {RelationKind::Definition} },
+                {"constrained", SymbolKind::Function,  {RelationKind::Declaration}},
+                {"T",           SymbolKind::Type,      {RelationKind::Reference}  },
+                {"value",       SymbolKind::Parameter, {RelationKind::Definition} },
+    });
+    ZEXPECT(spelled_in("abbreviated") ==
+            std::vector<Spelled>{
+                {"abbreviated", SymbolKind::Function,  {RelationKind::Declaration}},
+                {"Concept",     SymbolKind::Concept,   {RelationKind::Reference}  },
+                {"auto",        SymbolKind::Type,      {RelationKind::Reference}  },
+                {"value",       SymbolKind::Parameter, {RelationKind::Definition} },
+    });
+}
+
+ZEST_CASE(SynthesizedCallsKeepRows) {
+    add_main("main.cpp", R"(
+        namespace std {
+        template <class T>
+        struct reference_wrapper {
+            T* pointer;
+            T& get() const {
+                return *pointer;
+            }
+        };
+
+        template <class T>
+        reference_wrapper<T> ref(T& value) {
+            return {&value};
+        }
+        }  // namespace std
+
+        §(record)⟦struct S {
+            void func() {}
+        }⟧;
+
+        void call() {
+            §(calls)⟦S s;
+            __builtin_invoke(&S::func, std::ref(s));
+            __noop⟧;
+        }
+    )");
+    ZASSERT(compile("-std=c++23"));
+    decode_index(index::build_tu_index(*unit));
+
+    ZEXPECT(spelled_in("record") == std::vector<Spelled>{
+                                        {"S",    SymbolKind::Struct, {RelationKind::Definition}},
+                                        {"func", SymbolKind::Method, {RelationKind::Definition}},
+    });
+    ZEXPECT(spelled_in("calls") ==
+            std::vector<Spelled>{
+                {"S",                SymbolKind::Struct,    {RelationKind::Reference}                      },
+                {"s",                SymbolKind::Variable,  {RelationKind::Definition}                     },
+                {"__builtin_invoke",
+                 SymbolKind::Method,
+                 {RelationKind::Reference, RelationKind::Caller}                                           },
+                {"S",                SymbolKind::Struct,    {RelationKind::Reference}                      },
+                {"func",             SymbolKind::Method,    {RelationKind::Reference}                      },
+                {"std",              SymbolKind::Namespace, {RelationKind::Reference}                      },
+                {"ref",              SymbolKind::Function,  {RelationKind::Reference, RelationKind::Caller}},
+                {"s",                SymbolKind::Variable,  {RelationKind::Reference, RelationKind::Write} },
+                {"__noop",           SymbolKind::Function,  {RelationKind::Reference, RelationKind::Caller}},
+    });
 }
 
 ZEST_CASE(EnvelopeSections) {

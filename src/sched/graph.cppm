@@ -238,6 +238,9 @@ public:
     /// and every round's completion has fired.
     bool idle() const;
 
+    /// The nodes whose round is in flight.
+    llvm::SmallVector<NodeId> compiling() const;
+
     /// Structural sanity that holds at every drain boundary: a compiling
     /// node has an unfinished round, and a finished round never leaves the
     /// compiling flag behind.

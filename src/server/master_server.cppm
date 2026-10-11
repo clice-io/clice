@@ -11,6 +11,7 @@ import :server.session;
 import :support.anomaly;
 import :support.signal;
 import :worker.pool;
+import :worker.probe;
 
 namespace clice {
 
@@ -186,6 +187,26 @@ public:
 
     void schedule_shutdown();
 
+    /// Whether the test hooks are on: project.test_hooks of the first
+    /// project at initialize, kept whatever folders come and go — the
+    /// pool's probe is attached then.
+    bool test_hooks() const;
+
+    /// Test hook (clice/internal/sync): wait until nothing is in flight.
+    /// One look, taken in one turn after the disk changes the file table
+    /// saw are drained, at read-only views: `editor` has no request
+    /// unanswered but syncs (kota lists a request from its dispatch on), no
+    /// task-graph round is live, the index pump is idle, and no removed
+    /// folder's project is still shutting down (its end may start the
+    /// folder again). Work starts inside one of these or from a new
+    /// message, so the look is exact — with periodic ticks off, as tests
+    /// run: workspace polling and checkpoints start work on their own. The
+    /// metadata save that follows a build is not waited for.
+    kota::task<> settle(const kota::ipc::JSONPeer& editor);
+
+    /// What settle() still waits for, one line each; empty once settled.
+    std::vector<std::string> pending_work(const kota::ipc::JSONPeer& editor);
+
     kota::cancellation_token shutdown_token() const {
         return shutdown_source.token();
     }
@@ -194,6 +215,9 @@ public:
 
     /// The process's fid space, shared by every project.
     FileTable files;
+
+    /// Fed by the pool while test hooks are on (see WorkerPool::probe).
+    BuildProbe probe;
 
     /// The workers every project compiles and indexes on.
     WorkerPool pool;

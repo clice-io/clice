@@ -16,7 +16,6 @@ import { selectionRange } from "./features/selection_range.ts";
 import { semanticTokens } from "./features/semantic_tokens.ts";
 import { signatureHelp } from "./features/signature_help.ts";
 import { switchSourceHeader } from "./features/switch_source_header.ts";
-import { tuIndex } from "./features/tu_index.ts";
 import { workspaceSymbol } from "./features/workspace_symbol.ts";
 import type { Feature, FeatureShape } from "./render.ts";
 
@@ -34,7 +33,6 @@ const FEATURES: Record<string, Feature> = {
     semantic_tokens: semanticTokens,
     signature_help: signatureHelp,
     switch_source_header: switchSourceHeader,
-    tu_index: tuIndex,
     workspace_symbol: workspaceSymbol,
 };
 

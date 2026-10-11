@@ -84,6 +84,30 @@ kota::task<> progress_ticker(BatchStack& stack, const BatchOptions& options) {
     }
 }
 
+/// Test hook: CLICE_TEST_PAUSE="<units> <file>" parks a run once that many
+/// units are indexed (nothing more is dispatched) and creates the file, so
+/// a test can signal the run at a known point.
+struct TestPause {
+    std::size_t units = 0;
+    std::string file;
+    bool reached = false;
+};
+
+std::optional<TestPause> test_pause() {
+    auto value = llvm::sys::Process::GetEnv("CLICE_TEST_PAUSE");
+    if(!value) {
+        return std::nullopt;
+    }
+    auto [count, file] = llvm::StringRef(*value).split(' ');
+    TestPause pause;
+    if(count.getAsInteger(10, pause.units) || file.empty()) {
+        LOG_WARN("CLICE_TEST_PAUSE is '<units> <file>', not '{}'", *value);
+        return std::nullopt;
+    }
+    pause.file = file.str();
+    return pause;
+}
+
 /// Quiesce the pump, then the shared contract-11 tail.
 kota::task<> shutdown(BatchStack& stack) {
     co_await stack.sched.pump.stop();
@@ -231,6 +255,16 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     auto progress = stack.sched.pump.on_progress_changed.connect([&] {
         if(stack.sched.pump.progress().stage != IndexPump::Progress::Stage::Report) {
             report_progress(stack, options);
+        }
+    });
+    auto pause = test_pause();
+    auto parked = stack.sched.pump.on_progress_changed.connect([&] {
+        if(pause && !pause->reached && stack.sched.pump.progress().completed >= pause->units) {
+            pause->reached = true;
+            stack.sched.pump.pause_indexing();
+            if(auto error = vfs::write(pause->file, "")) {
+                LOG_WARN("CLICE_TEST_PAUSE cannot create {}: {}", pause->file, error.message());
+            }
         }
     });
     BatchLifetime lifetime(stack);
