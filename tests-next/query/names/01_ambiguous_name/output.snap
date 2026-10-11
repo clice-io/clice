@@ -12,7 +12,7 @@ $ clice query --method definition --symbol measure
         "file": "${WS}/src/circle.cpp",
         "line": 5,
         "container": "shapes::Circle",
-        "symbol": "#e3182553b7d9af30"
+        "symbol": "#c9fbbb30710c2348"
       },
       {
         "name": "measure",
@@ -20,7 +20,7 @@ $ clice query --method definition --symbol measure
         "file": "${WS}/include/shapes/shape.h",
         "line": 9,
         "container": "shapes::Shape",
-        "symbol": "#b0521cb8664a11d0"
+        "symbol": "#a34efd0bdb38a12d"
       }
     ],
     "stale": []
