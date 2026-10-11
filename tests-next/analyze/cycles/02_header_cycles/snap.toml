@@ -1,0 +1,93 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 3 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 3,
+  "modules": [
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 6,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 2,
+      "sources": 0,
+      "lines": 22,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "a_size"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [
+    {
+      "module": "core",
+      "headers": [
+        "core/a.h",
+        "core/b.h"
+      ]
+    }
+  ],
+  "internalHeaders": 0,
+  "deepestChain": [
+    "core"
+  ],
+  "totals": {
+    "baseline": 3,
+    "partitioned": 3
+  },
+  "hotspots": [
+    {
+      "path": "core/a.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/b.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    }
+  ],
+  "moves": [],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

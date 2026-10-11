@@ -1,0 +1,49 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 8 file shards (# KB), 11 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view impact"]
+stdout = '''
+[
+  {
+    "path": "core/str.h",
+    "baseline": 3,
+    "partitioned": 3,
+    "churn": null,
+    "internal": false
+  },
+  {
+    "path": "util/clock.h",
+    "baseline": 2,
+    "partitioned": 2,
+    "churn": null,
+    "internal": false
+  },
+  {
+    "path": "app/detail.h",
+    "baseline": 1,
+    "partitioned": 1,
+    "churn": null,
+    "internal": true
+  },
+  {
+    "path": "core/detail.h",
+    "baseline": 1,
+    "partitioned": 1,
+    "churn": null,
+    "internal": true
+  },
+  {
+    "path": "lib/base.h",
+    "baseline": 1,
+    "partitioned": 1,
+    "churn": null,
+    "internal": false
+  }
+]
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

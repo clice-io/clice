@@ -1,0 +1,5 @@
+{
+  "modules": [
+    { "name": "alpha", "files": ["third/alpha/**"], "primary": "third/alpha/alpha.cppm" }
+  ]
+}

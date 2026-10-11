@@ -1,0 +1,37 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 5 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view edge --from util --to core"]
+stdout = '''
+{
+  "from": "util",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#478ec97a46ae1c6f",
+      "entity": "Str",
+      "owner": "core/str.h",
+      "users": [
+        "util/clock.h:5",
+        "util/fmt.cpp:3"
+      ],
+      "interface": true
+    },
+    {
+      "id": "#b244f96089a92435",
+      "entity": "length",
+      "owner": "core/str.h",
+      "users": [
+        "util/clock.h:8",
+        "util/fmt.cpp:4"
+      ],
+      "interface": true
+    }
+  ]
+}
+'''
+exit = 0

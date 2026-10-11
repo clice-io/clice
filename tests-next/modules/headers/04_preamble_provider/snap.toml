@@ -1,0 +1,5 @@
+[test.before]
+errors = [
+    { at = '#include ⟦"deps.h"⟧', severity = "error", message = "In included file: module 'A' not found", source = "clang", code = "err_module_not_found" },
+    { at = "return ⟦a⟧();", severity = "error", message = "use of undeclared identifier 'a'", source = "clang", code = "err_undeclared_var_use" },
+]

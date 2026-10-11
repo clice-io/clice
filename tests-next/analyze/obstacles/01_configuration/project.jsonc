@@ -1,0 +1,3 @@
+{
+  "units": { "core/str.cpp": [], "app/main.cpp": ["-DMODE_A"] }
+}

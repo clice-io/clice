@@ -1,0 +1,38 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 7 file shards (# KB), 17 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view obstacles --scope \"core/**,util/**,feature/**,app/**\""]
+stdout = '''
+{
+  "variantHeaders": [],
+  "contextMacros": [],
+  "borrowedMacros": [],
+  "internalUses": [],
+  "crossModuleRedeclarations": [],
+  "foreignDeclarations": [],
+  "splitDefinitions": [],
+  "duplicateDefinitions": [],
+  "configuringMacros": [],
+  "implicitProviders": [
+    {
+      "path": "core/traits.h",
+      "specializes": [
+        "Traits"
+      ]
+    }
+  ],
+  "specializations": [
+    {
+      "name": "Hash",
+      "related": "core/hash.h",
+      "file": "util/clock.h",
+      "line": 11
+    }
+  ]
+}
+'''
+exit = 0

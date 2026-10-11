@@ -1,0 +1,14 @@
+[test.before]
+references = [
+    "closed.cpp │ int use() { return ⟦pick⟧(1L); }",
+    "export int ⟦pick⟧(int v) { return v; }",
+]
+
+[test."int overload"]
+references = ["export int ⟦pick⟧(int v) { return v; }"]
+
+[test."long overload"]
+references = [
+    "closed.cpp │ int use() { return ⟦pick⟧(1L); }",
+    "export int ⟦pick⟧(long v) { return 2; }",
+]

@@ -1,0 +1,40 @@
+[answers.type.hover]
+markdown = '''
+### struct `Config`
+
+---
+```cpp
+export struct Config {
+  int value = 0;
+}
+```
+'''
+range = "⟦Config⟧ config = make_config();"
+
+[answers.function.hover]
+markdown = '''
+### function `make_config`
+
+---
+→ `Config`
+
+---
+```cpp
+export Config make_config()
+```
+'''
+range = "Config config = ⟦make_config⟧();"
+
+[answers.primary.hover]
+markdown = '''
+### function `make_config`
+
+---
+→ `Config`
+
+---
+```cpp
+export Config make_config()
+```
+'''
+range = "return ⟦make_config⟧().value;"

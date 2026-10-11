@@ -1,0 +1,2 @@
+KIND(red)
+KIND(green)

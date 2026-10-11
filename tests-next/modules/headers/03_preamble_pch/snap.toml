@@ -1,0 +1,13 @@
+[test.added.hover]
+markdown = '''
+### function `b`
+
+---
+→ `int`
+
+---
+```cpp
+export int b()
+```
+'''
+range = "return a() + ⟦b⟧();"

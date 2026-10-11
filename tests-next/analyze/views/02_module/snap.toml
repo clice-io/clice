@@ -1,0 +1,109 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 9 file shards (# KB), 14 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view module --module core"]
+stdout = '''
+{
+  "name": "core",
+  "files": [
+    {
+      "path": "core/detail.h",
+      "source": false,
+      "uses": [],
+      "usedBy": []
+    },
+    {
+      "path": "core/fast.h",
+      "source": false,
+      "uses": [],
+      "usedBy": [
+        {
+          "module": "app",
+          "entities": 1
+        }
+      ]
+    },
+    {
+      "path": "core/log.h",
+      "source": false,
+      "uses": [],
+      "usedBy": [
+        {
+          "module": "app",
+          "entities": 2
+        }
+      ]
+    },
+    {
+      "path": "core/mode.h",
+      "source": false,
+      "uses": [],
+      "usedBy": [
+        {
+          "module": "app",
+          "entities": 2
+        }
+      ]
+    },
+    {
+      "path": "core/sink.h",
+      "source": false,
+      "uses": [],
+      "usedBy": []
+    },
+    {
+      "path": "core/str.cpp",
+      "source": true,
+      "uses": [],
+      "usedBy": []
+    },
+    {
+      "path": "core/str.h",
+      "source": false,
+      "uses": [],
+      "usedBy": [
+        {
+          "module": "app",
+          "entities": 1
+        },
+        {
+          "module": "util",
+          "entities": 1
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "consumers": [
+        "app",
+        "util"
+      ],
+      "headers": [
+        "core/str.h"
+      ],
+      "dependsOn": []
+    },
+    {
+      "consumers": [
+        "app"
+      ],
+      "headers": [
+        "core/fast.h",
+        "core/log.h",
+        "core/mode.h"
+      ],
+      "dependsOn": []
+    }
+  ],
+  "internalHeaders": [
+    "core/detail.h",
+    "core/sink.h"
+  ]
+}
+'''
+exit = 0

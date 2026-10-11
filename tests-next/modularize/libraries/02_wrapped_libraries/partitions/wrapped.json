@@ -1,0 +1,6 @@
+{
+  "modules": [
+    { "name": "alpha", "files": ["third/alpha/alpha.h"], "rewrite": true },
+    { "name": "alpha", "files": ["third/alpha/**"] }
+  ]
+}

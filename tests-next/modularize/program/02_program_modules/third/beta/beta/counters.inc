@@ -1,0 +1,1 @@
+BETA_COUNTER(opened)

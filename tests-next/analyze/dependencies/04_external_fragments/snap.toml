@@ -1,0 +1,53 @@
+[test."$ clice index --workspace project"]
+stdout = '''
+Indexed 1 translation unit in #s: 5 file shards (# KB), 10 symbols.
+Session log: ${WS}/project/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --workspace project --view edge --from app --to core"]
+stdout = '''
+{
+  "from": "app",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#8170fc722b1f9ae1",
+      "entity": "Color",
+      "owner": "core/color.h",
+      "users": [
+        "app/name.cpp:7"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#0cb6ff8f8a18a882",
+      "entity": "Color::green",
+      "owner": "core/color.h",
+      "users": [
+        "app/name.cpp:10"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#cfe0f122bed7103e",
+      "entity": "Color::red",
+      "owner": "core/color.h",
+      "users": [
+        "app/name.cpp:10"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#9d5f92609c78f7d1",
+      "entity": "ExtNames::gamma",
+      "owner": "core/names.h",
+      "users": [
+        "app/name.cpp:17"
+      ],
+      "interface": false
+    }
+  ]
+}
+'''
+exit = 0

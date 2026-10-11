@@ -1,0 +1,7 @@
+{
+  "configurations": [
+    { "name": "one", "condition": "defined(ONE)", "out": "../wrap" },
+    { "name": "two", "condition": "defined(TWO)", "out": "../two" },
+    { "name": "three", "condition": "defined(THREE)", "out": "../three" }
+  ]
+}

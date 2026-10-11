@@ -1,0 +1,73 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 11 file shards (# KB), 12 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view obstacles --scope \"core/**,util/**,feature/**,app/**\""]
+stdout = '''
+{
+  "variantHeaders": [],
+  "contextMacros": [],
+  "borrowedMacros": [],
+  "internalUses": [],
+  "crossModuleRedeclarations": [
+    {
+      "entity": "Logger",
+      "owner": "core/log.h",
+      "file": "feature/f.h",
+      "line": 5,
+      "friendDeclaration": false,
+      "unused": false,
+      "onCycle": false
+    },
+    {
+      "entity": "Clock",
+      "owner": "util/clock.h",
+      "file": "feature/f.h",
+      "line": 6,
+      "friendDeclaration": false,
+      "unused": true,
+      "onCycle": false
+    }
+  ],
+  "foreignDeclarations": [
+    {
+      "name": "Third",
+      "owner": "third/lib.h",
+      "file": "core/str.h",
+      "line": 4,
+      "friendDeclaration": false
+    }
+  ],
+  "splitDefinitions": [
+    {
+      "name": "api",
+      "related": "core/api.h",
+      "file": "feature/f.cpp",
+      "line": 12
+    }
+  ],
+  "duplicateDefinitions": [
+    {
+      "entity": "Dup",
+      "files": [
+        "feature/dup.h",
+        "util/dup.h"
+      ]
+    },
+    {
+      "entity": "Dup::x",
+      "files": [
+        "feature/dup.h",
+        "util/dup.h"
+      ]
+    }
+  ],
+  "configuringMacros": [],
+  "implicitProviders": [],
+  "specializations": []
+}
+'''
+exit = 0

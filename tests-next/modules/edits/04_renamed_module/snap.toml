@@ -1,0 +1,4 @@
+[test."old name"]
+errors = [
+    { at = "import ⟦A;⟧", severity = "error", message = "module 'A' not found", source = "clang", code = "err_module_not_found" },
+]

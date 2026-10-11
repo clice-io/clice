@@ -1,0 +1,3 @@
+{
+  "modules": [{ "name": "app.class", "files": ["app/core/**"], "rewrite": true }]
+}

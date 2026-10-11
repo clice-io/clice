@@ -1,0 +1,3 @@
+{
+  "modules": [{ "name": "std", "files": ["third/std/**"], "textual": true, "external": true }]
+}

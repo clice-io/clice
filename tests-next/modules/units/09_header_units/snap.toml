@@ -1,0 +1,8 @@
+[test."main.cpp"]
+wrong = "header units are not supported: both headers should import as header units, declaring local() and util()"
+errors = [
+    { at = 'import ⟦"local.h"⟧;', severity = "error", message = "header file \"local.h\" (aka '${WS}/local.h') cannot be imported because it is not known to be a header unit", source = "clang", code = "err_header_import_not_header_unit" },
+    { at = "import ⟦<⟧util.h>;", severity = "error", message = "header file <util.h> (aka '${WS}/include/util.h') cannot be imported because it is not known to be a header unit", source = "clang", code = "err_header_import_not_header_unit" },
+    { at = "return ⟦local⟧() + util();", severity = "error", message = "use of undeclared identifier 'local'", source = "clang", code = "err_undeclared_var_use" },
+    { at = "return local() + ⟦util⟧();", severity = "error", message = "use of undeclared identifier 'util'", source = "clang", code = "err_undeclared_var_use" },
+]

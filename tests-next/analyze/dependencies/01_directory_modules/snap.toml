@@ -1,0 +1,104 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 4,
+  "modules": [
+    {
+      "name": "util",
+      "headers": 1,
+      "sources": 0,
+      "lines": 11,
+      "layer": 1
+    },
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 7,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 1,
+      "sources": 1,
+      "lines": 14,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "util",
+      "to": "core",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "length",
+        "Str"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "util",
+      "interfaceEntities": 0,
+      "implementationEntities": 2,
+      "sample": [
+        "Clock::size",
+        "Clock"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 0,
+  "deepestChain": [
+    "util",
+    "core"
+  ],
+  "totals": {
+    "baseline": 5,
+    "partitioned": 5
+  },
+  "hotspots": [
+    {
+      "path": "core/str.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/clock.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    }
+  ],
+  "moves": [],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

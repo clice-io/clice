@@ -1,0 +1,82 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view edge --from app --to core"]
+stdout = '''
+{
+  "from": "app",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#0b04bc0d4bb8bf06",
+      "entity": "Vec",
+      "owner": "core/vec.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#20cc85494c819b97",
+      "entity": "Vec::x",
+      "owner": "core/vec.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#56a75bca3c26e2f4",
+      "entity": "operator+",
+      "owner": "core/vec.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#1541eb964d462741",
+      "entity": "operator+",
+      "owner": "core/vec.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    }
+  ]
+}
+'''
+exit = 0
+
+[test."$ clice analyze modules --move-entity operator+=app/ops.h --view edge --from app --to core"]
+stdout = '''
+{
+  "from": "app",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#0b04bc0d4bb8bf06",
+      "entity": "Vec",
+      "owner": "core/vec.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#20cc85494c819b97",
+      "entity": "Vec::x",
+      "owner": "core/vec.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    }
+  ]
+}
+'''
+exit = 0

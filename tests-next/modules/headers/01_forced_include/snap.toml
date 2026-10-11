@@ -1,0 +1,13 @@
+[answers.use.hover]
+markdown = '''
+### function `a`
+
+---
+→ `int`
+
+---
+```cpp
+export int a()
+```
+'''
+range = "return ⟦a⟧();"

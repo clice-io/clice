@@ -1,0 +1,16 @@
+["the module reports its errors"."bad.cppm"]
+errors = [
+    { at = "return ⟦UNDEFINED_SYMBOL⟧ + good();", severity = "error", message = "use of undeclared identifier 'UNDEFINED_SYMBOL'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+["the importer reports the import"."main.cpp"]
+wrong = "Bad exists but fails to build; the import should say so and point at its error, not report the module as not found"
+errors = [
+    { at = "import ⟦Bad;⟧", severity = "error", message = "module 'Bad' not found", source = "clang", code = "err_module_not_found" },
+]
+
+["the importer reports the import"."after an edit"]
+wrong = "Bad exists but fails to build; the import should say so and point at its error, not report the module as not found"
+errors = [
+    { at = "import ⟦Bad;⟧", severity = "error", message = "module 'Bad' not found", source = "clang", code = "err_module_not_found" },
+]

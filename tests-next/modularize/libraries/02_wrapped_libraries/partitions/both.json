@@ -1,0 +1,6 @@
+{
+  "modules": [
+    { "name": "libc", "files": ["third/libc/cio.h"], "textual": true },
+    { "name": "libc", "files": ["third/libc/**"], "external": true }
+  ]
+}

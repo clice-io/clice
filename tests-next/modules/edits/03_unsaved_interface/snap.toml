@@ -1,0 +1,26 @@
+[unsaved.errors]
+errors = [
+    { at = "return add(1, 2) + ⟦twice⟧(3);", severity = "error", message = "use of undeclared identifier 'twice'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+[unsaved.hover]
+hover = {}
+
+[saved.errors]
+errors = []
+
+[saved.hover.hover]
+markdown = '''
+### function `twice`
+
+---
+→ `int`
+Parameters:
+- `int a`
+
+---
+```cpp
+export int twice(int a)
+```
+'''
+range = "return add(1, 2) + ⟦twice⟧(3);"

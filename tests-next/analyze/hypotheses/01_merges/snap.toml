@@ -1,0 +1,367 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 7 file shards (# KB), 13 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --merge core+util"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 7,
+  "modules": [
+    {
+      "name": "meta",
+      "headers": 1,
+      "sources": 0,
+      "lines": 9,
+      "layer": 1
+    },
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 8,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 4,
+      "sources": 1,
+      "lines": 44,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "meta",
+      "to": "core",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "Clock::size",
+        "Clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 3,
+      "sample": [
+        "Logger",
+        "Clock::size",
+        "Logger::clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "meta",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "meta_size"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 1,
+  "deepestChain": [
+    "meta",
+    "core"
+  ],
+  "totals": {
+    "baseline": 8,
+    "partitioned": 10
+  },
+  "hotspots": [
+    {
+      "path": "core/log.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/str.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/clock.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "meta/m.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/strops.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": true
+    }
+  ],
+  "moves": [],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0
+
+[test."$ clice analyze modules --merge core+util,util+meta"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 7,
+  "modules": [
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 8,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 5,
+      "sources": 1,
+      "lines": 53,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 4,
+      "sample": [
+        "Logger",
+        "Clock::size",
+        "meta_size",
+        "Logger::clock"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 1,
+  "deepestChain": [
+    "core"
+  ],
+  "totals": {
+    "baseline": 8,
+    "partitioned": 11
+  },
+  "hotspots": [
+    {
+      "path": "core/log.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/str.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "meta/m.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/clock.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/strops.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": true
+    }
+  ],
+  "moves": [],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0
+
+[test."$ clice analyze modules --partition partition.json"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 7,
+  "modules": [
+    {
+      "name": "meta",
+      "headers": 1,
+      "sources": 0,
+      "lines": 9,
+      "layer": 1
+    },
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 8,
+      "layer": 0
+    },
+    {
+      "name": "base",
+      "headers": 4,
+      "sources": 1,
+      "lines": 44,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "meta",
+      "to": "base",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "Clock::size",
+        "Clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "base",
+      "interfaceEntities": 0,
+      "implementationEntities": 3,
+      "sample": [
+        "Logger",
+        "Clock::size",
+        "Logger::clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "meta",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "meta_size"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 1,
+  "deepestChain": [
+    "meta",
+    "base"
+  ],
+  "totals": {
+    "baseline": 8,
+    "partitioned": 10
+  },
+  "hotspots": [
+    {
+      "path": "core/log.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/str.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/clock.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "meta/m.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/strops.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": true
+    }
+  ],
+  "moves": [],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

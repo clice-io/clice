@@ -1,0 +1,68 @@
+[test."$ clice index --workers 1"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view file --file util/b.cpp"]
+wrong = "b.cpp includes only lib/widen.h, yet widen is app's here; indexed in the other order (below) it is lib's: which file provides it should not depend on the order the units were indexed in"
+stdout = '''
+{
+  "path": "util/b.cpp",
+  "module": "util",
+  "source": true,
+  "annotations": [],
+  "uses": [
+    {
+      "module": "app",
+      "entities": [
+        "widen"
+      ]
+    }
+  ],
+  "usedBy": [],
+  "affinity": [
+    {
+      "module": "app",
+      "entities": 1
+    }
+  ]
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0
+
+[test."$ clice index --workers 1 #2"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view file --file util/b.cpp #2"]
+stdout = '''
+{
+  "path": "util/b.cpp",
+  "module": "util",
+  "source": true,
+  "annotations": [],
+  "uses": [
+    {
+      "module": "lib",
+      "entities": [
+        "widen"
+      ]
+    }
+  ],
+  "usedBy": [],
+  "affinity": [
+    {
+      "module": "lib",
+      "entities": 1
+    }
+  ]
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

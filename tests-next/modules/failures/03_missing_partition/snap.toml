@@ -1,0 +1,10 @@
+[test."main.cpp"]
+wrong = "a.cppm declares module a, which fails to build without its partition :part; the import should say so, not report a as not found"
+errors = [
+    { at = "import ⟦a;⟧", severity = "error", message = "module 'a' not found", source = "clang", code = "err_module_not_found" },
+]
+
+[test."a.cppm"]
+errors = [
+    { at = "export import :⟦part; … ⟧ (2 lines)", severity = "error", message = "module 'a:part' not found", source = "clang", code = "err_module_not_found" },
+]

@@ -1,0 +1,3 @@
+{
+  "configurations": [{ "name": "mirror", "condition": "defined(ONE)", "out": "../wrap" }]
+}

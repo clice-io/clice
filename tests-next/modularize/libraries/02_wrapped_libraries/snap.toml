@@ -1,0 +1,2064 @@
+["library interfaces"."$ clice index --workers 1"]
+stdout = '''
+Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["library interfaces"."$ clice analyze modules --scope \"app/**,third/**\" --std stdmod --partition partition.json --view interface --module alpha"]
+stdout = '''
+[
+  {
+    "module": "alpha",
+    "imports": [
+      "libc",
+      "std"
+    ],
+    "entries": [
+      {
+        "file": "third/alpha/alpha/alpha.h",
+        "names": [
+          "alpha/alpha.h"
+        ],
+        "include": "<alpha/alpha.h>",
+        "because": ""
+      },
+      {
+        "file": "third/alpha/alpha/limits.h",
+        "names": [
+          "alpha/limits.h"
+        ],
+        "include": "<alpha/limits.h>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "alpha::Color",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "alpha::Color",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 1
+      },
+      {
+        "name": "alpha::Thing",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "alpha::alpha_high",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 2
+      },
+      {
+        "name": "alpha::fake_abs",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "alpha::make",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 0
+      }
+    ],
+    "aliases": [
+      {
+        "name": "al",
+        "target": "::alpha"
+      }
+    ],
+    "textual": [
+      {
+        "file": "third/alpha/alpha/anchor.h",
+        "names": [
+          "alpha/anchor.h"
+        ],
+        "include": "<alpha/anchor.h>",
+        "because": ""
+      },
+      {
+        "file": "third/alpha/alpha/local.h",
+        "names": [
+          "alpha/local.h"
+        ],
+        "include": "<alpha/local.h>",
+        "because": ""
+      }
+    ],
+    "textualUses": [],
+    "sharedLocals": [],
+    "macros": [
+      {
+        "name": "ALPHA_VERSION",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_VERSION 3"
+      },
+      {
+        "name": "ALPHA_TWICE",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_TWICE(x) ((x) * 2)"
+      },
+      {
+        "name": "ALPHA_EXTERN",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_EXTERN extern"
+      }
+    ],
+    "reads": [
+      {
+        "name": "ALPHA_WIDE",
+        "module": "app",
+        "file": "app/main.cpp",
+        "directive": "#define ALPHA_WIDE 1"
+      }
+    ]
+  }
+]
+'''
+exit = 0
+
+["library interfaces"."$ clice analyze modules --scope \"app/**,third/**\" --std stdmod --partition partition.json --view interface --module beta"]
+stdout = '''
+[
+  {
+    "module": "beta",
+    "imports": [
+      "alpha",
+      "libc"
+    ],
+    "entries": [
+      {
+        "file": "third/beta/beta/beta.h",
+        "names": [
+          "beta/beta.h"
+        ],
+        "include": "<beta/beta.h>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "beta::opened",
+        "file": "third/beta/beta/beta.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "beta::wrap",
+        "file": "third/beta/beta/beta.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "beta_local",
+        "file": "third/beta/beta/beta.h",
+        "used": false,
+        "form": 0
+      }
+    ],
+    "aliases": [],
+    "textual": [],
+    "textualUses": [
+      {
+        "file": "third/alpha/alpha/local.h",
+        "names": [
+          "alpha/local.h"
+        ],
+        "include": "<alpha/local.h>",
+        "because": ""
+      }
+    ],
+    "sharedLocals": [],
+    "macros": [],
+    "reads": [
+      {
+        "name": "ALPHA_TWICE",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_TWICE(x) ((x) * 2)"
+      }
+    ]
+  }
+]
+'''
+exit = 0
+
+["C library kept headers"."$ clice index --workers 1"]
+stdout = '''
+Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["C library kept headers"."$ clice analyze modules --scope \"app/**,third/**\" --std stdmod --partition partition.json --view interface --module libc"]
+stdout = '''
+[
+  {
+    "module": "libc",
+    "imports": [],
+    "entries": [
+      {
+        "file": "third/libc/cputs.h",
+        "names": [
+          "cputs.h"
+        ],
+        "include": "<cputs.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/csmall.h",
+        "names": [
+          "csmall.h"
+        ],
+        "include": "<csmall.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/cva.h",
+        "names": [
+          "cva.h"
+        ],
+        "include": "<cva.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/cwide.h",
+        "names": [
+          "cwide.h"
+        ],
+        "include": "<cwide.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/cwin.h",
+        "names": [
+          "cwin.h"
+        ],
+        "include": "<cwin.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/fassert.h",
+        "names": [
+          "fassert.h"
+        ],
+        "include": "<fassert.h>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "fake_puts",
+        "file": "third/libc/cputs.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "fake_va",
+        "file": "third/libc/cva.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "fake_vlen",
+        "file": "third/libc/cva.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "fake_vprint",
+        "file": "third/libc/cvp.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "fake_wide",
+        "file": "third/libc/cdual.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "fake_word",
+        "file": "third/libc/cdual.h",
+        "used": true,
+        "form": 0
+      }
+    ],
+    "aliases": [],
+    "textual": [
+      {
+        "file": "third/libc/cio.h",
+        "names": [
+          "cio.h"
+        ],
+        "include": "<cio.h>",
+        "because": "fake_stdout in app/main.cpp"
+      },
+      {
+        "file": "third/libc/cva.h",
+        "names": [
+          "cva.h"
+        ],
+        "include": "<cva.h>",
+        "because": "fake_vprint in app/third.cpp"
+      }
+    ],
+    "textualUses": [],
+    "sharedLocals": [],
+    "macros": [
+      {
+        "name": "FAKE_EOF",
+        "module": "libc",
+        "file": "third/libc/cio.h",
+        "directive": "#define FAKE_EOF (-1)"
+      },
+      {
+        "name": "fake_stdout",
+        "module": "libc",
+        "file": "third/libc/cio.h",
+        "directive": "#define fake_stdout fake_stdout"
+      },
+      {
+        "name": "fassert",
+        "module": "libc",
+        "file": "third/libc/fassert.h",
+        "directive": "#define fassert(x) ((void)(x))"
+      }
+    ],
+    "reads": []
+  }
+]
+'''
+exit = 0
+
+["C library kept headers"."$ clice analyze modules --scope \"app/**,third/**\" --std stdmod --partition partition.json --view interface --module std"]
+stdout = '''
+[
+  {
+    "module": "std",
+    "imports": [
+      "libc"
+    ],
+    "entries": [
+      {
+        "file": "third/std/fakecstdio",
+        "names": [
+          "fakecstdio"
+        ],
+        "include": "<fakecstdio>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "fakestd::fake_abs",
+        "file": "third/std/fakecstdio",
+        "used": true,
+        "form": 0
+      }
+    ],
+    "aliases": [],
+    "textual": [],
+    "textualUses": [],
+    "sharedLocals": [],
+    "macros": [],
+    "reads": []
+  }
+]
+'''
+exit = 0
+
+["writes the wrapping"."$ clice index --workers 1"]
+stdout = '''
+Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [
+      "stdmod/std.cppm",
+      "stdmod/std.compat.cppm"
+    ],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/alpha"
+        ],
+        "mirrors": [
+          "mirror/std"
+        ]
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [
+          "${WS}/third/alpha",
+          "${WS}/third/beta"
+        ],
+        "mirrors": [
+          "mirror/std",
+          "mirror/alpha"
+        ]
+      }
+    ],
+    "mirrors": [
+      "mirror/std",
+      "mirror/alpha",
+      "mirror/beta"
+    ],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap".files]
+"wrap/.modularize" = '''
++std.macros.h
++libc.macros.h
++mirror/std/fakecstdio
++mirror/std/fakevector
++mirror/alpha/alpha/alpha.h
++mirror/alpha/alpha/limits.h
++alpha.cppm
++alpha.macros.h
++mirror/beta/beta/beta.h
++beta.cppm
++beta.macros.h
++prelude.h
+'''
+"wrap/alpha.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
++
++export module alpha;
++
++template <class T> using unnamed_enum = T;
++
++export namespace al = ::alpha;
++
++export namespace alpha {
++using ::alpha::Color;
++using ::alpha::Thing;
++using ::alpha::fake_abs;
++using ::alpha::make;
++using enum ::alpha::Color;
++using enum unnamed_enum<decltype(::alpha::alpha_high)>;
++}
+'''
+"wrap/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
+'''
+"wrap/beta.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
++
++export module beta;
++
++export using ::beta_local;
++
++export namespace beta {
++using ::beta::opened;
++using ::beta::wrap;
++}
+'''
+"wrap/beta.macros.h" = "+#pragma once"
+"wrap/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
+"wrap/mirror/alpha/alpha/limits.h" = "(created empty)"
+"wrap/mirror/beta/beta/beta.h" = "(created empty)"
+"wrap/mirror/std/fakecstdio" = "(created empty)"
+"wrap/mirror/std/fakevector" = "(created empty)"
+"wrap/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"wrap/std.macros.h" = "+#pragma once"
+
+["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap #2"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [
+      "stdmod/std.cppm",
+      "stdmod/std.compat.cppm"
+    ],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/alpha"
+        ],
+        "mirrors": [
+          "mirror/std"
+        ]
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [
+          "${WS}/third/alpha",
+          "${WS}/third/beta"
+        ],
+        "mirrors": [
+          "mirror/std",
+          "mirror/alpha"
+        ]
+      }
+    ],
+    "mirrors": [
+      "mirror/std",
+      "mirror/alpha",
+      "mirror/beta"
+    ],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --no-mirrors --out bare"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [
+      "stdmod/std.cppm",
+      "stdmod/std.compat.cppm"
+    ],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/alpha"
+        ],
+        "mirrors": []
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [
+          "${WS}/third/alpha",
+          "${WS}/third/beta"
+        ],
+        "mirrors": []
+      }
+    ],
+    "mirrors": [],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --no-mirrors --out bare".files]
+"bare/.modularize" = '''
++std.macros.h
++libc.macros.h
++alpha.cppm
++alpha.macros.h
++beta.cppm
++beta.macros.h
++prelude.h
+'''
+"bare/alpha.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
++
++export module alpha;
++
++template <class T> using unnamed_enum = T;
++
++export namespace al = ::alpha;
++
++export namespace alpha {
++using ::alpha::Color;
++using ::alpha::Thing;
++using ::alpha::fake_abs;
++using ::alpha::make;
++using enum ::alpha::Color;
++using enum unnamed_enum<decltype(::alpha::alpha_high)>;
++}
+'''
+"bare/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
+'''
+"bare/beta.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
++
++export module beta;
++
++export using ::beta_local;
++
++export namespace beta {
++using ::beta::opened;
++using ::beta::wrap;
++}
+'''
+"bare/beta.macros.h" = "+#pragma once"
+"bare/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"bare/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"bare/std.macros.h" = "+#pragma once"
+
+["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/alpha.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [
+      "stdmod/std.cppm",
+      "stdmod/std.compat.cppm"
+    ],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/alpha"
+        ],
+        "mirrors": [
+          "mirror/std"
+        ]
+      }
+    ],
+    "mirrors": [
+      "mirror/std",
+      "mirror/alpha"
+    ],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/alpha.json --out wrap".files]
+"wrap/.modularize" = '''
+ alpha.cppm
+ alpha.macros.h
+-mirror/beta/beta/beta.h
+-beta.cppm
+-beta.macros.h
+ prelude.h
+'''
+"wrap/beta.cppm" = "(removed)"
+"wrap/beta.macros.h" = "(removed)"
+"wrap/libc.macros.h" = '''
+ #define FAKE_EOF (-1)
+ #define fake_stdout fake_stdout
+-#define fassert(x) ((void)(x))
+'''
+"wrap/mirror/beta/beta/beta.h" = "(removed)"
+"wrap/prelude.h" = '''
+ #include "libc.macros.h"
+ import alpha;
+-import beta;
+ #include "alpha.macros.h"
+-#include "beta.macros.h"
+'''
+
+["merges configurations"."$ clice index --workers 1"]
+stdout = '''
+Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["merges configurations"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [
+      "stdmod/std.cppm",
+      "stdmod/std.compat.cppm"
+    ],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/alpha"
+        ],
+        "mirrors": [
+          "mirror/std"
+        ]
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [
+          "${WS}/third/alpha",
+          "${WS}/third/beta"
+        ],
+        "mirrors": [
+          "mirror/std",
+          "mirror/alpha"
+        ]
+      }
+    ],
+    "mirrors": [
+      "mirror/std",
+      "mirror/alpha",
+      "mirror/beta"
+    ],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["merges configurations"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap".files]
+"wrap/.modularize" = '''
++std.macros.h
++libc.macros.h
++mirror/std/fakecstdio
++mirror/std/fakevector
++mirror/alpha/alpha/alpha.h
++mirror/alpha/alpha/limits.h
++alpha.cppm
++alpha.macros.h
++mirror/beta/beta/beta.h
++beta.cppm
++beta.macros.h
++prelude.h
+'''
+"wrap/alpha.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
++
++export module alpha;
++
++template <class T> using unnamed_enum = T;
++
++export namespace al = ::alpha;
++
++export namespace alpha {
++using ::alpha::Color;
++using ::alpha::Thing;
++using ::alpha::fake_abs;
++using ::alpha::make;
++using enum ::alpha::Color;
++using enum unnamed_enum<decltype(::alpha::alpha_high)>;
++}
+'''
+"wrap/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
+'''
+"wrap/beta.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
++
++export module beta;
++
++export using ::beta_local;
++
++export namespace beta {
++using ::beta::opened;
++using ::beta::wrap;
++}
+'''
+"wrap/beta.macros.h" = "+#pragma once"
+"wrap/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
+"wrap/mirror/alpha/alpha/limits.h" = "(created empty)"
+"wrap/mirror/beta/beta/beta.h" = "(created empty)"
+"wrap/mirror/std/fakecstdio" = "(created empty)"
+"wrap/mirror/std/fakevector" = "(created empty)"
+"wrap/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"wrap/std.macros.h" = "+#pragma once"
+
+["merges configurations"."$ clice modularize --merge merges/two.json --out merged"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": [
+          "mirror/std"
+        ]
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [],
+        "mirrors": [
+          "mirror/std",
+          "mirror/alpha"
+        ]
+      }
+    ],
+    "mirrors": [
+      "mirror/std",
+      "mirror/alpha",
+      "mirror/beta"
+    ],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["merges configurations"."$ clice modularize --merge merges/two.json --out merged".files]
+"merged/.modularize" = '''
++one/std.macros.h
++one/libc.macros.h
++one/alpha.fragment.h
++one/alpha.macros.h
++one/beta.fragment.h
++one/beta.macros.h
++one/prelude.h
++two/std.macros.h
++two/libc.macros.h
++two/alpha.fragment.h
++two/alpha.macros.h
++two/beta.fragment.h
++two/beta.macros.h
++two/prelude.h
++alpha.cppm
++beta.cppm
++mirror/alpha/alpha/alpha.h
++mirror/alpha/alpha/limits.h
++mirror/alpha/alpha/wide.h
++mirror/beta/beta/beta.h
++mirror/std/fakecstdio
++mirror/std/fakevector
++prelude.h
+'''
+"merged/alpha.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/alpha.fragment.h"
++#elif defined(TWO)
++#include "two/alpha.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module alpha;
++
++template <class T> using unnamed_enum = T;
++
++export namespace alpha {
++using ::alpha::Color;
++using ::alpha::Thing;
++using ::alpha::fake_abs;
++using ::alpha::make;
++using enum unnamed_enum<decltype(::alpha::alpha_high)>;
++}
++
++#if defined(ONE)
++export namespace al = ::alpha;
++
++export namespace alpha {
++using enum ::alpha::Color;
++}
++#endif
++
++#if defined(TWO)
++export namespace al = ::alpha::wide;
++
++export namespace alpha {
++using ::alpha::blue;
++}
++#endif
+'''
+"merged/beta.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/beta.fragment.h"
++#elif defined(TWO)
++#include "two/beta.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module beta;
++
++export using ::beta_local;
++
++export namespace beta {
++using ::beta::opened;
++using ::beta::wrap;
++}
+'''
+"merged/mirror/alpha/alpha/alpha.h" = "(created empty)"
+"merged/mirror/alpha/alpha/limits.h" = "(created empty)"
+"merged/mirror/alpha/alpha/wide.h" = "(created empty)"
+"merged/mirror/beta/beta/beta.h" = "(created empty)"
+"merged/mirror/std/fakecstdio" = "(created empty)"
+"merged/mirror/std/fakevector" = "(created empty)"
+"merged/one/alpha.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
+'''
+"merged/one/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
+'''
+"merged/one/beta.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
+'''
+"merged/one/beta.macros.h" = "+#pragma once"
+"merged/one/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"merged/one/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"merged/one/std.macros.h" = "+#pragma once"
+"merged/prelude.h" = '''
++#pragma once
++
++#if defined(ONE)
++#include "one/prelude.h"
++#elif defined(TWO)
++#include "two/prelude.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
+'''
+"merged/two/alpha.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
+'''
+"merged/two/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
++#define ALPHA_WIDE_ONLY 1
+'''
+"merged/two/beta.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
+'''
+"merged/two/beta.macros.h" = "+#pragma once"
+"merged/two/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"merged/two/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"merged/two/std.macros.h" = "+#pragma once"
+
+["merges configurations"."$ clice modularize --merge merges/two.json --no-mirrors --out bare"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": []
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [],
+        "mirrors": []
+      }
+    ],
+    "mirrors": [],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["merges configurations"."$ clice modularize --merge merges/two.json --no-mirrors --out bare".files]
+"bare/.modularize" = '''
++one/std.macros.h
++one/libc.macros.h
++one/alpha.fragment.h
++one/alpha.macros.h
++one/beta.fragment.h
++one/beta.macros.h
++one/prelude.h
++two/std.macros.h
++two/libc.macros.h
++two/alpha.fragment.h
++two/alpha.macros.h
++two/beta.fragment.h
++two/beta.macros.h
++two/prelude.h
++alpha.cppm
++beta.cppm
++prelude.h
+'''
+"bare/alpha.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/alpha.fragment.h"
++#elif defined(TWO)
++#include "two/alpha.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module alpha;
++
++template <class T> using unnamed_enum = T;
++
++export namespace alpha {
++using ::alpha::Color;
++using ::alpha::Thing;
++using ::alpha::fake_abs;
++using ::alpha::make;
++using enum unnamed_enum<decltype(::alpha::alpha_high)>;
++}
++
++#if defined(ONE)
++export namespace al = ::alpha;
++
++export namespace alpha {
++using enum ::alpha::Color;
++}
++#endif
++
++#if defined(TWO)
++export namespace al = ::alpha::wide;
++
++export namespace alpha {
++using ::alpha::blue;
++}
++#endif
+'''
+"bare/beta.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/beta.fragment.h"
++#elif defined(TWO)
++#include "two/beta.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module beta;
++
++export using ::beta_local;
++
++export namespace beta {
++using ::beta::opened;
++using ::beta::wrap;
++}
+'''
+"bare/one/alpha.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
+'''
+"bare/one/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
+'''
+"bare/one/beta.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
+'''
+"bare/one/beta.macros.h" = "+#pragma once"
+"bare/one/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"bare/one/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"bare/one/std.macros.h" = "+#pragma once"
+"bare/prelude.h" = '''
++#pragma once
++
++#if defined(ONE)
++#include "one/prelude.h"
++#elif defined(TWO)
++#include "two/prelude.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
+'''
+"bare/two/alpha.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
+'''
+"bare/two/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
++#define ALPHA_WIDE_ONLY 1
+'''
+"bare/two/beta.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
+'''
+"bare/two/beta.macros.h" = "+#pragma once"
+"bare/two/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"bare/two/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"bare/two/std.macros.h" = "+#pragma once"
+
+["merges configurations"."$ clice modularize --merge merges/three.json --out merged"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": [
+          "mirror/std"
+        ]
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [],
+        "mirrors": [
+          "mirror/std",
+          "mirror/alpha"
+        ]
+      }
+    ],
+    "mirrors": [
+      "mirror/std",
+      "mirror/alpha",
+      "mirror/beta"
+    ],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["merges configurations"."$ clice modularize --merge merges/three.json --out merged".files]
+"merged/.modularize" = '''
+ two/beta.macros.h
+ two/prelude.h
++three/std.macros.h
++three/libc.macros.h
++three/alpha.fragment.h
++three/alpha.macros.h
++three/beta.fragment.h
++three/beta.macros.h
++three/prelude.h
+ alpha.cppm
+ beta.cppm
+'''
+"merged/alpha.cppm" = '''
+ #elif defined(TWO)
+ #include "two/alpha.fragment.h"
++#elif defined(THREE)
++#include "three/alpha.fragment.h"
+ #else
+ #error "no configuration merged matches this compilation"
+…
+ }
+
+-#if defined(ONE)
+-export namespace al = ::alpha;
++#if (defined(TWO)) || (defined(THREE))
++export namespace al = ::alpha::wide;
+
+ export namespace alpha {
+-using enum ::alpha::Color;
++using ::alpha::blue;
+ }
+ #endif
+
+-#if defined(TWO)
+-export namespace al = ::alpha::wide;
++#if defined(ONE)
++export namespace al = ::alpha;
+
+ export namespace alpha {
+-using ::alpha::blue;
++using enum ::alpha::Color;
+ }
+ #endif
+'''
+"merged/beta.cppm" = '''
+ #elif defined(TWO)
+ #include "two/beta.fragment.h"
++#elif defined(THREE)
++#include "three/beta.fragment.h"
+ #else
+ #error "no configuration merged matches this compilation"
+'''
+"merged/prelude.h" = '''
+ #elif defined(TWO)
+ #include "two/prelude.h"
++#elif defined(THREE)
++#include "three/prelude.h"
+ #else
+ #error "no configuration merged matches this compilation"
+'''
+"merged/three/alpha.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
+'''
+"merged/three/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
++#define ALPHA_WIDE_ONLY 1
+'''
+"merged/three/beta.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
+'''
+"merged/three/beta.macros.h" = "+#pragma once"
+"merged/three/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"merged/three/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"merged/three/std.macros.h" = "+#pragma once"
+
+["merges configurations"."$ clice modularize --merge merges/unconditioned.json --out merged"]
+stdout = '''
+{
+  "error": "configuration one has no condition",
+  "stale": []
+}
+'''
+exit = 1
+
+["merges configurations"."$ clice modularize --merge merges/three.json --out merged #2"]
+stdout = '''
+{
+  "error": "configurations one and three differ in emptying the standard headers",
+  "stale": []
+}
+'''
+exit = 1
+
+["merges configurations"."$ clice modularize --merge merges/three.json --no-mirrors --out bare3"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": []
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [],
+        "mirrors": []
+      }
+    ],
+    "mirrors": [],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [],
+    "importers": [],
+    "macros": [],
+    "removed": [],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+["merges configurations"."$ clice modularize --merge merges/three.json --no-mirrors --out bare3".files]
+"bare3/.modularize" = '''
++one/std.macros.h
++one/libc.macros.h
++one/alpha.fragment.h
++one/alpha.macros.h
++one/beta.fragment.h
++one/beta.macros.h
++one/prelude.h
++two/std.macros.h
++two/libc.macros.h
++two/alpha.fragment.h
++two/alpha.macros.h
++two/beta.fragment.h
++two/beta.macros.h
++two/prelude.h
++three/std.macros.h
++three/libc.macros.h
++three/alpha.fragment.h
++three/alpha.macros.h
++three/beta.fragment.h
++three/beta.macros.h
++three/prelude.h
++alpha.cppm
++beta.cppm
++prelude.h
+'''
+"bare3/alpha.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/alpha.fragment.h"
++#elif defined(TWO)
++#include "two/alpha.fragment.h"
++#elif defined(THREE)
++#include "three/alpha.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module alpha;
++
++template <class T> using unnamed_enum = T;
++
++export namespace alpha {
++using ::alpha::Color;
++using ::alpha::Thing;
++using ::alpha::fake_abs;
++using ::alpha::make;
++using enum unnamed_enum<decltype(::alpha::alpha_high)>;
++}
++
++#if (defined(TWO)) || (defined(THREE))
++export namespace al = ::alpha::wide;
++
++export namespace alpha {
++using ::alpha::blue;
++}
++#endif
++
++#if defined(ONE)
++export namespace al = ::alpha;
++
++export namespace alpha {
++using enum ::alpha::Color;
++}
++#endif
+'''
+"bare3/beta.cppm" = '''
++module;
++
++#if defined(ONE)
++#include "one/beta.fragment.h"
++#elif defined(TWO)
++#include "two/beta.fragment.h"
++#elif defined(THREE)
++#include "three/beta.fragment.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
++
++export module beta;
++
++export using ::beta_local;
++
++export namespace beta {
++using ::beta::opened;
++using ::beta::wrap;
++}
+'''
+"bare3/one/alpha.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
+'''
+"bare3/one/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
+'''
+"bare3/one/beta.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
+'''
+"bare3/one/beta.macros.h" = "+#pragma once"
+"bare3/one/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"bare3/one/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"bare3/one/std.macros.h" = "+#pragma once"
+"bare3/prelude.h" = '''
++#pragma once
++
++#if defined(ONE)
++#include "one/prelude.h"
++#elif defined(TWO)
++#include "two/prelude.h"
++#elif defined(THREE)
++#include "three/prelude.h"
++#else
++#error "no configuration merged matches this compilation"
++#endif
+'''
+"bare3/three/alpha.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
+'''
+"bare3/three/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
++#define ALPHA_WIDE_ONLY 1
+'''
+"bare3/three/beta.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
+'''
+"bare3/three/beta.macros.h" = "+#pragma once"
+"bare3/three/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"bare3/three/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"bare3/three/std.macros.h" = "+#pragma once"
+"bare3/two/alpha.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
+'''
+"bare3/two/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
++#define ALPHA_WIDE_ONLY 1
+'''
+"bare3/two/beta.fragment.h" = '''
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
+'''
+"bare3/two/beta.macros.h" = "+#pragma once"
+"bare3/two/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"bare3/two/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"bare3/two/std.macros.h" = "+#pragma once"
+
+["merges configurations"."$ clice modularize --merge merges/two.json --out merged #2"]
+stdout = '''
+{
+  "error": "configurations one and two wrap different modules",
+  "stale": []
+}
+'''
+exit = 1
+
+["merges configurations"."$ clice modularize --merge merges/mirror.json --out merged"]
+stdout = '''
+{
+  "error": "configuration mirror: not a distinct directory name",
+  "stale": []
+}
+'''
+exit = 1
+
+["merges configurations"."$ clice modularize --merge merges/two.json --partition partition.json --out merged"]
+stdout = '''
+{
+  "error": "modularize --merge needs --out and no --partition",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice index --workers 1"]
+stdout = '''
+Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/external.json --out wrap"]
+stdout = '''
+{
+  "error": "module alpha: only std stands for an existing module, given libc++'s sources",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/cycle.json --out wrap"]
+stdout = '''
+{
+  "error": "modules import each other: alpha -> beta -> alpha",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/named.json --out wrap"]
+stdout = '''
+{
+  "error": "module ../escape: not a module name to generate",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/flags.json --out wrap"]
+stdout = '''
+{
+  "error": "module std is both textual and external",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/both.json --out wrap"]
+stdout = '''
+{
+  "error": "module libc is both textual and external",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/rewritten.json --out wrap"]
+stdout = '''
+{
+  "error": "module alpha is both rewritten and wrapped",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/wrapped.json --out wrap"]
+stdout = '''
+{
+  "error": "module alpha is both rewritten and wrapped",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/primary.json --out wrap"]
+stdout = '''
+{
+  "error": "module alpha has a primary interface but is not rewritten",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "error": "module libc provided by std.compat: only std.compat, given --std",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --partition partition.json --std third/std --out wrap"]
+stdout = '''
+{
+  "error": "cannot read third/std/std.cppm: No such file or directory",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --out wrap"]
+stdout = '''
+{
+  "error": "modularize needs --partition and --out",
+  "stale": []
+}
+'''
+exit = 1
+
+["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap --configuration nowhere"]
+wrong = "the index is there: the error should say that no rule declares the configuration nowhere, as the log line does, not ask to run clice index"
+stdout = '''
+{
+  "error": "no usable index; run `clice index` first",
+  "stale": []
+}
+'''
+stderr = ["error: --configuration nowhere names no rule's configuration ()"]
+exit = 1

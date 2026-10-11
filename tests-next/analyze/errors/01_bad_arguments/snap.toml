@@ -1,0 +1,118 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view module --module nowhere"]
+stdout = '''
+{
+  "error": "no module nowhere",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice analyze modules --view file --file nowhere.h"]
+stdout = '''
+{
+  "error": "no scoped file nowhere.h",
+  "stale": []
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 1
+
+[test."$ clice analyze modules --view nope"]
+stdout = '''
+{
+  "error": "unknown view nope",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice analyze modules --view edge --from core"]
+stdout = '''
+{
+  "error": "--view edge needs --from and --to",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice analyze modules --scope \"[\""]
+stdout = '''
+{
+  "error": "invalid --scope glob '[': unmatched `[`",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice analyze modules --merge core+nowhere"]
+stdout = '''
+{
+  "error": "--merge core+nowhere: no module nowhere",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice analyze modules --move nowhere.h=core"]
+stdout = '''
+{
+  "error": "--move nowhere.h=core: no scoped file nowhere.h",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice analyze modules --move-entity Nowhere=core/nowhere.h"]
+stdout = '''
+{
+  "error": "--move-entity Nowhere=core/nowhere.h: symbol not found",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice analyze modules --partition nowhere.json"]
+stdout = '''
+{
+  "error": "cannot read nowhere.json: No such file or directory",
+  "stale": []
+}
+'''
+exit = 1
+
+[test."$ clice analyze modules --annotation nowhere.json"]
+stdout = '''
+{
+  "error": "cannot read nowhere.json: No such file or directory",
+  "stale": []
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 1
+
+[test."$ clice analyze modules --depth deep"]
+stdout = '''
+{
+  "error": "at argv[1]:\n  --depth deep\n          ^~~~\n  invalid integer value: deep",
+  "stale": []
+}
+'''
+exit = 2
+
+[test."$ clice analyze modules --configuration nowhere"]
+wrong = "the index is there: the error should say that no rule declares the configuration nowhere, as the log line does, not ask to run clice index"
+stdout = '''
+{
+  "error": "no usable index; run `clice index` first",
+  "stale": []
+}
+'''
+stderr = ["error: --configuration nowhere names no rule's configuration ()"]
+exit = 1

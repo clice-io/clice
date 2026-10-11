@@ -1,0 +1,467 @@
+["rewrites program modules"."$ clice index --workers 1"]
+stdout = '''
+Indexed 8 translation units in #s: 32 file shards (# KB), 69 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["rewrites program modules"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/program.json"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [
+      "stdmod/std.cppm",
+      "stdmod/std.compat.cppm"
+    ],
+    "modules": [
+      {
+        "name": "alpha",
+        "source": "alpha.cppm",
+        "imports": [],
+        "includeRoots": [
+          "${WS}/third/alpha"
+        ],
+        "mirrors": [
+          "mirror/std"
+        ]
+      },
+      {
+        "name": "beta",
+        "source": "beta.cppm",
+        "imports": [
+          "alpha"
+        ],
+        "includeRoots": [
+          "${WS}/third/alpha",
+          "${WS}/third/beta"
+        ],
+        "mirrors": [
+          "mirror/std",
+          "mirror/alpha"
+        ]
+      }
+    ],
+    "mirrors": [
+      "mirror/std",
+      "mirror/alpha",
+      "mirror/beta"
+    ],
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [
+      {
+        "name": "app.core",
+        "primary": "app/core/core.cppm",
+        "interfaces": [
+          "app/core/sink.cppm",
+          "app/core/text.cppm"
+        ],
+        "partitions": [
+          "app/core/all.cppm",
+          "app/core/detail.cppm"
+        ],
+        "sources": [
+          "app/core/text.cpp",
+          "app/tool/hook.cpp"
+        ],
+        "imports": []
+      },
+      {
+        "name": "app.tool",
+        "primary": "app/tool/module.cppm",
+        "interfaces": [
+          "app/tool/tool.cppm"
+        ],
+        "partitions": [],
+        "sources": [
+          "app/tool/cli.cpp",
+          "app/tool/tool.cpp"
+        ],
+        "imports": [
+          "app.core"
+        ]
+      }
+    ],
+    "importers": [
+      "app/run.cpp"
+    ],
+    "macros": [
+      "app/core/sink.macros.h",
+      "app/core/text.macros.h"
+    ],
+    "removed": [
+      "app/core/all.h",
+      "app/core/detail.h",
+      "app/core/sink.h",
+      "app/core/text.h",
+      "app/tool/tool.h"
+    ],
+    "moved": [
+      "app/tool/hook.cpp=app.core"
+    ],
+    "warnings": [
+      "app/core/detail.h:10 includes app/cfg/extra.h under a condition in the module purview"
+    ]
+  }
+}
+'''
+exit = 0
+
+["rewrites program modules"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/program.json".files]
+"app/core/all.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++
++module app.core:all;
++
++import :detail;
+'''
+"app/core/all.h" = "(removed)"
+"app/core/core.cppm" = '''
++export module app.core;
++
++export import :sink;
++export import :text;
+'''
+"app/core/detail.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++#include "cfg/late.h"
++#include "cfg/config.h"
++
++module app.core:detail;
++
++namespace core {
++inline int hidden() { return 1; }
++inline int detail() { return hidden(); }
++}
++#ifdef CFG_FAST
++#include "cfg/extra.h"
++#endif
+'''
+"app/core/detail.h" = "(removed)"
+"app/core/sink.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++
++export module app.core:sink;
++
++export {
++namespace core {
++struct Sink { int lines; };
++}
++}
+'''
+"app/core/sink.h" = "(removed)"
+"app/core/sink.macros.h" = '''
++#pragma once
++
++#define SINK_H
+'''
+"app/core/text.cpp" = '''
+-#include "core/text.h"
+-#include "core/all.h"
+-#include "core/detail.h"
++module;
++
++#include "wrap/prelude.h"
++#include "core/text.macros.h"
++
++module app.core;
++
++import :all;
++import :detail;
++
+ int core::Text::size() const { return detail() + CORE_TWICE(thing.v); }
+'''
+"app/core/text.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++#include "cfg/config.h"
++#define CORE_TWICE(x) ((x) * 2)
++#if CFG_FAST
++#define CORE_FAST 1
++#endif
++#pragma push_macro("CFG_FAST")
++#undef CFG_FAST
++#pragma pop_macro("CFG_FAST")
++
++export module app.core:text;
++
++export {
++namespace core {
++struct Sink;
++struct Text {
++    alpha::Thing thing;
++    int size() const;
++};
++template <typename T>
++struct Box { T value; };
++template <typename T, typename U>
++struct Pair { T first; U second; };
++namespace inner { struct Deep {}; }
++int hook();
++}
++}
+'''
+"app/core/text.h" = "(removed)"
+"app/core/text.macros.h" = '''
++#pragma once
++
++#include "cfg/config.h"
++#define CORE_TWICE(x) ((x) * 2)
++#if CFG_FAST
++#define CORE_FAST 1
++#endif
++#pragma push_macro("CFG_FAST")
++#undef CFG_FAST
++#pragma pop_macro("CFG_FAST")
+'''
+"app/run.cpp" = '''
+-#include "tool/tool.h"
++#include "wrap/prelude.h"
++#include "cfg/defs.h"
++#include "cfg/config.h"
++import app.core;
++import app.tool;
++
+ int main() { return tool::run(core::Text{}, nullptr) + CFG_SIZE + CFG_DEFS; }
+'''
+"app/tool/cli.cpp" = '''
+-#include "tool/tool.h"
+-signed int main() {
++module;
++
++#include "wrap/prelude.h"
++
++module app.tool;
++
++import app.core;
++
++extern "C++" signed int main() {
+     const char* code = R"(int main() {})";
+     const char* usage = R"(clice
+'''
+"app/tool/hook.cpp" = '''
+-﻿#include "core/text.h"
++module;
++
++#include "wrap/prelude.h"
++
++module app.core;
++
+ int core::hook() { return 7; }
+'''
+"app/tool/module.cppm" = '''
++export module app.tool;
++
++export import :tool;
+'''
+"app/tool/tool.cpp" = '''
+-#include "tool/tool.h"
+-#include "core/sink.h"
++module;
++
++#include "wrap/prelude.h"
++#include "core/sink.macros.h"
++#include "core/text.macros.h"
++
++module app.tool;
++
++import app.core;
++
+ int tool::run(const core::Text& text, core::Sink* sink, core::Box<int>* box) {
+     return text.size() + sink->lines + CORE_TWICE(1) + (box ? box->value : 0);
+'''
+"app/tool/tool.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++
++export module app.tool:tool;
++
++import app.core;
++
++export {
++namespace tool {
++int run(const core::Text& text, core::Sink* sink, core::Box<int>* box = nullptr);
++}
++namespace tool::detail {
++#define TOOL_DETAIL 1
++}
++}
+'''
+"app/tool/tool.h" = "(removed)"
+"wrap/.modularize" = '''
++std.macros.h
++libc.macros.h
++mirror/std/fakecstdio
++mirror/std/fakevector
++mirror/alpha/alpha/alpha.h
++mirror/alpha/alpha/limits.h
++alpha.cppm
++alpha.macros.h
++mirror/beta/beta/beta.h
++beta.cppm
++beta.macros.h
++prelude.h
+'''
+"wrap/alpha.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++#define ALPHA_WIDE 1
++
++#include <alpha/alpha.h>
++#include <alpha/limits.h>
++
++export module alpha;
++
++template <class T> using unnamed_enum = T;
++
++export namespace al = ::alpha;
++
++export namespace alpha {
++using ::alpha::Color;
++using ::alpha::Thing;
++using ::alpha::fake_abs;
++using ::alpha::make;
++using enum ::alpha::Color;
++using enum unnamed_enum<decltype(::alpha::alpha_high)>;
++}
+'''
+"wrap/alpha.macros.h" = '''
++#pragma once
++#define ALPHA_VERSION 3
++#define ALPHA_TWICE(x) ((x) * 2)
++#define ALPHA_EXTERN extern
+'''
+"wrap/beta.cppm" = '''
++module;
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++#include "alpha.macros.h"
++#include <alpha/local.h>
++
++#include <beta/beta.h>
++
++export module beta;
++
++export using ::beta_local;
++
++export namespace beta {
++using ::beta::opened;
++using ::beta::wrap;
++}
+'''
+"wrap/beta.macros.h" = "+#pragma once"
+"wrap/libc.macros.h" = '''
++#pragma once
++#define FAKE_EOF (-1)
++#define fake_stdout fake_stdout
++#define fassert(x) ((void)(x))
+'''
+"wrap/mirror/alpha/alpha/alpha.h" = "(created empty)"
+"wrap/mirror/alpha/alpha/limits.h" = "(created empty)"
+"wrap/mirror/beta/beta/beta.h" = "(created empty)"
+"wrap/mirror/std/fakecstdio" = "(created empty)"
+"wrap/mirror/std/fakevector" = "(created empty)"
+"wrap/prelude.h" = '''
++#pragma once
++
++#include <cio.h>
++#include <cva.h>
++import std.compat;
++#include "std.macros.h"
++#include "libc.macros.h"
++import alpha;
++import beta;
++#include "alpha.macros.h"
++#include "beta.macros.h"
+'''
+"wrap/std.macros.h" = "+#pragma once"
+
+["rejected partitions"."$ clice index --workers 1"]
+stdout = '''
+Indexed 8 translation units in #s: 32 file shards (# KB), 69 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/clash.json"]
+stdout = '''
+{
+  "error": "app/core/text.h becomes app/core/text.cppm, the primary interface of its module",
+  "stale": []
+}
+'''
+exit = 1
+
+["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/same_primary.json"]
+stdout = '''
+{
+  "error": "modules app.core and app.more both put their primary interface at app/core/module.cppm",
+  "stale": []
+}
+'''
+exit = 1
+
+["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/outside.json"]
+stdout = '''
+{
+  "error": "module app.core: primary ../m.cppm lies outside the workspace",
+  "stale": []
+}
+'''
+exit = 1
+
+["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/dash.json"]
+stdout = '''
+{
+  "error": "module app-core: not a module name to rewrite",
+  "stale": []
+}
+'''
+exit = 1
+
+["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/keyword.json"]
+stdout = '''
+{
+  "error": "module app.class: not a module name to rewrite",
+  "stale": []
+}
+'''
+exit = 1
+
+["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/core_only.json"]
+stdout = '''
+{
+  "error": "app/tool/tool.h stays a header but includes rewritten headers",
+  "stale": []
+}
+'''
+exit = 1
+
+["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/both.json"]
+stdout = '''
+{
+  "error": "app/core/sink.h would overwrite app/core/sink.cppm",
+  "stale": []
+}
+'''
+exit = 1

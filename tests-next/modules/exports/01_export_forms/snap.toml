@@ -1,0 +1,46 @@
+[answers.block.hover]
+markdown = '''
+### function `alpha`
+
+---
+→ `int`
+
+---
+```cpp
+export int alpha()
+```
+'''
+range = "return ⟦alpha⟧() + ns::gamma() + math::add(1, 2);"
+
+[answers.block_namespace.hover]
+markdown = '''
+### function `gamma`
+
+---
+→ `int`
+
+---
+```cpp
+// In namespace ns
+export int gamma()
+```
+'''
+range = "return alpha() + ns::⟦gamma⟧() + math::add(1, 2);"
+
+[answers.namespace.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+// In namespace math
+export int add(int a, int b)
+```
+'''
+range = "return alpha() + ns::gamma() + math::⟦add⟧(1, 2);"

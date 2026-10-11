@@ -1,0 +1,8 @@
+{
+  "modules": [
+    { "name": "beta", "files": ["third/libc/fassert.h", "third/beta/**"] },
+    { "name": "std", "files": ["third/std/**"], "external": true },
+    { "name": "libc", "files": ["third/libc/**"], "textual": true, "provides": "std.compat" },
+    { "name": "alpha", "files": ["third/alpha/**"] }
+  ]
+}

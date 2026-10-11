@@ -1,0 +1,2 @@
+#pragma once
+namespace fakestd { struct vec {}; }

@@ -1,0 +1,69 @@
+[answers.interface_partition.hover]
+markdown = '''
+### function `api`
+
+---
+→ `int`
+
+---
+```cpp
+export int api()
+```
+'''
+range = "return ⟦api⟧() + 1;"
+
+[answers.primary.hover]
+markdown = '''
+### function `api`
+
+---
+→ `int`
+
+---
+```cpp
+export int api()
+```
+'''
+range = "return ⟦api⟧() + twice();"
+
+[answers.imported.hover]
+markdown = '''
+### function `twice`
+
+---
+→ `int`
+
+---
+```cpp
+int twice()
+```
+'''
+range = "return api() + ⟦twice⟧();"
+
+[answers.use.hover]
+markdown = '''
+### function `api`
+
+---
+→ `int`
+
+---
+```cpp
+export int api()
+```
+'''
+range = "return ⟦api⟧();"
+
+[answers.internal_partition.hover]
+markdown = '''
+### function `detail`
+
+---
+→ `int`
+
+---
+```cpp
+int detail()
+```
+'''
+range = "return ⟦detail⟧() * 2;"

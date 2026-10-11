@@ -1,0 +1,168 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 8 file shards (# KB), 13 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view obstacles --scope \"core/**,app/**\""]
+stdout = '''
+{
+  "variantHeaders": [
+    {
+      "path": "core/mode.h",
+      "variants": 2,
+      "units": 2,
+      "unstable": [
+        "MODE_A"
+      ],
+      "declarationsDiffer": true
+    },
+    {
+      "path": "core/width.h",
+      "variants": 2,
+      "units": 2,
+      "unstable": [
+        "MODE_A"
+      ],
+      "declarationsDiffer": false
+    }
+  ],
+  "contextMacros": [
+    {
+      "macro": "CORE_FAST",
+      "definition": "core/config.h",
+      "file": "core/fast.h",
+      "line": 5
+    }
+  ],
+  "borrowedMacros": [
+    {
+      "macro": "CORE_FAST",
+      "definition": "core/config.h",
+      "file": "core/level.h",
+      "line": 6
+    }
+  ],
+  "internalUses": [],
+  "crossModuleRedeclarations": [],
+  "foreignDeclarations": [],
+  "splitDefinitions": [],
+  "duplicateDefinitions": [],
+  "configuringMacros": [
+    {
+      "macro": "THIRD_WIDE",
+      "definition": "core/config.h",
+      "readers": [
+        "third/lib.h"
+      ]
+    }
+  ],
+  "implicitProviders": [],
+  "specializations": []
+}
+'''
+exit = 0
+
+[test."$ clice analyze modules --scope \"core/**,app/**\""]
+stdout = '''
+{
+  "annotations": [],
+  "files": 7,
+  "modules": [
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 13,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 5,
+      "sources": 1,
+      "lines": 53,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 4,
+      "sample": [
+        "fast",
+        "level",
+        "ModeA",
+        "width"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 0,
+  "deepestChain": [
+    "core"
+  ],
+  "totals": {
+    "baseline": 9,
+    "partitioned": 12
+  },
+  "hotspots": [
+    {
+      "path": "core/config.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/fast.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/level.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/mode.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/width.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    }
+  ],
+  "moves": [],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 1,
+    "contextMacros": 1,
+    "borrowedMacros": 1,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 1,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

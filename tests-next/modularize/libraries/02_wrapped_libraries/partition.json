@@ -1,0 +1,9 @@
+{
+  "modules": [
+    { "name": "libc", "files": ["third/libc/cputs.h"] },
+    { "name": "std", "files": ["third/std/**"], "external": true },
+    { "name": "libc", "files": ["third/libc/**"], "textual": true, "provides": "std.compat" },
+    { "name": "alpha", "files": ["third/alpha/**"] },
+    { "name": "beta", "files": ["third/beta/**"] }
+  ]
+}

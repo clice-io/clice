@@ -1,0 +1,13 @@
+[test.use.hover]
+markdown = '''
+### function `speed`
+
+---
+→ `int`
+
+---
+```cpp
+export int speed()
+```
+'''
+range = "return ⟦speed⟧();"

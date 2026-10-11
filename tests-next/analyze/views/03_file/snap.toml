@@ -1,0 +1,74 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 4 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view file --file util/clock.h"]
+stdout = '''
+{
+  "path": "util/clock.h",
+  "module": "util",
+  "source": false,
+  "annotations": [],
+  "uses": [
+    {
+      "module": "core",
+      "entities": [
+        "Str",
+        "length"
+      ]
+    }
+  ],
+  "usedBy": [
+    {
+      "module": "app",
+      "entities": [
+        "Clock",
+        "Clock::size"
+      ]
+    }
+  ],
+  "affinity": [
+    {
+      "module": "app",
+      "entities": 2
+    },
+    {
+      "module": "core",
+      "entities": 2
+    }
+  ]
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0
+
+[test."$ clice analyze modules --view file --file app/main.cpp"]
+stdout = '''
+{
+  "path": "app/main.cpp",
+  "module": "app",
+  "source": true,
+  "annotations": [],
+  "uses": [
+    {
+      "module": "util",
+      "entities": [
+        "Clock",
+        "Clock::size"
+      ]
+    }
+  ],
+  "usedBy": [],
+  "affinity": [
+    {
+      "module": "util",
+      "entities": 2
+    }
+  ]
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

@@ -1,0 +1,62 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 3 translation units in #s: 6 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view impact"]
+stdout = '''
+[
+  {
+    "path": "core/fast.h",
+    "baseline": 1,
+    "partitioned": 3,
+    "churn": 1,
+    "internal": false
+  },
+  {
+    "path": "core/str.h",
+    "baseline": 3,
+    "partitioned": 3,
+    "churn": 1,
+    "internal": false
+  },
+  {
+    "path": "util/clock.h",
+    "baseline": 2,
+    "partitioned": 2,
+    "churn": 1,
+    "internal": false
+  }
+]
+'''
+exit = 0
+
+[test."$ clice analyze modules --view impact --churn-since="]
+stdout = '''
+[
+  {
+    "path": "core/fast.h",
+    "baseline": 1,
+    "partitioned": 3,
+    "churn": null,
+    "internal": false
+  },
+  {
+    "path": "core/str.h",
+    "baseline": 3,
+    "partitioned": 3,
+    "churn": null,
+    "internal": false
+  },
+  {
+    "path": "util/clock.h",
+    "baseline": 2,
+    "partitioned": 2,
+    "churn": null,
+    "internal": false
+  }
+]
+'''
+exit = 0

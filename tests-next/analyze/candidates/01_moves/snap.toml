@@ -1,0 +1,389 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 4 translation units in #s: 14 file shards (# KB), 19 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --scope \"core/**,util/**,lib/**,feature/**,app/**\""]
+stdout = '''
+{
+  "annotations": [],
+  "files": 13,
+  "modules": [
+    {
+      "name": "util",
+      "headers": 4,
+      "sources": 1,
+      "lines": 34,
+      "layer": 1
+    },
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 17,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 2,
+      "sources": 1,
+      "lines": 28,
+      "layer": 0
+    },
+    {
+      "name": "feature",
+      "headers": 2,
+      "sources": 1,
+      "lines": 18,
+      "layer": 0
+    },
+    {
+      "name": "lib",
+      "headers": 1,
+      "sources": 0,
+      "lines": 6,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "util",
+      "to": "core",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "Str",
+        "length"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 3,
+      "sample": [
+        "Traits<Str>::value",
+        "Traits<Str>",
+        "Str"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "util",
+      "interfaceEntities": 0,
+      "implementationEntities": 3,
+      "sample": [
+        "format_str",
+        "Clock::name",
+        "Clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "lib",
+      "interfaceEntities": 0,
+      "implementationEntities": 2,
+      "sample": [
+        "Base",
+        "Base::b"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "feature",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "feature_hook"
+      ]
+    },
+    {
+      "from": "core",
+      "to": "util",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "twice"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 1,
+  "deepestChain": [
+    "util",
+    "core"
+  ],
+  "totals": {
+    "baseline": 17,
+    "partitioned": 26
+  },
+  "hotspots": [
+    {
+      "path": "core/str.h",
+      "baseline": 3,
+      "partitioned": 3,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/traits.h",
+      "baseline": 1,
+      "partitioned": 3,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/clock.h",
+      "baseline": 1,
+      "partitioned": 3,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/fmt.h",
+      "baseline": 2,
+      "partitioned": 3,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/other.h",
+      "baseline": 1,
+      "partitioned": 3,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/strops.h",
+      "baseline": 1,
+      "partitioned": 3,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "feature/f.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "feature/dup.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": true
+    },
+    {
+      "path": "lib/base.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    }
+  ],
+  "moves": [
+    {
+      "path": "util/strops.h",
+      "from": "util",
+      "to": "core",
+      "with": [],
+      "entities": 3,
+      "cyclicAfter": 0
+    },
+    {
+      "path": "util/clock.h",
+      "from": "util",
+      "to": "app",
+      "with": [],
+      "entities": 2,
+      "cyclicAfter": 0
+    },
+    {
+      "path": "util/fmt.h",
+      "from": "util",
+      "to": "app",
+      "with": [
+        "util/other.h",
+        "util/fmt.cpp"
+      ],
+      "entities": 1,
+      "cyclicAfter": 0
+    }
+  ],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 1,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0
+
+[test."$ clice analyze modules --scope \"core/**,util/**,lib/**,feature/**,app/**\" --limit 1"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 13,
+  "modules": [
+    {
+      "name": "util",
+      "headers": 4,
+      "sources": 1,
+      "lines": 34,
+      "layer": 1
+    },
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 17,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 2,
+      "sources": 1,
+      "lines": 28,
+      "layer": 0
+    },
+    {
+      "name": "feature",
+      "headers": 2,
+      "sources": 1,
+      "lines": 18,
+      "layer": 0
+    },
+    {
+      "name": "lib",
+      "headers": 1,
+      "sources": 0,
+      "lines": 6,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "util",
+      "to": "core",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "Str",
+        "length"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 3,
+      "sample": [
+        "Traits<Str>::value",
+        "Traits<Str>",
+        "Str"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "util",
+      "interfaceEntities": 0,
+      "implementationEntities": 3,
+      "sample": [
+        "format_str",
+        "Clock::name",
+        "Clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "lib",
+      "interfaceEntities": 0,
+      "implementationEntities": 2,
+      "sample": [
+        "Base",
+        "Base::b"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "feature",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "feature_hook"
+      ]
+    },
+    {
+      "from": "core",
+      "to": "util",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "twice"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 1,
+  "deepestChain": [
+    "util",
+    "core"
+  ],
+  "totals": {
+    "baseline": 17,
+    "partitioned": 26
+  },
+  "hotspots": [
+    {
+      "path": "core/str.h",
+      "baseline": 3,
+      "partitioned": 3,
+      "churn": null,
+      "internal": false
+    }
+  ],
+  "moves": [
+    {
+      "path": "util/strops.h",
+      "from": "util",
+      "to": "core",
+      "with": [],
+      "entities": 3,
+      "cyclicAfter": 0
+    }
+  ],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 1,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

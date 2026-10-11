@@ -1,0 +1,53 @@
+[answers.base.hover]
+markdown = '''
+### class `Shape`
+
+---
+```cpp
+export class Shape {}
+```
+'''
+range = "export class Circle : public ⟦Shape⟧ {"
+
+[answers.override.hover]
+markdown = '''
+### method `area`
+
+---
+→ `int`
+
+---
+```cpp
+// In Circle
+public: int area() const override
+```
+'''
+range = "int ⟦area⟧() const override {"
+
+[answers.type.hover]
+markdown = '''
+### class `Circle`
+
+---
+```cpp
+export class Circle : public Shape {
+  int r;
+}
+```
+'''
+range = "⟦Circle⟧ circle(2);"
+
+[answers.member.hover]
+markdown = '''
+### method `area`
+
+---
+→ `int`
+
+---
+```cpp
+// In Circle
+public: int area() const override
+```
+'''
+range = "return circle.⟦area⟧();"

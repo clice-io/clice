@@ -1,0 +1,6 @@
+{
+  "modules": [
+    { "name": "app.core", "files": ["app/core/**"], "rewrite": true },
+    { "name": "app.tool", "files": ["app/tool/**"], "rewrite": true }
+  ]
+}

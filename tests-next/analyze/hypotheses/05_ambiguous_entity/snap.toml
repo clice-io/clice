@@ -1,0 +1,41 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 5 file shards (# KB), 11 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --move-entity Traits=core/traits2.h"]
+stdout = '''
+{
+  "error": "--move-entity Traits=core/traits2.h: ambiguous: 3 symbols match; name one by the `symbol` of a candidate",
+  "candidates": [
+    {
+      "name": "Traits",
+      "kind": "Struct",
+      "file": "${WS}/third/lib.h",
+      "line": 4,
+      "container": null,
+      "symbol": "#b12158590378cbfc"
+    },
+    {
+      "name": "Traits<Key>",
+      "kind": "Struct",
+      "file": "${WS}/core/key.h",
+      "line": 9,
+      "container": null,
+      "symbol": "#2f2442b414ccba53"
+    },
+    {
+      "name": "Traits<Str>",
+      "kind": "Struct",
+      "file": "${WS}/core/traits.h",
+      "line": 6,
+      "container": null,
+      "symbol": "#c7800760a1cf07d0"
+    }
+  ],
+  "stale": []
+}
+'''
+exit = 1

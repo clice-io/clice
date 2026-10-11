@@ -1,0 +1,5 @@
+#pragma once
+#include <cva.h>
+#include <cio.h>
+#include <cputs.h>
+namespace fakestd { inline int fake_abs(int x) { return x < 0 ? -x : x; } }

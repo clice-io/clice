@@ -1,0 +1,41 @@
+[answers.included.hover]
+markdown = '''
+### function `legacy_fn`
+
+---
+→ `int`
+
+---
+```cpp
+inline int legacy_fn()
+```
+'''
+range = "return ⟦legacy_fn⟧() + base();"
+
+[answers.imported.hover]
+markdown = '''
+### function `base`
+
+---
+→ `int`
+
+---
+```cpp
+export int base()
+```
+'''
+range = "return legacy_fn() + ⟦base⟧();"
+
+[answers.use.hover]
+markdown = '''
+### function `combined`
+
+---
+→ `int`
+
+---
+```cpp
+export int combined()
+```
+'''
+range = "return ⟦combined⟧();"

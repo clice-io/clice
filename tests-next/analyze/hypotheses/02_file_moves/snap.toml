@@ -1,0 +1,409 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 7 file shards (# KB), 13 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 7,
+  "modules": [
+    {
+      "name": "meta",
+      "headers": 1,
+      "sources": 0,
+      "lines": 9,
+      "layer": 1
+    },
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 8,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 2,
+      "sources": 1,
+      "lines": 26,
+      "layer": 0
+    },
+    {
+      "name": "util",
+      "headers": 2,
+      "sources": 0,
+      "lines": 18,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "meta",
+      "to": "util",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "Clock::size",
+        "Clock"
+      ]
+    },
+    {
+      "from": "util",
+      "to": "core",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "length",
+        "Str"
+      ]
+    },
+    {
+      "from": "core",
+      "to": "util",
+      "interfaceEntities": 1,
+      "implementationEntities": 1,
+      "sample": [
+        "twice",
+        "Clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 2,
+      "sample": [
+        "Logger",
+        "Logger::clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "meta",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "meta_size"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "util",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "Clock::size"
+      ]
+    }
+  ],
+  "cycles": [
+    {
+      "modules": [
+        "core",
+        "util"
+      ],
+      "cut": [
+        {
+          "from": "core",
+          "to": "util",
+          "entities": 1,
+          "sample": [
+            "Clock"
+          ],
+          "files": [
+            "core/log.h"
+          ]
+        }
+      ]
+    }
+  ],
+  "cyclicModules": 2,
+  "partitionCycles": [],
+  "internalHeaders": 0,
+  "deepestChain": [
+    "meta",
+    "core + util"
+  ],
+  "totals": {
+    "baseline": 8,
+    "partitioned": 11
+  },
+  "hotspots": [
+    {
+      "path": "core/log.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/str.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/clock.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/strops.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "meta/m.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    }
+  ],
+  "moves": [
+    {
+      "path": "core/str.h",
+      "from": "core",
+      "to": "util",
+      "with": [
+        "core/str.cpp"
+      ],
+      "entities": 3,
+      "cyclicAfter": 0
+    },
+    {
+      "path": "util/strops.h",
+      "from": "util",
+      "to": "core",
+      "with": [],
+      "entities": 3,
+      "cyclicAfter": 2
+    },
+    {
+      "path": "core/log.h",
+      "from": "core",
+      "to": "app",
+      "with": [],
+      "entities": 2,
+      "cyclicAfter": 0
+    }
+  ],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0
+
+[test."$ clice analyze modules --move util/strops.h=core"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 7,
+  "modules": [
+    {
+      "name": "meta",
+      "headers": 1,
+      "sources": 0,
+      "lines": 9,
+      "layer": 1
+    },
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 8,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 3,
+      "sources": 1,
+      "lines": 33,
+      "layer": 0
+    },
+    {
+      "name": "util",
+      "headers": 1,
+      "sources": 0,
+      "lines": 11,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "meta",
+      "to": "util",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "Clock::size",
+        "Clock"
+      ]
+    },
+    {
+      "from": "util",
+      "to": "core",
+      "interfaceEntities": 2,
+      "implementationEntities": 0,
+      "sample": [
+        "length",
+        "Str"
+      ]
+    },
+    {
+      "from": "core",
+      "to": "util",
+      "interfaceEntities": 1,
+      "implementationEntities": 0,
+      "sample": [
+        "Clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 2,
+      "sample": [
+        "Logger",
+        "Logger::clock"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "meta",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "meta_size"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "util",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "Clock::size"
+      ]
+    }
+  ],
+  "cycles": [
+    {
+      "modules": [
+        "core",
+        "util"
+      ],
+      "cut": [
+        {
+          "from": "core",
+          "to": "util",
+          "entities": 1,
+          "sample": [
+            "Clock"
+          ],
+          "files": [
+            "core/log.h"
+          ]
+        }
+      ]
+    }
+  ],
+  "cyclicModules": 2,
+  "partitionCycles": [],
+  "internalHeaders": 1,
+  "deepestChain": [
+    "meta",
+    "core + util"
+  ],
+  "totals": {
+    "baseline": 8,
+    "partitioned": 10
+  },
+  "hotspots": [
+    {
+      "path": "core/log.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/str.h",
+      "baseline": 2,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/clock.h",
+      "baseline": 1,
+      "partitioned": 2,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "meta/m.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/strops.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": true
+    }
+  ],
+  "moves": [
+    {
+      "path": "core/log.h",
+      "from": "core",
+      "to": "app",
+      "with": [],
+      "entities": 2,
+      "cyclicAfter": 0
+    }
+  ],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

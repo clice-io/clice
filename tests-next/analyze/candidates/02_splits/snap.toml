@@ -1,0 +1,137 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 3 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules"]
+stdout = '''
+{
+  "annotations": [],
+  "files": 3,
+  "modules": [
+    {
+      "name": "meta",
+      "headers": 1,
+      "sources": 0,
+      "lines": 7,
+      "layer": 1
+    },
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 8,
+      "layer": 0
+    },
+    {
+      "name": "util",
+      "headers": 1,
+      "sources": 0,
+      "lines": 11,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "meta",
+      "to": "util",
+      "interfaceEntities": 1,
+      "implementationEntities": 0,
+      "sample": [
+        "Right"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "util",
+      "interfaceEntities": 0,
+      "implementationEntities": 2,
+      "sample": [
+        "Left::l",
+        "Left"
+      ]
+    },
+    {
+      "from": "app",
+      "to": "meta",
+      "interfaceEntities": 0,
+      "implementationEntities": 1,
+      "sample": [
+        "meta_size"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 0,
+  "deepestChain": [
+    "meta",
+    "util"
+  ],
+  "totals": {
+    "baseline": 3,
+    "partitioned": 3
+  },
+  "hotspots": [
+    {
+      "path": "meta/m.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "util/parts.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    }
+  ],
+  "moves": [],
+  "splits": [
+    {
+      "path": "util/parts.h",
+      "module": "util",
+      "parts": [
+        {
+          "entities": [
+            "Left:4"
+          ],
+          "count": 1,
+          "consumers": [
+            "app"
+          ]
+        },
+        {
+          "entities": [
+            "Right:8"
+          ],
+          "count": 1,
+          "consumers": [
+            "meta"
+          ]
+        }
+      ]
+    }
+  ],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0

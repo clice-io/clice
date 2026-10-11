@@ -1,0 +1,57 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules --view edge --from app --to core"]
+stdout = '''
+{
+  "from": "app",
+  "to": "core",
+  "entities": [
+    {
+      "id": "#e754d0209128f76a path:core/str.h",
+      "entity": "helper",
+      "owner": "core/str.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#54efcea165420468",
+      "entity": "uses_helper",
+      "owner": "core/str.h",
+      "users": [
+        "app/main.cpp:4"
+      ],
+      "interface": false
+    }
+  ]
+}
+'''
+exit = 0
+
+[test."$ clice analyze modules --move-entity \"#e754d0209128f76a path:core/str.h=app/helper.h\" --view edge --from core --to app"]
+wrong = "uses_helper names helper on line 14 of core/str.h, which the use reads as core/str.h:0"
+stdout = '''
+{
+  "from": "core",
+  "to": "app",
+  "entities": [
+    {
+      "id": "#e754d0209128f76a path:core/str.h",
+      "entity": "helper",
+      "owner": "app/helper.h",
+      "users": [
+        "core/str.cpp:4",
+        "core/str.h:0"
+      ],
+      "interface": true
+    }
+  ]
+}
+'''
+exit = 0
