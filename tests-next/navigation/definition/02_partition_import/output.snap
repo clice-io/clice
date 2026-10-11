@@ -1,0 +1,2 @@
+partition: catalog_items.cppm │ export module ⟦catalog:items⟧;
+use: catalog_items.cppm │ export int ⟦entries⟧() {

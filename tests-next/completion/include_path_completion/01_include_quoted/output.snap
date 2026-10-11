@@ -1,0 +1,7 @@
+pos
+  snap_dir/  (File)
+    inserts "snap_dir/"
+    replaces #include "⟦snap⟧"
+  snap_header.h  (File)
+    inserts "snap_header.h\""
+    replaces #include "⟦snap"⟧

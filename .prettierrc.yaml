@@ -21,3 +21,8 @@ overrides:
   - files: ["*.json", "*.yaml", "*.yml", ".clang-format", ".clang-tidy"]
     options:
       tabWidth: 2
+
+  - files: "*.jsonc"
+    options:
+      tabWidth: 2
+      trailingComma: "none"

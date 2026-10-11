@@ -1,3 +1,4 @@
+import vitest from "@vitest/eslint-plugin";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -25,5 +26,16 @@ export default tseslint.config(
         // rules still apply to it.
         files: ["**/*.mjs"],
         extends: [tseslint.configs.disableTypeChecked],
+    },
+    {
+        files: ["**/*.test.ts"],
+        plugins: { vitest },
+        rules: {
+            ...vitest.configs.recommended.rules,
+            // vitest's expect(value, message) two-argument form is real API.
+            "vitest/valid-expect": ["error", { maxArgs: 2 }],
+            // Data-driven suites name their tests after the case they run.
+            "vitest/valid-title": ["error", { allowArguments: true }],
+        },
     },
 );

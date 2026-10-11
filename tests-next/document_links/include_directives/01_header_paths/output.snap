@@ -1,0 +1,3 @@
+main.cpp
+  #include ⟦"gauge.h"⟧ → gauge.h
+  #include ⟦<panel/dial.h>⟧ → panel/dial.h

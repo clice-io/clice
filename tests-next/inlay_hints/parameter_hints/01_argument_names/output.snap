@@ -1,0 +1,3 @@
+calls
+  int small = resize(⟨width:⟩320, ⟨height:⟩240, ⟨keep_ratio:⟩true);
+  int large = resize(⟨width:⟩1920, ⟨height:⟩1080, ⟨keep_ratio:⟩false);

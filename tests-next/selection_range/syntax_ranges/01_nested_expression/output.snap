@@ -1,0 +1,10 @@
+operand
+  int inner = (width - ⟦border⟧) * (height - border);
+  int inner = (⟦width - border⟧) * (height - border);
+  int inner = ⟦(width - border)⟧ * (height - border);
+  int inner = ⟦(width - border) * (height - border)⟧;
+  ⟦int inner = (width - border) * (height - border)⟧;
+  ⟦int inner = (width - border) * (height - border);⟧
+  ⟦int inner = (width - border) * (height - border); … return inner;⟧ (2 lines)
+  int area(int width, int height, int border) ⟦{ … }⟧ (4 lines)
+  ⟦int area(int width, int height, int border) { … }⟧ (4 lines)

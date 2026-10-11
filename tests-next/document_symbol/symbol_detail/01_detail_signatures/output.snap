@@ -1,0 +1,8 @@
+main.cpp
+  detail (Namespace) namespace ⟦detail⟧ {
+    process (Function) void ⟦process⟧(int x);  detail: void (int)
+    process (Function) void ⟦process⟧(const char* s);  detail: void (const char *)
+    Task (Struct) struct ⟦Task⟧ {  detail: struct
+      Task (Method) ⟦Task⟧();  detail: ()
+      Task (Method) ⟦Task⟧(int priority);  detail: (int)
+      run (Method) int ⟦run⟧(bool async) const;  detail: int (bool) const

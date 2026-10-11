@@ -165,6 +165,7 @@ inputs = [
     "package-lock.json",
     "tools/package.json",
     "tests/package.json",
+    "tests-next/package.json",
     "editors/vscode/package.json",
 ]
 outputs = ["node_modules/.package-lock.json"]
@@ -194,6 +195,15 @@ node tools/replay.ts tests/smoke/*.jsonl \
 args = [{ arg = "type", default = "RelWithDebInfo" }, { arg = "shard", default = "1/1" }]
 cmd = """
 CLICE_SNAP_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run snap --workspace tests
+"""
+depends-on = ["install-tests"]
+
+# The cases under tests-next/ (tests-next/README.md), run by
+# tools/testing/runner. `shard` is <index>/<count>, whole subtopics each.
+[feature.test.tasks.cases-test]
+args = [{ arg = "type", default = "RelWithDebInfo" }, { arg = "shard", default = "1/1" }]
+cmd = """
+CLICE_CASES_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run cases --workspace tests-next
 """
 depends-on = ["install-tests"]
 
@@ -325,7 +335,7 @@ format-python = "ruff format ."
 format-lua = "stylua ."
 format-web = "fd -H -e js -e mjs -e ts -e css -x prettier --write"
 format-markdown = "fd -H -e md -x prettier --write"
-format-json = "fd -H -e json -E package-lock.json -E clice-config.schema.json -x prettier --write"
+format-json = "fd -H -e json -e jsonc -E package-lock.json -E clice-config.schema.json -x prettier --write"
 format-toml = "fd -H -e toml -x tombi format"
 format-yaml = """
 fd -H -e yaml -e yml -E '*.snap.yml' -x prettier --write && \

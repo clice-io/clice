@@ -1,0 +1,10 @@
+$ clice index
+  Indexed 3 translation units in #s: 5 file shards (# KB), 10 symbols.
+  Session log: ${WS}/.clice/logs/${SESSION}
+  exit 0
+$ clice query --method definition --name measure
+  {
+    "error": "ambiguous: 2 candidates, use --symbol to pick one: shapes::Circle::measure (#e3182553b7d9af30), shapes::Shape::measure (#b0521cb8664a11d0)",
+    "stale": []
+  }
+  exit 1

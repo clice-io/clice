@@ -1,0 +1,39 @@
+=== default
+free_function
+  Foo  (Class)
+    inserts "Foo"
+  foooo(int x, float y)  (Function)  int
+    inserts "foooo"
+  for  (Keyword)
+    inserts "for"
+no_arguments
+  noexcept  (Keyword)
+    inserts "noexcept"
+  nothing_to_fill()  (Function)  void
+    inserts "nothing_to_fill"
+method
+  bazzzz(int a, int b)  (Method)  int
+    inserts "bazzzz"
+
+=== configured
+free_function
+  Foo  (Class)
+    inserts "Foo"
+  Foo()  (Constructor)
+    inserts "Foo"
+  Foo(Foo &&)  (Constructor)
+    inserts "Foo(${1:Foo &&})" as a snippet
+  Foo(const Foo &)  (Constructor)
+    inserts "Foo(${1:const Foo &})" as a snippet
+  foooo(int x, float y)  (Function)  int
+    inserts "foooo(${1:int x}, ${2:float y})" as a snippet
+  for  (Keyword)
+    inserts "for"
+no_arguments
+  noexcept  (Keyword)
+    inserts "noexcept"
+  nothing_to_fill()  (Function)  void
+    inserts "nothing_to_fill"
+method
+  bazzzz(int a, int b)  (Method)  int
+    inserts "bazzzz(${1:int a}, ${2:int b})" as a snippet

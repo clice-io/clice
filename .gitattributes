@@ -7,8 +7,10 @@ pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
 # sha256 handshake between clice inspect and the TS harness.
 tests/data/** text eol=lf
 tests/snap/** text eol=lf
+tests-next/** text eol=lf
 
 # Treat trace files as binary to suppress text diffs
 tests/smoke/*.jsonl linguist-generated=true binary
+tests-next/**/trace.jsonl linguist-generated=true binary
 # Generated feature docs are parsed by tools/docs/feature.ts marker regexes.
 docs/**/*.md text eol=lf

@@ -1,0 +1,7 @@
+member
+  Thermostat  (Class)
+  current  (Field)  int
+  operator=(…) +2 overloads  (Method)
+  raise(int step)  (Method)  void
+  target  (Field)  int
+  ~Thermostat()  (Method)  void
