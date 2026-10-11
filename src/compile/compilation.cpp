@@ -88,10 +88,6 @@ std::unique_ptr<clang::CompilerInvocation>
         llvm::sys::Process::GetEnv("CLICE_TEST_PRAGMA_CRASH").has_value();
     pp_opts.DisablePragmaDebugCrash = !pragma_crash;
 
-    // We don't want to write comment locations into PCM. They are racy and slow
-    // to read back. We rely on dynamic index for the comments instead.
-    pp_opts.WriteCommentListToPCH = false;
-
     auto& header_search_opts = invocation->getHeaderSearchOpts();
     header_search_opts.Verbose = false;
     for(auto& [name, path]: params.pcms) {
@@ -133,7 +129,10 @@ std::unique_ptr<clang::CompilerInvocation>
 
     auto& lang_opts = invocation->getLangOpts();
     lang_opts.CommentOpts.ParseAllComments = true;
-    lang_opts.RetainCommentsFromSystemHeaders = true;
+    // A PCH carries the comments of every header it holds, and the first
+    // lookup reads them all back: a system library's comments added about
+    // 40 ms to a release build's first hover, a project's own add nothing.
+    lang_opts.RetainCommentsFromSystemHeaders = false;
 
     // MSVC targets defer template bodies by default so SDK headers written
     // for MSVC's lookup rules still parse, but a deferred body has no AST and
@@ -444,10 +443,6 @@ CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
             // still considers fresh. The size check stays, as it guards the
             // reader against offsets past the end of a shrunk file.
             instance.getFrontendOpts().IncludeTimestamps = false;
-
-            // We don't want to write comment locations into PCH. They are racy and slow
-            // to read back. We rely on dynamic index for the comments instead.
-            instance.getPreprocessorOpts().WriteCommentListToPCH = false;
 
             instance.getLangOpts().CompilingPCH = true;
         },
