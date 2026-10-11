@@ -547,7 +547,10 @@ test("operator overloads move together", async ({ session }) => {
         "app/main.cpp",
         lines('#include "core/vec.h"', "int main() { return (Vec{1} + Vec{2} + 3).x; }"),
     );
-    ws.writeCDB(["core/vec.cpp", "app/main.cpp"]);
+    ws.writeEntries([
+        ["core/vec.cpp", [`-I${ws.root}`]],
+        ["app/main.cpp", [`-I${ws.root}`]],
+    ]);
     const run = await runClice("index", "--workspace", ws.root);
     expect(run.status, `stderr: ${run.stderr}`).toBe(0);
 
