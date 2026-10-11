@@ -1382,7 +1382,13 @@ void stmt_references(const clang::Stmt* S,
     /// foo = 1
     ///  ^~~~ reference
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(S)) {
-        refer_name(out, DRE->getDecl(), RelationKind::Reference, DRE->getNameInfo());
+        /// if (int x = f())
+        ///         ^ clang tests the condition variable through an implicit
+        ///           reference at its declaration, which is no use of it
+        auto* var = llvm::dyn_cast<clang::VarDecl>(DRE->getDecl());
+        if(!var || !var->isCXXCondDecl() || DRE->getLocation() != var->getLocation()) {
+            refer_name(out, DRE->getDecl(), RelationKind::Reference, DRE->getNameInfo());
+        }
         return;
     }
 
