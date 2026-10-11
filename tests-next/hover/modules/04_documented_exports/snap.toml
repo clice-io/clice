@@ -1,0 +1,35 @@
+[answers.type.hover]
+markdown = '''
+### struct `Point`
+
+---
+A point on the plane.
+
+---
+```cpp
+export struct Point {
+  int x;
+  int y;
+}
+```
+'''
+range = "⟦Point⟧ origin{0, 0};"
+
+[answers.function.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+Adds two numbers together.
+
+---
+```cpp
+export int add(int a, int b)
+```
+'''
+range = "return ⟦add⟧(origin.x, 1);"
