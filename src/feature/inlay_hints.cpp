@@ -10,6 +10,7 @@ import :feature.feature;
 import :index.tu_index;
 import :index.types;
 import :semantic.decls;
+import :semantic.designators;
 import :semantic.display;
 import :semantic.resolver;
 import :semantic.types;
@@ -789,7 +790,7 @@ private:
     /// for the `1` in `Point{1}`. Explicitly written designators and inits
     /// already carrying a `/*name=*/` comment stay bare.
     void add_designators(const clang::InitListExpr* syntactic) {
-        auto designators = clang::tidy::utils::getUnwrittenDesignators(syntactic);
+        auto designators = designators::unwritten(syntactic);
         for(const clang::Expr* init: syntactic->inits()) {
             if(llvm::isa<clang::DesignatedInitExpr>(init)) {
                 continue;
@@ -1211,7 +1212,7 @@ private:
         // the outermost list is the *semantic* form. Designators attach to the
         // syntactic form — the written one, which may have subobject
         // initializers inlined without braces where the semantic form has
-        // nested init-lists. getUnwrittenDesignators will look at the semantic
+        // nested init-lists. designators::unwritten looks at the semantic
         // form to determine the labels.
         if(const auto* syntactic = expr->getSyntacticForm()) {
             expr = syntactic;
