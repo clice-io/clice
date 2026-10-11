@@ -1,0 +1,11 @@
+[answers.width.semantic_token]
+text = "width"
+type = "field"
+
+[answers.w.semantic_token]
+text = "w"
+type = "parameter"
+
+[answers.height.semantic_token]
+text = "height"
+type = "field"

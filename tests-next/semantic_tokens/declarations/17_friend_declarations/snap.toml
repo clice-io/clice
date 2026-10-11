@@ -1,0 +1,13 @@
+[answers.Widget.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.ping.semantic_token]
+text = "ping"
+type = "function"
+modifiers = ["declaration"]
+
+[answers.inline_friend.semantic_token]
+text = "inline_friend"
+type = "function"
+modifiers = ["definition"]

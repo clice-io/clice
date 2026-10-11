@@ -1,0 +1,4 @@
+{
+  // Clang defers template bodies like this on MSVC targets by default.
+  "flags": ["-fdelayed-template-parsing"]
+}

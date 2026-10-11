@@ -1,0 +1,4 @@
+[answers."src/main.cpp"]
+document_links = [
+    { at = '#include ⟦"../shared/config.h"⟧', target = "shared/config.h" },
+]

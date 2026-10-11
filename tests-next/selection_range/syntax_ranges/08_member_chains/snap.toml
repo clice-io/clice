@@ -1,0 +1,21 @@
+[answers.method]
+selection_ranges = [
+    "return shape.⟦bounds⟧().width;",
+    "return ⟦shape.bounds⟧().width;",
+    "return ⟦shape.bounds()⟧.width;",
+    "return ⟦shape.bounds().width⟧;",
+    "⟦return shape.bounds().width⟧;",
+    "⟦return shape.bounds().width;⟧",
+    "int measure(const Shape& shape) ⟦{ … }⟧ (3 lines)",
+    "⟦int measure(const Shape& shape) { … }⟧ (3 lines)",
+]
+
+[answers.field]
+selection_ranges = [
+    "return shape.bounds().⟦width⟧;",
+    "return ⟦shape.bounds().width⟧;",
+    "⟦return shape.bounds().width⟧;",
+    "⟦return shape.bounds().width;⟧",
+    "int measure(const Shape& shape) ⟦{ … }⟧ (3 lines)",
+    "⟦int measure(const Shape& shape) { … }⟧ (3 lines)",
+]

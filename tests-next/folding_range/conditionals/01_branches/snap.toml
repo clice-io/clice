@@ -1,0 +1,9 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "conditionDirective", at = "#ifdef ENABLE_LOGGING⟦ … ⟧ (4 lines)" },
+    { kind = "conditionDirective", at = "#ifdef USE_THREADS⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (3 lines) @8" },
+    { kind = "conditionDirective", at = "#ifdef USE_EPOLL⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#elifdef USE_KQUEUE⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (3 lines) @16" },
+]

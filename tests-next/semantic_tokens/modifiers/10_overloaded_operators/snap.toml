@@ -1,0 +1,8 @@
+[answers.overloaded.semantic_token]
+text = "+"
+type = "operator"
+modifiers = ["userDefined"]
+
+[answers.builtin.semantic_token]
+text = "+"
+type = "none"

@@ -1,0 +1,21 @@
+[answers.bracket.semantic_token]
+text = "["
+type = "none"
+
+[answers.a_def.semantic_token]
+text = "a"
+type = "variable"
+modifiers = ["definition"]
+
+[answers.b_def.semantic_token]
+text = "b"
+type = "variable"
+modifiers = ["definition"]
+
+[answers.a_use.semantic_token]
+text = "a"
+type = "variable"
+
+[answers.b_use.semantic_token]
+text = "b"
+type = "variable"

@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "union", at = "static union ⟦{ … }⟧ (4 lines) @5", collapsed = "{...}" },
+    { kind = "namespace", at = "namespace wrap ⟦{ … }⟧ (8 lines)", collapsed = "{...}" },
+    { kind = "union", at = "static union ⟦{ … }⟧ (4 lines) @12", collapsed = "{...}" },
+]

@@ -1,0 +1,61 @@
+[answers.top_const]
+selection_ranges = ["⟦const⟧ int limit = 3;", "⟦const int limit = 3⟧;", "⟦const int limit = 3;⟧"]
+
+[answers.trailing_const]
+selection_ranges = [
+    "int get() ⟦const⟧;",
+    "⟦int get() const⟧;",
+    "⟦int get() const;⟧",
+    "⟦int get() const; … int field;⟧ (2 lines)",
+    "struct Probe ⟦{ … }⟧ (4 lines)",
+    "⟦struct Probe { … }⟧ (4 lines)",
+    "⟦struct Probe { … };⟧ (4 lines)",
+]
+
+[answers.name_paren]
+selection_ranges = [
+    "int result = ⟦helper⟧(count);",
+    "int result = ⟦helper(count)⟧;",
+    "⟦int result = helper(count)⟧;",
+    "⟦int result = helper(count);⟧",
+    "⟦int result = helper(count); … return result;⟧ (5 lines)",
+    "int probe(int count) ⟦{ … }⟧ (7 lines)",
+    "⟦int probe(int count) { … }⟧ (7 lines)",
+]
+
+[answers.name_semi]
+selection_ranges = [
+    "result = ⟦count⟧;",
+    "⟦result = count⟧;",
+    "⟦result = count;⟧",
+    "⟦int result = helper(count); … return result;⟧ (5 lines)",
+    "int probe(int count) ⟦{ … }⟧ (7 lines)",
+    "⟦int probe(int count) { … }⟧ (7 lines)",
+]
+
+[answers.punct_name]
+selection_ranges = [
+    "result = result+⟦count⟧;",
+    "result = ⟦result+count⟧;",
+    "⟦result = result+count⟧;",
+    "⟦result = result+count;⟧",
+    "⟦int result = helper(count); … return result;⟧ (5 lines)",
+    "int probe(int count) ⟦{ … }⟧ (7 lines)",
+    "⟦int probe(int count) { … }⟧ (7 lines)",
+]
+
+[answers.local_const]
+selection_ranges = [
+    "⟦const⟧ int copy = result;",
+    "⟦const int copy = result⟧;",
+    "⟦const int copy = result;⟧",
+    "⟦int result = helper(count); … return result;⟧ (5 lines)",
+    "int probe(int count) ⟦{ … }⟧ (7 lines)",
+    "⟦int probe(int count) { … }⟧ (7 lines)",
+]
+
+[answers.blank]
+selection_ranges = [
+    "int probe(int count) ⟦{ … }⟧ (7 lines)",
+    "⟦int probe(int count) { … }⟧ (7 lines)",
+]

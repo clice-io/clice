@@ -1,0 +1,12 @@
+[answers.item_def.semantic_token]
+text = "item"
+type = "variable"
+modifiers = ["definition"]
+
+[answers.items.semantic_token]
+text = "items"
+type = "parameter"
+
+[answers.item_use.semantic_token]
+text = "item"
+type = "variable"

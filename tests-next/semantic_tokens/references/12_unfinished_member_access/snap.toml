@@ -1,0 +1,16 @@
+[answers.declared.semantic_token]
+text = "copy"
+type = "variable"
+modifiers = ["definition"]
+
+[answers.object]
+wrong = "the object of a member access still being typed should keep its color"
+
+[answers.object.semantic_token]
+text = "copy"
+type = "none"
+
+[answers.after.semantic_token]
+text = "after"
+type = "variable"
+modifiers = ["definition"]

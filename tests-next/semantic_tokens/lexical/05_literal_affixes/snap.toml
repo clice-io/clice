@@ -1,0 +1,34 @@
+[answers.wide_prefix]
+wrong = "the encoding prefix should be a token of its own"
+
+[answers.wide_prefix.semantic_token]
+text = 'L"wide string"'
+type = "string"
+
+[answers.utf8_prefix]
+wrong = "the encoding prefix should be a token of its own"
+
+[answers.utf8_prefix.semantic_token]
+text = 'u8"utf-8 string"'
+type = "string"
+
+[answers.unsigned_suffix]
+wrong = "the suffix should be a token of its own"
+
+[answers.unsigned_suffix.semantic_token]
+text = "42u"
+type = "number"
+
+[answers.float_suffix]
+wrong = "the suffix should be a token of its own"
+
+[answers.float_suffix.semantic_token]
+text = "3.14f"
+type = "number"
+
+[answers.literal_operator_suffix]
+wrong = "the suffix should be a token of its own"
+
+[answers.literal_operator_suffix.semantic_token]
+text = "4_kb"
+type = "number"

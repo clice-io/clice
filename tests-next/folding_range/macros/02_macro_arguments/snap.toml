@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "functionBody", at = "void verify() ⟦{ … }⟧ (11 lines)", collapsed = "{...}" },
+    { kind = "functionCall", at = "CHECK(compute⟦( … 6)⟧ (4 lines)", collapsed = "(...)" },
+    { kind = "compoundStmt", at = "CHECK([] ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "MAKE_STRUCT(Generated, ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+]

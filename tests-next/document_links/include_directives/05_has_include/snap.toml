@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+document_links = [
+    { at = '#if __has_include(⟦"header_c.h"⟧)', target = "header_c.h" },
+    { at = '#include ⟦"header_c.h"⟧', target = "header_c.h" },
+]

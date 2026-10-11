@@ -1,0 +1,18 @@
+[answers.header]
+selection_ranges = ['#include "⟦config.h⟧"', '#include ⟦"config.h"⟧', '⟦#include "config.h"⟧']
+
+[answers.body]
+selection_ranges = [
+    "#define SQUARE(x) ((⟦x⟧) * (x)) // the square",
+    "#define SQUARE(x) (⟦(x)⟧ * (x)) // the square",
+    "#define SQUARE(x) (⟦(x) * (x)⟧) // the square",
+    "#define SQUARE(x) ⟦((x) * (x))⟧ // the square",
+    "⟦#define SQUARE(x) ((x) * (x)) // the square⟧",
+]
+
+[answers.note]
+selection_ranges = [
+    "#define SQUARE(x) ((x) * (x)) // ⟦the square⟧",
+    "#define SQUARE(x) ((x) * (x)) ⟦// the square⟧",
+    "⟦#define SQUARE(x) ((x) * (x)) // the square⟧",
+]

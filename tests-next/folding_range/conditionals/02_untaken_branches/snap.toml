@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "conditionDirective", at = "#ifdef _WIN32⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#if 0⟦ … ⟧ (6 lines)" },
+    { kind = "conditionDirective", at = "#ifdef NESTED⟦ … ⟧ (3 lines)" },
+]

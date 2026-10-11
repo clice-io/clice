@@ -1,0 +1,7 @@
+[answers.Widget.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.paren.semantic_token]
+text = "("
+type = "none"

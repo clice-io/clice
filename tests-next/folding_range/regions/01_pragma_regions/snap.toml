@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "region", at = "#pragma region Configuration⟦ … ⟧ (6 lines)" },
+]

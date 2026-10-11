@@ -1,0 +1,32 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦// Columns after non-ASCII text count UTF-16 code units: an accented letter is⟧", type = "comment" },
+    { at = "⟦// one, an emoji two.⟧", type = "comment" },
+    { at = '⟦const⟧ char* greeting = "héllo wörld 😀"; int after_text = 1;', type = "keyword" },
+    { at = 'const ⟦char⟧* greeting = "héllo wörld 😀"; int after_text = 1;', type = "primitive" },
+    {
+        at = 'const char* ⟦greeting⟧ = "héllo wörld 😀"; int after_text = 1;',
+        type = "variable",
+        modifiers = ["definition", "readonly"],
+    },
+    { at = 'const char* greeting = ⟦"héllo wörld 😀"⟧; int after_text = 1;', type = "string" },
+    { at = 'const char* greeting = "héllo wörld 😀"; ⟦int⟧ after_text = 1;', type = "primitive" },
+    {
+        at = 'const char* greeting = "héllo wörld 😀"; int ⟦after_text⟧ = 1;',
+        type = "variable",
+        modifiers = ["definition"],
+    },
+    { at = 'const char* greeting = "héllo wörld 😀"; int after_text = ⟦1⟧;', type = "number" },
+    { at = "⟦/* café ☕ and 😀 */⟧ int after_block = 2;", type = "comment" },
+    { at = "/* café ☕ and 😀 */ ⟦int⟧ after_block = 2;", type = "primitive" },
+    {
+        at = "/* café ☕ and 😀 */ int ⟦after_block⟧ = 2;",
+        type = "variable",
+        modifiers = ["definition"],
+    },
+    { at = "/* café ☕ and 😀 */ int after_block = ⟦2⟧;", type = "number" },
+    { at = "⟦int⟧ after_comment = 3; // naïve 😀", type = "primitive" },
+    { at = "int ⟦after_comment⟧ = 3; // naïve 😀", type = "variable", modifiers = ["definition"] },
+    { at = "int after_comment = ⟦3⟧; // naïve 😀", type = "number" },
+    { at = "int after_comment = 3; ⟦// naïve 😀⟧", type = "comment" },
+]

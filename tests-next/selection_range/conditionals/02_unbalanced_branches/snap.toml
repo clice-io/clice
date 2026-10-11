@@ -1,0 +1,10 @@
+[answers.inside]
+selection_ranges = [
+    "return ⟦value⟧ * 2;",
+    "return ⟦value * 2⟧;",
+    "⟦return value * 2⟧;",
+    "⟦return value * 2;⟧",
+    "⟦#else … return value * 2;⟧ (4 lines)",
+    "int fast(int value) ⟦{ … }⟧ (6 lines)",
+    "⟦int fast(int value) { … }⟧ (6 lines)",
+]

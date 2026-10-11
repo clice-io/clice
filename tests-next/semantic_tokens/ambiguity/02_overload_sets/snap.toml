@@ -1,0 +1,11 @@
+[answers.apply_use.semantic_token]
+text = "apply"
+type = "function"
+
+[answers.apply_use2.semantic_token]
+text = "apply"
+type = "function"
+
+[answers.apply_use3.semantic_token]
+text = "apply"
+type = "function"

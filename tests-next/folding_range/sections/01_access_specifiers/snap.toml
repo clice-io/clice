@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "class", at = "class Widget ⟦{ … }⟧ (8 lines)", collapsed = "{...}" },
+    { kind = "accessSpecifier", at = "public:⟦ … ⟧ (4 lines)" },
+    { kind = "accessSpecifier", at = "private:⟦ … ⟧ (4 lines)" },
+]

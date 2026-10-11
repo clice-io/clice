@@ -1,0 +1,53 @@
+[answers.param]
+selection_ranges = [
+    "template <class First, class ⟦Second⟧>",
+    "template <class First, ⟦class Second⟧>",
+    "template <⟦class First, class Second⟧>",
+    "template ⟦<class First, class Second>⟧",
+    "⟦template <class First, class Second> … }⟧ (5 lines)",
+    "⟦template <class First, class Second> … };⟧ (5 lines)",
+]
+
+[answers.type_arg]
+selection_ranges = [
+    "Pair<int, ⟦long⟧> pair{1, 2};",
+    "Pair<⟦int, long⟧> pair{1, 2};",
+    "Pair⟦<int, long>⟧ pair{1, 2};",
+    "⟦Pair<int, long>⟧ pair{1, 2};",
+    "⟦Pair<int, long> pair{1, 2}⟧;",
+    "⟦Pair<int, long> pair{1, 2};⟧",
+]
+
+[answers.nested_arg]
+selection_ranges = [
+    "Pair<int, Pair<⟦long⟧, char>> nested{1, {2, 'c'}};",
+    "Pair<int, Pair<⟦long, char⟧>> nested{1, {2, 'c'}};",
+    "Pair<int, Pair⟦<long, char>⟧> nested{1, {2, 'c'}};",
+    "Pair<int, ⟦Pair<long, char>⟧> nested{1, {2, 'c'}};",
+    "Pair<⟦int, Pair<long, char>⟧> nested{1, {2, 'c'}};",
+    "Pair⟦<int, Pair<long, char>>⟧ nested{1, {2, 'c'}};",
+    "⟦Pair<int, Pair<long, char>>⟧ nested{1, {2, 'c'}};",
+    "⟦Pair<int, Pair<long, char>> nested{1, {2, 'c'}}⟧;",
+    "⟦Pair<int, Pair<long, char>> nested{1, {2, 'c'}};⟧",
+]
+
+[answers.call_arg]
+selection_ranges = [
+    "int same = identity<⟦int⟧>(3);",
+    "int same = identity⟦<int>⟧(3);",
+    "int same = ⟦identity<int>⟧(3);",
+    "int same = ⟦identity<int>(3)⟧;",
+    "⟦int same = identity<int>(3)⟧;",
+    "⟦int same = identity<int>(3);⟧",
+]
+
+[answers.member_arg]
+selection_ranges = [
+    "long made = Factory{}.make<long, ⟦int⟧>(4);",
+    "long made = Factory{}.make<⟦long, int⟧>(4);",
+    "long made = Factory{}.make⟦<long, int>⟧(4);",
+    "long made = ⟦Factory{}.make<long, int>⟧(4);",
+    "long made = ⟦Factory{}.make<long, int>(4)⟧;",
+    "⟦long made = Factory{}.make<long, int>(4)⟧;",
+    "⟦long made = Factory{}.make<long, int>(4);⟧",
+]

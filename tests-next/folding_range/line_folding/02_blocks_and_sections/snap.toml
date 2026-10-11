@@ -1,0 +1,30 @@
+[characters."main.cpp"]
+folding_ranges = [
+    { kind = "functionBody", at = "int f(int a) ⟦{ … }⟧ (16 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "if (a) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "} else ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "try ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "} catch (...) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "do ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "class", at = "class Widget ⟦{ … }⟧ (6 lines)", collapsed = "{...}" },
+    { kind = "accessSpecifier", at = "public:⟦ … ⟧ (3 lines)" },
+    { kind = "accessSpecifier", at = "private:⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#ifdef FLAG⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (3 lines)" },
+    { kind = "functionParams", at = "int g⟦(int a, … int b)⟧ (2 lines)", collapsed = "(...)" },
+]
+
+["whole lines"."main.cpp"]
+folding_ranges = [
+    { kind = "functionBody", at = "⟦int f(int a) { … return a;⟧ (15 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "⟦    if (a) { … a += 1;⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "⟦    } else { … a -= 1;⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "⟦    try { … a *= 2;⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "⟦    } catch (...) { … a = 0;⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "⟦    do { … a -= 1;⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "class", at = "⟦class Widget { … int width;⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "accessSpecifier", at = "⟦public: … void draw();⟧ (2 lines)" },
+    { kind = "accessSpecifier", at = "⟦private: … int width;⟧ (2 lines)" },
+    { kind = "conditionDirective", at = "⟦#ifdef FLAG … int x;⟧ (2 lines)" },
+    { kind = "conditionDirective", at = "⟦#else … int y;⟧ (2 lines)" },
+]

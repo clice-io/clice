@@ -1,0 +1,8 @@
+[answers.Vec_decl.semantic_token]
+text = "Vec"
+type = "struct"
+modifiers = ["templated"]
+
+[answers.Vec_use.semantic_token]
+text = "Vec"
+type = "struct"

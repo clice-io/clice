@@ -1,0 +1,12 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦// An internal partition's declaration defines the partition it names, as an⟧", type = "comment" },
+    { at = "⟦// interface partition's does.⟧", type = "comment" },
+    { at = "⟦module⟧ demo.core:detail;", type = "keyword" },
+    { at = "module ⟦demo⟧.core:detail;", type = "module", modifiers = ["definition"] },
+    { at = "module demo.⟦core⟧:detail;", type = "module", modifiers = ["definition"] },
+    { at = "module demo.core:⟦detail⟧;", type = "module", modifiers = ["definition"] },
+    { at = "⟦int⟧ detail_value = 1;", type = "primitive" },
+    { at = "int ⟦detail_value⟧ = 1;", type = "variable", modifiers = ["definition"] },
+    { at = "int detail_value = ⟦1⟧;", type = "number" },
+]

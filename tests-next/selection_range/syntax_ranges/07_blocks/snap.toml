@@ -1,0 +1,23 @@
+[answers.member]
+selection_ranges = [
+    "int ⟦side⟧;",
+    "⟦int side⟧;",
+    "⟦int side;⟧",
+    "⟦int side; … int area() const;⟧ (2 lines)",
+    "struct Square ⟦{ … }⟧ (4 lines)",
+    "⟦struct Square { … }⟧ (4 lines)",
+    "⟦struct Square { … };⟧ (4 lines)",
+    "⟦struct Square { … }⟧ (10 lines)",
+    "namespace shapes ⟦{ … }⟧ (14 lines)",
+    "⟦namespace shapes { … }⟧ (14 lines)",
+]
+
+[answers.blank]
+selection_ranges = [
+    "⟦int sides = 4; … return sides * square.side;⟧ (3 lines)",
+    "int perimeter(const Square& square) ⟦{ … }⟧ (5 lines)",
+    "⟦int perimeter(const Square& square) { … }⟧ (5 lines)",
+    "⟦struct Square { … }⟧ (10 lines)",
+    "namespace shapes ⟦{ … }⟧ (14 lines)",
+    "⟦namespace shapes { … }⟧ (14 lines)",
+]

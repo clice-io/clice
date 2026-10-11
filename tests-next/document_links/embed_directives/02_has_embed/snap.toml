@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+document_links = [
+    { at = '#if __has_embed(⟦"data.bin"⟧)', target = "data.bin" },
+    { at = '#embed ⟦"data.bin"⟧ limit(1)', target = "data.bin" },
+]

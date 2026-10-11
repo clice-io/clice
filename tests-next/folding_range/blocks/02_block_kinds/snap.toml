@@ -1,0 +1,13 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// Enums, unions, classes, member functions and a namespace whose brace sits⟦ … // on a line of its own fold at their braces too.⟧ (2 lines)" },
+    { kind = "namespace", at = "namespace geometry ⟦{ … }⟧ (30 lines)", collapsed = "{...}" },
+    { kind = "enum", at = "enum class Shape ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct Point ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "union", at = "union Value ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "class", at = "class Canvas ⟦{ … }⟧ (10 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "int area() ⟦{ … }⟧ (6 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "auto scale = [](int factor) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "namespace", at = "⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct Placeholder ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]

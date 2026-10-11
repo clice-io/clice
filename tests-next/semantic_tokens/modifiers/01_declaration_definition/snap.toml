@@ -1,0 +1,19 @@
+[answers.measure_decl.semantic_token]
+text = "measure"
+type = "function"
+modifiers = ["declaration"]
+
+[answers.measure_def.semantic_token]
+text = "measure"
+type = "function"
+modifiers = ["definition"]
+
+[answers.Sensor_decl.semantic_token]
+text = "Sensor"
+type = "struct"
+modifiers = ["declaration"]
+
+[answers.Sensor_def.semantic_token]
+text = "Sensor"
+type = "struct"
+modifiers = ["definition"]

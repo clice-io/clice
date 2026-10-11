@@ -1,0 +1,32 @@
+[answers.twice_decl.semantic_token]
+text = "twice"
+type = "function"
+modifiers = ["declaration"]
+
+[answers.twice_def.semantic_token]
+text = "twice"
+type = "function"
+modifiers = ["definition"]
+
+[answers.start_decl.semantic_token]
+text = "start"
+type = "method"
+modifiers = ["declaration"]
+
+[answers.reset_decl.semantic_token]
+text = "reset"
+type = "method"
+modifiers = ["declaration", "static"]
+
+[answers.start_use.semantic_token]
+text = "start"
+type = "method"
+
+[answers.reset_use.semantic_token]
+text = "reset"
+type = "method"
+modifiers = ["static"]
+
+[answers.twice_use.semantic_token]
+text = "twice"
+type = "function"

@@ -1,0 +1,8 @@
+[answers.done_use.semantic_token]
+text = "done"
+type = "label"
+
+[answers.done_def.semantic_token]
+text = "done"
+type = "label"
+modifiers = ["definition"]

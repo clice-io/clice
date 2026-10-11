@@ -1,7 +1,13 @@
 import { answers } from "@clice/tools/testing";
 
+// A case with markers asks at each of them; one without pins every token of
+// its entry file, where the whole file is the claim.
 answers(async (a) => {
-    for (const m of a.markers()) {
+    const markers = a.markers();
+    if (markers.length === 0) {
+        await a.show("main.cpp", a.semanticTokens("main.cpp"));
+    }
+    for (const m of markers) {
         await a.show(m.name, a.semanticTokens(m));
     }
 });

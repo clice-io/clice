@@ -1,0 +1,19 @@
+[answers.operator_use.semantic_token]
+text = "operator"
+type = "keyword"
+
+[answers.operator_use2.semantic_token]
+text = "operator"
+type = "keyword"
+
+[answers.ratio_use.semantic_token]
+text = "ratio"
+type = "parameter"
+
+[answers.ratio_use2.semantic_token]
+text = "ratio"
+type = "parameter"
+
+[answers.ratio_use3.semantic_token]
+text = "ratio"
+type = "parameter"

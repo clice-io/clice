@@ -1,0 +1,62 @@
+[answers.member]
+selection_ranges = [
+    "int ⟦count⟧;",
+    "⟦int count⟧;",
+    "⟦int count;⟧",
+    "⟦int count; … void bump();⟧ (2 lines)",
+    "struct Counter ⟦{ … }⟧ (4 lines)",
+    "⟦struct Counter { … }⟧ (4 lines)",
+    "⟦struct Counter { … };⟧ (4 lines)",
+]
+
+[answers.method]
+selection_ranges = [
+    "void ⟦bump⟧();",
+    "⟦void bump()⟧;",
+    "⟦void bump();⟧",
+    "⟦int count; … void bump();⟧ (2 lines)",
+    "struct Counter ⟦{ … }⟧ (4 lines)",
+    "⟦struct Counter { … }⟧ (4 lines)",
+    "⟦struct Counter { … };⟧ (4 lines)",
+]
+
+[answers.global]
+selection_ranges = ["int ⟦limit⟧ = 10;", "⟦int limit = 10⟧;", "⟦int limit = 10;⟧"]
+
+[answers.templated]
+selection_ranges = [
+    "T ⟦twice⟧(T value);",
+    "⟦T twice(T value)⟧;",
+    "⟦T twice(T value);⟧",
+    "⟦template <class T> … T twice(T value);⟧ (2 lines)",
+]
+
+[answers.call]
+selection_ranges = [
+    "counter.⟦bump⟧();",
+    "⟦counter.bump⟧();",
+    "⟦counter.bump()⟧;",
+    "⟦counter.bump();⟧",
+    "⟦counter.bump(); … return;⟧ (3 lines)",
+    "void run(Counter& counter) ⟦{ … }⟧ (5 lines)",
+    "⟦void run(Counter& counter) { … }⟧ (5 lines)",
+]
+
+[answers.local]
+selection_ranges = [
+    "int ⟦next⟧ = counter.count + 1;",
+    "⟦int next = counter.count + 1⟧;",
+    "⟦int next = counter.count + 1;⟧",
+    "⟦counter.bump(); … return;⟧ (3 lines)",
+    "void run(Counter& counter) ⟦{ … }⟧ (5 lines)",
+    "⟦void run(Counter& counter) { … }⟧ (5 lines)",
+]
+
+[answers.ret]
+selection_ranges = [
+    "⟦return⟧;",
+    "⟦return;⟧",
+    "⟦counter.bump(); … return;⟧ (3 lines)",
+    "void run(Counter& counter) ⟦{ … }⟧ (5 lines)",
+    "⟦void run(Counter& counter) { … }⟧ (5 lines)",
+]

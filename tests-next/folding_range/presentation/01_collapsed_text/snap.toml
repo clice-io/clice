@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "struct", at = "struct Config ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "int process_data(const Config& cfg) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]

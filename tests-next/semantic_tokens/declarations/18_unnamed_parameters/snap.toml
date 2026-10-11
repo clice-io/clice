@@ -1,0 +1,7 @@
+[answers.close_paren.semantic_token]
+text = ")"
+type = "none"
+
+[answers.comma.semantic_token]
+text = ","
+type = "none"

@@ -1,0 +1,35 @@
+[answers.demo_def.semantic_token]
+text = "demo"
+type = "namespace"
+modifiers = ["definition"]
+
+[answers.inner_def.semantic_token]
+text = "inner"
+type = "namespace"
+modifiers = ["definition"]
+
+[answers.more.semantic_token]
+text = "more"
+type = "namespace"
+modifiers = ["definition"]
+
+[answers.alias_def.semantic_token]
+text = "alias"
+type = "namespace"
+modifiers = ["definition"]
+
+[answers.demo_use.semantic_token]
+text = "demo"
+type = "namespace"
+
+[answers.inner_use.semantic_token]
+text = "inner"
+type = "namespace"
+
+[answers.alias_use.semantic_token]
+text = "alias"
+type = "namespace"
+
+[answers.value.semantic_token]
+text = "value"
+type = "variable"

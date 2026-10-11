@@ -1,0 +1,27 @@
+[answers.run]
+selection_ranges = [
+    "// ⟦the second line of it.⟧",
+    "⟦// the second line of it.⟧",
+    "⟦// The first line of a run, … // the second line of it.⟧ (2 lines)",
+]
+
+[answers.block]
+selection_ranges = ["/** ⟦A documentation block.⟧ */", "⟦/** A documentation block. */⟧"]
+
+[answers.member_doc]
+selection_ranges = [
+    "int count = 0; ///< ⟦a member note⟧",
+    "int count = 0; ⟦///< a member note⟧",
+    "⟦int count = 0; ///< a member note … return value + count; // a trailing note⟧ (2 lines)",
+    "int documented() ⟦{ … }⟧ (4 lines)",
+    "⟦int documented() { … }⟧ (4 lines)",
+]
+
+[answers.trailing]
+selection_ranges = [
+    "return value + count; // ⟦a trailing note⟧",
+    "return value + count; ⟦// a trailing note⟧",
+    "⟦int count = 0; ///< a member note … return value + count; // a trailing note⟧ (2 lines)",
+    "int documented() ⟦{ … }⟧ (4 lines)",
+    "⟦int documented() { … }⟧ (4 lines)",
+]

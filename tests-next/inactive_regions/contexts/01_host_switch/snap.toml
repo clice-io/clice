@@ -1,0 +1,5 @@
+[test."vulkan host"]
+inactive_lines = ['⟦inline const char* backend() { return "mt"; }⟧']
+
+[test."metal host"]
+inactive_lines = ['⟦inline const char* backend() { return "vk"; }⟧']

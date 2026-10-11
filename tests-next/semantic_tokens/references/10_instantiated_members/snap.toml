@@ -1,0 +1,12 @@
+[answers.T.semantic_token]
+text = "T"
+type = "type"
+
+[answers.hit_use.semantic_token]
+text = "hit"
+type = "conflict"
+modifiers = ["static"]
+
+[answers.hit_use2.semantic_token]
+text = "hit"
+type = "method"

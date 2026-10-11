@@ -1,0 +1,23 @@
+[answers.local_use.semantic_token]
+text = "local"
+type = "variable"
+
+[answers.this.semantic_token]
+text = "this"
+type = "keyword"
+
+[answers.local_use2.semantic_token]
+text = "local"
+type = "variable"
+
+[answers.field.semantic_token]
+text = "field"
+type = "field"
+
+[answers.local_use3.semantic_token]
+text = "local"
+type = "variable"
+
+[answers.local_use4.semantic_token]
+text = "local"
+type = "variable"

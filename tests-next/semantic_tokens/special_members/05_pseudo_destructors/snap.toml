@@ -1,0 +1,7 @@
+[answers.tilde.semantic_token]
+text = "~"
+type = "none"
+
+[answers.T.semantic_token]
+text = "T"
+type = "type"

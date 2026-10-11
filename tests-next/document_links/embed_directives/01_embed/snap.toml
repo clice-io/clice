@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+document_links = [
+    { at = '#embed ⟦"data.bin"⟧', target = "data.bin" },
+]

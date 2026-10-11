@@ -1,0 +1,8 @@
+[answers.Byte.semantic_token]
+text = "Byte"
+type = "type"
+
+[answers.A.semantic_token]
+text = "A"
+type = "enumMember"
+modifiers = ["readonly"]

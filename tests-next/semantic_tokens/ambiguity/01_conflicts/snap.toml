@@ -1,0 +1,17 @@
+[answers.type.semantic_token]
+text = "Widget"
+type = "struct"
+modifiers = ["definition"]
+
+[answers.function.semantic_token]
+text = "Widget"
+type = "function"
+modifiers = ["declaration"]
+
+[answers.type_and_function.semantic_token]
+text = "Widget"
+type = "conflict"
+
+[answers.type_and_variable.semantic_token]
+text = "Thing"
+type = "conflict"

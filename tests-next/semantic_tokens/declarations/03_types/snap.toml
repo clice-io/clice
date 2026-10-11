@@ -1,0 +1,58 @@
+[answers.Widget_def.semantic_token]
+text = "Widget"
+type = "class"
+modifiers = ["definition"]
+
+[answers.Point_def.semantic_token]
+text = "Point"
+type = "struct"
+modifiers = ["definition"]
+
+[answers.Storage.semantic_token]
+text = "Storage"
+type = "union"
+modifiers = ["definition"]
+
+[answers.Flags.semantic_token]
+text = "Flags"
+type = "enum"
+modifiers = ["definition"]
+
+[answers.Mode_def.semantic_token]
+text = "Mode"
+type = "enum"
+modifiers = ["definition"]
+
+[answers.Point_use.semantic_token]
+text = "Point"
+type = "struct"
+
+[answers.PointAlias_def.semantic_token]
+text = "PointAlias"
+type = "type"
+modifiers = ["definition"]
+
+[answers.WidgetAlias.semantic_token]
+text = "WidgetAlias"
+type = "type"
+modifiers = ["definition"]
+
+[answers.Widget_use.semantic_token]
+text = "Widget"
+type = "class"
+
+[answers.Widget_use2.semantic_token]
+text = "Widget"
+type = "class"
+
+[answers.PointAlias_use.semantic_token]
+text = "PointAlias"
+type = "type"
+
+[answers.Mode_use.semantic_token]
+text = "Mode"
+type = "enum"
+
+[answers.Mode_use2.semantic_token]
+text = "Mode"
+type = "enum"

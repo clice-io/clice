@@ -1,0 +1,13 @@
+[test.before.semantic_token]
+text = "counter"
+type = "variable"
+modifiers = ["definition"]
+
+[test.type.semantic_token]
+text = "Gauge"
+type = "struct"
+
+[test.name.semantic_token]
+text = "counter"
+type = "variable"
+modifiers = ["definition"]

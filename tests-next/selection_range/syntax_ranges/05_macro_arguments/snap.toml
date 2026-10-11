@@ -1,0 +1,19 @@
+[answers.declared]
+selection_ranges = [
+    "DECLARE(⟦counter⟧);",
+    "DECLARE⟦(counter)⟧;",
+    "⟦DECLARE(counter)⟧;",
+    "⟦DECLARE(counter);⟧",
+]
+
+[answers.expr]
+selection_ranges = [
+    "return TWICE(⟦counter⟧ + 1);",
+    "return TWICE(⟦counter + 1⟧);",
+    "return TWICE⟦(counter + 1)⟧;",
+    "return ⟦TWICE(counter + 1)⟧;",
+    "⟦return TWICE(counter + 1)⟧;",
+    "⟦return TWICE(counter + 1);⟧",
+    "int doubled() ⟦{ … }⟧ (3 lines)",
+    "⟦int doubled() { … }⟧ (3 lines)",
+]

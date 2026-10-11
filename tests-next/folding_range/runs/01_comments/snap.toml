@@ -1,0 +1,14 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// This is a long⟦ … // that folds as one run⟧ (3 lines)" },
+    { kind = "comment", at = "// A blank line starts another run⟦ … // of two lines⟧ (2 lines)" },
+    { kind = "comment", at = "⟦/* … */⟧ (4 lines)", collapsed = "/*...*/" },
+    { kind = "comment", at = "⟦/* a block comment … next to */⟧ (2 lines)", collapsed = "/*...*/" },
+    { kind = "comment", at = "// a run of⟦ … // line comments⟧ (2 lines)" },
+    { kind = "functionBody", at = "void nested() ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "comment", at = "// runs fold inside bodies⟦ … // like anywhere else⟧ (2 lines)" },
+    { kind = "macroDefinition", at = '#define SCALE(x) \⟦ … inside a macro */ (x) * 2⟧ (3 lines)' },
+    { kind = "comment", at = "⟦/* a block comment … inside a macro */⟧ (2 lines)", collapsed = "/*...*/" },
+    { kind = "conditionDirective", at = "#if 0⟦ … ⟧ (4 lines)" },
+    { kind = "comment", at = "// comments in skipped branches⟦ … // fold as well⟧ (2 lines)" },
+]

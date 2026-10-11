@@ -1,0 +1,39 @@
+[answers.capture]
+selection_ranges = [
+    "auto add = [⟦seed⟧](int step) {",
+    "auto add = ⟦[seed]⟧(int step) {",
+    "auto add = ⟦[seed](int step) { … }⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … }⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … };⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … return add(1);⟧ (4 lines)",
+    "int apply(int seed) ⟦{ … }⟧ (6 lines)",
+    "⟦int apply(int seed) { … }⟧ (6 lines)",
+]
+
+[answers.param]
+selection_ranges = [
+    "auto add = [seed](int ⟦step⟧) {",
+    "auto add = [seed](⟦int step⟧) {",
+    "auto add = [seed]⟦(int step)⟧ {",
+    "auto add = ⟦[seed](int step) { … }⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … }⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … };⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … return add(1);⟧ (4 lines)",
+    "int apply(int seed) ⟦{ … }⟧ (6 lines)",
+    "⟦int apply(int seed) { … }⟧ (6 lines)",
+]
+
+[answers.body]
+selection_ranges = [
+    "return seed + ⟦step⟧;",
+    "return ⟦seed + step⟧;",
+    "⟦return seed + step⟧;",
+    "⟦return seed + step;⟧",
+    "auto add = [seed](int step) ⟦{ … }⟧ (3 lines)",
+    "auto add = ⟦[seed](int step) { … }⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … }⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … };⟧ (3 lines)",
+    "⟦auto add = [seed](int step) { … return add(1);⟧ (4 lines)",
+    "int apply(int seed) ⟦{ … }⟧ (6 lines)",
+    "⟦int apply(int seed) { … }⟧ (6 lines)",
+]

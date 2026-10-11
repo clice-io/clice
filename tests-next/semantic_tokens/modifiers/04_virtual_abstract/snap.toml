@@ -1,0 +1,34 @@
+[answers.Shape.semantic_token]
+text = "Shape"
+type = "struct"
+modifiers = ["definition", "abstract"]
+
+[answers.area_decl.semantic_token]
+text = "area"
+type = "method"
+modifiers = ["declaration", "virtual"]
+
+[answers.perimeter_decl.semantic_token]
+text = "perimeter"
+type = "method"
+modifiers = ["declaration", "abstract", "virtual"]
+
+[answers.Square.semantic_token]
+text = "Square"
+type = "struct"
+modifiers = ["definition"]
+
+[answers.perimeter_decl2.semantic_token]
+text = "perimeter"
+type = "method"
+modifiers = ["declaration", "virtual"]
+
+[answers.area_use.semantic_token]
+text = "area"
+type = "method"
+modifiers = ["virtual"]
+
+[answers.perimeter_use.semantic_token]
+text = "perimeter"
+type = "method"
+modifiers = ["abstract", "virtual"]

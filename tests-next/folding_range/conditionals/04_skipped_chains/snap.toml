@@ -1,0 +1,11 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// Once a branch is taken, the preprocessor skips the rest of the chain and⟦ … // conditionals in the skipped arms included.⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#if 1⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#elif FOO⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (3 lines) @9" },
+    { kind = "conditionDirective", at = "#ifdef __cplusplus⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#elifndef BAR⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (6 lines) @17" },
+    { kind = "conditionDirective", at = "#ifdef BAZ⟦ … ⟧ (4 lines)" },
+]

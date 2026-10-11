@@ -1,0 +1,8 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// A conditional nested in an active branch closes on its own `#endif` and⟦ … // leaves the enclosing branches intact, `#elif` arms included.⟧ (2 lines)" },
+    { kind = "conditionDirective", at = "#ifdef OUTER⟦ … ⟧ (8 lines)" },
+    { kind = "conditionDirective", at = "#if defined(A)⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#elif defined(B)⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (3 lines)" },
+]

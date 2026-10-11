@@ -1,0 +1,6 @@
+[answers."main.cppm"]
+document_links = [
+    { at = "import ⟦lib⟧;", target = "lib.cppm" },
+    { at = "import :⟦part⟧;", target = "app_part.cppm" },
+    { at = "export import ⟦lib.extra⟧;", target = "lib_extra.cppm" },
+]

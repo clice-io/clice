@@ -1,0 +1,19 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "namespace", at = "namespace lib ⟦{ … }⟧ (6 lines)", collapsed = "{...}" },
+    { kind = "usingDeclaration", at = "using lib::vector;⟦ … using lib::map;⟧ (3 lines)" },
+    { kind = "usingDeclaration", at = "using namespace lib;⟦ … using enum color;⟧ (2 lines)" },
+    { kind = "functionBody", at = "void scoped() ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "usingDeclaration", at = "using lib::vector;⟦ … using lib::string;⟧ (2 lines) @19" },
+    { kind = "struct", at = "struct Base ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct Derived : Base ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "usingDeclaration", at = "using Base::f;⟦ … using Base::g;⟧ (2 lines)" },
+    { kind = "struct", at = "struct Forwarding : T ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "usingDeclaration", at = "using T::f;⟦ … using typename T::type;⟧ (2 lines)" },
+    { kind = "namespace", at = "namespace same_line ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "namespace", at = "namespace closing ⟦{ … using lib::string; }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "namespace", at = "namespace macros ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "usingDeclaration", at = "USE(vector)⟦ … USE(string)⟧ (2 lines)" },
+    { kind = "namespace", at = "namespace pairs ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "usingDeclaration", at = "USE_TWO(vector, string)⟦ … USE_TWO(string, map)⟧ (3 lines)" },
+]

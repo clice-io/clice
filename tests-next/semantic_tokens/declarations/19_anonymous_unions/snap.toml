@@ -1,0 +1,15 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦// The members of an anonymous union at global scope are fields, declared⟧", type = "comment" },
+    { at = "⟦// in the union and used by name, as inside a namespace.⟧", type = "comment" },
+    { at = "⟦static⟧ union {", type = "keyword" },
+    { at = "static ⟦union⟧ {", type = "keyword" },
+    { at = "⟦int⟧ u1;", type = "primitive" },
+    { at = "int ⟦u1⟧;", type = "field", modifiers = ["definition"] },
+    { at = "⟦float⟧ u2;", type = "primitive" },
+    { at = "float ⟦u2⟧;", type = "field", modifiers = ["definition"] },
+    { at = "⟦int⟧ read() {", type = "primitive" },
+    { at = "int ⟦read⟧() {", type = "function", modifiers = ["definition"] },
+    { at = "⟦return⟧ u1;", type = "keyword" },
+    { at = "return ⟦u1⟧;", type = "field" },
+]

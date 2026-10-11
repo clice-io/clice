@@ -1,0 +1,59 @@
+[answers.field_def.semantic_token]
+text = "field"
+type = "field"
+modifiers = ["definition"]
+
+[answers.shared_decl.semantic_token]
+text = "shared"
+type = "variable"
+modifiers = ["declaration", "static"]
+
+[answers.Idle_def.semantic_token]
+text = "Idle"
+type = "enumMember"
+modifiers = ["definition", "readonly"]
+
+[answers.global_value_def.semantic_token]
+text = "global_value"
+type = "variable"
+modifiers = ["definition"]
+
+[answers.param_def.semantic_token]
+text = "param"
+type = "parameter"
+modifiers = ["definition"]
+
+[answers.local_def.semantic_token]
+text = "local"
+type = "variable"
+modifiers = ["definition"]
+
+[answers.param_use.semantic_token]
+text = "param"
+type = "parameter"
+
+[answers.global_value_use.semantic_token]
+text = "global_value"
+type = "variable"
+
+[answers.field_use.semantic_token]
+text = "field"
+type = "field"
+
+[answers.local_use.semantic_token]
+text = "local"
+type = "variable"
+
+[answers.shared_use.semantic_token]
+text = "shared"
+type = "variable"
+modifiers = ["static"]
+
+[answers.field_use2.semantic_token]
+text = "field"
+type = "field"
+
+[answers.Idle_use.semantic_token]
+text = "Idle"
+type = "enumMember"
+modifiers = ["readonly"]

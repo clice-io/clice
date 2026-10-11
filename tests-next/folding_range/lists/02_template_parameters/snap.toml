@@ -1,0 +1,17 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "templateParams", at = "template⟦< … >⟧ (5 lines) @4", collapsed = "<...>" },
+    { kind = "class", at = "class SortedMap ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+    { kind = "templateParams", at = "template⟦< … >⟧ (4 lines) @10", collapsed = "<...>" },
+    { kind = "templateParams", at = "template⟦< … >⟧ (5 lines) @17", collapsed = "<...>" },
+    { kind = "templateParams", at = "template⟦< … >⟧ (4 lines) @22", collapsed = "<...>" },
+    { kind = "templateParams", at = "template⟦< … >⟧ (4 lines) @28", collapsed = "<...>" },
+    { kind = "templateParams", at = "template⟦<template< … > class Container>⟧ (4 lines)", collapsed = "<...>" },
+    { kind = "templateParams", at = "template<template⟦< … >⟧ (4 lines)", collapsed = "<...>" },
+    { kind = "templateParams", at = "template⟦< … >⟧ (3 lines) @40", collapsed = "<...>" },
+    { kind = "templateParams", at = "template⟦< … >⟧ (3 lines) @45", collapsed = "<...>" },
+    { kind = "templateParams", at = "template⟦<typename T, … typename U>⟧ (2 lines)", collapsed = "<...>" },
+    { kind = "struct", at = "struct Outer ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "templateParams", at = "template⟦< … >⟧ (3 lines) @59", collapsed = "<...>" },
+    { kind = "templateParams", at = "auto generic = []⟦< … >⟧ (4 lines)", collapsed = "<...>" },
+]

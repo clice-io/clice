@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+document_links = [
+    { at = '#include ⟦"sub dir/escaped header.h"⟧', target = "sub dir/escaped header.h" },
+    { at = '#include ⟦"café.h"⟧', target = "café.h" },
+    { at = '#include ⟦"hash#header.h"⟧', target = "hash#header.h" },
+    { at = '#include ⟦"plus+header.h"⟧', target = "plus+header.h" },
+]

@@ -1,0 +1,14 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// The written block folds exactly once and the coroutine transformation⟦ … // wrapper adds no duplicate fold; a coroutine lambda keeps its body fold.⟧ (2 lines)" },
+    { kind = "namespace", at = "namespace std ⟦{ … }⟧ (24 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct coroutine_traits ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct coroutine_handle ⟦{ … }⟧ (8 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct suspend_never ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct Task ⟦{ … }⟧ (9 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct promise_type ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "Task work() ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "if (steps == 0) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "void host() ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "auto nested = []() -> Task ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+]

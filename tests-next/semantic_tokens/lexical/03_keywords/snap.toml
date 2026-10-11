@@ -1,0 +1,23 @@
+[answers.and.semantic_token]
+text = "and"
+type = "keyword"
+
+[answers.or.semantic_token]
+text = "or"
+type = "keyword"
+
+[answers.not.semantic_token]
+text = "not"
+type = "keyword"
+
+[answers.final_use.semantic_token]
+text = "final"
+type = "keyword"
+
+[answers.override.semantic_token]
+text = "override"
+type = "keyword"
+
+[answers.final_use2.semantic_token]
+text = "final"
+type = "keyword"

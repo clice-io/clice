@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "linkageSpec", at = 'extern "C" ⟦{ … }⟧ (6 lines)', collapsed = "{...}" },
+    { kind = "conditionDirective", at = "#ifdef __cplusplus⟦ … ⟧ (3 lines) @8" },
+    { kind = "linkageSpec", at = 'extern "C" ⟦{ … }⟧ (8 lines)', collapsed = "{...}" },
+    { kind = "conditionDirective", at = "#ifdef __cplusplus⟦ … ⟧ (3 lines) @15" },
+]

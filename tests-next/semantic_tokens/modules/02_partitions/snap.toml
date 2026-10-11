@@ -1,0 +1,12 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦export⟧ module demo.core:part;", type = "keyword" },
+    { at = "export ⟦module⟧ demo.core:part;", type = "keyword" },
+    { at = "export module ⟦demo⟧.core:part;", type = "module", modifiers = ["definition"] },
+    { at = "export module demo.⟦core⟧:part;", type = "module", modifiers = ["definition"] },
+    { at = "export module demo.core:⟦part⟧;", type = "module", modifiers = ["definition"] },
+    { at = "⟦export⟧ int partition_value = 1;", type = "keyword" },
+    { at = "export ⟦int⟧ partition_value = 1;", type = "primitive" },
+    { at = "export int ⟦partition_value⟧ = 1;", type = "variable", modifiers = ["definition"] },
+    { at = "export int partition_value = ⟦1⟧;", type = "number" },
+]

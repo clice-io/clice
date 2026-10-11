@@ -1,0 +1,8 @@
+[answers."main.cpp"]
+document_links = [
+    { at = '#include ⟦"header_a.h"⟧', target = "header_a.h" },
+    { at = '#include ⟦"header_b.h"⟧', target = "header_b.h" },
+    { at = '#include ⟦"header_c.h"⟧', target = "header_c.h" },
+    { at = '#embed ⟦"data.bin"⟧', target = "data.bin" },
+    { at = '#if __has_embed(⟦"data.bin"⟧)', target = "data.bin" },
+]

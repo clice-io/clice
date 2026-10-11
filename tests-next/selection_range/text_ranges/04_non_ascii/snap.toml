@@ -1,0 +1,19 @@
+[answers.arg]
+selection_ranges = [
+    'return measure("héllo wörld 😀", ⟦limit⟧);',
+    'return measure(⟦"héllo wörld 😀", limit⟧);',
+    'return measure⟦("héllo wörld 😀", limit)⟧;',
+    'return ⟦measure("héllo wörld 😀", limit)⟧;',
+    '⟦return measure("héllo wörld 😀", limit)⟧;',
+    '⟦return measure("héllo wörld 😀", limit);⟧',
+    "int run(int limit) ⟦{ … }⟧ (3 lines)",
+    "⟦int run(int limit) { … }⟧ (3 lines)",
+]
+
+[answers.text]
+selection_ranges = [
+    'const char* label = "⟦naïve 😀 café⟧";',
+    'const char* label = ⟦"naïve 😀 café"⟧;',
+    '⟦const char* label = "naïve 😀 café"⟧;',
+    '⟦const char* label = "naïve 😀 café";⟧',
+]

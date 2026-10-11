@@ -1,0 +1,11 @@
+[answers."main.cpp"]
+document_links = [
+    { at = "#include ⟦<wrap.h>⟧", target = "first/wrap.h" },
+]
+
+[answers."first/wrap.h"]
+wrong = "should link to second/wrap.h; the header opened on its own is compiled as the main file, where #include_next starts the search over"
+document_links = [
+    { at = "#if __has_include_next(⟦<wrap.h>⟧)", target = "first/wrap.h" },
+    { at = "#include_next ⟦<wrap.h>⟧", target = "first/wrap.h" },
+]

@@ -1,0 +1,2 @@
+[test."render.h"]
+inactive_lines = ['⟦inline const char* backend() { return "mt"; }⟧']

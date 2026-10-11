@@ -1,0 +1,2 @@
+[test."main.cpp"]
+inactive_lines = ["⟦#define DEAD 2⟧"]

@@ -1,0 +1,9 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "imports", at = '#include "alpha.h"⟦ … #include "gamma.h"⟧ (3 lines)' },
+    { kind = "imports", at = '#include "gamma.h"⟦ … #include HEADER⟧ (2 lines)' },
+    { kind = "conditionDirective", at = "#ifdef WINDOWS_BACKEND⟦ … ⟧ (4 lines)" },
+    { kind = "imports", at = '#include "windows_api.h"⟦ … #include "windows_io.h"⟧ (2 lines)' },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (4 lines)" },
+    { kind = "imports", at = '#include "posix_api.h"⟦ … #include "posix_io.h"⟧ (2 lines)' },
+]

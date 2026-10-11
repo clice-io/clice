@@ -1,0 +1,13 @@
+[answers.newline]
+wrong = "the escape sequence should be a token of its own"
+
+[answers.newline.semantic_token]
+text = '"hello\nworld"'
+type = "string"
+
+[answers.hex]
+wrong = "the escape sequence should be a token of its own"
+
+[answers.hex.semantic_token]
+text = "'\\x41'"
+type = "character"

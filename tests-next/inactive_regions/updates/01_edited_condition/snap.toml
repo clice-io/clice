@@ -1,0 +1,5 @@
+[test.before]
+inactive_lines = ["⟦int feature_on();⟧"]
+
+[test.after]
+inactive_lines = ["⟦int feature_off();⟧"]

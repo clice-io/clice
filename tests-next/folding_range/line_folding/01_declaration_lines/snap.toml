@@ -1,0 +1,16 @@
+[characters."main.cpp"]
+folding_ranges = [
+    { kind = "struct", at = "struct Config ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "functionParams", at = "scale⟦(const Config& cfg, … int factor)⟧ (2 lines)", collapsed = "(...)" },
+    { kind = "functionBody", at = "⟦{ … }⟧ (3 lines) @15", collapsed = "{...}" },
+    { kind = "class", at = "⟦{ … }⟧ (3 lines) @21", collapsed = "{...}" },
+]
+
+["whole lines"."main.cpp"]
+folding_ranges = [
+    { kind = "struct", at = "⟦struct Config { … int height;⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦int process_data(const Config& cfg) … return area;⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦scale(const Config& cfg, … return cfg.width * factor;⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "class", at = "⟦class Renderer … int frames;⟧ (4 lines)", collapsed = "{...}" },
+]

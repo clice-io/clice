@@ -1,0 +1,22 @@
+[answers.param]
+selection_ranges = [
+    "int combine(int left, int ⟦right⟧);",
+    "int combine(int left, ⟦int right⟧);",
+    "int combine(⟦int left, int right⟧);",
+    "int combine⟦(int left, int right)⟧;",
+    "⟦int combine(int left, int right)⟧;",
+    "⟦int combine(int left, int right);⟧",
+]
+
+[answers.arg]
+selection_ranges = [
+    "return combine(1, ⟦2⟧) + combine(3, 4);",
+    "return combine(⟦1, 2⟧) + combine(3, 4);",
+    "return combine⟦(1, 2)⟧ + combine(3, 4);",
+    "return ⟦combine(1, 2)⟧ + combine(3, 4);",
+    "return ⟦combine(1, 2) + combine(3, 4)⟧;",
+    "⟦return combine(1, 2) + combine(3, 4)⟧;",
+    "⟦return combine(1, 2) + combine(3, 4);⟧",
+    "int total() ⟦{ … }⟧ (3 lines)",
+    "⟦int total() { … }⟧ (3 lines)",
+]

@@ -1,0 +1,19 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦// The `#pragma clang __debug` commands that crash, hang or dump the compiler⟧", type = "comment" },
+    { at = "⟦// do nothing, in the preamble and after it: the code around them highlights⟧", type = "comment" },
+    { at = "⟦// as usual.⟧", type = "comment" },
+    { at = "⟦#pragma⟧ clang __debug crash @5", type = "directive" },
+    { at = "⟦#pragma⟧ clang __debug dump", type = "directive" },
+    { at = "⟦int⟧ before;", type = "primitive" },
+    { at = "int ⟦before⟧;", type = "variable", modifiers = ["definition"] },
+    { at = "⟦#pragma⟧ clang __debug crash @9", type = "directive" },
+    { at = "⟦#pragma⟧ clang __debug parser_crash", type = "directive" },
+    { at = "⟦#pragma⟧ clang __debug assert", type = "directive" },
+    { at = "⟦#pragma⟧ clang __debug llvm_unreachable", type = "directive" },
+    { at = "⟦#pragma⟧ clang __debug llvm_fatal_error", type = "directive" },
+    { at = "⟦#pragma⟧ clang __debug overflow_stack", type = "directive" },
+    { at = "⟦#pragma⟧ clang __debug dump before", type = "directive" },
+    { at = "⟦int⟧ after;", type = "primitive" },
+    { at = "int ⟦after⟧;", type = "variable", modifiers = ["definition"] },
+]

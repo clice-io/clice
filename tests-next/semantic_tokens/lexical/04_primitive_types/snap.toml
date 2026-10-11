@@ -1,0 +1,31 @@
+[answers.int.semantic_token]
+text = "int"
+type = "primitive"
+
+[answers.float.semantic_token]
+text = "float"
+type = "primitive"
+
+[answers.void.semantic_token]
+text = "void"
+type = "primitive"
+
+[answers.unsigned.semantic_token]
+text = "unsigned"
+type = "primitive"
+
+[answers.long_use.semantic_token]
+text = "long"
+type = "primitive"
+
+[answers.long_use2.semantic_token]
+text = "long"
+type = "primitive"
+
+[answers.__int128.semantic_token]
+text = "__int128"
+type = "primitive"
+
+[answers._Float16.semantic_token]
+text = "_Float16"
+type = "primitive"

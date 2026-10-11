@@ -1,0 +1,8 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// Neither a region name nor another pragma's argument mentioning⟦ … // \"endregion\" may close the fold early.⟧ (2 lines)" },
+    { kind = "region", at = "#pragma region endregion_pair⟦ … ⟧ (5 lines)" },
+    { kind = "comment", at = "// The tail of a multiline comment before the introducer must not hide⟦ … // the region either.⟧ (2 lines)" },
+    { kind = "comment", at = "⟦/* spans … a line */⟧ (2 lines)", collapsed = "/*...*/" },
+    { kind = "region", at = "a line */ #pragma region after_comment⟦ … ⟧ (3 lines)" },
+]

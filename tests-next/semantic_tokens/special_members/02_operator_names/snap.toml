@@ -1,0 +1,17 @@
+[answers.operator_use.semantic_token]
+text = "operator"
+type = "keyword"
+
+[answers.operator_use2.semantic_token]
+text = "operator"
+type = "keyword"
+
+[answers.assign.semantic_token]
+text = "="
+type = "operator"
+modifiers = ["userDefined"]
+
+[answers.plus.semantic_token]
+text = "+"
+type = "operator"
+modifiers = ["userDefined"]

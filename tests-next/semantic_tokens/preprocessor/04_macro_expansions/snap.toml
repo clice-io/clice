@@ -1,0 +1,15 @@
+[answers.helper.semantic_token]
+text = "helper"
+type = "none"
+
+[answers.ID.semantic_token]
+text = "ID"
+type = "macro"
+
+[answers.value.semantic_token]
+text = "value"
+type = "variable"
+
+[answers.CALL.semantic_token]
+text = "CALL"
+type = "macro"

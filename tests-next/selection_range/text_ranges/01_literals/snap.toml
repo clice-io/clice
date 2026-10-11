@@ -1,0 +1,39 @@
+[answers.plain]
+selection_ranges = [
+    'const char* plain = "⟦plain text⟧";',
+    'const char* plain = ⟦"plain text"⟧;',
+    '⟦const char* plain = "plain text"⟧;',
+    '⟦const char* plain = "plain text";⟧',
+]
+
+[answers.prefixed]
+selection_ranges = [
+    'const char8_t* prefixed = u8"⟦prefixed text⟧";',
+    'const char8_t* prefixed = ⟦u8"prefixed text"⟧;',
+    '⟦const char8_t* prefixed = u8"prefixed text"⟧;',
+    '⟦const char8_t* prefixed = u8"prefixed text";⟧',
+]
+
+[answers.raw]
+selection_ranges = [
+    'const char* raw = R"delim(⟦raw text⟧)delim";',
+    'const char* raw = ⟦R"delim(raw text)delim"⟧;',
+    '⟦const char* raw = R"delim(raw text)delim"⟧;',
+    '⟦const char* raw = R"delim(raw text)delim";⟧',
+]
+
+[answers.suffix]
+selection_ranges = [
+    'Tag tagged = "⟦tagged text⟧"_tag;',
+    'Tag tagged = ⟦"tagged text"_tag⟧;',
+    '⟦Tag tagged = "tagged text"_tag⟧;',
+    '⟦Tag tagged = "tagged text"_tag;⟧',
+]
+
+[answers.char]
+selection_ranges = [
+    "char letter = '⟦x⟧';",
+    "char letter = ⟦'x'⟧;",
+    "⟦char letter = 'x'⟧;",
+    "⟦char letter = 'x';⟧",
+]

@@ -1,0 +1,32 @@
+[characters."main.cpp"]
+folding_ranges = [
+    { kind = "functionBody", at = "⟦{ … }⟧ (3 lines) @3", collapsed = "{...}" },
+    { kind = "functionParams", at = "gnu_style⟦(int a, … int c)⟧ (3 lines)", collapsed = "(...)" },
+    { kind = "functionBody", at = "⟦{ … }⟧ (3 lines) @10", collapsed = "{...}" },
+    { kind = "class", at = "⟦{ … }⟧ (3 lines) @15", collapsed = "{...}" },
+    { kind = "namespace", at = "⟦{ … }⟧ (3 lines) @19", collapsed = "{...}" },
+    { kind = "conditionDirective", at = "#ifdef FLAG⟦ … ⟧ (3 lines)" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (3 lines)" },
+    { kind = "functionBody", at = "⟦{ … }⟧ (3 lines) @27", collapsed = "{...}" },
+    { kind = "functionBody", at = "int same_line(int a) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦{ … }⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "linkageSpec", at = "⟦{ … }⟧ (3 lines) @37", collapsed = "{...}" },
+    { kind = "struct", at = "⟦{ … }⟧ (8 lines) @41", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦{ … }⟧ (3 lines) @45", collapsed = "{...}" },
+]
+
+["whole lines"."main.cpp"]
+folding_ranges = [
+    { kind = "functionBody", at = "⟦int process(int a) … return a;⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionParams", at = "⟦gnu_style(int a, … int b,⟧ (2 lines)", collapsed = "(...)" },
+    { kind = "functionBody", at = "⟦gnu_style(int a, … return a + b + c;⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "class", at = "⟦class Widget … int x;⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "namespace", at = "⟦namespace … int y;⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "conditionDirective", at = "⟦#ifdef FLAG … void picked(int a)⟧ (2 lines)" },
+    { kind = "conditionDirective", at = "⟦#else … void picked(int a, int b)⟧ (2 lines)" },
+    { kind = "functionBody", at = "⟦{ … return;⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦int same_line(int a) { … return a;⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "linkageSpec", at = '⟦extern "C" … void c_function();⟧ (3 lines)', collapsed = "{...}" },
+    { kind = "struct", at = "⟦struct Holder … }⟧ (8 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "⟦    Holder() … value += 1;⟧ (4 lines)", collapsed = "{...}" },
+]

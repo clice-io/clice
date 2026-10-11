@@ -1,0 +1,41 @@
+[answers.condition]
+selection_ranges = [
+    "if (⟦ready⟧ && count > 0) {",
+    "if (⟦ready && count > 0⟧) {",
+    "if ⟦(ready && count > 0)⟧ {",
+    "⟦if (ready && count > 0) { … }⟧ (5 lines)",
+    "⟦int total = 0; … return total;⟧ (7 lines)",
+    "int sum(const int* values, int count, bool ready) ⟦{ … }⟧ (9 lines)",
+    "⟦int sum(const int* values, int count, bool ready) { … }⟧ (9 lines)",
+]
+
+[answers.bound]
+selection_ranges = [
+    "for (int i = 0; i < ⟦count⟧; ++i) {",
+    "for (int i = 0; ⟦i < count⟧; ++i) {",
+    "for (int i = 0; ⟦i < count;⟧ ++i) {",
+    "for (⟦int i = 0; i < count; ++i⟧) {",
+    "for ⟦(int i = 0; i < count; ++i)⟧ {",
+    "⟦for (int i = 0; i < count; ++i) { … }⟧ (3 lines)",
+    "if (ready && count > 0) ⟦{ … }⟧ (5 lines)",
+    "⟦if (ready && count > 0) { … }⟧ (5 lines)",
+    "⟦int total = 0; … return total;⟧ (7 lines)",
+    "int sum(const int* values, int count, bool ready) ⟦{ … }⟧ (9 lines)",
+    "⟦int sum(const int* values, int count, bool ready) { … }⟧ (9 lines)",
+]
+
+[answers.index]
+selection_ranges = [
+    "total += values[⟦i⟧];",
+    "total += values⟦[i]⟧;",
+    "total += ⟦values[i]⟧;",
+    "⟦total += values[i]⟧;",
+    "⟦total += values[i];⟧",
+    "for (int i = 0; i < count; ++i) ⟦{ … }⟧ (3 lines)",
+    "⟦for (int i = 0; i < count; ++i) { … }⟧ (3 lines)",
+    "if (ready && count > 0) ⟦{ … }⟧ (5 lines)",
+    "⟦if (ready && count > 0) { … }⟧ (5 lines)",
+    "⟦int total = 0; … return total;⟧ (7 lines)",
+    "int sum(const int* values, int count, bool ready) ⟦{ … }⟧ (9 lines)",
+    "⟦int sum(const int* values, int count, bool ready) { … }⟧ (9 lines)",
+]

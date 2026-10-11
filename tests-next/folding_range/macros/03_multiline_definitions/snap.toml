@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "macroDefinition", at = '#define DECLARE_GETTER(type, name) \⟦ … }⟧ (4 lines)' },
+    { kind = "struct", at = "struct Gauge ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+]

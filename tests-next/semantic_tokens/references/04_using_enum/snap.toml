@@ -1,0 +1,8 @@
+[answers.Color.semantic_token]
+text = "Color"
+type = "enum"
+
+[answers.Red.semantic_token]
+text = "Red"
+type = "enumMember"
+modifiers = ["readonly"]

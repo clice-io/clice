@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "templateArgs", at = "using Index = Table⟦< … Hasher>⟧ (4 lines)", collapsed = "<...>" },
+    { kind = "templateArgs", at = "Table⟦< … Hasher>⟧ (4 lines)", collapsed = "<...>" },
+]

@@ -1,0 +1,7 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "namespace", at = "⟦NS_BEGIN … NS_END⟧ (12 lines)", collapsed = "{...}" },
+    { kind = "class", at = "class Widget ⟦{ … }⟧ (8 lines)", collapsed = "{...}" },
+    { kind = "accessSpecifier", at = "PUBLIC⟦ … ⟧ (4 lines)" },
+    { kind = "accessSpecifier", at = "PRIVATE⟦ … ⟧ (4 lines)" },
+]

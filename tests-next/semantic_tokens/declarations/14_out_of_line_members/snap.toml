@@ -1,0 +1,13 @@
+[answers.Gauge.semantic_token]
+text = "Gauge"
+type = "struct"
+
+[answers.read.semantic_token]
+text = "read"
+type = "method"
+modifiers = ["definition", "readonly"]
+
+[answers.reset.semantic_token]
+text = "reset"
+type = "method"
+modifiers = ["definition", "static"]

@@ -1,0 +1,54 @@
+[answers.T_def.semantic_token]
+text = "T"
+type = "type"
+modifiers = ["definition"]
+
+[answers.N_def.semantic_token]
+text = "N"
+type = "variable"
+modifiers = ["definition", "readonly"]
+
+[answers.Array_def.semantic_token]
+text = "Array"
+type = "struct"
+modifiers = ["definition", "templated"]
+
+[answers.T_use.semantic_token]
+text = "T"
+type = "type"
+
+[answers.N_use.semantic_token]
+text = "N"
+type = "variable"
+modifiers = ["readonly"]
+
+[answers.identity_decl.semantic_token]
+text = "identity"
+type = "function"
+modifiers = ["declaration", "templated"]
+
+[answers.T_def2.semantic_token]
+text = "T"
+type = "type"
+modifiers = ["definition"]
+
+[answers.T_use2.semantic_token]
+text = "T"
+type = "type"
+
+[answers.identity_def.semantic_token]
+text = "identity"
+type = "function"
+modifiers = ["definition", "templated"]
+
+[answers.T_use3.semantic_token]
+text = "T"
+type = "type"
+
+[answers.Array_use.semantic_token]
+text = "Array"
+type = "struct"
+
+[answers.identity_use.semantic_token]
+text = "identity"
+type = "function"

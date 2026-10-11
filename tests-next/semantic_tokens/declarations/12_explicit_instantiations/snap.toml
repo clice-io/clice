@@ -1,0 +1,63 @@
+[answers.class_extern.semantic_token]
+text = "Holder"
+type = "struct"
+
+[answers.class_extern_arg.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.class_def.semantic_token]
+text = "Holder"
+type = "struct"
+
+[answers.class_def_arg.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.function_extern.semantic_token]
+text = "convert"
+type = "function"
+
+[answers.function_extern_arg.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.function_extern_param.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.function_def.semantic_token]
+text = "convert"
+type = "function"
+
+[answers.function_def_arg.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.function_def_param.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.variable_extern_type.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.variable_extern.semantic_token]
+text = "zero"
+type = "variable"
+
+[answers.variable_extern_arg.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.variable_def_type.semantic_token]
+text = "Widget"
+type = "struct"
+
+[answers.variable_def.semantic_token]
+text = "zero"
+type = "variable"
+
+[answers.variable_def_arg.semantic_token]
+text = "Widget"
+type = "struct"

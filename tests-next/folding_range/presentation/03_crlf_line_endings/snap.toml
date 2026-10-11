@@ -1,0 +1,9 @@
+[test."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// Saved with Windows line endings by the test: folds end where they do with⟦ … // Unix ones.⟧ (2 lines)" },
+    { kind = "comment", at = "⟦/* a block … comment */⟧ (2 lines)", collapsed = "/*...*/" },
+    { kind = "struct", at = "struct Point ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "int read(Point p) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "conditionDirective", at = "#if 0⟦ … ⟧ (3 lines)" },
+    { kind = "rawString", at = 'const char* raw = ⟦R"(line1 … line2)"⟧ (2 lines)', collapsed = 'R"(...)"' },
+]

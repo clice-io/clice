@@ -1,0 +1,13 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// A parameter list folds between its own parentheses: not from the name of⟦ … // or a `noexcept(...)` after it.⟧ (3 lines)" },
+    { kind = "struct", at = "struct Functor ⟦{ … }⟧ (8 lines)", collapsed = "{...}" },
+    { kind = "functionParams", at = "int operator()⟦( … )⟧ (4 lines)", collapsed = "(...)" },
+    { kind = "functionBody", at = ") const ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "struct", at = "struct Pair ⟦{ … }⟧ (9 lines)", collapsed = "{...}" },
+    { kind = "functionParams", at = "Pair⟦(int a, … int b)⟧ (2 lines)", collapsed = "(...)" },
+    { kind = "functionParams", at = "void guarded⟦(int a, … int b)⟧ (2 lines)", collapsed = "(...)" },
+    { kind = "functionParams", at = "void constrained⟦(T a, … T b)⟧ (2 lines)", collapsed = "(...)" },
+    { kind = "functionParams", at = "auto lambda = []⟦(int a, … int b)⟧ (2 lines)", collapsed = "(...)" },
+    { kind = "compoundStmt", at = "2) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]

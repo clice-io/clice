@@ -1,0 +1,17 @@
+[answers.by_reference]
+wrong = "an argument bound to a mutable reference should carry the usedAsMutableReference modifier (clangd#839)"
+
+[answers.by_reference.semantic_token]
+text = "value"
+type = "variable"
+
+[answers.by_pointer]
+wrong = "an argument passed as a mutable pointer should carry the usedAsMutablePointer modifier (clangd#839)"
+
+[answers.by_pointer.semantic_token]
+text = "value"
+type = "variable"
+
+[answers.by_const_reference.semantic_token]
+text = "value"
+type = "variable"

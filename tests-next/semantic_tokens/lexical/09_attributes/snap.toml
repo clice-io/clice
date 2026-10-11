@@ -1,0 +1,38 @@
+[answers.nodiscard]
+wrong = "an attribute name should be colored (clangd#2209)"
+
+[answers.nodiscard.semantic_token]
+text = "nodiscard"
+type = "none"
+
+[answers.deprecated]
+wrong = "an attribute name should be colored (clangd#2209)"
+
+[answers.deprecated.semantic_token]
+text = "deprecated"
+type = "none"
+
+[answers.message.semantic_token]
+text = '"use v2"'
+type = "string"
+
+[answers.maybe_unused]
+wrong = "an attribute name should be colored (clangd#2209)"
+
+[answers.maybe_unused.semantic_token]
+text = "maybe_unused"
+type = "none"
+
+[answers.vendor]
+wrong = "an attribute name should be colored (clangd#2209)"
+
+[answers.vendor.semantic_token]
+text = "gnu"
+type = "none"
+
+[answers.packed]
+wrong = "an attribute name should be colored (clangd#2209)"
+
+[answers.packed.semantic_token]
+text = "packed"
+type = "none"

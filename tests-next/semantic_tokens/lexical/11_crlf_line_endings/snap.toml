@@ -1,0 +1,20 @@
+[test."main.cpp"]
+semantic_tokens = [
+    { at = "⟦// Saved with Windows line endings by the test: a token spanning lines is cut⟧", type = "comment" },
+    { at = "⟦// at each line's end, the carriage return left out.⟧", type = "comment" },
+    { at = "⟦/* a block⟧", type = "comment" },
+    { at = "⟦   comment */⟧", type = "comment" },
+    { at = "⟦int⟧ read() {", type = "primitive" },
+    { at = "int ⟦read⟧() {", type = "function", modifiers = ["definition"] },
+    { at = "⟦return⟧ 1;", type = "keyword" },
+    { at = "return ⟦1⟧;", type = "number" },
+    { at = '⟦const⟧ char* raw = R"(line1', type = "keyword" },
+    { at = 'const ⟦char⟧* raw = R"(line1', type = "primitive" },
+    {
+        at = 'const char* ⟦raw⟧ = R"(line1',
+        type = "variable",
+        modifiers = ["definition", "readonly"],
+    },
+    { at = 'const char* raw = ⟦R"(line1⟧', type = "string" },
+    { at = '⟦line2)"⟧;', type = "string" },
+]
