@@ -171,8 +171,14 @@ process(result.value());
 
 ## Words to Use and Avoid
 
-Identifiers and comments use plain words. These were renamed out of the
-codebase; don't bring them back:
+Identifiers and comments use plain words: the word a newcomer would guess
+for the thing, not a metaphor or a rare word that needs a glossary
+(verdict, envelope, ledger). One word means one thing across the codebase —
+before naming, grep whether the word already means something else nearby,
+and don't split one concept over two words. A name that its own doc comment
+has to correct is the wrong name.
+
+These were renamed out of the codebase; don't bring them back:
 
 | Avoid                              | Say instead                                                                                                                               |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
