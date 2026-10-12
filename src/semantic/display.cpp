@@ -1217,6 +1217,9 @@ void print_decomposition(const clang::DecompositionDecl& decl,
     if(decl.getStorageClass() != clang::SC_None) {
         os << clang::VarDecl::getStorageClassSpecifierString(decl.getStorageClass()) << ' ';
     }
+    if(decl.getTSCSpec() == clang::TSCS_thread_local) {
+        os << "thread_local ";
+    }
 
     std::string bindings = "[";
     llvm::raw_string_ostream names(bindings);

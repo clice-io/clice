@@ -15,6 +15,8 @@ void bindings() {
     for (auto& §(range_variable)item : items) {
         (void)item;
     }
+    static thread_local auto [§(thread_local_binding)shared, unused] = make();
+    (void)shared;
     Pair pairs[2]{};
     for (auto [§(range_binding)key, value] : pairs) {
         (void)key;

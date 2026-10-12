@@ -43,6 +43,21 @@ auto &item
 '''
 range = "for (auto& ⟦item⟧ : items) {"
 
+[answers.thread_local_binding.hover]
+markdown = '''
+### variable `shared`
+
+---
+Type: `int`
+
+---
+```cpp
+// In bindings
+static thread_local auto [shared, unused] = make()
+```
+'''
+range = "static thread_local auto [⟦shared⟧, unused] = make();"
+
 [answers.range_binding.hover]
 markdown = '''
 ### variable `key`
