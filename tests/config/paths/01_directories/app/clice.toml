@@ -1,0 +1,3 @@
+[project]
+cache_dir = "${workspace}/build/.clice"
+logging_dir = "logs/.clice"

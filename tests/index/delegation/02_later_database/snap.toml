@@ -1,7 +1,5 @@
 [test."$ clice index"]
-stderr = [
-    "error: request failed: nothing to index: the running clice server's build has no translation units",
-]
+stderr = "error: request failed: nothing to index: the running clice server's build has no translation units"
 exit = 1
 
 [test."$ clice index #2"]

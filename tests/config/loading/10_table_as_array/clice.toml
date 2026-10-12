@@ -1,0 +1,5 @@
+[[project]]
+enable_indexing = false
+
+[[project]]
+enable_indexing = true

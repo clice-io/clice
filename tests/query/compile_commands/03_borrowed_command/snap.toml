@@ -3,11 +3,11 @@ stdout = '''
 Indexed 2 translation units in #s: 2 file shards (# KB), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = [
-    "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable",
-    "warning: Toolchain resolve failed for ${WS}/a/main.cpp: Driver ${WS}/missing-cc not found or not executable",
-    "warning: Toolchain resolve failed for ${WS}/vendor/b.cpp: Driver ${WS}/missing-cc not found or not executable",
-]
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+warning: Toolchain resolve failed for ${WS}/a/main.cpp: Driver ${WS}/missing-cc not found or not executable
+warning: Toolchain resolve failed for ${WS}/vendor/b.cpp: Driver ${WS}/missing-cc not found or not executable
+'''
 exit = 0
 
 ["borrowed through a symlink"."$ clice query --method compileCommand --path a/inc/orphan.h"]
@@ -34,8 +34,8 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = [
-    "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable",
-    "warning: Toolchain resolve failed for ${WS}/vendor/real/orphan.h: Driver ${WS}/missing-cc not found or not executable",
-]
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+warning: Toolchain resolve failed for ${WS}/vendor/real/orphan.h: Driver ${WS}/missing-cc not found or not executable
+'''
 exit = 0

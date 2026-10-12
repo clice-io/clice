@@ -1,0 +1,3 @@
+{
+  "databases": { "app": ["app/main.cpp"] }
+}

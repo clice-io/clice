@@ -42,7 +42,7 @@ stdout = '''
   ]
 }
 '''
-stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 0
 
 [test."$ clice analyze modules --view file --file app/main.cpp"]
@@ -70,5 +70,5 @@ stdout = '''
   ]
 }
 '''
-stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 0

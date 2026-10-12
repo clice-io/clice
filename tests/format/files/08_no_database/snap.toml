@@ -1,5 +1,5 @@
 [test."$ clice format"]
-stderr = ["stderr: Nothing to format: no compile_commands.json found under ${WS}"]
+stderr = "Nothing to format: no compile_commands.json found under ${WS}"
 exit = 2
 
 [test."$ clice format main.cpp"]

@@ -1,10 +1,10 @@
 ["log level"."$ clice index --log-level bogus"]
-stderr = [
-    "stderr: at argv[1]:",
-    "stderr:   --log-level bogus",
-    "stderr:               ^~~~~",
-    "stderr:   invalid enum value: bogus (supported: trace, debug, info, warn, error, off)",
-]
+stderr = '''
+at argv[1]:
+  --log-level bogus
+              ^~~~~
+  invalid enum value: bogus (supported: trace, debug, info, warn, error, off)
+'''
 exit = 2
 
 ["log level"."$ clice index --log-level error --workers 1"]
@@ -21,19 +21,19 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = ["error: No index cache at ${WS}/missing/.clice; run `clice index` first"]
+stderr = "error: No index cache at ${WS}/missing/.clice; run `clice index` first"
 exit = 1
 
 ["a missing workspace"."$ clice format --check --workspace missing"]
-stderr = ["stderr: ${WS}/missing: not a directory"]
+stderr = "${WS}/missing: not a directory"
 exit = 2
 
 ["a missing workspace"."$ clice lint --workspace missing"]
-stderr = ["error: ${WS}/missing: not a directory"]
+stderr = "error: ${WS}/missing: not a directory"
 exit = 2
 
 ["a missing workspace"."$ clice index --workspace missing"]
-stderr = ["error: ${WS}/missing: not a directory"]
+stderr = "error: ${WS}/missing: not a directory"
 exit = 1
 
 ["a missing workspace"."left behind"]
