@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "references",
   "title": "Dependent template references",
-  "summary": "Find references on a member does not include dependent call sites in a template, even when the template is instantiated with the member's class",
+  "summary": "Find references on a member includes its dependent call sites in a template instantiated only with the member's class",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#258",
     "clangd#675"
@@ -32,7 +32,6 @@
           "label": "member",
           "marker": "member",
           "value": {
-            "wrong": "obj.foo() calls foo once process is instantiated with A, so it should be among the references (clangd#258, clangd#675)",
             "references": [
               {
                 "$place": "void ⟦foo⟧();",
@@ -45,6 +44,20 @@
                   "end": {
                     "line": 1,
                     "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "obj.⟦foo⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 11
                   }
                 }
               }

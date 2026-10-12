@@ -363,10 +363,11 @@ public:
     /// type it is declared with (the relations without a range).
     std::vector<Site> type_definition(const Cursor& cursor, SymbolHash symbol) const;
 
-    /// Whether the cursor stands on a keyword standing for `symbol` — an
-    /// `auto` or `decltype` the type names, not a name of it (a Deduced
-    /// relation of the index serving the cursor's file).
-    bool deduced(const Cursor& cursor, SymbolHash symbol) const;
+    /// Whether the index serving the cursor's file relates `symbol` to the
+    /// cursor by `kind`: Deduced, the cursor is a keyword standing for it
+    /// (an `auto` or `decltype` the type names), not a name of it;
+    /// WeakReference, a dependent name the template resolves to it.
+    bool relates(const Cursor& cursor, SymbolHash symbol, RelationKind kind) const;
 
     /// Sites implementing the symbol: derived types for a class-like
     /// symbol, overrides otherwise — through every override that only

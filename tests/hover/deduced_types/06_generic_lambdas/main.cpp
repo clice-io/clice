@@ -11,4 +11,11 @@ auto norm = [](§(placeholder)auto §(parameter)point) {
 
 int length = norm(Point{3, 4});
 
+auto echo = [](auto §(several)value) {
+    return value;
+};
+
+long first = echo(1L);
+int second = echo(2);
+
 }

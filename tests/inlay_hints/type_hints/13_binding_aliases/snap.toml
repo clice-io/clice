@@ -1,10 +1,19 @@
-[answers.binding]
-wrong = "name should show : const std::string, the alias the map was declared with, as copy shows (10-12#8)"
+[answers.map]
 inlay_hints = [
-    { line = "for (auto& [name⟨: const basic_string<char>⟩, point⟨: Point⟩] : points) {" },
+    { line = "for (auto& [name⟨: const std::string⟩, point⟨: Point⟩] : points) {" },
+]
+
+[answers.tuple]
+inlay_hints = [
+    { line = "auto& [label⟨: std::string⟩, origin⟨: Point⟩] = entry;" },
+]
+
+[answers.two_aliases]
+inlay_hints = [
+    { line = "for (auto& [count⟨: const unsigned long⟩, size⟨: unsigned long⟩] : sizes) {" },
 ]
 
 [answers.variable]
 inlay_hints = [
-    { line = "auto copy⟨: std::string⟩ = label;" },
+    { line = "auto copy⟨: std::string⟩ = text;" },
 ]

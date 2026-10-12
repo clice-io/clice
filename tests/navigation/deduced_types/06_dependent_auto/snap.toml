@@ -2,4 +2,7 @@
 definition = ["struct ⟦Node⟧ {"]
 
 [answers.dependent_member]
-definition = ["template <typename ⟦T⟧> @-3"]
+definition = ["struct ⟦Widget⟧ {};"]
+
+[answers.several_instantiations]
+definition = ["template <typename ⟦T⟧> @-2"]

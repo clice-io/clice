@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "deduced_types",
   "title": "Generic lambda parameters",
-  "summary": "A generic lambda's `auto` shows the type a call deduces, but its parameter and the parameter's members do not",
-  "prose": "Inside the body the parameter reads as `auto`, and `point.x` has no card.",
-  "status": "partial",
+  "summary": "A generic lambda's `auto` parameter is the type the lambda is called with, and the parameter's members have cards",
+  "prose": "Inside the body the parameter reads as the type of the call, and `point.x`\nis the member of that type. A lambda called with several types keeps its\nparameter `auto`.",
+  "status": "supported",
   "issues": [
     "clangd#493",
     "clangd#1768"
@@ -13,7 +13,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace lambda_auto_params {\n\nstruct Point {\n    int x;\n    int y;\n};\n\nauto norm = [](auto point) {\n    return point.x + point.y;\n};\n\nint length = norm(Point{3, 4});\n\n}\n",
+      "text": "namespace lambda_auto_params {\n\nstruct Point {\n    int x;\n    int y;\n};\n\nauto norm = [](auto point) {\n    return point.x + point.y;\n};\n\nint length = norm(Point{3, 4});\n\nauto echo = [](auto value) {\n    return value;\n};\n\nlong first = echo(1L);\nint second = echo(2);\n\n}\n",
       "markers": [
         {
           "name": "placeholder",
@@ -37,6 +37,12 @@
           "name": "member_use",
           "begin": 119,
           "end": 119,
+          "range": false
+        },
+        {
+          "name": "several",
+          "begin": 189,
+          "end": 189,
           "range": false
         }
       ]
@@ -73,9 +79,8 @@
           "label": "parameter",
           "marker": "parameter",
           "value": {
-            "wrong": "the parameter's type shows as auto, not the Point the lambda is called with (clangd#493)",
             "hover": {
-              "markdown": "### parameter `point`\n\n---\nType: `auto`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto point\n```",
+              "markdown": "### parameter `point`\n\n---\nType: `lambda_auto_params::Point`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto point\n```",
               "range": {
                 "$place": "auto norm = [](auto ⟦point⟧) {",
                 "path": "main.cpp",
@@ -97,9 +102,8 @@
           "label": "parameter_use",
           "marker": "parameter_use",
           "value": {
-            "wrong": "the parameter's type shows as auto, not the Point the lambda is called with (clangd#493)",
             "hover": {
-              "markdown": "### parameter `point`\n\n---\nType: `auto`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto point\n```",
+              "markdown": "### parameter `point`\n\n---\nType: `lambda_auto_params::Point`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto point\n```",
               "range": {
                 "$place": "return ⟦point⟧.x + point.y;",
                 "path": "main.cpp",
@@ -121,8 +125,46 @@
           "label": "member_use",
           "marker": "member_use",
           "value": {
-            "wrong": "a member of the parameter has no card inside the body (clangd#1768)",
-            "hover": {}
+            "hover": {
+              "markdown": "### field `x`\n\n---\nType: `int`\n\n---\n```cpp\n// In Point\npublic: int x\n```",
+              "range": {
+                "$place": "return point.⟦x⟧ + point.y;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 18
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "several",
+          "marker": "several",
+          "value": {
+            "hover": {
+              "markdown": "### parameter `value`\n\n---\nType: `auto`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto value\n```",
+              "range": {
+                "$place": "auto echo = [](auto ⟦value⟧) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 20
+                  },
+                  "end": {
+                    "line": 13,
+                    "character": 25
+                  }
+                }
+              }
+            }
           }
         }
       ]

@@ -867,14 +867,14 @@ std::vector<Site> IndexQuery::type_definition(const Cursor& cursor, SymbolHash s
     return result;
 }
 
-bool IndexQuery::deduced(const Cursor& cursor, SymbolHash symbol) const {
+bool IndexQuery::relates(const Cursor& cursor, SymbolHash symbol, RelationKind kind) const {
     auto source = serving(cursor.site.file);
     if(!source) {
         return false;
     }
     bool found = false;
     auto hit = [&](const Shard& shard) {
-        shard.lookup(symbol, RelationKind::Deduced, [&](const Relation& relation) {
+        shard.lookup(symbol, kind, [&](const Relation& relation) {
             found = relation.range == cursor.site.range;
             return !found;
         });

@@ -1,0 +1,160 @@
+{
+  "id": "inlay_hints/type_hints/13_binding_aliases",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Binding aliases",
+  "summary": "The bindings of a container's elements keep the aliases the container was declared with",
+  "prose": "Iterating a `std::map<std::string, Point>` shows each key as a\n`const std::string`, where the standard library's own instantiation names\nonly `basic_string<char>`. Two aliases of one type leave it unaliased.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include <map>\n#include <string>\n#include <tuple>\n\nstruct Point {\n    int x;\n    int y;\n};\n\nusing Count = unsigned long;\nusing Size = unsigned long;\n\nvoid walk(std::map<std::string, Point>& points,\n          std::tuple<std::string, Point>& entry,\n          std::map<Count, Size>& sizes) {\n    for (auto& [name, point] : points) {\n    }\n    auto& [label, origin] = entry;\n    for (auto& [count, size] : sizes) {\n    }\n    std::string text;\n    auto copy = text;\n}\n",
+      "markers": [
+        {
+          "name": "map",
+          "begin": 293,
+          "end": 329,
+          "range": true
+        },
+        {
+          "name": "tuple",
+          "begin": 340,
+          "end": 370,
+          "range": true
+        },
+        {
+          "name": "two_aliases",
+          "begin": 375,
+          "end": 410,
+          "range": true
+        },
+        {
+          "name": "variable",
+          "begin": 443,
+          "end": 460,
+          "range": true
+        }
+      ]
+    },
+    {
+      "path": "map",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class K, class V>\nstruct pair {\n    K first;\n    V second;\n};\n\ntemplate <class K, class V>\nstruct map {\n    using value_type = pair<const K, V>;\n    value_type* begin();\n    value_type* end();\n};\n}  // namespace std\n",
+      "markers": []
+    },
+    {
+      "path": "string",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class C>\nstruct basic_string {};\n\nusing string = basic_string<char>;\n}  // namespace std\n",
+      "markers": []
+    },
+    {
+      "path": "tuple",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class... T>\nstruct tuple {};\n\ntemplate <class T>\nstruct tuple_size;\n\ntemplate <class A, class B>\nstruct tuple_size<tuple<A, B>> {\n    static constexpr unsigned long value = 2;\n};\n\ntemplate <unsigned long I, class T>\nstruct tuple_element;\n\ntemplate <class A, class B>\nstruct tuple_element<0, tuple<A, B>> {\n    using type = A;\n};\n\ntemplate <class A, class B>\nstruct tuple_element<1, tuple<A, B>> {\n    using type = B;\n};\n\ntemplate <unsigned long I, class A, class B>\ntypename tuple_element<I, tuple<A, B>>::type& get(tuple<A, B>& value);\n}  // namespace std\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "map",
+          "marker": "map",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "for (auto& [name⟨: const std::string⟩, point⟨: Point⟩] : points) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 40
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "tuple",
+          "marker": "tuple",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto& [label⟨: std::string⟩, origin⟨: Point⟩] = entry;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 34
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "two_aliases",
+          "marker": "two_aliases",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "for (auto& [count⟨: const unsigned long⟩, size⟨: unsigned long⟩] : sizes) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 39
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto copy⟨: std::string⟩ = text;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

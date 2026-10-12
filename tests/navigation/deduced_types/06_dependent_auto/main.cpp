@@ -10,8 +10,17 @@ void walk(Node<T>& node) {
     au§(dependent_member)to value = node.value;
 }
 
+template <typename T>
+void visit(Node<T>& node) {
+    au§(several_instantiations)to value = node.value;
+}
+
 struct Widget {};
 
-void drive(Node<Widget>& node) {
-    walk(node);
+struct Gadget {};
+
+void drive(Node<Widget>& widget, Node<Gadget>& gadget) {
+    walk(widget);
+    visit(widget);
+    visit(gadget);
 }

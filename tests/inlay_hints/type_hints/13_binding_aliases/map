@@ -1,0 +1,16 @@
+#pragma once
+
+namespace std {
+template <class K, class V>
+struct pair {
+    K first;
+    V second;
+};
+
+template <class K, class V>
+struct map {
+    using value_type = pair<const K, V>;
+    value_type* begin();
+    value_type* end();
+};
+}  // namespace std

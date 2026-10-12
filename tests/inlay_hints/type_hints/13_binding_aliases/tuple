@@ -1,0 +1,30 @@
+#pragma once
+
+namespace std {
+template <class... T>
+struct tuple {};
+
+template <class T>
+struct tuple_size;
+
+template <class A, class B>
+struct tuple_size<tuple<A, B>> {
+    static constexpr unsigned long value = 2;
+};
+
+template <unsigned long I, class T>
+struct tuple_element;
+
+template <class A, class B>
+struct tuple_element<0, tuple<A, B>> {
+    using type = A;
+};
+
+template <class A, class B>
+struct tuple_element<1, tuple<A, B>> {
+    using type = B;
+};
+
+template <unsigned long I, class A, class B>
+typename tuple_element<I, tuple<A, B>>::type& get(tuple<A, B>& value);
+}  // namespace std

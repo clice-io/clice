@@ -1,6 +1,5 @@
 # Template duck-type navigation
 
-Dependent calls do not resolve to methods of known instantiations yet
+Go to implementation on a dependent call reaches the method it resolves to in the template's only instantiation
 
-This applies to function templates and generic lambdas, but neither
-currently returns an implementation target.
+This applies to function templates and generic lambdas alike.

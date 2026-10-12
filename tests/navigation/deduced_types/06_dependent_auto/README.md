@@ -1,8 +1,8 @@
-# `auto` in uninstantiated templates
+# `auto` in templates
 
 Inside a template, an `auto` whose initializer depends on a template
-parameter reaches the type the initializer resolves to on the class
-template
+parameter reaches the type the initializer resolves to
 
-A type that is the template parameter itself reaches the parameter, however
-the template is instantiated.
+A template parameter stands for its argument when the template is
+instantiated once, and for itself when it is instantiated with several
+types.

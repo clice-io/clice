@@ -1,3 +1,3 @@
 # Structured bindings
 
-Each binding hints its canonical type; the aggregate itself stays bare
+Each binding hints its own type; the aggregate itself stays bare

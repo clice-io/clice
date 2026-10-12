@@ -3,7 +3,7 @@
   "topic": "inlay_hints",
   "subtopic": "type_hints",
   "title": "Structured bindings",
-  "summary": "Each binding hints its canonical type; the aggregate itself stays bare",
+  "summary": "Each binding hints its own type; the aggregate itself stays bare",
   "prose": "",
   "status": "supported",
   "issues": [],

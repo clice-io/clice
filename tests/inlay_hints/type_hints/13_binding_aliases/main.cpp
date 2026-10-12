@@ -1,31 +1,23 @@
-// A structured binding's type keeps the alias it was declared with, as a
-// variable's does: `name` is a `const std::string`.
-namespace std {
-template <class C>
-struct basic_string {};
-using string = basic_string<char>;
-
-template <class K, class V>
-struct pair {
-    K first;
-    V second;
-};
-
-template <class K, class V>
-struct map {
-    using value_type = pair<const K, V>;
-    value_type* begin();
-    value_type* end();
-};
-}  // namespace std
+#include <map>
+#include <string>
+#include <tuple>
 
 struct Point {
     int x;
+    int y;
 };
 
-void walk(std::map<std::string, Point>& points) {
-    §(binding)⟦for (auto& [name, point] : points) {⟧
+using Count = unsigned long;
+using Size = unsigned long;
+
+void walk(std::map<std::string, Point>& points,
+          std::tuple<std::string, Point>& entry,
+          std::map<Count, Size>& sizes) {
+    §(map)⟦for (auto& [name, point] : points) {⟧
     }
-    std::string label;
-    §(variable)⟦auto copy = label;⟧
+    §(tuple)⟦auto& [label, origin] = entry;⟧
+    §(two_aliases)⟦for (auto& [count, size] : sizes) {⟧
+    }
+    std::string text;
+    §(variable)⟦auto copy = text;⟧
 }

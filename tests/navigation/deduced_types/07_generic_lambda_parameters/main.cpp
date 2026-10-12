@@ -1,5 +1,5 @@
-// A generic lambda's `auto` parameter takes the type of each call, yet
-// inside the body its members go nowhere (clangd#493, clangd#1768).
+// A generic lambda's `auto` parameter takes the type of its only call:
+// inside the body its members are that type's (clangd#493, clangd#1768).
 
 struct Point {
     int x;

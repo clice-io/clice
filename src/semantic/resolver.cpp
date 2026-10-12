@@ -1900,37 +1900,40 @@ private:
         return result;
     }
 
-    /// The argument a function template's parameter took in the template's
-    /// only instantiation: a generic lambda's `auto` parameter stands for
-    /// the type the lambda is called with. Several instantiations give no
-    /// one answer.
+    /// The argument a template's parameter took in the template's only
+    /// instantiation: a generic lambda's `auto` parameter stands for the
+    /// type the lambda is called with. Several instantiations give no one
+    /// answer.
     static const clang::TemplateArgument*
         only_instantiation_argument(const clang::TemplateTypeParmType* TTPT) {
-        /// A template parameter belongs to the function its template adopted
-        /// it into; the parameters of any other template sit elsewhere.
+        /// A template parameter belongs to the declaration its template
+        /// adopted it into; the parameters of any other template sit
+        /// elsewhere.
         auto* param = TTPT->getDecl();
-        auto* function =
-            param ? llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext()) : nullptr;
+        auto* owner = param ? llvm::dyn_cast<clang::NamedDecl>(param->getDeclContext()) : nullptr;
         /// A captureless generic lambda's conversion to a function pointer
         /// and its static invoker adopt the call operator's parameter list
         /// after it, but calls instantiate the call operator.
-        if(auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(function);
+        if(auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(owner);
            method && method->getParent()->isLambda()) {
-            function = method->getParent()->getLambdaCallOperator();
+            owner = method->getParent()->getLambdaCallOperator();
         }
-        auto* instantiation =
-            function ? llvm::dyn_cast_or_null<clang::FunctionDecl>(
-                           decls::only_instantiation(function))
-                     : nullptr;
-        if(!instantiation) {
-            return nullptr;
+        auto* instantiation = owner ? decls::only_instantiation(owner) : nullptr;
+        if(auto* function = llvm::dyn_cast_or_null<clang::FunctionDecl>(instantiation)) {
+            return &function->getTemplateSpecializationArgs()->get(TTPT->getIndex());
         }
-        return &instantiation->getTemplateSpecializationArgs()->get(TTPT->getIndex());
+        /// A class instantiated from a partial specialization never
+        /// instantiated the primary template's code.
+        if(auto* record = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(instantiation);
+           record && llvm::isa<clang::ClassTemplateDecl*>(record->getSpecializedTemplateOrPartial())) {
+            return &record->getTemplateArgs().get(TTPT->getIndex());
+        }
+        return nullptr;
     }
 
     clang::QualType rewrite_parameter(const clang::TemplateTypeParmType* TTPT, Policy policy) {
         // First, try to find a substitution in the instantiation stack, then
-        // in the instantiation the unit made of the parameter's function.
+        // in the instantiation the unit made of the parameter's template.
         const auto* argument = stack.find_argument(TTPT);
         if(!argument) {
             argument = only_instantiation_argument(TTPT);

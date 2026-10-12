@@ -1417,7 +1417,7 @@ Features::RawResult Features::type_definition(Ticket ticket,
     std::vector<index::Site> sites;
     for(auto symbol: cursor->symbols) {
         // The type an `auto` stands for is its own type definition.
-        bool deduced = query.deduced(*cursor, symbol);
+        bool deduced = query.relates(*cursor, symbol, RelationKind::Deduced);
         llvm::append_range(
             sites,
             gather(symbol, path_id, [&](const index::IndexQuery& from, index::SymbolHash named) {
@@ -1447,12 +1447,28 @@ Features::RawResult Features::implementation(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(
-        to_lsp::locations(gather(cursor->symbols,
-                                 path_id,
-                                 [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return from.implementation(named, path_id);
-                                 })));
+    std::vector<index::Site> sites;
+    for(auto symbol: cursor->symbols) {
+        // A dependent name implements the template with what the template
+        // resolves it to, as an override implements a virtual function.
+        if(query.relates(*cursor, symbol, RelationKind::WeakReference)) {
+            llvm::append_range(
+                sites,
+                gather(symbol,
+                       path_id,
+                       [&](const index::IndexQuery& from, index::SymbolHash named) {
+                           return from.sites(named, path_id, RelationKind::Definition);
+                       }));
+        }
+        llvm::append_range(sites,
+                           gather(symbol,
+                                  path_id,
+                                  [&](const index::IndexQuery& from, index::SymbolHash named) {
+                                      return from.implementation(named, path_id);
+                                  }));
+    }
+    index::dedup_sites(sites);
+    co_return to_raw(to_lsp::locations(sites));
 }
 
 Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,

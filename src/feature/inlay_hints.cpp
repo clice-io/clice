@@ -1102,6 +1102,13 @@ private:
                 // Alternatively, we could place the hint on the `auto`
                 // (and then just print the type deduced for the `auto`).
                 add_type_hint(var->getLocation(), var->getType(), /*Prefix=*/": ");
+            } else if(type->isDependentType() && var->getInit()) {
+                // A dependent initializer leaves `auto` to instantiation:
+                // the template's only instantiation fixes it.
+                if(auto deduced = unit.resolver().deduce(var);
+                   !deduced.isNull() && !deduced->isDependentType()) {
+                    add_type_hint(var->getLocation(), deduced, /*Prefix=*/": ");
+                }
             }
         }
 
