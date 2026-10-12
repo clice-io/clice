@@ -3,16 +3,16 @@
   "topic": "inlay_hints",
   "subtopic": "designator_hints",
   "title": "Parenthesized aggregate initialization",
-  "summary": "C++20 `Point(1, 2)` gets no hints yet",
+  "summary": "C++20 `Point(1, 2)` shows the designators braces would, `.x=` and `.y=`",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#2540"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Point {\n    int x;\n    int y;\n};\n\nPoint p(1, 2);\n",
+      "text": "struct Point {\n    int x;\n    int y;\n};\n\nPoint p(1, 2);\n\nint corners[2](3, 4);\n",
       "markers": []
     }
   ],
@@ -23,8 +23,40 @@
         {
           "label": "main.cpp",
           "value": {
-            "wrong": "parenthesized aggregate initialization should show .x= and .y= as braces do (clangd#2540)",
-            "inlay_hints": []
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "Point p(⟨.x=⟩1, ⟨.y=⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 14
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "int corners[2](⟨[0]=⟩3, ⟨[1]=⟩4);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       ]

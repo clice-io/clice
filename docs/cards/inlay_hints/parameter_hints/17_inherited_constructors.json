@@ -3,9 +3,9 @@
   "topic": "inlay_hints",
   "subtopic": "parameter_hints",
   "title": "Inherited constructors",
-  "summary": "`using Base::Base` calls lose their parameter names",
+  "summary": "A constructor that `using Base::Base` brings in names its parameters as the base declares them",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#1364"
   ],
@@ -23,8 +23,24 @@
         {
           "label": "main.cpp",
           "value": {
-            "wrong": "a call of an inherited constructor should name its parameter, width: before 7 (clangd#1364)",
-            "inlay_hints": []
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "Derived d(⟨width:⟩7);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 13
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       ]

@@ -1,3 +1,5 @@
 [answers."main.cpp"]
-wrong = "parenthesized aggregate initialization should show .x= and .y= as braces do (clangd#2540)"
-inlay_hints = []
+inlay_hints = [
+    { line = "Point p(⟨.x=⟩1, ⟨.y=⟩2);" },
+    { line = "int corners[2](⟨[0]=⟩3, ⟨[1]=⟩4);" },
+]

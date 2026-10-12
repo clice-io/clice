@@ -30,13 +30,14 @@ tests/signature_help/overload_signatures/03_active_parameter
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#50 -->
+<!-- BEGIN CAPABILITY: supported clangd#50 -->
 
 **Const overloads**
 
-A non-const object lists both the const and the non-const overload, and the two read the same
+Of a const and a non-const overload taking the same parameters, only the one the object calls shows
 
-The label leaves out the trailing `const`, so nothing tells them apart.
+A non-const object calls the non-const overload; a const object can call only
+the const one, whose label ends in `const`.
 
 ```case
 tests/signature_help/overload_signatures/04_const_overloads
@@ -127,11 +128,13 @@ tests/signature_help/call_contexts/05_functors
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#86 -->
+<!-- BEGIN CAPABILITY: supported clangd#86 -->
 
 **Lambda calls**
 
-Calling a lambda shows its parameters under the name `operator()` instead of the lambda's
+Calling a lambda shows its parameters under the name of the variable holding it
+
+A lambda called where it is written has no name, so its parameters stand alone.
 
 ```case
 tests/signature_help/call_contexts/06_lambdas
@@ -181,11 +184,13 @@ tests/signature_help/call_contexts/09_inherited_constructors
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#795 -->
+<!-- BEGIN CAPABILITY: supported clangd#795 -->
 
 **Function-like macros**
 
-A function-like macro's arguments get no signature help yet
+A function-like macro's arguments show the macro's parameters, not those of what it expands to
+
+A function called inside one of the arguments shows its own signature.
 
 ```case
 tests/signature_help/call_contexts/10_macros
@@ -228,11 +233,11 @@ tests/signature_help/parameters/02_c_variadics
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#638 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Parameter packs**
 
-A parameter pack shows as the template declares it, marked for its first argument only
+A parameter pack shows as the template declares it, marked for every argument it takes
 
 ```case
 tests/signature_help/parameters/03_parameter_packs
@@ -255,7 +260,7 @@ tests/signature_help/parameters/05_explicit_object_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#517 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#517 clangd#638 -->
 
 **Forwarding functions**
 

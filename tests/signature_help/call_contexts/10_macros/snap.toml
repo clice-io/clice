@@ -1,5 +1,11 @@
-[answers.condition]
-wrong = "a function-like macro shows no parameters (clangd#795)"
-
 [answers.condition.signature_help]
-signatures = []
+signatures = ["CHECK(⟦cond⟧, msg)"]
+active = 0
+
+[answers.variadic.signature_help]
+signatures = ["LOG(format, ⟦...⟧)"]
+active = 0
+
+[answers.inner.signature_help]
+signatures = ["fail(⟦const char *message⟧) -> int"]
+active = 0

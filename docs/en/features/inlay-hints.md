@@ -131,11 +131,11 @@ tests/inlay_hints/parameter_hints/16_near_matches
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1364 -->
+<!-- BEGIN CAPABILITY: supported clangd#1364 -->
 
 **Inherited constructors**
 
-`using Base::Base` calls lose their parameter names
+A constructor that `using Base::Base` brings in names its parameters as the base declares them
 
 ```case
 tests/inlay_hints/parameter_hints/17_inherited_constructors
@@ -229,11 +229,14 @@ tests/inlay_hints/type_hints/07_auto_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1749 -->
+<!-- BEGIN CAPABILITY: supported clangd#1749 -->
 
 **Explicitly spelled initializers**
 
-A type the initializer already spells, in a cast or a functional cast, is still hinted
+A type the initializer already spells, in a cast or a functional cast, gets no hint
+
+A class template whose arguments the initializer leaves to deduction is still
+hinted.
 
 ```case
 tests/inlay_hints/type_hints/08_explicit_initializers
@@ -345,11 +348,11 @@ tests/inlay_hints/designator_hints/05_aggregates_only
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2540 -->
+<!-- BEGIN CAPABILITY: supported clangd#2540 -->
 
 **Parenthesized aggregate initialization**
 
-C++20 `Point(1, 2)` gets no hints yet
+C++20 `Point(1, 2)` shows the designators braces would, `.x=` and `.y=`
 
 ```case
 tests/inlay_hints/designator_hints/07_parenthesized_init

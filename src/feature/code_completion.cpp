@@ -275,69 +275,84 @@ auto dedup_priority(protocol::CompletionItemKind kind, bool is_macro) -> int {
 
 /// Extract the function signature (parameter list) from a CodeCompletionString,
 /// followed by the function's qualifiers when `qualifiers` is set. Returns
-/// something like "(int x, float y) const" for display in labelDetails.detail.
+/// something like "(int x, float y = 1) const" for display in
+/// labelDetails.detail; parameters with a default show it.
 auto extract_signature(const clang::CodeCompletionString& ccs, bool qualifiers) -> std::string {
     std::string signature;
     bool in_parens = false;
+    bool in_angles = false;
     bool closed = false;
 
-    for(const auto& chunk: ccs) {
-        using CK = clang::CodeCompletionString::ChunkKind;
-        switch(chunk.Kind) {
-            case CK::CK_LeftParen:
-                in_parens = true;
-                signature += '(';
-                break;
-            case CK::CK_RightParen:
-                signature += ')';
-                in_parens = false;
-                closed = true;
-                break;
-            case CK::CK_Placeholder:
-            case CK::CK_CurrentParameter:
-                if(in_parens && chunk.Text) {
-                    signature += chunk.Text;
-                }
-                break;
-            case CK::CK_Text:
-                if(in_parens && chunk.Text) {
-                    signature += chunk.Text;
-                }
-                break;
-            case CK::CK_Informative: {
-                // A function that cannot be called where completion happens
-                // (a destructor after `T::`) carries its whole parameter list
-                // as informative chunks, parentheses included. After the
-                // list come the function's qualifiers, ` const`.
-                llvm::StringRef text = chunk.Text ? chunk.Text : "";
-                if(text == "(") {
+    auto extract = [&](this auto& self, const clang::CodeCompletionString& chunks) -> void {
+        for(const auto& chunk: chunks) {
+            using CK = clang::CodeCompletionString::ChunkKind;
+            switch(chunk.Kind) {
+                case CK::CK_LeftParen:
                     in_parens = true;
-                }
-                if(in_parens || (closed && qualifiers)) {
-                    signature += text;
-                }
-                if(text == ")") {
+                    signature += '(';
+                    break;
+                case CK::CK_RightParen:
+                    signature += ')';
                     in_parens = false;
                     closed = true;
+                    break;
+                case CK::CK_Placeholder:
+                case CK::CK_CurrentParameter:
+                    if(in_parens && chunk.Text) {
+                        signature += chunk.Text;
+                    }
+                    break;
+                case CK::CK_Text:
+                    if(in_parens && chunk.Text) {
+                        signature += chunk.Text;
+                    }
+                    break;
+                case CK::CK_Optional:
+                    // A defaulted template parameter's placeholder leaves
+                    // its default out: shown, it would read as required.
+                    if(!in_angles) {
+                        self(*chunk.Optional);
+                    }
+                    break;
+                case CK::CK_Informative: {
+                    // A function that cannot be called where completion
+                    // happens (a destructor after `T::`) carries its whole
+                    // parameter list as informative chunks, parentheses
+                    // included. After the list come the function's
+                    // qualifiers, ` const`.
+                    llvm::StringRef text = chunk.Text ? chunk.Text : "";
+                    if(text == "(") {
+                        in_parens = true;
+                    }
+                    if(in_parens || (closed && qualifiers)) {
+                        signature += text;
+                    }
+                    if(text == ")") {
+                        in_parens = false;
+                        closed = true;
+                    }
+                    break;
                 }
-                break;
+                case CK::CK_LeftAngle:
+                    signature += '<';
+                    in_parens = true;
+                    in_angles = true;
+                    break;
+                case CK::CK_RightAngle:
+                    signature += '>';
+                    in_parens = false;
+                    in_angles = false;
+                    break;
+                case CK::CK_Comma:
+                    if(in_parens) {
+                        signature += ", ";
+                    }
+                    break;
+                default: break;
             }
-            case CK::CK_LeftAngle:
-                signature += '<';
-                in_parens = true;
-                break;
-            case CK::CK_RightAngle:
-                signature += '>';
-                in_parens = false;
-                break;
-            case CK::CK_Comma:
-                if(in_parens) {
-                    signature += ", ";
-                }
-                break;
-            default: break;
         }
-    }
+    };
+    extract(ccs);
 
     return signature;
 }
@@ -1459,18 +1474,31 @@ private:
 auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options,
                    const CompletionClient& client,
-                   PositionEncoding encoding) -> std::vector<protocol::CompletionItem> {
-    std::vector<protocol::CompletionItem> items;
-
+                   PositionEncoding encoding) -> protocol::CompletionList {
     auto& [file, offset] = params.completion;
     (void)file;
 
+    std::vector<protocol::CompletionItem> items;
     WholeBuffer whole(params);
     auto* consumer = new CodeCompletionCollector(offset, encoding, items, options, client, whole);
     auto unit = complete(params, consumer);
     (void)unit;
 
-    return items;
+    return completion_list(std::move(items), options.limit);
+}
+
+auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
+    -> protocol::CompletionList {
+    protocol::CompletionList list{.is_incomplete = false, .items = std::move(items)};
+    if(limit != 0 && list.items.size() > limit) {
+        std::ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
+            return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text),
+                            item.label);
+        });
+        list.items.resize(limit);
+        list.is_incomplete = true;
+    }
+    return list;
 }
 
 }  // namespace clice::feature

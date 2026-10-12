@@ -667,11 +667,11 @@ tests/hover/documentation/05_overloads
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1936 -->
+<!-- BEGIN CAPABILITY: supported clangd#1936 -->
 
 **Inherited constructors**
 
-The name in `using Base::Base` shows the implicit move constructor, not the constructors it inherits
+The name in `using Base::Base` shows the constructor it inherits, with its documentation
 
 ```case
 tests/hover/documentation/06_inherited_constructors

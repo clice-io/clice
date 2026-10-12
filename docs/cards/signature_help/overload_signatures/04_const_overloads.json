@@ -3,21 +3,27 @@
   "topic": "signature_help",
   "subtopic": "overload_signatures",
   "title": "Const overloads",
-  "summary": "A non-const object lists both the const and the non-const overload, and the two read the same",
-  "prose": "The label leaves out the trailing `const`, so nothing tells them apart.",
-  "status": "unsupported",
+  "summary": "Of a const and a non-const overload taking the same parameters, only the one the object calls shows",
+  "prose": "A non-const object calls the non-const overload; a const object can call only\nthe const one, whose label ends in `const`.",
+  "status": "supported",
   "issues": [
     "clangd#50"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Buffer {\n    int at(int index);\n    int at(int index) const;\n};\n\nint main() {\n    Buffer b;\n    b.at(0);\n}\n",
+      "text": "struct Buffer {\n    int at(int index);\n    int at(int index) const;\n};\n\nint main() {\n    Buffer b;\n    b.at(0);\n    const Buffer& view = b;\n    view.at(0);\n}\n",
       "markers": [
         {
           "name": "pos",
           "begin": 108,
           "end": 108,
+          "range": false
+        },
+        {
+          "name": "const_object",
+          "begin": 152,
+          "end": 152,
           "range": false
         }
       ]
@@ -31,11 +37,21 @@
           "label": "pos",
           "marker": "pos",
           "value": {
-            "wrong": "the const overload a non-const object cannot pick is listed too, and both read the same (clangd#50)",
             "signature_help": {
               "signatures": [
-                "at(⟦int index⟧) -> int",
                 "at(⟦int index⟧) -> int"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "const_object",
+          "marker": "const_object",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "at(⟦int index⟧) const -> int"
               ],
               "active": 0
             }

@@ -4,4 +4,4 @@ issues: [clangd#1364]
 
 # Inherited constructors
 
-`using Base::Base` calls lose their parameter names
+A constructor that `using Base::Base` brings in names its parameters as the base declares them
