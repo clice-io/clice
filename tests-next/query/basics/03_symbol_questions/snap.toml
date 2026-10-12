@@ -166,7 +166,6 @@ stdout = '''
 exit = 0
 
 [test."$ clice query --method documentSymbols --path main.cpp"]
-wrong = "the symbols come in no order a reader can follow; source order (add, Dog, compute, main) is expected"
 stdout = '''
 {
   "result": {
@@ -177,13 +176,6 @@ stdout = '''
         "startLine": 2,
         "endLine": 2,
         "symbol": "#5c1bf8ca24c752f7"
-      },
-      {
-        "name": "main",
-        "kind": "Function",
-        "startLine": 5,
-        "endLine": 5,
-        "symbol": "#70b5c0d150872970"
       },
       {
         "name": "Dog",
@@ -198,6 +190,13 @@ stdout = '''
         "startLine": 4,
         "endLine": 4,
         "symbol": "#81df9416985c4402"
+      },
+      {
+        "name": "main",
+        "kind": "Function",
+        "startLine": 5,
+        "endLine": 5,
+        "symbol": "#70b5c0d150872970"
       }
     ]
   },

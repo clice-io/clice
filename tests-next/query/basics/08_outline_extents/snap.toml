@@ -6,7 +6,60 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 [test."$ clice query --method documentSymbols --path main.cpp"]
-wrong = "every symbol ends on the line it starts, where Point and twice span four lines; and they come in no order a reader can follow, not in source order"
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "Point",
+        "kind": "Struct",
+        "startLine": 3,
+        "endLine": 6,
+        "symbol": "#00fc195501113d53"
+      },
+      {
+        "name": "x",
+        "kind": "Field",
+        "startLine": 4,
+        "endLine": 4,
+        "symbol": "#995ff32f556a7dc8"
+      },
+      {
+        "name": "y",
+        "kind": "Field",
+        "startLine": 5,
+        "endLine": 5,
+        "symbol": "#592eb7b24e6e4600"
+      },
+      {
+        "name": "twice",
+        "kind": "Function",
+        "startLine": 8,
+        "endLine": 11,
+        "symbol": "#54d7b1312102e8e6"
+      },
+      {
+        "name": "geo",
+        "kind": "Namespace",
+        "startLine": 13,
+        "endLine": 17,
+        "symbol": "#b8d40a731e70f055"
+      },
+      {
+        "name": "area",
+        "kind": "Function",
+        "startLine": 14,
+        "endLine": 16,
+        "symbol": "#bb577830b310f5fe"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method documentSymbols --path api.h"]
 stdout = '''
 {
   "result": {
@@ -21,57 +74,23 @@ stdout = '''
       {
         "name": "twice",
         "kind": "Function",
-        "startLine": 8,
-        "endLine": 8,
-        "symbol": "#54d7b1312102e8e6"
-      },
-      {
-        "name": "y",
-        "kind": "Field",
         "startLine": 5,
         "endLine": 5,
-        "symbol": "#592eb7b24e6e4600"
-      },
-      {
-        "name": "x",
-        "kind": "Field",
-        "startLine": 4,
-        "endLine": 4,
-        "symbol": "#995ff32f556a7dc8"
+        "symbol": "#54d7b1312102e8e6"
       },
       {
         "name": "geo",
         "kind": "Namespace",
-        "startLine": 13,
-        "endLine": 13,
+        "startLine": 7,
+        "endLine": 9,
         "symbol": "#b8d40a731e70f055"
       },
       {
         "name": "area",
         "kind": "Function",
-        "startLine": 14,
-        "endLine": 14,
+        "startLine": 8,
+        "endLine": 8,
         "symbol": "#bb577830b310f5fe"
-      }
-    ]
-  },
-  "stale": []
-}
-'''
-exit = 0
-
-[test."$ clice query --method documentSymbols --path api.h"]
-wrong = "only the namespace is listed: the declarations of Point, twice and geo::area, which the header is for, are missing"
-stdout = '''
-{
-  "result": {
-    "symbols": [
-      {
-        "name": "geo",
-        "kind": "Namespace",
-        "startLine": 7,
-        "endLine": 7,
-        "symbol": "#b8d40a731e70f055"
       }
     ]
   },

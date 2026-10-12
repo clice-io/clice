@@ -377,11 +377,12 @@ ZEST_CASE(CollapsedDeclsBecomeSiblings) {
     auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
         switch(hash) {
             case 1:
-                return index::SymbolRef{.name = "outer",
+                return index::SymbolRef{.hash = 1,
+                                        .name = "outer",
                                         .args = "<int>",
                                         .kind = SymbolKind::Struct};
-            case 2: return index::SymbolRef{.name = "first", .kind = SymbolKind::Field};
-            case 3: return index::SymbolRef{.name = "second", .kind = SymbolKind::Field};
+            case 2: return index::SymbolRef{.hash = 2, .name = "first", .kind = SymbolKind::Field};
+            case 3: return index::SymbolRef{.hash = 3, .name = "second", .kind = SymbolKind::Field};
             default: return std::nullopt;
         }
     };

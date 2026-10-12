@@ -350,15 +350,9 @@ auto index_semantic_tokens(llvm::StringRef content,
     return tokens;
 }
 
-auto index_document_symbols(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
-    -> std::vector<DocumentSymbol> {
-    struct Entry {
-        DocumentSymbol symbol;
-        LocalSourceRange extent;
-        index::SymbolHash hash = 0;
-    };
-
-    std::vector<Entry> entries;
+auto index_outline(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
+    -> std::vector<IndexOutlineEntry> {
+    std::vector<IndexOutlineEntry> entries;
     for(const auto& decl: decls) {
         if(!decl.extent.valid() || decl.extent.begin >= decl.extent.end) {
             continue;
@@ -371,40 +365,44 @@ auto index_document_symbols(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver
         if(selection.begin < decl.extent.begin || selection.end > decl.extent.end) {
             selection = decl.extent;
         }
-        entries.push_back({
-            {.name = info->display_name(),
-             .kind = info->kind,
-             .range = decl.extent,
-             .selection_range = selection},
-            decl.extent,
-            decl.symbol,
-        });
+        entries.push_back(
+            {.symbol = std::move(*info), .range = decl.extent, .selection_range = selection});
     }
 
     // Merged shard entries can duplicate an anchor (a symbol's Declaration
     // and Definition relations of an inline definition share it, and so do
     // context variants); one outline entry per (site, symbol identity).
     // Descending end puts a strict container before everything inside it.
-    std::ranges::sort(entries, [](const Entry& lhs, const Entry& rhs) {
-        if(lhs.extent.begin != rhs.extent.begin) {
-            return lhs.extent.begin < rhs.extent.begin;
+    std::ranges::sort(entries, [](const IndexOutlineEntry& lhs, const IndexOutlineEntry& rhs) {
+        if(lhs.range.begin != rhs.range.begin) {
+            return lhs.range.begin < rhs.range.begin;
         }
-        if(lhs.extent.end != rhs.extent.end) {
-            return lhs.extent.end > rhs.extent.end;
+        if(lhs.range.end != rhs.range.end) {
+            return lhs.range.end > rhs.range.end;
         }
-        if(lhs.symbol.selection_range.begin != rhs.symbol.selection_range.begin) {
-            return lhs.symbol.selection_range.begin < rhs.symbol.selection_range.begin;
+        if(lhs.selection_range.begin != rhs.selection_range.begin) {
+            return lhs.selection_range.begin < rhs.selection_range.begin;
         }
-        if(lhs.symbol.name != rhs.symbol.name) {
-            return lhs.symbol.name < rhs.symbol.name;
+        if(auto lhs_name = lhs.symbol.display_name(), rhs_name = rhs.symbol.display_name();
+           lhs_name != rhs_name) {
+            return lhs_name < rhs_name;
         }
-        return lhs.hash < rhs.hash;
+        return lhs.symbol.hash < rhs.symbol.hash;
     });
-    auto duplicates = std::ranges::unique(entries, [](const Entry& lhs, const Entry& rhs) {
-        return lhs.hash == rhs.hash && lhs.extent == rhs.extent &&
-               lhs.symbol.selection_range == rhs.symbol.selection_range;
-    });
+    auto duplicates =
+        std::ranges::unique(entries,
+                            [](const IndexOutlineEntry& lhs, const IndexOutlineEntry& rhs) {
+                                return lhs.symbol.hash == rhs.symbol.hash &&
+                                       lhs.range == rhs.range &&
+                                       lhs.selection_range == rhs.selection_range;
+                            });
     entries.erase(duplicates.begin(), duplicates.end());
+    return entries;
+}
+
+auto index_document_symbols(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
+    -> std::vector<DocumentSymbol> {
+    auto entries = index_outline(decls, resolve);
 
     // Entries are sorted by (begin asc, end desc): a strict container
     // precedes everything it contains, so a stack builds the tree; equal
@@ -414,18 +412,23 @@ auto index_document_symbols(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver
     auto contains = [](const LocalSourceRange& outer, const LocalSourceRange& inner) {
         return outer.begin <= inner.begin && inner.end <= outer.end && outer != inner;
     };
-    std::vector<std::pair<Entry*, std::vector<DocumentSymbol>>> pending;
+    std::vector<std::pair<const IndexOutlineEntry*, std::vector<DocumentSymbol>>> pending;
 
     auto close_top = [&] {
         auto [entry, children] = std::move(pending.back());
         pending.pop_back();
-        entry->symbol.children = std::move(children);
         auto& into = pending.empty() ? roots : pending.back().second;
-        into.push_back(std::move(entry->symbol));
+        into.push_back({
+            .name = entry->symbol.display_name(),
+            .kind = entry->symbol.kind,
+            .range = entry->range,
+            .selection_range = entry->selection_range,
+            .children = std::move(children),
+        });
     };
 
     for(auto& entry: entries) {
-        while(!pending.empty() && !contains(pending.back().first->extent, entry.extent)) {
+        while(!pending.empty() && !contains(pending.back().first->range, entry.range)) {
             close_top();
         }
         pending.emplace_back(&entry, std::vector<DocumentSymbol>{});

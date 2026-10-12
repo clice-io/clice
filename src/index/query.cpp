@@ -1303,39 +1303,6 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
     return results;
 }
 
-std::vector<IndexQuery::Located> IndexQuery::definitions_in(Fid file) const {
-    auto source = serving(file);
-    if(!source) {
-        return {};
-    }
-    // The relations themselves say what is defined in the file, in shard order:
-    // the project table's symbols and the file's internal ones — a
-    // function's locals are no part of it.
-    std::vector<Located> result;
-    source->shard->for_each_relation([&](SymbolHash hash, const Relation& r) {
-        if(r.kind != RelationKind::Definition) {
-            return true;
-        }
-        auto identity = index.identity_of(hash);
-        if(!identity) {
-            identity = source->shard->find_symbol(hash);
-            if(identity && identity->scope != SymbolScope::TULocal) {
-                return true;
-            }
-        }
-        if(!identity || identity->name.empty()) {
-            return true;
-        }
-        if(auto site = source->site(r.range)) {
-            result.push_back({.symbol = SymbolRef::from(hash, *identity),
-                              .site = *site,
-                              .extent = extent_of(*source, r).value_or(*site)});
-        }
-        return true;
-    });
-    return result;
-}
-
 std::vector<IncludeEdge> IndexQuery::include_edges(Fid file) const {
     // Every consumer projects the edges onto content the serving shard
     // matches, so a manifest contributes only where the version it entered

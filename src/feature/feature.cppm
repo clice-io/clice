@@ -701,6 +701,19 @@ auto index_semantic_tokens(llvm::StringRef content,
 /// differs (see to_lsp::symbol_kind).
 auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind;
 
+/// One declaration the outline lists: its symbol, its whole extent and the
+/// name within it.
+struct IndexOutlineEntry {
+    index::SymbolRef symbol;
+    LocalSourceRange range;
+    LocalSourceRange selection_range;
+};
+
+/// The declarations an outline lists, one per symbol and extent, in source
+/// order: a declaration before the ones its extent holds.
+auto index_outline(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
+    -> std::vector<IndexOutlineEntry>;
+
 /// Outline tree built from declaration extents by range containment;
 /// extents that merely overlap (macro-generated siblings collapse onto one
 /// invocation range) become siblings in source order. `detail` stays empty.

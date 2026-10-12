@@ -46,11 +46,11 @@ stdout = '''
   "result": {
     "symbols": [
       {
-        "name": "~Animal",
-        "kind": "Method",
-        "startLine": 3,
-        "endLine": 3,
-        "symbol": "#2dbb9112f1fa26ec"
+        "name": "add",
+        "kind": "Function",
+        "startLine": 2,
+        "endLine": 2,
+        "symbol": "#5c1bf8ca24c752f7"
       },
       {
         "name": "Animal",
@@ -58,6 +58,13 @@ stdout = '''
         "startLine": 3,
         "endLine": 3,
         "symbol": "#a1654fc0dd5efb6c"
+      },
+      {
+        "name": "~Animal",
+        "kind": "Method",
+        "startLine": 3,
+        "endLine": 3,
+        "symbol": "#2dbb9112f1fa26ec"
       }
     ]
   },

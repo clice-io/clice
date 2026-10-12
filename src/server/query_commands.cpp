@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :command.toolchain;
+import :feature.feature;
 import :index.serialization;
 import :project.build;
 import :server.query_commands;
@@ -476,16 +477,6 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
 }
 
 Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& path) {
-    auto is_document_level = [](SymbolKind kind) {
-        return kind == SymbolKind::Namespace || kind == SymbolKind::Class ||
-               kind == SymbolKind::Struct || kind == SymbolKind::Union ||
-               kind == SymbolKind::Enum || kind == SymbolKind::Type || kind == SymbolKind::Field ||
-               kind == SymbolKind::EnumMember || kind == SymbolKind::Function ||
-               kind == SymbolKind::Method || kind == SymbolKind::Variable ||
-               kind == SymbolKind::Macro || kind == SymbolKind::Concept ||
-               kind == SymbolKind::Module || kind == SymbolKind::Operator ||
-               kind == SymbolKind::Attribute;
-    };
     auto file = indexed_file(ctx, path);
     if(!file) {
         return std::unexpected(file.error());
@@ -494,17 +485,27 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
     if(!*file) {
         return result;
     }
-    for(auto& located: ctx.query.definitions_in(**file)) {
-        if(!is_document_level(located.symbol.kind)) {
-            continue;
-        }
-        auto lines = lines_of(located.site);
+    auto source = ctx.query.serving(**file);
+    if(!source) {
+        return result;
+    }
+    // The outline the editor shows of a file it has not compiled; a
+    // function's locals are no part of it.
+    auto entries = feature::extract_index_entries(*source->shard);
+    auto outline = feature::index_outline(entries.decls, [&](index::SymbolHash hash) {
+        auto info = ctx.query.symbol_info(hash, **file);
+        return info && info->scope != index::SymbolScope::FileLocal ? info : std::nullopt;
+    });
+    for(auto& entry: outline) {
+        auto extent = source->site(entry.range);
+        auto name = source->site(entry.selection_range);
+        auto lines = lines_of(*extent);
         result.symbols.push_back({
-            .name = located.symbol.display_name(),
-            .kind = kind_name(located.symbol.kind),
+            .name = entry.symbol.display_name(),
+            .kind = kind_name(entry.symbol.kind),
             .start_line = lines.start,
             .end_line = lines.end,
-            .symbol = symbol_of(located),
+            .symbol = symbol_of({.symbol = entry.symbol, .site = *name, .extent = *extent}),
         });
     }
     return result;
