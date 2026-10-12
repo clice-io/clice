@@ -8,6 +8,7 @@ import :feature.feature;
 import :semantic.display;
 import :semantic.resolver;
 import :support.fuzzy_matcher;
+import :syntax.completion;
 
 namespace clice::feature {
 
@@ -125,6 +126,21 @@ bool rarely_accessed(const clang::NamedDecl* decl) {
     return kind == clang::DeclarationName::CXXOperatorName ||
            kind == clang::DeclarationName::CXXLiteralOperatorName ||
            kind == clang::DeclarationName::CXXConversionFunctionName;
+}
+
+/// The place of each field a designator in an initializer of `record`
+/// names, in declaration order; a field of an anonymous member by its own
+/// name.
+auto designator_order(const clang::RecordDecl* record) -> llvm::StringMap<std::uint32_t> {
+    llvm::StringMap<std::uint32_t> order;
+    for(auto* decl: record->decls()) {
+        if(llvm::isa<clang::FieldDecl, clang::IndirectFieldDecl>(decl)) {
+            if(auto name = llvm::cast<clang::NamedDecl>(decl)->getName(); !name.empty()) {
+                order.try_emplace(name, order.size());
+            }
+        }
+    }
+    return order;
 }
 
 /// The most open access along the paths of bases from `derived` to `base`;
@@ -377,6 +393,9 @@ struct Candidate {
     std::string return_type;
     bool deprecated = false;
     bool macro = false;
+
+    /// Breaks ties in score: a field's place in a designated initializer.
+    std::optional<std::uint32_t> order;
 };
 
 struct OverloadItem {
@@ -654,7 +673,11 @@ public:
                 item.filter_text = candidate.filter;
             }
             // Clients sort ascending; scores lie in (0, 2].
-            item.sort_text = std::format("{:.4f}", 2.0F - score);
+            auto sort_text = std::format("{:.4f}", 2.0F - score);
+            if(candidate.order) {
+                sort_text += std::format("{:05}", *candidate.order);
+            }
+            item.sort_text = std::move(sort_text);
             if(!candidate.signature.empty() || !candidate.return_type.empty()) {
                 protocol::CompletionItemLabelDetails details;
                 if(!candidate.signature.empty()) {
@@ -746,6 +769,35 @@ public:
             context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
         types::TemplateResolver resolver(sema.getASTContext());
         auto* naming = unchecked_naming_class(sema, context);
+        // In `{ .` the fields rank in declaration order, the order C++
+        // designates them in: there only those after the last one written
+        // may follow, while C leaves out only the ones written.
+        llvm::StringMap<std::uint32_t> field_order;
+        llvm::StringSet<> designated;
+        if(member_access && !context.getBaseExpr()) {
+            if(auto* record = llvm::dyn_cast_or_null<clang::RecordDecl>(
+                   clang::HeuristicResolver(sema.getASTContext())
+                       .resolveTypeToTagDecl(context.getBaseType()))) {
+                field_order = designator_order(record);
+            }
+            auto written = written_designators(content, prefix.typed.begin);
+            if(sema.getLangOpts().CPlusPlus) {
+                std::optional<std::uint32_t> last;
+                for(auto name: written) {
+                    if(auto it = field_order.find(name); it != field_order.end()) {
+                        last = std::max(last.value_or(0), it->second);
+                    }
+                }
+                for(auto& [name, order]: field_order) {
+                    if(last && order <= *last) {
+                        designated.insert(name);
+                    }
+                }
+            } else {
+                designated.insert(written.begin(), written.end());
+            }
+        }
+
         auto left_out = [&](const clang::CodeCompletionResult& candidate) {
             auto* declaration = candidate.Declaration;
             // A hidden declaration is not what its name means here.
@@ -759,6 +811,10 @@ public:
                 return true;
             }
             if(member_access && rarely_accessed(declaration)) {
+                return true;
+            }
+            if(auto* field = llvm::dyn_cast<clang::FieldDecl>(declaration);
+               field && designated.contains(field->getName())) {
                 return true;
             }
             // A using-declaration is named where it is, not where its target is.
@@ -849,6 +905,12 @@ public:
                 .filter = qualifier.empty() ? std::string() : name,
                 .deprecated = candidate.Availability == CXAvailability_Deprecated,
             };
+
+            if(auto* field = llvm::dyn_cast<clang::FieldDecl>(declaration)) {
+                if(auto it = field_order.find(field->getName()); it != field_order.end()) {
+                    item.order = it->second;
+                }
+            }
 
             bool is_callable = kind == protocol::CompletionItemKind::Function ||
                                kind == protocol::CompletionItemKind::Method ||

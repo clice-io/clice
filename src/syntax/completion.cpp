@@ -81,6 +81,52 @@ bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
     return start == operand.size() || !clang::isDigit(operand[start]);
 }
 
+std::vector<llvm::StringRef> written_designators(llvm::StringRef text, std::uint32_t offset) {
+    struct Group {
+        bool braces = false;
+        std::vector<llvm::StringRef> designators;
+    };
+
+    std::vector<Group> groups;
+    auto previous = clang::tok::unknown;
+    bool directive = false;
+    bool designator = false;
+    Lexer lexer(text);
+    for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= offset;
+        token = lexer.advance()) {
+        if(token.is_directive_hash()) {
+            directive = true;
+        }
+        if(directive) {
+            directive = !token.is_eod();
+            continue;
+        }
+        if(designator && token.is_identifier()) {
+            groups.back().designators.push_back(token.text(text));
+        }
+        designator = token.kind == clang::tok::period && !groups.empty() && groups.back().braces &&
+                     (previous == clang::tok::l_brace || previous == clang::tok::comma);
+        switch(token.kind) {
+            case clang::tok::l_brace: groups.push_back({.braces = true}); break;
+            case clang::tok::l_paren:
+            case clang::tok::l_square: groups.push_back({}); break;
+            case clang::tok::r_brace:
+            case clang::tok::r_paren:
+            case clang::tok::r_square:
+                if(!groups.empty()) {
+                    groups.pop_back();
+                }
+                break;
+            default: break;
+        }
+        previous = token.kind;
+    }
+    if(!designator) {
+        return {};
+    }
+    return std::move(groups.back().designators);
+}
+
 PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset) {
     // TODO: cache newline offsets from incremental text updates to avoid
     // the linear line-boundary scans on every completion trigger.

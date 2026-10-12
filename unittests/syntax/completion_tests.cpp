@@ -52,6 +52,50 @@ ZEST_CASE(CursorBeforeOperator) {
 
 };  // ZEST_SUITE(FollowsAccessOperator)
 
+ZEST_SUITE(WrittenDesignators) {
+
+auto designators(llvm::StringRef text, std::size_t offset = llvm::StringRef::npos) {
+    std::vector<std::string> names;
+    for(auto name: written_designators(text, std::min(offset, text.size()))) {
+        names.push_back(name.str());
+    }
+    return names;
+}
+
+ZEST_CASE(EarlierFields) {
+    ZEXPECT(designators("Size s = { .width = 800, .height{600}, .") ==
+            std::vector<std::string>{"width", "height"});
+}
+
+ZEST_CASE(NestedBraces) {
+    ZEXPECT(designators("Outer o = { .inner = { .x = 1, .") == std::vector<std::string>{"x"});
+    ZEXPECT(designators("Outer o = { .inner = { .x = 1 }, .") == std::vector<std::string>{"inner"});
+}
+
+ZEST_CASE(CommasInCalls) {
+    ZEXPECT(designators("f({ .a = g(1, .5), .") == std::vector<std::string>{"a"});
+}
+
+ZEST_CASE(ContinuedDesignator) {
+    ZEXPECT(designators("Outer o = { .inner = 1, .other.").empty());
+}
+
+ZEST_CASE(MemberAccess) {
+    ZEXPECT(designators("int v = { point.").empty());
+}
+
+ZEST_CASE(DirectiveBraces) {
+    ZEXPECT(designators("#define OPEN {\nSize s = { .width = 1, .") ==
+            std::vector<std::string>{"width"});
+}
+
+ZEST_CASE(TextAfterCursor) {
+    ZEXPECT(designators("Size s = { .width = 1, .height = 2 };", 24) ==
+            std::vector<std::string>{"width"});
+}
+
+};  // ZEST_SUITE(WrittenDesignators)
+
 ZEST_SUITE(DetectCompletionContext) {
 
 ZEST_CASE(IncludeAngled) {

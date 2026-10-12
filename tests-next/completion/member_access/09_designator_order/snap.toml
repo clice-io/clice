@@ -1,19 +1,17 @@
-[answers.order]
-wrong = "should rank the fields in declaration order, width, height, fullscreen, the order designators must follow (clangd#965)"
-
 [answers.order.completion]
 items = [
-    { label = "fullscreen", kind = "Field", detail = "bool" },
-    { label = "height", kind = "Field", detail = "int" },
     { label = "width", kind = "Field", detail = "int" },
+    { label = "height", kind = "Field", detail = "int" },
+    { label = "fullscreen", kind = "Field", detail = "bool" },
 ]
-
-[answers.after_width]
-wrong = "width is designated already: only height and fullscreen, in that order, may follow"
 
 [answers.after_width.completion]
 items = [
-    { label = "fullscreen", kind = "Field", detail = "bool" },
     { label = "height", kind = "Field", detail = "int" },
-    { label = "width", kind = "Field", detail = "int" },
+    { label = "fullscreen", kind = "Field", detail = "bool" },
+]
+
+[answers.after_height.completion]
+items = [
+    { label = "fullscreen", kind = "Field", detail = "bool" },
 ]

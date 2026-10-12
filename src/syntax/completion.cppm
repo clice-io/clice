@@ -52,6 +52,12 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
 /// access.
 bool follows_access_operator(llvm::StringRef text, std::uint32_t offset);
 
+/// The fields the braced initializer around `offset` designates already,
+/// where the text before `offset` ends in a `.` starting a designator of
+/// its own (`{ .width = 800, .`): the first name of each, in order. Empty
+/// anywhere else, after a `.` continuing a designator (`.inner.`) too.
+std::vector<llvm::StringRef> written_designators(llvm::StringRef text, std::uint32_t offset);
+
 /// The names an `import` in the unit whose module declaration `unit`
 /// scanned can take that start with `prefix`: the graph's other provided
 /// modules, and the partitions of the unit's own module but its own,

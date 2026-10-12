@@ -1,0 +1,5 @@
+[answers.after_height.completion]
+items = [
+    { label = "width", kind = "Field", detail = "int" },
+    { label = "fullscreen", kind = "Field", detail = "int" },
+]
