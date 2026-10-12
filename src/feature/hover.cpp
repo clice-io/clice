@@ -25,17 +25,11 @@ using PassType = HoverInfo::PassType;
 using PassMode = HoverInfo::PassMode;
 
 auto underlying_function(const clang::Decl* decl) -> const clang::FunctionDecl* {
-    /// Extract lambda from variables.
+    /// A variable that is a lambda, or refers to one, calls it; a pointer
+    /// to a lambda is a pointer.
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
-        auto type = var->getType();
-        if(!type.isNull()) {
-            while(!type->getPointeeType().isNull()) {
-                type = type->getPointeeType();
-            }
-
-            if(const auto* record = type->getAsCXXRecordDecl()) {
-                return record->getLambdaCallOperator();
-            }
+        if(const auto* record = var->getType().getNonReferenceType()->getAsCXXRecordDecl()) {
+            return record->getLambdaCallOperator();
         }
     }
 
@@ -277,6 +271,20 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
     return "";
 }
 
+/// The kind a card names its declaration by. Unlike a token's kind, an
+/// operator function is a function or a method like any other, and a
+/// template is the entity it declares.
+auto card_kind(const clang::NamedDecl* decl) -> SymbolKind {
+    if(const auto* template_decl = llvm::dyn_cast<clang::TemplateDecl>(decl);
+       template_decl && template_decl->getTemplatedDecl()) {
+        decl = template_decl->getTemplatedDecl();
+    }
+    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        return function->isCXXClassMember() ? SymbolKind::Method : SymbolKind::Function;
+    }
+    return SymbolKind::from(decl);
+}
+
 /// Generate a hover info given the declaration.
 auto decl_hover(const clang::NamedDecl* decl,
                 const display::Options& options,
@@ -304,7 +312,10 @@ auto decl_hover(const clang::NamedDecl* decl,
         info.documentation = synthesize_documentation(decl);
     }
 
-    info.kind = SymbolKind::from(decl);
+    info.kind = card_kind(decl);
+    if(std::string message; decl->getMostRecentDecl()->isDeprecated(&message)) {
+        info.deprecation = std::move(message);
+    }
 
     /// Fill in template params.
     if(const clang::TemplateDecl* template_decl = decl->getDescribedTemplate()) {
@@ -355,7 +366,12 @@ auto decl_hover(const clang::NamedDecl* decl,
         }
     }
 
-    info.definition = display::definition(decl, options, [&](clang::SourceRange range) {
+    /// A structured binding is declared by the whole declaration.
+    const clang::Decl* declaration = decl;
+    if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(decl)) {
+        declaration = binding->getDecomposedDecl();
+    }
+    info.definition = display::definition(declaration, options, [&](clang::SourceRange range) {
         return unit.expanded_tokens(range).size();
     });
     if(decls::is_exported(decl)) {
@@ -670,6 +686,7 @@ auto attr_hover(const clang::Attr* attr, clang::ASTContext& context) -> std::opt
     }
 
     info.documentation = clang::Attr::getDocumentation(attr->getKind()).str();
+    info.documentation_syntax = HoverInfo::DocumentationSyntax::ReStructuredText;
     return info;
 }
 
@@ -754,6 +771,73 @@ auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
     return std::nullopt;
 }
 
+/// The tokens the macro reference at `name` expands to, spelled and joined.
+/// Written in another macro's arguments, it is expanded within that macro's
+/// top-level expansion, whose tokens carry the chain of expansions they
+/// went through.
+auto expansion_preview(CompilationUnitRef unit, clang::SourceLocation name) -> std::string {
+    auto& sources = unit.context().getSourceManager();
+
+    /// Whether the location lies in the reference's expansion.
+    auto within = [&](clang::SourceLocation location) {
+        while(location.isMacroID()) {
+            const auto& expansion =
+                sources.getSLocEntry(sources.getFileID(location)).getExpansion();
+            if(!expansion.isMacroArgExpansion() && expansion.getExpansionLocStart() == name) {
+                return true;
+            }
+            location = expansion.getExpansionLocStart();
+        }
+        return false;
+    };
+
+    /// The token as the reference's expansion produced it, invalid if it
+    /// comes from elsewhere. An argument substituted outside that
+    /// expansion is the token it was before: the macro whose arguments
+    /// hold the reference may copy it for each use of its parameter.
+    auto produced = [&](this auto& self, clang::SourceLocation token) -> clang::SourceLocation {
+        for(auto location = token; location.isMacroID();) {
+            const auto& expansion =
+                sources.getSLocEntry(sources.getFileID(location)).getExpansion();
+            if(expansion.isMacroArgExpansion()) {
+                if(!within(expansion.getExpansionLocStart())) {
+                    return self(sources.getImmediateSpellingLoc(location));
+                }
+            } else if(expansion.getExpansionLocStart() == name) {
+                return token;
+            }
+            location = expansion.getExpansionLocStart();
+        }
+        return {};
+    };
+
+    std::string preview;
+    constexpr std::size_t preview_limit = 1024;
+    llvm::DenseSet<clang::SourceLocation> seen;
+    for(auto& expansion: unit.expansions_overlapping(unit.spelled_tokens_touch(name))) {
+        for(const auto& token: expansion.expanded) {
+            auto at = produced(token.location());
+            if(at.isInvalid() || !seen.insert(at).second) {
+                continue;
+            }
+            if(!preview.empty()) {
+                preview += ' ';
+            }
+            /// Lex at the token's spelling site — getSpelling stays at the
+            /// depth it is given, and only the spelling carries the written
+            /// bytes.
+            auto spelling = unit.token_spelling(unit.spelling_location(token.location()));
+            if(auto remaining = preview_limit - preview.size(); spelling.size() >= remaining) {
+                preview.append(spelling, 0, remaining);
+                preview += " ...";
+                return preview;
+            }
+            preview += spelling;
+        }
+    }
+    return preview;
+}
+
 /// A macro name at the cursor, rendered from the preprocessor record —
 /// macro semantics never reach the AST. The card shows the `#define` text,
 /// plus a preview of the expanded tokens at expansion sites.
@@ -789,34 +873,10 @@ auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional
         info.definition = "#define " + def_text.str();
 
         if(macro.kind == MacroRef::Kind::Ref) {
-            for(auto& expansion:
-                unit.expansions_overlapping(unit.spelled_tokens_touch(macro.loc))) {
-                if(expansion.spelled.front().location() != macro.loc ||
-                   expansion.expanded.empty()) {
-                    continue;
-                }
-                /// A conditional reference (#ifdef) never reaches here: it
-                /// expands nothing, so no expansion starts at its token.
-                std::string preview;
-                constexpr std::size_t preview_limit = 1024;
-                for(const auto& token: expansion.expanded) {
-                    if(!preview.empty()) {
-                        preview += ' ';
-                    }
-                    /// Lex at the token's spelling site — getSpelling stays
-                    /// at the depth it is given, and only the spelling
-                    /// carries the written bytes.
-                    auto spelling = unit.token_spelling(unit.spelling_location(token.location()));
-                    if(auto remaining = preview_limit - preview.size();
-                       spelling.size() >= remaining) {
-                        preview.append(spelling, 0, remaining);
-                        preview += " ...";
-                        break;
-                    }
-                    preview += spelling;
-                }
+            /// A conditional reference (#ifdef) expands nothing: no expanded
+            /// token comes from it.
+            if(auto preview = expansion_preview(unit, macro.loc); !preview.empty()) {
                 info.definition += "\n\n// Expands to\n" + preview;
-                break;
             }
         }
         return info;
@@ -1030,6 +1090,9 @@ auto symbol_kind_string(SymbolKind kind) -> llvm::StringRef {
         case SymbolKind::Concept: return "concept";
         case SymbolKind::Field: return "field";
         case SymbolKind::EnumMember: return "enumerator";
+        /// Only an index card has it: whether the operator is a member is
+        /// not stored.
+        case SymbolKind::Operator:
         case SymbolKind::Function: return "function";
         case SymbolKind::Method: return "method";
         case SymbolKind::Variable: return "variable";
@@ -1045,7 +1108,6 @@ auto symbol_kind_string(SymbolKind kind) -> llvm::StringRef {
         case SymbolKind::Directive:
         case SymbolKind::Header:
         case SymbolKind::Attribute:
-        case SymbolKind::Operator:
         case SymbolKind::Paren:
         case SymbolKind::Bracket:
         case SymbolKind::Brace:
@@ -1147,6 +1209,195 @@ bool is_hard_line_break_indicator(llvm::StringRef rest) {
 bool is_hard_line_break_after(llvm::StringRef line, llvm::StringRef rest) {
     /// Should we also consider whether the line is short?
     return punctuation_indicates_line_break(line) || is_hard_line_break_indicator(rest);
+}
+
+/// The text of inline reStructuredText: ``literals`` as code, links and
+/// cross references (`text <target>`_, :ref:`text <target>`) as their text.
+void parse_rst_inline(llvm::StringRef text, markup::Paragraph& out) {
+    while(!text.empty()) {
+        auto tick = text.find('`');
+        if(tick == llvm::StringRef::npos) {
+            out.append_text(text);
+            return;
+        }
+
+        if(text.substr(tick).starts_with("``")) {
+            auto end = text.find("``", tick + 2);
+            if(end == llvm::StringRef::npos) {
+                out.append_text(text);
+                return;
+            }
+            out.append_text(text.substr(0, tick));
+            out.append_code(text.slice(tick + 2, end));
+            text = text.substr(end + 2);
+            continue;
+        }
+
+        auto end = text.find('`', tick + 1);
+        if(end == llvm::StringRef::npos) {
+            out.append_text(text);
+            return;
+        }
+
+        /// A role names its kind before the backtick, as in :ref:`...`.
+        auto before = text.substr(0, tick);
+        bool role = false;
+        if(before.ends_with(":")) {
+            auto start = before.drop_back().rfind(':');
+            if(start != llvm::StringRef::npos &&
+               llvm::all_of(before.slice(start + 1, before.size() - 1),
+                            [](char c) { return llvm::isAlpha(c) || c == '-'; })) {
+                before = before.substr(0, start);
+                role = true;
+            }
+        }
+        out.append_text(before);
+
+        auto content = text.slice(tick + 1, end);
+        text = text.substr(end + 1);
+        bool link = text.starts_with("_");
+        while(text.consume_front("_")) {}
+
+        if(!role && !link) {
+            /// Interpreted text without a role: the manual writes flags and
+            /// names this way.
+            out.append_code(content);
+            continue;
+        }
+        if(content.ends_with(">")) {
+            if(auto target = content.rfind('<'); target != llvm::StringRef::npos) {
+                content = content.substr(0, target).rtrim();
+            }
+        }
+        out.append_text(content);
+    }
+}
+
+/// The fence language of a code-block directive's argument.
+auto rst_code_language(llvm::StringRef argument) -> std::string {
+    if(argument == "c++") {
+        return "cpp";
+    }
+    if(argument == "objective-c") {
+        return "objc";
+    }
+    if(argument == "none" || argument == "text") {
+        return "";
+    }
+    return argument.str();
+}
+
+/// Renders clang's attribute documentation, which is reStructuredText
+/// written for its manual: paragraphs, list items, code blocks and the
+/// note and warning directives.
+void parse_rst(llvm::StringRef input, markup::Document& output) {
+    llvm::SmallVector<llvm::StringRef> lines;
+    input.split(lines, '\n');
+
+    auto indent_of = [](llvm::StringRef line) {
+        return line.size() - line.ltrim(' ').size();
+    };
+
+    /// The lines after `from` indented deeper than `indent`, blank lines
+    /// among them, as a block without its common indentation.
+    auto take_block = [&](std::size_t& from, std::size_t indent) {
+        std::size_t end = from;
+        std::size_t common = std::string::npos;
+        for(std::size_t i = from; i < lines.size(); i += 1) {
+            if(lines[i].trim().empty()) {
+                continue;
+            }
+            if(indent_of(lines[i]) <= indent) {
+                break;
+            }
+            common = std::min(common, indent_of(lines[i]));
+            end = i + 1;
+        }
+
+        std::string block;
+        for(std::size_t i = from; i < end; i += 1) {
+            if(!block.empty() || !lines[i].trim().empty()) {
+                block += lines[i].trim().empty() ? "" : lines[i].substr(common).rtrim();
+                block += '\n';
+            }
+        }
+        from = end;
+        return llvm::StringRef(block).rtrim().str();
+    };
+
+    std::string paragraph;
+    bool literal_follows = false;
+    auto flush = [&] {
+        llvm::StringRef text = llvm::StringRef(paragraph).trim();
+        if(text.ends_with("::")) {
+            /// A literal block follows: "Example::" reads "Example:", and
+            /// "Example ::" or a lone "::" lose the colons.
+            literal_follows = true;
+            text = text.drop_back();
+            if(text == ":" || text.ends_with(" :")) {
+                text = text.drop_back().rtrim();
+            }
+        }
+        if(!text.empty()) {
+            parse_rst_inline(text, output.add_paragraph());
+        }
+        paragraph.clear();
+    };
+
+    std::size_t paragraph_indent = 0;
+    for(std::size_t i = 0; i < lines.size();) {
+        auto line = lines[i];
+        auto text = line.trim();
+        auto indent = indent_of(line);
+        if(text.empty()) {
+            flush();
+            i += 1;
+            continue;
+        }
+
+        if(literal_follows) {
+            literal_follows = false;
+            if(indent > paragraph_indent) {
+                output.add_code_block(take_block(i, paragraph_indent), "");
+                continue;
+            }
+        }
+
+        if(text.consume_front(".. ")) {
+            flush();
+            auto [directive, argument] = text.split("::");
+            argument = argument.trim();
+            i += 1;
+            auto body = take_block(i, indent);
+            if(directive == "code-block" || directive == "code") {
+                output.add_code_block(std::move(body), rst_code_language(argument));
+            } else if(directive == "note" || directive == "warning") {
+                paragraph =
+                    (directive == "note" ? "Note: " : "Warning: ") + argument.str() + " " + body;
+                flush();
+            }
+            continue;
+        }
+
+        /// A section title is underlined; the title stays a paragraph.
+        if(text.size() >= 3 && llvm::all_equal(text) &&
+           llvm::StringRef("=-~^*").contains(text[0])) {
+            flush();
+            i += 1;
+            continue;
+        }
+
+        bool item = text.starts_with("- ") || text.starts_with("* ") || text.starts_with("#. ") ||
+                    (llvm::isDigit(text[0]) && text.drop_while(llvm::isDigit).starts_with(". "));
+        if(item || paragraph.empty()) {
+            flush();
+            paragraph_indent = indent;
+        }
+        paragraph += text;
+        paragraph += ' ';
+        i += 1;
+    }
+    flush();
 }
 
 /// Reformat the definition code with clang-format to get a consistent
@@ -1254,6 +1505,13 @@ markup::Document HoverInfo::present() const {
     /// Put a linebreak after header to increase readability.
     output.add_ruler();
 
+    if(deprecation) {
+        auto& paragraph = output.add_paragraph().append_text("Deprecated");
+        if(!deprecation->empty()) {
+            paragraph.append_text(": " + *deprecation);
+        }
+    }
+
     /// Print types on their own lines to reduce chances of getting line-wrapped
     /// by the editor, as they might be long.
     if(return_type) {
@@ -1325,7 +1583,11 @@ markup::Document HoverInfo::present() const {
     }
 
     if(!documentation.empty()) {
-        parse_documentation(documentation, output);
+        if(documentation_syntax == DocumentationSyntax::ReStructuredText) {
+            parse_rst(documentation, output);
+        } else {
+            parse_documentation(documentation, output);
+        }
     }
 
     if(!definition.empty()) {

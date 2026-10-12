@@ -77,13 +77,13 @@ long identifier
 '''
 range = "new Holder<T>(⟦identifier⟧);"
 
-[answers.skip_inline_anon_ns.hover]
+[answers.unwritten_namespaces.hover]
 markdown = '''
 ### class `Response`
 
 ---
 ```cpp
-// In namespace product::api::detail
+// In namespace product::api::(anonymous)::detail
 class Response {}
 ```
 '''

@@ -1,0 +1,63 @@
+[answers.type.hover]
+markdown = '''
+### struct `LegacyConfig`
+
+---
+Deprecated
+
+---
+```cpp
+// In namespace deprecation_forms
+struct LegacyConfig {}
+```
+'''
+range = "⟦LegacyConfig⟧ config;"
+
+[answers.enumerator.hover]
+markdown = '''
+### enumerator `safe`
+
+---
+Deprecated: use fast
+Type: `enum deprecation_forms::Mode`
+Value = `1`
+
+---
+```cpp
+// In Mode
+safe
+```
+'''
+range = "Mode mode = Mode::⟦safe⟧;"
+
+[answers.gnu_spelling.hover]
+markdown = '''
+### variable `limit_v1`
+
+---
+Deprecated: use limit_v2
+Type: `int`
+
+---
+```cpp
+// In namespace deprecation_forms
+extern int limit_v1
+```
+'''
+range = "int limit = ⟦limit_v1⟧;"
+
+[answers.redeclared.hover]
+markdown = '''
+### function `reset`
+
+---
+Deprecated: use reset_all
+→ `void`
+
+---
+```cpp
+// In namespace deprecation_forms
+void reset()
+```
+'''
+range = "⟦reset⟧();"

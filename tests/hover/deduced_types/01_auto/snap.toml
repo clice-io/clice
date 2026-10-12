@@ -53,16 +53,13 @@ long *
 '''
 range = "⟦auto⟧ fifth = &source;"
 
-[answers.lambda]
-wrong = "the closure type prints as class(lambda)"
-
 [answers.lambda.hover]
 markdown = '''
 ### type `auto`
 
 ---
 ```cpp
-class(lambda)
+(lambda)
 ```
 '''
 range = "⟦auto⟧ sixth = [](long value) { return value; };"

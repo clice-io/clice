@@ -1,17 +1,17 @@
-[answers.binding]
-wrong = "a structured binding's card shows neither its scope nor its declaration, unlike other variables"
-
 [answers.binding.hover]
 markdown = '''
 ### variable `first`
 
 ---
 Type: `int`
+
+---
+```cpp
+// In bindings
+auto [first, second] = make()
+```
 '''
 range = "auto [⟦first⟧, second] = make();"
-
-[answers.binding_use]
-wrong = "a structured binding's card shows neither its scope nor its declaration, unlike other variables"
 
 [answers.binding_use.hover]
 markdown = '''
@@ -19,6 +19,12 @@ markdown = '''
 
 ---
 Type: `int`
+
+---
+```cpp
+// In bindings
+auto [first, second] = make()
+```
 '''
 range = "(void)⟦first⟧;"
 

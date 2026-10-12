@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "symbols",
   "title": "Anonymous namespaces",
-  "summary": "The scope of a card leaves anonymous namespaces out",
+  "summary": "The scope of a card names the anonymous namespace a name is declared in",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#436"
   ],
@@ -37,9 +37,8 @@
           "label": "anon_var",
           "marker": "anon_var",
           "value": {
-            "wrong": "the scope line leaves out the anonymous namespace (clangd#436)",
             "hover": {
-              "markdown": "### variable `hidden`\n\n---\nType: `int`\nValue = `1`\n\n---\n```cpp\nint hidden = 1\n```",
+              "markdown": "### variable `hidden`\n\n---\nType: `int`\nValue = `1`\n\n---\n```cpp\n// In namespace (anonymous)\nint hidden = 1\n```",
               "range": {
                 "$place": "int ⟦hidden⟧ = 1;",
                 "path": "main.cpp",
@@ -61,9 +60,8 @@
           "label": "nested_anon_var",
           "marker": "nested_anon_var",
           "value": {
-            "wrong": "the scope line leaves out the anonymous namespace (clangd#436)",
             "hover": {
-              "markdown": "### variable `nested`\n\n---\nType: `int`\nValue = `2`\n\n---\n```cpp\n// In namespace outer\nint nested = 2\n```",
+              "markdown": "### variable `nested`\n\n---\nType: `int`\nValue = `2`\n\n---\n```cpp\n// In namespace outer::(anonymous)\nint nested = 2\n```",
               "range": {
                 "$place": "int ⟦nested⟧ = 2;",
                 "path": "main.cpp",

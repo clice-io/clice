@@ -1,6 +1,6 @@
 # Declaration and definition
 
-The declaration's `///` comment shows at the declaration and the definition, unless the definition is hovered first
+The declaration's `///` comment shows at the declaration and at the definition
 
-Hovered first after a change, the definition's plain `//` comment takes its
-place at both.
+The definition's plain `//` comment does not take its place, whichever of
+the two is hovered first.

@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "Declaration and definition",
-  "summary": "The declaration's `///` comment shows at the declaration and the definition, unless the definition is hovered first",
-  "prose": "Hovered first after a change, the definition's plain `//` comment takes its\nplace at both.",
-  "status": "partial",
+  "summary": "The declaration's `///` comment shows at the declaration and at the definition",
+  "prose": "The definition's plain `//` comment does not take its place, whichever of\nthe two is hovered first.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -86,9 +86,8 @@
           "label": "at_def",
           "marker": "at_def",
           "value": {
-            "wrong": "hovered first, the definition's plain comment replaces the declaration's documentation",
             "hover": {
-              "markdown": "### function `process`\n\n---\n→ `void`\nParameters:\n- `int x`\n\nInternal implementation note.\n\n---\n```cpp\n// In namespace decldef\nvoid process(int x)\n```",
+              "markdown": "### function `process`\n\n---\n→ `void`\nParameters:\n- `int x`\n\nPublic API documentation.\n\n---\n```cpp\n// In namespace decldef\nvoid process(int x)\n```",
               "range": {
                 "$place": "void ⟦process⟧(int x) { (void)x; }",
                 "path": "main.cpp",
@@ -110,9 +109,8 @@
           "label": "at_decl",
           "marker": "at_decl",
           "value": {
-            "wrong": "after the definition was hovered, its plain comment replaces the declaration's documentation here too",
             "hover": {
-              "markdown": "### function `process`\n\n---\n→ `void`\nParameters:\n- `int x`\n\nInternal implementation note.\n\n---\n```cpp\n// In namespace decldef\nvoid process(int x)\n```",
+              "markdown": "### function `process`\n\n---\n→ `void`\nParameters:\n- `int x`\n\nPublic API documentation.\n\n---\n```cpp\n// In namespace decldef\nvoid process(int x)\n```",
               "range": {
                 "$place": "void ⟦process⟧(int x);",
                 "path": "main.cpp",

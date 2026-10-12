@@ -1,8 +1,8 @@
 import { test } from "@clice/tools/testing";
 
-// Clang caches the comment it finds per redeclaration chain, so the first
-// hover after a build decides the card at every declaration: two servers,
-// one order each.
+// Clang caches the comment it finds per redeclaration chain: the card must
+// not depend on which declaration is hovered first after a build. Two
+// servers, one order each.
 test("declaration first", async (t) => {
     const s = await t.start();
     s.open("main.cpp");

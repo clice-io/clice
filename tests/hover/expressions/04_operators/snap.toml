@@ -1,9 +1,6 @@
-[answers.operator_new]
-wrong = "the heading names no kind for an operator function"
-
 [answers.operator_new.hover]
 markdown = '''
-### `operator new`
+### method `operator new`
 
 ---
 → `void *`
@@ -18,12 +15,9 @@ public: static void *operator new(unsigned long count)
 '''
 range = "ArenaObject* object = ⟦new⟧ ArenaObject;"
 
-[answers.operator_delete]
-wrong = "the heading names no kind for an operator function"
-
 [answers.operator_delete.hover]
 markdown = '''
-### `operator delete`
+### method `operator delete`
 
 ---
 → `void`
@@ -38,12 +32,9 @@ public: static void operator delete(void *memory) noexcept
 '''
 range = "⟦delete⟧ object;"
 
-[answers.global_new]
-wrong = "the heading names no kind for an operator function"
-
 [answers.global_new.hover]
 markdown = '''
-### `operator new`
+### function `operator new`
 
 ---
 → `void *`
@@ -73,12 +64,9 @@ public: Record(long)
 '''
 range = "Record ⟦direct⟧(5);"
 
-[answers.op_call]
-wrong = "the heading names no kind for an operator function"
-
 [answers.op_call.hover]
 markdown = '''
-### `operator()`
+### method `operator()`
 
 ---
 → `int`
@@ -93,12 +81,9 @@ public: int operator()(int row)
 '''
 range = "return ⟦table⟧(3) + table[4];"
 
-[answers.op_subscript]
-wrong = "the heading names no kind for an operator function"
-
 [answers.op_subscript.hover]
 markdown = '''
-### `operator[]`
+### method `operator[]`
 
 ---
 → `int`
@@ -113,12 +98,9 @@ public: int operator[](int row)
 '''
 range = "return table(3) + ⟦table⟧[4];"
 
-[answers.spaceship_neq]
-wrong = "the heading names no kind for an operator function"
-
 [answers.spaceship_neq.hover]
 markdown = '''
-### `operator==`
+### method `operator==`
 
 ---
 → `bool`

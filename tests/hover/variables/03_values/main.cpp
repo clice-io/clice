@@ -51,7 +51,7 @@ class Response {};
 }
 }
 void receive() {
-    product::api::detail::Resp§(skip_inline_anon_ns)onse response;
+    product::api::detail::Resp§(unwritten_namespaces)onse response;
 }
 
 namespace incomplete_template_argument {

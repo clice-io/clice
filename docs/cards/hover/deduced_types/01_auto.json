@@ -5,7 +5,7 @@
   "title": "`auto`",
   "summary": "Hovering `auto` shows the type it stands for, or that it is not deduced yet in a template",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -204,9 +204,8 @@
           "label": "lambda",
           "marker": "lambda",
           "value": {
-            "wrong": "the closure type prints as class(lambda)",
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nclass(lambda)\n```",
+              "markdown": "### type `auto`\n\n---\n```cpp\n(lambda)\n```",
               "range": {
                 "$place": "⟦auto⟧ sixth = [](long value) { return value; };",
                 "path": "main.cpp",

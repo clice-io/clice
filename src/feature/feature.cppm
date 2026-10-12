@@ -186,6 +186,19 @@ struct HoverInfo {
 
     std::string documentation;
 
+    enum class DocumentationSyntax : std::uint8_t {
+        /// A comment from the source.
+        Comment,
+        /// Clang's documentation of an attribute.
+        ReStructuredText,
+    };
+
+    DocumentationSyntax documentation_syntax = DocumentationSyntax::Comment;
+
+    /// Set for a deprecated symbol: the message its deprecation gives,
+    /// empty when it gives none.
+    std::optional<std::string> deprecation;
+
     /// Source code containing the definition of the symbol.
     std::string definition;
 

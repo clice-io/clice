@@ -13,15 +13,12 @@ template <typename T> struct Box {}
 '''
 range = "⟦Box⟧ picked(42);"
 
-[answers.ctad_var]
-wrong = "the aka repeats the same type, only qualified with its namespace"
-
 [answers.ctad_var.hover]
 markdown = '''
 ### variable `picked`
 
 ---
-Type: `Box<int> (aka ctad_arguments::Box<int>)`
+Type: `Box<int>`
 
 ---
 ```cpp
