@@ -159,7 +159,7 @@ first on its include path the header reads empty, and `wrap/prelude.h`,
 force-included, imports `alpha` and defines the macros its headers did.
 
 ```case
-tests-next/modularize/libraries/01_one_library
+tests/modularize/libraries/01_one_library
 ```
 
 <!-- END CAPABILITY -->
@@ -182,7 +182,7 @@ The header goes; the partition `app.core:text` takes its place, and the
 primary interface `app/core/module.cppm` re-exports it.
 
 ```case
-tests-next/modularize/program/01_one_module
+tests/modularize/program/01_one_module
 ```
 
 <!-- END CAPABILITY -->

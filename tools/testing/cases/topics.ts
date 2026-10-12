@@ -1,4 +1,4 @@
-/// The directories of tests-next/: its topics (tests-next/README.md, Topics)
+/// The directories of tests/: its topics (tests/README.md, Topics)
 /// and the suites beside them. Any other directory there is an error.
 
 /// Each topic's family: what a client answers about code, how the server

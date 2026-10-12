@@ -13,7 +13,7 @@
 列出所有重载，并标记光标所在实参对应的参数
 
 ```case
-tests-next/signature_help/overload_signatures/01_overloads_by_arity
+tests/signature_help/overload_signatures/01_overloads_by_arity
 ```
 
 <!-- END CAPABILITY -->
@@ -25,7 +25,7 @@ tests-next/signature_help/overload_signatures/01_overloads_by_arity
 在标签中标记光标所在实参绑定的参数
 
 ```case
-tests-next/signature_help/overload_signatures/03_active_parameter
+tests/signature_help/overload_signatures/03_active_parameter
 ```
 
 <!-- END CAPABILITY -->
@@ -39,7 +39,7 @@ tests-next/signature_help/overload_signatures/03_active_parameter
 标签省略了末尾的 `const`，因此无法区分两者。
 
 ```case
-tests-next/signature_help/overload_signatures/04_const_overloads
+tests/signature_help/overload_signatures/04_const_overloads
 ```
 
 <!-- END CAPABILITY -->
@@ -74,7 +74,7 @@ tests-next/signature_help/overload_signatures/04_const_overloads
 调用构造函数时会列出构造函数，不显示返回类型；使用花括号进行聚合初始化时会列出字段
 
 ```case
-tests-next/signature_help/call_contexts/01_constructors
+tests/signature_help/call_contexts/01_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -86,7 +86,7 @@ tests-next/signature_help/call_contexts/01_constructors
 通过函数指针调用时，会显示其类型声明中写出的参数名
 
 ```case
-tests-next/signature_help/call_contexts/02_function_pointers
+tests/signature_help/call_contexts/02_function_pointers
 ```
 
 <!-- END CAPABILITY -->
@@ -98,7 +98,7 @@ tests-next/signature_help/call_contexts/02_function_pointers
 模板参数会显示为签名，类模板的签名以其类别结尾，而不是返回类型
 
 ```case
-tests-next/signature_help/call_contexts/03_template_arguments
+tests/signature_help/call_contexts/03_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -110,7 +110,7 @@ tests-next/signature_help/call_contexts/03_template_arguments
 在嵌套调用中，签名帮助会针对光标所在的最内层调用显示
 
 ```case
-tests-next/signature_help/call_contexts/04_nested_calls
+tests/signature_help/call_contexts/04_nested_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -122,7 +122,7 @@ tests-next/signature_help/call_contexts/04_nested_calls
 调用对象时会显示其 `operator()` 重载
 
 ```case
-tests-next/signature_help/call_contexts/05_functors
+tests/signature_help/call_contexts/05_functors
 ```
 
 <!-- END CAPABILITY -->
@@ -134,7 +134,7 @@ tests-next/signature_help/call_contexts/05_functors
 调用 Lambda 时，会显示其参数，并使用名称 `operator()`，而不是 Lambda 自身的名称
 
 ```case
-tests-next/signature_help/call_contexts/06_lambdas
+tests/signature_help/call_contexts/06_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -148,7 +148,7 @@ new 表达式中的构造函数实参触发签名帮助
 使用圆括号时，会列出构造函数；使用花括号时，目前还不会显示任何内容。
 
 ```case
-tests-next/signature_help/call_contexts/07_new_expressions
+tests/signature_help/call_contexts/07_new_expressions
 ```
 
 <!-- END CAPABILITY -->
@@ -160,7 +160,7 @@ tests-next/signature_help/call_contexts/07_new_expressions
 重载的 `operator[]` 目前还不提供签名帮助
 
 ```case
-tests-next/signature_help/call_contexts/08_subscripts
+tests/signature_help/call_contexts/08_subscripts
 ```
 
 <!-- END CAPABILITY -->
@@ -174,7 +174,7 @@ tests-next/signature_help/call_contexts/08_subscripts
 只显示隐式拷贝构造函数和移动构造函数，不显示由 `using Base::Base` 引入且调用实际使用的 `Base(int, int)`。
 
 ```case
-tests-next/signature_help/call_contexts/09_inherited_constructors
+tests/signature_help/call_contexts/09_inherited_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -186,7 +186,7 @@ tests-next/signature_help/call_contexts/09_inherited_constructors
 目前还不为函数式宏的实参提供签名帮助
 
 ```case
-tests-next/signature_help/call_contexts/10_macros
+tests/signature_help/call_contexts/10_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -206,7 +206,7 @@ tests-next/signature_help/call_contexts/10_macros
 带有默认值的参数会在标签中显示其默认值
 
 ```case
-tests-next/signature_help/parameters/01_default_arguments
+tests/signature_help/parameters/01_default_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -220,7 +220,7 @@ tests-next/signature_help/parameters/01_default_arguments
 光标移到具名参数之后的实参上时，不会标记任何参数，标签中也没有提示该函数还能接受更多实参。
 
 ```case
-tests-next/signature_help/parameters/02_c_variadics
+tests/signature_help/parameters/02_c_variadics
 ```
 
 <!-- END CAPABILITY -->
@@ -232,7 +232,7 @@ tests-next/signature_help/parameters/02_c_variadics
 参数包按模板声明中的写法显示，且仅在光标位于其第一个实参上时才会标记
 
 ```case
-tests-next/signature_help/parameters/03_parameter_packs
+tests/signature_help/parameters/03_parameter_packs
 ```
 
 <!-- END CAPABILITY -->
@@ -246,7 +246,7 @@ C++23 的 `this` 参数会显示在标签中，且光标位于第一个实参上
 调用成员函数时所用的对象不是实参，但标签仍会列出 `this Shape &self`，并在光标位于 `dx` 对应的实参上时标记它。
 
 ```case
-tests-next/signature_help/parameters/05_explicit_object_parameters
+tests/signature_help/parameters/05_explicit_object_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -258,7 +258,7 @@ tests-next/signature_help/parameters/05_explicit_object_parameters
 将实参转发给构造函数的调用会显示用于转发的参数包，而非构造函数的形参
 
 ```case
-tests-next/signature_help/parameters/06_forwarding
+tests/signature_help/parameters/06_forwarding
 ```
 
 <!-- END CAPABILITY -->

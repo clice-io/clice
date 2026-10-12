@@ -3,7 +3,7 @@
 Clickable links from source directives to their resolved target files.
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/document_links/. Do not edit the regions between the
+     in tests/document_links/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@ The header name of an `#include`, and the path a `__has_include` checks, link to
 Each include links its header name to the file it resolves to
 
 ```case
-tests-next/document_links/include_directives/01_header_paths
+tests/document_links/include_directives/01_header_paths
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests-next/document_links/include_directives/01_header_paths
 `#include MACRO` links the macro name to the header it expands to
 
 ```case
-tests-next/document_links/include_directives/03_macro_include
+tests/document_links/include_directives/03_macro_include
 ```
 
 <!-- END CAPABILITY -->
@@ -47,7 +47,7 @@ Here `first/wrap.h` shadows `second/wrap.h`, and its `#include_next` reaches
 the second copy.
 
 ```case
-tests-next/document_links/include_directives/04_include_next
+tests/document_links/include_directives/04_include_next
 ```
 
 <!-- END CAPABILITY -->
@@ -59,7 +59,7 @@ tests-next/document_links/include_directives/04_include_next
 The checked path links to the file it probes
 
 ```case
-tests-next/document_links/include_directives/05_has_include
+tests/document_links/include_directives/05_has_include
 ```
 
 <!-- END CAPABILITY -->
@@ -79,7 +79,7 @@ The resource of an `#embed`, and the path a `__has_embed` checks, link to the fi
 The resource path links to the embedded file
 
 ```case
-tests-next/document_links/embed_directives/01_embed
+tests/document_links/embed_directives/01_embed
 ```
 
 <!-- END CAPABILITY -->
@@ -91,7 +91,7 @@ tests-next/document_links/embed_directives/01_embed
 The checked path links to the probed resource
 
 ```case
-tests-next/document_links/embed_directives/02_has_embed
+tests/document_links/embed_directives/02_has_embed
 ```
 
 <!-- END CAPABILITY -->
@@ -111,7 +111,7 @@ The module name in an `import` links to the file that declares the module.
 Each imported module name links to the file that declares the module
 
 ```case
-tests-next/document_links/module_declarations/01_module_imports
+tests/document_links/module_declarations/01_module_imports
 ```
 
 <!-- END CAPABILITY -->
@@ -134,7 +134,7 @@ Editors show the tooltip next to the follow-link hint, for example
 `/usr/include/c++/14/vector (ctrl + click)`.
 
 ```case
-tests-next/document_links/presentation/01_tooltips
+tests/document_links/presentation/01_tooltips
 ```
 
 <!-- END CAPABILITY -->

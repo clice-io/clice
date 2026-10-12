@@ -12,7 +12,7 @@
 - `definition`, `readSymbol`, `references [--include-declaration]`, `callGraph [--direction callers|callees|both]` and `typeHierarchy [--direction supertypes|subtypes|both]` answer about the one symbol `--symbol <locator>` names. A locator several symbols match lists them as `candidates`; a name none spells exactly lists the closest matches the same way.
 - `documentSymbols --path <file>` is the file's outline.
 - `compileCommand --path <file>` is the command the editor would compile the file with, and where it came from: the file's own database entry, a host source for a header, a rule's default command, a command borrowed from a nearby unit — for a provisional member (`provisional`) or a file outside the build (`inferred`) — or the fallback. The command is the one the compiler resolves it to, with its target and system include directories; when asking the compiler failed, `toolchainError` says why and the command stays the unresolved driver command.
-- `projectFiles [--filter all|source|header|module]` lists the build's files; `fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` and `impactAnalysis --path <file>` follow the include graph.
+- `projectFiles [--filter all|source|header|module]` lists the build's files; `fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` follow the include graph, and `impactAnalysis --path <file>` the include graph and the files that import a module the file is part of.
 - `counterparts --path <file>` lists the files the file pairs with — a header's sources, a source's headers, a module's interface and implementation units — best first, each with its reasons, and names the one an editor would open without asking as `preferred` (see [Switch Source/Header](../features/navigation.md#switch-source-header)).
 
 Paths are workspace-relative or absolute in questions, absolute in answers; lines are 1-based.
@@ -63,7 +63,7 @@ Each question names a symbol or a file and answers with what the index knows abo
 Every place naming a method, its declarations included
 
 ```case
-tests-next/query/basics/01_references
+tests/query/basics/01_references
 ```
 
 <!-- END CAPABILITY -->
@@ -75,19 +75,19 @@ tests-next/query/basics/01_references
 A name query matches subsequences aligned to words
 
 ```case
-tests-next/query/basics/02_symbol_search
+tests/query/basics/02_symbol_search
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Questions about symbols**
 
 Look a symbol up by name, by its id or by a line, and ask where it is defined and used, who calls it, what it derives from and what a file declares
 
 ```case
-tests-next/query/basics/03_symbol_questions
+tests/query/basics/03_symbol_questions
 ```
 
 <!-- END CAPABILITY -->
@@ -99,7 +99,7 @@ tests-next/query/basics/03_symbol_questions
 List the project's files, what a file includes and what includes it, what a change to a header affects, and the source that goes with it
 
 ```case
-tests-next/query/basics/04_file_questions
+tests/query/basics/04_file_questions
 ```
 
 <!-- END CAPABILITY -->
@@ -119,7 +119,7 @@ A `path:` term narrows a search to some files, and finds the names only one file
 Symbols only one file can name, such as statics, locals and parameters, are found by name within that file with `path:`
 
 ```case
-tests-next/query/names/05_file_local_names
+tests/query/names/05_file_local_names
 ```
 
 <!-- END CAPABILITY -->
@@ -131,7 +131,7 @@ tests-next/query/names/05_file_local_names
 A `path:` filter keeps the symbols of the files under a path, spelled from the workspace root, as a file name or absolute
 
 ```case
-tests-next/query/names/06_path_filters
+tests/query/names/06_path_filters
 ```
 
 <!-- END CAPABILITY -->
@@ -151,7 +151,7 @@ Answers leave out the files changed since indexing, and `--fresh` brings the ind
 Answers leave out what the index holds for files changed on disk since it was built, and name those files in `stale`
 
 ```case
-tests-next/query/freshness/01_withheld_rows
+tests/query/freshness/01_withheld_rows
 ```
 
 <!-- END CAPABILITY -->
@@ -163,7 +163,7 @@ tests-next/query/freshness/01_withheld_rows
 With `--fresh`, the index is brought up to date before the question is answered, and built if there is none yet
 
 ```case
-tests-next/query/freshness/02_fresh_batch
+tests/query/freshness/02_fresh_batch
 ```
 
 <!-- END CAPABILITY -->

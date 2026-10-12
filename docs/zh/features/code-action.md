@@ -1,7 +1,7 @@
 # 代码操作
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/code_actions/. Do not edit the regions between the
+     in tests/code_actions/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -66,7 +66,7 @@ VS Code 扩展为每种重构提供一条命令，命令名是 `clice.` 加上�
 类外定义会沿用声明的写法，在名称前加上 `S::`，并去掉默认实参等仅属于声明的内容。
 
 ```case
-tests-next/code_actions/define/01_method_out_of_line
+tests/code_actions/define/01_method_out_of_line
 ```
 
 <!-- END CAPABILITY -->
@@ -80,7 +80,7 @@ tests-next/code_actions/define/01_method_out_of_line
 模板头上不重复默认模板实参。
 
 ```case
-tests-next/code_actions/define/04_class_template_member
+tests/code_actions/define/04_class_template_member
 ```
 
 <!-- END CAPABILITY -->
@@ -94,7 +94,7 @@ tests-next/code_actions/define/04_class_template_member
 转换函数和运算符保留完整的书写形式。
 
 ```case
-tests-next/code_actions/define/06_special_members
+tests/code_actions/define/06_special_members
 ```
 
 <!-- END CAPABILITY -->
@@ -108,7 +108,7 @@ tests-next/code_actions/define/06_special_members
 在命名空间内，函数名无需限定符；返回类型采用适用于该作用域的写法。
 
 ```case
-tests-next/code_actions/define/07_free_function
+tests/code_actions/define/07_free_function
 ```
 
 <!-- END CAPABILITY -->
@@ -122,7 +122,7 @@ tests-next/code_actions/define/07_free_function
 限定符依照那个定义所在的作用域，而不是类的作用域。
 
 ```case
-tests-next/code_actions/define/08_placement_after_definitions
+tests/code_actions/define/08_placement_after_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -136,7 +136,7 @@ tests-next/code_actions/define/08_placement_after_definitions
 已有定义的成员、纯虚方法和已默认化（defaulted）的成员保持不变。
 
 ```case
-tests-next/code_actions/define/09_missing_members
+tests/code_actions/define/09_missing_members
 ```
 
 <!-- END CAPABILITY -->
@@ -150,7 +150,7 @@ tests-next/code_actions/define/09_missing_members
 源文件通过这种方式补全在其他地方声明的类：新定义会与文件中已有的定义放在一起。
 
 ```case
-tests-next/code_actions/define/10_missing_from_definition
+tests/code_actions/define/10_missing_from_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -164,7 +164,7 @@ tests-next/code_actions/define/10_missing_from_definition
 生成的定义使用完全限定名，并与该类在该文件中的其他定义放在一起；对于已在某个源文件中定义的成员，不再提供此操作。模板、内联函数和对其他文件不可见的函数仍在头文件中定义；其余在头文件中定义于类外的函数会标记为 `inline`。
 
 ```case
-tests-next/code_actions/define/11_host_source
+tests/code_actions/define/11_host_source
 ```
 
 <!-- END CAPABILITY -->
@@ -186,7 +186,7 @@ tests-next/code_actions/define/11_host_source
 这些声明添加在类体末尾。
 
 ```case
-tests-next/code_actions/implement/01_pure_virtuals
+tests/code_actions/implement/01_pure_virtuals
 ```
 
 <!-- END CAPABILITY -->
@@ -198,7 +198,7 @@ tests-next/code_actions/implement/01_pure_virtuals
 只为继承链上没有任何类实现过的方法生成声明，`class` 还会为它们加上 `public:` 标签
 
 ```case
-tests-next/code_actions/implement/02_inheritance_chain
+tests/code_actions/implement/02_inheritance_chain
 ```
 
 <!-- END CAPABILITY -->
@@ -218,7 +218,7 @@ tests-next/code_actions/implement/02_inheritance_chain
 为类生成按顺序接收全部字段的构造函数，标量按值传递，可复制的类按 const 引用传递
 
 ```case
-tests-next/code_actions/constructor/01_memberwise
+tests/code_actions/constructor/01_memberwise
 ```
 
 <!-- END CAPABILITY -->
@@ -230,7 +230,7 @@ tests-next/code_actions/constructor/01_memberwise
 当类已经声明了参数个数与字段数相同的构造函数时，不再生成构造函数
 
 ```case
-tests-next/code_actions/constructor/02_existing_constructor
+tests/code_actions/constructor/02_existing_constructor
 ```
 
 <!-- END CAPABILITY -->
@@ -242,7 +242,7 @@ tests-next/code_actions/constructor/02_existing_constructor
 只有一个字段的类会得到 `explicit` 构造函数；若类以其他访问段结尾，构造函数会放在 `public:` 标签之下
 
 ```case
-tests-next/code_actions/constructor/03_single_field
+tests/code_actions/constructor/03_single_field
 ```
 
 <!-- END CAPABILITY -->
@@ -254,7 +254,7 @@ tests-next/code_actions/constructor/03_single_field
 当基类需要自己的初始化项时，不会生成构造函数，因为逐成员构造函数只初始化字段
 
 ```case
-tests-next/code_actions/constructor/05_base_without_default
+tests/code_actions/constructor/05_base_without_default
 ```
 
 <!-- END CAPABILITY -->
@@ -268,7 +268,7 @@ tests-next/code_actions/constructor/05_base_without_default
 如果类之前没有任何 `std::move` 声明，就会在文件中添加 `#include <utility>`。既不能复制也不能移动的类不会生成构造函数。
 
 ```case
-tests-next/code_actions/constructor/07_move_only_fields
+tests/code_actions/constructor/07_move_only_fields
 ```
 
 <!-- END CAPABILITY -->
@@ -290,7 +290,7 @@ tests-next/code_actions/constructor/07_move_only_fields
 与已处理值相同的枚举项视为已覆盖。
 
 ```case
-tests-next/code_actions/switch_cases/01_missing_cases
+tests/code_actions/switch_cases/01_missing_cases
 ```
 
 <!-- END CAPABILITY -->
@@ -304,7 +304,7 @@ tests-next/code_actions/switch_cases/01_missing_cases
 在 switch 内部的任意位置都会给出该操作。
 
 ```case
-tests-next/code_actions/switch_cases/02_before_default
+tests/code_actions/switch_cases/02_before_default
 ```
 
 <!-- END CAPABILITY -->
@@ -316,7 +316,7 @@ tests-next/code_actions/switch_cases/02_before_default
 当 switch 位于枚举所在命名空间之外时，无作用域枚举的枚举项会带上该命名空间的限定
 
 ```case
-tests-next/code_actions/switch_cases/03_unscoped_enum
+tests/code_actions/switch_cases/03_unscoped_enum
 ```
 
 <!-- END CAPABILITY -->
@@ -328,7 +328,7 @@ tests-next/code_actions/switch_cases/03_unscoped_enum
 处理了全部枚举项的 switch，或者对非枚举值做的 switch，不会给出任何操作
 
 ```case
-tests-next/code_actions/switch_cases/04_complete_switch
+tests/code_actions/switch_cases/04_complete_switch
 ```
 
 <!-- END CAPABILITY -->
@@ -350,7 +350,7 @@ tests-next/code_actions/switch_cases/04_complete_switch
 `const`、`&` 和 `*` 等限定符和声明符保持原位。
 
 ```case
-tests-next/code_actions/deduced_type/01_auto_declarations
+tests/code_actions/deduced_type/01_auto_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -362,7 +362,7 @@ tests-next/code_actions/deduced_type/01_auto_declarations
 函数推导出的 `auto` 返回类型会展开为推导结果，并按函数所在作用域书写
 
 ```case
-tests-next/code_actions/deduced_type/02_auto_return
+tests/code_actions/deduced_type/02_auto_return
 ```
 
 <!-- END CAPABILITY -->
@@ -374,7 +374,7 @@ tests-next/code_actions/deduced_type/02_auto_return
 `decltype` 说明符会展开为它所表示的类型；若该类型本身也是用 `decltype` 声明的，则继续展开
 
 ```case
-tests-next/code_actions/deduced_type/03_decltype
+tests/code_actions/deduced_type/03_decltype
 ```
 
 <!-- END CAPABILITY -->
@@ -388,7 +388,7 @@ Lambda、依赖类型、结构化绑定（structured bindings）以及在该声�
 以下类型无法命名：另一个函数内部的局部类型、声明无权访问的成员类型，以及标准名字尚未声明时 `sizeof` 的类型（MSVC 兼容模式会隐式声明 `size_t`）。
 
 ```case
-tests-next/code_actions/deduced_type/04_unnameable_types
+tests/code_actions/deduced_type/04_unnameable_types
 ```
 
 <!-- END CAPABILITY -->
@@ -402,21 +402,21 @@ tests-next/code_actions/deduced_type/04_unnameable_types
 被离展开处更近的声明隐藏的名字会保留限定符；连完全限定名也被隐藏时，则从全局作用域写起。
 
 ```case
-tests-next/code_actions/deduced_type/06_shadowed_names
+tests/code_actions/deduced_type/06_shadowed_names
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **内置类型的标准名字**
 
 在标准名字已声明的位置，`sizeof`、指针相减和 `nullptr` 的类型会展开为对应的标准名字
 
-当这些名字由头文件声明时（标准头文件就是如此），编辑器目前还无法找到它们。
+这里由头文件声明这些名字，就像标准头文件那样。
 
 ```case
-tests-next/code_actions/deduced_type/07_standard_names
+tests/code_actions/deduced_type/07_standard_names
 ```
 
 <!-- END CAPABILITY -->
@@ -438,7 +438,7 @@ tests-next/code_actions/deduced_type/07_standard_names
 每个定义会连同紧挨其上的注释块一起移动。
 
 ```case
-tests-next/code_actions/reorder/01_class_members
+tests/code_actions/reorder/01_class_members
 ```
 
 <!-- END CAPABILITY -->
@@ -450,7 +450,7 @@ tests-next/code_actions/reorder/01_class_members
 在自由函数的定义处，与它一同声明的那些函数的定义会按声明顺序重排
 
 ```case
-tests-next/code_actions/reorder/03_free_functions
+tests/code_actions/reorder/03_free_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -462,7 +462,7 @@ tests-next/code_actions/reorder/03_free_functions
 如果移动某个定义会把它挪到它所用的东西之前，例如夹在这些定义之间的变量或宏定义，该定义就留在原处，其余定义围绕它重排
 
 ```case
-tests-next/code_actions/reorder/05_dependencies
+tests/code_actions/reorder/05_dependencies
 ```
 
 <!-- END CAPABILITY -->
@@ -484,7 +484,7 @@ tests-next/code_actions/reorder/05_dependencies
 展开时会代入实参；在宏名或实参内的任意位置都可使用此操作。
 
 ```case
-tests-next/code_actions/macro/01_expand_macro
+tests/code_actions/macro/01_expand_macro
 ```
 
 <!-- END CAPABILITY -->
@@ -496,7 +496,7 @@ tests-next/code_actions/macro/01_expand_macro
 宏体中调用了其他宏时，会一直展开到最终的 Token
 
 ```case
-tests-next/code_actions/macro/02_nested_expansion
+tests/code_actions/macro/02_nested_expansion
 ```
 
 <!-- END CAPABILITY -->
@@ -518,7 +518,7 @@ tests-next/code_actions/macro/02_nested_expansion
 该指令会插在文件顶部已有的包含指令之后。
 
 ```case
-tests-next/code_actions/include/01_standard_library
+tests/code_actions/include/01_standard_library
 ```
 
 <!-- END CAPABILITY -->
@@ -532,7 +532,7 @@ tests-next/code_actions/include/01_standard_library
 候选头文件来自项目索引：`lib.h` 已被另一个源文件包含，因此能在索引中找到。
 
 ```case
-tests-next/code_actions/include/02_project_header
+tests/code_actions/include/02_project_header
 ```
 
 <!-- END CAPABILITY -->
@@ -544,7 +544,7 @@ tests-next/code_actions/include/02_project_header
 没有任何包含指令的文件会在开头插入该指令；若存在 `#pragma once`，则插在其后
 
 ```case
-tests-next/code_actions/include/03_no_include_yet
+tests/code_actions/include/03_no_include_yet
 ```
 
 <!-- END CAPABILITY -->
@@ -556,7 +556,7 @@ tests-next/code_actions/include/03_no_include_yet
 嵌套在条件编译里的包含指令不是必须始终生效的指令该去的位置：新指令跟在文件自身层级的最后一条之后，或者跟在头文件保护（include guard）之后
 
 ```case
-tests-next/code_actions/include/04_conditional_includes
+tests/code_actions/include/04_conditional_includes
 ```
 
 <!-- END CAPABILITY -->
@@ -578,7 +578,7 @@ tests-next/code_actions/include/04_conditional_includes
 只有一处编辑时，标题直接写出这处编辑。
 
 ```case
-tests-next/code_actions/fix/01_compiler_fix
+tests/code_actions/fix/01_compiler_fix
 ```
 
 <!-- END CAPABILITY -->
@@ -592,7 +592,7 @@ clang-tidy 检查结果的修复会作为快速修复提供
 文件所在目录及其上级目录中没有 `.clang-tidy` 时，运行的是一小组默认检查。
 
 ```case
-tests-next/code_actions/fix/02_tidy_fix
+tests/code_actions/fix/02_tidy_fix
 ```
 
 <!-- END CAPABILITY -->
@@ -604,7 +604,7 @@ tests-next/code_actions/fix/02_tidy_fix
 每条带有修复的 note 都会把它作为快速修复提供，标题取自该 note
 
 ```case
-tests-next/code_actions/fix/03_note_fixes
+tests/code_actions/fix/03_note_fixes
 ```
 
 <!-- END CAPABILITY -->
@@ -626,7 +626,7 @@ tests-next/code_actions/fix/03_note_fixes
 如果文件所在目录及其上级目录中没有 `.clang-format`，或设置了 `DisableFormat`，文本就会保留其他示例中所示的排版。
 
 ```case
-tests-next/code_actions/formatting/01_project_style
+tests/code_actions/formatting/01_project_style
 ```
 
 <!-- END CAPABILITY -->

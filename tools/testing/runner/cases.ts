@@ -1,4 +1,4 @@
-/// Every case under tests-next/: each registered test a vitest test, and once
+/// Every case under tests/: each registered test a vitest test, and once
 /// they all ran, the case's output against its snap.toml, and a documented
 /// case's card against docs/cards. CLICE_CASES=<path prefix> runs the
 /// cases under it, CLICE_CASES_SHARD=i/n one of n shards.

@@ -64,7 +64,7 @@ A warning the build enables is a finding only when the checks name it
 The compiler warnings a unit's command enables are findings when `Checks` lists their `clang-diagnostic-<flag>` name, reported under that name. The others stay out of the report.
 
 ```case
-tests-next/lint/checks/02_compiler_warnings
+tests/lint/checks/02_compiler_warnings
 ```
 
 <!-- END CAPABILITY -->
@@ -86,7 +86,7 @@ A header is checked in every unit that includes it, and its findings are reporte
 Each translation unit checks the headers it includes, as clang-tidy does, so a finding in a shared header comes from every unit that includes it. The report merges them into one line and lists every finding by file and position.
 
 ```case
-tests-next/lint/findings/01_header_findings_merge
+tests/lint/findings/01_header_findings_merge
 ```
 
 <!-- END CAPABILITY -->
@@ -100,7 +100,7 @@ NOLINT comments silence findings in headers as well as in the file being checked
 `// NOLINT` silences its own line, `// NOLINTNEXTLINE` the next one, and `// NOLINTBEGIN` and `// NOLINTEND` everything between them, for every check or for the ones named in parentheses. They count in every file a unit reads, as clang-tidy reads them.
 
 ```case
-tests-next/lint/findings/03_suppression_comments
+tests/lint/findings/03_suppression_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -122,7 +122,7 @@ A rule with `lint = false` keeps its files out of the report, headers and units 
 A vendored library is neither checked as a unit of its own nor reported where the project's units include it.
 
 ```case
-tests-next/lint/scope/01_keep_files_out
+tests/lint/scope/01_keep_files_out
 ```
 
 <!-- END CAPABILITY -->

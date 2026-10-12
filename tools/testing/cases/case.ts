@@ -1,4 +1,4 @@
-/// The cases under tests-next/: `<topic>/<subtopic>/NN_name/`, each a small
+/// The cases under tests/: `<topic>/<subtopic>/NN_name/`, each a small
 /// project with what to check. Read strictly: a stray file, an unknown
 /// key or a malformed page is an error, never a silent default.
 
@@ -214,7 +214,7 @@ export function loadCases(root: string): Case[] {
         }
         const topicDir = path.join(root, topic.name);
         if (!Object.hasOwn(TOPICS, topic.name)) {
-            fail(topic.name, "not a topic: topics.ts lists them, as tests-next/README.md does");
+            fail(topic.name, "not a topic: topics.ts lists them, as tests/README.md does");
         }
         for (const subtopic of subdirs(topicDir, topic.name, ["project.jsonc", "test.ts"])) {
             const subDir = path.join(topicDir, subtopic);

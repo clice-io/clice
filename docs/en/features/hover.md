@@ -3,7 +3,7 @@
 Rich information cards for the symbol under the cursor.
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/hover/. Do not edit the regions between the
+     in tests/hover/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@ The card names what the symbol is and the scope it is declared in, and shows its
 The card's title names what the symbol is: namespace, struct, union, enum, enumerator, alias, field, function
 
 ```case
-tests-next/hover/symbols/01_symbol_kinds
+tests/hover/symbols/01_symbol_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests-next/hover/symbols/01_symbol_kinds
 The card says which namespace, class or function the symbol is declared in
 
 ```case
-tests-next/hover/symbols/02_scopes
+tests/hover/symbols/02_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -44,7 +44,7 @@ tests-next/hover/symbols/02_scopes
 A member's definition reads its `public`, `protected` or `private` access
 
 ```case
-tests-next/hover/symbols/03_access
+tests/hover/symbols/03_access
 ```
 
 <!-- END CAPABILITY -->
@@ -56,7 +56,7 @@ tests-next/hover/symbols/03_access
 The card shows the symbol's declaration as source, at its definition and at its uses
 
 ```case
-tests-next/hover/symbols/04_definitions
+tests/hover/symbols/04_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -68,7 +68,7 @@ tests-next/hover/symbols/04_definitions
 A method's definition reads `virtual`, `override` or `final` as written, so an override written without them gives no sign it is virtual
 
 ```case
-tests-next/hover/symbols/05_virtual_modifiers
+tests/hover/symbols/05_virtual_modifiers
 ```
 
 <!-- END CAPABILITY -->
@@ -80,7 +80,7 @@ tests-next/hover/symbols/05_virtual_modifiers
 The scope of a card leaves anonymous namespaces out
 
 ```case
-tests-next/hover/symbols/06_anonymous_namespaces
+tests/hover/symbols/06_anonymous_namespaces
 ```
 
 <!-- END CAPABILITY -->
@@ -95,7 +95,7 @@ The message of `[[deprecated]]` tells what to use instead; the card shows
 neither the deprecation nor the message.
 
 ```case
-tests-next/hover/symbols/13_deprecation
+tests/hover/symbols/13_deprecation
 ```
 
 <!-- END CAPABILITY -->
@@ -107,7 +107,7 @@ tests-next/hover/symbols/13_deprecation
 A symbol declared in an included header shows its documentation and definition
 
 ```case
-tests-next/hover/symbols/14_header_symbols
+tests/hover/symbols/14_header_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -127,7 +127,7 @@ A function's card lists its return type and its parameters.
 A function's card lists its return type and each parameter with its name and default
 
 ```case
-tests-next/hover/functions/01_signatures
+tests/hover/functions/01_signatures
 ```
 
 <!-- END CAPABILITY -->
@@ -147,7 +147,7 @@ A variable's card spells its type as written, and its value when that is known a
 A variable's card spells its pointer, reference and array declarators as written
 
 ```case
-tests-next/hover/variables/01_declarators
+tests/hover/variables/01_declarators
 ```
 
 <!-- END CAPABILITY -->
@@ -159,7 +159,7 @@ tests-next/hover/variables/01_declarators
 A variable or enumerator whose value is known at compile time shows it
 
 ```case
-tests-next/hover/variables/02_constant_values
+tests/hover/variables/02_constant_values
 ```
 
 <!-- END CAPABILITY -->
@@ -171,7 +171,7 @@ tests-next/hover/variables/02_constant_values
 A long initializer is left out of the definition, and the value shows its first elements
 
 ```case
-tests-next/hover/variables/04_long_initializers
+tests/hover/variables/04_long_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -183,7 +183,7 @@ tests-next/hover/variables/04_long_initializers
 Hovering `__func__` shows the name of the function it is in, when the function is not a template
 
 ```case
-tests-next/hover/variables/06_predefined_identifiers
+tests/hover/variables/06_predefined_identifiers
 ```
 
 <!-- END CAPABILITY -->
@@ -205,7 +205,7 @@ A class lists its data members and member types, an enum its enumerators with th
 `max_members` caps the list, 20 by default; `0` shows the declaration alone.
 
 ```case
-tests-next/hover/members/01_type_members
+tests/hover/members/01_type_members
 ```
 
 <!-- END CAPABILITY -->
@@ -227,7 +227,7 @@ A type spelled through an alias shows what it stands for, as `Alias (aka int)`
 With `show_aka = false` the card keeps the alias alone.
 
 ```case
-tests-next/hover/aliases/01_aka
+tests/hover/aliases/01_aka
 ```
 
 <!-- END CAPABILITY -->
@@ -239,7 +239,7 @@ tests-next/hover/aliases/01_aka
 An alias names the struct it stands for, but does not show its members yet
 
 ```case
-tests-next/hover/aliases/02_alias_targets
+tests/hover/aliases/02_alias_targets
 ```
 
 <!-- END CAPABILITY -->
@@ -254,7 +254,7 @@ The definition line still spells it `struct Point`, a name C does not
 know for it.
 
 ```case
-tests-next/hover/aliases/03_c_anonymous_structs
+tests/hover/aliases/03_c_anonymous_structs
 ```
 
 <!-- END CAPABILITY -->
@@ -274,7 +274,7 @@ tests-next/hover/aliases/03_c_anonymous_structs
 Hovering `auto` shows the type it stands for, or that it is not deduced yet in a template
 
 ```case
-tests-next/hover/deduced_types/01_auto
+tests/hover/deduced_types/01_auto
 ```
 
 <!-- END CAPABILITY -->
@@ -286,7 +286,7 @@ tests-next/hover/deduced_types/01_auto
 Hovering `decltype` shows the type it yields, the reference a parenthesized name adds included
 
 ```case
-tests-next/hover/deduced_types/02_decltype
+tests/hover/deduced_types/02_decltype
 ```
 
 <!-- END CAPABILITY -->
@@ -298,7 +298,7 @@ tests-next/hover/deduced_types/02_decltype
 An `auto` deduced from an alias keeps the alias's name beside what it stands for
 
 ```case
-tests-next/hover/deduced_types/03_alias_spelling
+tests/hover/deduced_types/03_alias_spelling
 ```
 
 <!-- END CAPABILITY -->
@@ -312,7 +312,7 @@ A generic lambda's `auto` shows the type a call deduces, but its parameter and t
 Inside the body the parameter reads as `auto`, and `point.x` has no card.
 
 ```case
-tests-next/hover/deduced_types/06_generic_lambdas
+tests/hover/deduced_types/06_generic_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -332,7 +332,7 @@ A template parameter shows its kind and default, and a use of a template the arg
 A template parameter shows its kind, a type, a template or a value, with its default
 
 ```case
-tests-next/hover/templates/01_template_parameters
+tests/hover/templates/01_template_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -344,7 +344,7 @@ tests-next/hover/templates/01_template_parameters
 A use of a template shows the types it is instantiated with, but not which parameter each argument binds yet
 
 ```case
-tests-next/hover/templates/02_instantiation_arguments
+tests/hover/templates/02_instantiation_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -356,7 +356,7 @@ tests-next/hover/templates/02_instantiation_arguments
 A variable whose class template arguments are deduced shows them, while the class name beside it shows the template alone
 
 ```case
-tests-next/hover/templates/03_deduced_class_arguments
+tests/hover/templates/03_deduced_class_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -368,7 +368,7 @@ tests-next/hover/templates/03_deduced_class_arguments
 A concept and a constrained parameter show the constraint, but an `Addable auto` placeholder shows only the deduced type
 
 ```case
-tests-next/hover/templates/04_concept_constraints
+tests/hover/templates/04_concept_constraints
 ```
 
 <!-- END CAPABILITY -->
@@ -388,7 +388,7 @@ Fields and classes show their size and alignment as the compiler lays them out.
 A field shows its offset, size and alignment, and the padding after it
 
 ```case
-tests-next/hover/layout/01_field_layout
+tests/hover/layout/01_field_layout
 ```
 
 <!-- END CAPABILITY -->
@@ -400,7 +400,7 @@ tests-next/hover/layout/01_field_layout
 A class shows its size and alignment, but not how much of it is padding yet
 
 ```case
-tests-next/hover/layout/02_type_layout
+tests/hover/layout/02_type_layout
 ```
 
 <!-- END CAPABILITY -->
@@ -412,7 +412,7 @@ tests-next/hover/layout/02_type_layout
 A virtual method does not show its slot in the vtable yet
 
 ```case
-tests-next/hover/layout/03_vtable_slots
+tests/hover/layout/03_vtable_slots
 ```
 
 <!-- END CAPABILITY -->
@@ -432,7 +432,7 @@ An argument at a call shows the parameter it is passed to, and how it is passed.
 An argument at a call shows the parameter it is passed as
 
 ```case
-tests-next/hover/arguments/01_bound_parameters
+tests/hover/arguments/01_bound_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -444,7 +444,7 @@ tests-next/hover/arguments/01_bound_parameters
 An argument's card says whether it is passed by value, by reference or by const reference
 
 ```case
-tests-next/hover/arguments/02_pass_modes
+tests/hover/arguments/02_pass_modes
 ```
 
 <!-- END CAPABILITY -->
@@ -456,7 +456,7 @@ tests-next/hover/arguments/02_pass_modes
 An argument converted on its way to the parameter names the type it is converted to
 
 ```case
-tests-next/hover/arguments/03_conversions
+tests/hover/arguments/03_conversions
 ```
 
 <!-- END CAPABILITY -->
@@ -468,7 +468,7 @@ tests-next/hover/arguments/03_conversions
 A record passed to a call that is evaluated at compile time shows the call's value as its own
 
 ```case
-tests-next/hover/arguments/04_record_arguments
+tests/hover/arguments/04_record_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -490,7 +490,7 @@ A string literal shows its type and size, while a number shows nothing yet
 The size counts the terminating null; the string's length is not shown.
 
 ```case
-tests-next/hover/expressions/01_literals
+tests/hover/expressions/01_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -502,7 +502,7 @@ tests-next/hover/expressions/01_literals
 Hovering `this` shows the type it points to, in a class and in a class template
 
 ```case
-tests-next/hover/expressions/02_this
+tests/hover/expressions/02_this
 ```
 
 <!-- END CAPABILITY -->
@@ -522,7 +522,7 @@ A macro shows its `#define`, and a use of it what it expands to.
 A macro name used above its own `#define` has no card, while a use below it does
 
 ```case
-tests-next/hover/macros/01_use_before_definition
+tests/hover/macros/01_use_before_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -534,7 +534,7 @@ tests-next/hover/macros/01_use_before_definition
 The definition, a use, `#ifdef`, `defined` and `#undef` all show the macro's `#define`
 
 ```case
-tests-next/hover/macros/02_definition_sites
+tests/hover/macros/02_definition_sites
 ```
 
 <!-- END CAPABILITY -->
@@ -546,7 +546,7 @@ tests-next/hover/macros/02_definition_sites
 A use of a function-like macro shows what it expands to with its arguments
 
 ```case
-tests-next/hover/macros/03_expansion_preview
+tests/hover/macros/03_expansion_preview
 ```
 
 <!-- END CAPABILITY -->
@@ -558,7 +558,7 @@ tests-next/hover/macros/03_expansion_preview
 A macro defined with `-D` shows the `#define` it amounts to
 
 ```case
-tests-next/hover/macros/04_command_line
+tests/hover/macros/04_command_line
 ```
 
 <!-- END CAPABILITY -->
@@ -570,7 +570,7 @@ tests-next/hover/macros/04_command_line
 A macro inside another macro's arguments shows its definition, but no expansion
 
 ```case
-tests-next/hover/macros/05_nested_arguments
+tests/hover/macros/05_nested_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -590,7 +590,7 @@ An `#include` shows the file it resolves to.
 Hovering an `#include` shows the file it resolves to
 
 ```case
-tests-next/hover/directives/01_include_paths
+tests/hover/directives/01_include_paths
 ```
 
 <!-- END CAPABILITY -->
@@ -612,7 +612,7 @@ A declaration's `///` comment shows in its card, at the declaration and at every
 A use of a template shows the comment of the specialization it picks.
 
 ```case
-tests-next/hover/documentation/01_doc_comments
+tests/hover/documentation/01_doc_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -624,7 +624,7 @@ tests-next/hover/documentation/01_doc_comments
 A trivial getter or setter without a comment of its own is described as accessing its field
 
 ```case
-tests-next/hover/documentation/02_accessors
+tests/hover/documentation/02_accessors
 ```
 
 <!-- END CAPABILITY -->
@@ -636,7 +636,7 @@ tests-next/hover/documentation/02_accessors
 A `@copydoc` command shows as written instead of the documentation it names
 
 ```case
-tests-next/hover/documentation/03_copydoc
+tests/hover/documentation/03_copydoc
 ```
 
 <!-- END CAPABILITY -->
@@ -648,7 +648,7 @@ tests-next/hover/documentation/03_copydoc
 An override without a comment of its own does not show the documentation of what it overrides
 
 ```case
-tests-next/hover/documentation/04_overrides
+tests/hover/documentation/04_overrides
 ```
 
 <!-- END CAPABILITY -->
@@ -660,7 +660,7 @@ tests-next/hover/documentation/04_overrides
 An overload without a comment does not show the documentation of the overload before it
 
 ```case
-tests-next/hover/documentation/05_overloads
+tests/hover/documentation/05_overloads
 ```
 
 <!-- END CAPABILITY -->
@@ -672,7 +672,7 @@ tests-next/hover/documentation/05_overloads
 The name in `using Base::Base` shows the implicit move constructor, not the constructors it inherits
 
 ```case
-tests-next/hover/documentation/06_inherited_constructors
+tests/hover/documentation/06_inherited_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -684,7 +684,7 @@ tests-next/hover/documentation/06_inherited_constructors
 A section banner above a declaration shows as its documentation, even with a blank line between
 
 ```case
-tests-next/hover/documentation/07_banner_comments
+tests/hover/documentation/07_banner_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -699,7 +699,7 @@ Hovered first after a change, the definition's plain `//` comment takes its
 place at both.
 
 ```case
-tests-next/hover/documentation/08_declaration_and_definition
+tests/hover/documentation/08_declaration_and_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -711,7 +711,7 @@ tests-next/hover/documentation/08_declaration_and_definition
 A table in a comment runs together on one line
 
 ```case
-tests-next/hover/documentation/09_markdown_tables
+tests/hover/documentation/09_markdown_tables
 ```
 
 <!-- END CAPABILITY -->
@@ -723,7 +723,7 @@ tests-next/hover/documentation/09_markdown_tables
 An indented block in a comment loses its indentation and the blank line before it
 
 ```case
-tests-next/hover/documentation/10_indented_blocks
+tests/hover/documentation/10_indented_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -735,7 +735,7 @@ tests-next/hover/documentation/10_indented_blocks
 A note separated from a declaration by a blank line shows as its documentation, and no option turns that off
 
 ```case
-tests-next/hover/documentation/11_stray_comments
+tests/hover/documentation/11_stray_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -747,7 +747,7 @@ tests-next/hover/documentation/11_stray_comments
 GTK-Doc's name line, parameter entries and annotations show as written
 
 ```case
-tests-next/hover/documentation/12_gtk_doc
+tests/hover/documentation/12_gtk_doc
 ```
 
 <!-- END CAPABILITY -->
@@ -759,7 +759,7 @@ tests-next/hover/documentation/12_gtk_doc
 A Doxygen formula shows as its source
 
 ```case
-tests-next/hover/documentation/13_latex_formulas
+tests/hover/documentation/13_latex_formulas
 ```
 
 <!-- END CAPABILITY -->
@@ -775,7 +775,7 @@ the return description beside the return type; today the whole comment shows
 as text, commands included.
 
 ```case
-tests-next/hover/documentation/18_doxygen_commands
+tests/hover/documentation/18_doxygen_commands
 ```
 
 <!-- END CAPABILITY -->
@@ -795,7 +795,7 @@ A module name shows the file of its interface unit, and a declaration from a mod
 A module name shows the file of its interface unit, in an `import` and in the module declaration
 
 ```case
-tests-next/hover/modules/01_module_names
+tests/hover/modules/01_module_names
 ```
 
 <!-- END CAPABILITY -->
@@ -807,7 +807,7 @@ tests-next/hover/modules/01_module_names
 A declaration of a module interface reads `export` when the module exports it
 
 ```case
-tests-next/hover/modules/02_export_status
+tests/hover/modules/02_export_status
 ```
 
 <!-- END CAPABILITY -->
@@ -819,7 +819,7 @@ tests-next/hover/modules/02_export_status
 A symbol imported from a module shows the documentation written in its interface
 
 ```case
-tests-next/hover/modules/04_documented_exports
+tests/hover/modules/04_documented_exports
 ```
 
 <!-- END CAPABILITY -->
@@ -842,7 +842,7 @@ The description still reads as clang's reStructuredText source, its code
 examples run together.
 
 ```case
-tests-next/hover/attributes/01_attributes
+tests/hover/attributes/01_attributes
 ```
 
 <!-- END CAPABILITY -->
@@ -854,7 +854,7 @@ tests-next/hover/attributes/01_attributes
 Hovering a keyword such as `const` or `virtual` shows nothing yet
 
 ```case
-tests-next/hover/attributes/02_keywords
+tests/hover/attributes/02_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -874,7 +874,7 @@ Where there is nothing worth a card, none appears.
 A builtin type keyword or the inside of an empty body shows no card
 
 ```case
-tests-next/hover/no_card/01_meaningless_tokens
+tests/hover/no_card/01_meaningless_tokens
 ```
 
 <!-- END CAPABILITY -->
@@ -894,7 +894,7 @@ A card is markdown, or plain text for an editor that cannot show markdown.
 Cards are markdown, or plain text for editors that cannot show markdown
 
 ```case
-tests-next/hover/presentation/01_plain_text
+tests/hover/presentation/01_plain_text
 ```
 
 <!-- END CAPABILITY -->

@@ -83,7 +83,7 @@ implementation edge. Outside a git repository the churn annotation is left
 out, with a warning.
 
 ```case
-tests-next/analyze/dependencies/01_directory_modules
+tests/analyze/dependencies/01_directory_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -108,7 +108,7 @@ feature's header names core's Logger: a source makes an implementation
 edge, which closes no cycle.
 
 ```case
-tests-next/analyze/cycles/01_directory_cycle
+tests/analyze/cycles/01_directory_cycle
 ```
 
 <!-- END CAPABILITY -->
@@ -131,7 +131,7 @@ An entity is an interface use when a header of the naming module names it,
 as util/clock.h names both of these.
 
 ```case
-tests-next/analyze/views/01_edge
+tests/analyze/views/01_edge
 ```
 
 <!-- END CAPABILITY -->
@@ -155,7 +155,7 @@ every source imports core, directly or through util's interface: an edit to
 it rebuilds three units instead of one.
 
 ```case
-tests-next/analyze/annotations/01_compile_time
+tests/analyze/annotations/01_compile_time
 ```
 
 <!-- END CAPABILITY -->

@@ -13,7 +13,7 @@
 如果找不到符号的定义，则跳转到其声明
 
 ```case
-tests-next/navigation/definition/01_declaration_only
+tests/navigation/definition/01_declaration_only
 ```
 
 <!-- END CAPABILITY -->
@@ -25,7 +25,7 @@ tests-next/navigation/definition/01_declaration_only
 模块分区导出的名称会跳转到该分区，导入语句中的分区名也会跳转到该分区
 
 ```case
-tests-next/navigation/definition/02_partition_import
+tests/navigation/definition/02_partition_import
 ```
 
 <!-- END CAPABILITY -->
@@ -39,7 +39,7 @@ tests-next/navigation/definition/02_partition_import
 如果函数的声明和定义分开，在声明处或定义处发起的每次请求都会跳转到另一处。如果函数没有单独的声明，在任何位置发起请求都会跳转到其定义。
 
 ```case
-tests-next/navigation/definition/03_declaration_and_definition
+tests/navigation/definition/03_declaration_and_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -53,7 +53,7 @@ tests-next/navigation/definition/03_declaration_and_definition
 文件开头的包含指令与文件后面普通的包含指令行为一致。
 
 ```case
-tests-next/navigation/definition/05_include_directives
+tests/navigation/definition/05_include_directives
 ```
 
 <!-- END CAPABILITY -->
@@ -65,7 +65,7 @@ tests-next/navigation/definition/05_include_directives
 在局部变量或参数上执行“跳转到定义”，会跳转到其在函数体内的声明
 
 ```case
-tests-next/navigation/definition/06_local_symbols
+tests/navigation/definition/06_local_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -79,7 +79,7 @@ tests-next/navigation/definition/06_local_symbols
 虽然变量的声明就在那里，但在该变量后续的使用处执行“跳转到定义”不会返回任何结果。
 
 ```case
-tests-next/navigation/definition/07_error_recovery
+tests/navigation/definition/07_error_recovery
 ```
 
 <!-- END CAPABILITY -->
@@ -103,7 +103,7 @@ clice 返回声明和定义的位置，并排除光标当前所在的位置；�
 从调用处和单独给出的定义处执行“跳转到声明”，都能到达函数原型；原型会与这两处非当前光标位置交替跳转。
 
 ```case
-tests-next/navigation/declaration/01_functions
+tests/navigation/declaration/01_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -115,7 +115,7 @@ tests-next/navigation/declaration/01_functions
 对于先前置声明、后定义的类，从使用处跳转时会同时列出两者；前置声明仍保留在声明集合中，不会因优先返回定义而被丢弃
 
 ```case
-tests-next/navigation/declaration/02_forward_declarations
+tests/navigation/declaration/02_forward_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -129,7 +129,7 @@ tests-next/navigation/declaration/02_forward_declarations
 静态数据成员在类内声明、类外定义；在使用处执行“跳转到声明”时，会同时列出类内声明和定义。
 
 ```case
-tests-next/navigation/declaration/03_static_members
+tests/navigation/declaration/03_static_members
 ```
 
 <!-- END CAPABILITY -->
@@ -143,7 +143,7 @@ tests-next/navigation/declaration/03_static_members
 从 `extern` 变量的使用处跳转时，会同时列出 `extern` 声明和定义性声明，因此始终可以从使用处到达头文件中的声明。
 
 ```case
-tests-next/navigation/declaration/04_extern_variables
+tests/navigation/declaration/04_extern_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -157,7 +157,7 @@ tests-next/navigation/declaration/04_extern_variables
 当函数在多处声明时，从使用处执行“跳转到声明”会列出所有声明，而不只是最近的一处。
 
 ```case
-tests-next/navigation/declaration/05_redeclarations
+tests/navigation/declaration/05_redeclarations
 ```
 
 <!-- END CAPABILITY -->
@@ -169,7 +169,7 @@ tests-next/navigation/declaration/05_redeclarations
 参数名以及参数上的顶层 `const` 都不属于函数类型：下面的声明和定义以不同的写法表示同一个函数，但“跳转到声明”仍能从使用处跳转到函数原型
 
 ```case
-tests-next/navigation/declaration/06_signature_spelling
+tests/navigation/declaration/06_signature_spelling
 ```
 
 <!-- END CAPABILITY -->
@@ -189,7 +189,7 @@ tests-next/navigation/declaration/06_signature_spelling
 在局部变量或参数上执行“跳转到类型定义”，会跳转到其类型的定义
 
 ```case
-tests-next/navigation/type_definition/01_variables
+tests/navigation/type_definition/01_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -201,7 +201,7 @@ tests-next/navigation/type_definition/01_variables
 在字段访问处执行“跳转到类型定义”，会跳转到该字段类型的定义
 
 ```case
-tests-next/navigation/type_definition/02_fields
+tests/navigation/type_definition/02_fields
 ```
 
 <!-- END CAPABILITY -->
@@ -213,7 +213,7 @@ tests-next/navigation/type_definition/02_fields
 在以 `auto` 声明的变量上执行“跳转到类型定义”，会跳转到其推导出的类型；在 `auto` 关键字上执行该操作也是如此
 
 ```case
-tests-next/navigation/type_definition/03_deduced_variables
+tests/navigation/type_definition/03_deduced_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -225,7 +225,7 @@ tests-next/navigation/type_definition/03_deduced_variables
 在智能指针变量上执行“跳转到类型定义”，会跳转到包装类型本身；不支持跳过包装类型并跳转到其所指向的类型
 
 ```case
-tests-next/navigation/type_definition/04_smart_pointers
+tests/navigation/type_definition/04_smart_pointers
 ```
 
 <!-- END CAPABILITY -->
@@ -237,7 +237,7 @@ tests-next/navigation/type_definition/04_smart_pointers
 在使用类型别名的变量上执行“跳转到类型定义”，会跳转到 `using` 或 `typedef` 声明；尚不能解析别名并跳转到底层类型的定义
 
 ```case
-tests-next/navigation/type_definition/05_type_aliases
+tests/navigation/type_definition/05_type_aliases
 ```
 
 <!-- END CAPABILITY -->
@@ -249,7 +249,7 @@ tests-next/navigation/type_definition/05_type_aliases
 在结构化绑定上执行“跳转到类型定义”，会跳转到所绑定成员的类型定义
 
 ```case
-tests-next/navigation/type_definition/06_structured_bindings
+tests/navigation/type_definition/06_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -261,7 +261,7 @@ tests-next/navigation/type_definition/06_structured_bindings
 “跳转到类型定义”会透过指针、引用和数组，跳转到元素类型的定义
 
 ```case
-tests-next/navigation/type_definition/07_pointers_and_references
+tests/navigation/type_definition/07_pointers_and_references
 ```
 
 <!-- END CAPABILITY -->
@@ -283,7 +283,7 @@ tests-next/navigation/type_definition/07_pointers_and_references
 在三级重写链中，从每个方法执行“跳转到实现”都会到达下一级的重写方法：从基类到中间类，再从中间类到叶子类。
 
 ```case
-tests-next/navigation/implementation/01_override_chain
+tests/navigation/implementation/01_override_chain
 ```
 
 <!-- END CAPABILITY -->
@@ -297,7 +297,7 @@ tests-next/navigation/implementation/01_override_chain
 在虚方法上执行“跳转到实现”，会列出各个同级派生类中的所有重写方法。
 
 ```case
-tests-next/navigation/implementation/02_sibling_overrides
+tests/navigation/implementation/02_sibling_overrides
 ```
 
 <!-- END CAPABILITY -->
@@ -311,7 +311,7 @@ tests-next/navigation/implementation/02_sibling_overrides
 在非虚函数声明上执行“跳转到实现”，无法到达其单独给出的定义，会返回空结果。
 
 ```case
-tests-next/navigation/implementation/03_non_virtual
+tests/navigation/implementation/03_non_virtual
 ```
 
 <!-- END CAPABILITY -->
@@ -325,7 +325,7 @@ tests-next/navigation/implementation/03_non_virtual
 在基类名称上执行“跳转到实现”，会列出从该类派生的类。
 
 ```case
-tests-next/navigation/implementation/04_derived_classes
+tests/navigation/implementation/04_derived_classes
 ```
 
 <!-- END CAPABILITY -->
@@ -339,7 +339,7 @@ tests-next/navigation/implementation/04_derived_classes
 这适用于函数模板和泛型 Lambda，但目前两者都不会返回实现目标。
 
 ```case
-tests-next/navigation/implementation/05_dependent_calls
+tests/navigation/implementation/05_dependent_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -359,7 +359,7 @@ tests-next/navigation/implementation/05_dependent_calls
 引用查询会返回符号的声明、单独给出的定义以及所有使用位置，因此从符号的任意一个出现位置都能跳转到它的所有相关位置
 
 ```case
-tests-next/navigation/references/01_declarations_included
+tests/navigation/references/01_declarations_included
 ```
 
 <!-- END CAPABILITY -->
@@ -371,7 +371,7 @@ tests-next/navigation/references/01_declarations_included
 在 `begin` 上执行“查找引用”，只会返回它自身的声明；隐式调用它的范围 for 循环不会列入引用结果
 
 ```case
-tests-next/navigation/references/02_range_for
+tests/navigation/references/02_range_for
 ```
 
 <!-- END CAPABILITY -->
@@ -383,7 +383,7 @@ tests-next/navigation/references/02_range_for
 在构造函数上执行“查找引用”，只会返回显式使用它的位置；隐式调用该构造函数或对应析构函数的对象定义不会包含在结果中
 
 ```case
-tests-next/navigation/references/03_implicit_construction
+tests/navigation/references/03_implicit_construction
 ```
 
 <!-- END CAPABILITY -->
@@ -395,7 +395,7 @@ tests-next/navigation/references/03_implicit_construction
 在构造函数上执行“查找引用”，不会包含通过完美转发工厂间接调用它的位置
 
 ```case
-tests-next/navigation/references/04_forwarding_factories
+tests/navigation/references/04_forwarding_factories
 ```
 
 <!-- END CAPABILITY -->
@@ -407,7 +407,7 @@ tests-next/navigation/references/04_forwarding_factories
 在成员上执行“查找引用”，不会包含模板中的依赖调用位置，即使模板已使用该成员所属的类实例化
 
 ```case
-tests-next/navigation/references/05_dependent_calls
+tests/navigation/references/05_dependent_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -419,7 +419,7 @@ tests-next/navigation/references/05_dependent_calls
 引用查询的响应只包含位置信息，因此查看结果时无法区分写入和读取；不支持为每条结果标注访问类型
 
 ```case
-tests-next/navigation/references/06_access_kinds
+tests/navigation/references/06_access_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -431,7 +431,7 @@ tests-next/navigation/references/06_access_kinds
 每条引用只提供位置信息，不附带其所在函数的名称，因此结果中除文件和行号外没有其他上下文
 
 ```case
-tests-next/navigation/references/07_enclosing_functions
+tests/navigation/references/07_enclosing_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -443,7 +443,7 @@ tests-next/navigation/references/07_enclosing_functions
 在标签上执行“查找引用”，会列出标签本身以及所有跳转到该标签的 `goto`
 
 ```case
-tests-next/navigation/references/08_labels
+tests/navigation/references/08_labels
 ```
 
 <!-- END CAPABILITY -->
@@ -463,7 +463,7 @@ tests-next/navigation/references/08_labels
 对 `auto` 执行“跳转到定义”会跳转到推导出的类型，就像该位置直接写出了类型一样
 
 ```case
-tests-next/navigation/deduced_types/01_auto_keyword
+tests/navigation/deduced_types/01_auto_keyword
 ```
 
 <!-- END CAPABILITY -->
@@ -477,7 +477,7 @@ tests-next/navigation/deduced_types/01_auto_keyword
 结构化绑定（structured bindings）的 `auto` 跳转到被分解对象的类型。
 
 ```case
-tests-next/navigation/deduced_types/02_auto_declarators
+tests/navigation/deduced_types/02_auto_declarators
 ```
 
 <!-- END CAPABILITY -->
@@ -489,7 +489,7 @@ tests-next/navigation/deduced_types/02_auto_declarators
 对 `decltype` 执行“跳转到定义”会跳转到其操作数所指的类型；如果该类型本身也是用 `decltype` 声明的，则会逐层追溯
 
 ```case
-tests-next/navigation/deduced_types/03_decltype
+tests/navigation/deduced_types/03_decltype
 ```
 
 <!-- END CAPABILITY -->
@@ -503,7 +503,7 @@ tests-next/navigation/deduced_types/03_decltype
 内置类型和 Lambda 的闭包类型没有可跳转的声明，`new` 表达式中的 `auto` 也不会跳转到任何位置。展开为 `auto` 的宏则跳转到该宏本身。
 
 ```case
-tests-next/navigation/deduced_types/04_deduced_templates
+tests/navigation/deduced_types/04_deduced_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -517,7 +517,7 @@ tests-next/navigation/deduced_types/04_deduced_templates
 如果模板以多种类型实例化，参数中的 `auto` 不会跳转到其中任何一个。尾置返回类型（trailing return type）开头的 `auto` 跳转到箭头之后的类型。
 
 ```case
-tests-next/navigation/deduced_types/05_parameters_and_returns
+tests/navigation/deduced_types/05_parameters_and_returns
 ```
 
 <!-- END CAPABILITY -->
@@ -531,7 +531,7 @@ tests-next/navigation/deduced_types/05_parameters_and_returns
 如果解析出的类型就是模板参数本身，无论模板如何实例化，都跳转到该模板参数。
 
 ```case
-tests-next/navigation/deduced_types/06_dependent_auto
+tests/navigation/deduced_types/06_dependent_auto
 ```
 
 <!-- END CAPABILITY -->
@@ -551,7 +551,7 @@ tests-next/navigation/deduced_types/06_dependent_auto
 在从未实例化的模板中，访问待决类型（dependent type）对象的成员时，会解析到相应类模板中声明的成员
 
 ```case
-tests-next/navigation/templates/01_dependent_members
+tests/navigation/templates/01_dependent_members
 ```
 
 <!-- END CAPABILITY -->
@@ -563,7 +563,7 @@ tests-next/navigation/templates/01_dependent_members
 对显式特化的名称执行“跳转到定义”会跳转到该特化本身；不支持从该特化继续跳转到它所特化的主模板
 
 ```case
-tests-next/navigation/templates/02_explicit_specializations
+tests/navigation/templates/02_explicit_specializations
 ```
 
 <!-- END CAPABILITY -->
@@ -577,7 +577,7 @@ tests-next/navigation/templates/02_explicit_specializations
 每个候选各自给出结果：有定义的跳转到定义，没有定义的跳转到声明。
 
 ```case
-tests-next/navigation/templates/03_overload_candidates
+tests/navigation/templates/03_overload_candidates
 ```
 
 <!-- END CAPABILITY -->
@@ -591,7 +591,7 @@ tests-next/navigation/templates/03_overload_candidates
 调用存在 `const` 重载时，由对象是否为 const 决定解析到哪一个重载；参数不同的各个重载则全部列出。
 
 ```case
-tests-next/navigation/templates/04_dependent_expressions
+tests/navigation/templates/04_dependent_expressions
 ```
 
 <!-- END CAPABILITY -->
@@ -613,7 +613,7 @@ tests-next/navigation/templates/04_dependent_expressions
 在名称的书写位置，跳转会在定义和声明之间切换；后续使用该名称时，则会跳转到宏所声明的函数。宏自身的名称无论出现在定义处还是调用处，都会解析到该宏。
 
 ```case
-tests-next/navigation/macros/01_macro_arguments
+tests/navigation/macros/01_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -627,7 +627,7 @@ tests-next/navigation/macros/01_macro_arguments
 从通过 Token 拼接生成或写在宏体中的名称的使用处导航，会跳转到宏调用处；调用处的宏名称则解析到宏本身。宏体内的 Token 只有经过展开才有具体含义，因此对其导航不会返回结果。
 
 ```case
-tests-next/navigation/macros/02_generated_names
+tests/navigation/macros/02_generated_names
 ```
 
 <!-- END CAPABILITY -->
@@ -641,7 +641,7 @@ tests-next/navigation/macros/02_generated_names
 同一名称的每次 `#define` 都被视为独立的符号，因此在 `#undef` 之后重新定义的宏只会收集自身的使用位置。
 
 ```case
-tests-next/navigation/macros/04_macro_references
+tests/navigation/macros/04_macro_references
 ```
 
 <!-- END CAPABILITY -->
@@ -653,7 +653,7 @@ tests-next/navigation/macros/04_macro_references
 查找宏引用时，不会包含其他宏定义的宏体中对该宏的引用
 
 ```case
-tests-next/navigation/macros/05_nested_macros
+tests/navigation/macros/05_nested_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -677,7 +677,7 @@ tests-next/navigation/macros/05_nested_macros
 在 `override` 或 `final` 说明符上执行“跳转到定义”，无法跳转到被重写的基类虚方法。
 
 ```case
-tests-next/navigation/implicit_targets/01_override_and_final
+tests/navigation/implicit_targets/01_override_and_final
 ```
 
 <!-- END CAPABILITY -->
@@ -691,7 +691,7 @@ tests-next/navigation/implicit_targets/01_override_and_final
 在 `break` 或 `continue` 上执行“跳转到定义”，无法跳转到其控制的循环或 switch 语句的头部。
 
 ```case
-tests-next/navigation/implicit_targets/02_break_and_continue
+tests/navigation/implicit_targets/02_break_and_continue
 ```
 
 <!-- END CAPABILITY -->
@@ -705,7 +705,7 @@ tests-next/navigation/implicit_targets/02_break_and_continue
 在 `delete` 上执行“跳转到定义”，无法跳转到它调用的析构函数。
 
 ```case
-tests-next/navigation/implicit_targets/03_delete_expressions
+tests/navigation/implicit_targets/03_delete_expressions
 ```
 
 <!-- END CAPABILITY -->
@@ -719,7 +719,7 @@ tests-next/navigation/implicit_targets/03_delete_expressions
 在 `new` 上执行“跳转到定义”，可跳转到类中重载的 `operator new`。返回结果不包含同一表达式调用的构造函数。
 
 ```case
-tests-next/navigation/implicit_targets/04_new_expressions
+tests/navigation/implicit_targets/04_new_expressions
 ```
 
 <!-- END CAPABILITY -->
@@ -733,7 +733,7 @@ tests-next/navigation/implicit_targets/04_new_expressions
 在重载运算符的 Token 上执行“跳转到定义”，可跳转到该运算符的定义。二元、下标、调用和箭头运算符（`+`、`[]`、`()`、`->`）均可解析。
 
 ```case
-tests-next/navigation/implicit_targets/05_overloaded_operators
+tests/navigation/implicit_targets/05_overloaded_operators
 ```
 
 <!-- END CAPABILITY -->
@@ -747,7 +747,7 @@ tests-next/navigation/implicit_targets/05_overloaded_operators
 对于按 C++20 重写规则合成的比较，在源码中写出的运算符上执行“跳转到定义”，可跳转到实际实现该比较的运算符：`!=` 跳转到 `operator==`，`>` 跳转到 `operator<=>`。
 
 ```case
-tests-next/navigation/implicit_targets/06_rewritten_comparisons
+tests/navigation/implicit_targets/06_rewritten_comparisons
 ```
 
 <!-- END CAPABILITY -->
@@ -761,7 +761,7 @@ tests-next/navigation/implicit_targets/06_rewritten_comparisons
 在用户定义字面量的后缀上执行“跳转到定义”，可跳转到它调用的 `operator""`。
 
 ```case
-tests-next/navigation/implicit_targets/07_user_defined_literals
+tests/navigation/implicit_targets/07_user_defined_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -775,7 +775,7 @@ tests-next/navigation/implicit_targets/07_user_defined_literals
 在触发用户定义转换的上下文（条件判断或 `!`）中执行“跳转到定义”，无法跳转到该转换运算符。
 
 ```case
-tests-next/navigation/implicit_targets/08_implicit_conversions
+tests/navigation/implicit_targets/08_implicit_conversions
 ```
 
 <!-- END CAPABILITY -->
@@ -789,7 +789,7 @@ tests-next/navigation/implicit_targets/08_implicit_conversions
 调用用户定义转换运算符的 `static_cast` 尚不能跳转到该运算符。
 
 ```case
-tests-next/navigation/implicit_targets/09_casts
+tests/navigation/implicit_targets/09_casts
 ```
 
 <!-- END CAPABILITY -->
@@ -803,7 +803,7 @@ tests-next/navigation/implicit_targets/09_casts
 在范围 for 循环的 `:` 上执行“跳转到定义”，无法跳转到为该范围选用的 `begin()` 或 `end()`。
 
 ```case
-tests-next/navigation/implicit_targets/10_range_for
+tests/navigation/implicit_targets/10_range_for
 ```
 
 <!-- END CAPABILITY -->
@@ -817,7 +817,7 @@ tests-next/navigation/implicit_targets/10_range_for
 在 `co_yield` 上执行“跳转到定义”，可跳转到 promise 对象的 `yield_value`。`co_await` 和 `co_return` 关键字尚不能跳转到等待器（awaiter）或 promise 对象的方法。
 
 ```case
-tests-next/navigation/implicit_targets/11_coroutine_keywords
+tests/navigation/implicit_targets/11_coroutine_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -839,7 +839,7 @@ tests-next/navigation/implicit_targets/11_coroutine_keywords
 在构造函数调用的左圆括号或左花括号上执行“跳转到定义”，可跳转到重载决议选中的构造函数，适用于 `T(args)` 和 `T{args}` 两种形式。
 
 ```case
-tests-next/navigation/implicit_construction/01_constructor_calls
+tests/navigation/implicit_construction/01_constructor_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -853,7 +853,7 @@ tests-next/navigation/implicit_construction/01_constructor_calls
 在赋值中的 `=` 上执行“跳转到定义”，可跳转到赋值运算符。引入拷贝初始化或移动初始化的 `=`（`T b = a;`）属于初始化语法，而非运算符调用，目前尚无法解析。
 
 ```case
-tests-next/navigation/implicit_construction/02_copy_and_move
+tests/navigation/implicit_construction/02_copy_and_move
 ```
 
 <!-- END CAPABILITY -->
@@ -867,7 +867,7 @@ tests-next/navigation/implicit_construction/02_copy_and_move
 当类模板实参推导选中特化时，在构造函数调用上执行“跳转到定义”，可跳转到选中的构造函数，而不只是类模板。
 
 ```case
-tests-next/navigation/implicit_construction/03_deduced_class_templates
+tests/navigation/implicit_construction/03_deduced_class_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -881,7 +881,7 @@ tests-next/navigation/implicit_construction/03_deduced_class_templates
 聚合类型没有构造函数，因此在其初始化器的花括号上执行“跳转到定义”，会跳转到聚合类型的定义。
 
 ```case
-tests-next/navigation/implicit_construction/04_aggregates
+tests/navigation/implicit_construction/04_aggregates
 ```
 
 <!-- END CAPABILITY -->
@@ -895,7 +895,7 @@ tests-next/navigation/implicit_construction/04_aggregates
 在初始化列表中各初始化器的左圆括号上，可跳转到该初始化器调用的基类或成员构造函数。初始化器名称本身会解析到基类类型或成员，因此需要通过圆括号跳转到构造函数。
 
 ```case
-tests-next/navigation/implicit_construction/05_member_initializers
+tests/navigation/implicit_construction/05_member_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -909,7 +909,7 @@ tests-next/navigation/implicit_construction/05_member_initializers
 在委托调用的左圆括号上，可跳转到委托构造函数的目标构造函数。构造函数名称本身会解析到类类型，因此需要通过圆括号跳转到目标构造函数。
 
 ```case
-tests-next/navigation/implicit_construction/06_delegating_constructors
+tests/navigation/implicit_construction/06_delegating_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -923,7 +923,7 @@ tests-next/navigation/implicit_construction/06_delegating_constructors
 在继承构造函数的声明（`using Base::Base;`）上执行“跳转到定义”，会列出它所引入的基类的每一个构造函数。
 
 ```case
-tests-next/navigation/implicit_construction/07_inherited_constructors
+tests/navigation/implicit_construction/07_inherited_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -937,7 +937,7 @@ tests-next/navigation/implicit_construction/07_inherited_constructors
 花括号形式的 `return {args}` 会隐式构造函数返回类型的对象；在花括号上执行“跳转到定义”，可跳转到选中的构造函数。
 
 ```case
-tests-next/navigation/implicit_construction/08_return_values
+tests/navigation/implicit_construction/08_return_values
 ```
 
 <!-- END CAPABILITY -->
@@ -951,7 +951,7 @@ Lambda 初始化捕获尚无法跳转到其移动构造函数
 在 Lambda 初始化捕获的 `=` 上执行“跳转到定义”，无法跳转到构造捕获值的构造函数。
 
 ```case
-tests-next/navigation/implicit_construction/09_lambda_captures
+tests/navigation/implicit_construction/09_lambda_captures
 ```
 
 <!-- END CAPABILITY -->
@@ -965,7 +965,7 @@ tests-next/navigation/implicit_construction/09_lambda_captures
 在结构化绑定名称上执行“跳转到定义”，会解析到绑定本身，而非该名称所对应的底层字段或访问器。
 
 ```case
-tests-next/navigation/implicit_construction/10_structured_bindings
+tests/navigation/implicit_construction/10_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -985,7 +985,7 @@ tests-next/navigation/implicit_construction/10_structured_bindings
 在 `import` 声明中的名称上执行“跳转到定义”，会打开导出该模块的接口单元；在已导入符号的使用处执行此操作，可跳转到该符号在该单元中的定义
 
 ```case
-tests-next/navigation/modules/01_import_names
+tests/navigation/modules/01_import_names
 ```
 
 <!-- END CAPABILITY -->
@@ -999,7 +999,7 @@ tests-next/navigation/modules/01_import_names
 从导出函数的使用处可跳转到该函数在实现单元中的定义。目前尚不支持反向导航，即从接口中的模块名称跳转到实现该模块的单元。
 
 ```case
-tests-next/navigation/modules/02_implementation_units
+tests/navigation/modules/02_implementation_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1013,7 +1013,7 @@ tests-next/navigation/modules/02_implementation_units
 在以点分隔的模块名称的任意一段上执行“跳转到定义”，都会跳转到该模块的接口单元；整个名称视为同一个引用。
 
 ```case
-tests-next/navigation/modules/03_dotted_names
+tests/navigation/modules/03_dotted_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1033,7 +1033,7 @@ tests-next/navigation/modules/03_dotted_names
 从调用处可定位到函数在源文件中的定义和在头文件中的声明
 
 ```case
-tests-next/navigation/projects/01_header_to_source
+tests/navigation/projects/01_header_to_source
 ```
 
 <!-- END CAPABILITY -->
@@ -1045,7 +1045,7 @@ tests-next/navigation/projects/01_header_to_source
 从模块函数的调用处可跳转到导出该函数的分区
 
 ```case
-tests-next/navigation/projects/02_module_partition
+tests/navigation/projects/02_module_partition
 ```
 
 <!-- END CAPABILITY -->
@@ -1059,7 +1059,7 @@ tests-next/navigation/projects/02_module_partition
 函数在一个源文件中定义、在另一个同级源文件中调用时，查找引用会列出两处调用位置，以及共享头文件中的声明。
 
 ```case
-tests-next/navigation/projects/03_uses_across_sources
+tests/navigation/projects/03_uses_across_sources
 ```
 
 <!-- END CAPABILITY -->
@@ -1079,7 +1079,7 @@ tests-next/navigation/projects/03_uses_across_sources
 自由函数和成员方法都支持打开调用层次结构
 
 ```case
-tests-next/navigation/call_hierarchy/01_functions_and_methods
+tests/navigation/call_hierarchy/01_functions_and_methods
 ```
 
 <!-- END CAPABILITY -->
@@ -1091,7 +1091,7 @@ tests-next/navigation/call_hierarchy/01_functions_and_methods
 传入调用列出函数的所有调用方；同一调用方多次调用该函数时，会列出每一处调用位置
 
 ```case
-tests-next/navigation/call_hierarchy/02_incoming_calls
+tests/navigation/call_hierarchy/02_incoming_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -1103,7 +1103,7 @@ tests-next/navigation/call_hierarchy/02_incoming_calls
 传出调用列出函数体内调用的所有函数，每个被调用函数对应一个条目
 
 ```case
-tests-next/navigation/call_hierarchy/03_outgoing_calls
+tests/navigation/call_hierarchy/03_outgoing_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -1115,7 +1115,7 @@ tests-next/navigation/call_hierarchy/03_outgoing_calls
 调用层次结构条目仅包含名称，详情字段中没有函数签名，因此无法在层次结构中区分不同的重载
 
 ```case
-tests-next/navigation/call_hierarchy/04_signature_details
+tests/navigation/call_hierarchy/04_signature_details
 ```
 
 <!-- END CAPABILITY -->
@@ -1127,7 +1127,7 @@ tests-next/navigation/call_hierarchy/04_signature_details
 成员函数有对应的调用层次结构条目，但其名称字段仅包含方法名（`draw`），而非可用于将其与自由函数区分开的限定名称 `Circle::draw`
 
 ```case
-tests-next/navigation/call_hierarchy/05_qualified_names
+tests/navigation/call_hierarchy/05_qualified_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1139,7 +1139,7 @@ tests-next/navigation/call_hierarchy/05_qualified_names
 基类虚方法的传入调用不包含对派生类重写方法的调用；对重写方法的调用只归于该重写方法，不会归于它所重写的基类方法
 
 ```case
-tests-next/navigation/call_hierarchy/06_virtual_dispatch
+tests/navigation/call_hierarchy/06_virtual_dispatch
 ```
 
 <!-- END CAPABILITY -->
@@ -1153,7 +1153,7 @@ tests-next/navigation/call_hierarchy/06_virtual_dispatch
 对变量或枚举常量准备调用层次结构时，不返回任何结果；该请求仅适用于自由函数和成员函数。
 
 ```case
-tests-next/navigation/call_hierarchy/07_non_functions
+tests/navigation/call_hierarchy/07_non_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -1165,7 +1165,7 @@ tests-next/navigation/call_hierarchy/07_non_functions
 Lambda 体内的调用会出现在被调用函数的传入调用中，并归于包含该 Lambda 的函数
 
 ```case
-tests-next/navigation/call_hierarchy/08_lambda_bodies
+tests/navigation/call_hierarchy/08_lambda_bodies
 ```
 
 <!-- END CAPABILITY -->
@@ -1177,7 +1177,7 @@ tests-next/navigation/call_hierarchy/08_lambda_bodies
 构造函数的传入调用不包含通过完美转发工厂调用该构造函数的位置
 
 ```case
-tests-next/navigation/call_hierarchy/09_forwarding_factories
+tests/navigation/call_hierarchy/09_forwarding_factories
 ```
 
 <!-- END CAPABILITY -->
@@ -1197,7 +1197,7 @@ tests-next/navigation/call_hierarchy/09_forwarding_factories
 任何用户定义的类型都支持打开类型层次结构，包括类、结构体、枚举和联合体
 
 ```case
-tests-next/navigation/type_hierarchy/01_type_kinds
+tests/navigation/type_hierarchy/01_type_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -1211,7 +1211,7 @@ tests-next/navigation/type_hierarchy/01_type_kinds
 通过别名写出的基类，会列出该别名所指的类。
 
 ```case
-tests-next/navigation/type_hierarchy/02_supertypes
+tests/navigation/type_hierarchy/02_supertypes
 ```
 
 <!-- END CAPABILITY -->
@@ -1223,7 +1223,7 @@ tests-next/navigation/type_hierarchy/02_supertypes
 子类型列出继承自某个基类的所有类，包括各个同级派生类
 
 ```case
-tests-next/navigation/type_hierarchy/03_subtypes
+tests/navigation/type_hierarchy/03_subtypes
 ```
 
 <!-- END CAPABILITY -->
@@ -1235,7 +1235,7 @@ tests-next/navigation/type_hierarchy/03_subtypes
 基类的子类型包括通过类模板（如 CRTP 包装类）继承自该基类的类
 
 ```case
-tests-next/navigation/type_hierarchy/04_template_bases
+tests/navigation/type_hierarchy/04_template_bases
 ```
 
 <!-- END CAPABILITY -->
@@ -1247,7 +1247,7 @@ tests-next/navigation/type_hierarchy/04_template_bases
 会列出类模板特化所产生的子类型，但条目名称仅包含模板名（`Derived`），不含可用于区分 `Derived<Foo>` 的模板实参
 
 ```case
-tests-next/navigation/type_hierarchy/05_template_arguments
+tests/navigation/type_hierarchy/05_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -1271,7 +1271,7 @@ tests-next/navigation/type_hierarchy/05_template_arguments
 文件中光标所在符号的名称会在所有出现位置高亮显示，包括声明和定义处
 
 ```case
-tests-next/document_highlight/symbols/01_declarations_and_uses
+tests/document_highlight/symbols/01_declarations_and_uses
 ```
 
 <!-- END CAPABILITY -->
@@ -1285,7 +1285,7 @@ tests-next/document_highlight/symbols/01_declarations_and_uses
 宏参数中写出的名称会在其书写位置高亮显示；来自宏替换文本的名称则会高亮显示整个宏调用。在另一个宏的替换文本中使用的宏，既不会在该处高亮显示，也不会在另一个宏的调用处高亮显示。
 
 ```case
-tests-next/document_highlight/symbols/03_macros
+tests/document_highlight/symbols/03_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -1297,7 +1297,7 @@ tests-next/document_highlight/symbols/03_macros
 尚不会高亮显示 `break` 或 `continue` 所离开的循环
 
 ```case
-tests-next/document_highlight/symbols/08_control_flow
+tests/document_highlight/symbols/08_control_flow
 ```
 
 <!-- END CAPABILITY -->
@@ -1317,7 +1317,7 @@ tests-next/document_highlight/symbols/08_control_flow
 变量的每次使用都会高亮显示，赋值标记为写入，其他使用标记为读取
 
 ```case
-tests-next/document_highlight/access_kinds/01_reads_and_writes
+tests/document_highlight/access_kinds/01_reads_and_writes
 ```
 
 <!-- END CAPABILITY -->
@@ -1329,7 +1329,7 @@ tests-next/document_highlight/access_kinds/01_reads_and_writes
 绑定到非 const 引用形参的实参被视为写入，而绑定到 const 引用、复制或取地址则被视为读取
 
 ```case
-tests-next/document_highlight/access_kinds/03_reference_arguments
+tests/document_highlight/access_kinds/03_reference_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -1343,7 +1343,7 @@ tests-next/document_highlight/access_kinds/03_reference_arguments
 指定初始化器（designated initializer）或构造函数的成员初始化器会引用字段名称，但不算作写入。匿名联合体的字段与其他字段一样高亮显示。
 
 ```case
-tests-next/document_highlight/access_kinds/06_member_access
+tests/document_highlight/access_kinds/06_member_access
 ```
 
 <!-- END CAPABILITY -->
@@ -1363,7 +1363,7 @@ tests-next/document_highlight/access_kinds/06_member_access
 模块单元和从模块导入的名称均支持高亮显示，也包括模块名称
 
 ```case
-tests-next/document_highlight/modules/01_module_units
+tests/document_highlight/modules/01_module_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1387,7 +1387,7 @@ tests-next/document_highlight/modules/01_module_units
 查询会找到名称匹配的符号，并为成员显示其所属容器
 
 ```case
-tests-next/workspace_symbol/queries/01_name_search
+tests/workspace_symbol/queries/01_name_search
 ```
 
 <!-- END CAPABILITY -->
@@ -1401,7 +1401,7 @@ tests-next/workspace_symbol/queries/01_name_search
 `LinLis` 能找到 `LinkedList`，`pconf` 能找到 `parse_config`：查询中除首字母外的每个字母，要么紧接上一个匹配位置，要么位于名称中某个单词的开头，因此 `pcfg` 找不到任何结果，因为其中的 `f` 位于 `config` 中间。
 
 ```case
-tests-next/workspace_symbol/queries/03_fuzzy_matching
+tests/workspace_symbol/queries/03_fuzzy_matching
 ```
 
 <!-- END CAPABILITY -->
@@ -1415,7 +1415,7 @@ tests-next/workspace_symbol/queries/03_fuzzy_matching
 `"process"` 只匹配完整的名称，`proc*` 则匹配它通配到的一切；`io::*` 列出一个命名空间的成员，`io::**` 列出它的整棵子树；`kind:function` 只保留一种种类。各词项之间以空格分隔，可以组合使用。
 
 ```case
-tests-next/workspace_symbol/queries/04_query_syntax
+tests/workspace_symbol/queries/04_query_syntax
 ```
 
 <!-- END CAPABILITY -->
@@ -1427,7 +1427,7 @@ tests-next/workspace_symbol/queries/04_query_syntax
 尚无法通过修饰后的链接器名称找到源代码中对应的函数
 
 ```case
-tests-next/workspace_symbol/queries/05_mangled_names
+tests/workspace_symbol/queries/05_mangled_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1449,7 +1449,7 @@ tests-next/workspace_symbol/queries/05_mangled_names
 `net::Socket` 能找到 `deep::net::Socket`：这些限定符必须按同样的顺序出现在符号的容器链中，其间和两端允许有别的容器；而以 `::` 开头则要求容器链与之完全一致。对限定查询的回复会写出限定名称，这样那些按查询文本过滤结果的编辑器就不会把它们滤掉。
 
 ```case
-tests-next/workspace_symbol/scopes/01_qualified_names
+tests/workspace_symbol/scopes/01_qualified_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1461,7 +1461,7 @@ tests-next/workspace_symbol/scopes/01_qualified_names
 枚举和其他容器一样，为自己的枚举项提供限定
 
 ```case
-tests-next/workspace_symbol/scopes/02_enumerators
+tests/workspace_symbol/scopes/02_enumerators
 ```
 
 <!-- END CAPABILITY -->
@@ -1483,7 +1483,7 @@ tests-next/workspace_symbol/scopes/02_enumerators
 `Connection` 会先列出别名，随后才是 `ConnectionImpl`。
 
 ```case
-tests-next/workspace_symbol/ranking/01_exact_name
+tests/workspace_symbol/ranking/01_exact_name
 ```
 
 <!-- END CAPABILITY -->
@@ -1505,7 +1505,7 @@ tests-next/workspace_symbol/ranking/01_exact_name
 查询重载名称会找到所有重载，但每个条目都只显示名称本身，因此只有分别打开两个 `process` 结果对应的位置，才能区分它们。
 
 ```case
-tests-next/workspace_symbol/results/01_overloads
+tests/workspace_symbol/results/01_overloads
 ```
 
 <!-- END CAPABILITY -->
@@ -1527,7 +1527,7 @@ tests-next/workspace_symbol/results/01_overloads
 查询会找到 `other.cpp` 中的一个函数。此时 `main.cpp` 已打开，`other.cpp` 仍未打开，结果由后台索引提供。
 
 ```case
-tests-next/workspace_symbol/projects/01_closed_files
+tests/workspace_symbol/projects/01_closed_files
 ```
 
 <!-- END CAPABILITY -->
@@ -1553,7 +1553,7 @@ tests-next/workspace_symbol/projects/01_closed_files
 头文件与定义其声明的源文件配对，源文件也与该头文件配对
 
 ```case
-tests-next/switch_source_header/counterparts/01_header_and_source
+tests/switch_source_header/counterparts/01_header_and_source
 ```
 
 <!-- END CAPABILITY -->
@@ -1565,7 +1565,7 @@ tests-next/switch_source_header/counterparts/01_header_and_source
 头文件与它为存放模板定义而包含的 `.tpp` 文件之间可以相互切换
 
 ```case
-tests-next/switch_source_header/counterparts/02_template_definitions
+tests/switch_source_header/counterparts/02_template_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -1577,7 +1577,7 @@ tests-next/switch_source_header/counterparts/02_template_definitions
 自身定义了全部所声明内容的头文件，以及 `.def` 片段，都没有配对文件
 
 ```case
-tests-next/switch_source_header/counterparts/03_no_counterpart
+tests/switch_source_header/counterparts/03_no_counterpart
 ```
 
 <!-- END CAPABILITY -->
@@ -1599,7 +1599,7 @@ tests-next/switch_source_header/counterparts/03_no_counterpart
 在头文件所在目录之外，同名文件只有在两者中一方包含另一方时才算数（`tools/shape.cpp` 什么都没有包含，因此不是配对文件），而且其中只取最近的那个：`src/legacy/shape.cpp` 比 `src/shape.cpp` 深一层目录。
 
 ```case
-tests-next/switch_source_header/layouts/01_split_directories
+tests/switch_source_header/layouts/01_split_directories
 ```
 
 <!-- END CAPABILITY -->
@@ -1619,7 +1619,7 @@ tests-next/switch_source_header/layouts/01_split_directories
 多个源文件分别定义同一头文件的声明时，直接选中定义数量明显最多的那个，其余的仍留在列表中
 
 ```case
-tests-next/switch_source_header/ranking/01_scattered_definitions
+tests/switch_source_header/ranking/01_scattered_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -1631,7 +1631,7 @@ tests-next/switch_source_header/ranking/01_scattered_definitions
 没有哪个候选明显胜过其他候选时，编辑器会列出所有候选及其理由，供用户挑选
 
 ```case
-tests-next/switch_source_header/ranking/02_split_evenly
+tests/switch_source_header/ranking/02_split_evenly
 ```
 
 <!-- END CAPABILITY -->
@@ -1651,7 +1651,7 @@ tests-next/switch_source_header/ranking/02_split_evenly
 模块接口单元与实现该模块的各个单元配对，每个实现单元也与该接口配对
 
 ```case
-tests-next/switch_source_header/modules/01_module_units
+tests/switch_source_header/modules/01_module_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1665,7 +1665,7 @@ tests-next/switch_source_header/modules/01_module_units
 该实现单元还会列出其模块的主接口，排在分区之后。
 
 ```case
-tests-next/switch_source_header/modules/02_partitions
+tests/switch_source_header/modules/02_partitions
 ```
 
 <!-- END CAPABILITY -->

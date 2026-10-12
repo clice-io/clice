@@ -27,7 +27,7 @@ Rules the editor sends replace the rules of `clice.toml`
 `clice.toml` gives `main.cpp` the macro it uses, and the file compiles. An editor that sends its own `rules` in its settings replaces the file's rules rather than adding to them, so here the macro is gone.
 
 ```case
-tests-next/config/layers/01_editor_overrides
+tests/config/layers/01_editor_overrides
 ```
 
 <!-- END CAPABILITY -->
@@ -49,7 +49,7 @@ clice reads `clice.toml` when the server starts, so an edit applies at the next 
 The rule's macro changes while the server runs, and `main.cpp` keeps the error until the server is started again.
 
 ```case
-tests-next/config/loading/04_edited_file
+tests/config/loading/04_edited_file
 ```
 
 <!-- END CAPABILITY -->
@@ -559,7 +559,7 @@ Files a rule matches compile with its default command, and files created later j
 `src/main.cpp` compiles under the rule's command, with no note that the command was guessed. A file created while the server runs compiles the same way at once and is indexed at the next look at the disk.
 
 ```case
-tests-next/project/rules/01_default_command
+tests/project/rules/01_default_command
 ```
 
 <!-- END CAPABILITY -->
@@ -573,7 +573,7 @@ A file several databases list takes its command from the first one, and the othe
 Database `a` lists `main.cpp` with `-DFROM_A`; database `b` lists it with `-DFROM_B` and also lists `other.cpp`. `main.cpp` compiles with the command from `a` and can be switched to the one from `b`, while `other.cpp` takes its command from `b`.
 
 ```case
-tests-next/project/rules/03_database_order
+tests/project/rules/03_database_order
 ```
 
 <!-- END CAPABILITY -->
@@ -587,7 +587,7 @@ A relative pattern matches paths under the directory of the `clice.toml` that de
 The rule appends `-DFEATURE` to the files under `src/`: `src/main.cpp` compiles, while `other.cpp`, beside `clice.toml`, misses the macro.
 
 ```case
-tests-next/project/rules/05_relative_patterns
+tests/project/rules/05_relative_patterns
 ```
 
 <!-- END CAPABILITY -->
@@ -601,7 +601,7 @@ A rule takes flags out of a file's command, and a later rule's remove cancels an
 The database gives `main.cpp` both `-DBROKEN` and `-include prefix.h`, which the first rule removes, so it compiles. For `other.cpp` the second rule appends `-DFEATURE` and the third removes it again.
 
 ```case
-tests-next/project/rules/09_remove_flags
+tests/project/rules/09_remove_flags
 ```
 
 <!-- END CAPABILITY -->
@@ -623,7 +623,7 @@ Tagged rules form a menu of build configurations, and a switch applies when the 
 Each board's rule gives its own default command, and `board-a` is the default configuration. Under it the header's `BOARD_B` branch is inactive; after switching to `board-b` and restarting, the `BOARD_A` branch is.
 
 ```case
-tests-next/project/configurations/03_board_defaults
+tests/project/configurations/03_board_defaults
 ```
 
 <!-- END CAPABILITY -->

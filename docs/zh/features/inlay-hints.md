@@ -1,7 +1,7 @@
 # 内联提示
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/inlay_hints/. Do not edit the regions between the
+     in tests/inlay_hints/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@ clice 为代码中未显式给出的信息渲染内联标注：调用处的参�
 字面量实参会显示其对应的参数名
 
 ```case
-tests-next/inlay_hints/parameter_hints/01_argument_names
+tests/inlay_hints/parameter_hints/01_argument_names
 ```
 
 <!-- END CAPABILITY -->
@@ -34,7 +34,7 @@ tests-next/inlay_hints/parameter_hints/01_argument_names
 实参与参数同名，或实参是未加限定的同名成员时，无需提示；限定名或通过对象访问的成员不算匹配。写有其他参数名的注释不会抑制任何提示。
 
 ```case
-tests-next/inlay_hints/parameter_hints/03_suppression
+tests/inlay_hints/parameter_hints/03_suppression
 ```
 
 <!-- END CAPABILITY -->
@@ -46,7 +46,7 @@ tests-next/inlay_hints/parameter_hints/03_suppression
 用 `&` 标记通过非常量左值引用传递的实参
 
 ```case
-tests-next/inlay_hints/parameter_hints/05_reference_markers
+tests/inlay_hints/parameter_hints/05_reference_markers
 ```
 
 <!-- END CAPABILITY -->
@@ -60,7 +60,7 @@ tests-next/inlay_hints/parameter_hints/05_reference_markers
 直接转交实参时，无需 `std::forward` 也能解析出参数名；位于固定的前置与后置实参之间的参数包会解析到其对应的参数；传递给可调用对象的参数包则会解析到其调用运算符。
 
 ```case
-tests-next/inlay_hints/parameter_hints/06_forwarding
+tests/inlay_hints/parameter_hints/06_forwarding
 ```
 
 <!-- END CAPABILITY -->
@@ -74,7 +74,7 @@ tests-next/inlay_hints/parameter_hints/06_forwarding
 声明和定义都为参数命名时，采用声明中的名称。
 
 ```case
-tests-next/inlay_hints/parameter_hints/07_definition_names
+tests/inlay_hints/parameter_hints/07_definition_names
 ```
 
 <!-- END CAPABILITY -->
@@ -86,7 +86,7 @@ tests-next/inlay_hints/parameter_hints/07_definition_names
 间接调用仍会显示参数名
 
 ```case
-tests-next/inlay_hints/parameter_hints/08_function_objects
+tests/inlay_hints/parameter_hints/08_function_objects
 ```
 
 <!-- END CAPABILITY -->
@@ -100,7 +100,7 @@ tests-next/inlay_hints/parameter_hints/08_function_objects
 根据实参数量匹配候选函数；只有筛选后仅剩一个候选函数时才显示参数名。若调用仍可能匹配多个重载，就不显示提示，也不猜测。
 
 ```case
-tests-next/inlay_hints/parameter_hints/10_dependent_calls
+tests/inlay_hints/parameter_hints/10_dependent_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -114,7 +114,7 @@ tests-next/inlay_hints/parameter_hints/10_dependent_calls
 类对象宏（object-like macro）在源码中算作一个实参。涵盖多个实参的宏没有可放置提示的位置，而作为宏实参编写的代码会保留提示。
 
 ```case
-tests-next/inlay_hints/parameter_hints/12_macros
+tests/inlay_hints/parameter_hints/12_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -126,7 +126,7 @@ tests-next/inlay_hints/parameter_hints/12_macros
 参数名 `aParam` 目前还无法抑制实参 `param` 的提示
 
 ```case
-tests-next/inlay_hints/parameter_hints/16_near_matches
+tests/inlay_hints/parameter_hints/16_near_matches
 ```
 
 <!-- END CAPABILITY -->
@@ -138,7 +138,7 @@ tests-next/inlay_hints/parameter_hints/16_near_matches
 调用通过 `using Base::Base` 继承的构造函数时，参数名会丢失
 
 ```case
-tests-next/inlay_hints/parameter_hints/17_inherited_constructors
+tests/inlay_hints/parameter_hints/17_inherited_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -158,7 +158,7 @@ tests-next/inlay_hints/parameter_hints/17_inherited_constructors
 提示显示变量的完整类型，包括限定符
 
 ```case
-tests-next/inlay_hints/type_hints/01_auto_variables
+tests/inlay_hints/type_hints/01_auto_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -172,7 +172,7 @@ tests-next/inlay_hints/type_hints/01_auto_variables
 如果类型没有足够短的写法，就不显示提示；默认模板实参始终不显示。长度上限由 `inlay_hints.type_name_limit` 设置；设为 `0` 即可取消限制。
 
 ```case
-tests-next/inlay_hints/type_hints/02_type_sugar
+tests/inlay_hints/type_hints/02_type_sugar
 ```
 
 <!-- END CAPABILITY -->
@@ -184,7 +184,7 @@ tests-next/inlay_hints/type_hints/02_type_sugar
 每个绑定都显示其规范类型的提示；聚合对象本身不显示提示
 
 ```case
-tests-next/inlay_hints/type_hints/03_structured_bindings
+tests/inlay_hints/type_hints/03_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -196,7 +196,7 @@ tests-next/inlay_hints/type_hints/03_structured_bindings
 变量、推导出的返回类型和初始化捕获都会显示提示
 
 ```case
-tests-next/inlay_hints/type_hints/04_lambdas
+tests/inlay_hints/type_hints/04_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -210,7 +210,7 @@ tests-next/inlay_hints/type_hints/04_lambdas
 后续定义提供类型推导结果后，声明处就会显示提示；没有定义则不显示提示。已显式写出的尾置返回类型无需提示。
 
 ```case
-tests-next/inlay_hints/type_hints/05_deduced_return_types
+tests/inlay_hints/type_hints/05_deduced_return_types
 ```
 
 <!-- END CAPABILITY -->
@@ -224,7 +224,7 @@ tests-next/inlay_hints/type_hints/05_deduced_return_types
 第二次实例化会使推导产生歧义，并移除提示；参数包及其后的参数始终不显示提示。多个实例化推导出相同类型时，模板体中的提示只显示一次。
 
 ```case
-tests-next/inlay_hints/type_hints/07_auto_parameters
+tests/inlay_hints/type_hints/07_auto_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -236,7 +236,7 @@ tests-next/inlay_hints/type_hints/07_auto_parameters
 即使初始化器已在强制类型转换或函数式类型转换中写出类型，仍会显示该类型的提示
 
 ```case
-tests-next/inlay_hints/type_hints/08_explicit_initializers
+tests/inlay_hints/type_hints/08_explicit_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -248,7 +248,7 @@ tests-next/inlay_hints/type_hints/08_explicit_initializers
 提示中省略命名空间限定符，保留类作用域
 
 ```case
-tests-next/inlay_hints/type_hints/10_scopes
+tests/inlay_hints/type_hints/10_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -262,7 +262,7 @@ tests-next/inlay_hints/type_hints/10_scopes
 当两个实例化推导出不同类型时，就没有一个统一的类型可供显示。
 
 ```case
-tests-next/inlay_hints/type_hints/12_instantiated_templates
+tests/inlay_hints/type_hints/12_instantiated_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -284,7 +284,7 @@ tests-next/inlay_hints/type_hints/12_instantiated_templates
 即使成员的大小依赖于模板参数，数组指派符仍能正常显示；保留成员名则会被跳过，不予显示。
 
 ```case
-tests-next/inlay_hints/designator_hints/01_fields_and_indices
+tests/inlay_hints/designator_hints/01_fields_and_indices
 ```
 
 <!-- END CAPABILITY -->
@@ -296,7 +296,7 @@ tests-next/inlay_hints/designator_hints/01_fields_and_indices
 显式写出花括号时递归处理；省略花括号时展平为 `.outer.inner=`
 
 ```case
-tests-next/inlay_hints/designator_hints/02_nested_aggregates
+tests/inlay_hints/designator_hints/02_nested_aggregates
 ```
 
 <!-- END CAPABILITY -->
@@ -310,7 +310,7 @@ tests-next/inlay_hints/designator_hints/02_nested_aggregates
 将显式写出的指派符与按位置指定的初始化器混用是 C99 扩展，clang 会接受这种写法并发出警告；只有未加标注的 `4` 需要提示。
 
 ```case
-tests-next/inlay_hints/designator_hints/04_suppression
+tests/inlay_hints/designator_hints/04_suppression
 ```
 
 <!-- END CAPABILITY -->
@@ -324,7 +324,7 @@ tests-next/inlay_hints/designator_hints/04_suppression
 使用花括号的构造函数调用会显示构造函数的形参名，而惯用的 `{}` 零初始化器则不显示提示。
 
 ```case
-tests-next/inlay_hints/designator_hints/05_aggregates_only
+tests/inlay_hints/designator_hints/05_aggregates_only
 ```
 
 <!-- END CAPABILITY -->
@@ -336,7 +336,7 @@ tests-next/inlay_hints/designator_hints/05_aggregates_only
 C++20 的 `Point(1, 2)` 写法目前还没有提示
 
 ```case
-tests-next/inlay_hints/designator_hints/07_parenthesized_init
+tests/inlay_hints/designator_hints/07_parenthesized_init
 ```
 
 <!-- END CAPABILITY -->
@@ -358,7 +358,7 @@ tests-next/inlay_hints/designator_hints/07_parenthesized_init
 函数、类型、命名空间和控制流结构都有这类提示；`if` 和 `while` 的条件较短时会显示条件，`else if` 链只显示为 `// if`，超过 60 个字符的标签则会省略。单行代码块不显示提示。
 
 ```case
-tests-next/inlay_hints/block_end/01_block_end_hints
+tests/inlay_hints/block_end/01_block_end_hints
 ```
 
 <!-- END CAPABILITY -->
@@ -380,7 +380,7 @@ tests-next/inlay_hints/block_end/01_block_end_hints
 使用默认实参的调用会显示省略的实参，每个名称都链接到对应的形参
 
 ```case
-tests-next/inlay_hints/default_arguments/01_omitted_arguments
+tests/inlay_hints/default_arguments/01_omitted_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -402,7 +402,7 @@ tests-next/inlay_hints/default_arguments/01_omitted_arguments
 如果一个类在定义之前已有声明，则链接会指向该声明，再从该声明执行“跳转到定义”即可到达定义。模板实参各自带有链接；内置类型和标点符号仍为纯文本。
 
 ```case
-tests-next/inlay_hints/links/02_type_links
+tests/inlay_hints/links/02_type_links
 ```
 
 <!-- END CAPABILITY -->
@@ -422,7 +422,7 @@ tests-next/inlay_hints/links/02_type_links
 调用处显式指定的模板实参，目前还不会显示它所绑定的模板形参
 
 ```case
-tests-next/inlay_hints/other_kinds/01_template_arguments
+tests/inlay_hints/other_kinds/01_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -434,7 +434,7 @@ tests-next/inlay_hints/other_kinds/01_template_arguments
 对于通过构造函数调用推导出实参的类模板，目前还不会显示这些实参
 
 ```case
-tests-next/inlay_hints/other_kinds/02_ctad_arguments
+tests/inlay_hints/other_kinds/02_ctad_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -446,7 +446,7 @@ tests-next/inlay_hints/other_kinds/02_ctad_arguments
 调用处的实参发生隐式转换时，目前还不会显示该转换
 
 ```case
-tests-next/inlay_hints/other_kinds/03_implicit_conversions
+tests/inlay_hints/other_kinds/03_implicit_conversions
 ```
 
 <!-- END CAPABILITY -->

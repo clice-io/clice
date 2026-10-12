@@ -42,7 +42,7 @@ function required(name: string): string {
 
 const zedExecutable = required("ZED_EXECUTABLE");
 const extensionWasm = required("ZED_EXTENSION_WASM");
-const extensionDir = path.resolve(import.meta.dirname, "../../editors/zed");
+const extensionDir = path.resolve(import.meta.dirname, "../../../editors/zed");
 const binaryName = process.platform === "win32" ? "clice.exe" : "clice";
 
 const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "clice-zed-")));

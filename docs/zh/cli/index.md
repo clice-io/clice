@@ -34,7 +34,7 @@
 为构建中的每个翻译单元建立索引，让编辑器会话热启动
 
 ```case
-tests-next/index/batch/01_build_the_index
+tests/index/batch/01_build_the_index
 ```
 
 <!-- END CAPABILITY -->
@@ -46,7 +46,7 @@ tests-next/index/batch/01_build_the_index
 设置了 `index = false` 的规则会将匹配的翻译单元排除在索引构建之外；打开时仍会编译这些翻译单元
 
 ```case
-tests-next/index/batch/02_keep_units_out
+tests/index/batch/02_keep_units_out
 ```
 
 <!-- END CAPABILITY -->
@@ -66,7 +66,7 @@ tests-next/index/batch/02_keep_units_out
 编辑器的 clice 服务器运行期间，`clice index` 和 `--fresh` 会请求该服务器建立索引，而不是与其同时建立索引
 
 ```case
-tests-next/index/delegation/01_running_server
+tests/index/delegation/01_running_server
 ```
 
 <!-- END CAPABILITY -->

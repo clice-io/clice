@@ -1,7 +1,7 @@
 # 文档符号
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/document_symbol/. Do not edit the regions between the
+     in tests/document_symbol/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@
 命名空间、类及其成员在大纲中的嵌套关系与代码中一致
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/01_nested_scopes
+tests/document_symbol/symbol_hierarchy/01_nested_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests-next/document_symbol/symbol_hierarchy/01_nested_scopes
 作用域外定义按代码中的书写位置列出，并显示其限定名；多次打开的命名空间每次打开都会单独列出
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/02_qualified_definitions
+tests/document_symbol/symbol_hierarchy/02_qualified_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -44,7 +44,7 @@ tests-next/document_symbol/symbol_hierarchy/02_qualified_definitions
 匿名命名空间、匿名结构体和匿名联合体的成员会归在各自的占位名称下，内联命名空间则保留自己的节点
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/03_anonymous_scopes
+tests/document_symbol/symbol_hierarchy/03_anonymous_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -56,7 +56,7 @@ tests-next/document_symbol/symbol_hierarchy/03_anonymous_scopes
 在函数体中声明的变量、类型和 Lambda 会嵌套在该函数之下
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/04_local_symbols
+tests/document_symbol/symbol_hierarchy/04_local_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -68,7 +68,7 @@ tests-next/document_symbol/symbol_hierarchy/04_local_symbols
 在类内定义的友元函数会列在该类之下
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/05_friend_definitions
+tests/document_symbol/symbol_hierarchy/05_friend_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -80,7 +80,7 @@ tests-next/document_symbol/symbol_hierarchy/05_friend_definitions
 成员尚未按所属的 `public` 和 `private` 访问控制区段分组
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/06_access_sections
+tests/document_symbol/symbol_hierarchy/06_access_sections
 ```
 
 <!-- END CAPABILITY -->
@@ -100,7 +100,7 @@ tests-next/document_symbol/symbol_hierarchy/06_access_sections
 命名空间、类、联合体、枚举及其成员，以及函数、变量、字段、绑定和 Lambda 都会标明各自的种类
 
 ```case
-tests-next/document_symbol/symbol_kinds/01_core_kinds
+tests/document_symbol/symbol_kinds/01_core_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -114,7 +114,7 @@ tests-next/document_symbol/symbol_kinds/01_core_kinds
 主模板（primary template）的范围从 `template <...>` 所在行之后开始，而模板特化（template specialization）的范围则包含这一行。
 
 ```case
-tests-next/document_symbol/symbol_kinds/02_templates
+tests/document_symbol/symbol_kinds/02_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -128,7 +128,7 @@ tests-next/document_symbol/symbol_kinds/02_templates
 函数模板的显式实例化（explicit instantiation）在列出时，名称中不包含实参。
 
 ```case
-tests-next/document_symbol/symbol_kinds/03_specializations
+tests/document_symbol/symbol_kinds/03_specializations
 ```
 
 <!-- END CAPABILITY -->
@@ -140,7 +140,7 @@ tests-next/document_symbol/symbol_kinds/03_specializations
 `typedef` 和 `using` 别名以及别名模板都会作为类型别名列出
 
 ```case
-tests-next/document_symbol/symbol_kinds/04_type_aliases
+tests/document_symbol/symbol_kinds/04_type_aliases
 ```
 
 <!-- END CAPABILITY -->
@@ -154,7 +154,7 @@ tests-next/document_symbol/symbol_kinds/04_type_aliases
 函数模板实例化的名称中不包含实参。
 
 ```case
-tests-next/document_symbol/symbol_kinds/05_explicit_instantiations
+tests/document_symbol/symbol_kinds/05_explicit_instantiations
 ```
 
 <!-- END CAPABILITY -->
@@ -168,7 +168,7 @@ tests-next/document_symbol/symbol_kinds/05_explicit_instantiations
 文件开头、首个声明之前的一连串预处理指令中的宏，目前还不会显示在编辑器大纲中。
 
 ```case
-tests-next/document_symbol/symbol_kinds/06_macros
+tests/document_symbol/symbol_kinds/06_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -180,7 +180,7 @@ tests-next/document_symbol/symbol_kinds/06_macros
 模块接口单元会列出其声明的模块
 
 ```case
-tests-next/document_symbol/symbol_kinds/07_modules
+tests/document_symbol/symbol_kinds/07_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -192,7 +192,7 @@ tests-next/document_symbol/symbol_kinds/07_modules
 `#include` 指令目前还不会显示在大纲中
 
 ```case
-tests-next/document_symbol/symbol_kinds/10_includes
+tests/document_symbol/symbol_kinds/10_includes
 ```
 
 <!-- END CAPABILITY -->
@@ -204,7 +204,7 @@ tests-next/document_symbol/symbol_kinds/10_includes
 `#pragma mark` 区段目前还不会显示在大纲中
 
 ```case
-tests-next/document_symbol/symbol_kinds/11_pragma_marks
+tests/document_symbol/symbol_kinds/11_pragma_marks
 ```
 
 <!-- END CAPABILITY -->
@@ -224,7 +224,7 @@ tests-next/document_symbol/symbol_kinds/11_pragma_marks
 `detail` 字段中的参数类型和返回类型用于区分重载；构造函数会省略 `void` 返回类型
 
 ```case
-tests-next/document_symbol/symbol_detail/01_detail_signatures
+tests/document_symbol/symbol_detail/01_detail_signatures
 ```
 
 <!-- END CAPABILITY -->
@@ -236,7 +236,7 @@ tests-next/document_symbol/symbol_detail/01_detail_signatures
 变量或字段在详细信息中显示其声明类型，Lambda 则显示 `(lambda)`
 
 ```case
-tests-next/document_symbol/symbol_detail/02_variable_types
+tests/document_symbol/symbol_detail/02_variable_types
 ```
 
 <!-- END CAPABILITY -->
@@ -248,7 +248,7 @@ tests-next/document_symbol/symbol_detail/02_variable_types
 函数的详细信息会列出参数类型，不包含默认值
 
 ```case
-tests-next/document_symbol/symbol_detail/03_default_arguments
+tests/document_symbol/symbol_detail/03_default_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -260,7 +260,7 @@ tests-next/document_symbol/symbol_detail/03_default_arguments
 派生类的详细信息目前还不会显示其基类名称
 
 ```case
-tests-next/document_symbol/symbol_detail/04_base_classes
+tests/document_symbol/symbol_detail/04_base_classes
 ```
 
 <!-- END CAPABILITY -->
@@ -272,7 +272,7 @@ tests-next/document_symbol/symbol_detail/04_base_classes
 类型名中写出的类作用域限定会在详细信息中保留，且只出现一次，待决名（dependent names）也不例外
 
 ```case
-tests-next/document_symbol/symbol_detail/05_scoped_types
+tests/document_symbol/symbol_detail/05_scoped_types
 ```
 
 <!-- END CAPABILITY -->
@@ -292,7 +292,7 @@ tests-next/document_symbol/symbol_detail/05_scoped_types
 符号的声明范围涵盖整个声明，名称范围涵盖代码中写出的完整名称，包括 `~Widget`、`operator==` 和 `operator bool`
 
 ```case
-tests-next/document_symbol/symbol_ranges/01_selection_ranges
+tests/document_symbol/symbol_ranges/01_selection_ranges
 ```
 
 <!-- END CAPABILITY -->
@@ -304,7 +304,7 @@ tests-next/document_symbol/symbol_ranges/01_selection_ranges
 跨行声明的范围从第一行延伸至最后一行
 
 ```case
-tests-next/document_symbol/symbol_ranges/02_multiline_signatures
+tests/document_symbol/symbol_ranges/02_multiline_signatures
 ```
 
 <!-- END CAPABILITY -->
@@ -316,7 +316,7 @@ tests-next/document_symbol/symbol_ranges/02_multiline_signatures
 宏调用声明的符号列在调用位置，而非宏定义处
 
 ```case
-tests-next/document_symbol/symbol_ranges/03_macro_expansions
+tests/document_symbol/symbol_ranges/03_macro_expansions
 ```
 
 <!-- END CAPABILITY -->
@@ -328,7 +328,7 @@ tests-next/document_symbol/symbol_ranges/03_macro_expansions
 写在宏实参中的名称用作符号名称；若名称写在宏体中，则回退到宏调用处
 
 ```case
-tests-next/document_symbol/symbol_ranges/04_macro_arguments
+tests/document_symbol/symbol_ranges/04_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -348,7 +348,7 @@ tests-next/document_symbol/symbol_ranges/04_macro_arguments
 已弃用的符号尚无 Deprecated 标签
 
 ```case
-tests-next/document_symbol/symbol_tags/01_deprecated
+tests/document_symbol/symbol_tags/01_deprecated
 ```
 
 <!-- END CAPABILITY -->
@@ -360,7 +360,7 @@ tests-next/document_symbol/symbol_tags/01_deprecated
 大纲尚未用标签标明成员的访问权限、`static`、`virtual` 或抽象性
 
 ```case
-tests-next/document_symbol/symbol_tags/02_modifiers
+tests/document_symbol/symbol_tags/02_modifiers
 ```
 
 <!-- END CAPABILITY -->

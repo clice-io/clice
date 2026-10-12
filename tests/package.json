@@ -3,19 +3,22 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "cases": "vitest run --config ../tools/testing/runner/cases.config.ts",
+    "coverage": "vitest run --config ../tools/testing/runner/coverage.config.ts",
     "compat": "vitest run --config compat/vitest.config.ts",
-    "zed": "vitest run --config zed/vitest.config.ts",
+    "zed": "vitest run --config editors/zed/vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint"
   },
   "devDependencies": {
+    "@clice/tools": "*",
     "@types/node": "~25.0.3",
     "@vitest/eslint-plugin": "^1.6.24",
     "eslint": "^10.8.0",
     "typescript": "~5.5.4",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.11",
-    "@clice/tools": "*"
+    "vscode-languageserver-protocol": "^3.17.5"
   }
 }

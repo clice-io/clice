@@ -3,7 +3,7 @@
 clice builds the modules a file imports when the file opens, so module units and their importers work like any other source: hover, navigation and completion reach across `import`. The feature pages show what each feature does in module units; this page shows the modules themselves.
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/modules/. Do not edit the regions between the
+     in tests/modules/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -23,7 +23,7 @@ The importing file compiles against the module's interface, which clice
 builds when the file opens; nothing else needs to be open.
 
 ```case
-tests-next/modules/imports/01_imported_symbol
+tests/modules/imports/01_imported_symbol
 ```
 
 <!-- END CAPABILITY -->
@@ -35,7 +35,7 @@ tests-next/modules/imports/01_imported_symbol
 A module that re-exports another with `export import` gives its importers the names of both
 
 ```case
-tests-next/modules/imports/04_reexport
+tests/modules/imports/04_reexport
 ```
 
 <!-- END CAPABILITY -->
@@ -55,7 +55,7 @@ A declaration is exported on its own, in an `export` block, or as a member of an
 An `export { … }` block exports every declaration inside it, and `export namespace` every member of the namespace
 
 ```case
-tests-next/modules/exports/01_export_forms
+tests/modules/exports/01_export_forms
 ```
 
 <!-- END CAPABILITY -->
@@ -78,7 +78,7 @@ A partition imports a sibling by its partition name alone, `import :Types;`,
 and the primary interface uses what its partitions declare.
 
 ```case
-tests-next/modules/units/01_partitions
+tests/modules/units/01_partitions
 ```
 
 <!-- END CAPABILITY -->
@@ -90,7 +90,7 @@ tests-next/modules/units/01_partitions
 A module unit includes headers in its global module fragment, ahead of the module declaration, and imports modules after it
 
 ```case
-tests-next/modules/units/03_global_fragment
+tests/modules/units/03_global_fragment
 ```
 
 <!-- END CAPABILITY -->
@@ -102,7 +102,7 @@ tests-next/modules/units/03_global_fragment
 Importing a header as a header unit, `import "local.h";` or `import <util.h>;`, is not supported yet
 
 ```case
-tests-next/modules/units/09_header_units
+tests/modules/units/09_header_units
 ```
 
 <!-- END CAPABILITY -->
@@ -122,7 +122,7 @@ An edit to a module interface reaches its importers once it is saved.
 An importer sees what its module's interface declares once the interface is saved, not while the edit is unsaved
 
 ```case
-tests-next/modules/edits/03_unsaved_interface
+tests/modules/edits/03_unsaved_interface
 ```
 
 <!-- END CAPABILITY -->
@@ -135,14 +135,14 @@ A module that fails to build reports its errors, and the files importing it repo
 
 <!-- BEGIN GENERATED ITEMS: modules/failures -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Broken modules**
 
-A module that fails to build reports its own errors, and the files importing it report the import
+A module that fails to build reports its own errors, and the files importing it say why it did not build
 
 ```case
-tests-next/modules/failures/01_broken_module
+tests/modules/failures/01_broken_module
 ```
 
 <!-- END CAPABILITY -->

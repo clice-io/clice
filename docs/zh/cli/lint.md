@@ -47,7 +47,7 @@ lint = false
 翻译单元的编译命令所启用的编译器警告，只有在 `Checks` 中列出了对应的 `clang-diagnostic-<flag>` 名称时，才会计入检查结果，并以该名称报告。其余警告不会出现在报告中。
 
 ```case
-tests-next/lint/checks/02_compiler_warnings
+tests/lint/checks/02_compiler_warnings
 ```
 
 <!-- END CAPABILITY -->
@@ -69,7 +69,7 @@ tests-next/lint/checks/02_compiler_warnings
 与 clang-tidy 一样，每个翻译单元都会检查其包含的头文件，因此每个包含共享头文件的翻译单元都会报告该头文件中的同一条检查结果。报告会将这些重复结果合并为一行，并按文件和位置列出所有检查结果。
 
 ```case
-tests-next/lint/findings/01_header_findings_merge
+tests/lint/findings/01_header_findings_merge
 ```
 
 <!-- END CAPABILITY -->
@@ -83,7 +83,7 @@ NOLINT 注释可抑制头文件和正在检查的文件中的检查结果
 `// NOLINT` 抑制所在行的检查结果，`// NOLINTNEXTLINE` 抑制下一行的检查结果，`// NOLINTBEGIN` 和 `// NOLINTEND` 抑制两者之间所有行的检查结果；它们可针对所有检查项，也可仅针对括号内指定的检查项。这些注释在翻译单元读取的每个文件中均生效，处理方式与 clang-tidy 一致。
 
 ```case
-tests-next/lint/findings/03_suppression_comments
+tests/lint/findings/03_suppression_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -105,7 +105,7 @@ tests-next/lint/findings/03_suppression_comments
 随项目附带的第三方库既不会作为独立的翻译单元接受检查，也不会在项目的翻译单元包含它时出现在报告中。
 
 ```case
-tests-next/lint/scope/01_keep_files_out
+tests/lint/scope/01_keep_files_out
 ```
 
 <!-- END CAPABILITY -->

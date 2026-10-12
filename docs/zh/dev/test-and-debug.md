@@ -21,7 +21,7 @@ pixi run unit-test Debug    # debug build
 
 ### 用例
 
-其余测试都是 `tests-next/<topic>/<subtopic>/NN_name/` 下的用例：一个自成一体的小项目、要在它上面运行的检查，以及 `snap.toml`——用例固定下来的全部输出。用例通过 `tools/testing/` 中的框架向真实的 `clice serve`、`clice inspect` 或某个命令发出请求；本文档的功能页面展示的正是带有 `README.md` 的用例。[`tests-next/README.md`](https://github.com/clice-io/clice/blob/main/tests-next/README.md) 是这套测试的约定：用例怎么写、怎么断言、输出怎么读。
+其余测试都是 `tests/<topic>/<subtopic>/NN_name/` 下的用例：一个自成一体的小项目、要在它上面运行的检查，以及 `snap.toml`——用例固定下来的全部输出。用例通过 `tools/testing/` 中的框架向真实的 `clice serve`、`clice inspect` 或某个命令发出请求；本文档的功能页面展示的正是带有 `README.md` 的用例。[`tests/README.md`](https://github.com/clice-io/clice/blob/main/tests/README.md) 是这套测试的约定：用例怎么写、怎么断言、输出怎么读。
 
 ```bash
 pixi run cases-test          # default RelWithDebInfo
@@ -31,7 +31,7 @@ pixi run cases-test Debug    # debug build
 等价于：
 
 ```bash
-CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice npm run cases --workspace tests-next
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice npm run cases --workspace tests
 ```
 
 `CLICE_CASES=hover/` 只运行某个路径下的用例。`UPDATE_SNAPSHOTS=1` 会重写它们的输出，并列出哪些发生了变化；要像审查代码一样审查这些变化。

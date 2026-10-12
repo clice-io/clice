@@ -47,7 +47,7 @@
 每个被包含的头文件的第一个错误会报告在对应的 `#include` 行，并在头文件中的出错位置附上一条备注。头文件中的其他错误归属于头文件本身，会在打开该头文件时显示。
 
 ```case
-tests-next/diagnostics/headers/01_errors_on_include
+tests/diagnostics/headers/01_errors_on_include
 ```
 
 <!-- END CAPABILITY -->
@@ -69,7 +69,7 @@ tests-next/diagnostics/headers/01_errors_on_include
 如果模板使用给定实参实例化时出错，错误会报告在触发实例化的代码处，而非模板内部。错误附带的备注会沿实例化链指向模板中的出错位置。
 
 ```case
-tests-next/diagnostics/templates/01_instantiation_errors
+tests/diagnostics/templates/01_instantiation_errors
 ```
 
 <!-- END CAPABILITY -->
@@ -91,7 +91,7 @@ clang 为错误附加的备注会指向其中提到的位置
 错误会附带解释该错误的备注，例如某个名称首次定义的位置，或某次调用无法使用的候选项。每条备注都是该错误的相关信息，因此编辑器会将其显示在错误旁，并支持跳转到对应位置。
 
 ```case
-tests-next/diagnostics/notes/01_related_information
+tests/diagnostics/notes/01_related_information
 ```
 
 <!-- END CAPABILITY -->
@@ -113,7 +113,7 @@ tests-next/diagnostics/notes/01_related_information
 即使 `compile_commands.json` 中没有对应条目，clice 仍会使用推测的命令编译文件。如果因此找不到某个被包含的文件，文件顶部会显示一条警告，说明原因并提供配置指南的链接。一旦编译数据库中列出了该文件，警告就会消失，剩下的就是代码本身的错误。
 
 ```case
-tests-next/diagnostics/guidance/01_no_database
+tests/diagnostics/guidance/01_no_database
 ```
 
 <!-- END CAPABILITY -->
@@ -180,7 +180,7 @@ clang-tidy 对已打开的文件执行最近的 `.clang-tidy` 中启用的检查
 每条检查结果都会标明对应的检查，并提供指向该检查文档的链接。检查配置来自从文件所在目录向上查找到的最近的 `.clang-tidy`，与 `clang-tidy` 自身读取配置的方式一致。
 
 ```case
-tests-next/diagnostics/clang_tidy/01_findings
+tests/diagnostics/clang_tidy/01_findings
 ```
 
 <!-- END CAPABILITY -->
@@ -194,7 +194,7 @@ tests-next/diagnostics/clang_tidy/01_findings
 项目即使没有 `.clang-tidy`，仍会运行几项不易误报的检查，例如未使用的声明检查，编辑器会将这些声明淡化显示。
 
 ```case
-tests-next/diagnostics/clang_tidy/02_default_checks
+tests/diagnostics/clang_tidy/02_default_checks
 ```
 
 <!-- END CAPABILITY -->
@@ -208,7 +208,7 @@ tests-next/diagnostics/clang_tidy/02_default_checks
 `// NOLINT` 抑制所在行的检查结果，`// NOLINTNEXTLINE` 则抑制下一行的检查结果；两者都可针对所有检查或括号中指定的检查。clang-tidy 在文件上运行时，这些注释也会抑制相应行的编译器警告。
 
 ```case
-tests-next/diagnostics/clang_tidy/04_nolint
+tests/diagnostics/clang_tidy/04_nolint
 ```
 
 <!-- END CAPABILITY -->
@@ -222,7 +222,7 @@ tests-next/diagnostics/clang_tidy/04_nolint
 检查随结果附带的修复会出现在该结果所在位置的快速修复选项中；应用修复后，该检查结果就会消失。
 
 ```case
-tests-next/diagnostics/clang_tidy/05_quick_fix
+tests/diagnostics/clang_tidy/05_quick_fix
 ```
 
 <!-- END CAPABILITY -->
@@ -236,7 +236,7 @@ tests-next/diagnostics/clang_tidy/05_quick_fix
 关闭 clang-tidy 后，无论 `.clang-tidy` 中启用了哪些检查，已打开的文件都只显示编译器的诊断。
 
 ```case
-tests-next/diagnostics/clang_tidy/09_turned_off
+tests/diagnostics/clang_tidy/09_turned_off
 ```
 
 <!-- END CAPABILITY -->

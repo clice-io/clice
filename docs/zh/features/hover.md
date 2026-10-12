@@ -3,7 +3,7 @@
 为光标所在的符号显示内容丰富的信息卡片。
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/hover/. Do not edit the regions between the
+     in tests/hover/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@
 卡片标题标明符号的种类：命名空间、结构体、联合体、枚举、枚举项、别名、字段、函数
 
 ```case
-tests-next/hover/symbols/01_symbol_kinds
+tests/hover/symbols/01_symbol_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests-next/hover/symbols/01_symbol_kinds
 卡片指出符号声明所在的命名空间、类或函数
 
 ```case
-tests-next/hover/symbols/02_scopes
+tests/hover/symbols/02_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -44,7 +44,7 @@ tests-next/hover/symbols/02_scopes
 成员的定义会显示其 `public`、`protected` 或 `private` 访问权限
 
 ```case
-tests-next/hover/symbols/03_access
+tests/hover/symbols/03_access
 ```
 
 <!-- END CAPABILITY -->
@@ -56,7 +56,7 @@ tests-next/hover/symbols/03_access
 无论在符号的定义处还是使用处，卡片都会以源代码形式显示其声明
 
 ```case
-tests-next/hover/symbols/04_definitions
+tests/hover/symbols/04_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -68,7 +68,7 @@ tests-next/hover/symbols/04_definitions
 成员函数的定义按源码显示 `virtual`、`override` 或 `final`，因此重写的成员函数若未写出这些关键字，就不会显示出它是虚函数
 
 ```case
-tests-next/hover/symbols/05_virtual_modifiers
+tests/hover/symbols/05_virtual_modifiers
 ```
 
 <!-- END CAPABILITY -->
@@ -80,7 +80,7 @@ tests-next/hover/symbols/05_virtual_modifiers
 卡片中的作用域省略匿名命名空间
 
 ```case
-tests-next/hover/symbols/06_anonymous_namespaces
+tests/hover/symbols/06_anonymous_namespaces
 ```
 
 <!-- END CAPABILITY -->
@@ -94,7 +94,7 @@ tests-next/hover/symbols/06_anonymous_namespaces
 `[[deprecated]]` 的消息说明应改用什么；卡片既不显示弃用状态，也不显示该消息。
 
 ```case
-tests-next/hover/symbols/13_deprecation
+tests/hover/symbols/13_deprecation
 ```
 
 <!-- END CAPABILITY -->
@@ -106,7 +106,7 @@ tests-next/hover/symbols/13_deprecation
 对于所包含头文件中声明的符号，卡片会显示其文档和定义
 
 ```case
-tests-next/hover/symbols/14_header_symbols
+tests/hover/symbols/14_header_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -126,7 +126,7 @@ tests-next/hover/symbols/14_header_symbols
 函数卡片列出返回类型和各个参数，并显示参数的名称与默认值
 
 ```case
-tests-next/hover/functions/01_signatures
+tests/hover/functions/01_signatures
 ```
 
 <!-- END CAPABILITY -->
@@ -146,7 +146,7 @@ tests-next/hover/functions/01_signatures
 变量卡片按源码显示其指针、引用和数组声明符
 
 ```case
-tests-next/hover/variables/01_declarators
+tests/hover/variables/01_declarators
 ```
 
 <!-- END CAPABILITY -->
@@ -158,7 +158,7 @@ tests-next/hover/variables/01_declarators
 变量或枚举项的值若在编译时已知，就会显示该值
 
 ```case
-tests-next/hover/variables/02_constant_values
+tests/hover/variables/02_constant_values
 ```
 
 <!-- END CAPABILITY -->
@@ -170,7 +170,7 @@ tests-next/hover/variables/02_constant_values
 定义中会省略较长的初始化器，值则只显示开头的几个元素
 
 ```case
-tests-next/hover/variables/04_long_initializers
+tests/hover/variables/04_long_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -182,7 +182,7 @@ tests-next/hover/variables/04_long_initializers
 若所在函数不是模板，将光标悬停在 `__func__` 上会显示该函数的名称
 
 ```case
-tests-next/hover/variables/06_predefined_identifiers
+tests/hover/variables/06_predefined_identifiers
 ```
 
 <!-- END CAPABILITY -->
@@ -204,7 +204,7 @@ tests-next/hover/variables/06_predefined_identifiers
 `max_members` 限制列表中的成员数量，默认值为 20；设为 `0` 时仅显示声明。
 
 ```case
-tests-next/hover/members/01_type_members
+tests/hover/members/01_type_members
 ```
 
 <!-- END CAPABILITY -->
@@ -226,7 +226,7 @@ tests-next/hover/members/01_type_members
 设置 `show_aka = false` 后，卡片仅保留别名。
 
 ```case
-tests-next/hover/aliases/01_aka
+tests/hover/aliases/01_aka
 ```
 
 <!-- END CAPABILITY -->
@@ -238,7 +238,7 @@ tests-next/hover/aliases/01_aka
 别名会显示其所代表的结构体名称，但目前尚不显示结构体的成员
 
 ```case
-tests-next/hover/aliases/02_alias_targets
+tests/hover/aliases/02_alias_targets
 ```
 
 <!-- END CAPABILITY -->
@@ -252,7 +252,7 @@ tests-next/hover/aliases/02_alias_targets
 定义行仍写作 `struct Point`，但在 C 中，该结构体并无此名称。
 
 ```case
-tests-next/hover/aliases/03_c_anonymous_structs
+tests/hover/aliases/03_c_anonymous_structs
 ```
 
 <!-- END CAPABILITY -->
@@ -272,7 +272,7 @@ tests-next/hover/aliases/03_c_anonymous_structs
 将光标悬停在 `auto` 上会显示其代表的类型；若在模板中尚未推导出类型，则会显示相应提示
 
 ```case
-tests-next/hover/deduced_types/01_auto
+tests/hover/deduced_types/01_auto
 ```
 
 <!-- END CAPABILITY -->
@@ -284,7 +284,7 @@ tests-next/hover/deduced_types/01_auto
 将光标悬停在 `decltype` 上会显示其得出的类型，包括为名称加上括号所引入的引用
 
 ```case
-tests-next/hover/deduced_types/02_decltype
+tests/hover/deduced_types/02_decltype
 ```
 
 <!-- END CAPABILITY -->
@@ -296,7 +296,7 @@ tests-next/hover/deduced_types/02_decltype
 从别名推导出的 `auto` 会在其代表的类型旁保留别名的名称
 
 ```case
-tests-next/hover/deduced_types/03_alias_spelling
+tests/hover/deduced_types/03_alias_spelling
 ```
 
 <!-- END CAPABILITY -->
@@ -310,7 +310,7 @@ tests-next/hover/deduced_types/03_alias_spelling
 在函数体内，形参显示为 `auto`，`point.x` 没有悬停卡片。
 
 ```case
-tests-next/hover/deduced_types/06_generic_lambdas
+tests/hover/deduced_types/06_generic_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -330,7 +330,7 @@ tests-next/hover/deduced_types/06_generic_lambdas
 模板形参会显示其种类（类型、模板或值）及默认值
 
 ```case
-tests-next/hover/templates/01_template_parameters
+tests/hover/templates/01_template_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -342,7 +342,7 @@ tests-next/hover/templates/01_template_parameters
 模板的使用处会显示实例化时采用的类型，但尚未显示各实参绑定到哪个形参
 
 ```case
-tests-next/hover/templates/02_instantiation_arguments
+tests/hover/templates/02_instantiation_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -354,7 +354,7 @@ tests-next/hover/templates/02_instantiation_arguments
 类模板实参通过推导确定的变量会显示这些实参，而旁边的类名只显示模板本身
 
 ```case
-tests-next/hover/templates/03_deduced_class_arguments
+tests/hover/templates/03_deduced_class_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -366,7 +366,7 @@ tests-next/hover/templates/03_deduced_class_arguments
 Concept 和受约束的形参会显示约束，但 `Addable auto` 占位符只显示推导出的类型
 
 ```case
-tests-next/hover/templates/04_concept_constraints
+tests/hover/templates/04_concept_constraints
 ```
 
 <!-- END CAPABILITY -->
@@ -386,7 +386,7 @@ tests-next/hover/templates/04_concept_constraints
 字段会显示其偏移量、大小、对齐要求以及后面的填充
 
 ```case
-tests-next/hover/layout/01_field_layout
+tests/hover/layout/01_field_layout
 ```
 
 <!-- END CAPABILITY -->
@@ -398,7 +398,7 @@ tests-next/hover/layout/01_field_layout
 类会显示其大小和对齐要求，但尚未显示其中有多少空间用于填充
 
 ```case
-tests-next/hover/layout/02_type_layout
+tests/hover/layout/02_type_layout
 ```
 
 <!-- END CAPABILITY -->
@@ -410,7 +410,7 @@ tests-next/hover/layout/02_type_layout
 虚成员函数尚未显示其在虚函数表中的槽位
 
 ```case
-tests-next/hover/layout/03_vtable_slots
+tests/hover/layout/03_vtable_slots
 ```
 
 <!-- END CAPABILITY -->
@@ -430,7 +430,7 @@ tests-next/hover/layout/03_vtable_slots
 调用处的实参会显示对应的形参
 
 ```case
-tests-next/hover/arguments/01_bound_parameters
+tests/hover/arguments/01_bound_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -442,7 +442,7 @@ tests-next/hover/arguments/01_bound_parameters
 实参的悬停卡片会注明它是按值、按引用还是按常量引用传递
 
 ```case
-tests-next/hover/arguments/02_pass_modes
+tests/hover/arguments/02_pass_modes
 ```
 
 <!-- END CAPABILITY -->
@@ -454,7 +454,7 @@ tests-next/hover/arguments/02_pass_modes
 实参若在传给形参的过程中发生转换，会显示转换后的类型
 
 ```case
-tests-next/hover/arguments/03_conversions
+tests/hover/arguments/03_conversions
 ```
 
 <!-- END CAPABILITY -->
@@ -466,7 +466,7 @@ tests-next/hover/arguments/03_conversions
 若调用在编译期求值，传入的记录类型实参会将该调用的值显示为自身的值
 
 ```case
-tests-next/hover/arguments/04_record_arguments
+tests/hover/arguments/04_record_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -488,7 +488,7 @@ tests-next/hover/arguments/04_record_arguments
 大小包括末尾的空字符；不显示字符串的长度。
 
 ```case
-tests-next/hover/expressions/01_literals
+tests/hover/expressions/01_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -500,7 +500,7 @@ tests-next/hover/expressions/01_literals
 在类和类模板中，悬停在 `this` 上会显示它所指向的类型
 
 ```case
-tests-next/hover/expressions/02_this
+tests/hover/expressions/02_this
 ```
 
 <!-- END CAPABILITY -->
@@ -520,7 +520,7 @@ tests-next/hover/expressions/02_this
 宏名在自身的 `#define` 之前使用时没有悬停卡片，在之后使用时则有
 
 ```case
-tests-next/hover/macros/01_use_before_definition
+tests/hover/macros/01_use_before_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -532,7 +532,7 @@ tests-next/hover/macros/01_use_before_definition
 定义处、使用处、`#ifdef`、`defined` 和 `#undef` 处都会显示宏的 `#define`
 
 ```case
-tests-next/hover/macros/02_definition_sites
+tests/hover/macros/02_definition_sites
 ```
 
 <!-- END CAPABILITY -->
@@ -544,7 +544,7 @@ tests-next/hover/macros/02_definition_sites
 函数式宏的使用处会显示代入实参后的展开结果
 
 ```case
-tests-next/hover/macros/03_expansion_preview
+tests/hover/macros/03_expansion_preview
 ```
 
 <!-- END CAPABILITY -->
@@ -556,7 +556,7 @@ tests-next/hover/macros/03_expansion_preview
 通过 `-D` 定义的宏会显示与之等效的 `#define`
 
 ```case
-tests-next/hover/macros/04_command_line
+tests/hover/macros/04_command_line
 ```
 
 <!-- END CAPABILITY -->
@@ -568,7 +568,7 @@ tests-next/hover/macros/04_command_line
 位于另一个宏的实参中的宏会显示其定义，但不显示展开结果
 
 ```case
-tests-next/hover/macros/05_nested_arguments
+tests/hover/macros/05_nested_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -588,7 +588,7 @@ tests-next/hover/macros/05_nested_arguments
 悬停在 `#include` 上会显示解析后对应的文件
 
 ```case
-tests-next/hover/directives/01_include_paths
+tests/hover/directives/01_include_paths
 ```
 
 <!-- END CAPABILITY -->
@@ -610,7 +610,7 @@ tests-next/hover/directives/01_include_paths
 模板的使用处会显示所选模板特化的注释。
 
 ```case
-tests-next/hover/documentation/01_doc_comments
+tests/hover/documentation/01_doc_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -622,7 +622,7 @@ tests-next/hover/documentation/01_doc_comments
 简单的取值函数或设值函数若没有自己的注释，会显示访问对应字段的描述
 
 ```case
-tests-next/hover/documentation/02_accessors
+tests/hover/documentation/02_accessors
 ```
 
 <!-- END CAPABILITY -->
@@ -634,7 +634,7 @@ tests-next/hover/documentation/02_accessors
 `@copydoc` 命令按原样显示，不会显示它所引用的文档
 
 ```case
-tests-next/hover/documentation/03_copydoc
+tests/hover/documentation/03_copydoc
 ```
 
 <!-- END CAPABILITY -->
@@ -646,7 +646,7 @@ tests-next/hover/documentation/03_copydoc
 重写函数没有自己的注释时，不会显示被重写函数的文档
 
 ```case
-tests-next/hover/documentation/04_overrides
+tests/hover/documentation/04_overrides
 ```
 
 <!-- END CAPABILITY -->
@@ -658,7 +658,7 @@ tests-next/hover/documentation/04_overrides
 没有注释的重载不会显示前一个重载的文档
 
 ```case
-tests-next/hover/documentation/05_overloads
+tests/hover/documentation/05_overloads
 ```
 
 <!-- END CAPABILITY -->
@@ -670,7 +670,7 @@ tests-next/hover/documentation/05_overloads
 `using Base::Base` 中的名称显示隐式移动构造函数，而不是它继承的构造函数
 
 ```case
-tests-next/hover/documentation/06_inherited_constructors
+tests/hover/documentation/06_inherited_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -682,7 +682,7 @@ tests-next/hover/documentation/06_inherited_constructors
 声明上方的分节横幅注释会显示为该声明的文档，即使两者之间有空行
 
 ```case
-tests-next/hover/documentation/07_banner_comments
+tests/hover/documentation/07_banner_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -696,7 +696,7 @@ tests-next/hover/documentation/07_banner_comments
 修改后，如果先在定义上悬停，定义的普通 `//` 注释就会取而代之，在两处显示。
 
 ```case
-tests-next/hover/documentation/08_declaration_and_definition
+tests/hover/documentation/08_declaration_and_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -708,7 +708,7 @@ tests-next/hover/documentation/08_declaration_and_definition
 注释中的表格会挤在同一行显示
 
 ```case
-tests-next/hover/documentation/09_markdown_tables
+tests/hover/documentation/09_markdown_tables
 ```
 
 <!-- END CAPABILITY -->
@@ -720,7 +720,7 @@ tests-next/hover/documentation/09_markdown_tables
 注释中的缩进块会丢失缩进和前面的空行
 
 ```case
-tests-next/hover/documentation/10_indented_blocks
+tests/hover/documentation/10_indented_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -732,7 +732,7 @@ tests-next/hover/documentation/10_indented_blocks
 与声明之间隔着空行的注释会显示为该声明的文档，且没有选项可以关闭这一行为
 
 ```case
-tests-next/hover/documentation/11_stray_comments
+tests/hover/documentation/11_stray_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -744,7 +744,7 @@ tests-next/hover/documentation/11_stray_comments
 GTK-Doc 的名称行、参数条目和标注均按原样显示
 
 ```case
-tests-next/hover/documentation/12_gtk_doc
+tests/hover/documentation/12_gtk_doc
 ```
 
 <!-- END CAPABILITY -->
@@ -756,7 +756,7 @@ tests-next/hover/documentation/12_gtk_doc
 Doxygen 公式显示为源码
 
 ```case
-tests-next/hover/documentation/13_latex_formulas
+tests/hover/documentation/13_latex_formulas
 ```
 
 <!-- END CAPABILITY -->
@@ -770,7 +770,7 @@ tests-next/hover/documentation/13_latex_formulas
 参数说明可以显示在卡片中对应参数的旁边，返回值说明也可以显示在返回类型的旁边；目前整段注释都以文本形式显示，包括其中的命令。
 
 ```case
-tests-next/hover/documentation/18_doxygen_commands
+tests/hover/documentation/18_doxygen_commands
 ```
 
 <!-- END CAPABILITY -->
@@ -790,7 +790,7 @@ tests-next/hover/documentation/18_doxygen_commands
 在 `import` 和模块声明中，模块名称处都会显示其接口单元所在的文件
 
 ```case
-tests-next/hover/modules/01_module_names
+tests/hover/modules/01_module_names
 ```
 
 <!-- END CAPABILITY -->
@@ -802,7 +802,7 @@ tests-next/hover/modules/01_module_names
 模块接口中的声明在被模块导出时会显示 `export`
 
 ```case
-tests-next/hover/modules/02_export_status
+tests/hover/modules/02_export_status
 ```
 
 <!-- END CAPABILITY -->
@@ -814,7 +814,7 @@ tests-next/hover/modules/02_export_status
 从模块导入的符号会显示模块接口中为其编写的文档
 
 ```case
-tests-next/hover/modules/04_documented_exports
+tests/hover/modules/04_documented_exports
 ```
 
 <!-- END CAPABILITY -->
@@ -836,7 +836,7 @@ tests-next/hover/modules/04_documented_exports
 说明仍以 clang 的 reStructuredText 源码形式显示，其中的代码示例挤在一起。
 
 ```case
-tests-next/hover/attributes/01_attributes
+tests/hover/attributes/01_attributes
 ```
 
 <!-- END CAPABILITY -->
@@ -848,7 +848,7 @@ tests-next/hover/attributes/01_attributes
 在 `const`、`virtual` 等关键字上悬停时，目前还不会显示任何内容
 
 ```case
-tests-next/hover/attributes/02_keywords
+tests/hover/attributes/02_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -868,7 +868,7 @@ tests-next/hover/attributes/02_keywords
 内置类型关键字或空代码块内部不会显示卡片
 
 ```case
-tests-next/hover/no_card/01_meaningless_tokens
+tests/hover/no_card/01_meaningless_tokens
 ```
 
 <!-- END CAPABILITY -->
@@ -888,7 +888,7 @@ tests-next/hover/no_card/01_meaningless_tokens
 卡片使用 Markdown 格式；对于无法显示 Markdown 的编辑器，则使用纯文本
 
 ```case
-tests-next/hover/presentation/01_plain_text
+tests/hover/presentation/01_plain_text
 ```
 
 <!-- END CAPABILITY -->

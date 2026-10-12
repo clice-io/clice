@@ -1,7 +1,7 @@
 # Semantic Tokens
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/semantic_tokens/. Do not edit the regions between the
+     in tests/semantic_tokens/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -23,7 +23,7 @@ Kinds derived from the token stream itself, independent of the AST.
 Line, block and documentation comments receive comment tokens
 
 ```case
-tests-next/semantic_tokens/lexical/01_comments
+tests/semantic_tokens/lexical/01_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -35,7 +35,7 @@ tests-next/semantic_tokens/lexical/01_comments
 Numbers, characters and strings receive literal tokens
 
 ```case
-tests-next/semantic_tokens/lexical/02_literals
+tests/semantic_tokens/lexical/02_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -47,7 +47,7 @@ tests-next/semantic_tokens/lexical/02_literals
 Alternative operator spellings and contextual specifiers retain keyword tokens
 
 ```case
-tests-next/semantic_tokens/lexical/03_keywords
+tests/semantic_tokens/lexical/03_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -59,7 +59,7 @@ tests-next/semantic_tokens/lexical/03_keywords
 Built-in types use a distinct token kind instead of plain `keyword`
 
 ```case
-tests-next/semantic_tokens/lexical/04_primitive_types
+tests/semantic_tokens/lexical/04_primitive_types
 ```
 
 <!-- END CAPABILITY -->
@@ -71,7 +71,7 @@ tests-next/semantic_tokens/lexical/04_primitive_types
 Literal prefixes and suffixes do not receive tokens of their own yet
 
 ```case
-tests-next/semantic_tokens/lexical/05_literal_affixes
+tests/semantic_tokens/lexical/05_literal_affixes
 ```
 
 <!-- END CAPABILITY -->
@@ -83,7 +83,7 @@ tests-next/semantic_tokens/lexical/05_literal_affixes
 Escape sequences are not highlighted distinctly inside literals yet
 
 ```case
-tests-next/semantic_tokens/lexical/06_escape_sequences
+tests/semantic_tokens/lexical/06_escape_sequences
 ```
 
 <!-- END CAPABILITY -->
@@ -95,7 +95,7 @@ tests-next/semantic_tokens/lexical/06_escape_sequences
 Declarator and expression operators do not receive distinct token kinds yet
 
 ```case
-tests-next/semantic_tokens/lexical/07_declarator_operators
+tests/semantic_tokens/lexical/07_declarator_operators
 ```
 
 <!-- END CAPABILITY -->
@@ -107,7 +107,7 @@ tests-next/semantic_tokens/lexical/07_declarator_operators
 Matching brackets do not receive pair-specific token kinds yet
 
 ```case
-tests-next/semantic_tokens/lexical/08_brackets
+tests/semantic_tokens/lexical/08_brackets
 ```
 
 <!-- END CAPABILITY -->
@@ -119,7 +119,7 @@ tests-next/semantic_tokens/lexical/08_brackets
 Attribute names and their expressions do not receive semantic tokens yet
 
 ```case
-tests-next/semantic_tokens/lexical/09_attributes
+tests/semantic_tokens/lexical/09_attributes
 ```
 
 <!-- END CAPABILITY -->
@@ -139,7 +139,7 @@ Names classified by the declaration they define or reference.
 Each declared name is colored by what it declares
 
 ```case
-tests-next/semantic_tokens/declarations/01_declared_names
+tests/semantic_tokens/declarations/01_declared_names
 ```
 
 <!-- END CAPABILITY -->
@@ -151,7 +151,7 @@ tests-next/semantic_tokens/declarations/01_declared_names
 Namespace definitions, references, nesting and aliases receive namespace tokens
 
 ```case
-tests-next/semantic_tokens/declarations/02_namespaces
+tests/semantic_tokens/declarations/02_namespaces
 ```
 
 <!-- END CAPABILITY -->
@@ -163,7 +163,7 @@ tests-next/semantic_tokens/declarations/02_namespaces
 Type definitions and references keep their respective type kinds
 
 ```case
-tests-next/semantic_tokens/declarations/03_types
+tests/semantic_tokens/declarations/03_types
 ```
 
 <!-- END CAPABILITY -->
@@ -175,7 +175,7 @@ tests-next/semantic_tokens/declarations/03_types
 Function declarations, definitions and calls receive function tokens
 
 ```case
-tests-next/semantic_tokens/declarations/04_functions
+tests/semantic_tokens/declarations/04_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -187,7 +187,7 @@ tests-next/semantic_tokens/declarations/04_functions
 Variable declarations and references keep their respective variable kinds
 
 ```case
-tests-next/semantic_tokens/declarations/05_variables
+tests/semantic_tokens/declarations/05_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -199,7 +199,7 @@ tests-next/semantic_tokens/declarations/05_variables
 Template parameters receive type or variable kinds, and a declared template carries `templated`
 
 ```case
-tests-next/semantic_tokens/declarations/06_templates
+tests/semantic_tokens/declarations/06_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -211,7 +211,7 @@ tests-next/semantic_tokens/declarations/06_templates
 Concept definitions and constraint uses receive concept tokens
 
 ```case
-tests-next/semantic_tokens/declarations/07_concepts
+tests/semantic_tokens/declarations/07_concepts
 ```
 
 <!-- END CAPABILITY -->
@@ -223,7 +223,7 @@ tests-next/semantic_tokens/declarations/07_concepts
 Labels and their `goto` references receive label tokens
 
 ```case
-tests-next/semantic_tokens/declarations/08_labels
+tests/semantic_tokens/declarations/08_labels
 ```
 
 <!-- END CAPABILITY -->
@@ -238,7 +238,7 @@ The opening `[` deliberately carries no token; only the binding names
 themselves are highlighted.
 
 ```case
-tests-next/semantic_tokens/declarations/09_structured_bindings
+tests/semantic_tokens/declarations/09_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -259,7 +259,7 @@ including names reached through language-specific lookup rules.
 Member initializer lists highlight initialized names as fields
 
 ```case
-tests-next/semantic_tokens/references/01_member_initializers
+tests/semantic_tokens/references/01_member_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -271,7 +271,7 @@ tests-next/semantic_tokens/references/01_member_initializers
 The introduced name keeps its target's kind
 
 ```case
-tests-next/semantic_tokens/references/02_using_declarations
+tests/semantic_tokens/references/02_using_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -288,7 +288,7 @@ parameter have no candidate declaration and currently get no token;
 heuristic coloring for such names remains open.
 
 ```case
-tests-next/semantic_tokens/references/05_dependent_names
+tests/semantic_tokens/references/05_dependent_names
 ```
 
 <!-- END CAPABILITY -->
@@ -300,7 +300,7 @@ tests-next/semantic_tokens/references/05_dependent_names
 By-copy and by-reference captures reference the captured variable; `this` stays a keyword
 
 ```case
-tests-next/semantic_tokens/references/06_lambda_captures
+tests/semantic_tokens/references/06_lambda_captures
 ```
 
 <!-- END CAPABILITY -->
@@ -324,7 +324,7 @@ kind and the declaration/definition modifiers, the class name after it
 stays a reference to the class.
 
 ```case
-tests-next/semantic_tokens/special_members/01_constructors_destructors
+tests/semantic_tokens/special_members/01_constructors_destructors
 ```
 
 <!-- END CAPABILITY -->
@@ -336,7 +336,7 @@ tests-next/semantic_tokens/special_members/01_constructors_destructors
 An operator function's name keeps `operator` as a keyword, and each call to it is an operator token
 
 ```case
-tests-next/semantic_tokens/special_members/02_operator_names
+tests/semantic_tokens/special_members/02_operator_names
 ```
 
 <!-- END CAPABILITY -->
@@ -356,7 +356,7 @@ Modifiers add what the kind leaves out: a definition, a `static` or `const` symb
 Declaration and definition modifiers distinguish the two sites
 
 ```case
-tests-next/semantic_tokens/modifiers/01_declaration_definition
+tests/semantic_tokens/modifiers/01_declaration_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -368,7 +368,7 @@ tests-next/semantic_tokens/modifiers/01_declaration_definition
 Static members and locals carry the static modifier
 
 ```case
-tests-next/semantic_tokens/modifiers/02_static
+tests/semantic_tokens/modifiers/02_static
 ```
 
 <!-- END CAPABILITY -->
@@ -383,7 +383,7 @@ Readonly is currently value-based: a pointer to const counts as
 readonly even though the pointer itself can change.
 
 ```case
-tests-next/semantic_tokens/modifiers/03_readonly
+tests/semantic_tokens/modifiers/03_readonly
 ```
 
 <!-- END CAPABILITY -->
@@ -395,7 +395,7 @@ tests-next/semantic_tokens/modifiers/03_readonly
 Virtual methods and abstract classes carry virtual or abstract modifiers
 
 ```case
-tests-next/semantic_tokens/modifiers/04_virtual_abstract
+tests/semantic_tokens/modifiers/04_virtual_abstract
 ```
 
 <!-- END CAPABILITY -->
@@ -407,7 +407,7 @@ tests-next/semantic_tokens/modifiers/04_virtual_abstract
 Deprecated declarations and uses carry the deprecated modifier
 
 ```case
-tests-next/semantic_tokens/modifiers/05_deprecated
+tests/semantic_tokens/modifiers/05_deprecated
 ```
 
 <!-- END CAPABILITY -->
@@ -419,7 +419,7 @@ tests-next/semantic_tokens/modifiers/05_deprecated
 Symbols from system headers carry the default-library modifier
 
 ```case
-tests-next/semantic_tokens/modifiers/06_default_library
+tests/semantic_tokens/modifiers/06_default_library
 ```
 
 <!-- END CAPABILITY -->
@@ -431,7 +431,7 @@ tests-next/semantic_tokens/modifiers/06_default_library
 Symbols do not carry function, class, file or global scope modifiers yet
 
 ```case
-tests-next/semantic_tokens/modifiers/07_scopes
+tests/semantic_tokens/modifiers/07_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -443,7 +443,7 @@ tests-next/semantic_tokens/modifiers/07_scopes
 An argument passed by mutable reference or pointer does not carry a modifier yet
 
 ```case
-tests-next/semantic_tokens/modifiers/08_mutable_arguments
+tests/semantic_tokens/modifiers/08_mutable_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -455,7 +455,7 @@ tests-next/semantic_tokens/modifiers/08_mutable_arguments
 `auto` and `decltype` do not carry the deduced modifier yet
 
 ```case
-tests-next/semantic_tokens/modifiers/09_deduced_types
+tests/semantic_tokens/modifiers/09_deduced_types
 ```
 
 <!-- END CAPABILITY -->
@@ -467,7 +467,7 @@ tests-next/semantic_tokens/modifiers/09_deduced_types
 A call to an overloaded operator is an operator token with the `userDefined` modifier
 
 ```case
-tests-next/semantic_tokens/modifiers/10_overloaded_operators
+tests/semantic_tokens/modifiers/10_overloaded_operators
 ```
 
 <!-- END CAPABILITY -->
@@ -490,7 +490,7 @@ which clients typically display in a neutral color.
 A name that means both a type and a function or variable renders as `conflict`
 
 ```case
-tests-next/semantic_tokens/ambiguity/01_conflicts
+tests/semantic_tokens/ambiguity/01_conflicts
 ```
 
 <!-- END CAPABILITY -->
@@ -512,7 +512,7 @@ Directives keep their directive kind, and the code of an untaken branch keeps it
 Pragma arguments other than numbers stay plain.
 
 ```case
-tests-next/semantic_tokens/preprocessor/01_directives
+tests/semantic_tokens/preprocessor/01_directives
 ```
 
 <!-- END CAPABILITY -->
@@ -524,7 +524,7 @@ tests-next/semantic_tokens/preprocessor/01_directives
 Quoted and angled header names receive header tokens
 
 ```case
-tests-next/semantic_tokens/preprocessor/02_header_names
+tests/semantic_tokens/preprocessor/02_header_names
 ```
 
 <!-- END CAPABILITY -->
@@ -539,7 +539,7 @@ Text with no kind of its own becomes a plain `identifier` token, so even a
 lone `}` line dims.
 
 ```case
-tests-next/semantic_tokens/preprocessor/03_inactive_branches
+tests/semantic_tokens/preprocessor/03_inactive_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -551,7 +551,7 @@ tests-next/semantic_tokens/preprocessor/03_inactive_branches
 Expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
 
 ```case
-tests-next/semantic_tokens/preprocessor/04_macro_expansions
+tests/semantic_tokens/preprocessor/04_macro_expansions
 ```
 
 <!-- END CAPABILITY -->
@@ -563,7 +563,7 @@ tests-next/semantic_tokens/preprocessor/04_macro_expansions
 Object-like and function-like macros do not receive distinct token kinds yet
 
 ```case
-tests-next/semantic_tokens/preprocessor/05_macro_kinds
+tests/semantic_tokens/preprocessor/05_macro_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -583,7 +583,7 @@ The includes and macros a file starts with are compiled apart from the rest of i
 Untaken branches among the leading directives dim the same way
 
 ```case
-tests-next/semantic_tokens/preamble/01_inactive_preamble
+tests/semantic_tokens/preamble/01_inactive_preamble
 ```
 
 <!-- END CAPABILITY -->
@@ -595,7 +595,7 @@ tests-next/semantic_tokens/preamble/01_inactive_preamble
 A macro's definition and its expansions receive macro tokens
 
 ```case
-tests-next/semantic_tokens/preamble/02_preamble_macros
+tests/semantic_tokens/preamble/02_preamble_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -615,7 +615,7 @@ Module declarations and imports receive tokens for their keywords and names.
 Module declarations tokenize contextual keywords, dotted names and private fragments
 
 ```case
-tests-next/semantic_tokens/modules/01_module_declarations
+tests/semantic_tokens/modules/01_module_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -627,7 +627,7 @@ tests-next/semantic_tokens/modules/01_module_declarations
 Module declarations tokenize partition names
 
 ```case
-tests-next/semantic_tokens/modules/02_partitions
+tests/semantic_tokens/modules/02_partitions
 ```
 
 <!-- END CAPABILITY -->
@@ -639,7 +639,7 @@ tests-next/semantic_tokens/modules/02_partitions
 Contextual keywords keep their semantic kinds outside module declarations
 
 ```case
-tests-next/semantic_tokens/modules/03_contextual_keywords
+tests/semantic_tokens/modules/03_contextual_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -676,7 +676,7 @@ A branch the preprocessor skips is dimmed, whichever directive opens it.
 Lines of a branch the preprocessor skips are dimmed, an `#else` after a taken branch included
 
 ```case
-tests-next/inactive_regions/branches/02_else_branch
+tests/inactive_regions/branches/02_else_branch
 ```
 
 <!-- END CAPABILITY -->
@@ -696,7 +696,7 @@ In a header, the dimmed branches are those its [host](./header-contexts.md) skip
 A header shows the branches its chosen host takes, and switching hosts updates the dimming at once
 
 ```case
-tests-next/inactive_regions/contexts/01_host_switch
+tests/inactive_regions/contexts/01_host_switch
 ```
 
 <!-- END CAPABILITY -->
@@ -716,7 +716,7 @@ The dimming follows an edit to a condition as you type.
 Editing the macro a condition tests moves the dimming to the branch now skipped, before the file is saved
 
 ```case
-tests-next/inactive_regions/updates/01_edited_condition
+tests/inactive_regions/updates/01_edited_condition
 ```
 
 <!-- END CAPABILITY -->

@@ -52,15 +52,14 @@ cache/
 node_modules/
 .vscode-test/
 
-# A case under tests-next/ is whatever project its check needs: the build
+# A case under tests/ is whatever project its check needs: the build
 # output names above are inputs there. The docs cards follow the cases' paths.
-!tests-next/**/*build*/
-!tests-next/**/temp/
-!tests-next/**/cache/
+!tests/**/*build*/
+!tests/**/temp/
+!tests/**/cache/
 !docs/cards/**/cache/
-!tests-next/**/cache/
-!tests-next/**/out/
-!tests-next/**/dist/
+!tests/**/out/
+!tests/**/dist/
 
 # Python & Testing
 __pycache__/

@@ -27,7 +27,7 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 `clice.toml` 为 `main.cpp` 提供了它使用的宏，因此该文件可以编译通过。如果编辑器在设置中发送自己的 `rules`，就会替换文件中的规则，而不是追加规则，因此本例中的宏会丢失。
 
 ```case
-tests-next/config/layers/01_editor_overrides
+tests/config/layers/01_editor_overrides
 ```
 
 <!-- END CAPABILITY -->
@@ -49,7 +49,7 @@ clice 在服务器启动时读取 `clice.toml`，因此修改会在下次启动�
 服务器运行期间，规则中的宏发生了变化，但 `main.cpp` 仍然报错，直到服务器重新启动。
 
 ```case
-tests-next/config/loading/04_edited_file
+tests/config/loading/04_edited_file
 ```
 
 <!-- END CAPABILITY -->
@@ -559,7 +559,7 @@ default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
 `src/main.cpp` 使用规则指定的命令编译，不会提示该命令是推测得出的。在服务器运行期间创建的文件会立即以相同方式编译，并在下次扫描磁盘时加入索引。
 
 ```case
-tests-next/project/rules/01_default_command
+tests/project/rules/01_default_command
 ```
 
 <!-- END CAPABILITY -->
@@ -573,7 +573,7 @@ tests-next/project/rules/01_default_command
 编译数据库 `a` 为 `main.cpp` 列出的命令带有 `-DFROM_A`；编译数据库 `b` 为它列出的命令带有 `-DFROM_B`，还列出了 `other.cpp`。`main.cpp` 使用 `a` 中的命令编译，也可以切换到 `b` 中的命令，而 `other.cpp` 使用 `b` 中的命令。
 
 ```case
-tests-next/project/rules/03_database_order
+tests/project/rules/03_database_order
 ```
 
 <!-- END CAPABILITY -->
@@ -587,7 +587,7 @@ tests-next/project/rules/03_database_order
 规则会向 `src/` 下文件的编译命令追加 `-DFEATURE`：`src/main.cpp` 可以编译，而与 `clice.toml` 同目录的 `other.cpp` 缺少该宏。
 
 ```case
-tests-next/project/rules/05_relative_patterns
+tests/project/rules/05_relative_patterns
 ```
 
 <!-- END CAPABILITY -->
@@ -601,7 +601,7 @@ tests-next/project/rules/05_relative_patterns
 编译数据库为 `main.cpp` 提供的命令同时包含 `-DBROKEN` 和 `-include prefix.h`，第一条规则将它们移除，因此该文件可以编译。对于 `other.cpp`，第二条规则追加 `-DFEATURE`，第三条规则又将其移除。
 
 ```case
-tests-next/project/rules/09_remove_flags
+tests/project/rules/09_remove_flags
 ```
 
 <!-- END CAPABILITY -->
@@ -623,7 +623,7 @@ tests-next/project/rules/09_remove_flags
 每块板卡的规则都指定了各自的默认命令，`board-a` 是默认配置。使用该配置时，头文件中的 `BOARD_B` 分支处于非活动状态；切换到 `board-b` 并重启后，处于非活动状态的则是 `BOARD_A` 分支。
 
 ```case
-tests-next/project/configurations/03_board_defaults
+tests/project/configurations/03_board_defaults
 ```
 
 <!-- END CAPABILITY -->

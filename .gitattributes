@@ -3,13 +3,13 @@ pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
 
 # Force LF line endings for the cases so that byte offsets from clang
 # (which reads from disk) match the content sent by didOpen in tests.
-tests-next/** text eol=lf
+tests/** text eol=lf
 # Cases about CRLF line endings keep the bytes they are written in.
-tests-next/compile/encoding/02_line_endings/*.h -text
-tests-next/compile/encoding/02_line_endings/*.cpp -text
-tests-next/format/document/06_crlf_line_endings/*.cpp -text
+tests/compile/encoding/02_line_endings/*.h -text
+tests/compile/encoding/02_line_endings/*.cpp -text
+tests/format/document/06_crlf_line_endings/*.cpp -text
 
 # Treat trace files as binary to suppress text diffs
-tests-next/**/trace.jsonl linguist-generated=true binary
+tests/**/trace.jsonl linguist-generated=true binary
 # Generated feature docs are parsed by tools/testing/docs/site.ts marker regexes.
 docs/**/*.md text eol=lf

@@ -14,7 +14,7 @@ Run the requested suites (default: all) against the requested build type (defaul
 Filtering specific tests:
 
 - Unit: `pixi run unit-test [type] -- --test-filter=SuiteName.CaseName` (also `SuiteName.*`)
-- Cases: `CLICE_CASES=<path prefix> CLICE_EXECUTABLE=$PWD/build/[type]/bin/bin/clice pixi run npm run cases -w tests-next`, e.g. `CLICE_CASES=hover/` or `CLICE_CASES=hover/templates/06_template_forms`; the "Running" section of `tests-next/README.md` lists the rest.
+- Cases: `CLICE_CASES=<path prefix> CLICE_EXECUTABLE=$PWD/build/[type]/bin/bin/clice pixi run npm run cases -w tests`, e.g. `CLICE_CASES=hover/` or `CLICE_CASES=hover/templates/06_template_forms`; the "Running" section of `tests/README.md` lists the rest.
 
 The compat suite (`pixi run compat-test`) and the editors' end-to-end tests (`pixi run -e editor editor-test`) need build systems and editors installed; run them only when asked.
 

@@ -3,7 +3,7 @@
 What a header means depends on the file that includes it: the macros and declarations that come before the `#include`. clice compiles a header as part of a file that includes it, its host, so the header reads the way the build sees it; a source the build compiles several ways has a context for each command. The editor shows the active context and can switch to another. [Compilation Context](../design/compilation-context.md) explains the design.
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/contexts/. Do not edit the regions between the
+     in tests/contexts/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -22,7 +22,7 @@ A header that uses what its includer declares first still compiles, in the inclu
 `ruler.h` uses a type and a macro that `main.cpp` declares before including it, so the header does not compile on its own. clice finds that out and compiles it after what `main.cpp` declares, so it has no errors and hover works inside it.
 
 ```case
-tests-next/contexts/self_containment/01_host_declarations
+tests/contexts/self_containment/01_host_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -44,7 +44,7 @@ A header that relies on its includer reads the way the chosen includer makes it
 `shared.h` uses a macro that each source defines before including it. Both sources are contexts of the header: clice picks one, the editor can switch to the other, and hover then shows the type that host gives. The choice is kept across restarts until it is reset.
 
 ```case
-tests-next/contexts/switching/01_two_hosts
+tests/contexts/switching/01_two_hosts
 ```
 
 <!-- END CAPABILITY -->
@@ -66,7 +66,7 @@ A file included inside a class body compiles as part of that class
 `body.inc` holds members that `rec.cpp` includes between the braces of `Record`. Opened on its own, it compiles inside the class, so it has no errors, lists its members, and hover and go-to-definition work on them.
 
 ```case
-tests-next/contexts/fragments/01_class_body
+tests/contexts/fragments/01_class_body
 ```
 
 <!-- END CAPABILITY -->
@@ -80,7 +80,7 @@ A list of macro calls compiles where its includer first expands it
 `errors.def` is an X-macro list: `codes.cpp` includes it once to declare the enumerators and once to name them. Opened on its own, it compiles inside the enum, so its entries show as enumerators.
 
 ```case
-tests-next/contexts/fragments/02_enumerator_list
+tests/contexts/fragments/02_enumerator_list
 ```
 
 <!-- END CAPABILITY -->
@@ -102,7 +102,7 @@ A source the database lists under several commands offers each one as a context
 When a build compiles one file more than once, for example once per configuration, every command is a context the editor can switch between, labeled by its flags.
 
 ```case
-tests-next/contexts/hosts/02_multiple_entries
+tests/contexts/hosts/02_multiple_entries
 ```
 
 <!-- END CAPABILITY -->

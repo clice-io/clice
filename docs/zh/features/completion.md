@@ -13,7 +13,7 @@
 保留匹配度高的前缀匹配项，排除匹配度低的子序列匹配项及作用域外的命名空间成员
 
 ```case
-tests-next/completion/symbols/01_unqualified_lookup
+tests/completion/symbols/01_unqualified_lookup
 ```
 
 <!-- END CAPABILITY -->
@@ -25,7 +25,7 @@ tests-next/completion/symbols/01_unqualified_lookup
 带有构造函数和推导指引（deduction guide）的类模板仍只显示为一个补全项
 
 ```case
-tests-next/completion/symbols/02_class_templates
+tests/completion/symbols/02_class_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -39,7 +39,7 @@ tests-next/completion/symbols/02_class_templates
 实参代码片段受函数设置 `code_completion.enable_function_arguments_snippet` 控制。
 
 ```case
-tests-next/completion/symbols/05_macros
+tests/completion/symbols/05_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -51,7 +51,7 @@ tests-next/completion/symbols/05_macros
 `ns::` 列出该命名空间自身的成员
 
 ```case
-tests-next/completion/symbols/07_namespace_members
+tests/completion/symbols/07_namespace_members
 ```
 
 <!-- END CAPABILITY -->
@@ -63,7 +63,7 @@ tests-next/completion/symbols/07_namespace_members
 有作用域枚举通过 `Type::` 列出枚举项，无作用域枚举的枚举项则通过其未限定名称补全
 
 ```case
-tests-next/completion/symbols/08_enum_members
+tests/completion/symbols/08_enum_members
 ```
 
 <!-- END CAPABILITY -->
@@ -75,7 +75,7 @@ tests-next/completion/symbols/08_enum_members
 无法通过未限定名称查找到的枚举项，会按其未限定名称匹配，并在补全时加上所需的限定符
 
 ```case
-tests-next/completion/symbols/11_required_qualifier
+tests/completion/symbols/11_required_qualifier
 ```
 
 <!-- END CAPABILITY -->
@@ -120,7 +120,7 @@ tests-next/completion/symbols/11_required_qualifier
 在点号后补全时，会列出对象所属类的成员
 
 ```case
-tests-next/completion/member_access/01_struct_members
+tests/completion/member_access/01_struct_members
 ```
 
 <!-- END CAPABILITY -->
@@ -134,7 +134,7 @@ tests-next/completion/member_access/01_struct_members
 限定名补全不会只列出静态上下文中可用的成员：实例字段和析构函数也会与静态成员、嵌套类型一同显示。
 
 ```case
-tests-next/completion/member_access/04_scope_access
+tests/completion/member_access/04_scope_access
 ```
 
 <!-- END CAPABILITY -->
@@ -146,7 +146,7 @@ tests-next/completion/member_access/04_scope_access
 对派生类对象进行补全时，列出其自身及基类的成员
 
 ```case
-tests-next/completion/member_access/05_inherited_members
+tests/completion/member_access/05_inherited_members
 ```
 
 <!-- END CAPABILITY -->
@@ -158,7 +158,7 @@ tests-next/completion/member_access/05_inherited_members
 输入 `{ .` 会列出正在初始化的聚合体的字段；若其类型依赖于模板参数，则列出匹配的偏特化中的字段
 
 ```case
-tests-next/completion/member_access/06_designated_initializer
+tests/completion/member_access/06_designated_initializer
 ```
 
 <!-- END CAPABILITY -->
@@ -170,7 +170,7 @@ tests-next/completion/member_access/06_designated_initializer
 私有和受保护的成员不会出现在无法使用它们的位置
 
 ```case
-tests-next/completion/member_access/07_inaccessible_members
+tests/completion/member_access/07_inaccessible_members
 ```
 
 <!-- END CAPABILITY -->
@@ -182,7 +182,7 @@ tests-next/completion/member_access/07_inaccessible_members
 在定义中输入 `Class::` 后，会列出所有成员，包括私有成员
 
 ```case
-tests-next/completion/member_access/10_out_of_line_definitions
+tests/completion/member_access/10_out_of_line_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -250,7 +250,7 @@ tests-next/completion/member_access/10_out_of_line_definitions
 函数调用补全会为每个实参插入可用 Tab 键依次跳转的占位符；无参函数的补全则仍为纯文本
 
 ```case
-tests-next/completion/functions_snippets/01_snippet_arguments
+tests/completion/functions_snippets/01_snippet_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -262,7 +262,7 @@ tests-next/completion/functions_snippets/01_snippet_arguments
 参数列表和返回类型随函数名一起显示
 
 ```case
-tests-next/completion/functions_snippets/02_function_candidates
+tests/completion/functions_snippets/02_function_candidates
 ```
 
 <!-- END CAPABILITY -->
@@ -276,7 +276,7 @@ tests-next/completion/functions_snippets/02_function_candidates
 关闭重载合并后，每个重载都单独列为一个条目，并显示各自的签名。
 
 ```case
-tests-next/completion/functions_snippets/03_overload_bundle
+tests/completion/functions_snippets/03_overload_bundle
 ```
 
 <!-- END CAPABILITY -->
@@ -288,7 +288,7 @@ tests-next/completion/functions_snippets/03_overload_bundle
 补全时会为调用添加括号，并将光标置于括号内，除非名称后已有实参，或该名称并非用于调用
 
 ```case
-tests-next/completion/functions_snippets/06_call_parentheses
+tests/completion/functions_snippets/06_call_parentheses
 ```
 
 <!-- END CAPABILITY -->
@@ -300,7 +300,7 @@ tests-next/completion/functions_snippets/06_call_parentheses
 补全类模板时，为每个没有默认值的模板形参插入一个占位符；若所有形参都有默认值，则插入空尖括号
 
 ```case
-tests-next/completion/functions_snippets/07_template_arguments
+tests/completion/functions_snippets/07_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -312,7 +312,7 @@ tests-next/completion/functions_snippets/07_template_arguments
 语句关键字补全为关键字；启用该选项后，会插入整条语句，并为每个部分添加占位符
 
 ```case
-tests-next/completion/functions_snippets/08_statement_snippets
+tests/completion/functions_snippets/08_statement_snippets
 ```
 
 <!-- END CAPABILITY -->
@@ -371,7 +371,7 @@ tests-next/completion/functions_snippets/08_statement_snippets
 解析别名时，会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是不显示任何内容。如果别名表示引用（`Vec<Vec<T>>::reference`），则会列出所引用类的成员；对指向这类对象的指针使用 `->`，则会列出所指对象的成员。
 
 ```case
-tests-next/completion/templates/01_dependent_member_type
+tests/completion/templates/01_dependent_member_type
 ```
 
 <!-- END CAPABILITY -->
@@ -385,7 +385,7 @@ tests-next/completion/templates/01_dependent_member_type
 对于 `Vec<Vec<T>>`，`rows[0].` 会按照标准容器的声明方式，通过容器的 `reference` 别名解析出类型，并列出 `Vec<T>` 的成员。如果成员函数有 `const` 重载，则根据对象是否为 const 来选择调用哪个重载；通过 const 对象访问的数据成员也视为 const，对返回的迭代器使用 `->` 则可访问元素。
 
 ```case
-tests-next/completion/templates/05_dependent_expression_results
+tests/completion/templates/05_dependent_expression_results
 ```
 
 <!-- END CAPABILITY -->
@@ -399,7 +399,7 @@ tests-next/completion/templates/05_dependent_expression_results
 `auto& row = rows[0]; row.` 会列出 `Vec<T>` 的成员。声明符按实际类型推导的规则生效：`const auto&` 使对象具有 const 属性，按值声明的 `auto` 去除初始化器的 const 属性，`auto&&` 和 `decltype(auto)` 保留该属性，而 `auto*` 则取指针所指对象。对于数据成员，`decltype(auto)` 取该成员的声明类型；如果加上括号，则取表达式的 const 引用类型。
 
 ```case
-tests-next/completion/templates/07_deduced_variables
+tests/completion/templates/07_deduced_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -413,21 +413,21 @@ tests-next/completion/templates/07_deduced_variables
 调用该 Lambda 时，无论是直接调用还是通过算法调用，传入的实参都是 `Point`，但执行补全时，其函数体仍是模板。
 
 ```case
-tests-next/completion/templates/14_generic_lambda_parameters
+tests/completion/templates/14_generic_lambda_parameters
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1103 -->
+<!-- BEGIN CAPABILITY: supported clangd#1103 -->
 
 **Concept 要求**
 
 在受约束的模板内，输入点号后可以补全 Concept 所要求的成员
 
-目前只补全成员名称，不包含参数列表。
+概念中调用的成员会补全为方法，参数类型取自调用时传入的实参；在 `T::` 之后，它命名的嵌套类型也会补全。
 
 ```case
-tests-next/completion/templates/15_concept_requirements
+tests/completion/templates/15_concept_requirements
 ```
 
 <!-- END CAPABILITY -->
@@ -457,7 +457,7 @@ tests-next/completion/templates/15_concept_requirements
 在重写函数内部，函数名会补全为名称本身，而非对基类版本的调用。
 
 ```case
-tests-next/completion/overrides/01_override_declaration
+tests/completion/overrides/01_override_declaration
 ```
 
 <!-- END CAPABILITY -->
@@ -505,7 +505,7 @@ tests-next/completion/overrides/01_override_declaration
 补全会列出已配置的搜索路径中的头文件和目录，并用末尾的斜杠标识目录
 
 ```case
-tests-next/completion/include_path_completion/01_include_quoted
+tests/completion/include_path_completion/01_include_quoted
 ```
 
 <!-- END CAPABILITY -->
@@ -517,7 +517,7 @@ tests-next/completion/include_path_completion/01_include_quoted
 使用尖括号包含头文件时，补全会提供相同搜索路径中的候选项，并以 `>` 闭合
 
 ```case
-tests-next/completion/include_path_completion/02_include_angled
+tests/completion/include_path_completion/02_include_angled
 ```
 
 <!-- END CAPABILITY -->
@@ -531,7 +531,7 @@ tests-next/completion/include_path_completion/02_include_angled
 补全会替换已有的定界符；如果在路径中较靠前的部分选择头文件，还会替换路径的剩余部分。
 
 ```case
-tests-next/completion/include_path_completion/03_closing_delimiter
+tests/completion/include_path_completion/03_closing_delimiter
 ```
 
 <!-- END CAPABILITY -->
@@ -543,7 +543,7 @@ tests-next/completion/include_path_completion/03_closing_delimiter
 使用引号包含头文件时，无需配置搜索路径即可找到与当前文件同目录的头文件
 
 ```case
-tests-next/completion/include_path_completion/04_sibling_headers
+tests/completion/include_path_completion/04_sibling_headers
 ```
 
 <!-- END CAPABILITY -->
@@ -615,7 +615,7 @@ tests-next/completion/include_path_completion/04_sibling_headers
 在 `import` 后补全已知的模块名，并插入结尾的分号
 
 ```case
-tests-next/completion/modules/01_import_modules
+tests/completion/modules/01_import_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -629,7 +629,7 @@ tests-next/completion/modules/01_import_modules
 已以分号结尾的语句会保留该分号。
 
 ```case
-tests-next/completion/modules/02_partition_imports
+tests/completion/modules/02_partition_imports
 ```
 
 <!-- END CAPABILITY -->
@@ -643,7 +643,7 @@ tests-next/completion/modules/02_partition_imports
 接口不能导出内部分区，它从内部分区导入的名称对该接口的导入方也未必可达，因此只有模块的其他单元才会补全内部分区。
 
 ```case
-tests-next/completion/modules/04_interface_partitions
+tests/completion/modules/04_interface_partitions
 ```
 
 <!-- END CAPABILITY -->
@@ -721,7 +721,7 @@ tests-next/completion/modules/04_interface_partitions
 以下划线开头的内部符号默认隐藏，只有输入的前缀也以下划线开头时才会显示
 
 ```case
-tests-next/completion/filtering/01_underscore_filter
+tests/completion/filtering/01_underscore_filter
 ```
 
 <!-- END CAPABILITY -->
@@ -733,7 +733,7 @@ tests-next/completion/filtering/01_underscore_filter
 带有 `[[deprecated]]` 的候选项会标记为已弃用，与之对应的不带该属性的候选项则不会
 
 ```case
-tests-next/completion/filtering/02_deprecated_tag
+tests/completion/filtering/02_deprecated_tag
 ```
 
 <!-- END CAPABILITY -->
@@ -747,7 +747,7 @@ tests-next/completion/filtering/02_deprecated_tag
 对于 `fb`，`frobnicate` 只能形成较弱的分散子序列匹配，因此被过滤掉；`foo_bar_baz` 在 `foo` 和 `bar` 的单词边界上匹配，因此得以保留。
 
 ```case
-tests-next/completion/filtering/03_fuzzy_word_boundary
+tests/completion/filtering/03_fuzzy_word_boundary
 ```
 
 <!-- END CAPABILITY -->
@@ -761,7 +761,7 @@ tests-next/completion/filtering/03_fuzzy_word_boundary
 对于前缀 `fo`，`format_output` 属于真正的前缀匹配，得分高于只能按子序列匹配的 `fast_math_operation`。
 
 ```case
-tests-next/completion/filtering/05_prefix_beats_subsequence
+tests/completion/filtering/05_prefix_beats_subsequence
 ```
 
 <!-- END CAPABILITY -->
@@ -773,7 +773,7 @@ tests-next/completion/filtering/05_prefix_beats_subsequence
 在单词中间补全时，会提供两种编辑范围：编辑器可以在单词剩余部分之前插入补全内容，也可以替换整个单词
 
 ```case
-tests-next/completion/filtering/06_inside_a_word
+tests/completion/filtering/06_inside_a_word
 ```
 
 <!-- END CAPABILITY -->

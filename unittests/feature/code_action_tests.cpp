@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 /// What each code action renders is pinned by the cases
-/// (tests-next/code_actions/); these tests apply one action and compile the
+/// (tests/code_actions/); these tests apply one action and compile the
 /// result: the edited file must be the expected text, compile cleanly and,
 /// for a definition, define the function the action was offered on.
 

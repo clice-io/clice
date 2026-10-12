@@ -3,7 +3,7 @@
 Expand and shrink the selection by syntax (`textDocument/selectionRange`): each step grows the selection to the next enclosing construct — an expression, a statement with its semicolon, a declaration, a block — and also stops at what only the text shows, such as the inside of a pair of brackets, the text of a string literal or a comment. A file served in read-only mode, without a compiled AST, gets the text-only steps.
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/selection_range/. Do not edit the regions between the
+     in tests/selection_range/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@ Steps that follow the structure of the code, from the name under the cursor outw
 Selection grows from the name under the cursor through each enclosing expression and statement
 
 ```case
-tests-next/selection_range/syntax_ranges/01_nested_expression
+tests/selection_range/syntax_ranges/01_nested_expression
 ```
 
 <!-- END CAPABILITY -->
@@ -37,7 +37,7 @@ same way; a template's declaration gains it before its `template` head
 joins.
 
 ```case
-tests-next/selection_range/syntax_ranges/02_statements
+tests/selection_range/syntax_ranges/02_statements
 ```
 
 <!-- END CAPABILITY -->
@@ -49,7 +49,7 @@ tests-next/selection_range/syntax_ranges/02_statements
 The arguments of a call and the parameters of a function are selected without their parentheses before with them
 
 ```case
-tests-next/selection_range/syntax_ranges/03_argument_lists
+tests/selection_range/syntax_ranges/03_argument_lists
 ```
 
 <!-- END CAPABILITY -->
@@ -61,7 +61,7 @@ tests-next/selection_range/syntax_ranges/03_argument_lists
 Template arguments and template parameters are selected inside their angle brackets before with them
 
 ```case
-tests-next/selection_range/syntax_ranges/04_template_lists
+tests/selection_range/syntax_ranges/04_template_lists
 ```
 
 <!-- END CAPABILITY -->
@@ -77,7 +77,7 @@ the file of its own: the steps go from the argument straight to the
 invocation.
 
 ```case
-tests-next/selection_range/syntax_ranges/05_macro_arguments
+tests/selection_range/syntax_ranges/05_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -89,7 +89,7 @@ tests-next/selection_range/syntax_ranges/05_macro_arguments
 A lambda's capture list, parameter list and body are steps of their own on the way to the whole lambda
 
 ```case
-tests-next/selection_range/syntax_ranges/06_lambdas
+tests/selection_range/syntax_ranges/06_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -104,7 +104,7 @@ A cursor on a blank line inside a block starts from the block's
 contents.
 
 ```case
-tests-next/selection_range/syntax_ranges/07_blocks
+tests/selection_range/syntax_ranges/07_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -127,7 +127,7 @@ An encoding prefix, a raw string's delimiter and a user-defined suffix
 stay outside the text.
 
 ```case
-tests-next/selection_range/text_ranges/01_literals
+tests/selection_range/text_ranges/01_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -139,7 +139,7 @@ tests-next/selection_range/text_ranges/01_literals
 A comment's text is selected without its markers, then the comment, then the run of comment lines it belongs to
 
 ```case
-tests-next/selection_range/text_ranges/02_comments
+tests/selection_range/text_ranges/02_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -151,7 +151,7 @@ tests-next/selection_range/text_ranges/02_comments
 A directive is selected as a whole line, after the header name it includes or the brackets of its macro body
 
 ```case
-tests-next/selection_range/text_ranges/03_directives
+tests/selection_range/text_ranges/03_directives
 ```
 
 <!-- END CAPABILITY -->

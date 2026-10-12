@@ -13,7 +13,7 @@ Names in scope complete as you type, and a qualifier such as `ns::` lists what t
 Strong prefix matches survive, while weak subsequence matches and members of namespaces not in scope do not
 
 ```case
-tests-next/completion/symbols/01_unqualified_lookup
+tests/completion/symbols/01_unqualified_lookup
 ```
 
 <!-- END CAPABILITY -->
@@ -25,7 +25,7 @@ tests-next/completion/symbols/01_unqualified_lookup
 A class template with constructors and a deduction guide stays a single entry
 
 ```case
-tests-next/completion/symbols/02_class_templates
+tests/completion/symbols/02_class_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -39,7 +39,7 @@ Object-like macros complete as constants, function-like ones as functions with a
 Argument snippets follow the function setting, `code_completion.enable_function_arguments_snippet`.
 
 ```case
-tests-next/completion/symbols/05_macros
+tests/completion/symbols/05_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -51,7 +51,7 @@ tests-next/completion/symbols/05_macros
 `ns::` lists the namespace's own members
 
 ```case
-tests-next/completion/symbols/07_namespace_members
+tests/completion/symbols/07_namespace_members
 ```
 
 <!-- END CAPABILITY -->
@@ -63,7 +63,7 @@ tests-next/completion/symbols/07_namespace_members
 A scoped enum lists its enumerators through `Type::`, an unscoped enumerator completes by its bare name
 
 ```case
-tests-next/completion/symbols/08_enum_members
+tests/completion/symbols/08_enum_members
 ```
 
 <!-- END CAPABILITY -->
@@ -75,7 +75,7 @@ tests-next/completion/symbols/08_enum_members
 An enumerator the bare name does not reach completes with the qualifier it needs, matched against its bare name
 
 ```case
-tests-next/completion/symbols/11_required_qualifier
+tests/completion/symbols/11_required_qualifier
 ```
 
 <!-- END CAPABILITY -->
@@ -120,7 +120,7 @@ Triggered by `.`, `->`, `::`, or quickSuggestions. Forwarded to Clang `CodeCompl
 Completing after a dot lists the members of the object's class
 
 ```case
-tests-next/completion/member_access/01_struct_members
+tests/completion/member_access/01_struct_members
 ```
 
 <!-- END CAPABILITY -->
@@ -134,7 +134,7 @@ After `Class::` static data, nested types, methods and the injected class name a
 Qualified completion is not filtered to what a static context can use: instance fields and the destructor show up alongside the static members and nested types.
 
 ```case
-tests-next/completion/member_access/04_scope_access
+tests/completion/member_access/04_scope_access
 ```
 
 <!-- END CAPABILITY -->
@@ -146,7 +146,7 @@ tests-next/completion/member_access/04_scope_access
 A derived object completes its own members and those of its base
 
 ```case
-tests-next/completion/member_access/05_inherited_members
+tests/completion/member_access/05_inherited_members
 ```
 
 <!-- END CAPABILITY -->
@@ -158,7 +158,7 @@ tests-next/completion/member_access/05_inherited_members
 `{ .` lists the fields of the aggregate being initialized, those of a matching partial specialization for a dependent one
 
 ```case
-tests-next/completion/member_access/06_designated_initializer
+tests/completion/member_access/06_designated_initializer
 ```
 
 <!-- END CAPABILITY -->
@@ -170,7 +170,7 @@ tests-next/completion/member_access/06_designated_initializer
 Private and protected members are not offered where they cannot be used
 
 ```case
-tests-next/completion/member_access/07_inaccessible_members
+tests/completion/member_access/07_inaccessible_members
 ```
 
 <!-- END CAPABILITY -->
@@ -182,7 +182,7 @@ tests-next/completion/member_access/07_inaccessible_members
 After `Class::` in a definition, every member is offered, private ones included
 
 ```case
-tests-next/completion/member_access/10_out_of_line_definitions
+tests/completion/member_access/10_out_of_line_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -250,7 +250,7 @@ All options below live in the `[code_completion]` configuration section.
 Calls insert tab-stop placeholders per argument; a no-argument function stays plain text
 
 ```case
-tests-next/completion/functions_snippets/01_snippet_arguments
+tests/completion/functions_snippets/01_snippet_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -262,7 +262,7 @@ tests-next/completion/functions_snippets/01_snippet_arguments
 The parameter list and the return type ride along with a function's name
 
 ```case
-tests-next/completion/functions_snippets/02_function_candidates
+tests/completion/functions_snippets/02_function_candidates
 ```
 
 <!-- END CAPABILITY -->
@@ -276,7 +276,7 @@ An overload set collapses into one entry with an overload count
 With bundling off, every overload is its own entry with its own signature.
 
 ```case
-tests-next/completion/functions_snippets/03_overload_bundle
+tests/completion/functions_snippets/03_overload_bundle
 ```
 
 <!-- END CAPABILITY -->
@@ -288,7 +288,7 @@ tests-next/completion/functions_snippets/03_overload_bundle
 A completed call gets its parentheses with the cursor between them, unless arguments already follow the name or it is not being called
 
 ```case
-tests-next/completion/functions_snippets/06_call_parentheses
+tests/completion/functions_snippets/06_call_parentheses
 ```
 
 <!-- END CAPABILITY -->
@@ -300,7 +300,7 @@ tests-next/completion/functions_snippets/06_call_parentheses
 A class template inserts a placeholder per template parameter without a default, and empty brackets when every parameter has one
 
 ```case
-tests-next/completion/functions_snippets/07_template_arguments
+tests/completion/functions_snippets/07_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -312,7 +312,7 @@ tests-next/completion/functions_snippets/07_template_arguments
 Statement keywords complete as keywords; the option inserts the whole statement with a placeholder for each part
 
 ```case
-tests-next/completion/functions_snippets/08_statement_snippets
+tests/completion/functions_snippets/08_statement_snippets
 ```
 
 <!-- END CAPABILITY -->
@@ -371,7 +371,7 @@ A variable whose type is a member alias of a dependent specialization completes 
 The alias is resolved with the written template arguments substituted, so `Vec<Vec<T>>::value_type` lists the members of `Vec<T>` rather than nothing at all. An alias naming a reference (`Vec<Vec<T>>::reference`) lists the members of the class referred to, and `->` on a pointer to one lists the pointee's.
 
 ```case
-tests-next/completion/templates/01_dependent_member_type
+tests/completion/templates/01_dependent_member_type
 ```
 
 <!-- END CAPABILITY -->
@@ -385,7 +385,7 @@ A member access on what a subscript or a member call returns inside a template c
 `rows[0].` on a `Vec<Vec<T>>` lists the members of `Vec<T>`, followed through the container's `reference` alias the way the standard containers declare it. Where a member has a `const` overload, the constness of the object picks the one called, a data member reached through a const object counting as const, and `->` on a returned iterator reaches the element.
 
 ```case
-tests-next/completion/templates/05_dependent_expression_results
+tests/completion/templates/05_dependent_expression_results
 ```
 
 <!-- END CAPABILITY -->
@@ -399,7 +399,7 @@ A variable declared `auto` from a dependent initializer completes the members of
 `auto& row = rows[0]; row.` lists the members of `Vec<T>`. The declarator applies as in a real deduction: `const auto&` makes the object const, a by-value `auto` drops the initializer's const, `auto&&` and `decltype(auto)` keep it, and `auto*` takes the pointee. From a data member, `decltype(auto)` takes the type the member is declared with, or with parentheses the const reference the expression is.
 
 ```case
-tests-next/completion/templates/07_deduced_variables
+tests/completion/templates/07_deduced_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -413,21 +413,21 @@ An `auto` parameter of a lambda gets no member completion inside its body yet
 The lambda is called with a `Point`, directly or through an algorithm, but its body is still a template when the completion runs.
 
 ```case
-tests-next/completion/templates/14_generic_lambda_parameters
+tests/completion/templates/14_generic_lambda_parameters
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1103 -->
+<!-- BEGIN CAPABILITY: supported clangd#1103 -->
 
 **Concept requirements**
 
 Inside a constrained template, the members the concept requires complete after a dot
 
-They complete as bare names for now, without their parameter lists.
+A member the concept calls completes as a method with the types of the arguments it is called with; after `T::` the nested types it names complete too.
 
 ```case
-tests-next/completion/templates/15_concept_requirements
+tests/completion/templates/15_concept_requirements
 ```
 
 <!-- END CAPABILITY -->
@@ -458,7 +458,7 @@ Inside a derived class, a base class's virtual function completes as a whole ove
 Inside the override, the name completes as itself, not as a call of the base version.
 
 ```case
-tests-next/completion/overrides/01_override_declaration
+tests/completion/overrides/01_override_declaration
 ```
 
 <!-- END CAPABILITY -->
@@ -506,7 +506,7 @@ Triggered by `<`, `"`, `/` characters. Handled before AST (preamble-level, no co
 Completion lists headers and directories from the configured search path and marks directories with a trailing slash
 
 ```case
-tests-next/completion/include_path_completion/01_include_quoted
+tests/completion/include_path_completion/01_include_quoted
 ```
 
 <!-- END CAPABILITY -->
@@ -518,7 +518,7 @@ tests-next/completion/include_path_completion/01_include_quoted
 Angled includes offer the same search-path candidates, closed with `>`
 
 ```case
-tests-next/completion/include_path_completion/02_include_angled
+tests/completion/include_path_completion/02_include_angled
 ```
 
 <!-- END CAPABILITY -->
@@ -532,7 +532,7 @@ Accepting a header closes the directive, replacing what was already typed after 
 A delimiter already there is replaced, and so is the rest of a path when the header is picked in an earlier path component.
 
 ```case
-tests-next/completion/include_path_completion/03_closing_delimiter
+tests/completion/include_path_completion/03_closing_delimiter
 ```
 
 <!-- END CAPABILITY -->
@@ -544,7 +544,7 @@ tests-next/completion/include_path_completion/03_closing_delimiter
 A quoted include finds the headers next to the including file without any search path
 
 ```case
-tests-next/completion/include_path_completion/04_sibling_headers
+tests/completion/include_path_completion/04_sibling_headers
 ```
 
 <!-- END CAPABILITY -->
@@ -618,7 +618,7 @@ Triggered when cursor is after `import` or `export import`.
 Known module names complete after `import`, with the closing semicolon inserted
 
 ```case
-tests-next/completion/modules/01_import_modules
+tests/completion/modules/01_import_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -632,7 +632,7 @@ In an implementation unit, the module's own partitions complete as `:partition`,
 A statement that already ends in a semicolon keeps it.
 
 ```case
-tests-next/completion/modules/02_partition_imports
+tests/completion/modules/02_partition_imports
 ```
 
 <!-- END CAPABILITY -->
@@ -646,7 +646,7 @@ In an interface unit, only the module's interface partitions complete
 An interface cannot export an internal partition, and names it imports from one may not reach the interface's importers, so internal partitions are offered only to the module's other units.
 
 ```case
-tests-next/completion/modules/04_interface_partitions
+tests/completion/modules/04_interface_partitions
 ```
 
 <!-- END CAPABILITY -->
@@ -725,7 +725,7 @@ What you typed filters the candidates by the starts of their words, and the clos
 Underscore-prefixed internal symbols hide unless the typed prefix itself starts with one
 
 ```case
-tests-next/completion/filtering/01_underscore_filter
+tests/completion/filtering/01_underscore_filter
 ```
 
 <!-- END CAPABILITY -->
@@ -737,7 +737,7 @@ tests-next/completion/filtering/01_underscore_filter
 A `[[deprecated]]` candidate is marked deprecated, its plain sibling is not
 
 ```case
-tests-next/completion/filtering/02_deprecated_tag
+tests/completion/filtering/02_deprecated_tag
 ```
 
 <!-- END CAPABILITY -->
@@ -751,7 +751,7 @@ Prefix `fb` matches the word starts of `foo_bar_baz`
 `frobnicate` is only a weak scattered subsequence of `fb` and is dropped; `foo_bar_baz` matches on the `foo` and `bar` word boundaries and survives.
 
 ```case
-tests-next/completion/filtering/03_fuzzy_word_boundary
+tests/completion/filtering/03_fuzzy_word_boundary
 ```
 
 <!-- END CAPABILITY -->
@@ -765,7 +765,7 @@ An exact-prefix candidate sorts above a scattered subsequence match
 For prefix `fo`, `format_output` is a true prefix and outscores `fast_math_operation`, which only matches as a subsequence.
 
 ```case
-tests-next/completion/filtering/05_prefix_beats_subsequence
+tests/completion/filtering/05_prefix_beats_subsequence
 ```
 
 <!-- END CAPABILITY -->
@@ -777,7 +777,7 @@ tests-next/completion/filtering/05_prefix_beats_subsequence
 Completing in the middle of a word offers both ranges: the editor either inserts before the rest of the word or replaces the whole word
 
 ```case
-tests-next/completion/filtering/06_inside_a_word
+tests/completion/filtering/06_inside_a_word
 ```
 
 <!-- END CAPABILITY -->

@@ -44,7 +44,7 @@ jobs:
               - 'tools/**'
             zed:
               - 'editors/zed/**'
-              - 'tests/zed/**'
+              - 'tests/editors/zed/**'
               - '.github/workflows/main.yml'
             build:
               - 'BUILD.bazel'
@@ -63,7 +63,6 @@ jobs:
               - 'benchmarks/**'
               - 'include/**'
               - 'tests/**'
-              - 'tests-next/**'
               - 'unittests/**'
               - 'tools/**'
               - 'config/**'

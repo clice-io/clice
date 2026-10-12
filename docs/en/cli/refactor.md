@@ -78,7 +78,7 @@ with the places it leaves alone for you to check: the body of `CALL` spells
 with it.
 
 ```case
-tests-next/refactor/edits/01_plan_then_write
+tests/refactor/edits/01_plan_then_write
 ```
 
 <!-- END CAPABILITY -->
@@ -101,7 +101,7 @@ Nothing is renamed while the name is ambiguous. Each candidate carries a
 `symbol` to pass back to `--symbol` as it is.
 
 ```case
-tests-next/refactor/locators/02_ambiguous_name
+tests/refactor/locators/02_ambiguous_name
 ```
 
 <!-- END CAPABILITY -->
@@ -125,7 +125,7 @@ all of the renames or none of them. Blank lines and lines starting with `//`
 are skipped.
 
 ```case
-tests-next/refactor/lists/01_rename_list
+tests/refactor/lists/01_rename_list
 ```
 
 <!-- END CAPABILITY -->

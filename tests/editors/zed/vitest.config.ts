@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 /// installation the first one made.
 export default defineConfig({
     test: {
-        include: ["zed/**/*.test.ts"],
+        include: ["editors/zed/**/*.test.ts"],
         testTimeout: 600_000,
     },
 });

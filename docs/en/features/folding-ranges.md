@@ -1,7 +1,7 @@
 # Folding Ranges
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/folding_range/. Do not edit the regions between the
+     in tests/folding_range/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -18,7 +18,7 @@ Braces fold: namespaces, types, functions, lambdas and the bodies of statements.
 Namespaces, types, functions and lambdas fold at their braces
 
 ```case
-tests-next/folding_range/blocks/01_braces
+tests/folding_range/blocks/01_braces
 ```
 
 <!-- END CAPABILITY -->
@@ -33,7 +33,7 @@ Each branch of an `if`/`else` or a `try`/`catch` folds on its own: the line
 that closes one branch and opens the next stays visible.
 
 ```case
-tests-next/folding_range/blocks/03_statement_bodies
+tests/folding_range/blocks/03_statement_bodies
 ```
 
 <!-- END CAPABILITY -->
@@ -45,7 +45,7 @@ tests-next/folding_range/blocks/03_statement_bodies
 `extern "C"` blocks form folding ranges, also behind the usual `__cplusplus` guards
 
 ```case
-tests-next/folding_range/blocks/04_linkage_specifications
+tests/folding_range/blocks/04_linkage_specifications
 ```
 
 <!-- END CAPABILITY -->
@@ -65,7 +65,7 @@ Parameter, argument, initializer, capture and template parameter lists that span
 Multiline parameter, argument, initializer and capture lists form folding ranges
 
 ```case
-tests-next/folding_range/lists/01_multiline_lists
+tests/folding_range/lists/01_multiline_lists
 ```
 
 <!-- END CAPABILITY -->
@@ -82,7 +82,7 @@ parameters and lambdas with explicit template parameters all fold their
 parameter lists.
 
 ```case
-tests-next/folding_range/lists/02_template_parameters
+tests/folding_range/lists/02_template_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -102,7 +102,7 @@ The members under an access specifier fold as a section of their class.
 Access-specifier regions within a class form folding ranges
 
 ```case
-tests-next/folding_range/sections/01_access_specifiers
+tests/folding_range/sections/01_access_specifiers
 ```
 
 <!-- END CAPABILITY -->
@@ -127,7 +127,7 @@ comment folds on its delimiters like a brace pair. A comment trailing code
 does not fold.
 
 ```case
-tests-next/folding_range/runs/01_comments
+tests/folding_range/runs/01_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -143,7 +143,7 @@ inside a conditional branch fold within it, whether or not the branch is
 taken.
 
 ```case
-tests-next/folding_range/runs/02_includes
+tests/folding_range/runs/02_includes
 ```
 
 <!-- END CAPABILITY -->
@@ -159,7 +159,7 @@ join one, nor does a declaration sharing its line with other code. Using
 declarations produced by macros fold at the invocations.
 
 ```case
-tests-next/folding_range/runs/03_using_declarations
+tests/folding_range/runs/03_using_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -183,7 +183,7 @@ literal suffix. A raw string written in a macro argument folds where it is
 written.
 
 ```case
-tests-next/folding_range/raw_strings/01_raw_string_literals
+tests/folding_range/raw_strings/01_raw_string_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -203,7 +203,7 @@ Each branch of a conditional folds up to the directive that ends it, taken or no
 Each branch of a conditional forms a folding range up to the directive that ends it, which stays visible
 
 ```case
-tests-next/folding_range/conditionals/01_branches
+tests/folding_range/conditionals/01_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -220,7 +220,7 @@ folded away by hand. Untaken code is dimmed by the `inactive` modifier of
 semantic tokens; the folds themselves do not tell the branches apart.
 
 ```case
-tests-next/folding_range/conditionals/02_untaken_branches
+tests/folding_range/conditionals/02_untaken_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -240,7 +240,7 @@ tests-next/folding_range/conditionals/02_untaken_branches
 Named pragma regions form folding ranges
 
 ```case
-tests-next/folding_range/regions/01_pragma_regions
+tests/folding_range/regions/01_pragma_regions
 ```
 
 <!-- END CAPABILITY -->
@@ -260,7 +260,7 @@ The module fragments and `export` blocks of a module unit fold.
 The global and private module fragments and `export` blocks form folding ranges
 
 ```case
-tests-next/folding_range/modules/01_module_blocks
+tests/folding_range/modules/01_module_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -280,7 +280,7 @@ Code spelled through a macro, or written in its arguments, folds where you see i
 Braces and access specifiers spelled through macros fold at the invocation site
 
 ```case
-tests-next/folding_range/macros/01_macro_spelled_blocks
+tests/folding_range/macros/01_macro_spelled_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -292,7 +292,7 @@ tests-next/folding_range/macros/01_macro_spelled_blocks
 Code written inside macro arguments folds where it is written
 
 ```case
-tests-next/folding_range/macros/02_macro_arguments
+tests/folding_range/macros/02_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -322,7 +322,7 @@ it visible anyway.
 > ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)).
 
 ```case
-tests-next/folding_range/line_folding/01_declaration_lines
+tests/folding_range/line_folding/01_declaration_lines
 ```
 
 <!-- END CAPABILITY -->
@@ -346,7 +346,7 @@ A folded range shows a placeholder, such as `{...}` for a body, while the line i
 > does. A client that ignores it still folds, without the placeholder.
 
 ```case
-tests-next/folding_range/presentation/01_collapsed_text
+tests/folding_range/presentation/01_collapsed_text
 ```
 
 <!-- END CAPABILITY -->
@@ -358,7 +358,7 @@ tests-next/folding_range/presentation/01_collapsed_text
 A fold that hides nothing is noise
 
 ```case
-tests-next/folding_range/presentation/02_single_line_constructs
+tests/folding_range/presentation/02_single_line_constructs
 ```
 
 <!-- END CAPABILITY -->

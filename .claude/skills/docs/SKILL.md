@@ -9,7 +9,7 @@ description: The clice documentation system — generated feature/config pages, 
 
 - `docs/en/` — English pages. Handwritten pages (design/, guide/, dev/,
   index.md) are edited directly; feature pages (features/\*.md) contain
-  GENERATED regions listing the documented cases (`tests-next/README.md`,
+  GENERATED regions listing the documented cases (`tests/README.md`,
   "Docs"), and guide/configuration.md is rendered from the config schema.
   **Never edit inside a `<!-- BEGIN GENERATED ... -->` region** — edit the
   case's `README.md` or the config annotations instead.

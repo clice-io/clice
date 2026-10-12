@@ -13,7 +13,7 @@
 格式化文件会按照其 `.clang-format` 指定的样式调整整个文件的排版
 
 ```case
-tests-next/format/document/01_format_document
+tests/format/document/01_format_document
 ```
 
 <!-- END CAPABILITY -->
@@ -25,7 +25,7 @@ tests-next/format/document/01_format_document
 格式化还会按样式要求对每组 include 指令排序
 
 ```case
-tests-next/format/document/04_include_sorting
+tests/format/document/04_include_sorting
 ```
 
 <!-- END CAPABILITY -->
@@ -45,7 +45,7 @@ tests-next/format/document/04_include_sorting
 格式化选区只会重新格式化选区涉及的行
 
 ```case
-tests-next/format/range/01_format_range
+tests/format/range/01_format_range
 ```
 
 <!-- END CAPABILITY -->
@@ -65,7 +65,7 @@ tests-next/format/range/01_format_range
 每个文件都使用沿目录层级向上查找到的最近的 `.clang-format` 文件中的样式
 
 ```case
-tests-next/format/style/01_nearest_style
+tests/format/style/01_nearest_style
 ```
 
 <!-- END CAPABILITY -->

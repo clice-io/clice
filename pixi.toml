@@ -152,8 +152,8 @@ cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translat
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = './build/{{ type }}/bin/bin/unittests --verbose'
 
-# npm workspaces: install runs at the repo root and covers tools/, tests/,
-# tests-next/ and editors/vscode/.
+# npm workspaces: install runs at the repo root and covers tools/, tests/ and
+# editors/vscode/.
 [tasks.install-tests]
 cmd = "npm install"
 inputs = [
@@ -161,21 +161,20 @@ inputs = [
     "package-lock.json",
     "tools/package.json",
     "tests/package.json",
-    "tests-next/package.json",
     "editors/vscode/package.json",
 ]
 outputs = ["node_modules/.package-lock.json"]
 
-# The cases under tests-next/ (tests-next/README.md), run by
+# The cases under tests/ (tests/README.md), run by
 # tools/testing/runner. `shard` is <index>/<count>, whole subtopics each.
 [feature.test.tasks.cases-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }, { arg = "shard", default = "1/1" }]
 cmd = """
-CLICE_CASES_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run cases --workspace tests-next
+CLICE_CASES_SHARD={{ shard }} CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm run cases --workspace tests
 """
 depends-on = ["install-tests"]
 
-# The Zed extension in a real Zed (tests/zed); ZED_EXECUTABLE names the Zed
+# The Zed extension in a real Zed (tests/editors/zed); ZED_EXECUTABLE names the Zed
 # app, and the extension builds with the system's cargo. Workspace-level so CI
 # can run it from the bare `node` env.
 [tasks.zed-e2e]

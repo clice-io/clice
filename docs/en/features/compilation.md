@@ -3,7 +3,7 @@
 clice compiles each open file with its command from the compilation database, as the build would. The sections below cover what that takes on real projects: the flags a command passes, languages beside C and C++, file encodings, files that change on disk, and the cache that outlives a restart.
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/compile/. Do not edit the regions between the
+     in tests/compile/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -13,7 +13,7 @@ Flags of a file's command that change what it compiles, such as `-include`, appl
 
 <!-- BEGIN GENERATED ITEMS: compile/flags -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Forced includes**
 
@@ -22,7 +22,7 @@ Headers a command forces in with `-include` work like the ones a file includes i
 Build systems force headers in for configuration macros and precompiled headers. Their macros hover and navigate, and editing them reaches every file they are forced into.
 
 ```case
-tests-next/compile/flags/01_forced_include
+tests/compile/flags/01_forced_include
 ```
 
 <!-- END CAPABILITY -->
@@ -42,7 +42,7 @@ Files of other languages a build compiles, such as assembler sources, open in th
 Preprocessed assembler files open in the editor and join the index
 
 ```case
-tests-next/compile/languages/01_assembler
+tests/compile/languages/01_assembler
 ```
 
 <!-- END CAPABILITY -->
@@ -64,7 +64,7 @@ Files saved as UTF-8 with a byte order mark work like any other
 Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes.
 
 ```case
-tests-next/compile/encoding/01_byte_order_mark
+tests/compile/encoding/01_byte_order_mark
 ```
 
 <!-- END CAPABILITY -->
@@ -76,7 +76,7 @@ tests-next/compile/encoding/01_byte_order_mark
 Files whose lines end in CRLF answer at the same places as any other
 
 ```case
-tests-next/compile/encoding/02_line_endings
+tests/compile/encoding/02_line_endings
 ```
 
 <!-- END CAPABILITY -->
@@ -98,7 +98,7 @@ A header changed on disk reaches the files that include it at their next request
 Checkouts, generators and other tools rewrite headers behind the editor's back. The next request about an including file compiles it against the new text, wherever the header sits in its includes, while a rewrite of the same bytes costs nothing.
 
 ```case
-tests-next/compile/staleness/01_header_edits
+tests/compile/staleness/01_header_edits
 ```
 
 <!-- END CAPABILITY -->
@@ -118,7 +118,7 @@ What clice compiles for headers is kept on disk, so a restart starts warm.
 Precompiled headers outlive a restart, and changes made while the server was down still reach the files that use them
 
 ```case
-tests-next/compile/cache/01_headers_restart
+tests/compile/cache/01_headers_restart
 ```
 
 <!-- END CAPABILITY -->

@@ -133,7 +133,7 @@ only a fresh session recovers). Rules:
 - **Debug**: give the failing test, the repro command, and the suspect area;
   ask for a root-cause hypothesis plus the experiment that would confirm it.
   Let it run the repro itself.
-- **Test writing**: point it at the write-tests skill, `tests-next/README.md`
+- **Test writing**: point it at the write-tests skill, `tests/README.md`
   and 2-3 neighboring cases as the template; ask it to add cases probing a specific behavior
   and report which outputs look wrong versus expected. Suspicious snapshot
   diffs are findings — never `UPDATE_SNAPSHOTS` over them.

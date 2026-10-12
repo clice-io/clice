@@ -3,7 +3,7 @@
 Renaming a symbol (`textDocument/rename`, `F2` in VS Code) changes every place that names it across the workspace, from the project index. [`clice refactor rename`](../cli/refactor.md) runs the same engine from the command line; its page details what a rename follows and what it refuses.
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/rename/. Do not edit the regions between the
+     in tests/rename/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@ A rename edits the declarations, the definition and every use of the symbol, and
 Renaming a function edits its declaration, its definition and every call in the workspace; a spelling inside a macro is left alone and named in a message
 
 ```case
-tests-next/rename/edits/01_across_files
+tests/rename/edits/01_across_files
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests-next/rename/edits/01_across_files
 Renaming a class renames its constructors and destructor, a template its specializations, a virtual function its overrides
 
 ```case
-tests-next/rename/edits/03_followers
+tests/rename/edits/03_followers
 ```
 
 <!-- END CAPABILITY -->
@@ -52,7 +52,7 @@ A symbol that cannot be renamed, or a new name that does not fit, is refused wit
 Pressing rename on a macro, an operator or a symbol of the system headers says why it cannot be renamed; off any name, nothing happens
 
 ```case
-tests-next/rename/refusals/01_unrenamable_symbols
+tests/rename/refusals/01_unrenamable_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -64,7 +64,7 @@ tests-next/rename/refusals/01_unrenamable_symbols
 A new name that is no identifier, a keyword, taken in the same scope or a macro is refused with the reason; overloading a function or taking a reserved name is done with a warning
 
 ```case
-tests-next/rename/refusals/02_rejected_names
+tests/rename/refusals/02_rejected_names
 ```
 
 <!-- END CAPABILITY -->

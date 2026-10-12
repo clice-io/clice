@@ -3,7 +3,7 @@
 clice 使用编译数据库中对应的命令编译每个打开的文件，与构建时的做法相同。以下各节介绍这一过程在实际项目中涉及的事项：命令传入的编译选项、C 和 C++ 以外的语言、文件编码、磁盘上的文件变化，以及重启后仍然保留的缓存。
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/compile/. Do not edit the regions between the
+     in tests/compile/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -13,7 +13,7 @@ clice 使用编译数据库中对应的命令编译每个打开的文件，与�
 
 <!-- BEGIN GENERATED ITEMS: compile/flags -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **强制包含**
 
@@ -22,7 +22,7 @@ clice 使用编译数据库中对应的命令编译每个打开的文件，与�
 构建系统会通过强制包含头文件来提供配置宏、使用预编译头文件。这些头文件中的宏支持悬停和代码导航，修改头文件后，所有强制包含它们的文件都会反映相应更改。
 
 ```case
-tests-next/compile/flags/01_forced_include
+tests/compile/flags/01_forced_include
 ```
 
 <!-- END CAPABILITY -->
@@ -42,7 +42,7 @@ tests-next/compile/flags/01_forced_include
 经过预处理的汇编文件可在编辑器中打开，并纳入索引
 
 ```case
-tests-next/compile/languages/01_assembler
+tests/compile/languages/01_assembler
 ```
 
 <!-- END CAPABILITY -->
@@ -64,7 +64,7 @@ tests-next/compile/languages/01_assembler
 首行的位置计算会跳过字节顺序标记，与编辑器中的显示一致；文件中嵌入的数据则保留原始字节。
 
 ```case
-tests-next/compile/encoding/01_byte_order_mark
+tests/compile/encoding/01_byte_order_mark
 ```
 
 <!-- END CAPABILITY -->
@@ -76,7 +76,7 @@ tests-next/compile/encoding/01_byte_order_mark
 使用 CRLF 换行符的文件返回的响应位置与其他文件一致
 
 ```case
-tests-next/compile/encoding/02_line_endings
+tests/compile/encoding/02_line_endings
 ```
 
 <!-- END CAPABILITY -->
@@ -98,7 +98,7 @@ tests-next/compile/encoding/02_line_endings
 检出操作、生成器和其他工具会在编辑器之外改写头文件。下次针对包含该头文件的文件发起请求时，clice 会使用头文件的新内容编译该文件，无论头文件位于包含链中的哪个位置；如果改写前后的字节相同，则不会产生额外开销。
 
 ```case
-tests-next/compile/staleness/01_header_edits
+tests/compile/staleness/01_header_edits
 ```
 
 <!-- END CAPABILITY -->
@@ -118,7 +118,7 @@ clice 会将头文件的编译结果保存在磁盘上，因此重启后可以�
 预编译头文件在重启后仍会保留，服务器停止运行期间所做的修改也会反映到使用这些头文件的文件中
 
 ```case
-tests-next/compile/cache/01_headers_restart
+tests/compile/cache/01_headers_restart
 ```
 
 <!-- END CAPABILITY -->

@@ -32,6 +32,7 @@ test("include edits rebuild the pch", async (t) => {
     expect(await s.errors("main.cpp")).toEqual([]);
     const add = t.at("main.cpp", "int |add(int a");
     const before = await s.hover(add);
+    expect(before?.text).toContain("add");
     s.edit(
         "main.cpp",
         { replace: '#include "common.h"\n', with: '#include "common.h"\n#include "extra.h"\n' },
@@ -39,7 +40,7 @@ test("include edits rebuild the pch", async (t) => {
     );
     expect(await s.errors("main.cpp")).toEqual([]);
     expect(await builds(s, "main.cpp")).toEqual({ compile: 2, pch: 2 });
-    expect((await s.hover(add))?.markdown).toBe(before?.markdown);
+    expect((await s.hover(add))?.text).toBe(before?.text);
     // Lines past the last include are no part of what is precompiled.
     for (const n of [1, 2, 3]) {
         s.edit("main.cpp", { after: '#include "extra.h"\n', insert: `// note ${String(n)}\n` });

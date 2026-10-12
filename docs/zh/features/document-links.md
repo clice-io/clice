@@ -3,7 +3,7 @@
 从源代码指令到解析所得目标文件的可点击链接。
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/document_links/. Do not edit the regions between the
+     in tests/document_links/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@
 每条包含指令都将头文件名链接到解析后对应的文件
 
 ```case
-tests-next/document_links/include_directives/01_header_paths
+tests/document_links/include_directives/01_header_paths
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests-next/document_links/include_directives/01_header_paths
 `#include MACRO` 将宏名链接到宏展开后所指向的头文件
 
 ```case
-tests-next/document_links/include_directives/03_macro_include
+tests/document_links/include_directives/03_macro_include
 ```
 
 <!-- END CAPABILITY -->
@@ -46,7 +46,7 @@ tests-next/document_links/include_directives/03_macro_include
 这里，`first/wrap.h` 遮蔽了 `second/wrap.h`，前者的 `#include_next` 会找到后者。
 
 ```case
-tests-next/document_links/include_directives/04_include_next
+tests/document_links/include_directives/04_include_next
 ```
 
 <!-- END CAPABILITY -->
@@ -58,7 +58,7 @@ tests-next/document_links/include_directives/04_include_next
 被检查的路径链接到所探测的文件
 
 ```case
-tests-next/document_links/include_directives/05_has_include
+tests/document_links/include_directives/05_has_include
 ```
 
 <!-- END CAPABILITY -->
@@ -78,7 +78,7 @@ tests-next/document_links/include_directives/05_has_include
 资源路径链接到嵌入的文件
 
 ```case
-tests-next/document_links/embed_directives/01_embed
+tests/document_links/embed_directives/01_embed
 ```
 
 <!-- END CAPABILITY -->
@@ -90,7 +90,7 @@ tests-next/document_links/embed_directives/01_embed
 被检查的路径链接到所探测的资源
 
 ```case
-tests-next/document_links/embed_directives/02_has_embed
+tests/document_links/embed_directives/02_has_embed
 ```
 
 <!-- END CAPABILITY -->
@@ -110,7 +110,7 @@ tests-next/document_links/embed_directives/02_has_embed
 每个导入的模块名都链接到声明该模块的文件
 
 ```case
-tests-next/document_links/module_declarations/01_module_imports
+tests/document_links/module_declarations/01_module_imports
 ```
 
 <!-- END CAPABILITY -->
@@ -133,7 +133,7 @@ tests-next/document_links/module_declarations/01_module_imports
 `/usr/include/c++/14/vector (ctrl + click)`。
 
 ```case
-tests-next/document_links/presentation/01_tooltips
+tests/document_links/presentation/01_tooltips
 ```
 
 <!-- END CAPABILITY -->

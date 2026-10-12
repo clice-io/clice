@@ -13,7 +13,7 @@ Go to definition jumps from a name to the definition of what it names, and from 
 A symbol with no definition in sight resolves to its declaration
 
 ```case
-tests-next/navigation/definition/01_declaration_only
+tests/navigation/definition/01_declaration_only
 ```
 
 <!-- END CAPABILITY -->
@@ -25,7 +25,7 @@ tests-next/navigation/definition/01_declaration_only
 A name a partition exports resolves into that partition, and so does the partition's name in its import
 
 ```case
-tests-next/navigation/definition/02_partition_import
+tests/navigation/definition/02_partition_import
 ```
 
 <!-- END CAPABILITY -->
@@ -41,7 +41,7 @@ declaration or definition with the other site. A function with no separate
 declaration answers with its definition everywhere.
 
 ```case
-tests-next/navigation/definition/03_declaration_and_definition
+tests/navigation/definition/03_declaration_and_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -55,7 +55,7 @@ Go-to-definition on an include opens the referenced file
 Leading includes and ordinary includes later in the file behave alike.
 
 ```case
-tests-next/navigation/definition/05_include_directives
+tests/navigation/definition/05_include_directives
 ```
 
 <!-- END CAPABILITY -->
@@ -67,7 +67,7 @@ tests-next/navigation/definition/05_include_directives
 Go-to-definition on a local variable or parameter jumps to its declaration inside the function body
 
 ```case
-tests-next/navigation/definition/06_local_symbols
+tests/navigation/definition/06_local_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -82,7 +82,7 @@ Go-to-definition on a later use of the variable returns nothing, although
 its declaration is right there.
 
 ```case
-tests-next/navigation/definition/07_error_recovery
+tests/navigation/definition/07_error_recovery
 ```
 
 <!-- END CAPABILITY -->
@@ -108,7 +108,7 @@ and from the out-of-line definition — the two non-cursor sites the
 prototype alternates with.
 
 ```case
-tests-next/navigation/declaration/01_functions
+tests/navigation/declaration/01_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -120,7 +120,7 @@ tests-next/navigation/declaration/01_functions
 A class with a forward declaration and a later definition offers both from a use — the forward declaration stays part of the declaration set rather than being dropped in favour of the definition
 
 ```case
-tests-next/navigation/declaration/02_forward_declarations
+tests/navigation/declaration/02_forward_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -136,7 +136,7 @@ line; go-to-declaration on a use offers the in-class declaration
 alongside the definition.
 
 ```case
-tests-next/navigation/declaration/03_static_members
+tests/navigation/declaration/03_static_members
 ```
 
 <!-- END CAPABILITY -->
@@ -152,7 +152,7 @@ the defining declaration together, so the header-side declaration is
 always reachable from a use.
 
 ```case
-tests-next/navigation/declaration/04_extern_variables
+tests/navigation/declaration/04_extern_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -167,7 +167,7 @@ When a function is declared in several places, go-to-declaration on a use
 lists every declaration, not only the nearest one.
 
 ```case
-tests-next/navigation/declaration/05_redeclarations
+tests/navigation/declaration/05_redeclarations
 ```
 
 <!-- END CAPABILITY -->
@@ -179,7 +179,7 @@ tests-next/navigation/declaration/05_redeclarations
 Parameter names, and a top-level `const` on a parameter, are not part of a function's type: the declaration and the definition below spell the same function differently, yet go-to-declaration still connects a use to the prototype
 
 ```case
-tests-next/navigation/declaration/06_signature_spelling
+tests/navigation/declaration/06_signature_spelling
 ```
 
 <!-- END CAPABILITY -->
@@ -199,7 +199,7 @@ Navigate to the type definition of a symbol. Applicable to variables, parameters
 Go-to-type-definition on a local variable or a parameter reaches the definition of its type
 
 ```case
-tests-next/navigation/type_definition/01_variables
+tests/navigation/type_definition/01_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -211,7 +211,7 @@ tests-next/navigation/type_definition/01_variables
 Go-to-type-definition on a field access reaches the definition of the field's type
 
 ```case
-tests-next/navigation/type_definition/02_fields
+tests/navigation/type_definition/02_fields
 ```
 
 <!-- END CAPABILITY -->
@@ -223,7 +223,7 @@ tests-next/navigation/type_definition/02_fields
 Go-to-type-definition on a variable declared `auto` reaches its deduced type, as on the `auto` keyword itself
 
 ```case
-tests-next/navigation/type_definition/03_deduced_variables
+tests/navigation/type_definition/03_deduced_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -235,7 +235,7 @@ tests-next/navigation/type_definition/03_deduced_variables
 Go-to-type-definition on a smart-pointer variable reaches the wrapper type itself; unwrapping to the pointee type is not offered
 
 ```case
-tests-next/navigation/type_definition/04_smart_pointers
+tests/navigation/type_definition/04_smart_pointers
 ```
 
 <!-- END CAPABILITY -->
@@ -247,7 +247,7 @@ tests-next/navigation/type_definition/04_smart_pointers
 Go-to-type-definition on a variable of an aliased type reaches the `using` or `typedef` declaration; it does not yet unwrap the alias to the underlying type's definition
 
 ```case
-tests-next/navigation/type_definition/05_type_aliases
+tests/navigation/type_definition/05_type_aliases
 ```
 
 <!-- END CAPABILITY -->
@@ -259,7 +259,7 @@ tests-next/navigation/type_definition/05_type_aliases
 Go-to-type-definition on a structured binding reaches the definition of the bound member's type
 
 ```case
-tests-next/navigation/type_definition/06_structured_bindings
+tests/navigation/type_definition/06_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -271,7 +271,7 @@ tests-next/navigation/type_definition/06_structured_bindings
 Go-to-type-definition looks through pointers, references and arrays to the definition of the element type
 
 ```case
-tests-next/navigation/type_definition/07_pointers_and_references
+tests/navigation/type_definition/07_pointers_and_references
 ```
 
 <!-- END CAPABILITY -->
@@ -294,7 +294,7 @@ Along a three-level override chain, go-to-implementation from each method
 reaches the override one level down — base to middle, middle to leaf.
 
 ```case
-tests-next/navigation/implementation/01_override_chain
+tests/navigation/implementation/01_override_chain
 ```
 
 <!-- END CAPABILITY -->
@@ -309,7 +309,7 @@ Go-to-implementation on a virtual method lists every override across
 the sibling derived classes.
 
 ```case
-tests-next/navigation/implementation/02_sibling_overrides
+tests/navigation/implementation/02_sibling_overrides
 ```
 
 <!-- END CAPABILITY -->
@@ -324,7 +324,7 @@ Go-to-implementation on a non-virtual function declaration does not reach
 its out-of-line definition and returns nothing.
 
 ```case
-tests-next/navigation/implementation/03_non_virtual
+tests/navigation/implementation/03_non_virtual
 ```
 
 <!-- END CAPABILITY -->
@@ -339,7 +339,7 @@ Go-to-implementation on a base class name lists the classes that derive
 from it.
 
 ```case
-tests-next/navigation/implementation/04_derived_classes
+tests/navigation/implementation/04_derived_classes
 ```
 
 <!-- END CAPABILITY -->
@@ -354,7 +354,7 @@ This applies to function templates and generic lambdas, but neither
 currently returns an implementation target.
 
 ```case
-tests-next/navigation/implementation/05_dependent_calls
+tests/navigation/implementation/05_dependent_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -374,7 +374,7 @@ Find references lists every place that names the symbol, its declarations includ
 A reference query returns the declaration and the out-of-line definition together with every use, so the whole surface of a symbol is reachable from any one of its sites
 
 ```case
-tests-next/navigation/references/01_declarations_included
+tests/navigation/references/01_declarations_included
 ```
 
 <!-- END CAPABILITY -->
@@ -386,7 +386,7 @@ tests-next/navigation/references/01_declarations_included
 Find references on `begin` reports only its own declaration; the range-based for loop that implicitly calls it is not included among the references
 
 ```case
-tests-next/navigation/references/02_range_for
+tests/navigation/references/02_range_for
 ```
 
 <!-- END CAPABILITY -->
@@ -398,7 +398,7 @@ tests-next/navigation/references/02_range_for
 Find references on a constructor reports only its explicit sites; an object definition that implicitly invokes the constructor or its destructor is not included
 
 ```case
-tests-next/navigation/references/03_implicit_construction
+tests/navigation/references/03_implicit_construction
 ```
 
 <!-- END CAPABILITY -->
@@ -410,7 +410,7 @@ tests-next/navigation/references/03_implicit_construction
 Find references on a constructor does not include call sites that reach it indirectly through a perfect-forwarding factory
 
 ```case
-tests-next/navigation/references/04_forwarding_factories
+tests/navigation/references/04_forwarding_factories
 ```
 
 <!-- END CAPABILITY -->
@@ -422,7 +422,7 @@ tests-next/navigation/references/04_forwarding_factories
 Find references on a member does not include dependent call sites in a template, even when the template is instantiated with the member's class
 
 ```case
-tests-next/navigation/references/05_dependent_calls
+tests/navigation/references/05_dependent_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -434,7 +434,7 @@ tests-next/navigation/references/05_dependent_calls
 The reference reply carries only locations, so a reader cannot tell a write from a read; annotating each result with its access kind is not offered
 
 ```case
-tests-next/navigation/references/06_access_kinds
+tests/navigation/references/06_access_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -446,7 +446,7 @@ tests-next/navigation/references/06_access_kinds
 Each reference is reported as a bare location; the name of the function that encloses it is not attached, so results carry no context beyond the file and line
 
 ```case
-tests-next/navigation/references/07_enclosing_functions
+tests/navigation/references/07_enclosing_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -458,7 +458,7 @@ tests-next/navigation/references/07_enclosing_functions
 Find references on a label lists the label itself together with every `goto` that jumps to it
 
 ```case
-tests-next/navigation/references/08_labels
+tests/navigation/references/08_labels
 ```
 
 <!-- END CAPABILITY -->
@@ -478,7 +478,7 @@ On `auto` and `decltype`, navigation reaches the type they stand for.
 Go-to-definition on `auto` reaches the type it was deduced to, as if the type were written in its place
 
 ```case
-tests-next/navigation/deduced_types/01_auto_keyword
+tests/navigation/deduced_types/01_auto_keyword
 ```
 
 <!-- END CAPABILITY -->
@@ -493,7 +493,7 @@ The `auto` of a structured binding reaches the type of the object it
 decomposes.
 
 ```case
-tests-next/navigation/deduced_types/02_auto_declarators
+tests/navigation/deduced_types/02_auto_declarators
 ```
 
 <!-- END CAPABILITY -->
@@ -505,7 +505,7 @@ tests-next/navigation/deduced_types/02_auto_declarators
 Go-to-definition on `decltype` reaches the type its operand names, through any `decltype` that type was itself declared with
 
 ```case
-tests-next/navigation/deduced_types/03_decltype
+tests/navigation/deduced_types/03_decltype
 ```
 
 <!-- END CAPABILITY -->
@@ -521,7 +521,7 @@ the `auto` of a `new` expression navigates nowhere. A macro spelling `auto`
 navigates to the macro.
 
 ```case
-tests-next/navigation/deduced_types/04_deduced_templates
+tests/navigation/deduced_types/04_deduced_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -537,7 +537,7 @@ none of them. The leading `auto` of a trailing return type reaches the
 type after the arrow.
 
 ```case
-tests-next/navigation/deduced_types/05_parameters_and_returns
+tests/navigation/deduced_types/05_parameters_and_returns
 ```
 
 <!-- END CAPABILITY -->
@@ -552,7 +552,7 @@ A type that is the template parameter itself reaches the parameter, however
 the template is instantiated.
 
 ```case
-tests-next/navigation/deduced_types/06_dependent_auto
+tests/navigation/deduced_types/06_dependent_auto
 ```
 
 <!-- END CAPABILITY -->
@@ -572,7 +572,7 @@ Inside a template, a name that depends on its parameters still navigates to the 
 Inside a template that is never instantiated, a member accessed on an object of a dependent type resolves to the member declared on the corresponding class template
 
 ```case
-tests-next/navigation/templates/01_dependent_members
+tests/navigation/templates/01_dependent_members
 ```
 
 <!-- END CAPABILITY -->
@@ -584,7 +584,7 @@ tests-next/navigation/templates/01_dependent_members
 Go-to-definition on the name of an explicit specialization resolves to the specialization itself; stepping from it to the primary template it specializes is not offered
 
 ```case
-tests-next/navigation/templates/02_explicit_specializations
+tests/navigation/templates/02_explicit_specializations
 ```
 
 <!-- END CAPABILITY -->
@@ -599,7 +599,7 @@ Every candidate answers on its own: the definition where it has one, its
 declaration where it has none.
 
 ```case
-tests-next/navigation/templates/03_overload_candidates
+tests/navigation/templates/03_overload_candidates
 ```
 
 <!-- END CAPABILITY -->
@@ -615,7 +615,7 @@ the one it names; overloads that differ in their parameters are all
 listed.
 
 ```case
-tests-next/navigation/templates/04_dependent_expressions
+tests/navigation/templates/04_dependent_expressions
 ```
 
 <!-- END CAPABILITY -->
@@ -639,7 +639,7 @@ reaches the function the macro declares. The macro's own name, at its
 definition or an invocation, resolves to the macro.
 
 ```case
-tests-next/navigation/macros/01_macro_arguments
+tests/navigation/macros/01_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -656,7 +656,7 @@ macro. A token inside the macro's body has no meaning until an expansion
 gives it one, so navigation on it answers nothing.
 
 ```case
-tests-next/navigation/macros/02_generated_names
+tests/navigation/macros/02_generated_names
 ```
 
 <!-- END CAPABILITY -->
@@ -671,7 +671,7 @@ Each `#define` of a name is its own symbol, so a redefinition after
 `#undef` collects only its own uses.
 
 ```case
-tests-next/navigation/macros/04_macro_references
+tests/navigation/macros/04_macro_references
 ```
 
 <!-- END CAPABILITY -->
@@ -683,7 +683,7 @@ tests-next/navigation/macros/04_macro_references
 Find references on a macro does not include the mentions of it written inside the bodies of other macro definitions
 
 ```case
-tests-next/navigation/macros/05_nested_macros
+tests/navigation/macros/05_nested_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -708,7 +708,7 @@ Go-to-definition on the `override` or `final` specifier does not reach the
 base class virtual method it overrides.
 
 ```case
-tests-next/navigation/implicit_targets/01_override_and_final
+tests/navigation/implicit_targets/01_override_and_final
 ```
 
 <!-- END CAPABILITY -->
@@ -723,7 +723,7 @@ Go-to-definition on `break` or `continue` does not reach the head of the
 loop or switch it controls.
 
 ```case
-tests-next/navigation/implicit_targets/02_break_and_continue
+tests/navigation/implicit_targets/02_break_and_continue
 ```
 
 <!-- END CAPABILITY -->
@@ -737,7 +737,7 @@ tests-next/navigation/implicit_targets/02_break_and_continue
 Go-to-definition on `delete` does not reach the destructor it runs.
 
 ```case
-tests-next/navigation/implicit_targets/03_delete_expressions
+tests/navigation/implicit_targets/03_delete_expressions
 ```
 
 <!-- END CAPABILITY -->
@@ -752,7 +752,7 @@ Go-to-definition on `new` reaches the class's overloaded `operator new`.
 The constructor invoked by the same expression is not part of the reply.
 
 ```case
-tests-next/navigation/implicit_targets/04_new_expressions
+tests/navigation/implicit_targets/04_new_expressions
 ```
 
 <!-- END CAPABILITY -->
@@ -768,7 +768,7 @@ definition. The binary, subscript, call and arrow operators (`+`, `[]`,
 `()`, `->`) are all resolved.
 
 ```case
-tests-next/navigation/implicit_targets/05_overloaded_operators
+tests/navigation/implicit_targets/05_overloaded_operators
 ```
 
 <!-- END CAPABILITY -->
@@ -784,7 +784,7 @@ on the written operator reaches the operator that actually implements it:
 `!=` reaches `operator==`, and `>` reaches `operator<=>`.
 
 ```case
-tests-next/navigation/implicit_targets/06_rewritten_comparisons
+tests/navigation/implicit_targets/06_rewritten_comparisons
 ```
 
 <!-- END CAPABILITY -->
@@ -799,7 +799,7 @@ Go-to-definition on the suffix of a user-defined literal reaches the
 `operator""` it calls.
 
 ```case
-tests-next/navigation/implicit_targets/07_user_defined_literals
+tests/navigation/implicit_targets/07_user_defined_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -814,7 +814,7 @@ Go-to-definition from a context that runs a user-defined conversion, a
 condition or `!`, does not reach the conversion operator.
 
 ```case
-tests-next/navigation/implicit_targets/08_implicit_conversions
+tests/navigation/implicit_targets/08_implicit_conversions
 ```
 
 <!-- END CAPABILITY -->
@@ -829,7 +829,7 @@ A `static_cast` that runs a user-defined conversion operator does not yet
 reach that operator.
 
 ```case
-tests-next/navigation/implicit_targets/09_casts
+tests/navigation/implicit_targets/09_casts
 ```
 
 <!-- END CAPABILITY -->
@@ -844,7 +844,7 @@ Go-to-definition on the `:` of a range-based for does not reach the
 `begin()` or `end()` chosen for the range.
 
 ```case
-tests-next/navigation/implicit_targets/10_range_for
+tests/navigation/implicit_targets/10_range_for
 ```
 
 <!-- END CAPABILITY -->
@@ -860,7 +860,7 @@ Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
 promise's methods.
 
 ```case
-tests-next/navigation/implicit_targets/11_coroutine_keywords
+tests/navigation/implicit_targets/11_coroutine_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -885,7 +885,7 @@ call reaches the constructor overload resolution selected, for both the
 `T(args)` and `T{args}` forms.
 
 ```case
-tests-next/navigation/implicit_construction/01_constructor_calls
+tests/navigation/implicit_construction/01_constructor_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -902,7 +902,7 @@ operator. The `=` that introduces a copy- or move-initialization
 not yet resolved.
 
 ```case
-tests-next/navigation/implicit_construction/02_copy_and_move
+tests/navigation/implicit_construction/02_copy_and_move
 ```
 
 <!-- END CAPABILITY -->
@@ -918,7 +918,7 @@ definition on the constructor call reaches the constructor that was
 selected, not merely the class template.
 
 ```case
-tests-next/navigation/implicit_construction/03_deduced_class_templates
+tests/navigation/implicit_construction/03_deduced_class_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -933,7 +933,7 @@ An aggregate has no constructor, so go-to-definition on its initializer
 brace reaches the aggregate's definition.
 
 ```case
-tests-next/navigation/implicit_construction/04_aggregates
+tests/navigation/implicit_construction/04_aggregates
 ```
 
 <!-- END CAPABILITY -->
@@ -950,7 +950,7 @@ itself resolves to the base type or the member, so navigation to the
 constructor goes through the parenthesis.
 
 ```case
-tests-next/navigation/implicit_construction/05_member_initializers
+tests/navigation/implicit_construction/05_member_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -967,7 +967,7 @@ type, so navigation to the target constructor goes through the
 parenthesis.
 
 ```case
-tests-next/navigation/implicit_construction/06_delegating_constructors
+tests/navigation/implicit_construction/06_delegating_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -982,7 +982,7 @@ Go-to-definition on an inherited-constructor declaration
 (`using Base::Base;`) lists each constructor of the base it imports.
 
 ```case
-tests-next/navigation/implicit_construction/07_inherited_constructors
+tests/navigation/implicit_construction/07_inherited_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -997,7 +997,7 @@ A braced `return {args}` implicitly constructs the function's return
 type; go-to-definition on the brace reaches the selected constructor.
 
 ```case
-tests-next/navigation/implicit_construction/08_return_values
+tests/navigation/implicit_construction/08_return_values
 ```
 
 <!-- END CAPABILITY -->
@@ -1012,7 +1012,7 @@ Go-to-definition on the `=` of a lambda init-capture does not reach the
 constructor that builds the captured value.
 
 ```case
-tests-next/navigation/implicit_construction/09_lambda_captures
+tests/navigation/implicit_construction/09_lambda_captures
 ```
 
 <!-- END CAPABILITY -->
@@ -1027,7 +1027,7 @@ Go-to-definition on a structured binding name resolves to the binding
 itself rather than the underlying field or accessor it names.
 
 ```case
-tests-next/navigation/implicit_construction/10_structured_bindings
+tests/navigation/implicit_construction/10_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -1047,7 +1047,7 @@ Module names in `import` and `module` declarations navigate to the interface uni
 Go-to-definition on the name in an `import` declaration opens the module interface unit that exports it, and uses of an imported symbol reach its definition in that unit
 
 ```case
-tests-next/navigation/modules/01_import_names
+tests/navigation/modules/01_import_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1063,7 +1063,7 @@ unit. The reverse direction, from the interface's module name to the units
 implementing it, is not offered yet.
 
 ```case
-tests-next/navigation/modules/02_implementation_units
+tests/navigation/modules/02_implementation_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1078,7 +1078,7 @@ Go-to-definition on any segment of a dot-separated module name reaches
 the module's interface unit; the whole name is one reference.
 
 ```case
-tests-next/navigation/modules/03_dotted_names
+tests/navigation/modules/03_dotted_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1098,7 +1098,7 @@ Navigation follows a symbol into the other files of the project: a declaration i
 A call names the function's definition in its source file and its declaration in the header
 
 ```case
-tests-next/navigation/projects/01_header_to_source
+tests/navigation/projects/01_header_to_source
 ```
 
 <!-- END CAPABILITY -->
@@ -1110,7 +1110,7 @@ tests-next/navigation/projects/01_header_to_source
 A call into a module lands on the partition exporting the function
 
 ```case
-tests-next/navigation/projects/02_module_partition
+tests/navigation/projects/02_module_partition
 ```
 
 <!-- END CAPABILITY -->
@@ -1125,7 +1125,7 @@ A function defined in one source and called from a sibling lists both call
 sites, together with its declaration in the shared header.
 
 ```case
-tests-next/navigation/projects/03_uses_across_sources
+tests/navigation/projects/03_uses_across_sources
 ```
 
 <!-- END CAPABILITY -->
@@ -1145,7 +1145,7 @@ A call hierarchy lists the callers of a function and the functions it calls.
 A call hierarchy opens on a free function and on a member method alike
 
 ```case
-tests-next/navigation/call_hierarchy/01_functions_and_methods
+tests/navigation/call_hierarchy/01_functions_and_methods
 ```
 
 <!-- END CAPABILITY -->
@@ -1157,7 +1157,7 @@ tests-next/navigation/call_hierarchy/01_functions_and_methods
 Incoming calls list every caller of a function, and a caller that invokes it more than once contributes each call site
 
 ```case
-tests-next/navigation/call_hierarchy/02_incoming_calls
+tests/navigation/call_hierarchy/02_incoming_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -1169,7 +1169,7 @@ tests-next/navigation/call_hierarchy/02_incoming_calls
 Outgoing calls list every function a body invokes, one entry per callee
 
 ```case
-tests-next/navigation/call_hierarchy/03_outgoing_calls
+tests/navigation/call_hierarchy/03_outgoing_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -1181,7 +1181,7 @@ tests-next/navigation/call_hierarchy/03_outgoing_calls
 A call hierarchy item carries only its name; the function signature is not attached in a detail field, so overloads are indistinguishable in the hierarchy
 
 ```case
-tests-next/navigation/call_hierarchy/04_signature_details
+tests/navigation/call_hierarchy/04_signature_details
 ```
 
 <!-- END CAPABILITY -->
@@ -1193,7 +1193,7 @@ tests-next/navigation/call_hierarchy/04_signature_details
 A member function's call hierarchy item is produced, but its name field carries only the bare method name (`draw`), not the qualified `Circle::draw` that would tell it apart from a free function
 
 ```case
-tests-next/navigation/call_hierarchy/05_qualified_names
+tests/navigation/call_hierarchy/05_qualified_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1205,7 +1205,7 @@ tests-next/navigation/call_hierarchy/05_qualified_names
 Incoming calls of a base virtual method do not include calls made through derived overrides; a call to an override is attributed only to that override, never to the base it overrides
 
 ```case
-tests-next/navigation/call_hierarchy/06_virtual_dispatch
+tests/navigation/call_hierarchy/06_virtual_dispatch
 ```
 
 <!-- END CAPABILITY -->
@@ -1220,7 +1220,7 @@ Preparing a call hierarchy on a variable or an enum constant returns
 nothing; the request is offered only for functions and methods.
 
 ```case
-tests-next/navigation/call_hierarchy/07_non_functions
+tests/navigation/call_hierarchy/07_non_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -1232,7 +1232,7 @@ tests-next/navigation/call_hierarchy/07_non_functions
 A call written in a lambda body appears in the incoming calls of the function it invokes, attributed to the function that encloses the lambda
 
 ```case
-tests-next/navigation/call_hierarchy/08_lambda_bodies
+tests/navigation/call_hierarchy/08_lambda_bodies
 ```
 
 <!-- END CAPABILITY -->
@@ -1244,7 +1244,7 @@ tests-next/navigation/call_hierarchy/08_lambda_bodies
 Incoming calls of a constructor do not include the call sites that reach it through a perfect-forwarding factory
 
 ```case
-tests-next/navigation/call_hierarchy/09_forwarding_factories
+tests/navigation/call_hierarchy/09_forwarding_factories
 ```
 
 <!-- END CAPABILITY -->
@@ -1264,7 +1264,7 @@ A type hierarchy lists the bases of a class and the classes deriving from it.
 A type hierarchy opens on any user-defined type: class, struct, enum and union alike
 
 ```case
-tests-next/navigation/type_hierarchy/01_type_kinds
+tests/navigation/type_hierarchy/01_type_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -1278,7 +1278,7 @@ Supertypes list every direct base of a class, including each base of a multiple-
 A base written through an alias lists the class the alias names.
 
 ```case
-tests-next/navigation/type_hierarchy/02_supertypes
+tests/navigation/type_hierarchy/02_supertypes
 ```
 
 <!-- END CAPABILITY -->
@@ -1290,7 +1290,7 @@ tests-next/navigation/type_hierarchy/02_supertypes
 Subtypes list every class that derives from a base, across sibling derived types
 
 ```case
-tests-next/navigation/type_hierarchy/03_subtypes
+tests/navigation/type_hierarchy/03_subtypes
 ```
 
 <!-- END CAPABILITY -->
@@ -1302,7 +1302,7 @@ tests-next/navigation/type_hierarchy/03_subtypes
 Subtypes of a base include classes that derive from it through a class template, such as a CRTP wrapper
 
 ```case
-tests-next/navigation/type_hierarchy/04_template_bases
+tests/navigation/type_hierarchy/04_template_bases
 ```
 
 <!-- END CAPABILITY -->
@@ -1314,7 +1314,7 @@ tests-next/navigation/type_hierarchy/04_template_bases
 A subtype produced by a class template specialization is listed, but its item name carries only the bare template name (`Derived`), without the template arguments that would distinguish `Derived<Foo>`
 
 ```case
-tests-next/navigation/type_hierarchy/05_template_arguments
+tests/navigation/type_hierarchy/05_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -1338,7 +1338,7 @@ Every name of the symbol in the file is highlighted, macros included.
 Every name of the symbol under the cursor in the file is highlighted, its declarations and definition included
 
 ```case
-tests-next/document_highlight/symbols/01_declarations_and_uses
+tests/document_highlight/symbols/01_declarations_and_uses
 ```
 
 <!-- END CAPABILITY -->
@@ -1352,7 +1352,7 @@ A macro highlights at its definition, its expansions, the conditionals testing i
 A name written in a macro argument highlights where it is written; a name the macro's replacement spells highlights the whole invocation. A macro used in another macro's replacement highlights neither there nor at that macro's invocations.
 
 ```case
-tests-next/document_highlight/symbols/03_macros
+tests/document_highlight/symbols/03_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -1364,7 +1364,7 @@ tests-next/document_highlight/symbols/03_macros
 A `break` or `continue` does not highlight the loop it leaves yet
 
 ```case
-tests-next/document_highlight/symbols/08_control_flow
+tests/document_highlight/symbols/08_control_flow
 ```
 
 <!-- END CAPABILITY -->
@@ -1384,7 +1384,7 @@ Each highlight tells whether the code there reads the symbol or writes it.
 Every use of a variable is highlighted, assignments as writes and other uses as reads
 
 ```case
-tests-next/document_highlight/access_kinds/01_reads_and_writes
+tests/document_highlight/access_kinds/01_reads_and_writes
 ```
 
 <!-- END CAPABILITY -->
@@ -1396,7 +1396,7 @@ tests-next/document_highlight/access_kinds/01_reads_and_writes
 An argument bound to a non-const reference parameter is a write, while a const reference, a copy or taking its address reads it
 
 ```case
-tests-next/document_highlight/access_kinds/03_reference_arguments
+tests/document_highlight/access_kinds/03_reference_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -1410,7 +1410,7 @@ Writing through `object.member` writes the member and reads the object
 A designated initializer or a constructor's member initializer names the field without writing it. Fields of an anonymous union highlight like any other field.
 
 ```case
-tests-next/document_highlight/access_kinds/06_member_access
+tests/document_highlight/access_kinds/06_member_access
 ```
 
 <!-- END CAPABILITY -->
@@ -1430,7 +1430,7 @@ Highlights work in module units and on the names a module exports.
 Highlights work in module units and on names imported from a module, the module name included
 
 ```case
-tests-next/document_highlight/modules/01_module_units
+tests/document_highlight/modules/01_module_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1454,7 +1454,7 @@ A query matches names by their words, and its syntax narrows the search.
 A query finds the symbols whose names match it, members with their container
 
 ```case
-tests-next/workspace_symbol/queries/01_name_search
+tests/workspace_symbol/queries/01_name_search
 ```
 
 <!-- END CAPABILITY -->
@@ -1471,7 +1471,7 @@ a word of the name, so `pcfg` finds nothing — its `f` lands in the middle
 of `config`.
 
 ```case
-tests-next/workspace_symbol/queries/03_fuzzy_matching
+tests/workspace_symbol/queries/03_fuzzy_matching
 ```
 
 <!-- END CAPABILITY -->
@@ -1487,7 +1487,7 @@ Quotes, wildcards, scopes and filters narrow a search
 `kind:function` keeps one kind. Terms combine, separated by spaces.
 
 ```case
-tests-next/workspace_symbol/queries/04_query_syntax
+tests/workspace_symbol/queries/04_query_syntax
 ```
 
 <!-- END CAPABILITY -->
@@ -1499,7 +1499,7 @@ tests-next/workspace_symbol/queries/04_query_syntax
 Mangled linker names do not resolve to their source functions yet
 
 ```case
-tests-next/workspace_symbol/queries/05_mangled_names
+tests/workspace_symbol/queries/05_mangled_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1525,7 +1525,7 @@ a qualified query spell the qualified name, so editors that filter
 results against the query text keep them.
 
 ```case
-tests-next/workspace_symbol/scopes/01_qualified_names
+tests/workspace_symbol/scopes/01_qualified_names
 ```
 
 <!-- END CAPABILITY -->
@@ -1537,7 +1537,7 @@ tests-next/workspace_symbol/scopes/01_qualified_names
 An enum qualifies its enumerators like any other container
 
 ```case
-tests-next/workspace_symbol/scopes/02_enumerators
+tests/workspace_symbol/scopes/02_enumerators
 ```
 
 <!-- END CAPABILITY -->
@@ -1559,7 +1559,7 @@ The name spelled exactly ranks above the names merely starting with it
 `Connection` lists the alias first and `ConnectionImpl` after it.
 
 ```case
-tests-next/workspace_symbol/ranking/01_exact_name
+tests/workspace_symbol/ranking/01_exact_name
 ```
 
 <!-- END CAPABILITY -->
@@ -1583,7 +1583,7 @@ carries only the bare name — nothing tells the two `process` results
 apart short of opening both locations.
 
 ```case
-tests-next/workspace_symbol/results/01_overloads
+tests/workspace_symbol/results/01_overloads
 ```
 
 <!-- END CAPABILITY -->
@@ -1606,7 +1606,7 @@ The query finds a function in `other.cpp`, which stays closed while
 `main.cpp` is open: the background index answers for it.
 
 ```case
-tests-next/workspace_symbol/projects/01_closed_files
+tests/workspace_symbol/projects/01_closed_files
 ```
 
 <!-- END CAPABILITY -->
@@ -1632,7 +1632,7 @@ A header pairs with the source that defines its declarations, and the source wit
 A header pairs with the source defining its declarations, and the source with the header
 
 ```case
-tests-next/switch_source_header/counterparts/01_header_and_source
+tests/switch_source_header/counterparts/01_header_and_source
 ```
 
 <!-- END CAPABILITY -->
@@ -1644,7 +1644,7 @@ tests-next/switch_source_header/counterparts/01_header_and_source
 A header and the `.tpp` file it includes for its template definitions switch to each other
 
 ```case
-tests-next/switch_source_header/counterparts/02_template_definitions
+tests/switch_source_header/counterparts/02_template_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -1656,7 +1656,7 @@ tests-next/switch_source_header/counterparts/02_template_definitions
 A header that defines everything it declares, and a `.def` fragment, have no counterpart
 
 ```case
-tests-next/switch_source_header/counterparts/03_no_counterpart
+tests/switch_source_header/counterparts/03_no_counterpart
 ```
 
 <!-- END CAPABILITY -->
@@ -1681,7 +1681,7 @@ nothing and is no counterpart — and of those only the nearest:
 `src/legacy/shape.cpp` lies a directory deeper than `src/shape.cpp`.
 
 ```case
-tests-next/switch_source_header/layouts/01_split_directories
+tests/switch_source_header/layouts/01_split_directories
 ```
 
 <!-- END CAPABILITY -->
@@ -1701,7 +1701,7 @@ When several files could pair, the clearest one opens directly and the others st
 When several sources define a header's declarations, the one defining clearly the most is taken directly and the others stay listed
 
 ```case
-tests-next/switch_source_header/ranking/01_scattered_definitions
+tests/switch_source_header/ranking/01_scattered_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -1713,7 +1713,7 @@ tests-next/switch_source_header/ranking/01_scattered_definitions
 When no candidate clearly outweighs the others, the editor lists them with their reasons to pick from
 
 ```case
-tests-next/switch_source_header/ranking/02_split_evenly
+tests/switch_source_header/ranking/02_split_evenly
 ```
 
 <!-- END CAPABILITY -->
@@ -1733,7 +1733,7 @@ A module interface unit pairs with the units implementing its module.
 A module interface unit pairs with the units implementing its module, and each of them with the interface
 
 ```case
-tests-next/switch_source_header/modules/01_module_units
+tests/switch_source_header/modules/01_module_units
 ```
 
 <!-- END CAPABILITY -->
@@ -1748,7 +1748,7 @@ The implementation unit also lists the primary interface of its module,
 after the partition.
 
 ```case
-tests-next/switch_source_header/modules/02_partitions
+tests/switch_source_header/modules/02_partitions
 ```
 
 <!-- END CAPABILITY -->

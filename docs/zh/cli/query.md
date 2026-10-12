@@ -12,7 +12,7 @@
 - `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 针对 `--symbol <locator>` 指明的那一个符号作答。定位串匹配到多个符号时，会把它们作为 `candidates` 列出；没有符号与该名称完全一致时，同样会列出最接近的匹配。
 - `documentSymbols --path <file>` 给出该文件的大纲。
 - `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、从邻近翻译单元借来的命令（借给临时成员时为 `provisional`，借给构建之外的文件时为 `inferred`），或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
-- `projectFiles [--filter all|source|header|module]` 列出构建涉及的文件；`fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` 和 `impactAnalysis --path <file>` 则沿包含关系图查询。
+- `projectFiles [--filter all|source|header|module]` 列出构建涉及的文件；`fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` 沿包含关系图查询，`impactAnalysis --path <file>` 则沿包含关系图以及导入该文件所属模块的文件查询。
 - `counterparts --path <file>` 列出与该文件配对的文件——头文件的源文件、源文件的头文件、模块的接口单元和实现单元——最佳的排在最前，每个都附上理由，并把编辑器无需询问就会直接打开的那一个标为 `preferred`（参见[切换源文件／头文件](../features/navigation.md#switch-source-header)）。
 
 问题中的路径可以相对于工作区，也可以是绝对路径，答案中的路径一律是绝对路径；行号从 1 开始。
@@ -63,7 +63,7 @@
 所有出现某个方法名称的位置，包括其声明
 
 ```case
-tests-next/query/basics/01_references
+tests/query/basics/01_references
 ```
 
 <!-- END CAPABILITY -->
@@ -75,19 +75,19 @@ tests-next/query/basics/01_references
 名称查询会匹配按单词边界对齐的子序列
 
 ```case
-tests-next/query/basics/02_symbol_search
+tests/query/basics/02_symbol_search
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **关于符号的问题**
 
 按名称、id 或所在行查找符号，查询它的定义和使用位置、调用者、它继承自哪些类型，以及文件中有哪些声明
 
 ```case
-tests-next/query/basics/03_symbol_questions
+tests/query/basics/03_symbol_questions
 ```
 
 <!-- END CAPABILITY -->
@@ -99,7 +99,7 @@ tests-next/query/basics/03_symbol_questions
 列出项目中的文件、某个文件包含的文件及包含它的文件、修改头文件的影响范围，以及与头文件对应的源文件
 
 ```case
-tests-next/query/basics/04_file_questions
+tests/query/basics/04_file_questions
 ```
 
 <!-- END CAPABILITY -->
@@ -119,7 +119,7 @@ tests-next/query/basics/04_file_questions
 借助 `path:`，可以在文件内按名称查找仅在该文件中可见的符号，例如静态符号、局部符号和参数
 
 ```case
-tests-next/query/names/05_file_local_names
+tests/query/names/05_file_local_names
 ```
 
 <!-- END CAPABILITY -->
@@ -131,7 +131,7 @@ tests-next/query/names/05_file_local_names
 `path:` 过滤条件只保留指定路径下文件中的符号；路径可写为相对于工作区根目录的路径、文件名或绝对路径
 
 ```case
-tests-next/query/names/06_path_filters
+tests/query/names/06_path_filters
 ```
 
 <!-- END CAPABILITY -->
@@ -151,7 +151,7 @@ tests-next/query/names/06_path_filters
 对于建立索引后磁盘内容发生更改的文件，答案会略过索引中记录的相关信息，并在 `stale` 中列出这些文件
 
 ```case
-tests-next/query/freshness/01_withheld_rows
+tests/query/freshness/01_withheld_rows
 ```
 
 <!-- END CAPABILITY -->
@@ -163,7 +163,7 @@ tests-next/query/freshness/01_withheld_rows
 使用 `--fresh` 时，会先将索引更新到最新状态再回答问题；如果尚无索引，则会先建立索引
 
 ```case
-tests-next/query/freshness/02_fresh_batch
+tests/query/freshness/02_fresh_batch
 ```
 
 <!-- END CAPABILITY -->

@@ -182,7 +182,7 @@ struct LogFloodResult {
 /// clice/internal/stats — TEST-ONLY, not a stable API. Ownership gauges
 /// for memory-lifecycle regression tests: instead of brittle RSS
 /// assertions, each leak class is pinned by a deterministic counter
-/// (consumed by the tests-next/lifecycle/memory cases); and
+/// (consumed by the tests/lifecycle/memory cases); and
 /// the counts of freshness checks, which pin what a request looks at.
 /// Absent from capabilities and user docs.
 struct StatsParams {};

@@ -74,7 +74,7 @@ JoinFlavor => JoinKind
 `--dry-run` 会按文件列出重命名将更改的所有名称，以及保持原样、留待你检查的位置：`CALL` 的宏体中写有 `compute`，但索引无法判断宏体中的名称指向哪个符号。不使用 `--dry-run` 时会改写文件。重命名类时，其构造函数也会一并重命名。
 
 ```case
-tests-next/refactor/edits/01_plan_then_write
+tests/refactor/edits/01_plan_then_write
 ```
 
 <!-- END CAPABILITY -->
@@ -96,7 +96,7 @@ tests-next/refactor/edits/01_plan_then_write
 名称有歧义时，不会执行任何重命名。每个候选项都带有一个 `symbol`，可将其原样传给 `--symbol`。
 
 ```case
-tests-next/refactor/locators/02_ambiguous_name
+tests/refactor/locators/02_ambiguous_name
 ```
 
 <!-- END CAPABILITY -->
@@ -118,7 +118,7 @@ tests-next/refactor/locators/02_ambiguous_name
 每一行的重命名操作都基于同一个索引进行规划，文件只写入一次，所有重命名要么全部完成，要么全部不执行。空行和以 `//` 开头的行会被跳过。
 
 ```case
-tests-next/refactor/lists/01_rename_list
+tests/refactor/lists/01_rename_list
 ```
 
 <!-- END CAPABILITY -->

@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 /// Primary semantic-tokens coverage lives in the cases
-/// (tests-next/semantic_tokens/), which pin both the inspect and the
+/// (tests/semantic_tokens/), which pin both the inspect and the
 /// server path. This file drives the feature layer directly: preamble
 /// state under a real PCH split, module imports (which need dependency
 /// modules), and the encoder math the snapshots decode away.

@@ -47,7 +47,7 @@ An error inside an included header shows on the line that includes it
 The first error of each included header is reported on its `#include` line, with a note at the place in the header where it occurred. The header's other errors belong to the header and show when it is opened.
 
 ```case
-tests-next/diagnostics/headers/01_errors_on_include
+tests/diagnostics/headers/01_errors_on_include
 ```
 
 <!-- END CAPABILITY -->
@@ -69,7 +69,7 @@ An error inside a template shows where the code asks for the instantiation
 When a template fails for the arguments it is instantiated with, the error is reported on the code that requested the instantiation, not inside the template. Its notes lead through the chain of instantiations to the place in the template where it failed.
 
 ```case
-tests-next/diagnostics/templates/01_instantiation_errors
+tests/diagnostics/templates/01_instantiation_errors
 ```
 
 <!-- END CAPABILITY -->
@@ -91,7 +91,7 @@ The notes clang attaches to an error point to the places they name
 An error comes with the notes that explain it, such as where a name was first defined or which candidate a call could not use. Each note is related information of the error, so an editor shows it beside the error and jumps to its place.
 
 ```case
-tests-next/diagnostics/notes/01_related_information
+tests/diagnostics/notes/01_related_information
 ```
 
 <!-- END CAPABILITY -->
@@ -113,7 +113,7 @@ A file no compilation database lists compiles with a guessed command and says so
 Without a `compile_commands.json` entry, a file still compiles, with a command clice guesses. When that leaves an include unresolved, a warning at the top of the file explains why and links to the setup guide. Once the database lists the file, the warning goes, and the errors left are the code's own.
 
 ```case
-tests-next/diagnostics/guidance/01_no_database
+tests/diagnostics/guidance/01_no_database
 ```
 
 <!-- END CAPABILITY -->
@@ -180,7 +180,7 @@ clang-tidy runs on open files with the checks the nearest `.clang-tidy` enables
 Each finding names its check and links to the check's documentation. The checks come from the nearest `.clang-tidy` above the file, as `clang-tidy` itself reads it.
 
 ```case
-tests-next/diagnostics/clang_tidy/01_findings
+tests/diagnostics/clang_tidy/01_findings
 ```
 
 <!-- END CAPABILITY -->
@@ -194,7 +194,7 @@ Without a `.clang-tidy`, a small set of checks runs
 A project with no `.clang-tidy` still gets a few checks that rarely misfire, such as unused declarations, which an editor shows faded.
 
 ```case
-tests-next/diagnostics/clang_tidy/02_default_checks
+tests/diagnostics/clang_tidy/02_default_checks
 ```
 
 <!-- END CAPABILITY -->
@@ -208,7 +208,7 @@ tests-next/diagnostics/clang_tidy/02_default_checks
 `// NOLINT` silences its own line and `// NOLINTNEXTLINE` the next, for every check or the ones named in parentheses. While clang-tidy runs on the file, they silence compiler warnings on those lines as well.
 
 ```case
-tests-next/diagnostics/clang_tidy/04_nolint
+tests/diagnostics/clang_tidy/04_nolint
 ```
 
 <!-- END CAPABILITY -->
@@ -222,7 +222,7 @@ A finding that carries a fix offers it as a quick fix
 The fix a check attaches to its finding is offered among the quick fixes at the finding; applying it clears the finding.
 
 ```case
-tests-next/diagnostics/clang_tidy/05_quick_fix
+tests/diagnostics/clang_tidy/05_quick_fix
 ```
 
 <!-- END CAPABILITY -->
@@ -236,7 +236,7 @@ tests-next/diagnostics/clang_tidy/05_quick_fix
 With clang-tidy off, open files show only the compiler's diagnostics, whatever the `.clang-tidy` enables.
 
 ```case
-tests-next/diagnostics/clang_tidy/09_turned_off
+tests/diagnostics/clang_tidy/09_turned_off
 ```
 
 <!-- END CAPABILITY -->

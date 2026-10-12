@@ -1,7 +1,7 @@
 # Document Symbols
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/document_symbol/. Do not edit the regions between the
+     in tests/document_symbol/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@ Symbols nest in the outline as they nest in the code: a member under its class, 
 Namespaces, classes and their members nest in the outline as they nest in the code
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/01_nested_scopes
+tests/document_symbol/symbol_hierarchy/01_nested_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests-next/document_symbol/symbol_hierarchy/01_nested_scopes
 An out-of-line definition lists where it is written, under its qualified name, and a reopened namespace lists once per opening
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/02_qualified_definitions
+tests/document_symbol/symbol_hierarchy/02_qualified_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -44,7 +44,7 @@ tests-next/document_symbol/symbol_hierarchy/02_qualified_definitions
 Anonymous namespaces, structs and unions group their members under a placeholder name, and an inline namespace keeps its own node
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/03_anonymous_scopes
+tests/document_symbol/symbol_hierarchy/03_anonymous_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -56,7 +56,7 @@ tests-next/document_symbol/symbol_hierarchy/03_anonymous_scopes
 Variables, types and lambdas declared in a function body nest under the function
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/04_local_symbols
+tests/document_symbol/symbol_hierarchy/04_local_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -68,7 +68,7 @@ tests-next/document_symbol/symbol_hierarchy/04_local_symbols
 A friend function defined inside a class lists under that class
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/05_friend_definitions
+tests/document_symbol/symbol_hierarchy/05_friend_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -80,7 +80,7 @@ tests-next/document_symbol/symbol_hierarchy/05_friend_definitions
 Members are not grouped under their `public` and `private` sections yet
 
 ```case
-tests-next/document_symbol/symbol_hierarchy/06_access_sections
+tests/document_symbol/symbol_hierarchy/06_access_sections
 ```
 
 <!-- END CAPABILITY -->
@@ -100,7 +100,7 @@ Each symbol lists with its kind, from namespaces and classes to macros and modul
 Namespaces, classes, unions, enums and their members, functions, variables, fields, bindings and lambdas each list with their kind
 
 ```case
-tests-next/document_symbol/symbol_kinds/01_core_kinds
+tests/document_symbol/symbol_kinds/01_core_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -115,7 +115,7 @@ A primary template's extent starts after its `template <...>` line, where
 a specialization's includes it.
 
 ```case
-tests-next/document_symbol/symbol_kinds/02_templates
+tests/document_symbol/symbol_kinds/02_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -130,7 +130,7 @@ An explicit instantiation of a function template is named without its
 arguments.
 
 ```case
-tests-next/document_symbol/symbol_kinds/03_specializations
+tests/document_symbol/symbol_kinds/03_specializations
 ```
 
 <!-- END CAPABILITY -->
@@ -142,7 +142,7 @@ tests-next/document_symbol/symbol_kinds/03_specializations
 `typedef` and `using` aliases and alias templates list as type aliases
 
 ```case
-tests-next/document_symbol/symbol_kinds/04_type_aliases
+tests/document_symbol/symbol_kinds/04_type_aliases
 ```
 
 <!-- END CAPABILITY -->
@@ -156,7 +156,7 @@ Explicit instantiations of class, function and variable templates list without m
 A function template's instantiation is named without its arguments.
 
 ```case
-tests-next/document_symbol/symbol_kinds/05_explicit_instantiations
+tests/document_symbol/symbol_kinds/05_explicit_instantiations
 ```
 
 <!-- END CAPABILITY -->
@@ -171,7 +171,7 @@ Macros in the leading run of directives, before any declaration, are
 missing from the editor's outline yet.
 
 ```case
-tests-next/document_symbol/symbol_kinds/06_macros
+tests/document_symbol/symbol_kinds/06_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -183,7 +183,7 @@ tests-next/document_symbol/symbol_kinds/06_macros
 A module interface unit lists the module it declares
 
 ```case
-tests-next/document_symbol/symbol_kinds/07_modules
+tests/document_symbol/symbol_kinds/07_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -195,7 +195,7 @@ tests-next/document_symbol/symbol_kinds/07_modules
 `#include` directives do not list in the outline yet
 
 ```case
-tests-next/document_symbol/symbol_kinds/10_includes
+tests/document_symbol/symbol_kinds/10_includes
 ```
 
 <!-- END CAPABILITY -->
@@ -207,7 +207,7 @@ tests-next/document_symbol/symbol_kinds/10_includes
 `#pragma mark` sections do not list in the outline yet
 
 ```case
-tests-next/document_symbol/symbol_kinds/11_pragma_marks
+tests/document_symbol/symbol_kinds/11_pragma_marks
 ```
 
 <!-- END CAPABILITY -->
@@ -227,7 +227,7 @@ The `detail` beside a name tells overloads apart and shows a variable's declared
 Parameter and return types in the `detail` field disambiguate overloads; constructors drop the `void` return type
 
 ```case
-tests-next/document_symbol/symbol_detail/01_detail_signatures
+tests/document_symbol/symbol_detail/01_detail_signatures
 ```
 
 <!-- END CAPABILITY -->
@@ -239,7 +239,7 @@ tests-next/document_symbol/symbol_detail/01_detail_signatures
 A variable or field shows its declared type as detail, a lambda `(lambda)`
 
 ```case
-tests-next/document_symbol/symbol_detail/02_variable_types
+tests/document_symbol/symbol_detail/02_variable_types
 ```
 
 <!-- END CAPABILITY -->
@@ -251,7 +251,7 @@ tests-next/document_symbol/symbol_detail/02_variable_types
 A function's detail lists its parameter types without their default values
 
 ```case
-tests-next/document_symbol/symbol_detail/03_default_arguments
+tests/document_symbol/symbol_detail/03_default_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -263,7 +263,7 @@ tests-next/document_symbol/symbol_detail/03_default_arguments
 A derived class's detail does not name its base classes yet
 
 ```case
-tests-next/document_symbol/symbol_detail/04_base_classes
+tests/document_symbol/symbol_detail/04_base_classes
 ```
 
 <!-- END CAPABILITY -->
@@ -275,7 +275,7 @@ tests-next/document_symbol/symbol_detail/04_base_classes
 A type written with its class scope keeps that scope once in the detail, dependent names included
 
 ```case
-tests-next/document_symbol/symbol_detail/05_scoped_types
+tests/document_symbol/symbol_detail/05_scoped_types
 ```
 
 <!-- END CAPABILITY -->
@@ -295,7 +295,7 @@ Each symbol carries the extent of its whole declaration and the range of its nam
 A symbol's extent covers its whole declaration, and its name the whole written name, `~Widget`, `operator==` and `operator bool` included
 
 ```case
-tests-next/document_symbol/symbol_ranges/01_selection_ranges
+tests/document_symbol/symbol_ranges/01_selection_ranges
 ```
 
 <!-- END CAPABILITY -->
@@ -307,7 +307,7 @@ tests-next/document_symbol/symbol_ranges/01_selection_ranges
 A declaration spanning lines extends from its first line to its last
 
 ```case
-tests-next/document_symbol/symbol_ranges/02_multiline_signatures
+tests/document_symbol/symbol_ranges/02_multiline_signatures
 ```
 
 <!-- END CAPABILITY -->
@@ -319,7 +319,7 @@ tests-next/document_symbol/symbol_ranges/02_multiline_signatures
 A symbol a macro invocation declares lists at the invocation, not at the macro's definition
 
 ```case
-tests-next/document_symbol/symbol_ranges/03_macro_expansions
+tests/document_symbol/symbol_ranges/03_macro_expansions
 ```
 
 <!-- END CAPABILITY -->
@@ -331,7 +331,7 @@ tests-next/document_symbol/symbol_ranges/03_macro_expansions
 A name written in a macro's arguments is the symbol's name; one written in the macro's body falls back to the invocation
 
 ```case
-tests-next/document_symbol/symbol_ranges/04_macro_arguments
+tests/document_symbol/symbol_ranges/04_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -351,7 +351,7 @@ Tags mark a symbol as deprecated or describe its access and storage.
 A deprecated symbol does not carry the Deprecated tag yet
 
 ```case
-tests-next/document_symbol/symbol_tags/01_deprecated
+tests/document_symbol/symbol_tags/01_deprecated
 ```
 
 <!-- END CAPABILITY -->
@@ -363,7 +363,7 @@ tests-next/document_symbol/symbol_tags/01_deprecated
 The outline does not tag members with their access, `static`, `virtual` or abstractness yet
 
 ```case
-tests-next/document_symbol/symbol_tags/02_modifiers
+tests/document_symbol/symbol_tags/02_modifiers
 ```
 
 <!-- END CAPABILITY -->

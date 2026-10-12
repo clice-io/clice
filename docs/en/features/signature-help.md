@@ -13,7 +13,7 @@ A call lists every overload it may reach, with the parameter under the cursor ma
 Every overload is listed with the parameter under the cursor marked
 
 ```case
-tests-next/signature_help/overload_signatures/01_overloads_by_arity
+tests/signature_help/overload_signatures/01_overloads_by_arity
 ```
 
 <!-- END CAPABILITY -->
@@ -25,7 +25,7 @@ tests-next/signature_help/overload_signatures/01_overloads_by_arity
 The parameter the argument under the cursor binds to is marked in the label
 
 ```case
-tests-next/signature_help/overload_signatures/03_active_parameter
+tests/signature_help/overload_signatures/03_active_parameter
 ```
 
 <!-- END CAPABILITY -->
@@ -39,7 +39,7 @@ A non-const object lists both the const and the non-const overload, and the two 
 The label leaves out the trailing `const`, so nothing tells them apart.
 
 ```case
-tests-next/signature_help/overload_signatures/04_const_overloads
+tests/signature_help/overload_signatures/04_const_overloads
 ```
 
 <!-- END CAPABILITY -->
@@ -74,7 +74,7 @@ Signature help follows the call around the cursor, whatever is being called: a c
 A constructor call lists the constructors without a return type, and braced aggregate initialization lists the fields
 
 ```case
-tests-next/signature_help/call_contexts/01_constructors
+tests/signature_help/call_contexts/01_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -86,7 +86,7 @@ tests-next/signature_help/call_contexts/01_constructors
 A call through a function pointer shows the parameter names its type spells
 
 ```case
-tests-next/signature_help/call_contexts/02_function_pointers
+tests/signature_help/call_contexts/02_function_pointers
 ```
 
 <!-- END CAPABILITY -->
@@ -98,7 +98,7 @@ tests-next/signature_help/call_contexts/02_function_pointers
 Template parameters show as the signature, a class template ending in its kind instead of a return type
 
 ```case
-tests-next/signature_help/call_contexts/03_template_arguments
+tests/signature_help/call_contexts/03_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -110,7 +110,7 @@ tests-next/signature_help/call_contexts/03_template_arguments
 Inside a nested call the help follows the innermost call around the cursor
 
 ```case
-tests-next/signature_help/call_contexts/04_nested_calls
+tests/signature_help/call_contexts/04_nested_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -122,7 +122,7 @@ tests-next/signature_help/call_contexts/04_nested_calls
 Calling an object shows its `operator()` overloads
 
 ```case
-tests-next/signature_help/call_contexts/05_functors
+tests/signature_help/call_contexts/05_functors
 ```
 
 <!-- END CAPABILITY -->
@@ -134,7 +134,7 @@ tests-next/signature_help/call_contexts/05_functors
 Calling a lambda shows its parameters under the name `operator()` instead of the lambda's
 
 ```case
-tests-next/signature_help/call_contexts/06_lambdas
+tests/signature_help/call_contexts/06_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -149,7 +149,7 @@ Written with parentheses, it lists the constructors; written with braces, it
 shows nothing yet.
 
 ```case
-tests-next/signature_help/call_contexts/07_new_expressions
+tests/signature_help/call_contexts/07_new_expressions
 ```
 
 <!-- END CAPABILITY -->
@@ -161,7 +161,7 @@ tests-next/signature_help/call_contexts/07_new_expressions
 An overloaded `operator[]` shows no signature help yet
 
 ```case
-tests-next/signature_help/call_contexts/08_subscripts
+tests/signature_help/call_contexts/08_subscripts
 ```
 
 <!-- END CAPABILITY -->
@@ -176,7 +176,7 @@ Only the implicit copy and move constructors show, not the `Base(int, int)`
 that `using Base::Base` brings in and the call actually uses.
 
 ```case
-tests-next/signature_help/call_contexts/09_inherited_constructors
+tests/signature_help/call_contexts/09_inherited_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -188,7 +188,7 @@ tests-next/signature_help/call_contexts/09_inherited_constructors
 A function-like macro's arguments get no signature help yet
 
 ```case
-tests-next/signature_help/call_contexts/10_macros
+tests/signature_help/call_contexts/10_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -208,7 +208,7 @@ Each parameter shows as the declaration spells it, with its default value.
 Parameters with defaults show their default value in the label
 
 ```case
-tests-next/signature_help/parameters/01_default_arguments
+tests/signature_help/parameters/01_default_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -223,7 +223,7 @@ Past the named parameters no parameter is marked, and nothing in the label
 says the function takes more arguments.
 
 ```case
-tests-next/signature_help/parameters/02_c_variadics
+tests/signature_help/parameters/02_c_variadics
 ```
 
 <!-- END CAPABILITY -->
@@ -235,7 +235,7 @@ tests-next/signature_help/parameters/02_c_variadics
 A parameter pack shows as the template declares it, marked for its first argument only
 
 ```case
-tests-next/signature_help/parameters/03_parameter_packs
+tests/signature_help/parameters/03_parameter_packs
 ```
 
 <!-- END CAPABILITY -->
@@ -250,7 +250,7 @@ The object a member is called on is not an argument, yet the label lists
 `this Shape &self` and marks it while the cursor is on the argument for `dx`.
 
 ```case
-tests-next/signature_help/parameters/05_explicit_object_parameters
+tests/signature_help/parameters/05_explicit_object_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -262,7 +262,7 @@ tests-next/signature_help/parameters/05_explicit_object_parameters
 A call that forwards its arguments to a constructor shows the forwarding pack, not the constructor's parameters
 
 ```case
-tests-next/signature_help/parameters/06_forwarding
+tests/signature_help/parameters/06_forwarding
 ```
 
 <!-- END CAPABILITY -->

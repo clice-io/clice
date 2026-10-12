@@ -55,7 +55,7 @@ Without paths, the build's own files are formatted; named paths narrow the run o
 Without paths, the build's sources and the headers they include are formatted; vendored and system headers are left alone
 
 ```case
-tests-next/format/files/01_build_files
+tests/format/files/01_build_files
 ```
 
 <!-- END CAPABILITY -->
@@ -67,7 +67,7 @@ tests-next/format/files/01_build_files
 A named file is formatted whether or not the build knows it; a named directory narrows the build's files to those under it
 
 ```case
-tests-next/format/files/02_named_paths
+tests/format/files/02_named_paths
 ```
 
 <!-- END CAPABILITY -->
@@ -87,7 +87,7 @@ A run rewrites every file that does not follow its style yet.
 Without `--check` every file of the build is rewritten to its style
 
 ```case
-tests-next/format/rewrite/01_format_in_place
+tests/format/rewrite/01_format_in_place
 ```
 
 <!-- END CAPABILITY -->
@@ -107,7 +107,7 @@ tests-next/format/rewrite/01_format_in_place
 With `--check` nothing is rewritten; each place clang-format would change is reported
 
 ```case
-tests-next/format/check/01_check_formatting
+tests/format/check/01_check_formatting
 ```
 
 <!-- END CAPABILITY -->

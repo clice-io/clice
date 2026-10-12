@@ -21,7 +21,7 @@ Equivalent to:
 
 ### Cases
 
-Every other test is a case under `tests-next/<topic>/<subtopic>/NN_name/`: a small project of its own, the checks to run on it, and `snap.toml`, every output the case pins. A case asks a real `clice serve`, `clice inspect` or a command, through the framework in `tools/testing/`, and the feature pages of these docs show the cases that have a `README.md`. [`tests-next/README.md`](https://github.com/clice-io/clice/blob/main/tests-next/README.md) is the contract: how a case is written, how it asserts and how its output reads.
+Every other test is a case under `tests/<topic>/<subtopic>/NN_name/`: a small project of its own, the checks to run on it, and `snap.toml`, every output the case pins. A case asks a real `clice serve`, `clice inspect` or a command, through the framework in `tools/testing/`, and the feature pages of these docs show the cases that have a `README.md`. [`tests/README.md`](https://github.com/clice-io/clice/blob/main/tests/README.md) is the contract: how a case is written, how it asserts and how its output reads.
 
 ```bash
 pixi run cases-test          # default RelWithDebInfo
@@ -31,7 +31,7 @@ pixi run cases-test Debug    # debug build
 Equivalent to:
 
 ```bash
-CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice npm run cases --workspace tests-next
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice npm run cases --workspace tests
 ```
 
 `CLICE_CASES=hover/` runs the cases under a path. `UPDATE_SNAPSHOTS=1` rewrites their outputs and prints which changed; review the change like code.

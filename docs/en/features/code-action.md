@@ -1,7 +1,7 @@
 # Code Action
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/code_actions/. Do not edit the regions between the
+     in tests/code_actions/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -66,7 +66,7 @@ A method declaration offers an inline body and an out-of-line definition after i
 The out-of-line definition repeats the declaration with `S::` before the name and drops what belongs to the declaration alone, such as default arguments.
 
 ```case
-tests-next/code_actions/define/01_method_out_of_line
+tests/code_actions/define/01_method_out_of_line
 ```
 
 <!-- END CAPABILITY -->
@@ -80,7 +80,7 @@ The definition of a class template's member carries the template head and the te
 Default template arguments are not repeated on the head.
 
 ```case
-tests-next/code_actions/define/04_class_template_member
+tests/code_actions/define/04_class_template_member
 ```
 
 <!-- END CAPABILITY -->
@@ -94,7 +94,7 @@ Special member functions are defined under the class name they are spelled with
 Conversion functions and operators keep their full spelling.
 
 ```case
-tests-next/code_actions/define/06_special_members
+tests/code_actions/define/06_special_members
 ```
 
 <!-- END CAPABILITY -->
@@ -108,7 +108,7 @@ A declared free function is defined right after its declaration, in the same nam
 The name needs no qualifier inside the namespace; the return type is spelled for that scope.
 
 ```case
-tests-next/code_actions/define/07_free_function
+tests/code_actions/define/07_free_function
 ```
 
 <!-- END CAPABILITY -->
@@ -122,7 +122,7 @@ When the class already has out-of-line definitions in the file, the new one goes
 The qualifier follows the scope of that definition, not the class's.
 
 ```case
-tests-next/code_actions/define/08_placement_after_definitions
+tests/code_actions/define/08_placement_after_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -136,7 +136,7 @@ On the class name, every member function without a definition is defined at once
 Members that already have a definition, pure virtuals and defaulted members are left alone.
 
 ```case
-tests-next/code_actions/define/09_missing_members
+tests/code_actions/define/09_missing_members
 ```
 
 <!-- END CAPABILITY -->
@@ -150,7 +150,7 @@ Inside an out-of-line definition, the class's remaining undefined members are of
 This is how a source file completes a class declared elsewhere: the definitions join the ones already there.
 
 ```case
-tests-next/code_actions/define/10_missing_from_definition
+tests/code_actions/define/10_missing_from_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -164,7 +164,7 @@ In a header, a member can also be defined in the source file the header is compi
 The definition is fully qualified and joins the class's other definitions in that file; members already defined in some source file are not offered again. Templates, inline functions and functions other files cannot see stay in the header; any other function defined there out of the class is marked `inline`.
 
 ```case
-tests-next/code_actions/define/11_host_source
+tests/code_actions/define/11_host_source
 ```
 
 <!-- END CAPABILITY -->
@@ -186,7 +186,7 @@ A class deriving from an abstract base receives an `override` declaration for ea
 The declarations go at the end of the class body.
 
 ```case
-tests-next/code_actions/implement/01_pure_virtuals
+tests/code_actions/implement/01_pure_virtuals
 ```
 
 <!-- END CAPABILITY -->
@@ -198,7 +198,7 @@ tests-next/code_actions/implement/01_pure_virtuals
 Only the methods no class in the chain implemented are declared, and a `class` gets a `public:` label for them
 
 ```case
-tests-next/code_actions/implement/02_inheritance_chain
+tests/code_actions/implement/02_inheritance_chain
 ```
 
 <!-- END CAPABILITY -->
@@ -218,7 +218,7 @@ A class receives a constructor that initializes each of its fields from an argum
 A class receives a constructor taking every field in order, scalars by value and copyable classes by const reference
 
 ```case
-tests-next/code_actions/constructor/01_memberwise
+tests/code_actions/constructor/01_memberwise
 ```
 
 <!-- END CAPABILITY -->
@@ -230,7 +230,7 @@ tests-next/code_actions/constructor/01_memberwise
 No constructor is generated when the class already declares one taking as many arguments as it has fields
 
 ```case
-tests-next/code_actions/constructor/02_existing_constructor
+tests/code_actions/constructor/02_existing_constructor
 ```
 
 <!-- END CAPABILITY -->
@@ -242,7 +242,7 @@ tests-next/code_actions/constructor/02_existing_constructor
 A one-field class gets an `explicit` constructor, placed under a `public:` label when the class ends in another section
 
 ```case
-tests-next/code_actions/constructor/03_single_field
+tests/code_actions/constructor/03_single_field
 ```
 
 <!-- END CAPABILITY -->
@@ -254,7 +254,7 @@ tests-next/code_actions/constructor/03_single_field
 No constructor is generated when a base class needs its own initializer, since the memberwise one initializes fields alone
 
 ```case
-tests-next/code_actions/constructor/05_base_without_default
+tests/code_actions/constructor/05_base_without_default
 ```
 
 <!-- END CAPABILITY -->
@@ -268,7 +268,7 @@ A field whose class moves but does not copy is taken by value and moved from, an
 The file gains `#include <utility>` when nothing declares `std::move` before the class. A class that neither copies nor moves gets no constructor.
 
 ```case
-tests-next/code_actions/constructor/07_move_only_fields
+tests/code_actions/constructor/07_move_only_fields
 ```
 
 <!-- END CAPABILITY -->
@@ -290,7 +290,7 @@ A switch over an enum receives the enumerators it does not handle, followed by a
 Enumerators sharing a handled value are considered covered.
 
 ```case
-tests-next/code_actions/switch_cases/01_missing_cases
+tests/code_actions/switch_cases/01_missing_cases
 ```
 
 <!-- END CAPABILITY -->
@@ -304,7 +304,7 @@ With a `default` present, the missing cases go right before it and fall through 
 The action is offered from anywhere inside the switch.
 
 ```case
-tests-next/code_actions/switch_cases/02_before_default
+tests/code_actions/switch_cases/02_before_default
 ```
 
 <!-- END CAPABILITY -->
@@ -316,7 +316,7 @@ tests-next/code_actions/switch_cases/02_before_default
 Enumerators of an unscoped enum are qualified with the enum's namespace when the switch lies outside it
 
 ```case
-tests-next/code_actions/switch_cases/03_unscoped_enum
+tests/code_actions/switch_cases/03_unscoped_enum
 ```
 
 <!-- END CAPABILITY -->
@@ -328,7 +328,7 @@ tests-next/code_actions/switch_cases/03_unscoped_enum
 A switch handling every enumerator, or one over a non-enum value, offers no action
 
 ```case
-tests-next/code_actions/switch_cases/04_complete_switch
+tests/code_actions/switch_cases/04_complete_switch
 ```
 
 <!-- END CAPABILITY -->
@@ -350,7 +350,7 @@ An auto declaration offers to replace auto with the type it deduced
 Qualifiers and declarators such as `const`, `&` and `*` stay where they are.
 
 ```case
-tests-next/code_actions/deduced_type/01_auto_declarations
+tests/code_actions/deduced_type/01_auto_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -362,7 +362,7 @@ tests-next/code_actions/deduced_type/01_auto_declarations
 A function's deduced `auto` return type expands to the deduced type, spelled for the function's scope
 
 ```case
-tests-next/code_actions/deduced_type/02_auto_return
+tests/code_actions/deduced_type/02_auto_return
 ```
 
 <!-- END CAPABILITY -->
@@ -374,7 +374,7 @@ tests-next/code_actions/deduced_type/02_auto_return
 A `decltype` specifier expands to the type it denotes, through any `decltype` that type was itself declared with
 
 ```case
-tests-next/code_actions/deduced_type/03_decltype
+tests/code_actions/deduced_type/03_decltype
 ```
 
 <!-- END CAPABILITY -->
@@ -388,7 +388,7 @@ Lambdas, dependent types, structured bindings and types the declaration cannot n
 A type cannot be named where it is local to another function, a member type the declaration has no access to, or the type of `sizeof` with no standard name for it declared yet (MSVC compatibility declares `size_t` implicitly).
 
 ```case
-tests-next/code_actions/deduced_type/04_unnameable_types
+tests/code_actions/deduced_type/04_unnameable_types
 ```
 
 <!-- END CAPABILITY -->
@@ -402,21 +402,21 @@ A name drops the enclosing namespaces only as far as the shorter name still find
 A name hidden by a declaration closer to the expansion keeps its qualifier, and one hidden even when fully qualified starts from the global scope.
 
 ```case
-tests-next/code_actions/deduced_type/06_shadowed_names
+tests/code_actions/deduced_type/06_shadowed_names
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Standard names of builtin types**
 
 The types of `sizeof`, a pointer difference and `nullptr` expand to their standard names where those are declared
 
-The editor does not find these names yet when a header declares them, as the standard headers do.
+Here a header declares them, as the standard headers do.
 
 ```case
-tests-next/code_actions/deduced_type/07_standard_names
+tests/code_actions/deduced_type/07_standard_names
 ```
 
 <!-- END CAPABILITY -->
@@ -438,7 +438,7 @@ The out-of-line definitions of a class's members are reordered to follow the dec
 Each definition moves with the comment block directly above it.
 
 ```case
-tests-next/code_actions/reorder/01_class_members
+tests/code_actions/reorder/01_class_members
 ```
 
 <!-- END CAPABILITY -->
@@ -450,7 +450,7 @@ tests-next/code_actions/reorder/01_class_members
 From a free function's definition, the definitions of the functions declared alongside it are reordered as declared
 
 ```case
-tests-next/code_actions/reorder/03_free_functions
+tests/code_actions/reorder/03_free_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -462,7 +462,7 @@ tests-next/code_actions/reorder/03_free_functions
 A definition stays where it is when moving it would put it before something it uses, such as a variable or macro defined between the definitions; the others are reordered around it
 
 ```case
-tests-next/code_actions/reorder/05_dependencies
+tests/code_actions/reorder/05_dependencies
 ```
 
 <!-- END CAPABILITY -->
@@ -484,7 +484,7 @@ A macro invocation is replaced by the tokens it expands to
 Arguments are substituted; the action is offered from the macro name or anywhere inside its arguments.
 
 ```case
-tests-next/code_actions/macro/01_expand_macro
+tests/code_actions/macro/01_expand_macro
 ```
 
 <!-- END CAPABILITY -->
@@ -496,7 +496,7 @@ tests-next/code_actions/macro/01_expand_macro
 A macro whose body invokes other macros expands to the final tokens
 
 ```case
-tests-next/code_actions/macro/02_nested_expansion
+tests/code_actions/macro/02_nested_expansion
 ```
 
 <!-- END CAPABILITY -->
@@ -518,7 +518,7 @@ An unresolved standard library name offers the header declaring it, from the sta
 The directive goes after the includes at the top of the file.
 
 ```case
-tests-next/code_actions/include/01_standard_library
+tests/code_actions/include/01_standard_library
 ```
 
 <!-- END CAPABILITY -->
@@ -532,7 +532,7 @@ A name declared in a project header the file does not include offers that header
 The candidates come from the project index: `lib.h` is known because another source file includes it.
 
 ```case
-tests-next/code_actions/include/02_project_header
+tests/code_actions/include/02_project_header
 ```
 
 <!-- END CAPABILITY -->
@@ -544,7 +544,7 @@ tests-next/code_actions/include/02_project_header
 A file without includes receives the directive at its start, after a `#pragma once` when there is one
 
 ```case
-tests-next/code_actions/include/03_no_include_yet
+tests/code_actions/include/03_no_include_yet
 ```
 
 <!-- END CAPABILITY -->
@@ -556,7 +556,7 @@ tests-next/code_actions/include/03_no_include_yet
 An include nested in a feature condition is not where a directive that must always apply goes: it follows the last one at the file's own level, or the include guard
 
 ```case
-tests-next/code_actions/include/04_conditional_includes
+tests/code_actions/include/04_conditional_includes
 ```
 
 <!-- END CAPABILITY -->
@@ -578,7 +578,7 @@ A fix the compiler attaches to its diagnostic is offered as a quick fix
 The title spells out a single edit.
 
 ```case
-tests-next/code_actions/fix/01_compiler_fix
+tests/code_actions/fix/01_compiler_fix
 ```
 
 <!-- END CAPABILITY -->
@@ -592,7 +592,7 @@ A clang-tidy finding's fix is offered as a quick fix
 Without a `.clang-tidy` above the file, a small default set of checks runs.
 
 ```case
-tests-next/code_actions/fix/02_tidy_fix
+tests/code_actions/fix/02_tidy_fix
 ```
 
 <!-- END CAPABILITY -->
@@ -604,7 +604,7 @@ tests-next/code_actions/fix/02_tidy_fix
 Each note that carries a fix offers it as a quick fix, titled by the note
 
 ```case
-tests-next/code_actions/fix/03_note_fixes
+tests/code_actions/fix/03_note_fixes
 ```
 
 <!-- END CAPABILITY -->
@@ -626,7 +626,7 @@ Generated code follows the clang-format style that applies to the file
 Without a `.clang-format` above the file, or with `DisableFormat`, the text keeps the layout shown in the other examples.
 
 ```case
-tests-next/code_actions/formatting/01_project_style
+tests/code_actions/formatting/01_project_style
 ```
 
 <!-- END CAPABILITY -->

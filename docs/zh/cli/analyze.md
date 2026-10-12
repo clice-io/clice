@@ -80,7 +80,7 @@
 头文件引用另一个模块的实体时，会形成接口边，这条边将转化为对该模块接口的导入；仅源文件中的引用则形成实现边。在 git 仓库之外运行时，会省略变更量（churn）标注，并发出警告。
 
 ```case
-tests-next/analyze/dependencies/01_directory_modules
+tests/analyze/dependencies/01_directory_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -102,7 +102,7 @@ tests-next/analyze/dependencies/01_directory_modules
 这里，util 引用了 core 中的两个实体，core 引用了 util 中的一个实体，因此应切断从 core 到 util 的边。core 的源文件调用了 feature 中的实体，而 feature 的头文件引用了 core 的 Logger：源文件中的引用形成的是实现边，这条边不会形成环。
 
 ```case
-tests-next/analyze/cycles/01_directory_cycle
+tests/analyze/cycles/01_directory_cycle
 ```
 
 <!-- END CAPABILITY -->
@@ -124,7 +124,7 @@ tests-next/analyze/cycles/01_directory_cycle
 当一个模块的头文件引用某个实体时，对该实体的使用就属于接口使用；这里的 util/clock.h 就引用了这两个实体。
 
 ```case
-tests-next/analyze/views/01_edge
+tests/analyze/views/01_edge
 ```
 
 <!-- END CAPABILITY -->
@@ -146,7 +146,7 @@ tests-next/analyze/views/01_edge
 只有 app/main.cpp 包含 core/fast.h，但划分为模块后，每个源文件都会直接或通过 util 的接口导入 core，因此修改 core/fast.h 会导致重新构建三个翻译单元，而不是一个。
 
 ```case
-tests-next/analyze/annotations/01_compile_time
+tests/analyze/annotations/01_compile_time
 ```
 
 <!-- END CAPABILITY -->

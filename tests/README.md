@@ -1,4 +1,4 @@
-# tests-next
+# tests
 
 The test system clice ships its first release with. The old suites under
 `tests/` (`integration/`, `snap/`, `smoke/`) migrated into it and are gone;
@@ -14,7 +14,7 @@ Every test lives in a **case**: a directory that is a small project of its own
 plus the files that say what to check.
 
 ```
-tests-next/<topic>/<subtopic>/NN_name/
+tests/<topic>/<subtopic>/NN_name/
   inputs…         any files: sources, headers, clice.toml, .clang-tidy, data
   project.jsonc    optional: how the inputs compile
   test.ts         optional: what to check
@@ -63,10 +63,9 @@ never the topic again or the way a case tests it. A feature topic's own
 `test.ts` asks its feature the usual way, at every marker or of the entry
 file, so most of its cases bring code and nothing else.
 
-Outside the topics: `editors/`, `nightly/` and `compat/`, each below (until
-the rename `compat/` stays in `tests/`, and the other two are yet to come);
-`tools/testing/cases/topics.ts` lists every directory `tests-next/` may hold,
-and any other is an error. C++ unit tests are not
+Outside the topics: `editors/`, `nightly/` and `compat/`, each below
+(`nightly/` is yet to come); `tools/testing/cases/topics.ts` lists every
+directory `tests/` may hold, and any other is an error. C++ unit tests are not
 cases: they live in `unittests/` at the repository root.
 
 ## Inputs
@@ -414,11 +413,14 @@ surface nothing exercised and fails. The surface comes from the product: the
 configuration schema, each command's `--help`, the server's capabilities, the
 public `clice/*` requests. An item is `method <name>`, `command <words>`,
 `flag <command> --<name>` (`flag * --<name>` for one every command takes) or
-`config <key>`; it is exempted only with a reason in `tests-next/coverage.json`, and
+`config <key>`; it is exempted only with a reason in `tests/coverage.json`, and
 an exemption naming nothing uncovered fails too.
 
 ## Outside the topics
 
+- **`editors/zed/`**: the Zed extension in a real Zed (`pixi run zed-e2e`): it
+  downloads clice, which starts with its builtin headers, for C, C++ and CUDA
+  files alike.
 - **`editors/NN_name/`**: a project and the scenario every editor client runs on
   it (`scenario.json`: the file, the symbol, where it is defined, the header
   context); each client's harness reads it. Until then the editors'
@@ -472,11 +474,11 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 
 ```
 pixi run cases-test [type] [i/n]   every case, or shard i of n, against build/<type>
-npm run cases -w tests-next        every case, against $CLICE_EXECUTABLE
+npm run cases -w tests        every case, against $CLICE_EXECUTABLE
 CLICE_CASES=hover/ …               the cases under a path
 CLICE_CASES_SHARD=2/4 …            shard 2 of 4: whole subtopics, balanced by case count
 UPDATE_SNAPSHOTS=1 …               rewrite outputs, print the summary
-npm run coverage -w tests-next     after a full run
+npm run coverage -w tests     after a full run
 npm test -w tools                  the tools' own tests, the framework's among them
 ```
 
@@ -496,6 +498,6 @@ tools/testing/
   coverage/       surface and exercise records
   logs/           failure reports and the error gate
   docs/           pages from documented cases
-  runner/         the vitest entry points over tests-next/
+  runner/         the vitest entry points over tests/
   **/*.test.ts    the framework's own tests, beside the code
 ```

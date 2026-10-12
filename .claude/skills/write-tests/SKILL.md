@@ -1,15 +1,15 @@
 ---
 name: write-tests
-description: How to write clice tests — cases under tests-next/ (their contract is tests-next/README.md), C++ unit tests, hard rules and known pitfalls. Read BEFORE writing or modifying anything under tests-next/, tests/ or unittests/.
+description: How to write clice tests — cases under tests/ (their contract is tests/README.md), C++ unit tests, hard rules and known pitfalls. Read BEFORE writing or modifying anything under tests/ or unittests/.
 ---
 
 # Writing clice tests
 
 Every test but the C++ unit tests is a **case**: a directory
-`tests-next/<topic>/<subtopic>/NN_name/` that is a small project of its own,
+`tests/<topic>/<subtopic>/NN_name/` that is a small project of its own,
 with the `test.ts` that says what to check (its own or inherited from its
 subtopic or topic), a `README.md` when it belongs in the docs, and
-`snap.toml`, every output it pins. **`tests-next/README.md` is the
+`snap.toml`, every output it pins. **`tests/README.md` is the
 contract**: topics, inputs and markers, the two kinds of test (`answers`,
 `test`), the clients, outputs and how they render, docs, waiting and
 teardown. Read it before writing a case; this skill adds only the workflow,
@@ -27,7 +27,7 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
    shows a capability a reader should see. A case that pins an edge or a
    fixed bug has no README.
 3. Run it alone:
-   `CLICE_CASES=<topic>/<subtopic>/NN_name CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice pixi run npm run cases -w tests-next`.
+   `CLICE_CASES=<topic>/<subtopic>/NN_name CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice pixi run npm run cases -w tests`.
    `UPDATE_SNAPSHOTS=1` writes its `snap.toml` (and a documented case's card
    under `docs/cards/`) and prints what changed: review every block like
    code. What clice gets wrong stays in the output, with

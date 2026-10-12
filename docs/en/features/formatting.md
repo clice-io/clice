@@ -13,7 +13,7 @@ Formatting a file (`textDocument/formatting`) lays it out in its clang-format st
 Formatting a file lays all of it out in the style its `.clang-format` asks for
 
 ```case
-tests-next/format/document/01_format_document
+tests/format/document/01_format_document
 ```
 
 <!-- END CAPABILITY -->
@@ -25,7 +25,7 @@ tests-next/format/document/01_format_document
 Formatting also sorts each block of includes, as the style asks
 
 ```case
-tests-next/format/document/04_include_sorting
+tests/format/document/04_include_sorting
 ```
 
 <!-- END CAPABILITY -->
@@ -45,7 +45,7 @@ Range formatting (`textDocument/rangeFormatting`) reformats only the lines a sel
 Formatting a selection reformats only the lines it touches
 
 ```case
-tests-next/format/range/01_format_range
+tests/format/range/01_format_range
 ```
 
 <!-- END CAPABILITY -->
@@ -65,7 +65,7 @@ Each file takes the style of the `.clang-format` nearest above it, as clang-form
 Each file takes the style of the `.clang-format` nearest above it
 
 ```case
-tests-next/format/style/01_nearest_style
+tests/format/style/01_nearest_style
 ```
 
 <!-- END CAPABILITY -->

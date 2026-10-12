@@ -1,7 +1,7 @@
 # Inlay Hints
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/inlay_hints/. Do not edit the regions between the
+     in tests/inlay_hints/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@ A call shows the name of the parameter each argument binds to, unless the argume
 A literal argument shows the name of the parameter it binds to
 
 ```case
-tests-next/inlay_hints/parameter_hints/01_argument_names
+tests/inlay_hints/parameter_hints/01_argument_names
 ```
 
 <!-- END CAPABILITY -->
@@ -34,7 +34,7 @@ Named arguments and `/*name=*/` comments suppress parameter hints
 An argument spelled like its parameter, or a bare member of that name, needs no hint; a qualified name or a member reached through an object is no match. A comment naming another parameter suppresses nothing.
 
 ```case
-tests-next/inlay_hints/parameter_hints/03_suppression
+tests/inlay_hints/parameter_hints/03_suppression
 ```
 
 <!-- END CAPABILITY -->
@@ -46,7 +46,7 @@ tests-next/inlay_hints/parameter_hints/03_suppression
 `&` flags arguments passed by non-const lvalue reference
 
 ```case
-tests-next/inlay_hints/parameter_hints/05_reference_markers
+tests/inlay_hints/parameter_hints/05_reference_markers
 ```
 
 <!-- END CAPABILITY -->
@@ -60,7 +60,7 @@ Packs forwarded through wrappers resolve to the target's parameter names
 A plain pass-through works without `std::forward`, a pack between fixed leading and trailing arguments resolves to the parameters it lands in, and a pack handed on to a callable object resolves to its call operator.
 
 ```case
-tests-next/inlay_hints/parameter_hints/06_forwarding
+tests/inlay_hints/parameter_hints/06_forwarding
 ```
 
 <!-- END CAPABILITY -->
@@ -74,7 +74,7 @@ Unnamed declaration parameters take the definition's names; leading underscores 
 When both the declaration and the definition name a parameter, the declaration wins.
 
 ```case
-tests-next/inlay_hints/parameter_hints/07_definition_names
+tests/inlay_hints/parameter_hints/07_definition_names
 ```
 
 <!-- END CAPABILITY -->
@@ -86,7 +86,7 @@ tests-next/inlay_hints/parameter_hints/07_definition_names
 Indirect calls still name their parameters
 
 ```case
-tests-next/inlay_hints/parameter_hints/08_function_objects
+tests/inlay_hints/parameter_hints/08_function_objects
 ```
 
 <!-- END CAPABILITY -->
@@ -100,7 +100,7 @@ Parameter names appear even when the callee is only known inside a template
 Candidates are matched by argument count; only a unique surviving candidate names the parameters, so a call that could still hit several overloads stays bare rather than guessing.
 
 ```case
-tests-next/inlay_hints/parameter_hints/10_dependent_calls
+tests/inlay_hints/parameter_hints/10_dependent_calls
 ```
 
 <!-- END CAPABILITY -->
@@ -114,7 +114,7 @@ Arguments spelled as macros hint; calls generated inside macro bodies do not
 An object-like macro is one written argument. A macro covering several arguments has no place to anchor a hint, and code written as a macro argument keeps its hints.
 
 ```case
-tests-next/inlay_hints/parameter_hints/12_macros
+tests/inlay_hints/parameter_hints/12_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -126,7 +126,7 @@ tests-next/inlay_hints/parameter_hints/12_macros
 `aParam` does not yet suppress an argument spelled `param`
 
 ```case
-tests-next/inlay_hints/parameter_hints/16_near_matches
+tests/inlay_hints/parameter_hints/16_near_matches
 ```
 
 <!-- END CAPABILITY -->
@@ -138,7 +138,7 @@ tests-next/inlay_hints/parameter_hints/16_near_matches
 `using Base::Base` calls lose their parameter names
 
 ```case
-tests-next/inlay_hints/parameter_hints/17_inherited_constructors
+tests/inlay_hints/parameter_hints/17_inherited_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -158,7 +158,7 @@ A declaration whose type is deduced shows that type.
 The hint shows the full variable type, qualifiers included
 
 ```case
-tests-next/inlay_hints/type_hints/01_auto_variables
+tests/inlay_hints/type_hints/01_auto_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -172,7 +172,7 @@ Aliases keep their spelling, and an over-long type falls back to its sugared nam
 A type without a spelling short enough is dropped, and default template arguments never print. The budget is `inlay_hints.type_name_limit`; `0` lifts it.
 
 ```case
-tests-next/inlay_hints/type_hints/02_type_sugar
+tests/inlay_hints/type_hints/02_type_sugar
 ```
 
 <!-- END CAPABILITY -->
@@ -184,7 +184,7 @@ tests-next/inlay_hints/type_hints/02_type_sugar
 Each binding hints its canonical type; the aggregate itself stays bare
 
 ```case
-tests-next/inlay_hints/type_hints/03_structured_bindings
+tests/inlay_hints/type_hints/03_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -196,7 +196,7 @@ tests-next/inlay_hints/type_hints/03_structured_bindings
 Variables, deduced return types, and init-captures all hint
 
 ```case
-tests-next/inlay_hints/type_hints/04_lambdas
+tests/inlay_hints/type_hints/04_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -210,7 +210,7 @@ Deduced return types appear as `-> T` after the parameter list
 A declaration hints once a later definition supplies the deduction, while one without a definition stays silent. A written trailing return type needs no hint.
 
 ```case
-tests-next/inlay_hints/type_hints/05_deduced_return_types
+tests/inlay_hints/type_hints/05_deduced_return_types
 ```
 
 <!-- END CAPABILITY -->
@@ -224,7 +224,7 @@ A template with exactly one instantiation reveals the deduced type
 A second instantiation makes the deduction ambiguous and drops the hint, and a pack and the parameters after it never hint. A template body hints once across instantiations deducing the same type.
 
 ```case
-tests-next/inlay_hints/type_hints/07_auto_parameters
+tests/inlay_hints/type_hints/07_auto_parameters
 ```
 
 <!-- END CAPABILITY -->
@@ -236,7 +236,7 @@ tests-next/inlay_hints/type_hints/07_auto_parameters
 A type the initializer already spells, in a cast or a functional cast, is still hinted
 
 ```case
-tests-next/inlay_hints/type_hints/08_explicit_initializers
+tests/inlay_hints/type_hints/08_explicit_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -248,7 +248,7 @@ tests-next/inlay_hints/type_hints/08_explicit_initializers
 Namespace qualifiers drop from hints; class scopes stay
 
 ```case
-tests-next/inlay_hints/type_hints/10_scopes
+tests/inlay_hints/type_hints/10_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -262,7 +262,7 @@ A template body shows its hints once, but a variable whose type depends on the t
 With two instantiations deducing different types there is no one type to show.
 
 ```case
-tests-next/inlay_hints/type_hints/12_instantiated_templates
+tests/inlay_hints/type_hints/12_instantiated_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -284,7 +284,7 @@ Positional aggregate initialization shows `.field=` and `[index]=`
 Array designators survive members whose size depends on a template parameter, and reserved member names are skipped rather than printed.
 
 ```case
-tests-next/inlay_hints/designator_hints/01_fields_and_indices
+tests/inlay_hints/designator_hints/01_fields_and_indices
 ```
 
 <!-- END CAPABILITY -->
@@ -296,7 +296,7 @@ tests-next/inlay_hints/designator_hints/01_fields_and_indices
 Written braces recurse; omitted braces flatten into `.outer.inner=`
 
 ```case
-tests-next/inlay_hints/designator_hints/02_nested_aggregates
+tests/inlay_hints/designator_hints/02_nested_aggregates
 ```
 
 <!-- END CAPABILITY -->
@@ -310,7 +310,7 @@ Written designators and `/*name=*/` comments keep their inits bare
 Mixing written designators with positional initializers is a C99 extension clang accepts with a warning; only the bare `4` needs a hint.
 
 ```case
-tests-next/inlay_hints/designator_hints/04_suppression
+tests/inlay_hints/designator_hints/04_suppression
 ```
 
 <!-- END CAPABILITY -->
@@ -324,7 +324,7 @@ Constructor calls, copies and idiomatic zero-init produce no designators
 A braced constructor call names the constructor's parameters instead, and the idiomatic `{}` zero-initializer stays quiet.
 
 ```case
-tests-next/inlay_hints/designator_hints/05_aggregates_only
+tests/inlay_hints/designator_hints/05_aggregates_only
 ```
 
 <!-- END CAPABILITY -->
@@ -336,7 +336,7 @@ tests-next/inlay_hints/designator_hints/05_aggregates_only
 C++20 `Point(1, 2)` gets no hints yet
 
 ```case
-tests-next/inlay_hints/designator_hints/07_parenthesized_init
+tests/inlay_hints/designator_hints/07_parenthesized_init
 ```
 
 <!-- END CAPABILITY -->
@@ -358,7 +358,7 @@ After the closing brace of a block spanning lines, a hint names what the brace c
 Functions, types, namespaces and control flow get one; `if` and `while` show their condition when it is short, an `else if` chain shows as plain `// if`, and a label longer than 60 characters is dropped. A block on one line gets none.
 
 ```case
-tests-next/inlay_hints/block_end/01_block_end_hints
+tests/inlay_hints/block_end/01_block_end_hints
 ```
 
 <!-- END CAPABILITY -->
@@ -380,7 +380,7 @@ Off by default (`inlay_hints.default_arguments`). Call sites that rely on defaul
 A call relying on default arguments shows what it omitted, each name linking to its parameter
 
 ```case
-tests-next/inlay_hints/default_arguments/01_omitted_arguments
+tests/inlay_hints/default_arguments/01_omitted_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -402,7 +402,7 @@ Each type name in a type hint links to its declaration: clicking it goes to the 
 A class declared ahead of its definition links to that declaration, from which go-to-definition reaches the definition. Template arguments link one by one; builtin types and punctuation stay plain text.
 
 ```case
-tests-next/inlay_hints/links/02_type_links
+tests/inlay_hints/links/02_type_links
 ```
 
 <!-- END CAPABILITY -->
@@ -422,7 +422,7 @@ Other things the code leaves implicit, which get no hint yet.
 An explicit template argument at a call site does not show the template parameter it binds yet
 
 ```case
-tests-next/inlay_hints/other_kinds/01_template_arguments
+tests/inlay_hints/other_kinds/01_template_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -434,7 +434,7 @@ tests-next/inlay_hints/other_kinds/01_template_arguments
 A class template whose arguments a constructor call deduces does not show them yet
 
 ```case
-tests-next/inlay_hints/other_kinds/02_ctad_arguments
+tests/inlay_hints/other_kinds/02_ctad_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -446,7 +446,7 @@ tests-next/inlay_hints/other_kinds/02_ctad_arguments
 An argument converted implicitly at a call site shows no conversion yet
 
 ```case
-tests-next/inlay_hints/other_kinds/03_implicit_conversions
+tests/inlay_hints/other_kinds/03_implicit_conversions
 ```
 
 <!-- END CAPABILITY -->

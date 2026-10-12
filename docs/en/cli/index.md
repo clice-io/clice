@@ -34,7 +34,7 @@ A run indexes every translation unit of the build, except those a rule keeps out
 Index every translation unit of the build, so an editor session starts warm
 
 ```case
-tests-next/index/batch/01_build_the_index
+tests/index/batch/01_build_the_index
 ```
 
 <!-- END CAPABILITY -->
@@ -46,7 +46,7 @@ tests-next/index/batch/01_build_the_index
 A rule with `index = false` keeps its units out; they still compile when opened
 
 ```case
-tests-next/index/batch/02_keep_units_out
+tests/index/batch/02_keep_units_out
 ```
 
 <!-- END CAPABILITY -->
@@ -66,7 +66,7 @@ While an editor's server holds the index, `clice index` hands it the work.
 While an editor's clice server runs, `clice index` and `--fresh` ask it to index instead of indexing alongside it
 
 ```case
-tests-next/index/delegation/01_running_server
+tests/index/delegation/01_running_server
 ```
 
 <!-- END CAPABILITY -->

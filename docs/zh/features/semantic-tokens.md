@@ -1,7 +1,7 @@
 # 语义 Token
 
 <!-- The cards in the sections below are generated from the documented cases
-     in tests-next/semantic_tokens/. Do not edit the regions between the
+     in tests/semantic_tokens/. Do not edit the regions between the
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
@@ -20,7 +20,7 @@ clice 使用自有的 Token 类型体系对文档中的每个 Token 进行分类
 行注释、块注释和文档注释均标记为注释 Token
 
 ```case
-tests-next/semantic_tokens/lexical/01_comments
+tests/semantic_tokens/lexical/01_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -32,7 +32,7 @@ tests-next/semantic_tokens/lexical/01_comments
 数字、字符和字符串均标记为字面量 Token
 
 ```case
-tests-next/semantic_tokens/lexical/02_literals
+tests/semantic_tokens/lexical/02_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -44,7 +44,7 @@ tests-next/semantic_tokens/lexical/02_literals
 运算符的替代拼写和上下文说明符仍标记为关键字 Token
 
 ```case
-tests-next/semantic_tokens/lexical/03_keywords
+tests/semantic_tokens/lexical/03_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -56,7 +56,7 @@ tests-next/semantic_tokens/lexical/03_keywords
 内置类型使用独立的 Token 类型，而非普通的 `keyword`
 
 ```case
-tests-next/semantic_tokens/lexical/04_primitive_types
+tests/semantic_tokens/lexical/04_primitive_types
 ```
 
 <!-- END CAPABILITY -->
@@ -68,7 +68,7 @@ tests-next/semantic_tokens/lexical/04_primitive_types
 字面量前缀和后缀尚未单独标记为 Token
 
 ```case
-tests-next/semantic_tokens/lexical/05_literal_affixes
+tests/semantic_tokens/lexical/05_literal_affixes
 ```
 
 <!-- END CAPABILITY -->
@@ -80,7 +80,7 @@ tests-next/semantic_tokens/lexical/05_literal_affixes
 字面量中的转义序列尚未单独高亮显示
 
 ```case
-tests-next/semantic_tokens/lexical/06_escape_sequences
+tests/semantic_tokens/lexical/06_escape_sequences
 ```
 
 <!-- END CAPABILITY -->
@@ -92,7 +92,7 @@ tests-next/semantic_tokens/lexical/06_escape_sequences
 声明符中的运算符和表达式中的运算符尚未使用不同的 Token 类型
 
 ```case
-tests-next/semantic_tokens/lexical/07_declarator_operators
+tests/semantic_tokens/lexical/07_declarator_operators
 ```
 
 <!-- END CAPABILITY -->
@@ -104,7 +104,7 @@ tests-next/semantic_tokens/lexical/07_declarator_operators
 匹配的括号尚未使用各对括号专属的 Token 类型
 
 ```case
-tests-next/semantic_tokens/lexical/08_brackets
+tests/semantic_tokens/lexical/08_brackets
 ```
 
 <!-- END CAPABILITY -->
@@ -116,7 +116,7 @@ tests-next/semantic_tokens/lexical/08_brackets
 属性名称及其表达式目前尚不获得语义 Token
 
 ```case
-tests-next/semantic_tokens/lexical/09_attributes
+tests/semantic_tokens/lexical/09_attributes
 ```
 
 <!-- END CAPABILITY -->
@@ -136,7 +136,7 @@ tests-next/semantic_tokens/lexical/09_attributes
 每个已声明的名称都按其所声明的实体类别着色
 
 ```case
-tests-next/semantic_tokens/declarations/01_declared_names
+tests/semantic_tokens/declarations/01_declared_names
 ```
 
 <!-- END CAPABILITY -->
@@ -148,7 +148,7 @@ tests-next/semantic_tokens/declarations/01_declared_names
 命名空间的定义、引用、嵌套和别名均标记为命名空间 Token
 
 ```case
-tests-next/semantic_tokens/declarations/02_namespaces
+tests/semantic_tokens/declarations/02_namespaces
 ```
 
 <!-- END CAPABILITY -->
@@ -160,7 +160,7 @@ tests-next/semantic_tokens/declarations/02_namespaces
 类型定义和引用保留各自的类型类别
 
 ```case
-tests-next/semantic_tokens/declarations/03_types
+tests/semantic_tokens/declarations/03_types
 ```
 
 <!-- END CAPABILITY -->
@@ -172,7 +172,7 @@ tests-next/semantic_tokens/declarations/03_types
 函数声明、定义和调用均标记为函数 Token
 
 ```case
-tests-next/semantic_tokens/declarations/04_functions
+tests/semantic_tokens/declarations/04_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -184,7 +184,7 @@ tests-next/semantic_tokens/declarations/04_functions
 变量声明和引用保留各自的变量类别
 
 ```case
-tests-next/semantic_tokens/declarations/05_variables
+tests/semantic_tokens/declarations/05_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -196,7 +196,7 @@ tests-next/semantic_tokens/declarations/05_variables
 模板参数标记为类型或变量 Token，声明的模板带有 `templated` 修饰符
 
 ```case
-tests-next/semantic_tokens/declarations/06_templates
+tests/semantic_tokens/declarations/06_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -208,7 +208,7 @@ tests-next/semantic_tokens/declarations/06_templates
 Concept 的定义及其在约束中的使用均标记为 Concept Token
 
 ```case
-tests-next/semantic_tokens/declarations/07_concepts
+tests/semantic_tokens/declarations/07_concepts
 ```
 
 <!-- END CAPABILITY -->
@@ -220,7 +220,7 @@ tests-next/semantic_tokens/declarations/07_concepts
 标签及其在 `goto` 中的引用均标记为标签 Token
 
 ```case
-tests-next/semantic_tokens/declarations/08_labels
+tests/semantic_tokens/declarations/08_labels
 ```
 
 <!-- END CAPABILITY -->
@@ -234,7 +234,7 @@ tests-next/semantic_tokens/declarations/08_labels
 起始的 `[` 特意不标记为任何 Token；仅高亮显示绑定名称本身。
 
 ```case
-tests-next/semantic_tokens/declarations/09_structured_bindings
+tests/semantic_tokens/declarations/09_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -254,7 +254,7 @@ tests-next/semantic_tokens/declarations/09_structured_bindings
 成员初始化列表中被初始化的名称按字段高亮
 
 ```case
-tests-next/semantic_tokens/references/01_member_initializers
+tests/semantic_tokens/references/01_member_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -266,7 +266,7 @@ tests-next/semantic_tokens/references/01_member_initializers
 引入的名称保留其目标的种类
 
 ```case
-tests-next/semantic_tokens/references/02_using_declarations
+tests/semantic_tokens/references/02_using_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -280,7 +280,7 @@ tests-next/semantic_tokens/references/02_using_declarations
 已知模板（`Box<T>`）的待决成员解析到主模板中的声明，并保留这些声明的种类。直接以模板参数为所属类型的成员没有候选声明，目前不获得 Token；对此类名称的启发式高亮仍有待解决。
 
 ```case
-tests-next/semantic_tokens/references/05_dependent_names
+tests/semantic_tokens/references/05_dependent_names
 ```
 
 <!-- END CAPABILITY -->
@@ -292,7 +292,7 @@ tests-next/semantic_tokens/references/05_dependent_names
 复制捕获和引用捕获均引用被捕获的变量；`this` 仍标记为关键字
 
 ```case
-tests-next/semantic_tokens/references/06_lambda_captures
+tests/semantic_tokens/references/06_lambda_captures
 ```
 
 <!-- END CAPABILITY -->
@@ -314,7 +314,7 @@ tests-next/semantic_tokens/references/06_lambda_captures
 析构函数名称标注为两个 Token：`~` 带有方法类型以及声明／定义修饰符，其后的类名仍是对类的引用。
 
 ```case
-tests-next/semantic_tokens/special_members/01_constructors_destructors
+tests/semantic_tokens/special_members/01_constructors_destructors
 ```
 
 <!-- END CAPABILITY -->
@@ -326,7 +326,7 @@ tests-next/semantic_tokens/special_members/01_constructors_destructors
 运算符函数名称中的 `operator` 仍标记为关键字，对该函数的每次调用均标记为运算符 Token
 
 ```case
-tests-next/semantic_tokens/special_members/02_operator_names
+tests/semantic_tokens/special_members/02_operator_names
 ```
 
 <!-- END CAPABILITY -->
@@ -346,7 +346,7 @@ tests-next/semantic_tokens/special_members/02_operator_names
 声明修饰符和定义修饰符用于区分这两种位置
 
 ```case
-tests-next/semantic_tokens/modifiers/01_declaration_definition
+tests/semantic_tokens/modifiers/01_declaration_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -358,7 +358,7 @@ tests-next/semantic_tokens/modifiers/01_declaration_definition
 静态成员和静态局部变量带有静态修饰符
 
 ```case
-tests-next/semantic_tokens/modifiers/02_static
+tests/semantic_tokens/modifiers/02_static
 ```
 
 <!-- END CAPABILITY -->
@@ -372,7 +372,7 @@ const 值、const 成员函数以及枚举成员带有只读修饰符
 目前只读属性根据值判断：指向 const 对象的指针也视为只读，即使指针本身可以改变。
 
 ```case
-tests-next/semantic_tokens/modifiers/03_readonly
+tests/semantic_tokens/modifiers/03_readonly
 ```
 
 <!-- END CAPABILITY -->
@@ -384,7 +384,7 @@ tests-next/semantic_tokens/modifiers/03_readonly
 虚成员函数和抽象类分别带有虚修饰符和抽象修饰符
 
 ```case
-tests-next/semantic_tokens/modifiers/04_virtual_abstract
+tests/semantic_tokens/modifiers/04_virtual_abstract
 ```
 
 <!-- END CAPABILITY -->
@@ -396,7 +396,7 @@ tests-next/semantic_tokens/modifiers/04_virtual_abstract
 已弃用的声明及其使用处带有已弃用修饰符
 
 ```case
-tests-next/semantic_tokens/modifiers/05_deprecated
+tests/semantic_tokens/modifiers/05_deprecated
 ```
 
 <!-- END CAPABILITY -->
@@ -408,7 +408,7 @@ tests-next/semantic_tokens/modifiers/05_deprecated
 来自系统头文件的符号带有默认库修饰符
 
 ```case
-tests-next/semantic_tokens/modifiers/06_default_library
+tests/semantic_tokens/modifiers/06_default_library
 ```
 
 <!-- END CAPABILITY -->
@@ -420,7 +420,7 @@ tests-next/semantic_tokens/modifiers/06_default_library
 符号尚不带有函数、类、文件或全局作用域修饰符
 
 ```case
-tests-next/semantic_tokens/modifiers/07_scopes
+tests/semantic_tokens/modifiers/07_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -432,7 +432,7 @@ tests-next/semantic_tokens/modifiers/07_scopes
 通过非 const 引用或指针传递的实参尚不带有修饰符
 
 ```case
-tests-next/semantic_tokens/modifiers/08_mutable_arguments
+tests/semantic_tokens/modifiers/08_mutable_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -444,7 +444,7 @@ tests-next/semantic_tokens/modifiers/08_mutable_arguments
 `auto` 和 `decltype` 尚不带有推导修饰符
 
 ```case
-tests-next/semantic_tokens/modifiers/09_deduced_types
+tests/semantic_tokens/modifiers/09_deduced_types
 ```
 
 <!-- END CAPABILITY -->
@@ -456,7 +456,7 @@ tests-next/semantic_tokens/modifiers/09_deduced_types
 对重载运算符的调用表示为带有 `userDefined` 修饰符的运算符 Token
 
 ```case
-tests-next/semantic_tokens/modifiers/10_overloaded_operators
+tests/semantic_tokens/modifiers/10_overloaded_operators
 ```
 
 <!-- END CAPABILITY -->
@@ -476,7 +476,7 @@ C++ 允许结构不同的实体共用一个名称。当代码中的同一个名�
 一个名称同时指代类型和函数或变量时，会显示为 `conflict`
 
 ```case
-tests-next/semantic_tokens/ambiguity/01_conflicts
+tests/semantic_tokens/ambiguity/01_conflicts
 ```
 
 <!-- END CAPABILITY -->
@@ -498,7 +498,7 @@ tests-next/semantic_tokens/ambiguity/01_conflicts
 Pragma 参数中，除数字外均不带样式。
 
 ```case
-tests-next/semantic_tokens/preprocessor/01_directives
+tests/semantic_tokens/preprocessor/01_directives
 ```
 
 <!-- END CAPABILITY -->
@@ -510,7 +510,7 @@ tests-next/semantic_tokens/preprocessor/01_directives
 引号或尖括号中的头文件名会获得头文件 Token
 
 ```case
-tests-next/semantic_tokens/preprocessor/02_header_names
+tests/semantic_tokens/preprocessor/02_header_names
 ```
 
 <!-- END CAPABILITY -->
@@ -524,7 +524,7 @@ tests-next/semantic_tokens/preprocessor/02_header_names
 未归类的文本会变为不带样式的 `identifier` Token，因此即使一行只有一个 `}`，也会淡化显示。
 
 ```case
-tests-next/semantic_tokens/preprocessor/03_inactive_branches
+tests/semantic_tokens/preprocessor/03_inactive_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -536,7 +536,7 @@ tests-next/semantic_tokens/preprocessor/03_inactive_branches
 展开处的名称标记为宏，源码中的实参保留其语义，宏定义体保留其词法类别
 
 ```case
-tests-next/semantic_tokens/preprocessor/04_macro_expansions
+tests/semantic_tokens/preprocessor/04_macro_expansions
 ```
 
 <!-- END CAPABILITY -->
@@ -548,7 +548,7 @@ tests-next/semantic_tokens/preprocessor/04_macro_expansions
 对象式宏和函数式宏目前尚未使用不同的 Token 类型
 
 ```case
-tests-next/semantic_tokens/preprocessor/05_macro_kinds
+tests/semantic_tokens/preprocessor/05_macro_kinds
 ```
 
 <!-- END CAPABILITY -->
@@ -568,7 +568,7 @@ tests-next/semantic_tokens/preprocessor/05_macro_kinds
 文件开头各指令中未选中的分支也以相同方式显示为暗淡样式
 
 ```case
-tests-next/semantic_tokens/preamble/01_inactive_preamble
+tests/semantic_tokens/preamble/01_inactive_preamble
 ```
 
 <!-- END CAPABILITY -->
@@ -580,7 +580,7 @@ tests-next/semantic_tokens/preamble/01_inactive_preamble
 宏的定义及其展开都会获得宏 Token
 
 ```case
-tests-next/semantic_tokens/preamble/02_preamble_macros
+tests/semantic_tokens/preamble/02_preamble_macros
 ```
 
 <!-- END CAPABILITY -->
@@ -600,7 +600,7 @@ tests-next/semantic_tokens/preamble/02_preamble_macros
 模块声明会为上下文关键字、以点分隔的名称和私有模块片段生成 Token
 
 ```case
-tests-next/semantic_tokens/modules/01_module_declarations
+tests/semantic_tokens/modules/01_module_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -612,7 +612,7 @@ tests-next/semantic_tokens/modules/01_module_declarations
 模块声明为分区名称生成 Token
 
 ```case
-tests-next/semantic_tokens/modules/02_partitions
+tests/semantic_tokens/modules/02_partitions
 ```
 
 <!-- END CAPABILITY -->
@@ -624,7 +624,7 @@ tests-next/semantic_tokens/modules/02_partitions
 上下文关键字在模块声明之外保留其语义种类
 
 ```case
-tests-next/semantic_tokens/modules/03_contextual_keywords
+tests/semantic_tokens/modules/03_contextual_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -654,7 +654,7 @@ tests-next/semantic_tokens/modules/03_contextual_keywords
 预处理器跳过的分支中的各行都会淡化显示，也包括已选中分支之后的 `#else` 分支
 
 ```case
-tests-next/inactive_regions/branches/02_else_branch
+tests/inactive_regions/branches/02_else_branch
 ```
 
 <!-- END CAPABILITY -->
@@ -674,7 +674,7 @@ tests-next/inactive_regions/branches/02_else_branch
 头文件会显示所选宿主选中的分支，切换宿主时会立即更新淡化显示
 
 ```case
-tests-next/inactive_regions/contexts/01_host_switch
+tests/inactive_regions/contexts/01_host_switch
 ```
 
 <!-- END CAPABILITY -->
@@ -694,7 +694,7 @@ tests-next/inactive_regions/contexts/01_host_switch
 修改条件所检查的宏后，无需保存文件，淡化显示就会转移到当前被跳过的分支
 
 ```case
-tests-next/inactive_regions/updates/01_edited_condition
+tests/inactive_regions/updates/01_edited_condition
 ```
 
 <!-- END CAPABILITY -->

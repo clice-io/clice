@@ -157,7 +157,7 @@
 程序仍然包含 `<alpha/alpha.h>`：将 `wrap/mirror/alpha` 放在头文件搜索路径的首位后，读到的头文件为空，而强制包含的 `wrap/prelude.h` 会导入 `alpha`，并定义原头文件中定义的宏。
 
 ```case
-tests-next/modularize/libraries/01_one_library
+tests/modularize/libraries/01_one_library
 ```
 
 <!-- END CAPABILITY -->
@@ -179,7 +179,7 @@ tests-next/modularize/libraries/01_one_library
 头文件会被移除，由分区 `app.core:text` 取代，主接口 `app/core/module.cppm` 会重新导出该分区。
 
 ```case
-tests-next/modularize/program/01_one_module
+tests/modularize/program/01_one_module
 ```
 
 <!-- END CAPABILITY -->
