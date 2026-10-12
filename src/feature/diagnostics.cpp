@@ -10,6 +10,8 @@ namespace clice::feature {
 
 namespace {
 
+constexpr llvm::StringLiteral includer_context = "In includer context";
+
 /// The notes of a template instantiation backtrace: each names the code
 /// that requested the instantiation the diagnostic arose in.
 bool instantiation_note(std::uint32_t id) {
@@ -145,7 +147,7 @@ private:
             if(request != notes.end()) {
                 anchor = request->range;
             } else if(in_context) {
-                where = "In includer context";
+                where = includer_context;
                 if(auto note = llvm::find_if(notes, in_main); note != notes.end()) {
                     anchor = note->range;
                 } else if(main.id.level == DiagnosticLevel::Fatal ||
@@ -311,6 +313,11 @@ protocol::Diagnostic file_warning(std::string message) {
     diagnostic.source = "clice";
     diagnostic.message = std::move(message);
     return diagnostic;
+}
+
+bool in_includer_context(const protocol::Diagnostic& diagnostic) {
+    auto* message = std::get_if<std::string>(&diagnostic.message);
+    return message && llvm::StringRef(*message).starts_with(includer_context);
 }
 
 }  // namespace clice::feature

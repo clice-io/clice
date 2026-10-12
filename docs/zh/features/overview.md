@@ -28,8 +28,8 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [折叠范围](./folding-ranges.md)      | 支持 19 项                                |
 | [选择范围](./selection-ranges.md)    | 支持 10 项                                |
 | [格式化](./formatting.md)            | 支持 4 项                                 |
-| [C++20 模块](./modules.md)           | 支持 7 项 · 不支持 1 项                   |
-| [头文件上下文](./header-contexts.md) | 支持 4 项 · 不支持 1 项                   |
+| [C++20 模块](./modules.md)           | 支持 7 项                                 |
+| [头文件上下文](./header-contexts.md) | 支持 5 项                                 |
 | [编译](./compilation.md)             | 支持 5 项 · 部分支持 1 项                 |
 
 <!-- END GENERATED OVERVIEW -->

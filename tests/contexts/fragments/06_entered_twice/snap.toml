@@ -6,11 +6,7 @@ symbols = [
 ]
 
 [test."while the switch compiles"]
-wrong = "while the chosen include compiles, the outline answers from before the switch, and nothing makes the editor ask again once the new one is ready"
-document_symbols = [
-    { name = "Add", kind = "EnumMember", at = "OP(⟦Add⟧)" },
-    { name = "Sub", kind = "EnumMember", at = "OP(⟦Sub⟧)" },
-]
+document_symbols = []
 
 [test."in the table"]
 diagnostics = []

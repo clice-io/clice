@@ -526,8 +526,11 @@ void ASTFamily::switch_identity(Session& session) {
     session.quarantine->on_change(Quarantine::Clock::now());
     auto& entry = projections.entries[session.path_id];
     if(entry.projection) {
+        // The TU index describes the buffer under the old identity, though
+        // it compiled the same bytes.
         auto next = ASTProjection(*entry.projection);
         next.pch_key.reset();
+        next.index.reset();
         entry.projection = std::make_shared<const ASTProjection>(std::move(next));
     }
     entry.deps.reset();

@@ -499,6 +499,11 @@ auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEn
 /// character.
 protocol::Diagnostic file_warning(std::string message);
 
+/// Whether `diagnostic` was raised in the includer's code a header's
+/// borrowed context compiles around it, not in the header or what it
+/// includes.
+bool in_includer_context(const protocol::Diagnostic& diagnostic);
+
 auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options = {},
                    const CompletionClient& client = {},

@@ -202,14 +202,16 @@ async function onServer(
     const shows: Shows = { output: new Output(), compared: new Output() };
     const run = async (): Promise<void> => {
         await s.start();
+        // Indexed before the files open: an open file's own compile stands
+        // in for its index run, which a later open would race.
+        if (options.indexing === true) {
+            await s.indexed();
+        }
         const errors: string[] = [];
         for (const file of opened(c, copied)) {
             errors.push(...(await s.errors(file)).map((error) => error.message));
         }
         gateCompile(c, "the server", errors);
-        if (options.indexing === true) {
-            await s.indexed();
-        }
         await fn(contextOf(c, s, root, shows));
         await s.stop();
     };

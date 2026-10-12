@@ -93,7 +93,7 @@ A source the build compiles with several commands has a context for each of them
 
 <!-- BEGIN GENERATED ITEMS: contexts/hosts -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Files built several ways**
 

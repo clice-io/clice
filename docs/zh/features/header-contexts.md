@@ -93,7 +93,7 @@ tests/contexts/fragments/02_enumerator_list
 
 <!-- BEGIN GENERATED ITEMS: contexts/hosts -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **以多种方式构建的文件**
 
