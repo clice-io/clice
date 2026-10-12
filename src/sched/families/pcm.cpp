@@ -178,10 +178,14 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             ctx.reference(dep);
         }
     }
+    failed_imports.erase(path_id);
     for(auto dep: deps.resolved) {
         switch(co_await ctx.depend(node(dep))) {
             case DependResult::Ready: break;
-            case DependResult::Failed: co_return RoundOutcome::Failed;
+            case DependResult::Failed: {
+                failed_imports.insert_or_assign(path_id, dep);
+                co_return RoundOutcome::Failed;
+            }
             case DependResult::Cancelled: co_return RoundOutcome::Stale;
         }
     }
@@ -314,7 +318,9 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                      build_failure_message(result));
             // A round overtaken in flight failed on inputs already gone.
             if(result.has_value() && ctx.current()) {
-                build_failures.insert_or_assign(path_id, Failure{pcm_key, inputs()});
+                build_failures.insert_or_assign(
+                    path_id,
+                    Failure{pcm_key, inputs(), result.value().first_error});
             }
         } else {
             LOG_ANOMALY(PCMBuildFail,
@@ -344,6 +350,26 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
         on_indexing_needed();
 
     co_return RoundOutcome::Success;
+}
+
+std::optional<PCMFamily::BuildFailure> PCMFamily::build_failure(Fid module) const {
+    BuildFailure failure;
+    for(auto current = module;;) {
+        if(auto seen = llvm::find(failure.chain, current); seen != failure.chain.end()) {
+            failure.cycle = seen - failure.chain.begin();
+            return failure;
+        }
+        failure.chain.push_back(current);
+        if(auto it = build_failures.find(current); it != build_failures.end()) {
+            failure.error = it->second.error;
+            return failure;
+        }
+        auto it = failed_imports.find(current);
+        if(it == failed_imports.end()) {
+            return std::nullopt;
+        }
+        current = it->second;
+    }
 }
 
 std::uint64_t PCMFamily::content_hash(Fid module) {

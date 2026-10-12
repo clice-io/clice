@@ -4,13 +4,11 @@ errors = [
 ]
 
 ["the importer reports the import"."main.cpp"]
-wrong = "Bad exists but fails to build; the import should say so and point at its error, not report the module as not found"
 errors = [
-    { at = "import ⟦Bad;⟧", severity = "error", message = "module 'Bad' not found", source = "clang", code = "err_module_not_found" },
+    { at = "import ⟦Bad;⟧", severity = "error", message = "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'", source = "clang", code = "err_module_not_built" },
 ]
 
 ["the importer reports the import"."after an edit"]
-wrong = "Bad exists but fails to build; the import should say so and point at its error, not report the module as not found"
 errors = [
-    { at = "import ⟦Bad;⟧", severity = "error", message = "module 'Bad' not found", source = "clang", code = "err_module_not_found" },
+    { at = "import ⟦Bad;⟧", severity = "error", message = "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'", source = "clang", code = "err_module_not_built" },
 ]

@@ -339,6 +339,10 @@ struct ArtifactBuildResult {
     /// without user errors indicates clice infrastructure breakage (anomaly).
     bool has_user_errors = false;
 
+    /// The first of the user errors: the one a module's importers name as
+    /// why it did not build.
+    std::string first_error;
+
     /// The tmp path the artifact was written to.
     std::string output_path;
 

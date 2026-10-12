@@ -146,6 +146,46 @@ static std::vector<protocol::Diagnostic> with_preamble(std::vector<protocol::Dia
     return merged;
 }
 
+/// clang reports the import of a module whose build failed as not found:
+/// the import says instead why the module did not build.
+static void explain_failed_imports(std::vector<protocol::Diagnostic>& diagnostics,
+                                   llvm::ArrayRef<Fid> imports,
+                                   const PCMFamily& pcm,
+                                   const DependencyGraph& modules) {
+    for(auto module: imports) {
+        auto failure = pcm.build_failure(module);
+        if(!failure) {
+            continue;
+        }
+        llvm::ArrayRef<Fid> chain = failure->chain;
+        std::string message;
+        for(auto unit: chain.take_front(failure->cycle.value_or(chain.size()))) {
+            message += std::format("could not build module '{}': ", modules.module_of(unit));
+        }
+        if(failure->cycle) {
+            auto cycle = chain.drop_front(*failure->cycle);
+            message +=
+                std::format("cyclic dependency in module '{}': ", modules.module_of(cycle.front()));
+            for(auto unit: cycle) {
+                message += std::format("{} -> ", modules.module_of(unit));
+            }
+            message += modules.module_of(cycle.front());
+        } else {
+            message += failure->error;
+        }
+        auto not_found = std::format("module '{}' not found", modules.module_of(module));
+        for(auto& diagnostic: diagnostics) {
+            auto* code =
+                diagnostic.code ? std::get_if<protocol::string>(&*diagnostic.code) : nullptr;
+            auto* text = std::get_if<protocol::string>(&diagnostic.message);
+            if(code && *code == "err_module_not_found" && text && *text == not_found) {
+                diagnostic.message = message;
+                diagnostic.code = failure->cycle == 0 ? "err_module_cycle" : "err_module_not_built";
+            }
+        }
+    }
+}
+
 ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                                        llvm::StringRef text,
                                        const std::string& directory,
@@ -1150,6 +1190,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         if(preamble_state && preamble_state->matches_prefix(params.text)) {
             diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
         }
+        explain_failed_imports(diagnostics, imports->resolved, pcm, project.dep_graph);
 
         // Self-containment trial result. Scored once per stable input
         // state: trial_done is reset whenever compile inputs change for

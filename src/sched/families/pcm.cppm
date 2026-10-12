@@ -120,6 +120,20 @@ public:
         build_crashes.erase(module);
     }
 
+    /// Why a module did not build: `chain` runs from it through the
+    /// imports that failed in turn to the module whose own build failed,
+    /// on `error`, its first error — or, with `cycle`, to the import that
+    /// closes a cycle back to chain[*cycle].
+    struct BuildFailure {
+        llvm::SmallVector<Fid> chain;
+        std::string error;
+        std::optional<std::size_t> cycle;
+    };
+
+    /// Why the module's last round failed, when the user's code is to
+    /// blame; nullopt for any other failure (a crash, an outage).
+    std::optional<BuildFailure> build_failure(Fid module) const;
+
     /// An importer's save retries the module's failed build (see
     /// build_failures). Returns whether it had failed.
     bool forget_failure(Fid module) {
@@ -222,6 +236,8 @@ private:
     struct Failure {
         std::string key;
         DepsSnapshot deps;
+        /// The build's first error.
+        std::string error;
     };
 
     /// The modules whose build failed (see Failure): refused until their
@@ -230,6 +246,10 @@ private:
     /// compile and completion of every importer would pay for the failing
     /// build first.
     llvm::DenseMap<Fid, Failure> build_failures;
+
+    /// The modules whose last round failed because an import of theirs
+    /// failed (or closed a cycle), with that import.
+    llvm::DenseMap<Fid, Fid> failed_imports;
 };
 
 }  // namespace clice

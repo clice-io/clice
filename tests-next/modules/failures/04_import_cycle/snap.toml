@@ -1,11 +1,9 @@
 [test."cycle_a.cppm"]
-wrong = "CycA and CycB import each other: the import should report the cycle, not the module as not found"
 errors = [
-    { at = "import ⟦CycB;⟧", severity = "error", message = "module 'CycB' not found", source = "clang", code = "err_module_not_found" },
+    { at = "import ⟦CycB;⟧", severity = "error", message = "cyclic dependency in module 'CycB': CycB -> CycA -> CycB", source = "clang", code = "err_module_cycle" },
 ]
 
 [test."cycle_b.cppm"]
-wrong = "CycA and CycB import each other: the import should report the cycle, not the module as not found"
 errors = [
-    { at = "import ⟦CycA;⟧", severity = "error", message = "module 'CycA' not found", source = "clang", code = "err_module_not_found" },
+    { at = "import ⟦CycA;⟧", severity = "error", message = "cyclic dependency in module 'CycA': CycA -> CycB -> CycA", source = "clang", code = "err_module_cycle" },
 ]

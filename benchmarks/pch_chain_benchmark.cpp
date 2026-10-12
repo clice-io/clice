@@ -249,7 +249,8 @@ PCHBuildResult build_one_pch(const std::string& header_text,
     if(!ok) {
         result.ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
         auto errors = collect_errors(unit);
-        result.error = errors.empty() ? "PCH compilation failed (no diagnostics)" : errors;
+        result.error =
+            errors.empty() ? "PCH compilation failed (no diagnostics)" : llvm::join(errors, "; ");
         return result;
     }
 

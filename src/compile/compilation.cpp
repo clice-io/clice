@@ -516,13 +516,11 @@ CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer*
                      });
 }
 
-std::string collect_errors(CompilationUnit& unit) {
-    std::string errors;
+std::vector<std::string> collect_errors(CompilationUnit& unit) {
+    std::vector<std::string> errors;
     for(auto& diag: unit.diagnostics()) {
         if(diag.id.level >= DiagnosticLevel::Error) {
-            if(!errors.empty())
-                errors += "; ";
-            errors += diag.message;
+            errors.push_back(diag.message);
         }
     }
     return errors;

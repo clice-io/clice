@@ -1,7 +1,6 @@
 [test."b.cppm"]
-wrong = "A exists but fails to build on its own missing import; the import should say so, not report A as not found"
 errors = [
-    { at = "import ⟦A;⟧", severity = "error", message = "module 'A' not found", source = "clang", code = "err_module_not_found" },
+    { at = "import ⟦A;⟧", severity = "error", message = "could not build module 'A': module 'missing' not found", source = "clang", code = "err_module_not_built" },
 ]
 
 [test."a.cppm"]

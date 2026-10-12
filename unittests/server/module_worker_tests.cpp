@@ -299,6 +299,44 @@ ZEST_CASE(ModuleImplementationUnitWithWorker) {
     std::remove(pcm_path.c_str());
 }
 
+ZEST_CASE(BuildPCMFirstError) {
+    TempDir tmp;
+    tmp.touch("broken.cppm",
+              "export module Broken;\n"
+              "export int first() { return missing_one; }\n"
+              "export int second() { return missing_two; }\n");
+    auto iface = tmp.path("broken.cppm");
+
+    WorkerHandle sl;
+    ZASSERT(sl.spawn());
+
+    bool done = false;
+    sl.run([&]() -> kota::task<> {
+        worker::BuildPCMParams params;
+        params.file = iface;
+        params.directory = "/tmp";
+        params.arguments = {"clang++",
+                            "-resource-dir",
+                            std::string(resource_dir()),
+                            "-std=c++20",
+                            "--precompile",
+                            iface};
+        params.module_name = "Broken";
+        params.output_path = tmp.path("Broken.pcm");
+
+        auto result = co_await sl.peer->send_request(params);
+        ZASSERT(result);
+        ZEXPECT(!result.value().success);
+        ZEXPECT(result.value().has_user_errors);
+        ZEXPECT(result.value().first_error == "use of undeclared identifier 'missing_one'");
+
+        done = true;
+        sl.peer->close_output();
+    });
+
+    ZASSERT(done);
+}
+
 };  // ZEST_SUITE(ModuleWorker)
 
 }  // namespace

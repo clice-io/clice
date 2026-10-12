@@ -178,7 +178,7 @@ FileResult profile_file(llvm::StringRef file,
             // on a completed unit, and such a run's timing must not enter
             // the samples (same for every acceptance check below).
             if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
-                result.error = "preprocess failed: " + errors;
+                result.error = "preprocess failed: " + llvm::join(errors, "; ");
                 return false;
             }
             return true;
@@ -201,7 +201,7 @@ FileResult profile_file(llvm::StringRef file,
         auto params = make_params(CompilationKind::Indexing, arguments, file, content);
         auto unit = compile(params);
         if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
-            result.error = "parse failed: " + errors;
+            result.error = "parse failed: " + llvm::join(errors, "; ");
             return false;
         }
 
@@ -274,7 +274,7 @@ FileResult profile_file(llvm::StringRef file,
         PCHInfo pch_info;
         auto unit = compile(params, pch_info);
         if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
-            result.error = "pch build failed: " + errors;
+            result.error = "pch build failed: " + llvm::join(errors, "; ");
             return false;
         }
 
@@ -315,7 +315,7 @@ FileResult profile_file(llvm::StringRef file,
         params.pch = {*pch_path, result.preamble_bound};
         auto unit = compile(params);
         if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
-            result.error = "parse with pch failed: " + errors;
+            result.error = "parse with pch failed: " + llvm::join(errors, "; ");
             return false;
         }
 

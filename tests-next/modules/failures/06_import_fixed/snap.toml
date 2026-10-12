@@ -1,5 +1,4 @@
 [test.before]
-wrong = "A exists but fails to build; the import should say so and point at its error, not report the module as not found"
 errors = [
-    { at = "import ⟦A;⟧", severity = "error", message = "module 'A' not found", source = "clang", code = "err_module_not_found" },
+    { at = "import ⟦A;⟧", severity = "error", message = "could not build module 'A': use of undeclared identifier 'c'", source = "clang", code = "err_module_not_built" },
 ]
