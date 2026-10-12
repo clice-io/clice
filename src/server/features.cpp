@@ -542,24 +542,30 @@ Features::RawResult Features::hover(Ticket ticket,
     }
     auto path_id = session->path_id;
 
-    auto index_card = [&]() -> std::optional<serde_raw> {
-        if(auto info = index_hover_card(*session, position)) {
-            return to_raw(feature::to_protocol_hover(*info,
-                                                     project.config.hover,
-                                                     session->positions(),
-                                                     PositionEncoding::UTF16));
-        }
-        return std::nullopt;
+    auto index_card = [&](const feature::HoverInfo& info) {
+        return to_raw(feature::to_protocol_hover(info,
+                                                 project.config.hover,
+                                                 session->positions(),
+                                                 PositionEncoding::UTF16));
     };
 
     switch(co_await pick_route(ticket, {})) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            if(auto card = index_card()) {
-                session->index_served = true;
-                co_return std::move(*card);
+            auto info = index_hover_card(*session, position);
+            if(!info) {
+                co_return serde_raw{"null"};
             }
-            co_return serde_raw{"null"};
+            // Without the definition, the index card tells little past the
+            // name (the entity the buffer's index recorded can be gone, as
+            // after an imported interface changed): while a compile can
+            // run, the AST's card is worth the wait.
+            if(info->definition.empty() && session->serving == ServingMode::Escalated &&
+               !ASTFamily::compile_barred(*session)) {
+                break;
+            }
+            session->index_served = true;
+            co_return index_card(*info);
         }
         case Route::Empty: co_return serde_raw{"null"};
         case Route::Ast: break;
@@ -606,8 +612,8 @@ Features::RawResult Features::hover(Ticket ticket,
             if(auto it = project.pch_cache.find(*projection->pch_key);
                it != project.pch_cache.end()) {
                 if(offset && *offset < it->second.bound) {
-                    if(auto card = index_card()) {
-                        co_return std::move(*card);
+                    if(auto info = index_hover_card(*session, position)) {
+                        co_return index_card(*info);
                     }
                 }
             }

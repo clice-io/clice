@@ -12,11 +12,18 @@ export int leaf()
 '''
 range = "return ⟦leaf⟧() + 1;"
 
-[reopened.after]
-wrong = "until the importer compiles again, the card loses the type and declaration of leaf; it should show the old declaration or the new one"
-
 [reopened.after.hover]
-markdown = "### function `leaf`"
+markdown = '''
+### function `leaf`
+
+---
+→ `long`
+
+---
+```cpp
+export long leaf()
+```
+'''
 range = "return ⟦leaf⟧() + 1;"
 
 [reopened.recompiled.hover]
@@ -33,11 +40,18 @@ export long leaf()
 '''
 range = "return ⟦leaf⟧() + 1;"
 
-["changed on disk".after]
-wrong = "until the importer compiles again, the card loses the type and declaration of leaf; it should show the old declaration or the new one"
-
 ["changed on disk".after.hover]
-markdown = "### function `leaf`"
+markdown = '''
+### function `leaf`
+
+---
+→ `long`
+
+---
+```cpp
+export long leaf()
+```
+'''
 range = "return ⟦leaf⟧() + 1;"
 
 ["changed on disk".recompiled.hover]
