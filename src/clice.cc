@@ -48,6 +48,9 @@ extern "C++" int main(int argc, const char** argv) {
         driver::println("clice version {}", clice::version);
         return 0;
     }
+    if(!args.empty() && args[0] == "worker") {
+        return driver::run_worker(std::span(args).subspan(1));
+    }
 
-    return clice(args);
+    return driver::run_subcommands(clice, args);
 }

@@ -32,7 +32,6 @@ enum class Command : std::uint8_t {
     serve,
     query,
     refactor,
-    worker,
     index,
     lint,
     format,
@@ -70,6 +69,10 @@ inline bool register_command(Command command, CommandEntry entry) {
     registered = entry;
     return true;
 }
+
+/// `clice worker`, which the master spawns its workers as: no command of a
+/// user's, so no Command and no line of `clice --help`.
+int run_worker(std::span<std::string> args);
 
 /// Add every subcommand to `root`, in the order of Command. One whose file
 /// did not register it stops the program.
@@ -209,6 +212,23 @@ inline auto subcommand_error_handler(kota::deco::cli::SubCommander& commander) {
         driver::println(stderr, "{}", err.message);
         return kota::deco::cli::parse_error_exit_code;
     };
+}
+
+/// Run a commander of subcommands on `args`. The commander takes whatever
+/// leads them for a subcommand's name; an option other than --help leading
+/// them is reported as the unknown option it is.
+inline int run_subcommands(kota::deco::cli::SubCommander& commander, std::span<std::string> args) {
+    namespace text = kota::deco::cli::text;
+    if(!args.empty() && args.front().starts_with("-") &&
+       !llvm::is_contained(kota::deco::decl::help_names, args.front())) {
+        driver::println(
+            stderr,
+            "{}",
+            text::render_diagnostic(
+                text::diagnostic_at(args, 0, 1, std::format("unknown option '{}'", args.front()))));
+        return kota::deco::cli::parse_error_exit_code;
+    }
+    return commander(args);
 }
 
 /// "s" when `count` warrants a plural noun, for user-facing summaries.

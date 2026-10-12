@@ -262,7 +262,7 @@ CommandHandler build(const char*) {
                  std::move(modules));
     analyze->enable_help().when_err(subcommand_error_handler(*analyze));
     return [analyze](std::span<std::string> args) {
-        return (*analyze)(args);
+        return run_subcommands(*analyze, args);
     };
 }
 

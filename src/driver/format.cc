@@ -35,7 +35,7 @@ struct FormatOptions {
 
     LogLevelOption log;
 
-    DecoInput(meta_var = "<PATH>...",
+    DecoInput(meta_var = "<PATH>",
               help =
                   "Files to format, or directories to format the build's own files under; "
                   "relative to the workspace (default: the build's own files)",

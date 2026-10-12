@@ -29,17 +29,19 @@ struct WorkerOptions {
            required = false)
     <std::uint64_t> max_documents;
 
-    DecoKV(required = false)
+    DecoKV(help = "Name the worker logs under (default: worker)", required = false)
     <std::string> worker_name;
 
-    DecoKV(required = false)
+    DecoKV(help = "Directory of the worker's log file (default: no log file)", required = false)
     <std::string> log_dir;
 
-    DecoKV(required = false)
+    DecoKV(help = "Process id of the master: the worker exits with it", required = false)
     <std::uint32_t> master_pid;
 };
 
-CommandHandler build(const char*) {
+}  // namespace
+
+int run_worker(std::span<std::string> args) {
     auto cmd = kota::deco::cli::command<WorkerOptions>("clice worker [OPTIONS]");
     cmd.match_all([](WorkerOptions opts) {
         // A worker lives and dies with its master: an orphan answers no one
@@ -59,11 +61,7 @@ CommandHandler build(const char*) {
         }
         return run_stateless_worker_mode(name, log_dir);
     });
-    return cmd;
+    return cmd(args);
 }
-
-[[maybe_unused]] const bool registered = register_command(Command::worker, {.build = build});
-
-}  // namespace
 
 }  // namespace clice::driver

@@ -1,5 +1,4 @@
 ["root usage"."$ clice"]
-wrong = "the internal worker subcommand is listed, and without a description"
 stdout = '''
 A C++ development toolkit built on LLVM/Clang
 
@@ -7,7 +6,6 @@ Subcommands:
   serve       Start LSP server
   query       Ask the persisted index about the workspace
   refactor    Rewrite the workspace's sources through the persisted index
-  worker
   index       Index a workspace ahead of time
   lint        Lint C++ source files
   format      Format C++ source files
@@ -18,7 +16,6 @@ Subcommands:
 exit = 0
 
 ["root usage"."$ clice --help"]
-wrong = "the internal worker subcommand is listed, and without a description"
 stdout = '''
 A C++ development toolkit built on LLVM/Clang
 
@@ -26,7 +23,6 @@ Subcommands:
   serve       Start LSP server
   query       Ask the persisted index about the workspace
   refactor    Rewrite the workspace's sources through the persisted index
-  worker
   index       Index a workspace ahead of time
   lint        Lint C++ source files
   format      Format C++ source files
@@ -94,21 +90,6 @@ Options:
 '''
 exit = 0
 
-["command help"."$ clice worker --help"]
-wrong = "three options read no description provided"
-stdout = '''
-usage: clice worker [OPTIONS]
-
-Options:
-  -h|--help                       display this help and exit
-  --stateful                      Run as stateful worker (default: stateless)
-  --max-documents <value>         Max compiled documents kept before LRU eviction (stateful worker only)
-  --worker-name <value>           no description provided
-  --log-dir <value>               no description provided
-  --master-pid <value>            no description provided
-'''
-exit = 0
-
 ["command help"."$ clice index --help"]
 stdout = '''
 usage: clice index [OPTIONS]
@@ -145,7 +126,6 @@ Options:
 exit = 0
 
 ["command help"."$ clice format --help"]
-wrong = "the paths argument reads <<PATH>...>..."
 stdout = '''
 usage: clice format [OPTIONS] [<PATH>...]
 
@@ -154,11 +134,10 @@ Options:
   --workspace <value>             Workspace root directory (default: current directory)
   --configuration <value>         Build configuration to activate, one of the tags declared on rules (default: the selected one, else default_configuration)
   --check                         Report the files that need formatting instead of rewriting them
-  --clang-format <value>          The clang-format executable to run (default: clang-format from PATH)
-  --jobs <value>                  Number of clang-format processes to run at once (default: the CPU count)
+  --jobs <value>                  Number of files to format at once (default: the CPU count)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level
-  <<PATH>...>...                  Files to format, or directories to format the build's own files under; relative to the workspace (default: the build's own files)
+  <PATH>...                       Files to format, or directories to format the build's own files under; relative to the workspace (default: the build's own files)
 '''
 exit = 0
 
@@ -207,6 +186,20 @@ Options:
 '''
 exit = 0
 
+["command help"."$ clice worker --help"]
+stdout = '''
+usage: clice worker [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  --stateful                      Run as stateful worker (default: stateless)
+  --max-documents <value>         Max compiled documents kept before LRU eviction (stateful worker only)
+  --worker-name <value>           Name the worker logs under (default: worker)
+  --log-dir <value>               Directory of the worker's log file (default: no log file)
+  --master-pid <value>            Process id of the master: the worker exits with it
+'''
+exit = 0
+
 ["unknown subcommand"."$ clice bogus"]
 stderr = [
     "stderr: at argv[0]:",
@@ -241,15 +234,6 @@ stdout = '''
   "stale": []
 }
 '''
-exit = 2
-
-["unknown option"."$ clice worker --bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   --bogus",
-    "stderr:   ^~~~~~~",
-    "stderr:   unknown option '--bogus'",
-]
 exit = 2
 
 ["unknown option"."$ clice index --bogus"]
@@ -289,12 +273,11 @@ stderr = [
 exit = 2
 
 ["unknown option"."$ clice analyze --bogus"]
-wrong = "an unknown option is called an unknown subcommand"
 stderr = [
     "stderr: at argv[0]:",
     "stderr:   --bogus",
     "stderr:   ^~~~~~~",
-    "stderr:   unknown subcommand '--bogus'",
+    "stderr:   unknown option '--bogus'",
 ]
 exit = 2
 
@@ -305,4 +288,13 @@ stdout = '''
   "stale": []
 }
 '''
+exit = 2
+
+["unknown option"."$ clice worker --bogus"]
+stderr = [
+    "stderr: at argv[0]:",
+    "stderr:   --bogus",
+    "stderr:   ^~~~~~~",
+    "stderr:   unknown option '--bogus'",
+]
 exit = 2

@@ -1,17 +1,18 @@
 import { test } from "@clice/tools/testing";
 
-/// In the order of the root usage.
+/// In the order of the root usage, then worker, which the server spawns
+/// and the root usage leaves out.
 const COMMANDS = [
     "serve",
     "query",
     "refactor",
-    "worker",
     "index",
     "lint",
     "format",
     "inspect",
     "analyze",
     "modularize",
+    "worker",
 ];
 
 test("root usage", async (t) => {
