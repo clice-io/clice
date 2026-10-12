@@ -103,7 +103,7 @@ bool is_simple_builtin(const clang::FunctionDecl* callee) {
 /// `static_cast<long>(x)`, `Widget` in `Widget{1, 2}`. A type left to
 /// deduction (`Pair(1, 2.5)`, `auto(x)`) is not written out.
 bool spells_type(const clang::Expr* init) {
-    init = init->IgnoreImplicit();
+    init = init->IgnoreImplicit()->IgnoreParens();
     const clang::TypeSourceInfo* written = nullptr;
     if(const auto* cast = dyn_cast<clang::ExplicitCastExpr>(init)) {
         written = cast->getTypeInfoAsWritten();

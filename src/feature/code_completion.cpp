@@ -1181,21 +1181,26 @@ auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options,
                    const CompletionClient& client,
                    PositionEncoding encoding) -> protocol::CompletionList {
-    protocol::CompletionList list{.is_incomplete = false};
-
     auto& [file, offset] = params.completion;
     (void)file;
 
-    auto* consumer = new CodeCompletionCollector(offset, encoding, list.items, options, client);
+    std::vector<protocol::CompletionItem> items;
+    auto* consumer = new CodeCompletionCollector(offset, encoding, items, options, client);
     auto unit = complete(params, consumer);
     (void)unit;
 
-    if(options.limit != 0 && list.items.size() > options.limit) {
+    return completion_list(std::move(items), options.limit);
+}
+
+auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
+    -> protocol::CompletionList {
+    protocol::CompletionList list{.is_incomplete = false, .items = std::move(items)};
+    if(limit != 0 && list.items.size() > limit) {
         std::ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
             return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text),
                             item.label);
         });
-        list.items.resize(options.limit);
+        list.items.resize(limit);
         list.is_incomplete = true;
     }
     return list;

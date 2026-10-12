@@ -1,0 +1,5 @@
+[answers.quoted.completion]
+items = [
+    { label = "zq_alpha.h", kind = "File" },
+]
+incomplete = true

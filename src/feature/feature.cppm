@@ -503,6 +503,11 @@ auto code_complete(CompilationParams& params,
                    const CompletionClient& client = {},
                    PositionEncoding encoding = PositionEncoding::UTF16) -> protocol::CompletionList;
 
+/// The reply listing `items` under `code_completion.limit`: the best ranked
+/// stay, ties by label, and a list cut short is marked incomplete.
+auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
+    -> protocol::CompletionList;
+
 /// Get the hover information for the symbol at the given offset in the
 /// main file of the unit.
 auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options = {})

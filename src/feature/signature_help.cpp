@@ -53,11 +53,18 @@ bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
     return access && access->isOneOf(clang::tok::period, clang::tok::arrow);
 }
 
-/// Whether `method` differs from `better`, a method Sema ranked above it,
-/// only in its qualifiers: with the same parameters it is never the one a
-/// call picks, as the const overload on a non-const object.
+/// Whether `method` differs from `better`, a method of the same class Sema
+/// ranked above it, only in its qualifiers: with the same parameters it is
+/// never the one a call picks, as the const overload on a non-const object.
+/// A function template is an overload of its own even where a
+/// specialization takes the same parameters.
 bool dominated(const clang::FunctionDecl* method, const clang::FunctionDecl* better) {
-    if(!llvm::isa<clang::CXXMethodDecl>(method) || !llvm::isa<clang::CXXMethodDecl>(better) ||
+    auto plain_method = [](const clang::FunctionDecl* function) {
+        return llvm::isa<clang::CXXMethodDecl>(function) && !function->getPrimaryTemplate() &&
+               !function->getDescribedFunctionTemplate();
+    };
+    if(!plain_method(method) || !plain_method(better) ||
+       method->getParent() != better->getParent() ||
        method->getNumParams() != better->getNumParams() ||
        method->isVariadic() != better->isVariadic()) {
         return false;

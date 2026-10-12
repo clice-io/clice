@@ -937,7 +937,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.text_edit = edit(c);
                 items.push_back(std::move(item));
             }
-            co_return to_raw(items);
+            co_return to_raw(
+                feature::completion_list(std::move(items), project.config.code_completion.limit));
         }
         if(pctx.kind == CompletionContext::Import ||
            pctx.kind == CompletionContext::ModuleDeclaration) {
@@ -966,7 +967,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 };
                 items.push_back(std::move(item));
             }
-            co_return to_raw(items);
+            co_return to_raw(
+                feature::completion_list(std::move(items), project.config.code_completion.limit));
         }
     }
 

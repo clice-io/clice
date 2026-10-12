@@ -6,6 +6,14 @@ struct Text {
 
 Text make();
 
+template <typename T>
+struct Vector {
+    T& at(int index);
+    const T& at(int index) const;
+    template <typename U>
+    U at(U index, bool checked);
+};
+
 struct Grid {
     int& at(int row, int column);
     const int& at(int row, int column) const;
@@ -20,4 +28,6 @@ int main() {
     text.data(§(lvalue));
     make().data(§(rvalue));
     text.size(§(qualified));
+    Vector<int> values;
+    values.at(§(class_template)0);
 }
