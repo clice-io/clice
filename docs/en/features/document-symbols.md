@@ -126,9 +126,6 @@ tests/document_symbol/symbol_kinds/02_templates
 
 Specializations list with their template arguments and their own members, and a deduction guide with the signature it deduces
 
-An explicit instantiation of a function template is named without its
-arguments.
-
 ```case
 tests/document_symbol/symbol_kinds/03_specializations
 ```
@@ -152,8 +149,6 @@ tests/document_symbol/symbol_kinds/04_type_aliases
 **Explicit instantiations**
 
 Explicit instantiations of class, function and variable templates list without members
-
-A function template's instantiation is named without its arguments.
 
 ```case
 tests/document_symbol/symbol_kinds/05_explicit_instantiations

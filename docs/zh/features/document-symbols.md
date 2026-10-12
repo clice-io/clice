@@ -125,8 +125,6 @@ tests/document_symbol/symbol_kinds/02_templates
 
 模板特化会显示其模板实参及自身成员，推导指引则显示其推导出的签名
 
-函数模板的显式实例化（explicit instantiation）在列出时，名称中不包含实参。
-
 ```case
 tests/document_symbol/symbol_kinds/03_specializations
 ```
@@ -149,9 +147,7 @@ tests/document_symbol/symbol_kinds/04_type_aliases
 
 **显式实例化**
 
-类模板、函数模板和变量模板的显式实例化都会列出，但不包含成员
-
-函数模板实例化的名称中不包含实参。
+类模板、函数模板和变量模板的显式实例化（explicit instantiation）都会列出，但不包含成员
 
 ```case
 tests/document_symbol/symbol_kinds/05_explicit_instantiations
