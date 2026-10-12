@@ -23,3 +23,6 @@ inlay_hints = []
 inlay_hints = [
     { line = "auto* built = create<B>(⟨args:⟩u);" },
 ]
+
+[answers.passed_over]
+inlay_hints = []

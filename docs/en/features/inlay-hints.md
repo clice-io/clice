@@ -277,8 +277,8 @@ tests/inlay_hints/type_hints/12_instantiated_templates
 The bindings of a container's elements keep the aliases the container was declared with
 
 Iterating a `std::map<std::string, Point>` shows each key as a
-`const std::string`, not as `basic_string<char>`. Two aliases of one type
-leave it unaliased.
+`const std::string`, not as `basic_string<char>`. Two aliases of one type,
+or an alias and the type itself, leave it unaliased.
 
 ```case
 tests/inlay_hints/type_hints/13_binding_aliases

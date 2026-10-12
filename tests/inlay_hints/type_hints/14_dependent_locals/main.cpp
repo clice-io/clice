@@ -1,8 +1,9 @@
 // A local `auto` whose initializer depends on a function template's
 // parameter hints the type the template's only instantiation gives it, or
 // the type a class template's member declares; a template instantiated
-// with several types hints nothing, and neither does a parameter's default
-// or the only instantiation of a template the initializer calls.
+// with several types hints nothing, and neither does a parameter's default,
+// the only instantiation of a template the initializer calls, or a template
+// candidate a call passes over for another overload.
 struct Point {
     int x;
     int y;
@@ -67,4 +68,16 @@ A* made = create<A>();
 template <class U>
 void build(U u) {
     §(explicit_arguments)⟦auto* built = create<B>(u);⟧
+}
+
+template <typename T>
+void place(T value) {
+    §(passed_over)⟦auto kept = value;⟧
+}
+
+template <typename T>
+void place(T* value);
+
+void put(Point* point) {
+    place(point);
 }

@@ -27,3 +27,8 @@ inlay_hints = [
 inlay_hints = [
     { line = "auto& [where⟨: std::string *⟩, place⟨: Point⟩] = found;" },
 ]
+
+[answers.alias_and_plain]
+inlay_hints = [
+    { line = "auto& [first⟨: unsigned long⟩, second⟨: unsigned long⟩] = counted;" },
+]

@@ -60,7 +60,15 @@ public:
                 continue;
             }
             auto desugared = written.getSingleStepDesugaredType(context);
-            written = desugared == written ? clang::QualType() : desugared;
+            if(desugared == written) {
+                /// Writing the type without an alias is one more way of
+                /// writing it.
+                if(!named) {
+                    add(written);
+                }
+                break;
+            }
+            written = desugared;
         }
     }
 

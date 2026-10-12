@@ -4,13 +4,13 @@
   "subtopic": "type_hints",
   "title": "Binding aliases",
   "summary": "The bindings of a container's elements keep the aliases the container was declared with",
-  "prose": "Iterating a `std::map<std::string, Point>` shows each key as a\n`const std::string`, not as `basic_string<char>`. Two aliases of one type\nleave it unaliased.",
+  "prose": "Iterating a `std::map<std::string, Point>` shows each key as a\n`const std::string`, not as `basic_string<char>`. Two aliases of one type,\nor an alias and the type itself, leave it unaliased.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "#include <map>\n#include <string>\n#include <tuple>\n\nstruct Point {\n    int x;\n    int y;\n};\n\nusing Count = unsigned long;\nusing Size = unsigned long;\nusing Table = std::map<std::string, Point>;\n\nvoid walk(std::map<std::string, Point>& points,\n          std::tuple<std::string, Point>& entry,\n          std::map<Count, Size>& sizes) {\n    for (auto& [name, point] : points) {\n    }\n    auto& [label, origin] = entry;\n    for (auto& [count, size] : sizes) {\n    }\n    std::string text;\n    auto copy = text;\n}\n\nvoid look(Table& table, std::tuple<std::string*, Point>& found) {\n    for (auto& [key, value] : table) {\n    }\n    auto& [where, place] = found;\n}\n",
+      "text": "#include <map>\n#include <string>\n#include <tuple>\n\nstruct Point {\n    int x;\n    int y;\n};\n\nusing Count = unsigned long;\nusing Size = unsigned long;\nusing Table = std::map<std::string, Point>;\n\nvoid walk(std::map<std::string, Point>& points,\n          std::tuple<std::string, Point>& entry,\n          std::map<Count, Size>& sizes) {\n    for (auto& [name, point] : points) {\n    }\n    auto& [label, origin] = entry;\n    for (auto& [count, size] : sizes) {\n    }\n    std::string text;\n    auto copy = text;\n}\n\nvoid look(Table& table,\n          std::tuple<std::string*, Point>& found,\n          std::tuple<Count, unsigned long>& counted) {\n    for (auto& [key, value] : table) {\n    }\n    auto& [where, place] = found;\n    auto& [first, second] = counted;\n}\n",
       "markers": [
         {
           "name": "map",
@@ -38,14 +38,20 @@
         },
         {
           "name": "through_alias",
-          "begin": 578,
-          "end": 612,
+          "begin": 641,
+          "end": 675,
           "range": true
         },
         {
           "name": "pointer",
-          "begin": 623,
-          "end": 652,
+          "begin": 686,
+          "end": 715,
+          "range": true
+        },
+        {
+          "name": "alias_and_plain",
+          "begin": 720,
+          "end": 752,
           "range": true
         }
       ]
@@ -177,11 +183,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 26,
+                      "line": 28,
                       "character": 4
                     },
                     "end": {
-                      "line": 26,
+                      "line": 28,
                       "character": 38
                     }
                   }
@@ -201,12 +207,36 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 28,
+                      "line": 30,
                       "character": 4
                     },
                     "end": {
-                      "line": 28,
+                      "line": 30,
                       "character": 33
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "alias_and_plain",
+          "marker": "alias_and_plain",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto& [first⟨: unsigned long⟩, second⟨: unsigned long⟩] = counted;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 36
                     }
                   }
                 }

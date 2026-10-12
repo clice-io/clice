@@ -278,6 +278,13 @@ clang::NamedDecl* only_instantiation_impl(TemplateDeclTy* TD) {
     for(auto* Spec: TD->specializations()) {
         if(Spec->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization)
             continue;
+        // Overload resolution specializes every function template candidate
+        // it deduces; only the one a call picks is referenced.
+        if constexpr(std::is_same_v<TemplateDeclTy, clang::FunctionTemplateDecl>) {
+            if(Spec->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation &&
+               !Spec->isReferenced())
+                continue;
+        }
         if(Only != nullptr)
             return nullptr;
         Only = Spec;

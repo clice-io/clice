@@ -23,8 +23,11 @@ void walk(std::map<std::string, Point>& points,
     §(variable)⟦auto copy = text;⟧
 }
 
-void look(Table& table, std::tuple<std::string*, Point>& found) {
+void look(Table& table,
+          std::tuple<std::string*, Point>& found,
+          std::tuple<Count, unsigned long>& counted) {
     §(through_alias)⟦for (auto& [key, value] : table) {⟧
     }
     §(pointer)⟦auto& [where, place] = found;⟧
+    §(alias_and_plain)⟦auto& [first, second] = counted;⟧
 }
