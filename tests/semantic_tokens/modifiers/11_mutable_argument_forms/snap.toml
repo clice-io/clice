@@ -18,6 +18,16 @@ text = "value"
 type = "variable"
 modifiers = ["functionScope"]
 
+[answers.function_pointer.semantic_token]
+text = "notify"
+type = "function"
+modifiers = ["globalScope"]
+
+[answers.function_reference.semantic_token]
+text = "notify"
+type = "function"
+modifiers = ["globalScope"]
+
 [answers.dependent_parameter.semantic_token]
 text = "local"
 type = "variable"

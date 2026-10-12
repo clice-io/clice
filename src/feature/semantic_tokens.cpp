@@ -610,9 +610,12 @@ private:
             return;
         }
         for(const auto& binding: decls::parameter_bindings(call)) {
-            // A template's parameter may turn const in an instantiation.
+            // A template's parameter may turn const in an instantiation, and
+            // a function is no object a callee could modify.
             auto type = binding.forwarded->getType();
-            if(type->isDependentType()) {
+            auto target =
+                type->isPointerType() ? type->getPointeeType() : type.getNonReferenceType();
+            if(type->isDependentType() || target->isFunctionType()) {
                 continue;
             }
             SymbolModifiers::Kind modifier;
