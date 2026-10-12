@@ -1,4 +1,4 @@
-[answers.declared.hover]
+[partition.declared.hover]
 markdown = '''
 ### function `helper`
 
@@ -12,7 +12,7 @@ int helper()
 '''
 range = "int ⟦helper⟧() {"
 
-[answers.use.hover]
+[importer.use.hover]
 markdown = '''
 ### function `helper`
 

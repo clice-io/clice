@@ -5,7 +5,7 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = ["error: No index cache at ${WS}/.clice; run `clice index` first"]
+stderr = "error: No index cache at ${WS}/.clice; run `clice index` first"
 exit = 1
 
 [test."$ clice index"]

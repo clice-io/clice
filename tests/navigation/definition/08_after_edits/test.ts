@@ -5,6 +5,7 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     const s = await t.start();
     s.open("main.cpp");
+    await s.sync();
     await t.show("before", s.definition(t.at("main.cpp", "return |area(")));
     s.edit("main.cpp", {
         before: "int area(",

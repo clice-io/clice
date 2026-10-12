@@ -178,7 +178,8 @@ Its first request of a feature at a marker asks at every marker of the file
 in one run. The server opens every source, module interfaces first and the
 entry last, then every marked header, before the script asks. Both check the
 code compiles cleanly (`compiles: false` says it must not), inspect every
-source and every file it read, the server every file it opened.
+source but an importer and every file it read, the server every file it
+opened.
 
 **Diagnostics and parked work.** `s.diagnostics(file)` opens the file if
 needed and pulls its diagnostics, `s.errors(file)` keeps the errors,
@@ -271,10 +272,11 @@ exit = 0
   `padding`, `links`). Everything shown reads the copy's root `${WS}`, a
   worker's cause of death `${CRASH}`.
 - **Commands** are a block under the command line, `$ clice …`: `stdout`
-  (JSON pretty-printed), `stderr` lines at warning and above, `exit` (or
-  `killed` and the signal), and `files`, each file the command wrote as a
-  diff. A command run again in one test is `#2`. Paths read `${WS}/…`, a
-  worker's cause of death `${CRASH}`, durations and sizes `#ms`, `# KB`.
+  (JSON pretty-printed), `stderr` (a log line only at warning and above, as
+  `warning: …`), `exit` (or `killed` and the signal), and `files`, each file
+  the command wrote as a diff. A command run again in one test is `#2`.
+  Paths read `${WS}/…`, a session's log directory `${SESSION}`, a worker's
+  cause of death `${CRASH}`, durations and sizes `#ms`, `# KB`.
 - **Paths apart.** An answers test whose clients answer differently on
   purpose (`paths: { separate }`) has an `inspect` and a `server` block,
   each holding the blocks of its client.

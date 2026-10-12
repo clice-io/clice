@@ -116,9 +116,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 ["batch index per configuration"."$ clice index --stats"]
-stderr = [
-    "error: No index cache at ${WS}/.clice/cache/v14/index/debug~50f0a9a717df05f7; run `clice index` first",
-]
+stderr = "error: No index cache at ${WS}/.clice/cache/v14/index/debug~50f0a9a717df05f7; run `clice index` first"
 exit = 1
 
 ["batch index per configuration"."$ clice index --workers 2"]
@@ -129,23 +127,23 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 ["scripted commands reject unknown names"."$ clice index --configuration nope --workers 2"]
-stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+stderr = "error: --configuration nope names no rule's configuration (debug, release)"
 exit = 1
 
 ["scripted commands reject unknown names"."$ clice index --stats --configuration nope"]
-stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+stderr = "error: --configuration nope names no rule's configuration (debug, release)"
 exit = 1
 
 ["scripted commands reject unknown names"."$ clice lint --configuration nope --workers 2"]
-stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+stderr = "error: --configuration nope names no rule's configuration (debug, release)"
 exit = 2
 
 ["scripted commands reject unknown names"."$ clice inspect --configuration nope hover gated.cpp"]
-stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
+stderr = "error: --configuration nope names no rule's configuration (debug, release)"
 exit = 1
 
 ["scripted commands reject unknown names"."$ clice inspect --configuration release --flags \"[\\\"clang++\\\"]\" hover gated.cpp"]
-stderr = ["error: --configuration selects among the workspace's rules; --flags replaces them"]
+stderr = "error: --configuration selects among the workspace's rules; --flags replaces them"
 exit = 1
 
 ["scripted commands reject unknown names"."$ clice inspect hover gated.cpp"]
