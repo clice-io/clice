@@ -1215,7 +1215,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
             co_await serve(server, accept_connections(server, std::move(acceptor), connections));
         }(server, std::move(*acceptor), connections, ws));
         loop.run();
-        return 0;
+        return server.exit_before_shutdown ? 1 : 0;
     }
 
     LOG_ERROR("unexpected server mode");
