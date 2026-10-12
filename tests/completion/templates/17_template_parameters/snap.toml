@@ -5,6 +5,13 @@ items = [
     { label = "y", kind = "Field", detail = "int" },
 ]
 
+[answers.nested_lambda.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]
+
 [answers.pointer.completion]
 items = [
     { label = "template", kind = "Keyword" },
