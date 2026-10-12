@@ -480,9 +480,9 @@ npm run coverage -w tests-next     after a full run
 npm test -w tools                  the tools' own tests, the framework's among them
 ```
 
-Commands run under the pixi environment, whose `clang-format` `clice format`
-uses. Repository formatting skips case inputs (`.fdignore`): they are test
-data, formatted the way the case needs them.
+Commands run under the pixi environment. Repository formatting skips case
+inputs (`.fdignore`): they are test data, formatted the way the case needs
+them.
 
 ## Framework
 

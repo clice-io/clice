@@ -42,14 +42,29 @@ struct FileStyle {
 
 auto file_style(llvm::StringRef file) -> std::expected<FileStyle, std::string> {
     auto search = llvm::makeIntrusiveRefCnt<StyleSearch>();
+    // The parse's own messages say why a configuration file is refused,
+    // where getStyle's error says "Invalid argument"; its handler gets no
+    // context, so they collect per thread.
+    thread_local std::string problems;
+    problems.clear();
     // Set code to empty to avoid meaningless file type guess.
     auto style = clang::format::getStyle(clang::format::DefaultFormatStyle,
                                          file,
                                          clang::format::DefaultFallbackStyle,
                                          "",
-                                         search.get());
+                                         search.get(),
+                                         /*AllowUnknownOptions=*/false,
+                                         [](const llvm::SMDiagnostic& diagnostic, void*) {
+                                             problems += std::format("{}{}:{}:{}: {}",
+                                                                     problems.empty() ? "" : "\n",
+                                                                     diagnostic.getFilename(),
+                                                                     diagnostic.getLineNo(),
+                                                                     diagnostic.getColumnNo() + 1,
+                                                                     diagnostic.getMessage());
+                                         });
     if(!style) {
-        return std::unexpected(llvm::toString(style.takeError()));
+        auto error = llvm::toString(style.takeError());
+        return std::unexpected(problems.empty() ? std::move(error) : problems);
     }
     return FileStyle{.style = std::move(*style), .configured = search->found};
 }
@@ -101,29 +116,15 @@ auto to_edits(llvm::StringRef content, const tooling::Replacements& replacements
 
 auto document_format(llvm::StringRef file,
                      llvm::StringRef content,
-                     std::optional<LocalSourceRange> range,
-                     PositionEncoding encoding) -> std::vector<protocol::TextEdit> {
-    std::vector<protocol::TextEdit> edits;
-
+                     std::optional<LocalSourceRange> range)
+    -> std::expected<std::vector<TextReplacement>, std::string> {
     auto selection =
         range ? tooling::Range(range->begin, range->length()) : tooling::Range(0, content.size());
     auto replacements = format_content(file, content, selection);
     if(!replacements) {
-        LOG_WARN("Failed to format {}: {}", file, replacements.error());
-        return edits;
+        return std::unexpected(std::move(replacements.error()));
     }
-
-    auto lines = lsp::line_starts(content);
-    PositionMap map(content, lines);
-
-    for(auto& edit: to_edits(content, *replacements)) {
-        auto range = map.range(edit.range, encoding);
-        if(!range)
-            continue;
-        edits.push_back({.range = *range, .new_text = std::move(edit.text)});
-    }
-
-    return edits;
+    return to_edits(content, *replacements);
 }
 
 auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)

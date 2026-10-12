@@ -8,7 +8,6 @@ formatting = '''
 '''
 
 [command."$ clice format"]
-wrong = "clice format takes the style beside the link's target, third_party/, while the editor takes the one beside the name the build uses, src/"
 stdout = "Formatted 1 file in #s."
 exit = 0
 
@@ -16,12 +15,14 @@ exit = 0
 "src/lib.cpp" = '''
 -int    add(   int   a  ,  int   b  ) {
 -return   a+b ;
--}
-+int add(int a, int b) { return a + b; }
++int add(int a, int b) {
++        return a + b;
+ }
 '''
 "third_party/lib.cpp" = '''
 -int    add(   int   a  ,  int   b  ) {
 -return   a+b ;
--}
-+int add(int a, int b) { return a + b; }
++int add(int a, int b) {
++        return a + b;
+ }
 '''

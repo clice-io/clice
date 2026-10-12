@@ -13,6 +13,7 @@ import :support.anomaly;
 import :support.logging;
 import :support.timer;
 import :worker.protocol;
+import :worker.serialize;
 
 namespace clice {
 
@@ -447,10 +448,23 @@ Dispatcher::RawResult Dispatcher::format(const Ticket& ticket,
         [&] { return pool.send_stateless(wp, worker::Priority::High, token); },
         [&](const kota::ipc::Error& error) { ast.record_crash(ticket.session, evidence, error); });
     result = finish(ticket, evidence, "Format", std::move(result));
-    if(result.has_value()) {
-        LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
+    if(!result.has_value()) {
+        co_return kota::outcome_error(std::move(result.error()));
     }
-    co_return std::move(result);
+    LOG_PERF("request", "kind=Format file={} total_ms={:.2f}", path, timer.ms_f());
+    if(!result->error.empty()) {
+        co_return kota::outcome_error(
+            kota::ipc::Error{static_cast<protocol::integer>(protocol::LSPErrorCodes::RequestFailed),
+                             std::move(result->error)});
+    }
+    auto positions = session.positions();
+    std::vector<protocol::TextEdit> edits;
+    for(auto& edit: result->edits) {
+        if(auto range = positions.range(edit.range, PositionEncoding::UTF16)) {
+            edits.push_back({.range = *range, .new_text = std::move(edit.text)});
+        }
+    }
+    co_return to_raw(edits);
 }
 
 }  // namespace clice

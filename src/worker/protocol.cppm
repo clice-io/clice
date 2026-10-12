@@ -324,6 +324,13 @@ struct FormatParams {
     LocalSourceRange range;  ///< Invalid range = full document.
 };
 
+/// The edits of the request's text, or why the file's style cannot be
+/// read.
+struct FormatResult {
+    std::vector<TextReplacement> edits;
+    std::string error;
+};
+
 /// Result of an artifact build (PCH or PCM).
 struct ArtifactBuildResult {
     bool success = true;
@@ -571,7 +578,7 @@ struct RequestTraits<clice::worker::SignatureHelpParams> {
 
 template <>
 struct RequestTraits<clice::worker::FormatParams> {
-    using Result = kota::codec::RawValue;
+    using Result = clice::worker::FormatResult;
     constexpr inline static std::string_view method = "clice/worker/format";
 };
 

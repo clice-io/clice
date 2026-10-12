@@ -1,7 +1,6 @@
 [test."$ clice format"]
-wrong = "the run only says there is nothing to format, where `clice index` and `clice lint` say that no compile_commands.json was found"
-stdout = "No files to format under ${WS}."
-exit = 0
+stderr = ["stderr: Nothing to format: no compile_commands.json found under ${WS}"]
+exit = 2
 
 [test."$ clice format main.cpp"]
 stdout = "Formatted 1 file in #s."

@@ -1,8 +1,9 @@
-["a named clang-format that does not exist"."$ clice format --clang-format bin/clang-format"]
-stderr = ["stderr: clang-format not found (bin/clang-format): install it or pass --clang-format"]
-exit = 2
+["no clang-format on PATH"."$ clice format main.cpp"]
+stdout = "Formatted 1 file in #s."
+exit = 0
 
-["no clang-format on PATH"."$ clice format"]
-wrong = "clice format runs a clang-format found on PATH, which clice's release packages do not ship; it should format with the formatter built into clice, as the editor does"
-stderr = ["stderr: clang-format not found (clang-format): install it or pass --clang-format"]
-exit = 2
+["no clang-format on PATH"."$ clice format main.cpp".files]
+"main.cpp" = '''
+-int  main() { return 0; }
++int main() { return 0; }
+'''

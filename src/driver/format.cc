@@ -30,12 +30,7 @@ struct FormatOptions {
              required = false)
     check;
 
-    DecoKV(help = "The clang-format executable to run (default: clang-format from PATH)",
-           required = false)
-    <std::string> clang_format;
-
-    DecoKV(help = "Number of clang-format processes to run at once (default: the CPU count)",
-           required = false)
+    DecoKV(help = "Number of files to format at once (default: the CPU count)", required = false)
     <std::uint32_t> jobs;
 
     LogLevelOption log;
@@ -89,7 +84,6 @@ CommandHandler build(const char*) {
         BatchFormatOptions options{
             .root = workspace_root(opts.workspace.value_or("")),
             .configuration = opts.configuration.value_or(""),
-            .clang_format = opts.clang_format.value_or("clang-format"),
             .jobs = opts.jobs.value_or(0),
             .check = static_cast<bool>(opts.check),
         };

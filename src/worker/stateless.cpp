@@ -473,7 +473,7 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
     return to_raw(help);
 }
 
-static kota::codec::RawValue handle_format(const worker::FormatParams& params) {
+static worker::FormatResult handle_format(const worker::FormatParams& params) {
     ScopedTimer timer;
 
     std::optional<LocalSourceRange> range;
@@ -482,9 +482,12 @@ static kota::codec::RawValue handle_format(const worker::FormatParams& params) {
     }
 
     auto edits = feature::document_format(params.file, params.text, range);
-    LOG_DEBUG("Format done: {} edits, {}ms", edits.size(), timer.ms());
-
-    return to_raw(edits);
+    if(!edits) {
+        LOG_DEBUG("Format failed: {}", edits.error());
+        return {.error = std::move(edits.error())};
+    }
+    LOG_DEBUG("Format done: {} edits, {}ms", edits->size(), timer.ms());
+    return {.edits = std::move(*edits)};
 }
 
 /// How serve() runs a request's work.
@@ -591,7 +594,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
     serve<worker::SignatureHelpParams>(peer, cancelled_query, &handle_signature_help);
     serve<worker::FormatParams>(
         peer,
-        cancelled_query,
+        worker::FormatResult{},
         [](const worker::FormatParams& params, const std::shared_ptr<std::atomic_bool>&) {
             return handle_format(params);
         });

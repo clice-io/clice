@@ -516,11 +516,13 @@ auto hover(CompilationUnitRef unit,
 auto signature_help(CompilationParams& params, const SignatureHelpOptions& options = {})
     -> protocol::SignatureHelp;
 
+/// The edits formatting `content`, or its `range`, with the clang-format
+/// style of `file`: the nearest `.clang-format` above it, else LLVM's. Why
+/// that style cannot be read otherwise.
 auto document_format(llvm::StringRef file,
                      llvm::StringRef content,
-                     std::optional<LocalSourceRange> range,
-                     PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<protocol::TextEdit>;
+                     std::optional<LocalSourceRange> range = std::nullopt)
+    -> std::expected<std::vector<TextReplacement>, std::string>;
 
 /// One kind per refactoring, below the standard `refactor.rewrite` and
 /// `refactor.inline`, so that a client can ask for one alone: an editor

@@ -1,16 +1,13 @@
 import * as path from "node:path";
 import { test } from "@clice/tools/testing";
 
-// clice format runs a clang-format executable; the editor formats with the
-// formatter built into clice.
-
-test("a named clang-format that does not exist", async (t) => {
-    await t.cli("format --clang-format bin/clang-format");
-});
+// clice format formats with the formatter built into clice, as the editor
+// does: no clang-format executable takes part.
 
 test("no clang-format on PATH", async (t) => {
     // A PATH holding no clang-format, as on a machine with only clice
-    // installed; Windows spells the variable Path.
+    // installed; Windows spells the variable Path. The file is named: the
+    // build's files would ask the compiler, which this PATH hides too.
     const bin = path.join(t.root, "bin");
-    await t.cli("format", { env: { PATH: bin, Path: bin } });
+    await t.cli("format main.cpp", { env: { PATH: bin, Path: bin } });
 });
