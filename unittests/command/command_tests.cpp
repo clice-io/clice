@@ -13,7 +13,6 @@ import :project.build;
 import :support.shell;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.cdb_layouts;
-import :unittests.utils.platform;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.path;

@@ -87,9 +87,8 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
         // loses nothing. One with neither (dropped or never built, read by
         // nothing) stays uncovered — count that as a failure so a batch run
         // reports the debt instead of exiting clean.
-        auto readers = project.dep_graph.find_readers(path_id);
         if(!project.project_index.manifests.contains(path_id) &&
-           llvm::all_of(readers, [&](Fid reader) { return reader == path_id; })) {
+           project.dep_graph.find_readers(path_id).empty()) {
             finished[path_id] = {.result = Result::Failed,
                                  .error = "no compile command found; the file stays uncovered"};
             co_return RoundOutcome::Failed;

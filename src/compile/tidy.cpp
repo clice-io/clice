@@ -221,8 +221,7 @@ private:
 /// clang-tidy's own provider, but for a configuration file that does not
 /// parse: clang-tidy prints why and reads on as if the file were absent;
 /// this reads on the same, keeping why.
-class ConfigFiles : public clang::tidy::FileOptionsProvider {
-public:
+struct ConfigFiles : clang::tidy::FileOptionsProvider {
     explicit ConfigFiles(llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> disk) :
         FileOptionsProvider(
             clang::tidy::ClangTidyGlobalOptions(),
@@ -241,7 +240,6 @@ public:
     /// Each configuration file that did not parse, as the parser reports it.
     std::string error;
 
-private:
     llvm::ErrorOr<clang::tidy::ClangTidyOptions> parse(llvm::MemoryBufferRef config) {
         std::string messages;
         llvm::raw_string_ostream os(messages);

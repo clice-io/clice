@@ -568,7 +568,7 @@ ZEST_CASE(EnabledOff) {
 ZEST_CASE(FreestandingBuiltins) {
     // The tester compiles with -ffreestanding, which strips library-builtin
     // IDs: std::forward suppression must hold through the name fallback.
-    // The snap corpus compiles hosted and only reaches the builtin-ID path.
+    // The cases compile hosted and only reach the builtin-ID path.
     run(R"c(
             namespace std { template <typename T> T&& forward(T&); }
             void use() {

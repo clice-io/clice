@@ -832,14 +832,6 @@ std::vector<IndexQuery::PlacedHighlight>
     return result;
 }
 
-std::vector<Site> IndexQuery::target_sites(SymbolHash hash, Fid anchor, RelationKind kind) const {
-    std::vector<Site> result;
-    for(auto& located: located_targets(hash, anchor, kind)) {
-        result.push_back(located.site);
-    }
-    return result;
-}
-
 std::vector<Site> IndexQuery::type_definition(const Cursor& cursor, SymbolHash symbol) const {
     auto anchor = cursor.site.file;
     llvm::SmallVector<Target> found;
@@ -908,7 +900,11 @@ std::vector<Site> IndexQuery::implementation(SymbolHash hash, Fid anchor) const 
     }
     if(info->kind == SymbolKind::Class || info->kind == SymbolKind::Struct ||
        info->kind == SymbolKind::Union) {
-        return target_sites(hash, anchor, RelationKind::Derived);
+        std::vector<Site> result;
+        for(auto& located: located_targets(hash, anchor, RelationKind::Derived)) {
+            result.push_back(std::move(located.site));
+        }
+        return result;
     }
     // An override that only declares — a pure virtual of an abstract
     // intermediate class — is listed, and its own overriders after it.

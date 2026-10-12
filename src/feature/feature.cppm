@@ -647,7 +647,7 @@ auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
 /// narrow resolvers, never index storage — the caller extracts entries from
 /// shard/ProjectIndex and hands them over. Each projection's output is an
 /// honest subset of its AST twin's: missing pieces (Sema modifiers, outline
-/// detail, statement folds, ...) are pinned by the read-only test corpus.
+/// detail, statement folds, ...) are pinned by the index/read_only cases.
 
 /// One Decl/Def relation of the document: the name-token anchor, the
 /// declaration's full extent (invalid when the index recorded none — a

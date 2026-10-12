@@ -356,9 +356,6 @@ public:
     /// included.
     std::vector<PlacedHighlight> document_highlights(const Cursor& cursor) const;
 
-    /// One canonical site per distinct relation target.
-    std::vector<Site> target_sites(SymbolHash hash, Fid anchor, RelationKind kind) const;
-
     /// Go-to-type-definition of a cursor's symbol: the declarations its
     /// type names — at a name of a member of a template's specialization,
     /// the type the specialization gives it (TypeDefinition relations
@@ -593,7 +590,7 @@ private:
 /// The comment block immediately preceding the line containing `offset`:
 /// contiguous //- or /*-style lines directly above it, comment markers
 /// stripped. Empty when a blank line or code intervenes. An approximation
-/// of clang's comment attachment, pinned as such by the read-only corpus.
+/// of clang's comment attachment, pinned as such by the index/read_only cases.
 auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string;
 
 }  // namespace clice::index

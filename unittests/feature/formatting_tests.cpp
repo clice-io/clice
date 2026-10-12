@@ -5,7 +5,6 @@ module;
 module clice;
 
 import :feature.feature;
-import :syntax.position;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 

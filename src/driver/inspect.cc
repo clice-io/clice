@@ -418,14 +418,6 @@ const FeatureSpec* find_feature(llvm::StringRef name) {
     return it != features.end() ? &*it : nullptr;
 }
 
-std::vector<std::string> error_messages(CompilationUnit& unit, bool errors_only = false) {
-    auto messages = unit.diagnostics() | std::views::filter([&](const Diagnostic& diagnostic) {
-                        return !errors_only || diagnostic.id.level >= DiagnosticLevel::Error;
-                    }) |
-                    std::views::transform(&Diagnostic::message);
-    return std::ranges::to<std::vector>(messages);
-}
-
 /// The inspected file, with the markers --markers places in it.
 struct SourceFile {
     std::string path;
@@ -451,11 +443,6 @@ void apply_command(CompilationParams& params, const FileCommand& command) {
     if(command.synthesized) {
         params.add_synthesized(command.synthesized->files);
     }
-}
-
-bool is_header_type(clang::driver::types::ID type) {
-    namespace types = clang::driver::types;
-    return type == types::TY_CHeader || type == types::TY_CXXHeader;
 }
 
 /// The workspace the inspected file's directory belongs to: itself or the
@@ -490,10 +477,10 @@ std::optional<FileCommand> file_command(FileEntry& entry,
                                         llvm::ArrayRef<std::string> flags,
                                         llvm::StringRef flags_directory,
                                         FileTable& files,
-                                        CommandResolver* commands) {
+                                        CommandResolver& commands) {
     namespace types = clang::driver::types;
     auto type = suffix_type(file);
-    bool is_header = is_header_type(type);
+    bool is_header = type == types::TY_CHeader || type == types::TY_CXXHeader;
 
     FileCommand command;
     if(!flags.empty()) {
@@ -532,9 +519,9 @@ std::optional<FileCommand> file_command(FileEntry& entry,
     }
 
     command.synthesized = commands
-                              ->resolve_command(files.intern(Spelling::absolute(file)),
-                                                command.directory,
-                                                command.arguments)
+                              .resolve_command(files.intern(Spelling::absolute(file)),
+                                               command.directory,
+                                               command.arguments)
                               .synthesized;
     return command;
 }
@@ -574,7 +561,8 @@ void run_feature(FileEntry& entry,
     auto unit = clice::compile(params);
     if(!unit.completed()) {
         entry.error = "compile_error";
-        entry.diagnostics = error_messages(unit);
+        entry.diagnostics = std::ranges::to<std::vector>(
+            unit.diagnostics() | std::views::transform(&Diagnostic::message));
         return;
     }
 
@@ -582,7 +570,7 @@ void run_feature(FileEntry& entry,
     // working on them), so error diagnostics are reported separately: the
     // test harness rejects code that silently broke instead of pinning
     // garbage.
-    if(auto errors = error_messages(unit, /*errors_only=*/true); !errors.empty()) {
+    if(auto errors = collect_errors(unit); !errors.empty()) {
         entry.diagnostics = std::move(errors);
     }
 
@@ -798,12 +786,7 @@ int run_inspect(const InspectOptions& opts) {
     InspectOutput output;
     output.feature = feature.str();
     auto& entry = output.files[name];
-    auto command = file_command(entry,
-                                file.path,
-                                flags,
-                                directory,
-                                file_table,
-                                flags.empty() ? &commands : nullptr);
+    auto command = file_command(entry, file.path, flags, directory, file_table, commands);
     if(command) {
         command->workspace = project.config.workspace_root.str();
         run_feature(entry, *spec, file, *command, config, project.config.diagnostics.clang_tidy);

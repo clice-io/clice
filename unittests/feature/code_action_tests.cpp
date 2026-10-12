@@ -1132,7 +1132,10 @@ using size_t = decltype(sizeof 0);
         add_files("main.cpp", code);
         ZASSERT((pch ? compile_with_pch("-std=c++23") : compile("-std=c++23")));
         apply("size", "Replace 'auto' with 'std::size_t'");
-        EXPECT_COMPILES("#include \"cstddef.h\"\n\nstd::size_t size = sizeof(int);\n");
+        EXPECT_COMPILES(R"(#include "cstddef.h"
+
+std::size_t size = sizeof(int);
+)");
     }
 }
 

@@ -576,10 +576,7 @@ Features::RawResult Features::hover(Ticket ticket,
     if(auto cursor = cursor_at(path_id, position)) {
         auto info = query.symbol_info(cursor->symbols.front(), cursor->site.file);
         if(info && info->kind == SymbolKind::Module) {
-            co_return to_raw(feature::to_protocol_hover(module_hover_card(*cursor, *info),
-                                                        project.config.hover,
-                                                        session->positions(),
-                                                        PositionEncoding::UTF16));
+            co_return index_card(module_hover_card(*cursor, *info));
         }
     }
 

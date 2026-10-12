@@ -362,9 +362,8 @@ private:
                 break;
             }
             case DirectiveContext::AfterDefine: {
-                /// The macro name of a #define. Also covers preamble
-                /// defines under a PCH, where no MacroDefine node exists
-                /// (the preamble's directives live in the PCH compile).
+                /// The macro name of a #define, the preamble's under a PCH
+                /// included, where no MacroDefine node exists.
                 if(is_identifier_like) {
                     lexical = {SymbolKind::Macro,
                                SymbolModifiers::to_mask(SymbolModifiers::Definition)};
@@ -477,11 +476,8 @@ private:
             // resolution — and as Conflict when instantiations disagree.
             const SemanticNode& node = entry.node;
             switch(node.kind()) {
+                // The lexical pass colors a define's name.
                 case SemanticNode::Kind::MacroDefine: {
-                    anchor(
-                        node.get<MacroRef>()->loc,
-                        {SymbolKind::Macro, SymbolModifiers::to_mask(SymbolModifiers::Definition)},
-                        true);
                     break;
                 }
 

@@ -154,9 +154,9 @@ auto base_access(const clang::CXXRecordDecl* derived, const clang::CXXRecordDecl
         const clang::CXXRecordDecl* record = nullptr;
         if(!type->isDependentType()) {
             record = type->getAsCXXRecordDecl();
-        } else if(auto* TST = type->getAs<clang::TemplateSpecializationType>()) {
+        } else if(auto* specialization = type->getAs<clang::TemplateSpecializationType>()) {
             if(auto* primary = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
-                   TST->getTemplateName().getAsTemplateDecl())) {
+                   specialization->getTemplateName().getAsTemplateDecl())) {
                 record = primary->getTemplatedDecl();
             }
         }
