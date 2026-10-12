@@ -59,6 +59,11 @@ std::optional<index::IndexSource> ServerLiveSources::buffer_index(Fid file) cons
     if(auto* shard = session_shard(file, *session)) {
         return buffer_source(index::IndexSource::Kind::SessionShard, file, *session, *shard);
     }
+    // The shard merges every context the file compiles in, or holds its
+    // first command's: one the user chose waits for its own compile.
+    if(session->serving == ServingMode::Escalated && editor.selection(file)) {
+        return std::nullopt;
+    }
     auto it = project.project_index.shards.find(file);
     if(it == project.project_index.shards.end() ||
        !it->second.matches_content(session->text.size(), session->hash)) {
