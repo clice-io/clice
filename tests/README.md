@@ -393,7 +393,8 @@ written by hand that a case can show.
   command's exit, a batch pause point reached. No sleeps, no polling,
   no wall-clock assertions; where time is the claim, `t.elapse(ms, why)`.
 - **Test hooks** make the events observable: the server's `clice/internal/sync`,
-  build counts, holds and worker gates (`s.park`); the batch commands' pause point
+  build counts, holds and worker gates (`s.park`), watches of its background
+  loops (`clice/internal/watch`, `s.watch`); the batch commands' pause point
   (`CLICE_TEST_PAUSE`), which parks a run after a given unit so a test can
   signal it at a known place. A hook the tests need is added to the product.
 - **At teardown**, every test: every server exits cleanly, and the logs hold
