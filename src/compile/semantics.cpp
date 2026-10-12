@@ -1002,6 +1002,49 @@ void refer_hidden(References& out, const clang::Stmt* S, types::TemplateResolver
     }
 }
 
+/// The conversion function a user-defined conversion of `expr` calls.
+const clang::CXXConversionDecl* conversion_of(const clang::Expr* expr) {
+    expr = expr->IgnoreParens();
+    if(auto* EWC = llvm::dyn_cast<clang::ExprWithCleanups>(expr)) {
+        expr = EWC->getSubExpr()->IgnoreParens();
+    }
+    auto* cast = llvm::dyn_cast<clang::CastExpr>(expr);
+    return cast ? llvm::dyn_cast_if_present<clang::CXXConversionDecl>(cast->getConversionFunction())
+                : nullptr;
+}
+
+/// A reference at `location`, the token standing for the conversion, to the
+/// conversion function `expr` calls when it converts (an `if consteval` has
+/// no condition).
+void refer_conversion(References& out, const clang::Expr* expr, clang::SourceLocation location) {
+    if(expr) {
+        refer(out, conversion_of(expr), RelationKind::Reference, location);
+    }
+}
+
+/// References at `location` to the functions a generated statement tree
+/// calls by the names the language fixes (`begin`, `await_ready`,
+/// `return_value`).
+void refer_protocol_calls(References& out,
+                          const clang::Stmt* S,
+                          llvm::ArrayRef<llvm::StringRef> names,
+                          clang::SourceLocation location) {
+    if(!S) {
+        return;
+    }
+    if(auto* call = llvm::dyn_cast<clang::CallExpr>(S)) {
+        auto* callee = call->getDirectCallee();
+        if(auto* name = callee ? callee->getIdentifier() : nullptr;
+           name && llvm::is_contained(names, name->getName())) {
+            refer(out, callee, RelationKind::Reference, location);
+            return;
+        }
+    }
+    for(auto* child: S->children()) {
+        refer_protocol_calls(out, child, names, location);
+    }
+}
+
 /// The per-decl-kind extraction below is ported verbatim from the former
 /// SemanticVisitor: the same decls, the same roles, the same name locations.
 void decl_references(const clang::Decl* D, References& out, types::TemplateResolver* resolver) {
@@ -1191,6 +1234,19 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
         RelationKind kind = FD->isThisDeclarationADefinition() ? RelationKind::Definition
                                                                : RelationKind::Declaration;
         refer_name(out, FD, kind, FD->getNameInfo());
+
+        /// void draw() override;
+        ///             ^~~~ leads to the methods it overrides, as `final` does;
+        /// an out-of-line definition inherits the attribute, not the token
+        if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(FD)) {
+            for(auto* attr: method->attrs()) {
+                if(llvm::isa<clang::OverrideAttr, clang::FinalAttr>(attr) && !attr->isInherited()) {
+                    for(auto* overridden: method->overridden_methods()) {
+                        refer(out, overridden, RelationKind::Implied, attr->getLocation());
+                    }
+                }
+            }
+        }
         return;
     }
 
@@ -1225,6 +1281,25 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
             RelationKind kind = VD->isThisDeclarationADefinition() ? RelationKind::Definition
                                                                    : RelationKind::Declaration;
             refer(out, VD, kind, VD->getLocation());
+        }
+
+        /// Widget b = a; / [x = std::move(w)]
+        ///          ^~~~ reference to the declared constructor the copy
+        /// initialization runs, when nothing else spells it
+        if(auto* init = VD->getInit(); init && VD->getInitStyle() == clang::VarDecl::CInit) {
+            auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(init->IgnoreImplicit());
+            if(construct && construct->getParenOrBraceRange().isInvalid() &&
+               construct->getBeginLoc().isFileID()) {
+                auto& context = VD->getASTContext();
+                auto equal = clang::Lexer::findPreviousToken(construct->getBeginLoc(),
+                                                             context.getSourceManager(),
+                                                             context.getLangOpts(),
+                                                             false);
+                if(auto* constructor = decls::constructor_of(construct);
+                   equal && equal->is(clang::tok::equal) && !constructor->isImplicit()) {
+                    refer(out, constructor, RelationKind::Reference, equal->getLocation());
+                }
+            }
         }
 
         /// The variable's destructor runs at the end of its lifetime;
@@ -1399,29 +1474,40 @@ void stmt_references(const clang::Stmt* S,
         return;
     }
 
-    /// new Foo / delete p with class-provided allocation functions
-    /// ^~~~ reference to operator new / operator delete
+    /// new Foo() / delete p
+    /// ^~~~ reference to the operator new / operator delete it selects and
+    /// the destructor delete runs; `new` also leads to the constructor,
+    /// which the parentheses reference.
     if(auto* NE = llvm::dyn_cast<clang::CXXNewExpr>(S)) {
+        auto keyword = [&](const clang::NamedDecl* decl) {
+            return keyword_after_scope(decl->getASTContext(), NE->getBeginLoc(), NE->isGlobalNew());
+        };
         if(auto* op = NE->getOperatorNew()) {
-            refer(out,
-                  op,
-                  RelationKind::Reference,
-                  keyword_after_scope(op->getASTContext(), NE->getBeginLoc(), NE->isGlobalNew()));
+            refer(out, op, RelationKind::Reference, keyword(op));
+        }
+        /// An implicit constructor has no declaration to lead to.
+        if(auto* construct = NE->getConstructExpr()) {
+            if(auto* constructor = decls::constructor_of(construct); !constructor->isImplicit()) {
+                refer(out, constructor, RelationKind::Implied, keyword(constructor));
+            }
         }
         /// The matching deallocation function runs if the initializer throws.
         refer(out, NE->getOperatorDelete(), RelationKind::Reference, {});
         return;
     }
     if(auto* DE = llvm::dyn_cast<clang::CXXDeleteExpr>(S)) {
+        auto keyword = [&](const clang::NamedDecl* decl) {
+            return keyword_after_scope(decl->getASTContext(),
+                                       DE->getBeginLoc(),
+                                       DE->isGlobalDelete());
+        };
         if(auto* op = DE->getOperatorDelete()) {
-            refer(
-                out,
-                op,
-                RelationKind::Reference,
-                keyword_after_scope(op->getASTContext(), DE->getBeginLoc(), DE->isGlobalDelete()));
+            refer(out, op, RelationKind::Reference, keyword(op));
         }
         if(auto type = DE->getDestroyedType(); !type.isNull()) {
-            refer(out, types::destructor_of(type), RelationKind::Reference, {});
+            if(auto* destructor = types::destructor_of(type)) {
+                refer(out, destructor, RelationKind::Reference, keyword(destructor));
+            }
         }
         return;
     }
@@ -1593,10 +1679,56 @@ void stmt_references(const clang::Stmt* S,
         return;
     }
 
+    /// static_cast<double>(m) / (double)m
+    /// ^~~~ reference to the conversion function the cast calls
+    if(auto* NCE = llvm::dyn_cast<clang::CXXNamedCastExpr>(S)) {
+        refer_conversion(out, NCE, NCE->getOperatorLoc());
+        return;
+    }
+    if(auto* CSCE = llvm::dyn_cast<clang::CStyleCastExpr>(S)) {
+        refer_conversion(out, CSCE, CSCE->getLParenLoc());
+        return;
+    }
+
+    /// if(guard) / !guard / guard && other / guard ? a : b
+    ///   ^~~~ reference to the conversion function testing the operand
+    if(auto* IS = llvm::dyn_cast<clang::IfStmt>(S)) {
+        refer_conversion(out, IS->getCond(), IS->getLParenLoc());
+        return;
+    }
+    if(auto* WS = llvm::dyn_cast<clang::WhileStmt>(S)) {
+        refer_conversion(out, WS->getCond(), WS->getLParenLoc());
+        return;
+    }
+    if(auto* SS = llvm::dyn_cast<clang::SwitchStmt>(S)) {
+        refer_conversion(out, SS->getCond(), SS->getLParenLoc());
+        return;
+    }
+    if(auto* UO = llvm::dyn_cast<clang::UnaryOperator>(S)) {
+        if(UO->getOpcode() == clang::UO_LNot) {
+            refer_conversion(out, UO->getSubExpr(), UO->getOperatorLoc());
+        }
+        return;
+    }
+    if(auto* BO = llvm::dyn_cast<clang::BinaryOperator>(S)) {
+        if(BO->isLogicalOp()) {
+            refer_conversion(out, BO->getLHS(), BO->getOperatorLoc());
+            refer_conversion(out, BO->getRHS(), BO->getOperatorLoc());
+        }
+        return;
+    }
+    if(auto* CO = llvm::dyn_cast<clang::ConditionalOperator>(S)) {
+        refer_conversion(out, CO->getCond(), CO->getQuestionLoc());
+        return;
+    }
+
     /// for(auto x: range) — the traversal records only the written parts;
     /// the generated begin/end variables, the `!=` and `++` calls and the
-    /// loop variable's `*__begin` initializer have no nodes.
+    /// loop variable's `*__begin` initializer have no nodes. The `:` leads
+    /// to the `begin` and `end` the loop calls.
     if(auto* FRS = llvm::dyn_cast<clang::CXXForRangeStmt>(S)) {
+        refer_protocol_calls(out, FRS->getBeginStmt(), {"begin"}, FRS->getColonLoc());
+        refer_protocol_calls(out, FRS->getEndStmt(), {"end"}, FRS->getColonLoc());
         for(const clang::Stmt* generated:
             {static_cast<const clang::Stmt*>(FRS->getBeginStmt()),
              static_cast<const clang::Stmt*>(FRS->getEndStmt()),
@@ -1629,7 +1761,8 @@ void stmt_references(const clang::Stmt* S,
     }
     if(auto* CSE = llvm::dyn_cast<clang::CoroutineSuspendExpr>(S)) {
         /// co_await value
-        /// ^~~~ reference to the `operator co_await` it selects
+        /// ^~~~ reference to the `operator co_await` it selects and the
+        /// awaiter's methods it calls
         if(llvm::isa<clang::CoawaitExpr>(CSE)) {
             if(auto* call =
                    llvm::dyn_cast<clang::CallExpr>(CSE->getCommonExpr()->IgnoreImplicit())) {
@@ -1637,6 +1770,12 @@ void stmt_references(const clang::Stmt* S,
                    callee && callee->getOverloadedOperator() == clang::OO_Coawait) {
                     refer(out, callee, RelationKind::Reference, CSE->getKeywordLoc());
                 }
+            }
+            for(auto* call: {CSE->getReadyExpr(), CSE->getSuspendExpr(), CSE->getResumeExpr()}) {
+                refer_protocol_calls(out,
+                                     call,
+                                     {"await_ready", "await_suspend", "await_resume"},
+                                     CSE->getKeywordLoc());
             }
         }
         for(auto* child: CSE->children()) {
@@ -1646,7 +1785,13 @@ void stmt_references(const clang::Stmt* S,
         }
         return;
     }
+    /// co_return value;
+    /// ^~~~ reference to the promise's `return_value` or `return_void`
     if(auto* CRS = llvm::dyn_cast<clang::CoreturnStmt>(S)) {
+        refer_protocol_calls(out,
+                             CRS->getPromiseCall(),
+                             {"return_value", "return_void"},
+                             CRS->getKeywordLoc());
         refer_hidden(out, CRS->getPromiseCall(), resolver);
         return;
     }

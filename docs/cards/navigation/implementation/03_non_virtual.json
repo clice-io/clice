@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "implementation",
   "title": "Non-virtual function",
-  "summary": "Non-virtual declarations do not navigate to out-of-line definitions yet",
-  "prose": "Go-to-implementation on a non-virtual function declaration does not reach\nits out-of-line definition and returns nothing.",
-  "status": "unsupported",
+  "summary": "A function nothing overrides is implemented by its definition",
+  "prose": "Go-to-implementation on the declaration of a function that is not\noverridden, virtual or not, reaches its out-of-line definition.",
+  "status": "supported",
   "issues": [
     "clangd#854"
   ],
@@ -31,8 +31,22 @@
           "label": "method",
           "marker": "method",
           "value": {
-            "wrong": "go to implementation should reach the out-of-line definition (clangd#854)",
-            "implementation": []
+            "implementation": [
+              {
+                "$place": "void Widget::⟦draw⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 17
+                  }
+                }
+              }
+            ]
           }
         }
       ]

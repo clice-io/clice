@@ -428,8 +428,9 @@ public:
     };
 
     /// The functions calling `root` and the ones it calls, with the call
-    /// sites; only the sides asked for are walked. A neighbour no source
-    /// places is left out.
+    /// sites; only the sides asked for are walked. A variable, a field or
+    /// an enumerator is called by the functions using it. A neighbour no
+    /// source places is left out.
     struct CallGraphOptions {
         bool callers = true;
         bool callees = true;
@@ -520,6 +521,14 @@ private:
     /// Relations of `kind` grouped by their target symbol, each with the
     /// sites spelling it, the targets resolved to their canonical sites.
     std::vector<Edge> edges(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The functions whose bodies reference `hash`, each with the
+    /// references: what calls a variable, a field or an enumerator.
+    std::vector<Edge> users(SymbolHash hash, Fid anchor) const;
+
+    /// The edges of the sites grouped by neighbour, each neighbour at its
+    /// canonical site.
+    std::vector<Edge> located_edges(llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) const;
 
     /// A relation target, anchored at the file the relation was read from: a
     /// file naming a symbol below external scope holds one of its entries.

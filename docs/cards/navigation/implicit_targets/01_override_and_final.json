@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "implicit_targets",
   "title": "`override` / `final`",
-  "summary": "`override` and `final` do not navigate to the overridden base method yet",
-  "prose": "Go-to-definition on the `override` or `final` specifier does not reach the\nbase class virtual method it overrides.",
-  "status": "unsupported",
+  "summary": "`override` and `final` navigate to the base method they override",
+  "prose": "Go-to-definition on the `override` or `final` specifier reaches the base\nclass virtual method it overrides.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -35,16 +35,44 @@
           "label": "override",
           "marker": "override",
           "value": {
-            "wrong": "should reach Base::draw, the method it overrides",
-            "definition": []
+            "definition": [
+              {
+                "$place": "virtual void ⟦draw⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 21
+                  }
+                }
+              }
+            ]
           }
         },
         {
           "label": "final",
           "marker": "final",
           "value": {
-            "wrong": "should reach Base::paint, the method it overrides",
-            "definition": []
+            "definition": [
+              {
+                "$place": "virtual void ⟦paint⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 17
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 22
+                  }
+                }
+              }
+            ]
           }
         }
       ]

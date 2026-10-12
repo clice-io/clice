@@ -7,6 +7,7 @@ module clice;
 import :analysis.module_graph;
 import :command.command;
 import :config.config;
+import :index.query;
 import :index.serialization;
 import :index.symbol_query;
 import :project.command_resolver;
@@ -1404,6 +1405,20 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
         }
         std::ranges::sort(error.dropped);
         return std::unexpected(std::move(error));
+    }
+    // A file written since it was indexed (as `clice refactor rename`
+    // leaves the files it edits) would give facts about text that is gone.
+    index::FreshnessGate gate(files, {.check_disk = true});
+    LoadError stale{.message =
+                        "some files changed since they were indexed; run `clice index` first"};
+    for(auto& [file, shard]: project.project_index.shards) {
+        if(gate.stale(file, shard.content_hash())) {
+            stale.dropped.emplace_back(files.display(file));
+        }
+    }
+    if(!stale.dropped.empty()) {
+        std::ranges::sort(stale.dropped);
+        return std::unexpected(std::move(stale));
     }
 
     auto facts = collect(project, [&](llvm::StringRef path) {

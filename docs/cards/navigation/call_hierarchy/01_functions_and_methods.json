@@ -52,7 +52,8 @@
                       "character": 19
                     }
                   }
-                }
+                },
+                "detail": "Service::start"
               }
             ],
             "incoming_calls": [
@@ -137,6 +138,7 @@
                     }
                   }
                 },
+                "detail": "Service::start",
                 "sites": [
                   {
                     "$place": "s.⟦start⟧();",

@@ -1,9 +1,7 @@
----
-issues: [clangd#31]
----
+# Template subtypes
 
-# Template arguments in hierarchy
+A class template deriving from a non-template base is one subtype of it
 
-A subtype produced by a class template specialization is listed, but its
-item name carries only the bare template name (`Derived`), without the
-template arguments that would distinguish `Derived<Foo>`
+`template <typename T> struct Derived : Base` makes every specialization of
+`Derived` derive from `Base`: the subtype is the template, `Derived`, not
+one specialization such as the `Derived<Foo>` the code uses.

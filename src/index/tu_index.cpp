@@ -165,15 +165,19 @@ bool is_specialization(const clang::NamedDecl* decl) {
     return false;
 }
 
-/// The declaration go-to-type-definition reaches from a value or a
-/// function: the one its type names — a function's, the type it returns —
-/// once pointers, references and arrays are stripped.
-const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl) {
-    auto type = decl->getType();
+/// The type of a value; of a function, the type it returns.
+clang::QualType value_type(const clang::ValueDecl* decl) {
     if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-        type = function->getReturnType();
+        return function->getReturnType();
     }
-    return types::decl_of(types::unwrap(type));
+    return decl->getType();
+}
+
+/// The declaration go-to-type-definition reaches from a value or a
+/// function: the one its value_type names once pointers, references and
+/// arrays are stripped.
+const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl) {
+    return types::decl_of(types::unwrap(value_type(decl)));
 }
 
 /// Occurrences cover disjoint ranges: a name inside another symbol's
@@ -511,6 +515,24 @@ public:
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
+    /// The TypeDefinition relations of a value (a function's: its return
+    /// value): the type it is declared with, and for a smart pointer also
+    /// the type it points to.
+    void add_type_definitions(const clang::ValueDecl* decl) {
+        auto* target = type_definition_of(decl);
+        if(!target) {
+            return;
+        }
+        add_pair_relation(decl, RelationKind::TypeDefinition, target, decl->getLocation());
+        if(!llvm::isa<clang::CXXRecordDecl>(target)) {
+            return;
+        }
+        auto pointee = unit.resolver().arrow_pointee(types::unwrap(value_type(decl)));
+        if(auto* pointed = pointee.isNull() ? nullptr : types::decl_of(types::unwrap(pointee))) {
+            add_pair_relation(decl, RelationKind::TypeDefinition, pointed, decl->getLocation());
+        }
+    }
+
     /// A member of a class template's specialization, or a variable
     /// template's specialization, can have another type than its pattern
     /// declares (`T value` is a Widget in `Box<Widget>`): at a name of one,
@@ -566,8 +588,8 @@ public:
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
-    /// Definition/Reference relation keyed by the module's entity, so
-    /// navigation flows through the ordinary index pipeline.
+    /// Definition/Declaration/Reference relation keyed by the module's
+    /// entity, so navigation flows through the ordinary index pipeline.
     void index_modules(const Semantics& semantics) {
         auto emit = [&](llvm::StringRef name,
                         clang::FileID fid,
@@ -618,7 +640,7 @@ public:
         }
 
         // The module declaration of this unit: Definition in an interface
-        // unit or a partition, Reference in an implementation unit. The
+        // unit or a partition, Declaration in an implementation unit. The
         // declaration has no AST node or PP location; the semantics' lexical
         // scan located and cross-checked its written tokens. The occurrence
         // spans the written name, partition included.
@@ -636,7 +658,7 @@ public:
             emit(module_name,
                  unit.main_file(),
                  module.name_range(),
-                 unit.defines_module() ? RelationKind::Definition : RelationKind::Reference);
+                 unit.defines_module() ? RelationKind::Definition : RelationKind::Declaration);
             break;
         }
     }
@@ -865,9 +887,7 @@ public:
             }
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
-            if(auto target = type_definition_of(VD)) {
-                add_pair_relation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
-            }
+            add_type_definitions(VD);
             return;
         }
 
@@ -942,9 +962,7 @@ public:
                 }
             }
 
-            if(auto target = type_definition_of(FD)) {
-                add_pair_relation(FD, RelationKind::TypeDefinition, target, FD->getLocation());
-            }
+            add_type_definitions(FD);
 
             if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(FD)) {
                 for(auto* base: method->overridden_methods()) {

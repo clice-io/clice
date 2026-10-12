@@ -1,6 +1,6 @@
 # Cast conversion navigation
 
-Constructing casts navigate to the selected constructor
+A cast navigates to the constructor or conversion operator it runs
 
-A `static_cast` that runs a user-defined conversion operator does not yet
-reach that operator.
+Go-to-definition on a `static_cast` reaches the constructor it selects, or
+the user-defined conversion operator it calls.

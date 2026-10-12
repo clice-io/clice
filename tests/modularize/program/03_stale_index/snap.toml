@@ -1,0 +1,110 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol core::Text::size --to length"]
+stdout = '''
+{
+  "result": {
+    "applied": true,
+    "renames": [
+      {
+        "line": null,
+        "locator": "core::Text::size",
+        "name": "size",
+        "kind": "Method",
+        "symbol": "#855fa4917a39e38e",
+        "newName": "length",
+        "edits": 3,
+        "conflicts": [],
+        "warnings": [],
+        "error": null,
+        "candidates": null
+      }
+    ],
+    "files": [
+      {
+        "file": "${WS}/app/core/text.cpp",
+        "edits": [
+          {
+            "line": 3,
+            "column": 17,
+            "name": "size",
+            "newName": "length",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/app/core/text.h",
+        "edits": [
+          {
+            "line": 6,
+            "column": 9,
+            "name": "size",
+            "newName": "length",
+            "heuristic": false
+          }
+        ]
+      },
+      {
+        "file": "${WS}/app/main.cpp",
+        "edits": [
+          {
+            "line": 4,
+            "column": 25,
+            "name": "size",
+            "newName": "length",
+            "heuristic": false
+          }
+        ]
+      }
+    ],
+    "unconfirmed": [],
+    "conflicts": [],
+    "stale": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice refactor rename --symbol core::Text::size --to length".files]
+"app/core/text.cpp" = '''
+ #include "core/text.h"
+
+-int core::Text::size() const {
++int core::Text::length() const {
+     return 1;
+ }
+'''
+"app/core/text.h" = '''
+
+ struct Text {
+-    int size() const;
++    int length() const;
+ };
+'''
+"app/main.cpp" = '''
+
+ int main() {
+-    return core::Text{}.size();
++    return core::Text{}.length();
+ }
+'''
+
+[test."$ clice modularize --scope \"app/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "error": "some files changed since they were indexed; run `clice index` first",
+  "stale": [
+    "${WS}/app/core/text.cpp",
+    "${WS}/app/core/text.h",
+    "${WS}/app/main.cpp"
+  ]
+}
+'''
+exit = 1

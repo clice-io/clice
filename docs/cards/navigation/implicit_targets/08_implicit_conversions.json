@@ -3,16 +3,16 @@
   "topic": "navigation",
   "subtopic": "implicit_targets",
   "title": "Implicit conversion operators",
-  "summary": "Conversion contexts do not navigate to the invoked conversion operator yet",
-  "prose": "Go-to-definition from a context that runs a user-defined conversion, a\ncondition or `!`, does not reach the conversion operator.",
-  "status": "unsupported",
+  "summary": "A condition or `!` navigates to the conversion operator it runs",
+  "prose": "Go-to-definition on the parenthesis of a condition, or on the `!`, `&&`,\n`||` or `?` whose operand converts, reaches the user-defined conversion\noperator that tests the operand.",
+  "status": "supported",
   "issues": [
     "clangd#1931"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Guard {\n    explicit operator bool() const;\n};\n\nvoid use(Guard g) {\n    if (g) {}\n    bool ok = !g;\n}\n",
+      "text": "struct Guard {\n    explicit operator bool() const;\n};\n\nvoid use(Guard g) {\n    if (g) {}\n    bool ok = !g;\n    bool both = g && ok;\n    int pick = g ? 1 : 0;\n}\n",
       "markers": [
         {
           "name": "condition",
@@ -24,6 +24,18 @@
           "name": "negation",
           "begin": 103,
           "end": 103,
+          "range": false
+        },
+        {
+          "name": "conjunction",
+          "begin": 125,
+          "end": 125,
+          "range": false
+        },
+        {
+          "name": "conditional",
+          "begin": 149,
+          "end": 149,
           "range": false
         }
       ]
@@ -37,16 +49,88 @@
           "label": "condition",
           "marker": "condition",
           "value": {
-            "wrong": "should reach Guard::operator bool, which the condition calls (clangd#1931)",
-            "definition": []
+            "definition": [
+              {
+                "$place": "explicit ⟦operator bool⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 26
+                  }
+                }
+              }
+            ]
           }
         },
         {
           "label": "negation",
           "marker": "negation",
           "value": {
-            "wrong": "should reach Guard::operator bool, which ! calls (clangd#1931)",
-            "definition": []
+            "definition": [
+              {
+                "$place": "explicit ⟦operator bool⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 26
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "conjunction",
+          "marker": "conjunction",
+          "value": {
+            "definition": [
+              {
+                "$place": "explicit ⟦operator bool⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 26
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "conditional",
+          "marker": "conditional",
+          "value": {
+            "definition": [
+              {
+                "$place": "explicit ⟦operator bool⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 26
+                  }
+                }
+              }
+            ]
           }
         }
       ]

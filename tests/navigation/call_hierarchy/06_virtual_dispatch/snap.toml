@@ -1,14 +1,13 @@
 [answers.base]
-wrong = "d.draw() may dispatch to Base::draw, so it should be among the incoming calls"
 call_hierarchy = [
-    { name = "draw", kind = "Method", at = "virtual void ⟦draw⟧();" },
+    { name = "draw", kind = "Method", at = "virtual void ⟦draw⟧();", detail = "Base::draw" },
 ]
 incoming_calls = []
 outgoing_calls = []
 
 [answers.override]
 call_hierarchy = [
-    { name = "draw", kind = "Method", at = "void ⟦draw⟧() override;" },
+    { name = "draw", kind = "Method", at = "void ⟦draw⟧() override;", detail = "Derived::draw" },
 ]
 incoming_calls = [
     {

@@ -228,11 +228,11 @@ tests/navigation/type_definition/03_deduced_variables
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1026 -->
+<!-- BEGIN CAPABILITY: supported clangd#1026 -->
 
 **Smart-pointer pointee navigation**
 
-Go-to-type-definition on a smart-pointer variable reaches the wrapper type itself; unwrapping to the pointee type is not offered
+Go-to-type-definition on a smart-pointer variable reaches both the wrapper type and the type it points to
 
 ```case
 tests/navigation/type_definition/04_smart_pointers
@@ -314,14 +314,14 @@ tests/navigation/implementation/02_sibling_overrides
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#854 -->
+<!-- BEGIN CAPABILITY: supported clangd#854 -->
 
 **Non-virtual function**
 
-Non-virtual declarations do not navigate to out-of-line definitions yet
+A function nothing overrides is implemented by its definition
 
-Go-to-implementation on a non-virtual function declaration does not reach
-its out-of-line definition and returns nothing.
+Go-to-implementation on the declaration of a function that is not
+overridden, virtual or not, reaches its out-of-line definition.
 
 ```case
 tests/navigation/implementation/03_non_virtual
@@ -379,11 +379,14 @@ tests/navigation/references/01_declarations_included
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1081 -->
+<!-- BEGIN CAPABILITY: supported clangd#1081 -->
 
 **Range-for references**
 
-Find references on `begin` reports only its own declaration; the range-based for loop that implicitly calls it is not included among the references
+Find references on `begin` includes the range-based for loops that call it
+
+A range-based for calls the range's `begin()` and `end()` without writing
+their names; its `:` stands for those calls among the references.
 
 ```case
 tests/navigation/references/02_range_for
@@ -577,11 +580,11 @@ tests/navigation/templates/01_dependent_members
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#212 -->
+<!-- BEGIN CAPABILITY: supported clangd#212 -->
 
 **Template specialization navigation**
 
-Go-to-definition on the name of an explicit specialization resolves to the specialization itself; stepping from it to the primary template it specializes is not offered
+Go-to-definition on the name of an explicit specialization reaches the primary template it specializes
 
 ```case
 tests/navigation/templates/02_explicit_specializations
@@ -698,14 +701,14 @@ Implicit navigation requires an unambiguous source token — patterns where the 
 
 <!-- BEGIN GENERATED ITEMS: navigation/implicit_targets -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`override` / `final`**
 
-`override` and `final` do not navigate to the overridden base method yet
+`override` and `final` navigate to the base method they override
 
-Go-to-definition on the `override` or `final` specifier does not reach the
-base class virtual method it overrides.
+Go-to-definition on the `override` or `final` specifier reaches the base
+class virtual method it overrides.
 
 ```case
 tests/navigation/implicit_targets/01_override_and_final
@@ -728,13 +731,14 @@ tests/navigation/implicit_targets/02_break_and_continue
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`delete` expression**
 
-`delete` does not navigate to the invoked destructor yet
+`delete` navigates to the destructor it runs
 
-Go-to-definition on `delete` does not reach the destructor it runs.
+Go-to-definition on `delete` reaches the destructor it runs, besides a
+class's own `operator delete`.
 
 ```case
 tests/navigation/implicit_targets/03_delete_expressions
@@ -742,14 +746,14 @@ tests/navigation/implicit_targets/03_delete_expressions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`new` expression**
 
-`new` navigates to an overloaded allocation function but not the constructor
+`new` navigates to the allocation function and the constructor it runs
 
-Go-to-definition on `new` reaches the class's overloaded `operator new`.
-The constructor invoked by the same expression is not part of the reply.
+Go-to-definition on `new` reaches the class's overloaded `operator new` and
+the constructor the same expression invokes.
 
 ```case
 tests/navigation/implicit_targets/04_new_expressions
@@ -804,14 +808,15 @@ tests/navigation/implicit_targets/07_user_defined_literals
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1931 -->
+<!-- BEGIN CAPABILITY: supported clangd#1931 -->
 
 **Implicit conversion operators**
 
-Conversion contexts do not navigate to the invoked conversion operator yet
+A condition or `!` navigates to the conversion operator it runs
 
-Go-to-definition from a context that runs a user-defined conversion, a
-condition or `!`, does not reach the conversion operator.
+Go-to-definition on the parenthesis of a condition, or on the `!`, `&&`,
+`||` or `?` whose operand converts, reaches the user-defined conversion
+operator that tests the operand.
 
 ```case
 tests/navigation/implicit_targets/08_implicit_conversions
@@ -819,14 +824,14 @@ tests/navigation/implicit_targets/08_implicit_conversions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Cast conversion navigation**
 
-Constructing casts navigate to the selected constructor
+A cast navigates to the constructor or conversion operator it runs
 
-A `static_cast` that runs a user-defined conversion operator does not yet
-reach that operator.
+Go-to-definition on a `static_cast` reaches the constructor it selects, or
+the user-defined conversion operator it calls.
 
 ```case
 tests/navigation/implicit_targets/09_casts
@@ -834,14 +839,14 @@ tests/navigation/implicit_targets/09_casts
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Range-based for**
 
-The range-for colon does not navigate to `begin()` or `end()` yet
+The range-for colon navigates to `begin()` and `end()`
 
-Go-to-definition on the `:` of a range-based for does not reach the
-`begin()` or `end()` chosen for the range.
+Go-to-definition on the `:` of a range-based for reaches the `begin()` and
+`end()` chosen for the range.
 
 ```case
 tests/navigation/implicit_targets/10_range_for
@@ -849,15 +854,15 @@ tests/navigation/implicit_targets/10_range_for
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`co_await` / `co_yield` / `co_return`**
 
-`co_yield` navigates to its promise method, while other coroutine keywords do not
+Coroutine keywords navigate to the methods they call
 
-Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
-`co_await` and `co_return` keywords do not yet reach the awaiter's or
-promise's methods.
+Go-to-definition on `co_await` reaches the awaiter's `await_ready`,
+`await_suspend` and `await_resume`; on `co_yield`, the promise's
+`yield_value`; on `co_return`, the promise's `return_value`.
 
 ```case
 tests/navigation/implicit_targets/11_coroutine_keywords
@@ -890,16 +895,15 @@ tests/navigation/implicit_construction/01_constructor_calls
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Copy/move construction and assignment**
 
-Assignment `=` navigates to the assignment operator, while copy and move initialization do not
+The `=` of an initialization or an assignment navigates to the function it runs
 
 Go-to-definition on the `=` of an assignment reaches the assignment
-operator. The `=` that introduces a copy- or move-initialization
-(`T b = a;`) is initialization syntax rather than an operator call and is
-not yet resolved.
+operator, and on the `=` of a copy- or move-initialization (`T b = a;`) the
+copy or move constructor that builds the variable.
 
 ```case
 tests/navigation/implicit_construction/02_copy_and_move
@@ -1002,13 +1006,13 @@ tests/navigation/implicit_construction/08_return_values
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Lambda init-capture**
 
-A lambda init-capture does not navigate to its move constructor yet
+A lambda init-capture navigates to the constructor building the capture
 
-Go-to-definition on the `=` of a lambda init-capture does not reach the
+Go-to-definition on the `=` of a lambda init-capture reaches the
 constructor that builds the captured value.
 
 ```case
@@ -1017,7 +1021,7 @@ tests/navigation/implicit_construction/09_lambda_captures
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Structured bindings**
 
@@ -1052,15 +1056,16 @@ tests/navigation/modules/01_import_names
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Module implementation units**
 
-The module name in an implementation unit navigates to the interface unit declaring the module
+The module names of an interface and its implementation units navigate to each other
 
-A use of an exported function reaches its definition in the implementation
-unit. The reverse direction, from the interface's module name to the units
-implementing it, is not offered yet.
+The module name in an implementation unit reaches the interface unit
+declaring the module, and the interface's module name the units
+implementing it. A use of an exported function reaches its definition in
+the implementation unit.
 
 ```case
 tests/navigation/modules/02_implementation_units
@@ -1186,11 +1191,11 @@ tests/navigation/call_hierarchy/04_signature_details
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Qualified name for member functions**
 
-A member function's call hierarchy item is produced, but its name field carries only the bare method name (`draw`), not the qualified `Circle::draw` that would tell it apart from a free function
+A member function's call hierarchy item shows its qualified name (`Circle::draw`) as its detail, telling it apart from a free function
 
 ```case
 tests/navigation/call_hierarchy/05_qualified_names
@@ -1198,11 +1203,14 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Follow virtual dispatch**
 
-Incoming calls of a base virtual method do not include calls made through derived overrides; a call to an override is attributed only to that override, never to the base it overrides
+A call through a class that overrides a virtual method is an incoming call of the override alone
+
+`d.draw()` on a `Derived&` runs `Derived::draw` or an override below it,
+never `Base::draw`, so only the override lists it among its incoming calls.
 
 ```case
 tests/navigation/call_hierarchy/06_virtual_dispatch
@@ -1210,14 +1218,14 @@ tests/navigation/call_hierarchy/06_virtual_dispatch
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1308 -->
+<!-- BEGIN CAPABILITY: supported clangd#1308 -->
 
 **Non-function targets**
 
-Call hierarchy preparation returns nothing for variables and enum constants
+A call hierarchy opens on a variable or an enum constant
 
-Preparing a call hierarchy on a variable or an enum constant returns
-nothing; the request is offered only for functions and methods.
+Preparing a call hierarchy on a variable, a field or an enum constant
+offers an item whose incoming calls are the functions using it.
 
 ```case
 tests/navigation/call_hierarchy/07_non_functions
@@ -1307,11 +1315,15 @@ tests/navigation/type_hierarchy/04_template_bases
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#31 -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**Template arguments in hierarchy**
+**Template subtypes**
 
-A subtype produced by a class template specialization is listed, but its item name carries only the bare template name (`Derived`), without the template arguments that would distinguish `Derived<Foo>`
+A class template deriving from a non-template base is one subtype of it
+
+`template <typename T> struct Derived : Base` makes every specialization of
+`Derived` derive from `Base`: the subtype is the template, `Derived`, not
+one specialization such as the `Derived<Foo>` the code uses.
 
 ```case
 tests/navigation/type_hierarchy/05_template_arguments

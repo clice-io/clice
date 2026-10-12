@@ -664,6 +664,60 @@ std::vector<IndexQuery::Edge> IndexQuery::edges(SymbolHash hash,
                           }
                           return true;
                       });
+    return located_edges(by_target);
+}
+
+std::vector<IndexQuery::Edge> IndexQuery::users(SymbolHash hash, Fid anchor) const {
+    // Each file's function definitions, by their extents.
+    llvm::DenseMap<const Shard*, std::vector<std::pair<LocalSourceRange, SymbolHash>>> functions;
+    auto function_kind = [&](SymbolHash symbol, Fid file) {
+        auto info = symbol_info(symbol, file);
+        return info && (info->kind == SymbolKind::Function || info->kind == SymbolKind::Method ||
+                        info->kind == SymbolKind::Operator);
+    };
+    llvm::DenseMap<SymbolHash, std::vector<Site>> by_user;
+    for_each_relation(
+        hash,
+        anchor,
+        RelationKind::Reference,
+        Order::DiskFirst,
+        {.preamble = false},
+        [&](const IndexSource& source, const Relation& relation) {
+            // An overlay's header entries come without a shard to look in.
+            if(!source.shard) {
+                return true;
+            }
+            auto [it, inserted] = functions.try_emplace(source.shard);
+            if(inserted) {
+                source.shard->for_each_relation([&](SymbolHash symbol, const Relation& defined) {
+                    if(defined.kind == RelationKind::Definition &&
+                       defined.definition_range().contains(defined.range) &&
+                       function_kind(symbol, source.file)) {
+                        it->second.emplace_back(defined.definition_range(), symbol);
+                    }
+                    return true;
+                });
+            }
+            // The innermost function holding the reference.
+            std::optional<std::pair<LocalSourceRange, SymbolHash>> user;
+            for(auto& function: it->second) {
+                if(function.first.contains(relation.range) &&
+                   (!user || user->first.contains(function.first))) {
+                    user = function;
+                }
+            }
+            if(user) {
+                if(auto site = source.site(relation.range)) {
+                    by_user[user->second].push_back(*site);
+                }
+            }
+            return true;
+        });
+    return located_edges(by_user);
+}
+
+std::vector<IndexQuery::Edge>
+    IndexQuery::located_edges(llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) const {
     std::vector<Edge> result;
     result.reserve(by_target.size());
     for(auto& [target, sites]: by_target) {
@@ -696,7 +750,12 @@ IndexQuery::CallGraph IndexQuery::call_graph(SymbolHash root,
                                              CallGraphOptions options) const {
     CallGraph graph;
     if(options.callers) {
-        graph.callers = edges(root, anchor, RelationKind::Caller);
+        auto info = symbol_info(root, anchor);
+        graph.callers =
+            info && (info->kind == SymbolKind::Variable || info->kind == SymbolKind::Field ||
+                     info->kind == SymbolKind::EnumMember)
+                ? users(root, anchor)
+                : edges(root, anchor, RelationKind::Caller);
     }
     if(options.callees) {
         graph.callees = edges(root, anchor, RelationKind::Callee);
@@ -747,6 +806,10 @@ std::vector<Site> IndexQuery::definition(const Cursor& cursor) const {
                return covers(site, cursor.site);
            })) {
             llvm::append_range(found, sites(symbol, anchor, RelationKind::Declaration));
+            // A specialization leads on to the template it specializes.
+            for(auto& primary: located_targets(symbol, anchor, RelationKind::Primary)) {
+                found.push_back(std::move(primary.site));
+            }
             dedup_sites(found);
             drop_cursor_site(found, cursor.site);
         }
@@ -925,6 +988,11 @@ std::vector<Site> IndexQuery::implementation(SymbolHash hash, Fid anchor) const 
                 pending.push_back({.symbol = located.symbol.hash, .anchor = located.site.file});
             }
         }
+    }
+    // A function nothing overrides is implemented by its own definition.
+    if(result.empty() && (info->kind == SymbolKind::Function || info->kind == SymbolKind::Method ||
+                          info->kind == SymbolKind::Operator)) {
+        return sites(hash, anchor, RelationKind::Definition);
     }
     return result;
 }

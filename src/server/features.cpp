@@ -1447,12 +1447,16 @@ Features::RawResult Features::implementation(Ticket ticket,
     if(!cursor) {
         co_return serde_raw{"[]"};
     }
-    co_return to_raw(
-        to_lsp::locations(gather(cursor->symbols,
-                                 path_id,
-                                 [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                     return from.implementation(named, path_id);
-                                 })));
+    auto sites = gather(cursor->symbols,
+                        path_id,
+                        [&](const index::IndexQuery& from, index::SymbolHash named) {
+                            return from.implementation(named, path_id);
+                        });
+    // A function nothing overrides answers with its definition: standing
+    // on it, there is nowhere to go.
+    std::erase_if(sites,
+                  [&](const index::Site& site) { return index::covers(site, cursor->site); });
+    co_return to_raw(to_lsp::locations(sites));
 }
 
 Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
@@ -1469,14 +1473,18 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
     // The item stands for the symbol, not the cursor: anchored at the
     // symbol's canonical site, expanding from a use renders the same root
     // as expanding from the declaration. A symbol no source places (an
-    // implicitly declared `operator delete`) has no item.
+    // implicitly declared `operator delete`) has no item. A variable, a
+    // field or an enumerator is called by the functions using it.
     std::vector<protocol::CallHierarchyItem> items;
     for(auto& located: query.resolve_at(*cursor)) {
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Function || kind == SymbolKind::Method ||
-           kind == SymbolKind::Operator) {
-            items.push_back(
-                to_lsp::call_hierarchy_item(located.symbol, located.site, located.extent));
+           kind == SymbolKind::Operator || kind == SymbolKind::Variable ||
+           kind == SymbolKind::Field || kind == SymbolKind::EnumMember) {
+            items.push_back(to_lsp::call_hierarchy_item(located.symbol,
+                                                        located.site,
+                                                        located.extent,
+                                                        query.container_name(located.symbol.hash)));
         }
     }
     if(items.empty())
@@ -1517,7 +1525,10 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     std::vector<protocol::CallHierarchyIncomingCall> results;
     for(auto& edge: callers) {
         results.push_back(
-            {to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site, edge.symbol.extent),
+            {to_lsp::call_hierarchy_item(edge.symbol.symbol,
+                                         edge.symbol.site,
+                                         edge.symbol.extent,
+                                         query.container_name(edge.symbol.symbol.hash)),
              to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
@@ -1540,7 +1551,10 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     std::vector<protocol::CallHierarchyOutgoingCall> results;
     for(auto& edge: callees) {
         results.push_back(
-            {to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site, edge.symbol.extent),
+            {to_lsp::call_hierarchy_item(edge.symbol.symbol,
+                                         edge.symbol.site,
+                                         edge.symbol.extent,
+                                         query.container_name(edge.symbol.symbol.hash)),
              to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
@@ -1563,8 +1577,10 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union) {
-            items.push_back(
-                to_lsp::type_hierarchy_item(located.symbol, located.site, located.extent));
+            items.push_back(to_lsp::type_hierarchy_item(located.symbol,
+                                                        located.site,
+                                                        located.extent,
+                                                        query.container_name(located.symbol.hash)));
         }
     }
     if(items.empty())
@@ -1573,11 +1589,13 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
 }
 
 static std::vector<protocol::TypeHierarchyItem>
-    type_items(llvm::ArrayRef<index::IndexQuery::Located> types) {
+    type_items(const index::IndexQuery& query, llvm::ArrayRef<index::IndexQuery::Located> types) {
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto& located: types) {
-        results.push_back(
-            to_lsp::type_hierarchy_item(located.symbol, located.site, located.extent));
+        results.push_back(to_lsp::type_hierarchy_item(located.symbol,
+                                                      located.site,
+                                                      located.extent,
+                                                      query.container_name(located.symbol.hash)));
     }
     return results;
 }
@@ -1595,7 +1613,7 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
                       from->type_hierarchy(named, path_id, {.subtypes = false}).supertypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
-    co_return to_raw(type_items(supertypes));
+    co_return to_raw(type_items(query, supertypes));
 }
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
@@ -1611,7 +1629,7 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
                       from->type_hierarchy(named, path_id, {.supertypes = false}).subtypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
-    co_return to_raw(type_items(subtypes));
+    co_return to_raw(type_items(query, subtypes));
 }
 
 std::vector<protocol::SymbolInformation> Features::workspace_symbol(llvm::StringRef text) {

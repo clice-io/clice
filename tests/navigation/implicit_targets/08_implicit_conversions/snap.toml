@@ -1,7 +1,11 @@
 [answers.condition]
-wrong = "should reach Guard::operator bool, which the condition calls (clangd#1931)"
-definition = []
+definition = ["explicit ⟦operator bool⟧() const;"]
 
 [answers.negation]
-wrong = "should reach Guard::operator bool, which ! calls (clangd#1931)"
-definition = []
+definition = ["explicit ⟦operator bool⟧() const;"]
+
+[answers.conjunction]
+definition = ["explicit ⟦operator bool⟧() const;"]
+
+[answers.conditional]
+definition = ["explicit ⟦operator bool⟧() const;"]

@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "implicit_targets",
   "title": "Cast conversion navigation",
-  "summary": "Constructing casts navigate to the selected constructor",
-  "prose": "A `static_cast` that runs a user-defined conversion operator does not yet\nreach that operator.",
-  "status": "partial",
+  "summary": "A cast navigates to the constructor or conversion operator it runs",
+  "prose": "Go-to-definition on a `static_cast` reaches the constructor it selects, or\nthe user-defined conversion operator it calls.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -35,8 +35,22 @@
           "label": "cast_conv",
           "marker": "cast_conv",
           "value": {
-            "wrong": "should reach Meters::operator double, the conversion the cast runs",
-            "definition": []
+            "definition": [
+              {
+                "$place": "explicit ⟦operator double⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 28
+                  }
+                }
+              }
+            ]
           }
         },
         {

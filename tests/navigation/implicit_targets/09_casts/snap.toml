@@ -1,6 +1,5 @@
 [answers.cast_conv]
-wrong = "should reach Meters::operator double, the conversion the cast runs"
-definition = []
+definition = ["explicit ⟦operator double⟧() const;"]
 
 [answers.cast_ctor]
 definition = ["explicit ⟦Foo⟧(int value);"]

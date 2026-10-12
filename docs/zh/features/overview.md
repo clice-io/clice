@@ -17,7 +17,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [代码补全](./completion.md)          | 支持 35 项 · 不支持 1 项                  |
 | [悬停](./hover.md)                   | 支持 31 项 · 部分支持 9 项 · 不支持 21 项 |
 | [签名帮助](./signature-help.md)      | 支持 8 项 · 部分支持 2 项 · 不支持 8 项   |
-| [代码导航](./navigation.md)          | 支持 76 项 · 部分支持 8 项 · 不支持 27 项 |
+| [代码导航](./navigation.md)          | 支持 95 项 · 部分支持 2 项 · 不支持 14 项 |
 | [重命名](./rename.md)                | 支持 4 项                                 |
 | [诊断](./diagnostics.md)             | 支持 9 项                                 |
 | [代码操作](./code-action.md)         | 支持 38 项                                |

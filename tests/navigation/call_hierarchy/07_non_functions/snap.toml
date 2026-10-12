@@ -1,11 +1,17 @@
 [answers.variable]
-wrong = "a call hierarchy should open on a variable, with the functions using it (clangd#1308)"
-call_hierarchy = []
-incoming_calls = []
+call_hierarchy = [
+    { name = "counter", kind = "Variable", at = "int ⟦counter⟧ = 0;" },
+]
+incoming_calls = [
+    { name = "next", kind = "Function", at = "int ⟦next⟧() {", sites = ["return ⟦counter⟧++;"] },
+]
 outgoing_calls = []
 
 [answers.enumerator]
-wrong = "a call hierarchy should open on an enumerator, with the functions using it (clangd#1308)"
-call_hierarchy = []
-incoming_calls = []
+call_hierarchy = [
+    { name = "Fast", kind = "EnumMember", at = "⟦Fast⟧,", detail = "Mode::Fast" },
+]
+incoming_calls = [
+    { name = "pick", kind = "Function", at = "Mode ⟦pick⟧() {", sites = ["return ⟦Fast⟧;"] },
+]
 outgoing_calls = []

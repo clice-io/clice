@@ -39,15 +39,18 @@ protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
                                                llvm::StringRef container);
 
 /// Hierarchy items span the whole declaration (`extent`) and select its
-/// name (`site`). They carry their symbol handle in `data` as a decimal
-/// string: a raw 64-bit integer would be parsed into a double by a
-/// JavaScript client and come back rounded.
+/// name (`site`); a symbol inside a namespace or a class (`container`)
+/// shows its qualified name as the detail. They carry their symbol handle
+/// in `data` as a decimal string: a raw 64-bit integer would be parsed into
+/// a double by a JavaScript client and come back rounded.
 protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolRef& symbol,
                                                 const index::Site& site,
-                                                const index::Site& extent);
+                                                const index::Site& extent,
+                                                llvm::StringRef container);
 protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
                                                 const index::Site& site,
-                                                const index::Site& extent);
+                                                const index::Site& extent,
+                                                llvm::StringRef container);
 
 /// The symbol handle a prepared hierarchy item came back with, if intact.
 std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::LSPAny>& data);

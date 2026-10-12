@@ -5,7 +5,7 @@
   "title": "Structured bindings",
   "summary": "Structured binding names navigate to the bindings, not underlying fields or accessors",
   "prose": "Go-to-definition on a structured binding name resolves to the binding\nitself rather than the underlying field or accessor it names.",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -35,7 +35,6 @@
           "label": "first",
           "marker": "first",
           "value": {
-            "wrong": "should reach Pair::first, the member a names",
             "definition": [
               {
                 "$place": "auto [⟦a⟧, b] = p;",
@@ -58,7 +57,6 @@
           "label": "second",
           "marker": "second",
           "value": {
-            "wrong": "should reach Pair::second, the member b names",
             "definition": [
               {
                 "$place": "auto [a, ⟦b⟧] = p;",

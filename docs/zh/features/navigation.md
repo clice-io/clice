@@ -218,11 +218,11 @@ tests/navigation/type_definition/03_deduced_variables
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1026 -->
+<!-- BEGIN CAPABILITY: supported clangd#1026 -->
 
 **跳转到智能指针所指向的类型**
 
-在智能指针变量上执行“跳转到类型定义”，会跳转到包装类型本身；不支持跳过包装类型并跳转到其所指向的类型
+在智能指针变量上执行“跳转到类型定义”，既会跳转到包装类型，也会跳转到它所指向的类型
 
 ```case
 tests/navigation/type_definition/04_smart_pointers
@@ -302,13 +302,13 @@ tests/navigation/implementation/02_sibling_overrides
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#854 -->
+<!-- BEGIN CAPABILITY: supported clangd#854 -->
 
 **非虚函数**
 
-尚不能从非虚函数声明跳转到单独给出的定义
+没有被重写的函数，其实现就是它的定义
 
-在非虚函数声明上执行“跳转到实现”，无法到达其单独给出的定义，会返回空结果。
+对于没有被重写的函数，无论是否为虚函数，在其声明上执行“跳转到实现”都会跳转到其单独给出的定义。
 
 ```case
 tests/navigation/implementation/03_non_virtual
@@ -364,11 +364,13 @@ tests/navigation/references/01_declarations_included
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1081 -->
+<!-- BEGIN CAPABILITY: supported clangd#1081 -->
 
 **范围 for 循环引用**
 
-在 `begin` 上执行“查找引用”，只会返回它自身的声明；隐式调用它的范围 for 循环不会列入引用结果
+在 `begin` 上执行“查找引用”，结果包含调用它的范围 for 循环
+
+范围 for 循环调用范围的 `begin()` 和 `end()` 时并不写出它们的名称，因此在引用结果中由循环的 `:` 代表这些调用。
 
 ```case
 tests/navigation/references/02_range_for
@@ -556,11 +558,11 @@ tests/navigation/templates/01_dependent_members
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#212 -->
+<!-- BEGIN CAPABILITY: supported clangd#212 -->
 
 **模板特化导航**
 
-对显式特化的名称执行“跳转到定义”会跳转到该特化本身；不支持从该特化继续跳转到它所特化的主模板
+对显式特化的名称执行“跳转到定义”，会跳转到它所特化的主模板
 
 ```case
 tests/navigation/templates/02_explicit_specializations
@@ -668,13 +670,13 @@ tests/navigation/macros/05_nested_macros
 
 <!-- BEGIN GENERATED ITEMS: navigation/implicit_targets -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`override` / `final`**
 
-`override` 和 `final` 尚不能跳转到被重写的基类方法
+`override` 和 `final` 可跳转到被重写的基类方法
 
-在 `override` 或 `final` 说明符上执行“跳转到定义”，无法跳转到被重写的基类虚方法。
+在 `override` 或 `final` 说明符上执行“跳转到定义”，会跳转到被重写的基类虚方法。
 
 ```case
 tests/navigation/implicit_targets/01_override_and_final
@@ -696,13 +698,13 @@ tests/navigation/implicit_targets/02_break_and_continue
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`delete` 表达式**
 
-`delete` 尚不能跳转到所调用的析构函数
+`delete` 可跳转到它调用的析构函数
 
-在 `delete` 上执行“跳转到定义”，无法跳转到它调用的析构函数。
+在 `delete` 上执行“跳转到定义”，除了类自身的 `operator delete`，还会跳转到它调用的析构函数。
 
 ```case
 tests/navigation/implicit_targets/03_delete_expressions
@@ -710,13 +712,13 @@ tests/navigation/implicit_targets/03_delete_expressions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`new` 表达式**
 
-`new` 可跳转到重载的内存分配函数，但不能跳转到构造函数
+`new` 可跳转到它调用的内存分配函数和构造函数
 
-在 `new` 上执行“跳转到定义”，可跳转到类中重载的 `operator new`。返回结果不包含同一表达式调用的构造函数。
+在 `new` 上执行“跳转到定义”，可跳转到类中重载的 `operator new`，以及同一表达式调用的构造函数。
 
 ```case
 tests/navigation/implicit_targets/04_new_expressions
@@ -766,13 +768,13 @@ tests/navigation/implicit_targets/07_user_defined_literals
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1931 -->
+<!-- BEGIN CAPABILITY: supported clangd#1931 -->
 
 **隐式转换运算符**
 
-转换上下文尚不能跳转到所调用的转换运算符
+条件判断或 `!` 可跳转到其调用的转换运算符
 
-在触发用户定义转换的上下文（条件判断或 `!`）中执行“跳转到定义”，无法跳转到该转换运算符。
+在条件判断的括号上，或在操作数需要转换的 `!`、`&&`、`||` 或 `?` 上执行“跳转到定义”，会跳转到用于判断该操作数真假的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/08_implicit_conversions
@@ -780,13 +782,13 @@ tests/navigation/implicit_targets/08_implicit_conversions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **强制类型转换导航**
 
-调用构造函数的强制类型转换可跳转到所选的构造函数
+强制类型转换可跳转到其调用的构造函数或转换运算符
 
-调用用户定义转换运算符的 `static_cast` 尚不能跳转到该运算符。
+在 `static_cast` 上执行“跳转到定义”，会跳转到它所选的构造函数，或它调用的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/09_casts
@@ -794,13 +796,13 @@ tests/navigation/implicit_targets/09_casts
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **范围 for 循环（range-based for）**
 
-范围 for 循环中的冒号尚不能跳转到 `begin()` 或 `end()`
+范围 for 循环中的冒号可跳转到 `begin()` 和 `end()`
 
-在范围 for 循环的 `:` 上执行“跳转到定义”，无法跳转到为该范围选用的 `begin()` 或 `end()`。
+在范围 for 循环的 `:` 上执行“跳转到定义”，会跳转到为该范围选用的 `begin()` 和 `end()`。
 
 ```case
 tests/navigation/implicit_targets/10_range_for
@@ -808,13 +810,13 @@ tests/navigation/implicit_targets/10_range_for
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`co_await` / `co_yield` / `co_return`**
 
-`co_yield` 可跳转到其 promise 对象的方法，而其他协程关键字不能
+协程关键字可跳转到它们调用的方法
 
-在 `co_yield` 上执行“跳转到定义”，可跳转到 promise 对象的 `yield_value`。`co_await` 和 `co_return` 关键字尚不能跳转到等待器（awaiter）或 promise 对象的方法。
+在 `co_await` 上执行“跳转到定义”，会跳转到等待器（awaiter）的 `await_ready`、`await_suspend` 和 `await_resume`；在 `co_yield` 上，会跳转到 promise 对象的 `yield_value`；在 `co_return` 上，会跳转到 promise 对象的 `return_value`。
 
 ```case
 tests/navigation/implicit_targets/11_coroutine_keywords
@@ -844,13 +846,13 @@ tests/navigation/implicit_construction/01_constructor_calls
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **拷贝／移动构造与赋值**
 
-赋值中的 `=` 可跳转到赋值运算符，而拷贝初始化和移动初始化则不能
+初始化或赋值中的 `=` 可跳转到它调用的函数
 
-在赋值中的 `=` 上执行“跳转到定义”，可跳转到赋值运算符。引入拷贝初始化或移动初始化的 `=`（`T b = a;`）属于初始化语法，而非运算符调用，目前尚无法解析。
+在赋值中的 `=` 上执行“跳转到定义”，会跳转到赋值运算符；在拷贝初始化或移动初始化的 `=`（`T b = a;`）上，则会跳转到构造该变量的拷贝构造函数或移动构造函数。
 
 ```case
 tests/navigation/implicit_construction/02_copy_and_move
@@ -942,13 +944,13 @@ tests/navigation/implicit_construction/08_return_values
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Lambda 初始化捕获**
 
-Lambda 初始化捕获尚无法跳转到其移动构造函数
+Lambda 初始化捕获可跳转到构造捕获值的构造函数
 
-在 Lambda 初始化捕获的 `=` 上执行“跳转到定义”，无法跳转到构造捕获值的构造函数。
+在 Lambda 初始化捕获的 `=` 上执行“跳转到定义”，会跳转到构造捕获值的构造函数。
 
 ```case
 tests/navigation/implicit_construction/09_lambda_captures
@@ -956,7 +958,7 @@ tests/navigation/implicit_construction/09_lambda_captures
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **结构化绑定（structured bindings）**
 
@@ -990,13 +992,13 @@ tests/navigation/modules/01_import_names
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **模块实现单元**
 
-实现单元中的模块名称可跳转到声明该模块的接口单元
+接口单元与其实现单元中的模块名称可相互跳转
 
-从导出函数的使用处可跳转到该函数在实现单元中的定义。目前尚不支持反向导航，即从接口中的模块名称跳转到实现该模块的单元。
+实现单元中的模块名称可跳转到声明该模块的接口单元，接口中的模块名称可跳转到实现该模块的各个单元。从导出函数的使用处可跳转到该函数在实现单元中的定义。
 
 ```case
 tests/navigation/modules/02_implementation_units
@@ -1120,11 +1122,11 @@ tests/navigation/call_hierarchy/04_signature_details
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **成员函数的限定名称**
 
-成员函数有对应的调用层次结构条目，但其名称字段仅包含方法名（`draw`），而非可用于将其与自由函数区分开的限定名称 `Circle::draw`
+成员函数的调用层次结构条目会在详情中显示其限定名称（`Circle::draw`），以便与自由函数区分开
 
 ```case
 tests/navigation/call_hierarchy/05_qualified_names
@@ -1132,11 +1134,13 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **跟踪虚函数分派**
 
-基类虚方法的传入调用不包含对派生类重写方法的调用；对重写方法的调用只归于该重写方法，不会归于它所重写的基类方法
+通过重写了虚方法的类发起的调用，只算作该重写方法的传入调用
+
+`d.draw()` 在 `Derived&` 上调用时，执行的是 `Derived::draw` 或更下层派生类中的重写方法，绝不会是 `Base::draw`，因此只有该重写方法会把这次调用列为传入调用。
 
 ```case
 tests/navigation/call_hierarchy/06_virtual_dispatch
@@ -1144,13 +1148,13 @@ tests/navigation/call_hierarchy/06_virtual_dispatch
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1308 -->
+<!-- BEGIN CAPABILITY: supported clangd#1308 -->
 
 **非函数目标**
 
-对变量和枚举常量准备调用层次结构时，不返回任何结果
+可以在变量或枚举常量上打开调用层次结构
 
-对变量或枚举常量准备调用层次结构时，不返回任何结果；该请求仅适用于自由函数和成员函数。
+在变量、字段或枚举常量上准备调用层次结构时，会返回一个条目，其传入调用就是使用它的各个函数。
 
 ```case
 tests/navigation/call_hierarchy/07_non_functions
@@ -1240,11 +1244,13 @@ tests/navigation/type_hierarchy/04_template_bases
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#31 -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**层次结构中的模板实参**
+**模板子类型**
 
-会列出类模板特化所产生的子类型，但条目名称仅包含模板名（`Derived`），不含可用于区分 `Derived<Foo>` 的模板实参
+继承自非模板基类的类模板是该基类的一个子类型
+
+`template <typename T> struct Derived : Base` 让 `Derived` 的每个特化都继承自 `Base`：子类型是模板 `Derived` 本身，而不是代码中用到的 `Derived<Foo>` 这类单个特化。
 
 ```case
 tests/navigation/type_hierarchy/05_template_arguments

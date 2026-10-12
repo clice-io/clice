@@ -1,6 +1,5 @@
 [answers.iface_module_name]
-wrong = "should lead to impl.cpp, the unit implementing the module, as the implementation unit's name leads here"
-definition = ["export module ⟦store⟧;"]
+definition = ["impl.cpp │ module ⟦store⟧;"]
 
 [answers.iface_decl]
 definition = ["impl.cpp │ int ⟦fetch⟧(int key) {"]

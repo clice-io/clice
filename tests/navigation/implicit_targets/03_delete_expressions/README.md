@@ -1,5 +1,6 @@
 # `delete` expression
 
-`delete` does not navigate to the invoked destructor yet
+`delete` navigates to the destructor it runs
 
-Go-to-definition on `delete` does not reach the destructor it runs.
+Go-to-definition on `delete` reaches the destructor it runs, besides a
+class's own `operator delete`.

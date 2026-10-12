@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "implicit_targets",
   "title": "`delete` expression",
-  "summary": "`delete` does not navigate to the invoked destructor yet",
-  "prose": "Go-to-definition on `delete` does not reach the destructor it runs.",
-  "status": "unsupported",
+  "summary": "`delete` navigates to the destructor it runs",
+  "prose": "Go-to-definition on `delete` reaches the destructor it runs, besides a\nclass's own `operator delete`.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -29,8 +29,22 @@
           "label": "delete",
           "marker": "delete",
           "value": {
-            "wrong": "should reach Widget::~Widget, the destructor it runs",
-            "definition": []
+            "definition": [
+              {
+                "$place": "⟦~Widget⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 11
+                  }
+                }
+              }
+            ]
           }
         }
       ]

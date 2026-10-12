@@ -1,7 +1,9 @@
 # Module implementation units
 
-The module name in an implementation unit navigates to the interface unit declaring the module
+The module names of an interface and its implementation units navigate to
+each other
 
-A use of an exported function reaches its definition in the implementation
-unit. The reverse direction, from the interface's module name to the units
-implementing it, is not offered yet.
+The module name in an implementation unit reaches the interface unit
+declaring the module, and the interface's module name the units
+implementing it. A use of an exported function reaches its definition in
+the implementation unit.

@@ -2,13 +2,11 @@
   "id": "navigation/type_hierarchy/05_template_arguments",
   "topic": "navigation",
   "subtopic": "type_hierarchy",
-  "title": "Template arguments in hierarchy",
-  "summary": "A subtype produced by a class template specialization is listed, but its item name carries only the bare template name (`Derived`), without the template arguments that would distinguish `Derived<Foo>`",
-  "prose": "",
-  "status": "unsupported",
-  "issues": [
-    "clangd#31"
-  ],
+  "title": "Template subtypes",
+  "summary": "A class template deriving from a non-template base is one subtype of it",
+  "prose": "`template <typename T> struct Derived : Base` makes every specialization of\n`Derived` derive from `Base`: the subtype is the template, `Derived`, not\none specialization such as the `Derived<Foo>` the code uses.",
+  "status": "supported",
+  "issues": [],
   "files": [
     {
       "path": "main.cpp",
@@ -31,7 +29,6 @@
           "label": "base",
           "marker": "base",
           "value": {
-            "wrong": "the subtype should name Derived<Foo>, the specialization the code uses (clangd#31)",
             "type_hierarchy": [
               {
                 "name": "Base",

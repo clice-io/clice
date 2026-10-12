@@ -91,8 +91,12 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// imports were built from; v28: references that modify what they name
 /// carry a Write relation; v29: `auto` and `decltype` keywords carry an
 /// occurrence of the type they stand for, with a Deduced relation; v30:
-/// entity hashes name a partition's module, not the partition).
-constexpr inline std::uint32_t index_format_version = 30;
+/// entity hashes name a partition's module, not the partition; v31: an
+/// implementation unit's module declaration is a Declaration of its
+/// module, keywords and punctuation that call or name a declaration carry
+/// an occurrence of it, and a smart pointer's pointee is a type definition
+/// of what holds it).
+constexpr inline std::uint32_t index_format_version = 31;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

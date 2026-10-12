@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "call_hierarchy",
   "title": "Follow virtual dispatch",
-  "summary": "Incoming calls of a base virtual method do not include calls made through derived overrides; a call to an override is attributed only to that override, never to the base it overrides",
-  "prose": "",
-  "status": "partial",
+  "summary": "A call through a class that overrides a virtual method is an incoming call of the override alone",
+  "prose": "`d.draw()` on a `Derived&` runs `Derived::draw` or an override below it,\nnever `Base::draw`, so only the override lists it among its incoming calls.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -35,7 +35,6 @@
           "label": "base",
           "marker": "base",
           "value": {
-            "wrong": "d.draw() may dispatch to Base::draw, so it should be among the incoming calls",
             "call_hierarchy": [
               {
                 "name": "draw",
@@ -53,7 +52,8 @@
                       "character": 21
                     }
                   }
-                }
+                },
+                "detail": "Base::draw"
               }
             ],
             "incoming_calls": [],
@@ -81,7 +81,8 @@
                       "character": 13
                     }
                   }
-                }
+                },
+                "detail": "Derived::draw"
               }
             ],
             "incoming_calls": [

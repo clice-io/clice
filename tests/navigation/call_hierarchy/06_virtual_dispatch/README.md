@@ -1,5 +1,7 @@
 # Follow virtual dispatch
 
-Incoming calls of a base virtual method do not include calls made through
-derived overrides; a call to an override is attributed only to that
-override, never to the base it overrides
+A call through a class that overrides a virtual method is an incoming call
+of the override alone
+
+`d.draw()` on a `Derived&` runs `Derived::draw` or an override below it,
+never `Base::draw`, so only the override lists it among its incoming calls.

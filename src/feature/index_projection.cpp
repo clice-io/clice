@@ -186,7 +186,7 @@ auto index_semantic_tokens(llvm::StringRef content,
     // entries on one anchor (merged shard variants) combine — kind
     // disagreement is a Conflict, like instantiation disagreement on the
     // AST path.
-    auto semantic_at = [&](std::uint32_t begin) {
+    auto semantic_at = [&](std::uint32_t begin, llvm::StringRef spelling) {
         Classified semantic;
         llvm::SmallVector<index::SymbolHash, 4> covered;
 
@@ -211,7 +211,11 @@ auto index_semantic_tokens(llvm::StringRef content,
             if(llvm::is_contained(covered, occ_it->target)) {
                 continue;
             }
-            if(auto info = resolve(occ_it->target)) {
+            // `override` and `final` lead to the methods they override,
+            // whose names they do not spell.
+            auto info = resolve(occ_it->target);
+            if(info &&
+               ((spelling != "override" && spelling != "final") || info->name == spelling)) {
                 combine(semantic, {info->kind, 0});
             }
         }
@@ -327,7 +331,7 @@ auto index_semantic_tokens(llvm::StringRef content,
         // an entry anchored on `operator` names nothing written there.
         Classified semantic;
         if(kind == clang::tok::identifier || kind == clang::tok::tilde) {
-            semantic = semantic_at(token.range.begin);
+            semantic = semantic_at(token.range.begin, spelling);
         }
         if(semantic.kind == SymbolKind::Invalid && lexical_class.identifier_like &&
            !module_spans.empty()) {
@@ -336,7 +340,7 @@ auto index_semantic_tokens(llvm::StringRef content,
                                                      {},
                                                      &LocalSourceRange::begin);
             if(covering != module_spans.begin() && token.range.end <= (covering - 1)->end) {
-                semantic = semantic_at((covering - 1)->begin);
+                semantic = semantic_at((covering - 1)->begin, {});
             }
         }
 

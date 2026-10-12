@@ -1,6 +1,6 @@
 [answers.method]
 call_hierarchy = [
-    { name = "start", kind = "Method", at = "void Service::⟦start⟧() {}" },
+    { name = "start", kind = "Method", at = "void Service::⟦start⟧() {}", detail = "Service::start" },
 ]
 incoming_calls = [
     {
@@ -18,5 +18,11 @@ call_hierarchy = [
 ]
 incoming_calls = []
 outgoing_calls = [
-    { name = "start", kind = "Method", at = "void Service::⟦start⟧() {}", sites = ["s.⟦start⟧();"] },
+    {
+        name = "start",
+        kind = "Method",
+        at = "void Service::⟦start⟧() {}",
+        detail = "Service::start",
+        sites = ["s.⟦start⟧();"],
+    },
 ]

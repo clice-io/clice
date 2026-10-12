@@ -552,6 +552,11 @@ private:
                         resolve_occurrences(semantics,
                                             static_cast<std::uint32_t>(entry_index),
                                             &unit.resolver())) {
+                        /// `override` lexes as an identifier, yet spells
+                        /// none of the methods it leads to.
+                        if(occurrence.kind.is_one_of(RelationKind::Implied)) {
+                            continue;
+                        }
                         anchor_name(occurrence.location,
                                     classify_decl(occurrence.decl, occurrence.kind));
                     }
