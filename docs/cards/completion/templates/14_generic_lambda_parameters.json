@@ -3,9 +3,9 @@
   "topic": "completion",
   "subtopic": "templates",
   "title": "Generic lambda parameters",
-  "summary": "An `auto` parameter of a lambda gets no member completion inside its body yet",
-  "prose": "The lambda is called with a `Point`, directly or through an algorithm, but its body is still a template when the completion runs.",
-  "status": "unsupported",
+  "summary": "An `auto` parameter of a lambda completes the members of the type the lambda is called with",
+  "prose": "The call can come after the lambda, or be the algorithm the lambda is\npassed to: completion reads how the code around it instantiates the\nlambda. A lambda called with several types completes nothing.",
+  "status": "supported",
   "issues": [
     "clangd#493",
     "clangd#1768"
@@ -44,9 +44,23 @@
           "label": "called",
           "marker": "called",
           "value": {
-            "wrong": "should list the members of Point, the type the lambda is called with (clangd#493)",
             "completion": {
-              "items": []
+              "items": [
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                },
+                {
+                  "label": "x",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "y",
+                  "kind": "Field",
+                  "detail": "int"
+                }
+              ]
             }
           }
         },
@@ -54,9 +68,23 @@
           "label": "algorithm",
           "marker": "algorithm",
           "value": {
-            "wrong": "should list the members of Point, the type the lambda is called with (clangd#493)",
             "completion": {
-              "items": []
+              "items": [
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                },
+                {
+                  "label": "x",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "y",
+                  "kind": "Field",
+                  "detail": "int"
+                }
+              ]
             }
           }
         },
@@ -64,9 +92,23 @@
           "label": "two_parameters",
           "marker": "two_parameters",
           "value": {
-            "wrong": "should list the members of Point, the type the lambda is called with (clangd#493)",
             "completion": {
-              "items": []
+              "items": [
+                {
+                  "label": "template",
+                  "kind": "Keyword"
+                },
+                {
+                  "label": "x",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "y",
+                  "kind": "Field",
+                  "detail": "int"
+                }
+              ]
             }
           }
         }

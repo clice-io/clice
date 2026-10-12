@@ -1,17 +1,20 @@
-[answers.called]
-wrong = "should list the members of Point, the type the lambda is called with (clangd#493)"
-
 [answers.called.completion]
-items = []
-
-[answers.algorithm]
-wrong = "should list the members of Point, the type the lambda is called with (clangd#493)"
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]
 
 [answers.algorithm.completion]
-items = []
-
-[answers.two_parameters]
-wrong = "should list the members of Point, the type the lambda is called with (clangd#493)"
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]
 
 [answers.two_parameters.completion]
-items = []
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]
