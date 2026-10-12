@@ -3,21 +3,33 @@
   "topic": "signature_help",
   "subtopic": "call_contexts",
   "title": "Function-like macros",
-  "summary": "A function-like macro's arguments get no signature help yet",
-  "prose": "",
-  "status": "unsupported",
+  "summary": "A function-like macro's arguments show the macro's parameters, not those of what it expands to",
+  "prose": "A function called inside one of the arguments shows its own signature.",
+  "status": "supported",
   "issues": [
     "clangd#795"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "int fail(const char* message);\n\n#define CHECK(cond, msg) ((cond) ? 0 : fail(msg))\n\nint verified = CHECK(1 > 0, \"positive\");\n",
+      "text": "int fail(const char* message);\nint print(const char* format, ...);\n\n#define CHECK(cond, msg) ((cond) ? 0 : fail(msg))\n#define LOG(format, ...) print(format, __VA_ARGS__)\n\nint verified = CHECK(1 > 0, \"positive\");\nint logged = LOG(\"%d %d\", 1, 2);\nint nested = CHECK(fail(\"inner\") == 0, \"outer\");\n",
       "markers": [
         {
           "name": "condition",
-          "begin": 104,
-          "end": 104,
+          "begin": 192,
+          "end": 192,
+          "range": false
+        },
+        {
+          "name": "variadic",
+          "begin": 241,
+          "end": 241,
+          "range": false
+        },
+        {
+          "name": "inner",
+          "begin": 269,
+          "end": 269,
           "range": false
         }
       ]
@@ -31,9 +43,35 @@
           "label": "condition",
           "marker": "condition",
           "value": {
-            "wrong": "a function-like macro shows no parameters (clangd#795)",
             "signature_help": {
-              "signatures": []
+              "signatures": [
+                "CHECK(⟦cond⟧, msg)"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "variadic",
+          "marker": "variadic",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "LOG(format, ⟦...⟧)"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "inner",
+          "marker": "inner",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "fail(⟦const char *message⟧) -> int"
+              ],
+              "active": 0
             }
           }
         }

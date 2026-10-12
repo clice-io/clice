@@ -3,4 +3,5 @@ int main() {
         return n * n;
     };
     square(§(pos)3);
+    [](int n) { return n + 1; }(§(unnamed)3);
 }

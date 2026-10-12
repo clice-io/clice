@@ -2,9 +2,6 @@
 signatures = ["emit(⟦Args ...args⟧) -> void"]
 active = 0
 
-[answers.second]
-wrong = "the pack is not marked for its second argument (clangd#638)"
-
 [answers.second.signature_help]
-signatures = ["emit(Args ...args) -> void"]
+signatures = ["emit(⟦Args ...args⟧) -> void"]
 active = 0

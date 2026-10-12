@@ -3,21 +3,27 @@
   "topic": "signature_help",
   "subtopic": "call_contexts",
   "title": "Lambda calls",
-  "summary": "Calling a lambda shows its parameters under the name `operator()` instead of the lambda's",
-  "prose": "",
-  "status": "unsupported",
+  "summary": "Calling a lambda shows its parameters under the name of the variable holding it",
+  "prose": "A lambda called where it is written has no name, so its parameters stand alone.",
+  "status": "supported",
   "issues": [
     "clangd#86"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "int main() {\n    auto square = [](int n) {\n        return n * n;\n    };\n    square(3);\n}\n",
+      "text": "int main() {\n    auto square = [](int n) {\n        return n * n;\n    };\n    square(3);\n    [](int n) { return n + 1; }(3);\n}\n",
       "markers": [
         {
           "name": "pos",
           "begin": 83,
           "end": 83,
+          "range": false
+        },
+        {
+          "name": "unnamed",
+          "begin": 119,
+          "end": 119,
           "range": false
         }
       ]
@@ -31,10 +37,21 @@
           "label": "pos",
           "marker": "pos",
           "value": {
-            "wrong": "names the call operator instead of the lambda, square (clangd#86)",
             "signature_help": {
               "signatures": [
-                "operator()(⟦int n⟧) -> int"
+                "square(⟦int n⟧) -> int"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "unnamed",
+          "marker": "unnamed",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "(⟦int n⟧) -> int"
               ],
               "active": 0
             }

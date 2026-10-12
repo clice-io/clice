@@ -3,12 +3,10 @@
   "topic": "signature_help",
   "subtopic": "parameters",
   "title": "Parameter packs",
-  "summary": "A parameter pack shows as the template declares it, marked for its first argument only",
+  "summary": "A parameter pack shows as the template declares it, marked for every argument it takes",
   "prose": "",
-  "status": "partial",
-  "issues": [
-    "clangd#638"
-  ],
+  "status": "supported",
+  "issues": [],
   "files": [
     {
       "path": "main.cpp",
@@ -49,10 +47,9 @@
           "label": "second",
           "marker": "second",
           "value": {
-            "wrong": "the pack is not marked for its second argument (clangd#638)",
             "signature_help": {
               "signatures": [
-                "emit(Args ...args) -> void"
+                "emit(⟦Args ...args⟧) -> void"
               ],
               "active": 0
             }
