@@ -2,6 +2,7 @@ import { expect } from "vitest";
 import { test, type TestContext } from "@clice/tools/testing";
 
 const FOLDERS = { folders: ["alpha", "beta"] };
+const PROGRESS = "clice/backgroundIndex";
 
 /// Whether the directory holds any file.
 function exists(t: TestContext, dir: string): boolean {
@@ -144,15 +145,20 @@ test("indexing progress ends across folders", async (t) => {
         folders: ["alpha", "empty", "beta"],
         capabilities: { window: { workDoneProgress: true } },
     });
+    // A round is shown only once the client took its token: beta's unit
+    // held, the round outlasts that handshake. The progress the client
+    // was sent is read raw: it is no request of the test's.
+    const held = await s.park("index", "beta/main.cpp", { at: "reply" });
     s.open("alpha/main.cpp");
+    await s.client.progressed(PROGRESS, "begin");
+    await held.release();
     await s.indexed();
     await t.show("symbols", s.workspaceSymbols("_fn"));
     // A folder with nothing to index never runs a round; the others'
     // rounds still end the one the client sees: every round shown began
-    // and ended, the last one too. The progress the client was sent is
-    // read raw: it is no request of the test's.
+    // and ended, the last one too.
     const kinds = s.client.progressEvents
-        .filter((event) => event.token === "clice/backgroundIndex")
+        .filter((event) => event.token === PROGRESS)
         .map((event) => (event.value as { kind: string }).kind)
         .filter((kind) => kind !== "report");
     expect(kinds.at(-1)).toBe("end");

@@ -205,6 +205,7 @@ export class CliceClient {
     /// waiters of the ones not parked yet.
     private parked = new Set<number>();
     private parkWaiters = new Map<number, (() => void)[]>();
+    private progressWaiters: { token: string; kind: string; resolve: () => void }[] = [];
 
     // Retention cap for drained stderr: long stress runs mirror the whole
     // server log, and the teardown scans only need the tail (sanitizer
@@ -273,6 +274,13 @@ export class CliceClient {
         };
         raw.onUnhandledProgress((p) => {
             this.progressEvents.push({ token: String(p.token), value: p.value });
+            const kind = (p.value as { kind?: unknown }).kind;
+            const arrived = (waiter: { token: string; kind: string }): boolean =>
+                waiter.token === String(p.token) && waiter.kind === kind;
+            for (const waiter of this.progressWaiters.filter(arrived)) {
+                waiter.resolve();
+            }
+            this.progressWaiters = this.progressWaiters.filter((waiter) => !arrived(waiter));
         });
         // Requests the test client does not model are answered with null
         // instead of "method not found", mirroring pygls' lenient client.
@@ -1096,6 +1104,20 @@ export class CliceClient {
     /// for `uri` in its worker, where the work starts; returns the hold's id.
     async gate(request: string, uri: string): Promise<number> {
         return (await this.sendRequest(GateRequest, { request, uri })).id;
+    }
+
+    /// Resolves once the server sent `token` a work done progress of `kind`
+    /// ("begin", "report", "end"), the ones it sent before included.
+    progressed(token: string, kind: string): Promise<void> {
+        if (
+            this.progressEvents.some(
+                (event) =>
+                    event.token === token && (event.value as { kind?: unknown }).kind === kind,
+            )
+        ) {
+            return Promise.resolve();
+        }
+        return new Promise((resolve) => this.progressWaiters.push({ token, kind, resolve }));
     }
 
     /// Resolves once the hold parked a reply, or the gate a request's work
