@@ -1,10 +1,7 @@
 [answers.const_member_function.completion]
 items = [
-    { label = "Viewed", kind = "Class" },
-    { label = "operator=(…) +2 overloads", kind = "Method" },
     { label = "template", kind = "Keyword" },
     { label = "view()", kind = "Method", detail = "void" },
-    { label = "~Viewed()", kind = "Method", detail = "void" },
 ]
 
 [answers.unbindable_object.completion]

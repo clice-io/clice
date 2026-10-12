@@ -40,11 +40,8 @@ range = "int ⟦add⟧(int a, int b) {"
 
 ["after the compile".completion.completion]
 items = [
-    { label = "Point", kind = "Class" },
-    { label = "operator=(…) +2 overloads", kind = "Method" },
     { label = "x", kind = "Field", detail = "int" },
     { label = "y", kind = "Field", detail = "int" },
-    { label = "~Point()", kind = "Method", detail = "void" },
 ]
 
 ["after the compile"."signature help".signature_help]

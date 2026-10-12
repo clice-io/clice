@@ -1,6 +1,5 @@
 [answers.subscript.completion]
 items = [
-    { label = "Vec", kind = "Class" },
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
@@ -8,7 +7,6 @@ items = [
 
 [answers.iterator.completion]
 items = [
-    { label = "Vec", kind = "Class" },
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },

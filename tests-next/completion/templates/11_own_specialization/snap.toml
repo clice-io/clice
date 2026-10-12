@@ -1,13 +1,11 @@
 [answers.from_written.completion]
 items = [
-    { label = "W", kind = "Class" },
     { label = "template", kind = "Keyword" },
     { label = "w_primary()", kind = "Method", detail = "void" },
 ]
 
 [answers.plain.completion]
 items = [
-    { label = "W", kind = "Class" },
     { label = "template", kind = "Keyword" },
     { label = "w_primary()", kind = "Method", detail = "void" },
 ]

@@ -1,8 +1,5 @@
 [answers.argument.completion]
 items = [
-    { label = "Config", kind = "Class" },
-    { label = "operator=(…) +2 overloads", kind = "Method" },
     { label = "retries", kind = "Field", detail = "int" },
     { label = "timeout", kind = "Field", detail = "int" },
-    { label = "~Config()", kind = "Method", detail = "void" },
 ]

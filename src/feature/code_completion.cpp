@@ -112,6 +112,21 @@ auto completion_kind(const clang::NamedDecl* decl) -> protocol::CompletionItemKi
     return protocol::CompletionItemKind::Text;
 }
 
+/// What a member access almost never names: the destructor, the class's
+/// own name, an operator.
+bool rarely_accessed(const clang::NamedDecl* decl) {
+    if(llvm::isa<clang::CXXDestructorDecl>(decl)) {
+        return true;
+    }
+    if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        return record->isInjectedClassName();
+    }
+    auto kind = decl->getDeclName().getNameKind();
+    return kind == clang::DeclarationName::CXXOperatorName ||
+           kind == clang::DeclarationName::CXXLiteralOperatorName ||
+           kind == clang::DeclarationName::CXXConversionFunctionName;
+}
+
 /// The most open access along the paths of bases from `derived` to `base`;
 /// none when `base` is not one of them. A dependent base is followed to its
 /// primary template, as Sema's lookup of visible members follows it.
@@ -726,6 +741,9 @@ public:
             }
         };
 
+        bool member_access =
+            context.getKind() == clang::CodeCompletionContext::CCC_DotMemberAccess ||
+            context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
         types::TemplateResolver resolver(sema.getASTContext());
         auto* naming = unchecked_naming_class(sema, context);
         auto behind_non_public_base = [&](const clang::CodeCompletionResult& candidate) {
@@ -876,6 +894,7 @@ public:
                     // A hidden declaration is not what its name means here.
                     if(!candidate.Declaration || candidate.Hidden ||
                        candidate.Availability == CXAvailability_NotAccessible ||
+                       (member_access && rarely_accessed(candidate.Declaration)) ||
                        behind_non_public_base(candidate)) {
                         break;
                     }

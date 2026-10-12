@@ -1,9 +1,6 @@
 [answers.member.completion]
 items = [
-    { label = "Thermostat", kind = "Class" },
     { label = "current", kind = "Field", detail = "int" },
-    { label = "operator=(…) +2 overloads", kind = "Method" },
     { label = "raise(int step)", kind = "Method", detail = "void" },
     { label = "target", kind = "Field", detail = "int" },
-    { label = "~Thermostat()", kind = "Method", detail = "void" },
 ]

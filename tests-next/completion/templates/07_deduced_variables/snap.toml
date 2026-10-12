@@ -1,7 +1,5 @@
 [answers.reference.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "T &" },
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
@@ -9,16 +7,12 @@ items = [
 
 [answers.const_reference.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "const T &" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.value.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "T &" },
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
@@ -26,24 +20,18 @@ items = [
 
 [answers.forwarding.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "const T &" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.decltype_auto.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "const T &" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.pointer.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "T &" },
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
@@ -51,8 +39,6 @@ items = [
 
 [answers.decltype_member.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "T &" },
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
@@ -60,16 +46,12 @@ items = [
 
 [answers.decltype_parenthesized.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "const T &" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.decayed_array.completion]
 items = [
-    { label = "Vec", kind = "Class" },
-    { label = "operator[](int index)", kind = "Method", detail = "const T &" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]

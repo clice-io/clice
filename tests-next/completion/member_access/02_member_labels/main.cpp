@@ -1,5 +1,5 @@
-// Fields, methods, the destructor and operators complete with plain names:
-// the destructor as `~` and the bare class name (never `~struct Account`,
+// The destructor and operators complete with plain names after `::`: the
+// destructor as `~` and the bare class name (never `~struct Account`,
 // whatever namespace or template it is in), `operator=` with no space
 // before `=`, and a conversion operator spelling its target type.
 
@@ -16,8 +16,7 @@ struct Account {
 };
 
 void bar() {
-    Account acc;
-    acc.§(conversion);
+    Account::§(conversion);
 }
 
 }  // namespace plain
@@ -30,8 +29,7 @@ struct Box {
 };
 
 void bar() {
-    Box<int> b;
-    b.§(instantiated);
+    Box<int>::§(instantiated);
 }
 
 }  // namespace templated
@@ -45,6 +43,6 @@ struct Account {
 
 }  // namespace bank
 
-void bar(bank::Account account) {
-    int v = account.§(namespaced);
+void bar() {
+    int v = bank::Account::§(namespaced);
 }

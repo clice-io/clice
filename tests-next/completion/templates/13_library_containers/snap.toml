@@ -2,32 +2,22 @@
 items = [
     { label = "assign(vector<vector<T>> &rows)", kind = "Method", detail = "void" },
     { label = "get_allocator()", kind = "Method", detail = "allocator_type" },
-    { label = "operator[](int index)", kind = "Method", detail = "reference" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "start", kind = "Field", detail = "T *" },
     { label = "template", kind = "Keyword" },
-    { label = "vector", kind = "Class" },
-    { label = "vector_base", kind = "Class" },
-    { label = "~vector_base()", kind = "Method", detail = "void" },
 ]
 
 [answers.concrete.completion]
 items = [
     { label = "assign(vector<vector<Point>> &rows)", kind = "Method", detail = "void" },
     { label = "get_allocator()", kind = "Method", detail = "allocator_type" },
-    { label = "operator=(…) +2 overloads", kind = "Method" },
-    { label = "operator[](int index)", kind = "Method", detail = "reference" },
     { label = "size()", kind = "Method", detail = "int" },
-    { label = "vector", kind = "Class" },
-    { label = "~vector()", kind = "Method", detail = "void" },
 ]
 
 [answers.dependent.completion]
 items = [
     { label = "assign(vector<vector<T>> &rows)", kind = "Method", detail = "void" },
     { label = "get_allocator()", kind = "Method", detail = "allocator_type" },
-    { label = "operator[](int index)", kind = "Method", detail = "reference" },
     { label = "size()", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
-    { label = "vector", kind = "Class" },
 ]
