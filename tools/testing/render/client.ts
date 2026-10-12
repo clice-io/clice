@@ -460,7 +460,11 @@ export abstract class Client {
 }
 
 export type LocationRequest =
-    "definition" | "declaration" | "type definition" | "implementation" | "references";
+    | "definition"
+    | "declaration"
+    | "type definition"
+    | "implementation"
+    | "references";
 
 /// How a references request asks: `declarations: false` leaves out the
 /// declarations and the definition (LSP includeDeclaration).

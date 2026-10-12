@@ -501,8 +501,7 @@ protocol::Diagnostic file_warning(std::string message);
 auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options = {},
                    const CompletionClient& client = {},
-                   PositionEncoding encoding = PositionEncoding::UTF16)
-    -> protocol::CompletionList;
+                   PositionEncoding encoding = PositionEncoding::UTF16) -> protocol::CompletionList;
 
 /// Get the hover information for the symbol at the given offset in the
 /// main file of the unit.

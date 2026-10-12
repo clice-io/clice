@@ -663,7 +663,8 @@ export class Serve extends Client {
     protected fetchTokens(file: string): Promise<Token[]> {
         return this.ask(`semantic tokens of ${file}`, async (client) => {
             const provider = client.initResult?.capabilities.semanticTokensProvider as
-                proto.SemanticTokensOptions | undefined;
+                | proto.SemanticTokensOptions
+                | undefined;
             if (provider === undefined) {
                 throw new Error("the server advertises no semantic tokens legend");
             }
