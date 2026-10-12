@@ -3,8 +3,8 @@
   "topic": "navigation",
   "subtopic": "references",
   "title": "Dependent template references",
-  "summary": "Find references on a member includes its dependent call sites in a template instantiated only with the member's class",
-  "prose": "",
+  "summary": "Find references on a member includes its dependent call sites in an open file's template instantiated only with the member's class",
+  "prose": "Files that are not open contribute no such call sites.",
   "status": "supported",
   "issues": [
     "clangd#258",
