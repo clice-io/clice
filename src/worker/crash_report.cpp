@@ -4,6 +4,11 @@ module;
 
 #ifdef _WIN32
 #include <io.h>
+
+// See cache_store.cpp: windows.h must not spill min/max macros.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
 #else
 #include <signal.h>
 #include <unistd.h>
@@ -103,6 +108,17 @@ CrashScope::~CrashScope() {
 
 void install_crash_report() {
     llvm::sys::AddSignalHandler([](void*) { report_crash(); }, nullptr);
+#ifdef _WIN32
+    // The filter LLVM installs for the handler above also prints the
+    // exception and a backtrace to stderr, which the master relays line by
+    // line; a worker's trace belongs in its log file only, as on POSIX.
+    // This filter keeps the rest of LLVM's: it runs the handlers and
+    // removes the files registered for removal.
+    ::SetUnhandledExceptionFilter([](EXCEPTION_POINTERS*) -> LONG {
+        llvm::sys::RunInterruptHandlers();
+        return EXCEPTION_EXECUTE_HANDLER;
+    });
+#endif
 #ifdef CLICE_ASAN
     // ASan reports memory errors and dies without raising a signal, and it
     // handles the faults it intercepts itself.
