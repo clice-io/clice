@@ -178,7 +178,8 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             ctx.reference(dep);
         }
     }
-    failed_imports.erase(path_id);
+    // The last round's failed import stands while this one waits: an
+    // importer explains its diagnostics from it meanwhile.
     for(auto dep: deps.resolved) {
         switch(co_await ctx.depend(node(dep))) {
             case DependResult::Ready: break;
@@ -189,6 +190,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
             case DependResult::Cancelled: co_return RoundOutcome::Stale;
         }
     }
+    failed_imports.erase(path_id);
 
     // Copied before any suspension below: while a PCM build is awaited, a
     // concurrent didSave can re-declare the file and drop the graph's
