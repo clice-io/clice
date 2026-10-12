@@ -1,5 +1,4 @@
 [answers."main.cpp"]
-wrong = "last:, the parameter after the pack, should link to auto last as first: links to auto first"
 inlay_hints = [
     {
         line = "int spread(auto first⟨: int⟩, auto... rest, auto last) {",
@@ -61,7 +60,12 @@ inlay_hints = [
                     { value = "first", target = "int spread(auto ⟦first⟧, auto... rest, auto last) {" },
                 ],
             },
-            { label = "last:", links = [] },
+            {
+                label = "last:",
+                links = [
+                    { value = "last", target = "int spread(auto first, auto... rest, auto ⟦last⟧) {" },
+                ],
+            },
         ],
     },
 ]

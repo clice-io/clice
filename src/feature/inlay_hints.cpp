@@ -653,15 +653,13 @@ private:
         if(!pattern) {
             return param;
         }
-        // A pack expands to any number of parameters: past it, indices
-        // part ways.
-        auto index = param->getFunctionScopeIndex();
-        auto patterns = pattern->parameters().take_front(index + 1);
-        if(patterns.size() <= index ||
-           llvm::any_of(patterns, [](const auto* each) { return each->isParameterPack(); })) {
-            return param;
-        }
-        return patterns.back();
+        // A pack expands to any number of parameters, so past it indices
+        // part ways; an instantiated parameter keeps the location of the
+        // one it was written as, the parameters of a pack all the pack's.
+        auto written = llvm::find_if(pattern->parameters(), [&](const auto* each) {
+            return each->getLocation() == param->getLocation();
+        });
+        return written == pattern->parameters().end() ? param : *written;
     }
 
     /// Append a piece, merging plain text into the plain text before it.
