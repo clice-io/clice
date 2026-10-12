@@ -337,9 +337,16 @@ public:
         /// auto& engine = src_mgr->getDiagnostics();
         /// engine.SetArgToStringFn();
 
-        llvm::SmallString<256> message;
-        raw_diagnostic.FormatDiagnostic(message);
-        diagnostic.message = message.str();
+        // clang blames the header for not being declared a header unit;
+        // clice builds none, whatever the build declares.
+        if(diagnostic.id.value == clang::diag::err_header_import_not_header_unit) {
+            diagnostic.message = std::format("header units are not supported; {} is not imported",
+                                             raw_diagnostic.getArgStdStr(0));
+        } else {
+            llvm::SmallString<256> message;
+            raw_diagnostic.FormatDiagnostic(message);
+            diagnostic.message = message.str();
+        }
 
         if(auto pair = diagnostic_range(raw_diagnostic)) {
             auto [fid, range] = *pair;

@@ -93,18 +93,6 @@ tests/modules/units/03_global_fragment
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**头文件单元**
-
-目前尚不支持通过 `import "local.h";` 或 `import <util.h>;` 将头文件作为头文件单元导入
-
-```case
-tests/modules/units/09_header_units
-```
-
-<!-- END CAPABILITY -->
-
 <!-- END GENERATED ITEMS -->
 
 ## 编辑
@@ -146,3 +134,7 @@ tests/modules/failures/01_broken_module
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
+
+## 已知限制
+
+- **头文件单元**。不支持 `import "util.h";` 和 `import <util.h>;`。每条这样的导入都会报错，说明不支持头文件单元，导入之后也看不到该头文件声明的任何内容；请改为包含该头文件。

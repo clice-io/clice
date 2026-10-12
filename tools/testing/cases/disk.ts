@@ -128,12 +128,13 @@ export class Disk {
             .sort();
     }
 
-    /// Damage a file as a crash or a bad disk would, its size and time kept:
-    /// every byte, or a stretch in its middle that reads `DAMAGE`.
+    /// Damage a file as a crash or a bad disk would, its size kept and its
+    /// time not moved forward: every byte, or a stretch in its middle that
+    /// reads `DAMAGE`.
     corrupt(file: string, where: "all" | "middle"): void {
         this.steps.note(`disk: corrupt ${where === "all" ? "all of" : "the middle of"} ${file}`);
         const target = this.path(file);
-        const { atime, mtime } = fs.statSync(target);
+        const { atime, mtimeMs } = fs.statSync(target);
         const bytes = fs.readFileSync(target);
         if (where === "all") {
             for (let i = 0; i < bytes.length; i += 1) {
@@ -143,7 +144,11 @@ export class Disk {
             bytes.write(DAMAGE, Math.max(0, Math.floor((bytes.length - DAMAGE.length) / 2)));
         }
         fs.writeFileSync(target, bytes);
-        fs.utimesSync(target, atime, mtime);
+        // stat's Date rounds to the nearest millisecond, which can move the
+        // time past a file written just after this one: the cache store then
+        // drops a PCH's index as older than the PCH. A millisecond back stays
+        // behind it.
+        fs.utimesSync(target, atime, new Date(Math.floor(mtimeMs) - 1));
     }
 
     /// Write a database: the project's for the copy as it stands, or that of

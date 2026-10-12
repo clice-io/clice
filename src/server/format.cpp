@@ -68,8 +68,12 @@ std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output
 
     // Guidance (and only when it can explain something): an exact CDB match
     // never gets the note, and neither does a guessed command that worked.
+    // The includer's own code compiles under its own command: what it
+    // misses, no command for the file would find.
     if(output.source != CommandSource::CDBExact && output.source != CommandSource::Default &&
-       std::ranges::any_of(diagnostics, is_file_not_found)) {
+       std::ranges::any_of(diagnostics, [](const protocol::Diagnostic& diagnostic) {
+           return is_file_not_found(diagnostic) && !feature::in_includer_context(diagnostic);
+       })) {
         diagnostics.insert(diagnostics.begin(), make_inferred_command_diagnostic(output.source));
     }
     if(!output.unmatched_host.empty()) {
