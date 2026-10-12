@@ -169,11 +169,30 @@ auto base_access(const clang::CXXRecordDecl* derived, const clang::CXXRecordDecl
     return std::ranges::min_element(paths, {}, &clang::CXXBasePath::Access)->Access;
 }
 
+/// Whether `befriended`, the entity a friend declaration names, is `scope`.
+/// A friend template a class template declares is linked to no declaration
+/// until instantiated: like Sema's access check, one of the same kind, name
+/// and scope counts, a function with as many parameters.
+bool befriends(const clang::NamedDecl* befriended, const clang::NamedDecl* scope) {
+    if(befriended->getCanonicalDecl() == scope->getCanonicalDecl()) {
+        return true;
+    }
+    if(!llvm::isa<clang::RedeclarableTemplateDecl>(befriended) ||
+       befriended->getKind() != scope->getKind() ||
+       befriended->getDeclName() != scope->getDeclName() ||
+       !befriended->getDeclContext()->getRedeclContext()->Equals(
+           scope->getDeclContext()->getRedeclContext())) {
+        return false;
+    }
+    auto* function = befriended->getAsFunction();
+    return !function || function->getNumParams() == scope->getAsFunction()->getNumParams();
+}
+
 /// The dependent class a member access or a qualified name lists the
-/// members of, when the completion point is outside it and the classes
-/// derived from it. Sema cannot follow its dependent bases to check access
-/// and checks a member found in one as if that base were named: a member
-/// reached only through non-public bases would be offered.
+/// members of, when the completion point is outside it, the classes
+/// derived from it and its friends. Sema cannot follow its dependent bases
+/// to check access and checks a member found in one as if that base were
+/// named: a member reached only through non-public bases would be offered.
 auto unchecked_naming_class(clang::Sema& sema, clang::CodeCompletionContext& context)
     -> const clang::CXXRecordDecl* {
     using Kind = clang::CodeCompletionContext::Kind;
@@ -190,10 +209,44 @@ auto unchecked_naming_class(clang::Sema& sema, clang::CodeCompletionContext& con
     if(!naming || !naming->isDependentContext()) {
         return nullptr;
     }
-    for(auto* scope = sema.CurContext; scope; scope = scope->getParent()) {
-        auto* enclosing = llvm::dyn_cast<clang::CXXRecordDecl>(scope);
-        if(enclosing && (enclosing->getCanonicalDecl() == naming->getCanonicalDecl() ||
-                         base_access(enclosing, naming))) {
+    // The classes and functions around the completion point, walked as
+    // Sema's access check walks them: a friend function defined in a class
+    // is in that class. Each counts with its template too, which a friend
+    // declaration may name instead.
+    llvm::SmallVector<const clang::NamedDecl*, 8> scopes;
+    for(const auto* scope = sema.CurContext; !scope->isFileContext();) {
+        if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(scope)) {
+            if(record->getCanonicalDecl() == naming->getCanonicalDecl() ||
+               base_access(record, naming)) {
+                return nullptr;
+            }
+            scopes.push_back(record);
+            if(auto* pattern = record->getDescribedClassTemplate()) {
+                scopes.push_back(pattern);
+            } else if(auto* specialization =
+                          llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record)) {
+                scopes.push_back(specialization->getSpecializedTemplate());
+            }
+            scope = record->getDeclContext();
+        } else if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(scope)) {
+            scopes.push_back(function);
+            if(auto* pattern = function->getDescribedFunctionTemplate()) {
+                scopes.push_back(pattern);
+            }
+            scope = function->getFriendObjectKind() ? function->getLexicalDeclContext()
+                                                    : function->getDeclContext();
+        } else {
+            scope = scope->getParent();
+        }
+    }
+    for(const auto* entry: naming->friends()) {
+        const clang::NamedDecl* befriended = entry->getFriendDecl();
+        if(auto* type = entry->getFriendType()) {
+            befriended = type->getType()->getAsCXXRecordDecl();
+        }
+        if(befriended && llvm::any_of(scopes, [&](const clang::NamedDecl* scope) {
+               return befriends(befriended, scope);
+           })) {
             return nullptr;
         }
     }

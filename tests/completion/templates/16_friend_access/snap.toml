@@ -1,0 +1,34 @@
+[answers.defined_inside.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "value", kind = "Field", detail = "int" },
+]
+
+[answers.defined_outside.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "value", kind = "Field", detail = "int" },
+]
+
+[answers.friend_class.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "value", kind = "Field", detail = "int" },
+]
+
+[answers.friend_template.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "value", kind = "Field", detail = "int" },
+]
+
+[answers.friend_specialization.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "value", kind = "Field", detail = "int" },
+]
+
+[answers.not_a_friend.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+]
