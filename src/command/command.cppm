@@ -424,6 +424,9 @@ public:
     /// extension decides (what input_kind() falls back to).
     llvm::StringRef forced_language(ConfigID id) const;
 
+    /// Whether the config's selector forces a language clang compiles.
+    bool forces_c_family(ConfigID id) const;
+
     /// Identity hash of a config (Frontend view + slot position + directory
     /// + schema salt), with the directory and the option values under the
     /// workspace root taken by their portable names so a moved checkout

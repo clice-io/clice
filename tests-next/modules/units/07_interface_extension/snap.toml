@@ -1,9 +1,16 @@
 [test."main.cpp"]
-wrong = "a.ixx is a module interface by its command's -x c++-module: the import should find module A"
-errors = [
-    { at = "import ⟦A;⟧", severity = "error", message = "module 'A' not found", source = "clang", code = "err_module_not_found" },
-]
+errors = []
 
-[test.use]
-wrong = "should show the function a that main.cpp imports from A"
-hover = {}
+[test.use.hover]
+markdown = '''
+### function `a`
+
+---
+→ `int`
+
+---
+```cpp
+export int a()
+```
+'''
+range = "return ⟦a⟧();"

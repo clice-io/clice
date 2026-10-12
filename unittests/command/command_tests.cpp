@@ -1063,6 +1063,22 @@ ZEST_CASE(LoadCudaHeader) {
     ZEXPECT(database.has_entry(tmp.path("kernels.cuh")));
 };
 
+ZEST_CASE(LoadForcedLanguage) {
+    /// An extension clang does not know is C-family when the command's -x
+    /// says so.
+    TempDir tmp;
+    auto dir = json_escape(tmp.root);
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    auto count = load_json(database, R"([{"directory": ")" + dir + R"(", "file": "a.ixx",
+          "command": "clang++ -std=c++20 -x c++-module -c a.ixx"},
+         {"directory": ")" + dir + R"(", "file": "b.ixx",
+          "command": "clang++ -std=c++20 -c b.ixx"}])");
+
+    ZASSERT(count == 1U);
+    ZEXPECT(database.has_entry(tmp.path("a.ixx")));
+};
+
 ZEST_CASE(LoadEmptyCommand) {
     /// Whitespace-only or empty "command" should not crash.
     TempDir tmp;

@@ -887,11 +887,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         auto& working = known->second;
         llvm::StringRef file_ref(file_sv.data(), file_sv.size());
 
-        // Skip non-C-family files (e.g. .rc, .asm, .def) that some build
-        // systems emit into compile_commands.json.
-        if(!is_c_family_file(file_ref)) {
-            continue;
-        }
+        // Some build systems emit non-C-family files (e.g. .rc, .asm, .def)
+        // into compile_commands.json: skipped, unless the command's -x
+        // says what clang does not know the extension for (a `.ixx`
+        // module interface).
+        bool c_family = is_c_family_file(file_ref);
 
         Spelling file(file_ref, directory);
         auto path_id = file_table.intern_spelled(file);
@@ -932,7 +932,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             normalized = normalize(working, path_id, llvm::StringRef(cmd_sv.data(), cmd_sv.size()));
         }
 
-        if(!normalized) {
+        if(!normalized || (!c_family && !forces_c_family(*normalized))) {
             continue;
         }
         new_entries.push_back({.file = path_id,
@@ -1050,6 +1050,14 @@ static bool cxx_driver(const CompileConfig& config) {
     llvm::StringRef name = lowered;
     name.consume_back(".exe");
     return name.rtrim("0123456789.-").ends_with("++");
+}
+
+bool CompilationDatabase::forces_c_family(ConfigID id) const {
+    namespace types = clang::driver::types;
+    auto language = forced_language(id);
+    auto type = language.empty() ? types::TY_INVALID
+                                 : types::lookupTypeForTypeSpecifier(language.str().c_str());
+    return type != types::TY_INVALID && types::isAcceptedByClang(type);
 }
 
 InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
