@@ -411,8 +411,7 @@ tests/completion/templates/07_deduced_variables
 An `auto` parameter of a lambda completes the members of the type the lambda is called with
 
 The call can come after the lambda, or be the algorithm the lambda is
-passed to: completion reads how the code around it instantiates the
-lambda. A lambda called with several types completes nothing.
+passed to. A lambda called with several types completes nothing.
 
 ```case
 tests/completion/templates/14_generic_lambda_parameters

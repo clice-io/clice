@@ -1088,7 +1088,9 @@ private:
                 if(binding->getHoldingVar()) {
                     type = type.getCanonicalType();
                 }
-                add_type_hint(binding->getLocation(), written_types.as_written(type), /*Prefix=*/": ");
+                add_type_hint(binding->getLocation(),
+                              written_types.as_written(type),
+                              /*Prefix=*/": ");
             }
             return;
         }

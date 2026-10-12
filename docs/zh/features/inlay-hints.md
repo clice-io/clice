@@ -273,7 +273,7 @@ tests/inlay_hints/type_hints/12_instantiated_templates
 
 容器元素的绑定会保留声明容器时使用的别名
 
-遍历 `std::map<std::string, Point>` 时，每个键都显示为 `const std::string`，而标准库自身的实例化只给出 `basic_string<char>`。同一类型对应两个别名时，提示不使用别名。
+遍历 `std::map<std::string, Point>` 时，每个键都显示为 `const std::string`，而不是 `basic_string<char>`。同一类型对应两个别名时，提示不使用别名。
 
 ```case
 tests/inlay_hints/type_hints/13_binding_aliases

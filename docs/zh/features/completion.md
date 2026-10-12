@@ -410,7 +410,7 @@ tests/completion/templates/07_deduced_variables
 
 Lambda 的 `auto` 参数会补全调用该 Lambda 时所用类型的成员
 
-调用可以写在 Lambda 之后，也可以是接收该 Lambda 的算法：补全会查看周围代码如何实例化该 Lambda。以多种类型调用的 Lambda 不提供补全。
+调用可以写在 Lambda 之后，也可以是接收该 Lambda 的算法。以多种类型调用的 Lambda 不提供补全。
 
 ```case
 tests/completion/templates/14_generic_lambda_parameters
