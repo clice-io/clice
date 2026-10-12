@@ -33,6 +33,8 @@ test("an unknown method", async (t) => {
     await answer(t, "dollar request", s.client.sendRequest("$/bogus", {}));
     await s.client.sendNotification("textDocument/bogus", {});
     await s.client.sendNotification("$/bogus", {});
+    // Compiled, the file is answered from its AST, not the index.
+    await s.sync();
     await t.show("hover after", s.hover(t.marker("add")));
 });
 
