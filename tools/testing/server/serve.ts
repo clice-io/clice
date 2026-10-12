@@ -257,6 +257,15 @@ export class Serve extends Client {
         return relative.startsWith("..") ? file : relative.split(path.sep).join("/");
     }
 
+    /// The workspace-relative path a URI the server sent spells, checked
+    /// strictly (uriToPath) and kept as spelled: no link resolved, no `.`
+    /// or doubled separator dropped. An absolute one outside the workspace.
+    spelling(uri: string): string {
+        const file = uriToPath(uri);
+        const root = URI.file(this.workspace.root).fsPath + path.sep;
+        return file.startsWith(root) ? file.slice(root.length).split(path.sep).join("/") : file;
+    }
+
     // Documents.
 
     /// didOpen with the disk text, or `text` for a buffer the disk does not

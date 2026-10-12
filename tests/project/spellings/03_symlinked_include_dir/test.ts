@@ -13,9 +13,7 @@ test(
         // the lookup went through.
         const call = t.at("main.cpp", "return get_|x(1)");
         const targets = await s.request<{ uri: string }[]>("textDocument/definition", call);
-        expect(targets.map(({ uri }) => decodeURIComponent(uri))).toEqual([
-            s.uri("vendor/real/utils.h"),
-        ]);
+        expect(targets.map(({ uri }) => s.spelling(uri))).toEqual(["vendor/real/utils.h"]);
         // The lookup's name is served too.
         expect(await s.errors("inc/utils.h")).toEqual([]);
         await t.show("hover", s.hover(t.at("inc/utils.h", "int get_|x")));

@@ -24,3 +24,20 @@ errors = [
 items = [
     { label = "Point", kind = "Class" },
 ]
+
+["include edits rebuild the pch".add.hover]
+markdown = '''
+### function `add`
+
+---
+→ `int`
+Parameters:
+- `int a`
+- `int b`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) {"

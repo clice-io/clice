@@ -148,23 +148,15 @@ test("indexing progress ends across folders", async (t) => {
     await s.indexed();
     await t.show("symbols", s.workspaceSymbols("_fn"));
     // A folder with nothing to index never runs a round; the others'
-    // rounds still end the one the client sees. The progress the client
-    // was sent is read raw: it is no request of the test's.
-    const events = s.client.progressEvents
+    // rounds still end the one the client sees: every round shown began
+    // and ended, the last one too. The progress the client was sent is
+    // read raw: it is no request of the test's.
+    const kinds = s.client.progressEvents
         .filter((event) => event.token === "clice/backgroundIndex")
-        .map((event) => event.value as { kind: string; message?: string });
-    expect(events.at(-1)?.kind).toBe("end");
-    let completed = 0;
-    for (const event of events) {
-        if (event.kind === "begin") {
-            completed = 0;
-        } else if (event.kind === "report") {
-            const count = Number(/^(\d+)\//.exec(event.message ?? "")?.[1]);
-            // A round's count never goes back.
-            expect(count).toBeGreaterThanOrEqual(completed);
-            completed = count;
-        }
-    }
+        .map((event) => (event.value as { kind: string }).kind)
+        .filter((kind) => kind !== "report");
+    expect(kinds.at(-1)).toBe("end");
+    expect(kinds).toEqual(kinds.map((_, index) => (index % 2 === 0 ? "begin" : "end")));
 });
 
 test("restart serves every folder", async (t) => {

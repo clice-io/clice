@@ -4,7 +4,7 @@ import { test, type Serve, type TestContext } from "@clice/tools/testing";
 /// The files a definition names, as the server spells them.
 async function targets(s: Serve, at: ReturnType<TestContext["at"]>): Promise<string[]> {
     const reply = await s.request<{ uri: string }[]>("textDocument/definition", at);
-    return reply.map(({ uri }) => decodeURIComponent(uri));
+    return reply.map(({ uri }) => s.spelling(uri));
 }
 
 test(
@@ -18,10 +18,10 @@ test(
         // name a file the way the folder was opened, in the preamble and
         // past it.
         expect(await targets(s, t.at("ws/main.cpp", '#include "|early.h"'))).toEqual([
-            s.uri("ws/inc/early.h"),
+            "ws/inc/early.h",
         ]);
         expect(await targets(s, t.at("ws/main.cpp", '#include "|late.h"'))).toEqual([
-            s.uri("ws/inc/late.h"),
+            "ws/inc/late.h",
         ]);
         await t.show("hover", s.hover(t.at("ws/main.cpp", '#include "|late.h"')));
     },
