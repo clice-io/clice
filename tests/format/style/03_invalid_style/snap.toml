@@ -3,5 +3,5 @@ code = -32803
 message = "${WS}/.clang-format:2:1: unknown key 'IndentWdith'"
 
 [command."$ clice format"]
-stderr = ["stderr: ${WS}/.clang-format:2:1: unknown key 'IndentWdith'"]
+stderr = "${WS}/.clang-format:2:1: unknown key 'IndentWdith'"
 exit = 2

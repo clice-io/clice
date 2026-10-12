@@ -273,7 +273,9 @@ std::expected<RenameTarget, std::string> rename_target(const IndexQuery& query,
         if(class_like(next.symbol.kind)) {
             follow(RelationKind::Constructor);
             follow(RelationKind::Destructor);
-        } else if(next.symbol.kind == SymbolKind::Method) {
+        } else if(next.symbol.kind == SymbolKind::Method &&
+                  name_form(next.symbol.flags) == NameForm::Identifier) {
+            // A destructor overriding another names its own class.
             follow(RelationKind::Interface);
             follow(RelationKind::Implementation);
         }

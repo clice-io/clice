@@ -184,7 +184,10 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = ["stderr: indexing 0/2 units, 0 failed", "stderr: indexing 2/2 units, 0 failed"]
+stderr = '''
+indexing 0/2 units, 0 failed
+indexing 2/2 units, 0 failed
+'''
 exit = 0
 
 ["a unit never indexed"."$ clice index --workers 2"]
@@ -390,7 +393,10 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = ["stderr: indexing 0/3 units, 0 failed", "stderr: indexing 3/3 units, 0 failed"]
+stderr = '''
+indexing 0/3 units, 0 failed
+indexing 3/3 units, 0 failed
+'''
 exit = 0
 
 ["a file outside the build"."$ clice index --workers 2"]

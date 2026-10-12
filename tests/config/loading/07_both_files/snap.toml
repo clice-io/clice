@@ -1,0 +1,4 @@
+[test."main.cpp"]
+diagnostics = [
+    { at = "return FROM_TOML + ⟦FROM_HIDDEN⟧;", severity = "error", message = "use of undeclared identifier 'FROM_HIDDEN'", source = "clang", code = "err_undeclared_var_use" },
+]

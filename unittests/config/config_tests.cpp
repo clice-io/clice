@@ -678,9 +678,6 @@ ZEST_CASE(TomlErrorLocated) {
     ZEXPECT(!result.has_value());
 }
 
-// FIXME: assert ConfigIssue::line/column once kotatsu's TOML decoder exposes
-// error locations (feature 60661c1 on the unmerged kotatsu branch); the
-// plumbing here already forwards rich_error.location when present.
 ZEST_CASE(SyntaxIssueReported) {
     TempDir tmp;
     tmp.touch("clice.toml", "[project\ntest_hooks = true\n");
