@@ -228,15 +228,6 @@ Entities normalized(Entities entities) {
     return entities;
 }
 
-/// The name an identifier spells; empty when no declaration can have it.
-clang::DeclarationName declaration_name(clang::ASTContext& context, llvm::StringRef identifier) {
-    auto found = context.Idents.find(identifier);
-    if(found == context.Idents.end()) {
-        return {};
-    }
-    return found->getValue();
-}
-
 using Namespaces = llvm::SmallVector<const clang::NamespaceDecl*, 4>;
 
 /// Add `ns` and the namespaces its using-directives nominate, transitively.
@@ -534,36 +525,28 @@ struct LocalScopes : clang::PrintingCallbacks {
     }
 };
 
-/// `std::name`, else `name`, when either declares `type` before `from`
-/// opens, and so before anything inserted into it; the global scope opens
-/// before any declaration. An implicit typedef (MSVC compatibility
-/// declares `size_t`) has no location and is seen everywhere.
+/// `std::name`, else `name`, when either declares `type` before `at`. An
+/// implicit typedef (MSVC compatibility declares `size_t`) has no location
+/// and is seen everywhere.
 std::optional<std::string> standard_name(clang::ASTContext& context,
                                          clang::QualType type,
                                          llvm::StringRef name,
-                                         const clang::DeclContext* from) {
-    auto member = declaration_name(context, name);
-    if(member.isEmpty()) {
-        return std::nullopt;
-    }
-    auto opens = llvm::cast<clang::Decl>(from)->getBeginLoc();
+                                         const clang::DeclContext* from,
+                                         clang::SourceLocation at) {
     auto declares = [&](const Entities& found) {
         auto* alias =
             found.size() == 1 ? llvm::dyn_cast<clang::TypedefNameDecl>(found[0]) : nullptr;
         return alias && context.hasSameType(alias->getUnderlyingType(), type) &&
                (alias->getLocation().isInvalid() ||
-                (opens.isValid() &&
-                 context.getSourceManager().isBeforeInTranslationUnit(alias->getLocation(),
-                                                                      opens)));
+                context.getSourceManager().isBeforeInTranslationUnit(alias->getLocation(), at));
     };
-    if(auto std_name = declaration_name(context, "std"); !std_name.isEmpty()) {
-        auto std_scope = lookup_qualified(context.getTranslationUnitDecl(), std_name);
-        auto* ns =
-            std_scope.size() == 1 ? llvm::dyn_cast<clang::NamespaceDecl>(std_scope[0]) : nullptr;
-        if(ns && lookup_unqualified(from, std_name) == std_scope &&
-           declares(lookup_qualified(ns, member))) {
-            return ("std::" + name).str();
-        }
+    auto* member = &context.Idents.get(name);
+    auto* std_name = &context.Idents.get("std");
+    auto std_scope = lookup_qualified(context.getTranslationUnitDecl(), std_name);
+    auto* ns = std_scope.size() == 1 ? llvm::dyn_cast<clang::NamespaceDecl>(std_scope[0]) : nullptr;
+    if(ns && lookup_unqualified(from, std_name) == std_scope &&
+       declares(lookup_qualified(ns, member))) {
+        return ("std::" + name).str();
     }
     if(declares(lookup_unqualified(from, member))) {
         return name.str();
@@ -572,19 +555,21 @@ std::optional<std::string> standard_name(clang::ASTContext& context,
 }
 
 /// The replacement of each compiler-internal name a type prints, by the
-/// printed name; nullopt when `from` sees no standard name for one.
+/// printed name; nullopt when `from` sees no standard name for one declared
+/// before `at`.
 std::optional<llvm::StringMap<std::string>> standard_spellings(clang::ASTContext& context,
                                                                const SpelledNames& names,
-                                                               const clang::DeclContext* from) {
+                                                               const clang::DeclContext* from,
+                                                               clang::SourceLocation at) {
     llvm::StringMap<std::string> spellings;
     for(const auto* sugar: names.predefined) {
         std::optional<std::string> spelling;
         switch(sugar->getKind()) {
             case clang::PredefinedSugarType::Kind::SizeT:
-                spelling = standard_name(context, clang::QualType(sugar, 0), "size_t", from);
+                spelling = standard_name(context, clang::QualType(sugar, 0), "size_t", from, at);
                 break;
             case clang::PredefinedSugarType::Kind::PtrdiffT:
-                spelling = standard_name(context, clang::QualType(sugar, 0), "ptrdiff_t", from);
+                spelling = standard_name(context, clang::QualType(sugar, 0), "ptrdiff_t", from, at);
                 break;
             case clang::PredefinedSugarType::Kind::SignedSizeT: break;
         }
@@ -594,8 +579,9 @@ std::optional<llvm::StringMap<std::string>> standard_spellings(clang::ASTContext
         spellings[sugar->getIdentifier()->getName()] = std::move(*spelling);
     }
     if(names.null_pointer) {
-        spellings["std::nullptr_t"] = standard_name(context, context.NullPtrTy, "nullptr_t", from)
-                                          .value_or("decltype(nullptr)");
+        spellings["std::nullptr_t"] =
+            standard_name(context, context.NullPtrTy, "nullptr_t", from, at)
+                .value_or("decltype(nullptr)");
     }
     return spellings;
 }
@@ -604,12 +590,14 @@ std::optional<llvm::StringMap<std::string>> standard_spellings(clang::ASTContext
 /// drops the namespaces enclosing `from` when the shortened name still
 /// finds the same entity there, and is anchored at the global scope when
 /// even its full spelling would find another. The compiler's internal
-/// names become their standard spellings; nullopt when `from` sees none.
+/// names become their standard spellings; nullopt when `from` sees none
+/// declared before `at`.
 std::optional<std::string> respell(clang::ASTContext& context,
                                    llvm::StringRef printed,
                                    const SpelledNames& names,
-                                   const clang::DeclContext* from) {
-    auto spellings = standard_spellings(context, names, from);
+                                   const clang::DeclContext* from,
+                                   clang::SourceLocation at) {
+    auto spellings = standard_spellings(context, names, from, at);
     if(!spellings) {
         return std::nullopt;
     }
@@ -643,13 +631,13 @@ std::optional<std::string> respell(clang::ASTContext& context,
                })) {
                 continue;
             }
-            auto name = declaration_name(context, components[depth]);
+            auto* name = &context.Idents.get(components[depth]);
             auto expected = lookup_qualified(prefix.back(), name);
             if(expected.size() == 1 && lookup_unqualified(from, name) == expected) {
                 return joined(depth);
             }
         }
-        auto first = declaration_name(context, components[0]);
+        auto* first = &context.Idents.get(components[0]);
         Entities expected{root->second};
         if(lookup_unqualified(from, first) == expected) {
             return joined(0);
@@ -769,7 +757,8 @@ void print_constraint(llvm::raw_ostream& os,
 std::string template_head(CompilationUnitRef unit,
                           const clang::TemplateParameterList* params,
                           const clang::CXXRecordDecl* record,
-                          const clang::DeclContext* from) {
+                          const clang::DeclContext* from,
+                          clang::SourceLocation at) {
     llvm::StringSet<> parameters;
     for(const clang::DeclContext* context = record;
         auto* enclosing = llvm::dyn_cast<clang::CXXRecordDecl>(context);
@@ -794,7 +783,7 @@ std::string template_head(CompilationUnitRef unit,
                 print_constraint(os, unit, placeholder.getConceptReference(), from, parameters);
                 os << (placeholder.getTypePtr()->isDecltypeAuto() ? " decltype(auto)" : " auto");
             } else {
-                os << type_name(unit.context(), value->getType(), from, {}, record)
+                os << type_name(unit.context(), value->getType(), from, at, {}, record)
                           .value_or("auto");
             }
             if(value->isParameterPack()) {
@@ -908,6 +897,7 @@ std::string qualifier_at(const clang::DeclContext* target, const clang::DeclCont
 std::optional<std::string> type_name(clang::ASTContext& context,
                                      clang::QualType type,
                                      const clang::DeclContext* from,
+                                     clang::SourceLocation at,
                                      llvm::StringRef name,
                                      const clang::DeclContext* access) {
     // A deduced type keeps its `auto` as sugar, one layer per deduction
@@ -945,7 +935,7 @@ std::optional<std::string> type_name(clang::ASTContext& context,
     std::string printed;
     llvm::raw_string_ostream os(printed);
     type.print(os, policy, name.empty() ? "" : "\x01");
-    auto spelled = respell(context, printed, names, from);
+    auto spelled = respell(context, printed, names, from, at);
     if(!spelled) {
         return std::nullopt;
     }
@@ -973,7 +963,7 @@ std::string template_heads(CompilationUnitRef unit,
     }
     std::string heads;
     for(auto [params, record]: llvm::reverse(lists)) {
-        heads += template_head(unit, params, record, from);
+        heads += template_head(unit, params, record, from, decl->getBeginLoc());
         heads += '\n';
     }
     return heads;

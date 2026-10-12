@@ -16,9 +16,20 @@ compiles = true
  }
 '''
 
-[answers.global]
-wrong = "std::size_t is declared above this global variable, which should be written std::size_t as it is inside a namespace"
-code_actions = []
+[[answers.global.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'std::size_t'"
+compiles = true
+
+[answers.global.code_actions.edits]
+"main.cpp" = '''
+ }  // namespace std
+
+-auto global_size = sizeof(int);
++std::size_t global_size = sizeof(int);
+
+ void g(int* a, int* b) {
+'''
 
 [[answers.size_std.code_actions]]
 kind = "refactor.rewrite.expandDeducedType"

@@ -39,6 +39,7 @@ std::optional<std::string> override_declaration(clang::ASTContext& context,
                                                 const clang::CXXMethodDecl* method,
                                                 const clang::CXXRecordDecl* record,
                                                 bool is_nothrow) {
+    auto at = record->getBraceRange().getEnd();
     std::string declarator;
     llvm::raw_string_ostream os(declarator);
     os << display::name_of(method, {.qualified = false}) << '(';
@@ -46,7 +47,8 @@ std::optional<std::string> override_declaration(clang::ASTContext& context,
         if(index) {
             os << ", ";
         }
-        auto declaration = type_name(context, param->getOriginalType(), record, param->getName());
+        auto declaration =
+            type_name(context, param->getOriginalType(), record, at, param->getName());
         if(!declaration) {
             return std::nullopt;
         }
@@ -81,7 +83,7 @@ std::optional<std::string> override_declaration(clang::ASTContext& context,
     // parameters or the exception specification. No spelling of a type
     // holds the placeholder's control character.
     constexpr llvm::StringRef placeholder = "_\x01";
-    auto text = type_name(context, method->getReturnType(), record, placeholder);
+    auto text = type_name(context, method->getReturnType(), record, at, placeholder);
     if(!text) {
         return std::nullopt;
     }

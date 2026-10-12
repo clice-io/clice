@@ -199,7 +199,7 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
             }
         }
         auto name = field->getName();
-        auto parameter = type_name(context, type, record, name);
+        auto parameter = type_name(context, type, record, record->getBraceRange().getEnd(), name);
         if(!parameter) {
             return;
         }

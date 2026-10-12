@@ -76,7 +76,8 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     }
     // Only a type spelled before its declarator can stand in for `auto`:
     // `int (*)(int)` has nowhere to put the name.
-    auto declaration = type_name(unit.context(), deduced, &ctx.node.decl_context(), "x");
+    auto declaration =
+        type_name(unit.context(), deduced, &ctx.node.decl_context(), written.getBegin(), "x");
     if(!declaration || !llvm::StringRef(*declaration).ends_with(" x")) {
         return;
     }

@@ -422,13 +422,19 @@ private:
     /// The spelling at `from` of a non-dependent type written before the
     /// name, beneath the definition's template heads.
     std::optional<std::string> spelling_under_heads(clang::QualType type) {
-        auto spelled = type_name(unit.context(), type, from, {}, decl->getDeclContext());
+        auto spelled =
+            type_name(unit.context(), type, from, decl->getBeginLoc(), {}, decl->getDeclContext());
         if(!spelled || parameter_names(*spelled).empty()) {
             return spelled;
         }
         // Spelled from the global scope, every name a parameter would
         // capture is a global one, anchored there.
-        spelled = type_name(unit.context(), type, unit.tu(), {}, decl->getDeclContext());
+        spelled = type_name(unit.context(),
+                            type,
+                            unit.tu(),
+                            decl->getBeginLoc(),
+                            {},
+                            decl->getDeclContext());
         if(spelled) {
             for(auto offset: llvm::reverse(parameter_names(*spelled))) {
                 spelled->insert(offset, "::");

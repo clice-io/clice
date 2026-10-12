@@ -1115,6 +1115,27 @@ void Widget::draw(int scale) {
     }
 }
 
+ZEST_CASE(StandardNamesFromPreamble) {
+    llvm::StringRef code = R"(
+#[cstddef.h]
+#pragma once
+namespace std {
+using size_t = decltype(sizeof 0);
+}
+#[main.cpp]
+#include "cstddef.h"
+
+§(size)auto size = sizeof(int);
+)";
+    for(bool pch: {true, false}) {
+        clear();
+        add_files("main.cpp", code);
+        ZASSERT((pch ? compile_with_pch("-std=c++23") : compile("-std=c++23")));
+        apply("size", "Replace 'auto' with 'std::size_t'");
+        EXPECT_COMPILES("#include \"cstddef.h\"\n\nstd::size_t size = sizeof(int);\n");
+    }
+}
+
 };  // ZEST_SUITE(code_action)
 
 }  // namespace

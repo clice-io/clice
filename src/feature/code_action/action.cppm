@@ -90,14 +90,15 @@ std::string qualifier_at(const clang::DeclContext* target, const clang::DeclCont
 /// A type spelled for `from`, declaring `name` when one is given
 /// ("int (*name)(int)"): each name drops the namespaces enclosing `from`
 /// as far as it still finds its entity there, and the compiler's internal
-/// names become the standard ones `from` sees. Nullopt for a type `from`
-/// cannot name: a lambda or unnamed type, another function's local type,
-/// a member type the text has no access to. The text has the access of
-/// `access`, `from` when null: an out-of-line member definition has its
-/// class's.
+/// names become the standard ones `from` sees declared before `at`, which
+/// is no later than where the text goes. Nullopt for a type `from` cannot
+/// name: a lambda or unnamed type, another function's local type, a member
+/// type the text has no access to. The text has the access of `access`,
+/// `from` when null: an out-of-line member definition has its class's.
 std::optional<std::string> type_name(clang::ASTContext& context,
                                      clang::QualType type,
                                      const clang::DeclContext* from,
+                                     clang::SourceLocation at,
                                      llvm::StringRef name = {},
                                      const clang::DeclContext* access = nullptr);
 
