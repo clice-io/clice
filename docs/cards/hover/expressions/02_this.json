@@ -2,7 +2,7 @@
   "id": "hover/expressions/02_this",
   "topic": "hover",
   "subtopic": "expressions",
-  "title": "this",
+  "title": "`this`",
   "summary": "Hovering `this` shows the type it points to, in a class and in a class template",
   "prose": "",
   "status": "supported",

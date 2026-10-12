@@ -3,7 +3,7 @@
   "topic": "index",
   "subtopic": "batch",
   "title": "Keep units out of indexing",
-  "summary": "A rule with index = false keeps its units out; they still compile when opened",
+  "summary": "A rule with `index = false` keeps its units out; they still compile when opened",
   "prose": "",
   "status": "supported",
   "issues": [],

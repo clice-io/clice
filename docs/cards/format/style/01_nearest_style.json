@@ -3,7 +3,7 @@
   "topic": "format",
   "subtopic": "style",
   "title": "Nearest style file",
-  "summary": "Each file takes the style of the .clang-format nearest above it",
+  "summary": "Each file takes the style of the `.clang-format` nearest above it",
   "prose": "",
   "status": "supported",
   "issues": [],

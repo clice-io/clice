@@ -2,9 +2,9 @@
   "id": "project/rules/05_relative_patterns",
   "topic": "project",
   "subtopic": "rules",
-  "title": "Patterns start at clice.toml",
-  "summary": "A relative pattern matches paths under the directory of the clice.toml that declares it",
-  "prose": "The rule appends `-DFEATURE` to the files under `src/`: `src/main.cpp` compiles, while `other.cpp`, beside clice.toml, misses the macro.",
+  "title": "Patterns start at `clice.toml`",
+  "summary": "A relative pattern matches paths under the directory of the `clice.toml` that declares it",
+  "prose": "The rule appends `-DFEATURE` to the files under `src/`: `src/main.cpp` compiles, while `other.cpp`, beside `clice.toml`, misses the macro.",
   "status": "supported",
   "issues": [],
   "files": [

@@ -3,7 +3,7 @@
   "topic": "format",
   "subtopic": "document",
   "title": "Format a document",
-  "summary": "Formatting a file lays all of it out in the style its .clang-format asks for",
+  "summary": "Formatting a file lays all of it out in the style its `.clang-format` asks for",
   "prose": "",
   "status": "supported",
   "issues": [],

@@ -2,7 +2,7 @@
   "id": "hover/deduced_types/01_auto",
   "topic": "hover",
   "subtopic": "deduced_types",
-  "title": "auto",
+  "title": "`auto`",
   "summary": "Hovering `auto` shows the type it stands for, or that it is not deduced yet in a template",
   "prose": "",
   "status": "partial",

@@ -3,7 +3,7 @@
   "topic": "format",
   "subtopic": "rewrite",
   "title": "Format in place",
-  "summary": "Without --check every file of the build is rewritten to its style",
+  "summary": "Without `--check` every file of the build is rewritten to its style",
   "prose": "",
   "status": "supported",
   "issues": [],

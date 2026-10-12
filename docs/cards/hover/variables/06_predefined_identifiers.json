@@ -2,7 +2,7 @@
   "id": "hover/variables/06_predefined_identifiers",
   "topic": "hover",
   "subtopic": "variables",
-  "title": "**func**",
+  "title": "`__func__`",
   "summary": "Hovering `__func__` shows the name of the function it is in, when the function is not a template",
   "prose": "",
   "status": "supported",

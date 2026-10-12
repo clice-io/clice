@@ -2,7 +2,7 @@
   "id": "hover/deduced_types/02_decltype",
   "topic": "hover",
   "subtopic": "deduced_types",
-  "title": "decltype",
+  "title": "`decltype`",
   "summary": "Hovering `decltype` shows the type it yields, the reference a parenthesized name adds included",
   "prose": "",
   "status": "supported",

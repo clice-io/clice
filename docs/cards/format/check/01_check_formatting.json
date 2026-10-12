@@ -3,7 +3,7 @@
   "topic": "format",
   "subtopic": "check",
   "title": "Check formatting",
-  "summary": "With --check nothing is rewritten; each place clang-format would change is reported",
+  "summary": "With `--check` nothing is rewritten; each place clang-format would change is reported",
   "prose": "",
   "status": "supported",
   "issues": [],

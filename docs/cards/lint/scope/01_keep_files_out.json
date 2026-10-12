@@ -3,7 +3,7 @@
   "topic": "lint",
   "subtopic": "scope",
   "title": "Keep files out of lint",
-  "summary": "A rule with lint = false keeps its files out of the report, headers and units alike",
+  "summary": "A rule with `lint = false` keeps its files out of the report, headers and units alike",
   "prose": "A vendored library is neither checked as a unit of its own nor reported where the project's units include it.",
   "status": "supported",
   "issues": [],
