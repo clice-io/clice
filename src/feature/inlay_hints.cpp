@@ -99,6 +99,20 @@ bool is_simple_builtin(const clang::FunctionDecl* callee) {
     return false;
 }
 
+/// Whether an initializer writes out the type it has: `long` in
+/// `static_cast<long>(x)`, `Widget` in `Widget{1, 2}`. A type left to
+/// deduction (`Pair(1, 2.5)`, `auto(x)`) is not written out.
+bool spells_type(const clang::Expr* init) {
+    init = init->IgnoreImplicit();
+    const clang::TypeSourceInfo* written = nullptr;
+    if(const auto* cast = dyn_cast<clang::ExplicitCastExpr>(init)) {
+        written = cast->getTypeInfoAsWritten();
+    } else if(const auto* temporary = dyn_cast<clang::CXXTemporaryObjectExpr>(init)) {
+        written = temporary->getTypeSourceInfo();
+    }
+    return written && !written->getType()->getContainedDeducedType();
+}
+
 struct Callee {
     // Only one of Decl or Loc is set.
     // Loc is for calls through function pointers.
@@ -784,12 +798,13 @@ private:
         }
     }
 
-    /// Hint the unwritten designators of a syntactic init list, e.g. `.x`
-    /// for the `1` in `Point{1}`. Explicitly written designators and inits
-    /// already carrying a `/*name=*/` comment stay bare.
-    void add_designators(const clang::InitListExpr* syntactic) {
-        auto designators = designators::unwritten(syntactic);
-        for(const clang::Expr* init: syntactic->inits()) {
+    /// Hint the unwritten designators of the initializers of an aggregate,
+    /// e.g. `.x` for the `1` in `Point{1}`. Explicitly written designators
+    /// and inits already carrying a `/*name=*/` comment stay bare.
+    void add_designators(clang::QualType aggregate,
+                         llvm::ArrayRef<const clang::Expr*> inits,
+                         const llvm::DenseMap<clang::SourceLocation, std::string>& designators) {
+        for(const clang::Expr* init: inits) {
             if(llvm::isa<clang::DesignatedInitExpr>(init)) {
                 continue;
             }
@@ -801,7 +816,7 @@ private:
                            HintSide::Left,
                            HintCategory::Designator,
                            /*Prefix=*/"",
-                           designator_label(syntactic->getType(), it->second),
+                           designator_label(aggregate, it->second),
                            /*Suffix=*/"=");
         }
     }
@@ -918,6 +933,8 @@ private:
             handle_lambda(expr);
         } else if(auto* expr = dyn_cast<clang::InitListExpr>(stmt)) {
             handle_init_list(expr);
+        } else if(auto* expr = dyn_cast<clang::CXXParenListInitExpr>(stmt)) {
+            handle_paren_list_init(expr);
         } else if(auto* for_stmt = dyn_cast<clang::ForStmt>(stmt)) {
             handle_for(for_stmt);
         } else if(auto* range_for = dyn_cast<clang::CXXForRangeStmt>(stmt)) {
@@ -996,7 +1013,8 @@ private:
 
         auto type = var->getType();
         if(auto* auto_type = type->getContainedAutoType()) {
-            if(auto_type->isDeduced() && !type->isDependentType()) {
+            if(auto_type->isDeduced() && !type->isDependentType() &&
+               !(var->getInit() && spells_type(var->getInit()))) {
                 // Our current approach is to place the hint on the variable
                 // and accordingly print the full type
                 // (e.g. for `const auto& x = 42`, print `const int&`).
@@ -1035,13 +1053,7 @@ private:
             return;
         }
 
-        Callee callee;
-        callee.decl = expr->getConstructor();
-        if(!callee.decl) {
-            return;
-        }
-
-        add_params(callee,
+        add_params({.decl = decls::constructor_of(expr)},
                    expr->getParenOrBraceRange().getEnd(),
                    {expr->getArgs(), expr->getNumArgs()});
     }
@@ -1224,7 +1236,15 @@ private:
             return;
         }
 
-        add_designators(expr);
+        add_designators(expr->getType(), expr->inits(), designators::unwritten(expr));
+    }
+
+    void handle_paren_list_init(const clang::CXXParenListInitExpr* expr) {
+        if(options.designators) {
+            add_designators(expr->getType(),
+                            expr->getUserSpecifiedInitExprs(),
+                            designators::unwritten(expr));
+        }
     }
 
     void handle_type_loc(clang::TypeLoc TL) {

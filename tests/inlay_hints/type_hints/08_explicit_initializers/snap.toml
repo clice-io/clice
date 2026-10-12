@@ -1,11 +1,10 @@
 [answers.spelled]
-wrong = "the cast on the right already spells the type, which needs no hint (clangd#1749)"
 inlay_hints = [
-    { line = "auto widened⟨: long⟩ = static_cast<long>(compute());" },
-    { line = "auto braced⟨: int⟩ = int{42};" },
+    { line = "auto boxed = Box<int>(⟨first:⟩1, ⟨second:⟩2);" },
 ]
 
 [answers.deduced]
 inlay_hints = [
     { line = "auto plain⟨: int⟩ = compute();" },
+    { line = "auto inferred⟨: Box<int>⟩ = Box(⟨first:⟩1, ⟨second:⟩2);" },
 ]

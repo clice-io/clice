@@ -13,4 +13,11 @@ namespace clice::designators {
 auto unwritten(const clang::InitListExpr* syntactic)
     -> llvm::DenseMap<clang::SourceLocation, std::string>;
 
+/// The designator each argument of a parenthesized aggregate
+/// initialization stands for, keyed alike: `.y` for the `2` in
+/// `Point(1, 2)`. Parentheses elide no braces: an argument initializes one
+/// whole subobject.
+auto unwritten(const clang::CXXParenListInitExpr* init)
+    -> llvm::DenseMap<clang::SourceLocation, std::string>;
+
 }  // namespace clice::designators

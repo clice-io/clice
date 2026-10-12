@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "Flags braced{⟨.low=⟩1, ⟨.high=⟩2};" },
+    { line = "Flags parenthesized(⟨.low=⟩3, ⟨.high=⟩4);" },
+]
