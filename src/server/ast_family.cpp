@@ -180,6 +180,9 @@ static void explain_failed_imports(std::vector<protocol::Diagnostic>& diagnostic
             auto* text = std::get_if<protocol::string>(&diagnostic.message);
             if(code && *code == "err_module_not_found" && text && *text == not_found) {
                 diagnostic.message = message;
+                // As clang codes it: a cycle only where the imported module
+                // is on it, not built where the message starts with one
+                // that is not.
                 diagnostic.code = failure->cycle == 0 ? "err_module_cycle" : "err_module_not_built";
             }
         }
