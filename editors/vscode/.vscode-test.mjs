@@ -12,11 +12,18 @@ const repoRoot = path.resolve(extensionRoot, "../..");
 const fixturesDir = path.join(repoRoot, ".cache", "editors");
 const fixtures = ["hello_world", "imported_symbol", "two_hosts"];
 
+// The fixtures' databases name a bare clang++, which the server resolves on
+// the PATH the task set: xclang's. VS Code would replace that PATH with the
+// login shell's, which macOS's path_helper starts with /usr/bin, and Apple's
+// clang++ has no C++20 modules.
+const keepEnv = "--force-disable-user-env";
+
 const configs = fixtures.map((fixture) => ({
     label: fixture,
     files: "out/test/**/*.test.js",
     workspaceFolder: path.join(fixturesDir, fixture),
     mocha: { timeout: 300 * 1000 },
+    launchArgs: [keepEnv],
 }));
 
 // Stage the real server under clice/ so it looks like a platform-specific vsix
@@ -60,6 +67,7 @@ if (process.env.CLICE_EXECUTABLE) {
             CLICE_E2E_BUNDLED_FROM: process.env.CLICE_EXECUTABLE,
         },
         launchArgs: [
+            keepEnv,
             "--user-data-dir",
             path.join(extensionRoot, ".vscode-test", "user-data-bundled"),
         ],
