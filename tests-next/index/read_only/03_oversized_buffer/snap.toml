@@ -9,11 +9,15 @@ document_links = [
     { at = '#include ⟦"header.h"⟧', target = "header.h" },
 ]
 
-[test.hover]
-wrong = "read-only hover of a function the project only declares shows its name alone; the declaration's signature is expected, as a compiled file shows it"
-
 [test.hover.hover]
-markdown = "### function `add`"
+markdown = '''
+### function `add`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
 range = "return ⟦add⟧(x, x);"
 
 [test.tokens]

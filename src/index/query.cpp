@@ -907,17 +907,28 @@ std::optional<llvm::StringRef>
     return disk_text(source.path, *source.shard, storage);
 }
 
-std::optional<IndexQuery::Definition> IndexQuery::definition_text(SymbolHash hash,
-                                                                  Fid anchor) const {
+std::optional<IndexQuery::DeclaredText> IndexQuery::definition_text(SymbolHash hash,
+                                                                    Fid anchor) const {
+    return declared_text(hash, anchor, RelationKind::Definition);
+}
+
+std::optional<IndexQuery::DeclaredText> IndexQuery::declaration_text(SymbolHash hash,
+                                                                     Fid anchor) const {
+    return declared_text(hash, anchor, RelationKind::Declaration);
+}
+
+std::optional<IndexQuery::DeclaredText> IndexQuery::declared_text(SymbolHash hash,
+                                                                  Fid anchor,
+                                                                  RelationKind kind) const {
     // Live sources first: buffer-true indexes also know symbols the project
     // table has never seen (an unsaved definition), the preamble region
     // holds the buffer's own macros, and an overlay is the only source for
-    // a header seen under the live context. The first in-bounds Definition
-    // payload whose text is available wins.
-    std::optional<Definition> found;
+    // a header seen under the live context. The first in-bounds payload
+    // whose text is available wins.
+    std::optional<DeclaredText> found;
     for_each_relation(hash,
                       anchor,
-                      RelationKind::Definition,
+                      kind,
                       Order::LiveFirst,
                       {},
                       [&](const IndexSource& source, const Relation& relation) {
@@ -931,7 +942,7 @@ std::optional<IndexQuery::Definition> IndexQuery::definition_text(SymbolHash has
                               return true;
                           }
                           auto range = extent->range;
-                          found = Definition{
+                          found = DeclaredText{
                               .extent = *extent,
                               .text = std::string(text->substr(range.begin, range.length())),
                               .comment = preceding_comment(*text, range.begin),

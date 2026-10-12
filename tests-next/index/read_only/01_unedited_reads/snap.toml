@@ -34,11 +34,15 @@ document_links = [
     { at = '#include ⟦"header.h"⟧', target = "header.h" },
 ]
 
-["index serves unedited reads".add]
-wrong = "read-only hover of a function the project only declares shows its name alone; the declaration's signature is expected, as a compiled file shows it"
-
 ["index serves unedited reads".add.hover]
-markdown = "### function `add`"
+markdown = '''
+### function `add`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
 range = "return ⟦add⟧(x, x);"
 
 ["index serves unedited reads"."add definition"]
@@ -183,25 +187,35 @@ items = [
 ["completion escalates".completed]
 pushes = []
 
-["completion escalates".read]
-wrong = "read-only hover of a function the project only declares shows its name alone; the declaration's signature is expected, as a compiled file shows it"
-
 ["completion escalates".read.hover]
-markdown = "### function `add`"
+markdown = '''
+### function `add`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
 range = "return ⟦add⟧(x, x);"
 
 ["completion escalates".pushed]
 pushes = [[]]
 
 ["header served read-only".header]
-wrong = "read-only hover of a function the project only declares shows its name alone; the declaration's signature is expected, as a compiled file shows it"
 outline = [
     { name = "add", kind = "Function", at = "int ⟦add⟧(int a, int b);" },
 ]
 references = ["int ⟦add⟧(int a, int b);", "main.cpp │ return ⟦add⟧(x, x);"]
 
 ["header served read-only".header.hover]
-markdown = "### function `add`"
+markdown = '''
+### function `add`
+
+---
+```cpp
+int add(int a, int b)
+```
+'''
 range = "int ⟦add⟧(int a, int b);"
 
 ["header served read-only".pushed]

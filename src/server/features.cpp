@@ -261,7 +261,11 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     }
     std::string definition;
     std::string comment;
-    if(auto text = query.definition_text(symbol, cursor->site.file)) {
+    auto text = query.definition_text(symbol, cursor->site.file);
+    if(!text) {
+        text = query.declaration_text(symbol, cursor->site.file);
+    }
+    if(text) {
         definition = std::move(text->text);
         comment = std::move(text->comment);
     }

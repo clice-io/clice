@@ -375,13 +375,16 @@ public:
     /// re-read for pure-ASCII blobs — verified against the index's content
     /// hash, so a moved-on file degrades to no text rather than mismatched
     /// text).
-    struct Definition {
+    struct DeclaredText {
         Site extent;
         std::string text;
         std::string comment;
     };
 
-    std::optional<Definition> definition_text(SymbolHash hash, Fid anchor) const;
+    std::optional<DeclaredText> definition_text(SymbolHash hash, Fid anchor) const;
+
+    /// The same of a declaration.
+    std::optional<DeclaredText> declaration_text(SymbolHash hash, Fid anchor) const;
 
     /// The source line a site lies on, for previews; empty when the text
     /// is unavailable (see definition_text on the disk re-read).
@@ -511,6 +514,8 @@ private:
     };
 
     RankedHits ranked_search(const SymbolQuery& query, std::size_t limit) const;
+
+    std::optional<DeclaredText> declared_text(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// Relations of `kind` grouped by their target symbol, each with the
     /// sites spelling it, the targets resolved to their canonical sites.
