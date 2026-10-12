@@ -1,5 +1,11 @@
-import { answers } from "@clice/tools/testing";
+import { test } from "@clice/tools/testing";
 
-answers({ paths: { server: "clice inspect does not rename" }, indexing: true }, async (a) => {
-    await a.show("measure", a.rename(a.marker("measure"), "twice", { compile: true }));
+// main.cpp opens before the background index reaches it, and nothing else
+// includes the header.
+test(async (t) => {
+    const s = await t.spawn();
+    s.open("main.cpp", { pull: false });
+    await s.initialize();
+    await s.indexed();
+    await t.show("measure", s.rename(t.marker("measure"), "twice"));
 });
