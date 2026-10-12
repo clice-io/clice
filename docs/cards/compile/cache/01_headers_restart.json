@@ -1,0 +1,105 @@
+{
+  "id": "compile/cache/01_headers_restart",
+  "topic": "compile",
+  "subtopic": "cache",
+  "title": "Warm restarts",
+  "summary": "Precompiled headers outlive a restart, and changes made while the server was down still reach the files that use them",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "circle.cpp",
+      "text": "#include \"circle.h\"\n\ndouble area(const Circle& circle) {\n    return 3.14159 * circle.radius * circle.radius;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "circle.h",
+      "text": "#pragma once\n\nstruct Circle {\n    double radius;\n};\n\ndouble area(const Circle& circle);\n",
+      "markers": [
+        {
+          "name": "declaration",
+          "begin": 60,
+          "end": 60,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"circle.h\"\n\nint main() {\n    return static_cast<int>(area(Circle{1.0}));\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "cache survives a restart",
+      "blocks": [
+        {
+          "label": "links",
+          "value": {
+            "document_links": [
+              {
+                "at": {
+                  "$place": "#include ⟦\"circle.h\"⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 19
+                    }
+                  }
+                },
+                "target": "circle.h"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "offline edit reaches its importers",
+      "blocks": [
+        {
+          "label": "errors",
+          "value": {
+            "errors": [
+              {
+                "at": {
+                  "$place": "return static_cast<int>(⟦area⟧(Circle{1.0}));",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 32
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "no matching function for call to 'area'",
+                "source": "clang",
+                "code": "err_ovl_no_viable_function_in_call"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "offline flag change rebuilds",
+      "blocks": []
+    },
+    {
+      "name": "offline touch reuses",
+      "blocks": []
+    }
+  ]
+}

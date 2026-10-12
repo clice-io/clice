@@ -53,9 +53,11 @@ node_modules/
 .vscode-test/
 
 # A case under tests-next/ is whatever project its check needs: the build
-# output names above are inputs there.
+# output names above are inputs there. The docs cards follow the cases' paths.
 !tests-next/**/*build*/
 !tests-next/**/temp/
+!tests-next/**/cache/
+!docs/cards/**/cache/
 !tests-next/**/cache/
 !tests-next/**/out/
 !tests-next/**/dist/
