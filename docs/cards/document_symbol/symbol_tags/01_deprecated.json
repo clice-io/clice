@@ -3,9 +3,9 @@
   "topic": "document_symbol",
   "subtopic": "symbol_tags",
   "title": "Deprecated symbols",
-  "summary": "A deprecated symbol does not carry the Deprecated tag yet",
+  "summary": "A deprecated symbol carries the Deprecated tag, which editors strike through",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -21,7 +21,6 @@
         {
           "label": "outline",
           "value": {
-            "wrong": "the deprecated open_v1 carries no Deprecated tag",
             "document_symbols": [
               {
                 "name": "open_v1",

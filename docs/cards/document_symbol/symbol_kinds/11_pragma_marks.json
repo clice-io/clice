@@ -2,10 +2,10 @@
   "id": "document_symbol/symbol_kinds/11_pragma_marks",
   "topic": "document_symbol",
   "subtopic": "symbol_kinds",
-  "title": "#pragma mark",
-  "summary": "`#pragma mark` sections do not list in the outline yet",
+  "title": "Pragma mark sections",
+  "summary": "`#pragma mark - Name` opens a section that groups the symbols after it",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -21,7 +21,6 @@
         {
           "label": "outline",
           "value": {
-            "wrong": "#pragma mark sections do not appear in the outline",
             "document_symbols": [
               {
                 "name": "Lifecycle",
@@ -107,7 +106,6 @@
         {
           "label": "extents",
           "value": {
-            "wrong": "#pragma mark sections do not appear in the outline",
             "document_symbols": [
               {
                 "name": "Lifecycle",
