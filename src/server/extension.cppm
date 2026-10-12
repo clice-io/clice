@@ -238,6 +238,9 @@ struct StatsResult {
     /// The builds each file went through, while test hooks are on (see
     /// BuildProbe); empty otherwise.
     std::vector<FileBuilds> builds;
+
+    /// The process ids of the workers in service, stateful first.
+    std::vector<std::uint32_t> workers;
 };
 
 /// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.

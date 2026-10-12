@@ -1,17 +1,9 @@
-import * as fs from "node:fs";
 import { expect } from "vitest";
 import { test, type Serve, type TestContext } from "@clice/tools/testing";
 
 // A server whose worker is deep in a compile that never ends still ends
 // when its editor goes: on its input closing, and with the workers going
 // along when the server itself is killed.
-
-const LINUX = {
-    except: {
-        win32: "reads worker processes from /proc",
-        darwin: "reads worker processes from /proc",
-    },
-};
 
 /// A server whose stateful worker runs the endless compile.
 async function hung(t: TestContext): Promise<Serve> {
@@ -24,17 +16,22 @@ async function hung(t: TestContext): Promise<Serve> {
     return s;
 }
 
+/// Whether a process has the pid: signal 0 checks without sending, and
+/// ESRCH says none has.
 function alive(pid: number): boolean {
     try {
-        const stat = fs.readFileSync(`/proc/${String(pid)}/stat`, "utf8");
-        return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) !== "Z";
-    } catch {
-        return false;
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+            return false;
+        }
+        throw error;
     }
 }
 
 // Neovim quits by closing the server's input, without `exit`.
-test("closed input ends it", LINUX, async (t) => {
+test("closed input ends it", async (t) => {
     const s = await hung(t);
     // The editor's side of the pipe, which no action models.
     s.client.child.stdin.end();
@@ -42,14 +39,15 @@ test("closed input ends it", LINUX, async (t) => {
     s.client.dispose();
 });
 
-test("workers die with it", LINUX, async (t) => {
+test("workers die with it", async (t) => {
     const s = await hung(t);
-    const workers = s.client.workerPids();
+    const { workers } = await s.stats();
     expect(workers).toHaveLength(2);
+    expect(workers.filter(alive)).toEqual(workers);
     await s.kill();
-    // No event marks another process gone. The workers ask the kernel to
-    // kill them with their server (PR_SET_PDEATHSIG), which it does as
-    // the server exits: what is left is a killed process's teardown.
-    await t.elapse(2_000, "killed workers leaving /proc");
+    // No event marks another process gone. Each worker watches its server
+    // and exits with it (exit_with_parent): what is left is the time a
+    // dying process takes to leave.
+    await t.elapse(2_000, "workers exiting after their server");
     expect(workers.filter(alive)).toEqual([]);
 });

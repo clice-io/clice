@@ -52,6 +52,7 @@ test(async (t) => {
                 "pchStateBytes",
                 "pendingTmpFiles",
                 "sessions",
+                "workers",
             ]),
         ].sort(),
     );

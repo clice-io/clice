@@ -243,6 +243,8 @@ export interface StatsResult {
     indexIdle: boolean;
     /// The builds each file went through, while test hooks are on.
     builds: FileBuilds[];
+    /// The process ids of the workers in service, stateful first.
+    workers: number[];
 }
 
 export interface FileBuilds {
