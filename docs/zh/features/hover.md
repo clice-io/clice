@@ -301,13 +301,13 @@ tests/hover/deduced_types/03_alias_spelling
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#493 clangd#1768 -->
+<!-- BEGIN CAPABILITY: supported clangd#493 clangd#1768 -->
 
 **泛型 Lambda 参数**
 
-泛型 Lambda 的 `auto` 会显示调用时推导出的类型，但形参及其成员不会显示该类型
+泛型 Lambda 的 `auto` 形参显示为调用该 Lambda 时所用的类型，形参的成员也有悬停卡片
 
-在函数体内，形参显示为 `auto`，`point.x` 没有悬停卡片。
+在函数体内，形参显示为调用时的类型，`point.x` 即该类型的成员。以多种类型调用的 Lambda，其形参仍显示为 `auto`。
 
 ```case
 tests/hover/deduced_types/06_generic_lambdas

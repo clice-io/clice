@@ -330,13 +330,13 @@ tests/navigation/implementation/04_derived_classes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **模板鸭子类型导航**
 
-尚不能将依赖调用解析到已知实例化中的方法
+在依赖调用上执行“跳转到实现”，会到达该调用在模板唯一实例化中解析到的方法
 
-这适用于函数模板和泛型 Lambda，但目前两者都不会返回实现目标。
+函数模板和泛型 Lambda 均适用。
 
 ```case
 tests/navigation/implementation/05_dependent_calls
@@ -400,11 +400,11 @@ tests/navigation/references/04_forwarding_factories
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#258 clangd#675 -->
+<!-- BEGIN CAPABILITY: supported clangd#258 clangd#675 -->
 
 **模板中的依赖引用**
 
-在成员上执行“查找引用”，不会包含模板中的依赖调用位置，即使模板已使用该成员所属的类实例化
+在成员上执行“查找引用”，结果会包含模板中的依赖调用位置，前提是该模板只用该成员所属的类实例化
 
 ```case
 tests/navigation/references/05_dependent_calls
@@ -524,11 +524,11 @@ tests/navigation/deduced_types/05_parameters_and_returns
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**未实例化模板中的 `auto`**
+**模板中的 `auto`**
 
-在模板内部，若 `auto` 的初始化器依赖于模板参数，则会跳转到该初始化器在类模板中解析出的类型
+在模板内部，若 `auto` 的初始化器依赖于模板参数，则会跳转到该初始化器解析出的类型
 
-如果解析出的类型就是模板参数本身，无论模板如何实例化，都跳转到该模板参数。
+模板只实例化一次时，模板参数代表其实参；以多种类型实例化时，模板参数代表它自身。
 
 ```case
 tests/navigation/deduced_types/06_dependent_auto

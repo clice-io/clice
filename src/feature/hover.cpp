@@ -290,8 +290,7 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
     if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(value)) {
         // The helper keeps its clangd signature, which speaks mutable
         // pointers; it only reads through them.
-        if(auto* instantiated =
-               decls::only_instantiation(const_cast<clang::ParmVarDecl*>(param))) {
+        if(auto* instantiated = decls::only_instantiation(const_cast<clang::ParmVarDecl*>(param))) {
             return instantiated->getType();
         }
     }

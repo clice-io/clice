@@ -1460,12 +1460,11 @@ Features::RawResult Features::implementation(Ticket ticket,
                            return from.sites(named, path_id, RelationKind::Definition);
                        }));
         }
-        llvm::append_range(sites,
-                           gather(symbol,
-                                  path_id,
-                                  [&](const index::IndexQuery& from, index::SymbolHash named) {
-                                      return from.implementation(named, path_id);
-                                  }));
+        llvm::append_range(
+            sites,
+            gather(symbol, path_id, [&](const index::IndexQuery& from, index::SymbolHash named) {
+                return from.implementation(named, path_id);
+            }));
     }
     index::dedup_sites(sites);
     co_return to_raw(to_lsp::locations(sites));

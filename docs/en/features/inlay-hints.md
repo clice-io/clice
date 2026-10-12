@@ -181,7 +181,7 @@ tests/inlay_hints/type_hints/02_type_sugar
 
 **Structured bindings**
 
-Each binding hints its canonical type; the aggregate itself stays bare
+Each binding hints its own type; the aggregate itself stays bare
 
 ```case
 tests/inlay_hints/type_hints/03_structured_bindings
@@ -263,6 +263,22 @@ With two instantiations deducing different types there is no one type to show.
 
 ```case
 tests/inlay_hints/type_hints/12_instantiated_templates
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Binding aliases**
+
+The bindings of a container's elements keep the aliases the container was declared with
+
+Iterating a `std::map<std::string, Point>` shows each key as a
+`const std::string`, where the standard library's own instantiation names
+only `basic_string<char>`. Two aliases of one type leave it unaliased.
+
+```case
+tests/inlay_hints/type_hints/13_binding_aliases
 ```
 
 <!-- END CAPABILITY -->

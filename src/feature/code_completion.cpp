@@ -747,6 +747,7 @@ public:
             std::uint32_t offset;
             clang::FunctionDecl* found = nullptr;
         };
+
         Finder finder(unit.context().getSourceManager(), offset);
         for(auto* decl: unit.top_level_decls()) {
             if(!finder.TraverseDecl(decl)) {

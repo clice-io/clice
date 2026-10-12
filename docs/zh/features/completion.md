@@ -404,13 +404,13 @@ tests/completion/templates/07_deduced_variables
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#493 clangd#1768 -->
+<!-- BEGIN CAPABILITY: supported clangd#493 clangd#1768 -->
 
 **泛型 Lambda 参数**
 
-目前在 Lambda 函数体内，还无法对其 `auto` 参数进行成员补全
+Lambda 的 `auto` 参数会补全调用该 Lambda 时所用类型的成员
 
-调用该 Lambda 时，无论是直接调用还是通过算法调用，传入的实参都是 `Point`，但执行补全时，其函数体仍是模板。
+调用可以写在 Lambda 之后，也可以是接收该 Lambda 的算法：补全会查看周围代码如何实例化该 Lambda。以多种类型调用的 Lambda 不提供补全。
 
 ```case
 tests/completion/templates/14_generic_lambda_parameters

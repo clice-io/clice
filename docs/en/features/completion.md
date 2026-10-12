@@ -404,13 +404,15 @@ tests/completion/templates/07_deduced_variables
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#493 clangd#1768 -->
+<!-- BEGIN CAPABILITY: supported clangd#493 clangd#1768 -->
 
 **Generic lambda parameters**
 
-An `auto` parameter of a lambda gets no member completion inside its body yet
+An `auto` parameter of a lambda completes the members of the type the lambda is called with
 
-The lambda is called with a `Point`, directly or through an algorithm, but its body is still a template when the completion runs.
+The call can come after the lambda, or be the algorithm the lambda is
+passed to: completion reads how the code around it instantiates the
+lambda. A lambda called with several types completes nothing.
 
 ```case
 tests/completion/templates/14_generic_lambda_parameters

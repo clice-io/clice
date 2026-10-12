@@ -344,14 +344,13 @@ tests/navigation/implementation/04_derived_classes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Template duck-type navigation**
 
-Dependent calls do not resolve to methods of known instantiations yet
+Go to implementation on a dependent call reaches the method it resolves to in the template's only instantiation
 
-This applies to function templates and generic lambdas, but neither
-currently returns an implementation target.
+This applies to function templates and generic lambdas alike.
 
 ```case
 tests/navigation/implementation/05_dependent_calls
@@ -415,11 +414,11 @@ tests/navigation/references/04_forwarding_factories
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#258 clangd#675 -->
+<!-- BEGIN CAPABILITY: supported clangd#258 clangd#675 -->
 
 **Dependent template references**
 
-Find references on a member does not include dependent call sites in a template, even when the template is instantiated with the member's class
+Find references on a member includes its dependent call sites in a template instantiated only with the member's class
 
 ```case
 tests/navigation/references/05_dependent_calls
@@ -544,12 +543,13 @@ tests/navigation/deduced_types/05_parameters_and_returns
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**`auto` in uninstantiated templates**
+**`auto` in templates**
 
-Inside a template, an `auto` whose initializer depends on a template parameter reaches the type the initializer resolves to on the class template
+Inside a template, an `auto` whose initializer depends on a template parameter reaches the type the initializer resolves to
 
-A type that is the template parameter itself reaches the parameter, however
-the template is instantiated.
+A template parameter stands for its argument when the template is
+instantiated once, and for itself when it is instantiated with several
+types.
 
 ```case
 tests/navigation/deduced_types/06_dependent_auto
