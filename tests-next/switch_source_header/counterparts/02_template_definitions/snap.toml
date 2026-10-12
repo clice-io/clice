@@ -10,11 +10,8 @@ candidates = [
     { path = "matrix.h", reasons = ["declares 2 of 2 definitions", "same name"] },
 ]
 
-["opened first"."matrix.h"]
-wrong = "matrix.tpp should count as defining both declarations, as it does when main.cpp was closed while the index ran"
-
 ["opened first"."matrix.h".counterparts]
 preferred = "matrix.tpp"
 candidates = [
-    { path = "matrix.tpp", reasons = ["same name"] },
+    { path = "matrix.tpp", reasons = ["defines 2 of 2 declarations", "same name"] },
 ]

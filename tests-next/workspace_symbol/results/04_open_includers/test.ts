@@ -2,8 +2,8 @@ import { test } from "@clice/tools/testing";
 import { expect } from "vitest";
 
 // A header whose only includer is open before the background index reaches
-// it: the open source is not indexed, and the search finds only the
-// header's symbols the source itself mentions until the source closes.
+// it: the open source is indexed all the same, and the search finds the
+// header's symbols whether the source is open or closed.
 test(async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);

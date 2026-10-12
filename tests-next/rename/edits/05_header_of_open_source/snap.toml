@@ -1,5 +1,15 @@
-[answers.measure]
-wrong = "renaming a function declared in a header fails as if the header were never indexed, when the only file including it is the one open in the editor"
-
 [answers.measure.rename]
-error = "cannot rename `measure`: these files changed since they were indexed, or were never indexed: ${WS}/shapes.h"
+compiles = true
+
+[answers.measure.rename.edits]
+"main.cpp" = '''
+ // The header is included by the open source alone.
+ #include "shapes.h"
+-int use() { return measure(2); }
++int use() { return twice(2); }
+'''
+"shapes.h" = '''
+ #pragma once
+-inline int measure(int v) { return v * 2; }
++inline int twice(int v) { return v * 2; }
+'''

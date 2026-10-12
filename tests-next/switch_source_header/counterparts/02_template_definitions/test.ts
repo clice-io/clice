@@ -2,8 +2,8 @@ import { test } from "@clice/tools/testing";
 import { expect } from "vitest";
 
 // The definitions in matrix.tpp are known from main.cpp, the only source
-// including the pair: through the background index when it is closed, and
-// not at all when it was open before the index reached it.
+// including the pair, through the background index: whether it is closed,
+// or open before the index reached it.
 test("indexed", async (t) => {
     const s = await t.start();
     await s.indexed();
