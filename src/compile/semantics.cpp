@@ -1500,10 +1500,13 @@ void stmt_references(const clang::Stmt* S,
                                        DE->getBeginLoc(),
                                        DE->isGlobalDelete());
         };
-        if(auto* op = DE->getOperatorDelete()) {
+        auto* op = DE->getOperatorDelete();
+        if(op) {
             refer(out, op, RelationKind::Reference, keyword(op));
         }
-        if(auto type = DE->getDestroyedType(); !type.isNull()) {
+        /// A destroying `operator delete` runs in place of the destructor.
+        if(auto type = DE->getDestroyedType();
+           !type.isNull() && !(op && op->isDestroyingOperatorDelete())) {
             if(auto* destructor = types::destructor_of(type)) {
                 refer(out, destructor, RelationKind::Reference, keyword(destructor));
             }
@@ -1701,6 +1704,15 @@ void stmt_references(const clang::Stmt* S,
     }
     if(auto* SS = llvm::dyn_cast<clang::SwitchStmt>(S)) {
         refer_conversion(out, SS->getCond(), SS->getLParenLoc());
+        return;
+    }
+    if(auto* FS = llvm::dyn_cast<clang::ForStmt>(S)) {
+        refer_conversion(out, FS->getCond(), FS->getLParenLoc());
+        return;
+    }
+    /// do {} while(guard) — the statement keeps no `(` of its own.
+    if(auto* DS = llvm::dyn_cast<clang::DoStmt>(S)) {
+        refer_conversion(out, DS->getCond(), DS->getWhileLoc());
         return;
     }
     if(auto* UO = llvm::dyn_cast<clang::UnaryOperator>(S)) {

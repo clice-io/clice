@@ -815,9 +815,9 @@ tests/navigation/implicit_targets/07_user_defined_literals
 
 A condition or `!` navigates to the conversion operator it runs
 
-Go-to-definition on the parenthesis of an `if` condition, or on the `!`,
-`&&`, `||` or `?` whose operand converts, reaches the user-defined
-conversion operator that tests the operand.
+Go-to-definition on the parenthesis of a condition (the `while` of a
+`do`), or on the `!`, `&&`, `||` or `?` whose operand converts, reaches the
+user-defined conversion operator that tests the operand.
 
 ```case
 tests/navigation/implicit_targets/08_implicit_conversions

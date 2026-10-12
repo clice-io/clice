@@ -1,6 +1,12 @@
 [answers.condition]
 definition = ["explicit ⟦operator bool⟧() const;"]
 
+[answers.for_condition]
+definition = ["explicit ⟦operator bool⟧() const;"]
+
+[answers.do_condition]
+definition = ["explicit ⟦operator bool⟧() const;"]
+
 [answers.negation]
 definition = ["explicit ⟦operator bool⟧() const;"]
 

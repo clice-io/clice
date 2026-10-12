@@ -844,8 +844,11 @@ public:
 
         if(auto* DE = node.get<clang::CXXDeleteExpr>()) {
             auto keyword = keyword_after_scope(context, DE->getBeginLoc(), DE->isGlobalDelete());
-            call(DE->getOperatorDelete(), keyword);
-            if(auto type = DE->getDestroyedType(); !type.isNull()) {
+            auto* op = DE->getOperatorDelete();
+            call(op, keyword);
+            // A destroying `operator delete` runs in place of the destructor.
+            if(auto type = DE->getDestroyedType();
+               !type.isNull() && !(op && op->isDestroyingOperatorDelete())) {
                 call(types::destructor_of(type), keyword);
             }
             return;

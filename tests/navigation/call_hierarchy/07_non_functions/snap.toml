@@ -30,3 +30,18 @@ incoming_calls = [
     },
 ]
 outgoing_calls = []
+
+[answers.dependent_field]
+call_hierarchy = [
+    { name = "stored", kind = "Field", at = "T ⟦stored⟧;", detail = "Store::stored" },
+]
+incoming_calls = [
+    {
+        name = "read",
+        kind = "Method",
+        at = "T ⟦read⟧() {",
+        detail = "Reader::read",
+        sites = ["return this->⟦stored⟧;"],
+    },
+]
+outgoing_calls = []

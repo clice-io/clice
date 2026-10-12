@@ -13,6 +13,18 @@ struct Tally {
     }
 };
 
+template <typename T>
+struct Store {
+    T §(dependent_field)stored;
+};
+
+template <typename T>
+struct Reader : Store<T> {
+    T read() {
+        return this->stored;
+    }
+};
+
 int next() {
     return counter++;
 }

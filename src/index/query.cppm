@@ -525,7 +525,7 @@ private:
     std::vector<Edge> edges(SymbolHash hash, Fid anchor, RelationKind kind) const;
 
     /// The functions whose bodies reference `hash`, each with its
-    /// references.
+    /// references, weak ones included.
     std::vector<Edge> referencing_functions(SymbolHash hash, Fid anchor) const;
 
     /// The edges of the sites grouped by neighbour, each neighbour at its

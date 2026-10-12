@@ -700,45 +700,41 @@ std::vector<IndexQuery::Edge> IndexQuery::referencing_functions(SymbolHash hash,
     // Each file's function definitions, by their extents.
     llvm::DenseMap<const Shard*, std::vector<std::pair<LocalSourceRange, SymbolHash>>> functions;
     llvm::DenseMap<SymbolHash, std::vector<Site>> by_function;
-    for_each_relation(
-        hash,
-        anchor,
-        RelationKind::Reference,
-        Order::DiskFirst,
-        {.preamble = false},
-        [&](const IndexSource& source, const Relation& relation) {
-            // An overlay's header entries come without a shard to look in.
-            if(!source.shard) {
-                return true;
-            }
-            auto [it, inserted] = functions.try_emplace(source.shard);
-            if(inserted) {
-                source.shard->for_each_relation([&](SymbolHash symbol, const Relation& defined) {
-                    if(defined.kind != RelationKind::Definition ||
-                       !defined.definition_range().contains(defined.range)) {
-                        return true;
-                    }
-                    if(auto info = symbol_info(symbol, source.file);
-                       info && is_function(info->kind)) {
-                        it->second.emplace_back(defined.definition_range(), symbol);
-                    }
-                    return true;
-                });
-            }
-            std::optional<std::pair<LocalSourceRange, SymbolHash>> innermost;
-            for(auto& function: it->second) {
-                if(function.first.contains(relation.range) &&
-                   (!innermost || innermost->first.contains(function.first))) {
-                    innermost = function;
-                }
-            }
-            if(innermost) {
-                if(auto site = source.site(relation.range)) {
-                    by_function[innermost->second].push_back(*site);
-                }
-            }
+    auto visit = [&](const IndexSource& source, const Relation& relation) {
+        // An overlay's header entries come without a shard to look in.
+        if(!source.shard) {
             return true;
-        });
+        }
+        auto [it, inserted] = functions.try_emplace(source.shard);
+        if(inserted) {
+            source.shard->for_each_relation([&](SymbolHash symbol, const Relation& defined) {
+                if(defined.kind != RelationKind::Definition ||
+                   !defined.definition_range().contains(defined.range)) {
+                    return true;
+                }
+                if(auto info = symbol_info(symbol, source.file); info && is_function(info->kind)) {
+                    it->second.emplace_back(defined.definition_range(), symbol);
+                }
+                return true;
+            });
+        }
+        std::optional<std::pair<LocalSourceRange, SymbolHash>> innermost;
+        for(auto& function: it->second) {
+            if(function.first.contains(relation.range) &&
+               (!innermost || innermost->first.contains(function.first))) {
+                innermost = function;
+            }
+        }
+        if(innermost) {
+            if(auto site = source.site(relation.range)) {
+                by_function[innermost->second].push_back(*site);
+            }
+        }
+        return true;
+    };
+    for(auto kind: {RelationKind::Reference, RelationKind::WeakReference}) {
+        for_each_relation(hash, anchor, kind, Order::DiskFirst, {.preamble = false}, visit);
+    }
     return located_edges(by_function);
 }
 

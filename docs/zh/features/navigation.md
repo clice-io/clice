@@ -774,7 +774,7 @@ tests/navigation/implicit_targets/07_user_defined_literals
 
 条件判断或 `!` 可跳转到其调用的转换运算符
 
-在 `if` 条件的括号上，或在操作数需要转换的 `!`、`&&`、`||` 或 `?` 上执行“跳转到定义”，会跳转到用于判断该操作数真假的用户定义转换运算符。
+在条件的括号上（`do` 循环则在其 `while` 上），或在操作数需要转换的 `!`、`&&`、`||` 或 `?` 上执行“跳转到定义”，会跳转到用于判断该操作数真假的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/08_implicit_conversions

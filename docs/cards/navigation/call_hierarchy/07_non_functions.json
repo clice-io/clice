@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "int counter = 0;\n\nenum Mode {\n    Fast,\n    Slow,\n};\n\nstruct Tally {\n    int hits = 0;\n\n    void bump() {\n        hits += 1;\n    }\n};\n\nint next() {\n    return counter++;\n}\n\nMode pick() {\n    return Fast;\n}\n",
+      "text": "int counter = 0;\n\nenum Mode {\n    Fast,\n    Slow,\n};\n\nstruct Tally {\n    int hits = 0;\n\n    void bump() {\n        hits += 1;\n    }\n};\n\ntemplate <typename T>\nstruct Store {\n    T stored;\n};\n\ntemplate <typename T>\nstruct Reader : Store<T> {\n    T read() {\n        return this->stored;\n    }\n};\n\nint next() {\n    return counter++;\n}\n\nMode pick() {\n    return Fast;\n}\n",
       "markers": [
         {
           "name": "variable",
@@ -30,6 +30,12 @@
           "name": "field",
           "begin": 77,
           "end": 77,
+          "range": false
+        },
+        {
+          "name": "dependent_field",
+          "begin": 178,
+          "end": 178,
           "range": false
         }
       ]
@@ -72,11 +78,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 15,
+                      "line": 27,
                       "character": 4
                     },
                     "end": {
-                      "line": 15,
+                      "line": 27,
                       "character": 8
                     }
                   }
@@ -87,11 +93,11 @@
                     "path": "main.cpp",
                     "range": {
                       "start": {
-                        "line": 16,
+                        "line": 28,
                         "character": 11
                       },
                       "end": {
-                        "line": 16,
+                        "line": 28,
                         "character": 18
                       }
                     }
@@ -136,11 +142,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 19,
+                      "line": 31,
                       "character": 5
                     },
                     "end": {
-                      "line": 19,
+                      "line": 31,
                       "character": 9
                     }
                   }
@@ -151,11 +157,11 @@
                     "path": "main.cpp",
                     "range": {
                       "start": {
-                        "line": 20,
+                        "line": 32,
                         "character": 11
                       },
                       "end": {
-                        "line": 20,
+                        "line": 32,
                         "character": 15
                       }
                     }
@@ -222,6 +228,71 @@
                       "end": {
                         "line": 11,
                         "character": 12
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": []
+          }
+        },
+        {
+          "label": "dependent_field",
+          "marker": "dependent_field",
+          "value": {
+            "call_hierarchy": [
+              {
+                "name": "stored",
+                "kind": "Field",
+                "at": {
+                  "$place": "T ⟦stored⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "Store::stored"
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "read",
+                "kind": "Method",
+                "at": {
+                  "$place": "T ⟦read⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 10
+                    }
+                  }
+                },
+                "detail": "Reader::read",
+                "sites": [
+                  {
+                    "$place": "return this->⟦stored⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 23,
+                        "character": 21
+                      },
+                      "end": {
+                        "line": 23,
+                        "character": 27
                       }
                     }
                   }
