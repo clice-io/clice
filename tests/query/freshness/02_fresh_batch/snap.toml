@@ -16,7 +16,10 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = ["stderr: indexing 0/1 units, 0 failed", "stderr: indexing 1/1 units, 0 failed"]
+stderr = '''
+indexing 0/1 units, 0 failed
+indexing 1/1 units, 0 failed
+'''
 exit = 0
 
 [test."$ clice query --method symbolSearch --symbol extra --fresh"]
@@ -37,5 +40,8 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = ["stderr: indexing 0/1 units, 0 failed", "stderr: indexing 1/1 units, 0 failed"]
+stderr = '''
+indexing 0/1 units, 0 failed
+indexing 1/1 units, 0 failed
+'''
 exit = 0

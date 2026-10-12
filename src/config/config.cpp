@@ -265,16 +265,62 @@ struct DenyUnknownKeys {
     constexpr static bool deny_unknown_fields = true;
 };
 
+/// The end of the key or value below `node` that starts at `begin`, the
+/// innermost one: an array of tables starts where its first table does.
+static std::optional<toml::source_position> end_at(const toml::node& node,
+                                                   const toml::source_position& begin) {
+    auto at = [&](const toml::node& child) -> std::optional<toml::source_position> {
+        if(auto end = end_at(child, begin)) {
+            return end;
+        }
+        if(child.source().begin == begin) {
+            return child.source().end;
+        }
+        return std::nullopt;
+    };
+    if(auto* table = node.as_table()) {
+        for(auto& [key, value]: *table) {
+            if(key.source().begin == begin) {
+                return key.source().end;
+            }
+            if(auto end = at(value)) {
+                return end;
+            }
+        }
+    } else if(auto* array = node.as_array()) {
+        for(auto& element: *array) {
+            if(auto end = at(element)) {
+                return end;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+/// An issue at its error's position, spanning the key or value of `parsed`
+/// that starts there: the error carries only where it starts. A document
+/// that does not parse has no such extent, its error marks a point.
 static ConfigIssue make_issue(ConfigIssue::Severity severity,
                               llvm::StringRef path,
-                              const kota::codec::rich_error& error) {
+                              const kota::codec::rich_error& error,
+                              const toml::table* parsed) {
     ConfigIssue issue;
     issue.severity = severity;
     issue.file = path.str();
     issue.message = error.to_string();
-    if(error.location) {
-        issue.line = static_cast<std::uint32_t>(error.location->line);
-        issue.column = static_cast<std::uint32_t>(error.location->column);
+    if(!error.location) {
+        return issue;
+    }
+    issue.line = issue.end_line = static_cast<std::uint32_t>(error.location->line);
+    issue.column = issue.end_column = static_cast<std::uint32_t>(error.location->column);
+    if(!parsed) {
+        return issue;
+    }
+    if(auto end = end_at(*parsed,
+                         {static_cast<toml::source_index>(issue.line),
+                          static_cast<toml::source_index>(issue.column)})) {
+        issue.end_line = end->line;
+        issue.end_column = end->column;
     }
     return issue;
 }
@@ -287,26 +333,31 @@ std::optional<Config> Config::load(llvm::StringRef path,
     if(!content)
         return std::nullopt;
 
+    auto parsed = kota::codec::toml::parse_table((*content)->getBuffer());
+    auto* table = parsed ? &*parsed : nullptr;
+    Config config;
     kota::codec::UnknownFields unknown;
-    auto result = [&] {
+    auto decoded = [&]() -> std::expected<void, kota::codec::rich_error> {
+        if(!parsed) {
+            return std::unexpected(parsed.error());
+        }
         kota::codec::scoped_context<kota::codec::UnknownFields> collecting(unknown);
-        return kota::codec::toml::from_string<Config>((*content)->getBuffer());
+        return kota::codec::toml::from_toml(*parsed, config);
     }();
-    if(!result) {
-        LOG_ERROR("Invalid clice.toml {}: {}", path, result.error().to_string());
+    if(!decoded) {
+        LOG_ERROR("Invalid clice.toml {}: {}", path, decoded.error().to_string());
         if(issues)
-            issues->push_back(make_issue(ConfigIssue::Severity::Error, path, result.error()));
+            issues->push_back(
+                make_issue(ConfigIssue::Severity::Error, path, decoded.error(), table));
         return std::nullopt;
     }
 
     if(issues) {
         for(auto& entry: unknown.entries) {
             LOG_WARN("clice.toml {}: {}", path, entry.to_string());
-            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, entry));
+            issues->push_back(make_issue(ConfigIssue::Severity::Warning, path, entry, table));
         }
     }
-
-    auto config = std::move(*result);
     auto directory = Spelling::absolute(path).parent();
     for(auto& rule: config.rules) {
         rule.directory = directory.str();

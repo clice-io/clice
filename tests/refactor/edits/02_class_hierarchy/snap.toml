@@ -6,7 +6,6 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 ["renames a class"."$ clice refactor rename --symbol Shape --to Figure --dry-run"]
-wrong = "Circle's destructor is listed as a place left alone, written as `~Circle`: it overrides the destructor of Shape but never names Shape, so it is no place of the rename"
 stdout = '''
 {
   "result": {
@@ -120,24 +119,7 @@ stdout = '''
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/shape.cpp",
-        "line": 8,
-        "column": 9,
-        "name": "Shape",
-        "reason": "the name is written here as `~Circle`",
-        "text": "Circle::~Circle() {}"
-      },
-      {
-        "file": "${WS}/shape.h",
-        "line": 11,
-        "column": 5,
-        "name": "Shape",
-        "reason": "the name is written here as `~Circle`",
-        "text": "~Circle() override;"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },
@@ -154,7 +136,6 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 ["a constructor names its class"."$ clice refactor rename --symbol Circle::Circle --to Disk --dry-run"]
-wrong = "Shape's destructor is listed as a place left alone, written as `~Shape`: the destructor of Circle overrides it, but it never names Circle, so it is no place of the rename"
 stdout = '''
 {
   "result": {
@@ -261,24 +242,7 @@ stdout = '''
         ]
       }
     ],
-    "unconfirmed": [
-      {
-        "file": "${WS}/shape.cpp",
-        "line": 4,
-        "column": 8,
-        "name": "Circle",
-        "reason": "the name is written here as `~Shape`",
-        "text": "Shape::~Shape() {}"
-      },
-      {
-        "file": "${WS}/shape.h",
-        "line": 5,
-        "column": 13,
-        "name": "Circle",
-        "reason": "the name is written here as `~Shape`",
-        "text": "virtual ~Shape();"
-      }
-    ],
+    "unconfirmed": [],
     "conflicts": [],
     "stale": []
   },

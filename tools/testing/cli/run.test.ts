@@ -30,12 +30,14 @@ describe("normalize", () => {
             const text = [
                 `${root}/src/a.cpp`,
                 `${root}/.clice/logs/2026-10-11_02-58-20_88194/master.log`,
+                `${root}/logs/2026-10-11_02-58-20_88194`,
                 "indexed 9 units in 1.25s, 3ms per unit, 12.5 KB",
                 "built at 2026-10-12 04:41:13  generation=1",
             ].join("\n");
             expect(normalize(text, root).split("\n")).toEqual([
                 "${WS}/src/a.cpp",
                 "${WS}/.clice/logs/${SESSION}/master.log",
+                "${WS}/logs/${SESSION}",
                 "indexed 9 units in #s, #ms per unit, # KB",
                 "built at #time  generation=1",
             ]);

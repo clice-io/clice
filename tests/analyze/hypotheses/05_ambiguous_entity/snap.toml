@@ -113,7 +113,7 @@ stdout = '''
   }
 }
 '''
-stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 0
 
 [test."$ clice analyze modules --move-entity value=core/traits2.h"]

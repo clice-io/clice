@@ -32,9 +32,7 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = [
-    "error: No index cache at ${WS}/.clice/cache/v14/index/debug~50f0a9a717df05f7; run `clice index` first",
-]
+stderr = "error: No index cache at ${WS}/.clice/cache/v14/index/debug~50f0a9a717df05f7; run `clice index` first"
 exit = 1
 
 [test."$ clice index"]

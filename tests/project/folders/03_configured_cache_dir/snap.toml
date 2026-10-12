@@ -6,5 +6,7 @@ workspace_symbols = [
 ]
 
 ["configured cache directory serves once".guidance]
-wrong = "gamma's clice.toml names a cache directory beta already uses, and gamma falls back to its own .clice without a word to the user, where clice index says so"
-value = []
+value = [
+    "Cache directory ${WS}/.clice already serves another project; ${WS}/beta keeps its cache in ${WS}/shared",
+    "Cache directory ${WS}/.clice already serves another project; ${WS}/gamma keeps its cache in ${WS}/gamma/.clice",
+]

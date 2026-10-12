@@ -5,6 +5,7 @@ import { test } from "@clice/tools/testing";
 test("typing above a call", async (t) => {
     const s = await t.start();
     s.open("main.cpp");
+    await s.sync();
     await t.show("before", s.inlayHints("main.cpp"));
     s.edit("main.cpp", { after: "int frame() {\n", insert: "    auto scale = resize(2, 3);\n" });
     await t.show("after", s.inlayHints("main.cpp"));
