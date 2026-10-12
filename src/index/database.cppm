@@ -170,6 +170,10 @@ public:
 /// — while the prefix keeps it recognizable.
 std::string library_directory(const CacheStore& store, llvm::StringRef configuration);
 
+/// Whether the configuration's library holds its `index.mdb`, that is, an
+/// index was ever built for it.
+bool library_exists(const CacheStore& store, llvm::StringRef configuration);
+
 /// The configuration's library: a single `index.mdb` (plus its `-lock`
 /// file) in its library directory, created on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock

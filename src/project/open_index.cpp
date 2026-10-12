@@ -53,8 +53,11 @@ bool open_database(Project& project, CanonicalRef root, llvm::StringRef requeste
     project.build.reset_active(configuration);
     project.index_db = index::open_database(*project.store, configuration, /*read_only=*/true);
     if(!project.index_db) {
-        LOG_ERROR("No index cache at {}; run `clice index` first",
-                  index::library_directory(*project.store, configuration));
+        // A library that exists but did not open said why as it failed.
+        if(!index::library_exists(*project.store, configuration)) {
+            LOG_ERROR("No index cache at {}; run `clice index` first",
+                      index::library_directory(*project.store, configuration));
+        }
         return false;
     }
     return true;

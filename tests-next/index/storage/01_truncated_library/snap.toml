@@ -6,7 +6,6 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 ["cut mid-page"."$ clice query --method symbolSearch --symbol add"]
-wrong = "after saying the index is cut short it also says there is no index cache, which is not so"
 stdout = '''
 {
   "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
@@ -15,7 +14,6 @@ stdout = '''
 '''
 stderr = [
     "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is shorter than its pages (8192 of 20480 bytes); run `clice index` to repair it",
-    "error: No index cache at ${WS}/.clice/cache/v14/index/default; run `clice index` first",
 ]
 exit = 1
 
@@ -57,7 +55,6 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 [emptied."$ clice query --method symbolSearch --symbol add"]
-wrong = "an emptied index reads as a bad file descriptor that turns persistence off, and as no index cache at all; that the index is damaged and `clice index` repairs it is expected"
 stdout = '''
 {
   "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
@@ -65,8 +62,7 @@ stdout = '''
 }
 '''
 stderr = [
-    "warning: Cannot open the index database at ${WS}/.clice/cache/v14/index/default/index.mdb (open failed: Bad file descriptor); index persistence is disabled for this session",
-    "error: No index cache at ${WS}/.clice/cache/v14/index/default; run `clice index` first",
+    "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is empty; run `clice index` to repair it",
 ]
 exit = 1
 
