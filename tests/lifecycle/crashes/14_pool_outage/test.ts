@@ -20,46 +20,40 @@ function firstReached(parks: readonly Park[]): Promise<Park> {
     return Promise.race(parks.map((park) => park.reached().then(() => park)));
 }
 
-test(
-    {
-        except: { win32: "kills workers through /proc", darwin: "kills workers through /proc" },
-        errors: ["exceeded crash budget"],
-    },
-    async (t) => {
-        t.disk.write(generate.units(UNITS));
-        const s = await t.start({
-            config: {
-                project: {
-                    stateless_worker_count: 1,
-                    min_stateless_worker_count: 1,
-                    max_stateless_worker_count: 1,
-                },
+test({ errors: ["exceeded crash budget"] }, async (t) => {
+    t.disk.write(generate.units(UNITS));
+    const s = await t.start({
+        config: {
+            project: {
+                stateless_worker_count: 1,
+                min_stateless_worker_count: 1,
+                max_stateless_worker_count: 1,
             },
-            killWorkers: true,
-        });
-        let parks = await parkAll(s);
-        s.open("main.cpp");
-        // One more death than the budget of three in a row gives the slot up.
-        for (let death = 0; death < 4; death++) {
-            const reached = await firstReached(parks);
-            parks = parks.filter((park) => park !== reached);
-            expect(await s.killWorkers("stateless")).toBe(1);
-        }
-        for (const park of parks) {
-            await park.release();
-        }
-        await t.show("symbols during the outage", s.workspaceSymbols("unit_"));
-        // The first run the revived slot starts finds the round as the
-        // outage left it: parked dispatch sent nothing, where a spin would
-        // show a round counted far past its files. The raw client: what
-        // sync reports still running is the observation.
-        const revival = await parkAll(s);
-        await firstReached(revival);
-        await t.show("pending at the revival", (await s.client.sync({ deadlineMs: 0 })).pending);
-        for (const park of revival) {
-            await park.release();
-        }
-        await t.show("sync", { failed: (await s.sync()).failed });
-        await t.show("symbols after the revival", s.workspaceSymbols("unit_"));
-    },
-);
+        },
+        killWorkers: true,
+    });
+    let parks = await parkAll(s);
+    s.open("main.cpp");
+    // One more death than the budget of three in a row gives the slot up.
+    for (let death = 0; death < 4; death++) {
+        const reached = await firstReached(parks);
+        parks = parks.filter((park) => park !== reached);
+        expect(await s.killWorkers("stateless")).toBe(1);
+    }
+    for (const park of parks) {
+        await park.release();
+    }
+    await t.show("symbols during the outage", s.workspaceSymbols("unit_"));
+    // The first run the revived slot starts finds the round as the
+    // outage left it: parked dispatch sent nothing, where a spin would
+    // show a round counted far past its files. The raw client: what
+    // sync reports still running is the observation.
+    const revival = await parkAll(s);
+    await firstReached(revival);
+    await t.show("pending at the revival", (await s.client.sync({ deadlineMs: 0 })).pending);
+    for (const park of revival) {
+        await park.release();
+    }
+    await t.show("sync", { failed: (await s.sync()).failed });
+    await t.show("symbols after the revival", s.workspaceSymbols("unit_"));
+});

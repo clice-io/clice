@@ -1359,7 +1359,8 @@ void LSPClient::register_extensions() {
                 stats.import_scans += served->sched.pcm.import_scans;
                 stats.index_idle = stats.index_idle && served->sched.pump.is_idle();
             }
-            stats.workers = this->server.pool.worker_pids();
+            stats.workers = {.stateful = this->server.pool.worker_pids(true),
+                             .stateless = this->server.pool.worker_pids(false)};
             stats.checks_looked = this->server.files.disk.checks.looked;
             stats.checks_trusted = this->server.files.disk.checks.trusted;
             for(auto& entry: this->server.probe.builds) {

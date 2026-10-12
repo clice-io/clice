@@ -195,6 +195,11 @@ struct FileBuilds {
     std::uint32_t index = 0;
 };
 
+struct WorkerPids {
+    std::vector<std::uint32_t> stateful;
+    std::vector<std::uint32_t> stateless;
+};
+
 struct StatsResult {
     /// pch_cache entries whose pch.idx index is currently open, and
     /// their mapped bytes. Steady state after closing documents: bounded
@@ -239,8 +244,8 @@ struct StatsResult {
     /// BuildProbe); empty otherwise.
     std::vector<FileBuilds> builds;
 
-    /// The process ids of the workers in service, stateful first.
-    std::vector<std::uint32_t> workers;
+    /// The process ids of the workers in service, by kind.
+    WorkerPids workers;
 };
 
 /// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.

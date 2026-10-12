@@ -73,13 +73,11 @@ std::size_t WorkerPool::alive_stateless() const {
     });
 }
 
-std::vector<std::uint32_t> WorkerPool::worker_pids() const {
+std::vector<std::uint32_t> WorkerPool::worker_pids(bool stateful) const {
     std::vector<std::uint32_t> pids;
-    for(auto* workers: {&stateful_workers, &stateless_workers}) {
-        for(auto& w: *workers) {
-            if(w.state == SlotState::Alive) {
-                pids.push_back(static_cast<std::uint32_t>(w.proc.pid()));
-            }
+    for(auto& w: stateful ? stateful_workers : stateless_workers) {
+        if(w.state == SlotState::Alive) {
+            pids.push_back(static_cast<std::uint32_t>(w.proc.pid()));
         }
     }
     return pids;

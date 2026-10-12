@@ -41,7 +41,8 @@ test("closed input ends it", async (t) => {
 
 test("workers die with it", async (t) => {
     const s = await hung(t);
-    const { workers } = await s.stats();
+    const { stateful, stateless } = (await s.stats()).workers;
+    const workers = [...stateful, ...stateless];
     expect(workers).toHaveLength(2);
     expect(workers.filter(alive)).toEqual(workers);
     await s.kill();

@@ -1084,20 +1084,20 @@ export class Serve extends Client {
         });
     }
 
-    /// Kill every worker of `kind` from outside, as the OOM killer or a
-    /// user would: the death names no request. Placed after a park is
-    /// reached, it lands mid-work. Linux only (/proc); returns how many.
+    /// Kill every worker of `kind` in service from outside, as the OOM
+    /// killer or a user would: the death names no request. Placed after a
+    /// park is reached, it lands mid-work. Returns how many.
     killWorkers(kind: "stateful" | "stateless"): Promise<number> {
         if (this.options.killWorkers !== true) {
             throw new Error("killWorkers() needs the server started with killWorkers: true");
         }
-        return this.steps.run(`kill the ${kind} workers`, () => {
-            const pids = this.live().workerPids(kind === "stateful" ? "SF-" : "SL-");
+        return this.ask(`kill the ${kind} workers`, async (client) => {
+            const pids = (await client.stats()).workers[kind];
             for (const pid of pids) {
                 process.kill(pid, "SIGKILL");
             }
             this.killed += pids.length;
-            return Promise.resolve(pids.length);
+            return pids.length;
         });
     }
 

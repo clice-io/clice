@@ -261,8 +261,8 @@ public:
     /// stays alive to finish its request but is skipped by dispatch.
     std::size_t schedulable_stateless() const;
 
-    /// The process ids of the workers in service, stateful first.
-    std::vector<std::uint32_t> worker_pids() const;
+    /// The process ids of the workers of the kind in service.
+    std::vector<std::uint32_t> worker_pids(bool stateful) const;
 
     /// The current low-priority concurrency budget: the memory controller's
     /// window, additionally clamped to one while the user is active. Public
