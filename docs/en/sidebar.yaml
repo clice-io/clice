@@ -13,6 +13,7 @@ features:
     - hover
     - signature-help
     - navigation
+    - rename
     - diagnostics
     - code-action
     - semantic-tokens
@@ -22,6 +23,9 @@ features:
     - folding-ranges
     - selection-ranges
     - formatting
+    - modules
+    - header-contexts
+    - compilation
 
 cli:
   label: Command Line

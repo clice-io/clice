@@ -140,6 +140,52 @@
 
 构建时按顺序编译 `stdSources` 和各模块，分别使用对应库的头文件搜索根目录，并将各自的 `mirrors` 放在头文件搜索路径的最前面，同时为改写未触及的每次程序编译添加 `mirrors` 和 `-include prelude.h`。被改写的模块把主接口、`interfaces` 和 `partitions` 编译为模块接口单元，把 `sources` 编译为实现单元，并把工作区根目录加入头文件搜索路径以找到前导头文件；`moved` 以 `path=module` 的形式列出并入其他模块的源文件。
 
+## 示例
+
+### 封装库
+
+库的头文件会被封装成供程序导入的模块，无需修改任何源文件。
+
+<!-- BEGIN GENERATED ITEMS: modularize/libraries -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**封装库**
+
+库的头文件会被封装成一个模块接口单元，由该单元包含这些头文件并导出它们声明的名称，程序中的包含指令保持原样
+
+程序仍然包含 `<alpha/alpha.h>`：将 `wrap/mirror/alpha` 放在头文件搜索路径的首位后，读到的头文件为空，而强制包含的 `wrap/prelude.h` 会导入 `alpha`，并定义原头文件中定义的宏。
+
+```case
+tests-next/modularize/libraries/01_one_library
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 改写程序模块
+
+程序中标记为待改写的模块会变成具名模块，其文件会就地改写。
+
+<!-- BEGIN GENERATED ITEMS: modularize/program -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**改写程序模块**
+
+程序中的一个目录会变成具名模块：其头文件变为分区，源文件变为实现单元，包含该头文件的文件则改为导入模块
+
+头文件会被移除，由分区 `app.core:text` 取代，主接口 `app/core/module.cppm` 会重新导出该分区。
+
+```case
+tests-next/modularize/program/01_one_module
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## 已知限制
 
 - 模块单元必须使用完整 BMI 构建（clang 中使用 `-fno-modules-reduced-bmi`）：精简 BMI 会丢弃全局模块片段中未在模块辖域（purview）内按名称引用的声明，其中就包括偏特化。

@@ -2,275 +2,359 @@
 
 为光标所在的符号显示内容丰富的信息卡片。
 
-<!-- The capability sections below are generated from the snapshot fixtures in
-     tests/snap/hover/. Do not edit the regions between the GENERATED
-     markers by hand — edit the fixture doc headers and run
-     `node tools/docs/feature.ts update`. -->
+<!-- The cards in the sections below are generated from the documented cases
+     in tests-next/hover/. Do not edit the regions between the
+     GENERATED markers by hand — edit the cases' README.md and run
+     `pixi run update-feature-docs`. -->
 
-## 符号信息
+## 符号
 
-<!-- BEGIN GENERATED ITEMS: symbol_information -->
+卡片显示符号的种类、声明所在的作用域及其声明。
 
-<!-- BEGIN CAPABILITY: supported -->
-
-**限定名**
-
-悬停卡片显示符号所在的命名空间和类作用域
-
-```snap
-tests/snap/hover/symbol_information/01_qualified_name.cpp
-```
-
-<!-- END CAPABILITY -->
+<!-- BEGIN GENERATED ITEMS: hover/symbols -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **符号种类**
 
-卡片标明符号的种类：结构体、枚举、函数、字段等
+卡片标题标明符号的种类：命名空间、结构体、联合体、枚举、枚举项、别名、字段、函数
 
-```snap
-tests/snap/hover/symbol_information/02_symbol_kind.cpp
+```case
+tests-next/hover/symbols/01_symbol_kinds
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**访问说明符**
+**作用域**
 
-成员显示其 public / protected / private 访问权限
+卡片指出符号声明所在的命名空间、类或函数
 
-```snap
-tests/snap/hover/symbol_information/03_access_specifier.cpp
+```case
+tests-next/hover/symbols/02_scopes
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**定义显示**
+**访问权限**
 
-卡片包含符号在源代码中的定义
+成员的定义会显示其 `public`、`protected` 或 `private` 访问权限
 
-```snap
-tests/snap/hover/symbol_information/04_definition_rendering.cpp
+```case
+tests-next/hover/symbols/03_access
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#710 -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**初始化器截断**
+**定义**
 
-过大的初始化器会截断显示，不会完整呈现
+无论在符号的定义处还是使用处，卡片都会以源代码形式显示其声明
 
-显示的定义省略了初始化器，求值后的 `Value` 字段只显示 256 个元素中的前十个。
-
-```snap
-tests/snap/hover/symbol_information/05_initializer_truncation.cpp
+```case
+tests-next/hover/symbols/04_definitions
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: partial clangd#2474 -->
 
-**虚函数修饰符**
+**虚函数**
 
-方法的悬停卡片显示 `virtual` / `override` / `final`
+成员函数的定义按源码显示 `virtual`、`override` 或 `final`，因此重写的成员函数若未写出这些关键字，就不会显示出它是虚函数
 
-源代码中写出的修饰符会显示出来（`virtual … = 0`、`override`、`final`），但如果重写方法省略了多余的 `virtual` 关键字，卡片就不会表明它是虚函数，也就无法呈现该 issue 要求的 `virtual void draw() override` 形式。
-
-```snap
-tests/snap/hover/symbol_information/06_virtual_modifiers.cpp
+```case
+tests-next/hover/symbols/05_virtual_modifiers
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#436 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#436 -->
 
-**匿名命名空间作用域**
+**匿名命名空间**
 
-作用域中显示 `(anonymous namespace)`
+卡片中的作用域省略匿名命名空间
 
-卡片可以显示，但作用域会省略匿名部分：顶层匿名命名空间中的成员完全没有作用域一行，而 `outer::(anonymous)` 只显示为 `outer`。
+```case
+tests-next/hover/symbols/06_anonymous_namespaces
+```
 
-```snap
-tests/snap/hover/symbol_information/07_anon_namespace_scope.cpp
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**已弃用的符号**
+
+已弃用函数的卡片目前尚未标明该函数已弃用
+
+`[[deprecated]]` 的消息说明应改用什么；卡片既不显示弃用状态，也不显示该消息。
+
+```case
+tests-next/hover/symbols/13_deprecation
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**头文件中的符号**
+
+对于所包含头文件中声明的符号，卡片会显示其文档和定义
+
+```case
+tests-next/hover/symbols/14_header_symbols
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 类型信息
+## 函数
 
-<!-- BEGIN GENERATED ITEMS: type_information -->
+函数卡片列出返回类型和参数。
 
-<!-- BEGIN CAPABILITY: supported -->
-
-**变量类型**
-
-变量的悬停卡片保留指针、引用和数组声明符
-
-变量卡片以易读的格式显示其声明类型，指针、引用和数组声明符的写法与源代码一致。
-
-```snap
-tests/snap/hover/type_information/01_variable_type.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**类型别名**
-
-悬停卡片可以用 `aka` 形式显示去除语法糖后的类型
-
-带有语法糖的类型会以 `Alias (aka int)` 的形式显示其底层类型。`show_aka` 选项可以关闭 `aka` 后缀。
-
-```snap
-tests/snap/hover/type_information/02_aka_desugar.cpp
-```
-
-<!-- END CAPABILITY -->
+<!-- BEGIN GENERATED ITEMS: hover/functions -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **函数签名**
 
-函数的悬停卡片显示返回类型、参数名和默认实参
+函数卡片列出返回类型和各个参数，并显示参数的名称与默认值
 
-函数卡片列出返回类型、每个参数及其名称，以及所有默认实参。
-
-```snap
-tests/snap/hover/type_information/03_function_signature.cpp
+```case
+tests-next/hover/functions/01_signatures
 ```
 
 <!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 变量
+
+变量卡片按源码显示变量的类型；若其值在编译时已知，也会显示该值。
+
+<!-- BEGIN GENERATED ITEMS: hover/variables -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**声明符类型**
+
+变量卡片按源码显示其指针、引用和数组声明符
+
+```case
+tests-next/hover/variables/01_declarators
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**常量值**
+
+变量或枚举项的值若在编译时已知，就会显示该值
+
+```case
+tests-next/hover/variables/02_constant_values
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#710 -->
+
+**较长的初始化器**
+
+定义中会省略较长的初始化器，值则只显示开头的几个元素
+
+```case
+tests-next/hover/variables/04_long_initializers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`__func__`**
+
+若所在函数不是模板，将光标悬停在 `__func__` 上会显示该函数的名称
+
+```case
+tests-next/hover/variables/06_predefined_identifiers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 类型成员
+
+类会列出其成员，枚举会列出其枚举项。
+
+<!-- BEGIN GENERATED ITEMS: hover/members -->
+
+<!-- BEGIN CAPABILITY: supported clangd#959 -->
+
+**类型成员**
+
+类会列出其数据成员和成员类型，枚举会列出其枚举项及相应的值
+
+`max_members` 限制列表中的成员数量，默认值为 20；设为 `0` 时仅显示声明。
+
+```case
+tests-next/hover/members/01_type_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 类型别名
+
+以别名表示的类型会显示该别名所代表的类型。
+
+<!-- BEGIN GENERATED ITEMS: hover/aliases -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**类型别名**
+
+以别名表示的类型会显示该别名所代表的类型，格式为 `Alias (aka int)`
+
+设置 `show_aka = false` 后，卡片仅保留别名。
+
+```case
+tests-next/hover/aliases/01_aka
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2020 -->
+
+**结构体别名**
+
+别名会显示其所代表的结构体名称，但目前尚不显示结构体的成员
+
+```case
+tests-next/hover/aliases/02_alias_targets
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2219 -->
+
+**C 中匿名结构体的 typedef**
+
+在 C 中，仅通过 typedef 命名的结构体会以该 typedef 的名称显示
+
+定义行仍写作 `struct Point`，但在 C 中，该结构体并无此名称。
+
+```case
+tests-next/hover/aliases/03_c_anonymous_structs
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 推导类型
+
+`auto` 和 `decltype` 会显示其代表的类型。
+
+<!-- BEGIN GENERATED ITEMS: hover/deduced_types -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**`auto`**
+
+将光标悬停在 `auto` 上会显示其代表的类型；若在模板中尚未推导出类型，则会显示相应提示
+
+```case
+tests-next/hover/deduced_types/01_auto
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`decltype`**
+
+将光标悬停在 `decltype` 上会显示其得出的类型，包括为名称加上括号所引入的引用
+
+```case
+tests-next/hover/deduced_types/02_decltype
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过别名推导的 auto**
+
+从别名推导出的 `auto` 会在其代表的类型旁保留别名的名称
+
+```case
+tests-next/hover/deduced_types/03_alias_spelling
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#493 clangd#1768 -->
+
+**泛型 Lambda 参数**
+
+泛型 Lambda 的 `auto` 会显示调用时推导出的类型，但形参及其成员不会显示该类型
+
+在函数体内，形参显示为 `auto`，`point.x` 没有悬停卡片。
+
+```case
+tests-next/hover/deduced_types/06_generic_lambdas
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 模板
+
+模板形参会显示其种类和默认值，模板的使用处会显示实例化时采用的实参。
+
+<!-- BEGIN GENERATED ITEMS: hover/templates -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **模板形参**
 
-模板的悬停卡片区分类型形参、模板模板形参和非类型形参
+模板形参会显示其种类（类型、模板或值）及默认值
 
-各类模板形参按各自的形式显示：类型形参、模板模板形参，以及带有默认值的非类型形参。
-
-```snap
-tests/snap/hover/type_information/04_template_params.cpp
+```case
+tests-next/hover/templates/01_template_parameters
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: unsupported clangd#230 -->
 
-**`auto` 推导**
+**模板实参**
 
-占位符的悬停卡片显示推导出的类型
+模板的使用处会显示实例化时采用的类型，但尚未显示各实参绑定到哪个形参
 
-将光标悬停在 `auto` 占位符上，会显示替换它的类型，包括内置类型、指针、Lambda 和模板实例化类型；在尚未实例化的模板中，则显示 `/* not deduced */` 标记。
-
-```snap
-tests/snap/hover/type_information/05_auto_deduction.cpp
+```case
+tests-next/hover/templates/02_instantiation_arguments
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: unsupported clangd#435 -->
 
-**`decltype` 推导**
+**推导出的类模板实参**
 
-decltype 的悬停卡片区分值类型、引用类型和依赖形式
+类模板实参通过推导确定的变量会显示这些实参，而旁边的类名只显示模板本身
 
-将光标悬停在 `decltype` 或 `decltype(auto)` 占位符上，会显示解析得到的类型，包括根据带括号表达式规则添加的引用。
-
-```snap
-tests/snap/hover/type_information/06_decltype_deduction.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#435 -->
-
-**CTAD**
-
-类占位符的悬停卡片显示推导出的模板实参
-
-使用类模板实参推导（CTAD）时，变量卡片会显示推导出的 `Box<int>`，但将光标悬停在类名上时，仍然只显示不带实参的主模板。
-
-```snap
-tests/snap/hover/type_information/07_ctad_arguments.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#230 -->
-
-**实例化实参**
-
-模板使用处的悬停卡片尚不显示形参与实参的绑定关系
-
-在模板使用处，卡片会显示替换后的类型（`Wrapper<int>`、`identity<int>`、`int x`），但不会以 `T = int` 这样的形式明确列出各形参与其绑定实参的映射关系。
-
-```snap
-tests/snap/hover/type_information/08_instantiation_args.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#493 -->
-
-**Lambda 的 `auto` 参数**
-
-泛型 Lambda 参数尚不显示推导出的类型
-
-悬停于泛型 Lambda 的 `auto` 参数时，不会显示卡片，也不会显示推导出的参数类型。
-
-```snap
-tests/snap/hover/type_information/09_lambda_auto_params.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**保留别名的 `auto`**
-
-`auto` 推导后仍保留别名的写法
-
-悬停时保留别名的写法，并附上展开别名后的类型，因此从别名返回类型推导出的 `auto` 会显示为 `Outer // aka: int`。
-
-```snap
-tests/snap/hover/type_information/10_sugared_auto.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2156 -->
-
-**类型格式化**
-
-显示较长或嵌套的类型时，不会重新换行或对齐
-
-较长或嵌套的类型不会重新换行或对齐。
-
-```snap
-tests/snap/hover/type_information/11_clang_format_types.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#2219 -->
-
-**匿名结构体的 typedef**
-
-悬停于 C 语言的 typedef 时，以别名作为匿名结构体的名称
-
-悬停于别名或该类型的变量时，都会显示简洁的 `Point` 卡片，而不会将匿名类型显示为另有名称的结构体。
-
-```snap
-tests/snap/hover/type_information/12_c_typedef_anon.cpp
+```case
+tests-next/hover/templates/03_deduced_class_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -279,106 +363,86 @@ tests/snap/hover/type_information/12_c_typedef_anon.cpp
 
 **Concept 约束**
 
-悬停于受约束的占位符时，约束信息会丢失
+Concept 和受约束的形参会显示约束，但 `Addable auto` 占位符只显示推导出的类型
 
-受约束参数和 Concept 引用的卡片都包含约束信息，但悬停于受约束的 `Addable auto` 变量的占位符时，只显示推导出的类型，约束信息会丢失。
-
-```snap
-tests/snap/hover/type_information/13_concept_constraints.cpp
+```case
+tests-next/hover/templates/04_concept_constraints
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 布局信息
+## 布局
 
-<!-- BEGIN GENERATED ITEMS: layout_information -->
+字段和类会显示编译器为其确定的大小和对齐要求。
+
+<!-- BEGIN GENERATED ITEMS: hover/layout -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **字段布局**
 
-悬停于字段时，显示大小、偏移量、对齐和填充信息
+字段会显示其偏移量、大小、对齐要求以及后面的填充
 
-```snap
-tests/snap/hover/layout_information/01_field_layout.cpp
+```case
+tests-next/hover/layout/01_field_layout
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1763 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#1763 -->
 
 **类型布局**
 
-悬停于类型本身时，显示其大小、对齐和填充信息
+类会显示其大小和对齐要求，但尚未显示其中有多少空间用于填充
 
-目前类型卡片会显示大小和对齐信息，尚不显示总填充大小。
-
-```snap
-tests/snap/hover/layout_information/02_type_layout.cpp
+```case
+tests-next/hover/layout/02_type_layout
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1771 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#1771 -->
 
-**虚函数表偏移量**
+**虚函数表（vtable）槽位**
 
-虚方法会显示其在虚函数表中的槽位
+虚成员函数尚未显示其在虚函数表中的槽位
 
-目前方法卡片不显示任何虚函数表信息。
-
-```snap
-tests/snap/hover/layout_information/03_vtable_offset.cpp
+```case
+tests-next/hover/layout/03_vtable_slots
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 表达式上下文
+## 调用实参
 
-<!-- BEGIN GENERATED ITEMS: expression_context -->
+调用处的实参会显示对应的形参和传递方式。
 
-<!-- BEGIN CAPABILITY: supported -->
-
-**常量求值**
-
-悬停于常量表达式时，显示求值结果
-
-当初始化器是常量表达式时，卡片会对其求值并显示结果。
-
-```snap
-tests/snap/hover/expression_context/01_constant_value.cpp
-```
-
-<!-- END CAPABILITY -->
+<!-- BEGIN GENERATED ITEMS: hover/arguments -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **调用实参**
 
-悬停于实参时，标明其绑定的形参
+调用处的实参会显示对应的形参
 
-悬停于调用处的实参时，显示它所传入的形参，并给出所绑定形参的名称。
-
-```snap
-tests/snap/hover/expression_context/02_callee_arguments.cpp
+```case
+tests-next/hover/arguments/01_bound_parameters
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**传递语义**
+**传递方式**
 
-悬停于实参时，区分值传递和引用传递
+实参的悬停卡片会注明它是按值、按引用还是按常量引用传递
 
-实参卡片会说明值如何传递给被调用方：按值复制，或绑定到可修改的引用形参或常量引用形参。
-
-```snap
-tests/snap/hover/expression_context/03_pass_semantics.cpp
+```case
+tests-next/hover/arguments/02_pass_modes
 ```
 
 <!-- END CAPABILITY -->
@@ -387,262 +451,100 @@ tests/snap/hover/expression_context/03_pass_semantics.cpp
 
 **隐式转换**
 
-悬停于实参时，显示隐式转换的目标类型
+实参若在传给形参的过程中发生转换，会显示转换后的类型
 
-当实参通过隐式转换传递给形参时，卡片会注明目标类型，内置转换和用户定义转换均如此。
-
-```snap
-tests/snap/hover/expression_context/04_implicit_conversion.cpp
+```case
+tests-next/hover/arguments/03_conversions
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1016 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#1622 -->
 
-**字符串字面量**
+**记录类型（record）实参**
 
-悬停于字符串字面量时，显示其字节大小
+若调用在编译期求值，传入的记录类型实参会将该调用的值显示为自身的值
 
-字符串字面量卡片会显示数组类型及其字节大小（`const char[6]`、`Size: 6 bytes`，即字符串长度加上空字符终止符），而不会明确显示字符数。
-
-```snap
-tests/snap/hover/expression_context/05_string_length.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#1669 -->
-
-**数值字面量**
-
-悬停于数值字面量时，尚不显示类型或值
-
-悬停于数值字面量时不会显示卡片，而字符字面量和字符串字面量则会显示类型和值。
-
-```snap
-tests/snap/hover/expression_context/06_numeric_literal_type.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#1622 -->
-
-**记录类型变量**
-
-悬停于记录类型时，可能会显示所属外层表达式的常量值，造成误导
-
-对于可在编译期求值的调用，目前悬停于其记录类型实参时，变量上会显示该调用的值（`Value = 7`），而这个值并非记录本身的值。
-
-```snap
-tests/snap/hover/expression_context/07_record_value_misleading.cpp
+```case
+tests-next/hover/arguments/04_record_arguments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 文档
+## 表达式
 
-<!-- BEGIN GENERATED ITEMS: documentation -->
+字面量和 `this` 会显示各自的信息。
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN GENERATED ITEMS: hover/expressions -->
 
-**Doxygen `///` 注释**
+<!-- BEGIN CAPABILITY: unsupported clangd#1016 clangd#1669 -->
 
-悬停时显示声明的文档
+**字面量**
 
-适用于普通函数、主模板及其特化；引用会解析到特化程度最高的声明所附的注释。
+字符串字面量会显示其类型和大小，而数值字面量尚未显示任何信息
 
-```snap
-tests/snap/hover/documentation/01_doxygen_comments.cpp
+大小包括末尾的空字符；不显示字符串的长度。
+
+```case
+tests-next/hover/expressions/01_literals
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**合成访问器文档**
+**`this`**
 
-为简单的 getter/setter 生成单行描述
+在类和类模板中，悬停在 `this` 上会显示它所指向的类型
 
-如果简单的 getter 或 setter 没有自己的注释，悬停卡片中会自动生成一行 "Trivial accessor/setter for `field`." 描述。
-
-```snap
-tests/snap/hover/documentation/02_accessor_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#1320 -->
-
-**`@copydoc` 标签**
-
-复制的文档尚未解析并关联到接收文档的符号
-
-`@copydoc target` 标签会保留原文，不会将 `target` 的文档复制到当前符号的悬停卡片中。
-
-```snap
-tests/snap/hover/documentation/03_copydoc.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#2504 -->
-
-**重写方法的文档继承**
-
-没有注释的重写方法尚不能继承基类方法的文档
-
-如果重写方法没有自己的注释，其悬停卡片中就没有描述。
-
-```snap
-tests/snap/hover/documentation/04_inherit_overridden_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#2506 -->
-
-**重载间的文档共享**
-
-后续重载尚不能复用第一个重载的文档
-
-连续声明的重载通常只为第一个编写文档；后续没有文档的重载在悬停卡片中没有描述。
-
-```snap
-tests/snap/hover/documentation/05_overload_doc_sharing.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#1936 -->
-
-**继承构造函数的文档**
-
-继承构造函数的文档尚不能在悬停时显示
-
-`using Base::Base;` 声明中的名称会解析到类，而非继承的构造函数，因此无法通过悬停查看基类构造函数的文档。
-
-```snap
-tests/snap/hover/documentation/06_inherited_ctor_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#974 -->
-
-**横幅注释**
-
-用空行隔开的分节横幅注释仍会关联到后面的声明
-
-`// ==== Section ====` 横幅注释即使后面有空行，也会被错误地当作下方声明的文档，因此横幅文本会出现在卡片中。
-
-```snap
-tests/snap/hover/documentation/07_comment_association.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**声明与定义处的注释**
-
-声明处的文档优先于定义处的注释
-
-在声明和定义处悬停时，显示的都是声明处的 `///` 文档，而非定义处的普通 `//` 注释。
-
-```snap
-tests/snap/hover/documentation/08_decl_vs_def_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#2057 -->
-
-**空白与换行**
-
-注释中的 Markdown 表格在悬停时会丢失换行
-
-写在多行 `///` 注释中的 Markdown 表格会被合并为一行，导致表格无法渲染。
-
-```snap
-tests/snap/hover/documentation/09_whitespace_preserve.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#1040 -->
-
-**注释缩进**
-
-文档中缩进的块在悬停时会丢失行首缩进
-
-如果文档注释的正文包含缩进块，该块的缩进会丢失，空行也会被合并掉。
-
-```snap
-tests/snap/hover/documentation/10_comment_indentation.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#1226 -->
-
-**宏生成的模板关键字**
-
-宏生成的模板在悬停时不显示文档
-
-当 `template` 关键字由宏展开生成时，声明的文档注释不会在悬停时显示，卡片中没有描述。
-
-```snap
-tests/snap/hover/documentation/11_macro_template_doc.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2148 -->
-
-**注释屏蔽选项**
-
-尚不能通过配置屏蔽错误关联的文档
-
-与代码用空行隔开的分节横幅等无关注释总会出现在悬停卡片中，且没有选项可以屏蔽。
-
-```snap
-tests/snap/hover/documentation/12_comment_suppression.cpp
+```case
+tests-next/hover/expressions/02_this
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 宏悬停
+## 宏
 
-<!-- BEGIN GENERATED ITEMS: macro_hover -->
+宏会显示其 `#define`，宏的使用处会显示展开结果。
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN GENERATED ITEMS: hover/macros -->
 
-**各处均显示定义文本**
+<!-- BEGIN CAPABILITY: partial clangd#2642 -->
 
-在 `#define`、使用处、`#ifdef`、`defined` 和 `#undef` 处均显示宏定义
+**在定义前使用**
 
-无论宏名称出现在何处，其悬停卡片都会显示对应的 `#define` 文本：包括宏定义本身、使用处、`#ifdef` 条件判断处、`defined` 检测处以及 `#undef` 处。
+宏名在自身的 `#define` 之前使用时没有悬停卡片，在之后使用时则有
 
-```snap
-tests/snap/hover/macro_hover/01_macro_definition_sites.cpp
+```case
+tests-next/hover/macros/01_use_before_definition
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**完全展开预览**
+**宏的各个出现位置**
 
-在函数式宏的使用处显示实参代入宏体后的结果
+定义处、使用处、`#ifdef`、`defined` 和 `#undef` 处都会显示宏的 `#define`
 
-悬停于函数式宏调用时，会显示 `#define` 文本，以及代入调用实参后完全展开的结果预览。
+```case
+tests-next/hover/macros/02_definition_sites
+```
 
-```snap
-tests/snap/hover/macro_hover/02_expansion_preview.cpp
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**展开预览**
+
+函数式宏的使用处会显示代入实参后的展开结果
+
+```case
+tests-next/hover/macros/03_expansion_preview
 ```
 
 <!-- END CAPABILITY -->
@@ -651,200 +553,322 @@ tests/snap/hover/macro_hover/02_expansion_preview.cpp
 
 **命令行宏**
 
-悬停于通过 `-D` 定义的宏时，会显示合成的 `#define`
+通过 `-D` 定义的宏会显示与之等效的 `#define`
 
-对于在命令行中定义的宏（`-DFROM_CLI=7`），悬停卡片会先显示合成的 `#define FROM_CLI 7`，再显示其展开结果。
-
-```snap
-tests/snap/hover/macro_hover/03_cli_macros.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial -->
-
-**实参中的嵌套宏**
-
-作为实参嵌套的宏只显示定义，不显示展开预览
-
-展开预览从外层调用开始，因此悬停于实参中的内层宏名称时，只显示其定义，不显示展开预览。
-
-```snap
-tests/snap/hover/macro_hover/04_nested_arg_expansion.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#2642 -->
-
-**在定义前使用**
-
-在定义前使用的宏尚无悬停信息
-
-在宏自身的 `#define` 之前的 `#if` 中使用该宏名称时，没有悬停信息；在定义后使用时，悬停功能正常。
-
-```snap
-tests/snap/hover/macro_hover/05_expansion_before_definition.cpp
+```case
+tests-next/hover/macros/04_command_line
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**Preamble 中的 `#define`**
+**实参中的宏**
 
-文件开头的宏定义没有悬停卡片
+位于另一个宏的实参中的宏会显示其定义，但不显示展开结果
 
-首个声明之前、文件开头连续指令中的 `#define` 没有悬停卡片，而声明之后的宏定义有。
-
-```snap
-tests/snap/hover/macro_hover/06_preamble_define_hover.cpp
+```case
+tests-next/hover/macros/05_nested_arguments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## 特殊悬停目标
+## 包含指令
 
-<!-- BEGIN GENERATED ITEMS: special_hover_targets -->
+`#include` 会显示解析后对应的文件。
 
-<!-- BEGIN CAPABILITY: supported clangd#959 -->
+<!-- BEGIN GENERATED ITEMS: hover/directives -->
 
-**类型悬停中的成员**
+<!-- BEGIN CAPABILITY: supported -->
 
-悬停于枚举或结构体类型时，会列出其成员
+**包含指令**
 
-类会列出其数据成员和成员类型，枚举会列出其枚举项及对应的值；成员函数不会列出。`max_members` 选项限制列表的条目数，默认为 20，设为 `0` 则关闭该列表。
+悬停在 `#include` 上会显示解析后对应的文件
 
-```snap
-tests/snap/hover/special_hover_targets/01_type_members_on_hover.cpp
+```case
+tests-next/hover/directives/01_include_paths
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2020 -->
+<!-- END GENERATED ITEMS -->
 
-**typedef 的底层结构体**
+## 文档
 
-悬停于别名时，会展开其所指类型的定义
+无论在符号的哪个位置悬停，卡片都会显示其声明上的文档注释。
 
-卡片将别名解析为其底层类型名称，但不展开该结构体的定义或成员列表。
+<!-- BEGIN GENERATED ITEMS: hover/documentation -->
 
-```snap
-tests/snap/hover/special_hover_targets/02_typedef_underlying.cpp
-```
+<!-- BEGIN CAPABILITY: supported -->
 
-<!-- END CAPABILITY -->
+**文档注释**
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
+在声明处及每个使用处，悬停卡片都会显示该声明的 `///` 注释
 
-**关键字文档**
+模板的使用处会显示所选模板特化的注释。
 
-语言关键字尚无文档悬停信息
-
-悬停于 `const` 或 `virtual` 等关键字时，不会显示卡片。
-
-```snap
-tests/snap/hover/special_hover_targets/03_keyword_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#1862 -->
-
-**属性文档**
-
-悬停于属性时，会显示其说明
-
-无论是 GNU `__attribute__` 写法还是 C++ `[[...]]` 属性，卡片都会显示属性自身的文档。
-
-```snap
-tests/snap/hover/special_hover_targets/04_attributes.cpp
+```case
+tests-next/hover/documentation/01_doc_comments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**包含指令悬停**
+**取值函数（getter）和设值函数（setter）**
 
-悬停于 `#include` 时，会显示解析后的头文件路径
+简单的取值函数或设值函数若没有自己的注释，会显示访问对应字段的描述
 
-卡片将引号中的头文件解析为磁盘上对应的文件。
-
-```snap
-tests/snap/hover/special_hover_targets/05_include_hover.cpp
+```case
+tests-next/hover/documentation/02_accessors
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: partial clangd#1320 -->
 
-**`this` 表达式**
+**@copydoc**
 
-悬停于 `this` 时，会显示其指向的类类型
+`@copydoc` 命令按原样显示，不会显示它所引用的文档
 
-在普通类和类模板中均可使用。
-
-```snap
-tests/snap/hover/special_hover_targets/06_this_hover.cpp
+```case
+tests-next/hover/documentation/03_copydoc
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: unsupported clangd#2504 -->
 
-**预定义标识符**
+**重写**
 
-悬停于 `__func__` 时，会显示当前函数名
+重写函数没有自己的注释时，不会显示被重写函数的文档
 
-在具体函数中可以解析出其值；在模板中，只能得知其近似类型。
-
-```snap
-tests/snap/hover/special_hover_targets/07_predefined_identifiers.cpp
+```case
+tests-next/hover/documentation/04_overrides
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: partial clangd#2506 -->
 
-**无意义的 Token 不显示悬停信息**
+**重载**
 
-内置关键字和空的主体不显示卡片
+没有注释的重载不会显示前一个重载的文档
 
-悬停于内置类型关键字或空的主体内部时，完全不会显示卡片，因此编辑器不会显示任何内容，避免产生干扰。（数值和布尔字面量目前也没有卡片，但这是已记录的功能缺失，参见数值字面量条目，并不保证今后也如此。）
+```case
+tests-next/hover/documentation/05_overloads
+```
 
-```snap
-tests/snap/hover/special_hover_targets/08_no_hover_negatives.cpp
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1936 -->
+
+**继承构造函数**
+
+`using Base::Base` 中的名称显示隐式移动构造函数，而不是它继承的构造函数
+
+```case
+tests-next/hover/documentation/06_inherited_constructors
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#974 -->
+
+**横幅注释**
+
+声明上方的分节横幅注释会显示为该声明的文档，即使两者之间有空行
+
+```case
+tests-next/hover/documentation/07_banner_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**声明与定义**
+
+声明的 `///` 注释会在声明和定义处显示，除非先在定义上悬停
+
+修改后，如果先在定义上悬停，定义的普通 `//` 注释就会取而代之，在两处显示。
+
+```case
+tests-next/hover/documentation/08_declaration_and_definition
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2057 -->
+
+**Markdown 表格**
+
+注释中的表格会挤在同一行显示
+
+```case
+tests-next/hover/documentation/09_markdown_tables
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1040 -->
+
+**缩进块**
+
+注释中的缩进块会丢失缩进和前面的空行
+
+```case
+tests-next/hover/documentation/10_indented_blocks
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2148 -->
+
+**游离注释**
+
+与声明之间隔着空行的注释会显示为该声明的文档，且没有选项可以关闭这一行为
+
+```case
+tests-next/hover/documentation/11_stray_comments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2662 -->
 
-**GTK-Doc 和 kernel-doc**
+**GTK-Doc 注释**
 
-GObject Introspection 注解尚未显示在悬停卡片中
+GTK-Doc 的名称行、参数条目和标注均按原样显示
 
-GTK-Doc 和 kernel-doc 的注释语法以及 GObject Introspection 注解尚未解析并显示在悬停卡片中。
-
-```snap
-tests/snap/hover/special_hover_targets/09_gtk_doc.cpp
+```case
+tests-next/hover/documentation/12_gtk_doc
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2669 -->
 
-**Doxygen 中的 LaTeX 数学公式**
+**公式**
 
-Doxygen 行内公式不会渲染为数学公式
+Doxygen 公式显示为源码
 
-公式文本不会渲染为数学公式。
+```case
+tests-next/hover/documentation/13_latex_formulas
+```
 
-```snap
-tests/snap/hover/special_hover_targets/10_latex_math.cpp
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**Doxygen 命令**
+
+`@brief`、`@param` 和 `@return` 按原样显示，尚未整合到卡片的相应部分
+
+参数说明可以显示在卡片中对应参数的旁边，返回值说明也可以显示在返回类型的旁边；目前整段注释都以文本形式显示，包括其中的命令。
+
+```case
+tests-next/hover/documentation/18_doxygen_commands
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 模块
+
+模块名称处会显示其接口单元所在的文件，来自模块的声明处会显示该声明是否已导出，以及模块接口为其提供的文档。
+
+<!-- BEGIN GENERATED ITEMS: hover/modules -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模块名称**
+
+在 `import` 和模块声明中，模块名称处都会显示其接口单元所在的文件
+
+```case
+tests-next/hover/modules/01_module_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**导出的声明**
+
+模块接口中的声明在被模块导出时会显示 `export`
+
+```case
+tests-next/hover/modules/02_export_status
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**带文档的导出**
+
+从模块导入的符号会显示模块接口中为其编写的文档
+
+```case
+tests-next/hover/modules/04_documented_exports
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 属性与关键字
+
+属性以及 `const`、`virtual` 等关键字各有其含义，可由卡片加以说明。
+
+<!-- BEGIN GENERATED ITEMS: hover/attributes -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
+
+**属性**
+
+在属性上悬停会显示 clang 对该属性的说明，GNU 写法和标准写法均适用
+
+说明仍以 clang 的 reStructuredText 源码形式显示，其中的代码示例挤在一起。
+
+```case
+tests-next/hover/attributes/01_attributes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
+
+**关键字**
+
+在 `const`、`virtual` 等关键字上悬停时，目前还不会显示任何内容
+
+```case
+tests-next/hover/attributes/02_keywords
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 无内容可显示
+
+没有值得用卡片展示的内容时，就不会出现卡片。
+
+<!-- BEGIN GENERATED ITEMS: hover/no_card -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**无内容可显示**
+
+内置类型关键字或空代码块内部不会显示卡片
+
+```case
+tests-next/hover/no_card/01_meaningless_tokens
 ```
 
 <!-- END CAPABILITY -->
@@ -853,143 +877,18 @@ tests/snap/hover/special_hover_targets/10_latex_math.cpp
 
 ## 展示
 
-<!-- BEGIN GENERATED ITEMS: presentation -->
+卡片使用 Markdown 格式；对于无法显示 Markdown 的编辑器，则使用纯文本。
+
+<!-- BEGIN GENERATED ITEMS: hover/presentation -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Markdown 渲染**
+**纯文本卡片**
 
-卡片以 Markdown 渲染，也可通过 `parse_comment_as_markdown =
-false` 以纯文本显示
+卡片使用 Markdown 格式；对于无法显示 Markdown 的编辑器，则使用纯文本
 
-```snap
-tests/snap/hover/presentation/01_presentation.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## 模块相关
-
-<!-- BEGIN GENERATED ITEMS: module_related -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**导入语句悬停**
-
-悬停于 `import` 时尚不显示导入模块的说明
-
-悬停于 `import` 声明时，尚不显示导入模块的说明。
-
-```snap
-tests/snap/hover/module_related/01_import_hover.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**模块名悬停**
-
-悬停于模块名时显示定义该模块的接口单元
-
-无论模块名位于 `import` 中还是模块声明中，卡片都会显示模块名及其接口单元所在的文件。
-
-```snap
-tests/snap/hover/module_related/02_module_name_hover/main.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**导出状态悬停**
-
-模块中声明的卡片会显示该声明是否被模块导出
-
-已导出声明的卡片中，定义部分会带有 `export`，无论它是单独导出还是位于 `export` 块中；模块未导出、仅在内部使用的声明，以及导出类的成员，则不会带有。
-
-```snap
-tests/snap/hover/module_related/03_export_status.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## 悬停正确性
-
-面对曾导致其他工具出错的输入时仍保持稳健。
-
-<!-- BEGIN GENERATED ITEMS: hover_correctness -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**MSVC 继承模型**
-
-MSVC 继承模型属性不会改变类类型的悬停信息
-
-以 MSVC 为编译目标时，隐式继承属性不会出现在类类型或方法的悬停卡片中。
-
-```snap
-tests/snap/hover/hover_correctness/01_ms_inheritance.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**最令人烦恼的解析（most vexing parse）**
-
-直接初始化与函数声明的悬停卡片不同
-
-直接初始化显示为变量，而最令人烦恼的解析形式显示为函数声明。
-
-```snap
-tests/snap/hover/hover_correctness/02_object_vs_function.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**大数值无符号枚举常量**
-
-悬停于值为 `0xFFFF...ULL` 的枚举项时不会崩溃
-
-卡片会完整显示无符号数值，不会溢出或出错。
-
-```snap
-tests/snap/hover/hover_correctness/03_large_enum_value.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**使用默认实参的调用**
-
-悬停于省略默认实参的调用时不会崩溃
-
-调用的悬停卡片会显示被调用函数的签名，包含默认实参。
-
-```snap
-tests/snap/hover/hover_correctness/04_default_args_call.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**被宏遮蔽的符号**
-
-函数式宏在调用处遮蔽同名函数
-
-卡片会显示生效的宏及其展开结果，而非被遮蔽的函数。
-
-```snap
-tests/snap/hover/hover_correctness/05_macro_shadowed_symbol.cpp
+```case
+tests-next/hover/presentation/01_plain_text
 ```
 
 <!-- END CAPABILITY -->

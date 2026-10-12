@@ -62,3 +62,93 @@
 ## 回答
 
 每个回答都是一个 JSON 对象；如果无法回答问题（没有索引、未知的模块或文件、无效的 glob 模式），则返回 `{"error": "...", "stale": [...]}`，退出码为 1；参数无法解析时同样如此，退出码为 2；索引缺少部分单元时同样失败，并在 `stale` 中列出这些单元。
+
+## 示例
+
+### 目录模块
+
+默认情况下，每个目录都是一个模块，其依赖关系由目录内文件引用的实体决定。
+
+<!-- BEGIN GENERATED ITEMS: analyze/dependencies -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**目录模块**
+
+每个目录都是一个模块，文件引用另一个模块的实体时，就会形成对该模块的依赖
+
+头文件引用另一个模块的实体时，会形成接口边，这条边将转化为对该模块接口的导入；仅源文件中的引用则形成实现边。在 git 仓库之外运行时，会省略变更量（churn）标注，并发出警告。
+
+```case
+tests-next/analyze/dependencies/01_directory_modules
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 环
+
+模块的接口相互依赖时会形成环，结果会列出这些环及需要切断的边。
+
+<!-- BEGIN GENERATED ITEMS: analyze/cycles -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**目录依赖环**
+
+模块的接口相互引用时会形成环，结果会列出这些环，以及移除后可打破环的权重最小的边
+
+这里，util 引用了 core 中的两个实体，core 引用了 util 中的一个实体，因此应切断从 core 到 util 的边。core 的源文件调用了 feature 中的实体，而 feature 的头文件引用了 core 的 Logger：源文件中的引用形成的是实现边，这条边不会形成环。
+
+```case
+tests-next/analyze/cycles/01_directory_cycle
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 边
+
+`edge` 视图列出一个模块引用了另一个模块中的哪些实体。
+
+<!-- BEGIN GENERATED ITEMS: analyze/views -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**边包含的信息**
+
+边视图列出一个模块引用的另一个模块中的每个实体，以及标识该实体的定位符、该实体所属的头文件和每处使用情况
+
+当一个模块的头文件引用某个实体时，对该实体的使用就属于接口使用；这里的 util/clock.h 就引用了这两个实体。
+
+```case
+tests-next/analyze/views/01_edge
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 按标注加权
+
+标注文件用于对结果加权，此处按编译耗时加权。
+
+<!-- BEGIN GENERATED ITEMS: analyze/annotations -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**按编译耗时加权**
+
+标注文件按重新构建的成本为每个翻译单元加权，此处使用以秒为单位的编译耗时
+
+只有 app/main.cpp 包含 core/fast.h，但划分为模块后，每个源文件都会直接或通过 util 的接口导入 core，因此修改 core/fast.h 会导致重新构建三个翻译单元，而不是一个。
+
+```case
+tests-next/analyze/annotations/01_compile_time
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->

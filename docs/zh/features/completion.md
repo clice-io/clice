@@ -1,19 +1,511 @@
 # 代码补全
 
+## 符号
+
+输入时会补全当前作用域内的名称，使用 `ns::` 等限定符则会列出对应作用域中声明的内容。
+
+<!-- BEGIN GENERATED ITEMS: completion/symbols -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模糊非限定查找**
+
+保留匹配度高的前缀匹配项，排除匹配度低的子序列匹配项及作用域外的命名空间成员
+
+```case
+tests-next/completion/symbols/01_unqualified_lookup
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**类模板去重**
+
+带有构造函数和推导指引（deduction guide）的类模板仍只显示为一个补全项
+
+```case
+tests-next/completion/symbols/02_class_templates
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**宏**
+
+对象式宏以常量形式补全，函数式宏以带参数签名的函数形式补全
+
+实参代码片段受函数设置 `code_completion.enable_function_arguments_snippet` 控制。
+
+```case
+tests-next/completion/symbols/05_macros
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**命名空间限定查找**
+
+`ns::` 列出该命名空间自身的成员
+
+```case
+tests-next/completion/symbols/07_namespace_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**枚举成员**
+
+有作用域枚举通过 `Type::` 列出枚举项，无作用域枚举的枚举项则通过其未限定名称补全
+
+```case
+tests-next/completion/symbols/08_enum_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**必需的限定符**
+
+无法通过未限定名称查找到的枚举项，会按其未限定名称匹配，并在补全时加上所需的限定符
+
+```case
+tests-next/completion/symbols/11_required_qualifier
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+- [ ] 实参依赖查找（ADL）候选项
+- [ ] C++ 属性补全
+
+  ```cpp
+  [[^]]  // suggest: nodiscard, deprecated, maybe_unused, likely, ...
+  ```
+
+- [ ] 跨作用域补全，包含类和结构体作用域内的符号（内部类型、静态方法）
+
+  ```cpp
+  struct Outer { struct Inner {}; static int count; };
+  Inn^  // suggest Outer::Inner from a different scope
+  ```
+
+- [ ] 插入限定符时考虑命名空间别名（优先使用最短的有效限定符）
+
+  ```cpp
+  namespace fs = std::filesystem;
+  fs::ex^  // insert "fs::exists", not "std::filesystem::exists"
+  ```
+
+- [ ] 根据语言过滤候选项（混合语言项目中的 C 文件不显示 C++ 符号）
+- [ ] 函数实参注释补全（`/*param=*/` 风格的参数提示）
+- [ ] 语义分析不可用时，回退到基于标识符的补全
+
+## 成员访问
+
+由 `.`、`->`、`::` 或 quickSuggestions 触发。通过无状态工作进程转发给 Clang 的 `CodeCompleteConsumer`。
+
+<!-- BEGIN GENERATED ITEMS: completion/member_access -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**点号后的成员**
+
+在点号后补全时，会列出对象所属类的成员
+
+```case
+tests-next/completion/member_access/01_struct_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**作用域限定的成员**
+
+在 `Class::` 后会列出静态数据成员、嵌套类型、方法和注入类名（injected class name）
+
+限定名补全不会只列出静态上下文中可用的成员：实例字段和析构函数也会与静态成员、嵌套类型一同显示。
+
+```case
+tests-next/completion/member_access/04_scope_access
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**继承的成员**
+
+对派生类对象进行补全时，列出其自身及基类的成员
+
+```case
+tests-next/completion/member_access/05_inherited_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**指定初始化器的字段**
+
+输入 `{ .` 会列出正在初始化的聚合体的字段；若其类型依赖于模板参数，则列出匹配的偏特化中的字段
+
+```case
+tests-next/completion/member_access/06_designated_initializer
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**不可访问的成员**
+
+私有和受保护的成员不会出现在无法使用它们的位置
+
+```case
+tests-next/completion/member_access/07_inaccessible_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**类外定义**
+
+在定义中输入 `Class::` 后，会列出所有成员，包括私有成员
+
+```case
+tests-next/completion/member_access/10_out_of_line_definitions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+- [x] `->`——指针成员访问（带有 Clang 修正）
+- [x] `::`——命名空间或类作用域中的成员
+- [ ] 点转箭头：在指针后输入 `.` 时，触发 `->` 成员补全并自动替换（[clangd#1349](https://github.com/clangd/clangd/issues/1349)）
+
+  ```cpp
+  std::unique_ptr<Foo> ptr;
+  ptr.^  // suggest Foo's members, insert as ptr->bar()
+  ```
+
+- [ ] 在成员补全结果中同时显示首个参数与对象类型匹配的自由函数（free functions）
+
+  ```cpp
+  std::vector<int> v;
+  v.^  // also suggest std::sort(v, ...), std::find(v, ...) etc.
+  ```
+
+- [ ] 在成员建议中包含 `operator[]`、`operator->`、`operator()`
+- [ ] 优先显示通过所输入运算符直接访问的成员（输入 `.` 时优先显示 `.` 可访问的成员，输入 `->` 时优先显示 `->` 可访问的成员）
+
+## 指定初始化器（designated initializers）
+
+- [ ] 按声明顺序排列补全项（C++20 指定初始化器的要求）（[clangd#965](https://github.com/clangd/clangd/issues/965)）
+
+  ```cpp
+  struct Cfg { int width; int height; bool fullscreen; };
+  Cfg c = { .^  // suggest: .width, .height, .fullscreen (in this order)
+  ```
+
+- [ ] 过滤掉已使用的指示符
+
+  ```cpp
+  Cfg c = { .width = 800, .^  // only suggest .height, .fullscreen
+  ```
+
+- [ ] 复合字面量中的指定初始化器（`(struct T){ .field = }`）
+- [ ] 匿名结构体或联合体的成员指示符
+
+  ```cpp
+  struct S { union { int i; float f; }; };
+  S s = { .^  // suggest .i, .f
+  ```
+
+- [ ] “填充所有成员”代码片段
+
+  ```cpp
+  Cfg c = { ^  // first item: .width = ${1}, .height = ${2}, .fullscreen = ${3}
+  ```
+
+## 函数与代码片段
+
+以下所有选项均位于 `[code_completion]` 配置节中。
+
+<!-- BEGIN GENERATED ITEMS: completion/functions_snippets -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**参数占位符代码片段**
+
+函数调用补全会为每个实参插入可用 Tab 键依次跳转的占位符；无参函数的补全则仍为纯文本
+
+```case
+tests-next/completion/functions_snippets/01_snippet_arguments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**签名与返回类型**
+
+参数列表和返回类型随函数名一起显示
+
+```case
+tests-next/completion/functions_snippets/02_function_candidates
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**重载合并**
+
+一组重载合并为一个条目，并显示重载数量
+
+关闭重载合并后，每个重载都单独列为一个条目，并显示各自的签名。
+
+```case
+tests-next/completion/functions_snippets/03_overload_bundle
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**调用括号**
+
+补全时会为调用添加括号，并将光标置于括号内，除非名称后已有实参，或该名称并非用于调用
+
+```case
+tests-next/completion/functions_snippets/06_call_parentheses
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板实参占位符**
+
+补全类模板时，为每个没有默认值的模板形参插入一个占位符；若所有形参都有默认值，则插入空尖括号
+
+```case
+tests-next/completion/functions_snippets/07_template_arguments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**语句关键字**
+
+语句关键字补全为关键字；启用该选项后，会插入整条语句，并为每个部分添加占位符
+
+```case
+tests-next/completion/functions_snippets/08_statement_snippets
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+- [ ] 根据上下文调整代码片段：在函数指针上下文中仅插入名称，不插入调用语法
+
+  ```cpp
+  void (*fp)(int) = my_fun^;  // insert "my_func", not "my_func(${1:int x})"
+  ```
+
+- [ ] 从签名和代码片段中移除 C++23 显式对象参数
+
+  ```cpp
+  struct S { void f(this S& self, int x); };
+  S s;
+  s.f(^  // show signature "(int x)", not "(this S& self, int x)"
+  ```
+
+- [ ] 在签名中显示参数默认值（[clangd#100](https://github.com/clangd/clangd/issues/100)）
+
+  ```cpp
+  void open(std::string path, int mode = 0644);
+  open(^  // detail shows "(string path, int mode = 0644)"
+  ```
+
+- [ ] 将 Lambda 类型解析为实际签名
+
+  ```cpp
+  auto cmp = [](int a, int b) -> bool { return a < b; };
+  cmp^  // show "(int a, int b) -> bool", not "<lambda>"
+  ```
+
+- [ ] 解析转发函数的参数（[clangd#447](https://github.com/clangd/clangd/issues/447)）
+
+  ```cpp
+  struct Widget { Widget(int w, int h); };
+  auto p = std::make_unique<Widget>(^  // show "(int w, int h)"
+  ```
+
+- [ ] 没有占位符时设置 `InsertTextFormat::PlainText`
+
+## 模板与概念
+
+在模板内部，即使成员依赖于模板形参，也能进行补全。
+
+<!-- BEGIN GENERATED ITEMS: completion/templates -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**依赖成员类型**
+
+若变量的类型是依赖于模板形参的特化中的成员类型别名，就能补全该别名所指类的成员
+
+解析别名时，会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是不显示任何内容。如果别名表示引用（`Vec<Vec<T>>::reference`），则会列出所引用类的成员；对指向这类对象的指针使用 `->`，则会列出所指对象的成员。
+
+```case
+tests-next/completion/templates/01_dependent_member_type
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#443 -->
+
+**依赖表达式的结果**
+
+在模板中对下标或成员调用的返回值进行成员访问时，补全该返回值所属类的成员
+
+对于 `Vec<Vec<T>>`，`rows[0].` 会按照标准容器的声明方式，通过容器的 `reference` 别名解析出类型，并列出 `Vec<T>` 的成员。如果成员函数有 `const` 重载，则根据对象是否为 const 来选择调用哪个重载；通过 const 对象访问的数据成员也视为 const，对返回的迭代器使用 `->` 则可访问元素。
+
+```case
+tests-next/completion/templates/05_dependent_expression_results
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**推导变量的成员**
+
+用依赖初始化器声明为 `auto` 的变量，补全其推导出的类的成员
+
+`auto& row = rows[0]; row.` 会列出 `Vec<T>` 的成员。声明符按实际类型推导的规则生效：`const auto&` 使对象具有 const 属性，按值声明的 `auto` 去除初始化器的 const 属性，`auto&&` 和 `decltype(auto)` 保留该属性，而 `auto*` 则取指针所指对象。对于数据成员，`decltype(auto)` 取该成员的声明类型；如果加上括号，则取表达式的 const 引用类型。
+
+```case
+tests-next/completion/templates/07_deduced_variables
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#493 clangd#1768 -->
+
+**泛型 Lambda 参数**
+
+目前在 Lambda 函数体内，还无法对其 `auto` 参数进行成员补全
+
+调用该 Lambda 时，无论是直接调用还是通过算法调用，传入的实参都是 `Point`，但执行补全时，其函数体仍是模板。
+
+```case
+tests-next/completion/templates/14_generic_lambda_parameters
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1103 -->
+
+**Concept 要求**
+
+在受约束的模板内，输入点号后可以补全 Concept 所要求的成员
+
+目前只补全成员名称，不包含参数列表。
+
+```case
+tests-next/completion/templates/15_concept_requirements
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+- [ ] 在类模板体内，不为注入类名（injected class name）生成模板参数代码片段
+  ```cpp
+  template<typename T>
+  struct Vec {
+      Vec^  // suggest "Vec", not "Vec<${1:T}>" — injected class name
+  };
+  ```
+
+## 重写与类外定义
+
+在派生类中，基类的虚函数会补全为完整声明。
+
+<!-- BEGIN GENERATED ITEMS: completion/overrides -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**重写声明**
+
+在派生类中，基类的虚函数会补全为完整的重写声明，包含返回类型和 `override`
+
+在重写函数内部，函数名会补全为名称本身，而非对基类版本的调用。
+
+```case
+tests-next/completion/overrides/01_override_declaration
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+- [ ] 遍历完整的继承层次结构以查找重写候选项（[clangd#226](https://github.com/clangd/clangd/issues/226)、[clangd#2374](https://github.com/clangd/clangd/issues/2374)）
+
+  ```cpp
+  struct A { virtual void f(); };
+  struct B : A { };
+  struct C : B {
+      ^  // suggest: void f() override (from A, through B)
+  };
+  ```
+
+- [ ] 类外定义补全
+
+  ```cpp
+  // in .cpp file
+  void MyClass::^  // suggest all member functions with full signature + body snippet
+  ```
+
+- [ ] 在定义上下文中的 `::` 后补全构造函数
+- [ ] 不显示类模板构造函数和析构函数的冗余模板参数
+
+  ```cpp
+  template<typename T>
+  struct Vec { Vec(); ~Vec(); };
+
+  template<typename T>
+  Vec<T>::^  // suggest "Vec()" and "~Vec()", not "Vec<T>()" or "~Vec<T>()"
+  ```
+
 ## 包含路径
 
 由 `<`、`"`、`/` 字符触发。在构建 AST 之前处理（在 Preamble 层面处理，无需编译）。引号内的补全先搜索包含方文件自身所在的目录，再搜索已配置的包含目录。只有看起来像头文件的文件才会成为候选：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件。
 
-<!-- BEGIN GENERATED ITEMS: include_path_completion -->
+<!-- BEGIN GENERATED ITEMS: completion/include_path_completion -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **引号包含路径**
 
-补全会列出已配置搜索路径中的头文件和目录，并在目录末尾添加斜杠作为标记
+补全会列出已配置的搜索路径中的头文件和目录，并用末尾的斜杠标识目录
 
-```snap
-tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
+```case
+tests-next/completion/include_path_completion/01_include_quoted
 ```
 
 <!-- END CAPABILITY -->
@@ -22,10 +514,10 @@ tests/snap/code_completion/include_path_completion/01_include_quoted.cpp
 
 **尖括号包含路径**
 
-尖括号包含路径的补全会提供相同的搜索路径候选项
+使用尖括号包含头文件时，补全会提供相同搜索路径中的候选项，并以 `>` 闭合
 
-```snap
-tests/snap/code_completion/include_path_completion/02_include_angled.cpp
+```case
+tests-next/completion/include_path_completion/02_include_angled
 ```
 
 <!-- END CAPABILITY -->
@@ -34,10 +526,24 @@ tests/snap/code_completion/include_path_completion/02_include_angled.cpp
 
 **闭合定界符**
 
-接受头文件候选时会补上闭合定界符；光标后已有的定界符会被替换，不会重复
+接受头文件补全项后，会闭合指令，并替换光标后已输入的内容，避免重复插入
 
-```snap
-tests/snap/code_completion/include_path_completion/03_closing_delimiter.cpp
+补全会替换已有的定界符；如果在路径中较靠前的部分选择头文件，还会替换路径的剩余部分。
+
+```case
+tests-next/completion/include_path_completion/03_closing_delimiter
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**同目录下的头文件**
+
+使用引号包含头文件时，无需配置搜索路径即可找到与当前文件同目录的头文件
+
+```case
+tests-next/completion/include_path_completion/04_sibling_headers
 ```
 
 <!-- END CAPABILITY -->
@@ -100,16 +606,16 @@ tests/snap/code_completion/include_path_completion/03_closing_delimiter.cpp
 
 当光标位于 `import` 或 `export import` 之后时触发。
 
-<!-- BEGIN GENERATED ITEMS: module_completion -->
+<!-- BEGIN GENERATED ITEMS: completion/modules -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **导入语句**
 
-在 `import` 之后补全已知模块名，并插入结尾的分号
+在 `import` 后补全已知的模块名，并插入结尾的分号
 
-```snap
-tests/snap/code_completion/module_completion/01_import_modules/main.cpp
+```case
+tests-next/completion/modules/01_import_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -122,20 +628,8 @@ tests/snap/code_completion/module_completion/01_import_modules/main.cpp
 
 已以分号结尾的语句会保留该分号。
 
-```snap
-tests/snap/code_completion/module_completion/02_partition_imports/main.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**实现单元中的 import 关键字**
-
-在模块实现单元的文件作用域中，`import` 的补全方式与在接口单元中相同
-
-```snap
-tests/snap/code_completion/module_completion/03_import_keyword/main.cpp
+```case
+tests-next/completion/modules/02_partition_imports
 ```
 
 <!-- END CAPABILITY -->
@@ -148,8 +642,8 @@ tests/snap/code_completion/module_completion/03_import_keyword/main.cpp
 
 接口不能导出内部分区，它从内部分区导入的名称对该接口的导入方也未必可达，因此只有模块的其他单元才会补全内部分区。
 
-```snap
-tests/snap/code_completion/module_completion/04_interface_partitions/main.cpp
+```case
+tests-next/completion/modules/04_interface_partitions
 ```
 
 <!-- END CAPABILITY -->
@@ -214,762 +708,20 @@ tests/snap/code_completion/module_completion/04_interface_partitions/main.cpp
   export import :^  // suggest mylib's interface partitions that need re-exporting
   ```
 
-## 成员访问
-
-由 `.`、`->`、`::` 或 quickSuggestions 触发。通过无状态工作进程转发给 Clang 的 `CodeCompleteConsumer`。
-
-<!-- BEGIN GENERATED ITEMS: member_access -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**类的成员**
-
-字段、方法、析构函数和运算符均以普通名称补全
-
-析构函数补全为 `~Account`（绝不会是 `~struct Account`），`operator=` 中的 `=` 前不加空格，转换运算符则写出其目标类型。
-
-```snap
-tests/snap/code_completion/member_access/01_member_access.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**实例化后的类模板成员**
-
-析构函数标签保留代码中写出的模板实参
-
-```snap
-tests/snap/code_completion/member_access/02_member_template.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**指针成员访问**
-
-对指针使用 `->` 时，补全其所指对象的成员
-
-```snap
-tests/snap/code_completion/member_access/03_pointer_arrow.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**作用域限定的成员**
-
-在 `::` 后列出静态数据成员、嵌套类型、方法和注入类名（injected class name）
-
-限定名补全不会只保留无需实例即可访问的成员：实例字段和析构函数也会与静态成员及嵌套类型一起显示。
-
-```snap
-tests/snap/code_completion/member_access/04_scope_access.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**继承的成员**
-
-对派生类对象进行补全时，列出其自身及基类的成员
-
-```snap
-tests/snap/code_completion/member_access/05_inherited_members.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**依赖成员类型**
-
-若变量的类型是某个依赖模板特化的成员别名，补全该别名所代表的类的成员
-
-解析别名时会代入代码中写出的模板实参，因此 `Vec<Vec<T>>::value_type` 会列出 `Vec<T>` 的成员，而不是什么都列不出来。别名代表引用类型时（`Vec<Vec<T>>::reference`），列出被引用的类的成员。
-
-```snap
-tests/snap/code_completion/member_access/06_dependent_member_type.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**偏特化的成员**
-
-依赖模板特化匹配到某个偏特化时，补全的成员来自该偏特化，而不是主模板
-
-```snap
-tests/snap/code_completion/member_access/07_partial_specialization_members.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**依赖别名链**
-
-别名自身指向的又是依赖成员类型时，解析会走完链条上的每一环
-
-```snap
-tests/snap/code_completion/member_access/08_dependent_alias_chain.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**所指依赖类型的成员**
-
-对指向依赖成员类型的指针使用 `->` 时，补全其所指对象的成员
-
-```snap
-tests/snap/code_completion/member_access/09_dependent_pointee.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**指向具体特化的别名**
-
-依赖别名指向某个具体特化时，补全该特化实例化后的成员
-
-若文件本身从未实例化该特化，补全时会将其实例化，因此成员带有具体的实参类型；若有与这些实参匹配的偏特化，成员则来自该偏特化。
-
-```snap
-tests/snap/code_completion/member_access/10_concrete_alias_target.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**指定初始化器的字段**
-
-`{ .` 列出正在初始化的聚合体的字段，若聚合体是依赖类型，则列出与之匹配的偏特化的字段
-
-```snap
-tests/snap/code_completion/member_access/11_designated_initializer.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**不可访问的成员**
-
-私有和受保护的成员不会出现在无法使用它们的位置
-
-```snap
-tests/snap/code_completion/member_access/12_inaccessible_members.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**析构函数标签**
-
-无论类位于哪个命名空间，析构函数都补全为 `~` 加上不带限定的类名
-
-```snap
-tests/snap/code_completion/member_access/13_destructor_label.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#443 -->
-
-**依赖表达式的结果**
-
-在模板中对下标或成员调用的返回值进行成员访问时，补全该返回值所属类的成员
-
-`rows[0].` 用在 `Vec<Vec<T>>` 上时，列出 `Vec<T>` 的成员：解析沿着容器的 `reference` 别名进行，与标准容器声明该别名的方式一致。若成员有 `const` 重载，由对象是否为 const 决定调用哪一个，通过 const 对象访问到的数据成员也算作 const；对返回的迭代器使用 `->` 可以访问到元素。
-
-```snap
-tests/snap/code_completion/member_access/14_dependent_expression_result.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**返回类型相同的重载**
-
-依赖调用的候选重载都返回同一类型时，补全该类型的成员
-
-`table[key].` 用在 `operator[]` 接受 `const K&` 或 `K&&` 的映射上时，列出映射值类型的成员。这些重载可以定义在类外，类模板也可以在定义之后再次声明，标准库中的映射正是如此。
-
-```snap
-tests/snap/code_completion/member_access/15_overloaded_subscript.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**推导变量的成员**
-
-用依赖初始化器声明为 `auto` 的变量，补全其推导出的类的成员
-
-`auto& row = rows[0]; row.` 列出 `Vec<T>` 的成员。声明符的作用与真实推导中一致：`const auto&` 使对象成为 const，按值的 `auto` 去掉初始化器的 const，`auto&&` 和 `decltype(auto)` 保留这一 const，`auto*` 则推导出指针所指的类型。初始化器为数据成员时，`decltype(auto)` 取该成员声明时的类型；加了括号时，则取该表达式的 const 引用类型。
-
-```snap
-tests/snap/code_completion/member_access/16_deduced_variable.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-- [x] `->`——指针成员访问（带有 Clang 修正）
-- [x] `::`——命名空间或类作用域中的成员
-- [ ] 点转箭头：在指针后输入 `.` 时，触发 `->` 成员补全并自动替换（[clangd#1349](https://github.com/clangd/clangd/issues/1349)）
-
-  ```cpp
-  std::unique_ptr<Foo> ptr;
-  ptr.^  // suggest Foo's members, insert as ptr->bar()
-  ```
-
-- [ ] 在成员补全结果中同时显示首个参数与对象类型匹配的自由函数（free functions）
-
-  ```cpp
-  std::vector<int> v;
-  v.^  // also suggest std::sort(v, ...), std::find(v, ...) etc.
-  ```
-
-- [ ] 在成员建议中包含 `operator[]`、`operator->`、`operator()`
-- [ ] 优先显示通过所输入运算符直接访问的成员（输入 `.` 时优先显示 `.` 可访问的成员，输入 `->` 时优先显示 `->` 可访问的成员）
-
-## 指定初始化器（designated initializers）
-
-- [ ] 按声明顺序排列补全项（C++20 指定初始化器的要求）（[clangd#965](https://github.com/clangd/clangd/issues/965)）
-
-  ```cpp
-  struct Cfg { int width; int height; bool fullscreen; };
-  Cfg c = { .^  // suggest: .width, .height, .fullscreen (in this order)
-  ```
-
-- [ ] 过滤掉已使用的指示符
-
-  ```cpp
-  Cfg c = { .width = 800, .^  // only suggest .height, .fullscreen
-  ```
-
-- [ ] 复合字面量中的指定初始化器（`(struct T){ .field = }`）
-- [ ] 匿名结构体或联合体的成员指示符
-
-  ```cpp
-  struct S { union { int i; float f; }; };
-  S s = { .^  // suggest .i, .f
-  ```
-
-- [ ] “填充所有成员”代码片段
-
-  ```cpp
-  Cfg c = { ^  // first item: .width = ${1}, .height = ${2}, .fullscreen = ${3}
-  ```
-
-## 重写与类外定义
-
-<!-- BEGIN GENERATED ITEMS: override_completion -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**重写声明**
-
-在派生类中，基类的虚函数补全为完整的重写声明，包括返回类型和 `override`；在重写函数内部，该名称按其自身补全，而不是补全为对基类版本的调用
-
-```snap
-tests/snap/code_completion/override_completion/01_override_declaration.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-- [ ] 遍历完整的继承层次结构以查找重写候选项（[clangd#226](https://github.com/clangd/clangd/issues/226)、[clangd#2374](https://github.com/clangd/clangd/issues/2374)）
-
-  ```cpp
-  struct A { virtual void f(); };
-  struct B : A { };
-  struct C : B {
-      ^  // suggest: void f() override (from A, through B)
-  };
-  ```
-
-- [ ] 类外定义补全
-
-  ```cpp
-  // in .cpp file
-  void MyClass::^  // suggest all member functions with full signature + body snippet
-  ```
-
-- [ ] 在定义上下文中显示所有成员（包括私有成员和受保护成员）
-
-  ```cpp
-  class Foo { private: void secret(); };
-  void Foo::^  // must include "secret" — this is a definition, not a call
-  ```
-
-- [ ] 在定义上下文中的 `::` 后补全构造函数
-- [ ] 不显示类模板构造函数和析构函数的冗余模板参数
-
-  ```cpp
-  template<typename T>
-  struct Vec { Vec(); ~Vec(); };
-
-  template<typename T>
-  Vec<T>::^  // suggest "Vec()" and "~Vec()", not "Vec<T>()" or "~Vec<T>()"
-  ```
-
-## 符号
-
-<!-- BEGIN GENERATED ITEMS: symbols -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**模糊非限定查找**
-
-保留匹配度高的前缀匹配项，排除匹配度低的子序列匹配项和未限定的命名空间成员
-
-```snap
-tests/snap/code_completion/symbols/01_unqualified_lookup.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**类模板去重**
-
-同一名称即使也对应构造函数和推导指引，仍只显示为一个类条目
-
-```snap
-tests/snap/code_completion/symbols/02_template_dedup.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**构造函数标签仅显示类名**
-
-类模板的构造函数和推导指引均补全为不带模板实参的类名，绝不使用带模板实参的形式
-
-```snap
-tests/snap/code_completion/symbols/03_constructor_labels.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**关键字模式**
-
-关键字与其他候选项一样参与补全，插入内容为纯文本
-
-```snap
-tests/snap/code_completion/symbols/04_pattern_keyword.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**宏**
-
-对象式宏按常量补全，函数式宏按带参数签名的函数补全；实参代码片段遵循函数补全设置
-
-```snap
-tests/snap/code_completion/symbols/05_macros.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**宏遮蔽声明**
-
-名称被重新定义为宏后，补全结果为该宏，而非被遮蔽的声明
-
-```snap
-tests/snap/code_completion/symbols/06_macro_shadow.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**宏实参内的补全**
-
-宏实参中的成员访问与宏外的成员访问具有相同的补全行为
-
-```snap
-tests/snap/code_completion/symbols/07_macro_argument.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**命名空间限定查找**
-
-`ns::` 列出该命名空间自身的成员
-
-```snap
-tests/snap/code_completion/symbols/08_namespace_qualified.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**枚举成员**
-
-有作用域枚举通过 `Type::` 列出枚举项，无作用域枚举的枚举项则直接按名称补全
-
-```snap
-tests/snap/code_completion/symbols/09_enum_members.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**局部名称遮蔽全局名称**
-
-被遮蔽的全局名称不会作为重复条目出现
-
-```snap
-tests/snap/code_completion/symbols/10_local_shadow.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**using 声明**
-
-通过 `using` 引入的名称无需限定即可补全
-
-```snap
-tests/snap/code_completion/symbols/11_using_declaration.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**依赖作用域限定符**
-
-`::` 位于依赖成员类型之后时列出该类型的成员，位于依赖模板特化之后时列出与之匹配的偏特化的成员，位于依赖的成员枚举之后时则列出其枚举项
-
-```snap
-tests/snap/code_completion/symbols/12_dependent_scope.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**必需的限定符**
-
-仅凭名称无法指到的枚举项会带上所需的限定符补全，并按不带限定的名称匹配
-
-```snap
-tests/snap/code_completion/symbols/13_required_qualifier.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**局部变量隐藏函数**
-
-局部变量隐藏同名函数时，提供的候选项是该局部变量，而不是被隐藏的函数
-
-```snap
-tests/snap/code_completion/symbols/14_hidden_by_local.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**构造函数模板**
-
-与其他构造函数一样，构造函数模板补全为不带限定的类名
-
-```snap
-tests/snap/code_completion/symbols/15_constructor_template.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**跨命名空间的重载**
-
-作用域内来自不同命名空间的同名函数合并为一项，并计入全部重载
-
-```snap
-tests/snap/code_completion/symbols/16_overloads_across_scopes.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-- [x] 限定名称查找（`std::`）
-- [ ] 实参依赖查找（ADL）候选项
-- [x] 宏补全——候选集包含对象式宏和函数式宏
-- [ ] C++ 属性补全
-
-  ```cpp
-  [[^]]  // suggest: nodiscard, deprecated, maybe_unused, likely, ...
-  ```
-
-- [ ] 跨作用域补全，包含类和结构体作用域内的符号（内部类型、静态方法）
-
-  ```cpp
-  struct Outer { struct Inner {}; static int count; };
-  Inn^  // suggest Outer::Inner from a different scope
-  ```
-
-- [ ] 插入限定符时考虑命名空间别名（优先使用最短的有效限定符）
-
-  ```cpp
-  namespace fs = std::filesystem;
-  fs::ex^  // insert "fs::exists", not "std::filesystem::exists"
-  ```
-
-- [ ] 根据语言过滤候选项（混合语言项目中的 C 文件不显示 C++ 符号）
-- [ ] 函数实参注释补全（`/*param=*/` 风格的参数提示）
-- [ ] 语义分析不可用时，回退到基于标识符的补全
-
-## 函数与代码片段
-
-以下所有选项均位于 `[code_completion]` 配置节中。
-
-<!-- BEGIN GENERATED ITEMS: functions_snippets -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**签名与返回类型详情**
-
-参数列表和返回类型作为标签详情一同显示
-
-```snap
-tests/snap/code_completion/functions_snippets/01_function_candidates.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**重载合并**
-
-一组重载合并为一个条目，并显示重载数量
-
-```snap
-tests/snap/code_completion/functions_snippets/02_overload_bundle.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**重载单独显示**
-
-关闭重载合并后，每个重载各占一个条目，并显示各自的签名
-
-```snap
-tests/snap/code_completion/functions_snippets/03_no_bundle_overloads.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**参数占位符代码片段**
-
-补全调用时，为每个实参插入可用 Tab 键跳转的占位符；无参函数仍插入为纯文本
-
-```snap
-tests/snap/code_completion/functions_snippets/04_snippet_arguments.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**代码片段遵循重载合并设置**
-
-合并重载时，即使启用了实参代码片段，也不会使用
-
-```snap
-tests/snap/code_completion/functions_snippets/05_snippet_bundle_mode.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**带默认实参的形参**
-
-带默认值的参数不显示在签名详情中
-
-签名详情仅保留必需参数；末尾的 `int retries = 3` 会被省略。
-
-```snap
-tests/snap/code_completion/functions_snippets/06_default_argument.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**可变参数签名**
-
-末尾的 `...` 显示在参数详情中
-
-```snap
-tests/snap/code_completion/functions_snippets/07_variadic_signature.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**调用括号**
-
-补全函数调用时会插入圆括号并把光标放在括号之间，除非名称后面已经写了实参，或者此处并不是调用
-
-```snap
-tests/snap/code_completion/functions_snippets/08_call_parentheses.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**模板实参占位符**
-
-类模板为每个没有默认值的模板形参插入一个占位符；所有形参都有默认值时插入一对空的尖括号
-
-```snap
-tests/snap/code_completion/functions_snippets/09_template_arguments.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**语句关键字**
-
-语句关键字作为关键字补全；开启该选项后会插入整条语句，并为每个组成部分提供占位符
-
-```snap
-tests/snap/code_completion/functions_snippets/10_statement_snippets.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-- [ ] 根据上下文调整代码片段：在函数指针上下文中仅插入名称，不插入调用语法
-
-  ```cpp
-  void (*fp)(int) = my_fun^;  // insert "my_func", not "my_func(${1:int x})"
-  ```
-
-- [ ] 从签名和代码片段中移除 C++23 显式对象参数
-
-  ```cpp
-  struct S { void f(this S& self, int x); };
-  S s;
-  s.f(^  // show signature "(int x)", not "(this S& self, int x)"
-  ```
-
-- [ ] 在签名中显示参数默认值（[clangd#100](https://github.com/clangd/clangd/issues/100)）
-
-  ```cpp
-  void open(std::string path, int mode = 0644);
-  open(^  // detail shows "(string path, int mode = 0644)"
-  ```
-
-- [ ] 将 Lambda 类型解析为实际签名
-
-  ```cpp
-  auto cmp = [](int a, int b) -> bool { return a < b; };
-  cmp^  // show "(int a, int b) -> bool", not "<lambda>"
-  ```
-
-- [ ] 解析转发函数的参数（[clangd#447](https://github.com/clangd/clangd/issues/447)）
-
-  ```cpp
-  struct Widget { Widget(int w, int h); };
-  auto p = std::make_unique<Widget>(^  // show "(int w, int h)"
-  ```
-
-- [ ] 没有占位符时设置 `InsertTextFormat::PlainText`
-
-## 模板与概念
-
-- [ ] 感知概念约束的代码补全：根据模板参数的概念约束推断可用成员（[clangd#1103](https://github.com/clangd/clangd/issues/1103)）
-
-  ```cpp
-  template<typename T>
-  concept Drawable = requires(T t) { t.draw(); t.resize(int{}, int{}); };
-
-  template<Drawable T>
-  void render(T& widget) {
-      widget.^  // suggest draw(), resize() from Drawable concept
-  }
-  ```
-
-- [ ] 利用单次实例化信息为泛型 Lambda 提供代码补全：当泛型 Lambda 仅在一处被调用时，使用该调用位置的实参类型，为 Lambda 函数体内部提供代码补全
-
-  ```cpp
-  std::vector<std::string> names;
-  std::ranges::sort(names, [](const auto& a, const auto& b) {
-      return a.^  // a is deducible as std::string from the single call site
-  });
-  ```
-
-  ```cpp
-  auto results = names | std::views::transform([](const auto& s) {
-      return s.^  // s is deducible as std::string
-  });
-  ```
-
-- [ ] 在类模板体内，不为注入类名（injected class name）生成模板参数代码片段
-  ```cpp
-  template<typename T>
-  struct Vec {
-      Vec^  // suggest "Vec", not "Vec<${1:T}>" — injected class name
-  };
-  ```
-
 ## 过滤与排序
 
-<!-- BEGIN GENERATED ITEMS: filtering_ranking -->
+根据输入内容与候选项中各单词开头的匹配情况筛选候选项，匹配度最高的排在最前面。
+
+<!-- BEGIN GENERATED ITEMS: completion/filtering -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **下划线过滤**
 
-隐藏以下划线开头的内部符号，除非输入的前缀也以下划线开头
+以下划线开头的内部符号默认隐藏，只有输入的前缀也以下划线开头时才会显示
 
-```snap
-tests/snap/code_completion/filtering_ranking/01_underscore_filter.cpp
+```case
+tests-next/completion/filtering/01_underscore_filter
 ```
 
 <!-- END CAPABILITY -->
@@ -978,10 +730,10 @@ tests/snap/code_completion/filtering_ranking/01_underscore_filter.cpp
 
 **弃用标记**
 
-带有 [[deprecated]] 属性的候选项会标记为弃用，普通的同类候选项则不会
+带有 `[[deprecated]]` 的候选项会标记为已弃用，与之对应的不带该属性的候选项则不会
 
-```snap
-tests/snap/code_completion/filtering_ranking/02_deprecated_tag.cpp
+```case
+tests-next/completion/filtering/02_deprecated_tag
 ```
 
 <!-- END CAPABILITY -->
@@ -992,22 +744,10 @@ tests/snap/code_completion/filtering_ranking/02_deprecated_tag.cpp
 
 前缀 `fb` 匹配 `foo_bar_baz` 中各单词的开头
 
-`frobnicate` 与 `fb` 仅形成较弱的分散子序列匹配，因此被过滤掉；`foo_bar_baz` 则在 `foo`/`bar` 的单词边界处匹配，因此被保留。
+对于 `fb`，`frobnicate` 只能形成较弱的分散子序列匹配，因此被过滤掉；`foo_bar_baz` 在 `foo` 和 `bar` 的单词边界上匹配，因此得以保留。
 
-```snap
-tests/snap/code_completion/filtering_ranking/03_fuzzy_word_boundary.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**不区分大小写的前缀匹配**
-
-小写前缀可以匹配大小写混合的标识符
-
-```snap
-tests/snap/code_completion/filtering_ranking/04_case_insensitive.cpp
+```case
+tests-next/completion/filtering/03_fuzzy_word_boundary
 ```
 
 <!-- END CAPABILITY -->
@@ -1018,10 +758,10 @@ tests/snap/code_completion/filtering_ranking/04_case_insensitive.cpp
 
 精确匹配前缀的候选项排在分散子序列匹配的候选项之前
 
-对于前缀 `fo`，`format_output` 属于真正的前缀匹配，得分高于仅形成子序列匹配的 `fast_math_operation`。
+对于前缀 `fo`，`format_output` 属于真正的前缀匹配，得分高于只能按子序列匹配的 `fast_math_operation`。
 
-```snap
-tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
+```case
+tests-next/completion/filtering/05_prefix_beats_subsequence
 ```
 
 <!-- END CAPABILITY -->
@@ -1030,29 +770,16 @@ tests/snap/code_completion/filtering_ranking/05_prefix_beats_subsequence.cpp
 
 **单词中间的补全**
 
-在单词中间补全时同时提供两种范围：编辑器可以在单词剩余部分之前插入，也可以替换整个单词
+在单词中间补全时，会提供两种编辑范围：编辑器可以在单词剩余部分之前插入补全内容，也可以替换整个单词
 
-```snap
-tests/snap/code_completion/filtering_ranking/06_inside_a_word.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**非 ASCII 前缀**
-
-由非 ASCII 标识符字符组成的前缀会被替换，而不是在其前面插入
-
-```snap
-tests/snap/code_completion/filtering_ranking/07_unicode_prefix.cpp
+```case
+tests-next/completion/filtering/06_inside_a_word
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-- [x] 模糊匹配评分考虑单词边界（camelCase、snake_case）
 - [x] 过滤掉错误恢复上下文的结果（`CCC_Recovery`）
 - [ ] 结果数量上限（`CodeCompletionOptions.limit`）
 - [ ] 综合使用频率和最近使用时间加权／提高最近使用项的排名

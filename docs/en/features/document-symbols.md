@@ -1,51 +1,38 @@
 # Document Symbols
 
-<!-- The capability sections below are generated from the snapshot fixtures in
-     tests/snap/document_symbol/. Do not edit the regions between the GENERATED
-     markers by hand — edit the fixture spec headers and run
-     `node tools/docs/feature.ts update`. -->
+<!-- The cards in the sections below are generated from the documented cases
+     in tests-next/document_symbol/. Do not edit the regions between the
+     GENERATED markers by hand — edit the cases' README.md and run
+     `pixi run update-feature-docs`. -->
 
 Provides the file outline and breadcrumb navigation via `textDocument/documentSymbol`: a nested symbol tree with ranges, selection ranges and a `detail` field that disambiguates overloads and shows declared types.
 
 ## Symbol Hierarchy
 
-<!-- BEGIN GENERATED ITEMS: symbol_hierarchy -->
+Symbols nest in the outline as they nest in the code: a member under its class, a local under its function.
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_hierarchy -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Nested symbol tree**
+**Nested scopes**
 
-Symbols nest by their written scope; out-of-line definitions appear at their
-lexical position with qualified names
+Namespaces, classes and their members nest in the outline as they nest in the code
 
-```snap
-tests/snap/document_symbol/symbol_hierarchy/01_hierarchy_nesting.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/01_nested_scopes
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Symbol ranges and selection ranges**
+**Out-of-line definitions**
 
-The range spans the whole declaration; the selection range covers the full
-written name, including multi-token names like `~Widget`, `operator==` and
-`operator bool`
+An out-of-line definition lists where it is written, under its qualified name, and a reopened namespace lists once per opening
 
-```snap
-tests/snap/document_symbol/symbol_hierarchy/02_hierarchy_selection_ranges.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#499 -->
-
-**Access specifier grouping**
-
-Access specifiers do not form grouping nodes in the outline yet
-
-```snap
-tests/snap/document_symbol/symbol_hierarchy/03_hierarchy_access_specifiers.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/02_qualified_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -54,235 +41,10 @@ tests/snap/document_symbol/symbol_hierarchy/03_hierarchy_access_specifiers.cpp
 
 **Anonymous and inline scopes**
 
-Anonymous namespaces, unnamed structs and unions group their members under a
-placeholder name; inline namespace members stay under the inline namespace
-node
+Anonymous namespaces, structs and unions group their members under a placeholder name, and an inline namespace keeps its own node
 
-```snap
-tests/snap/document_symbol/symbol_hierarchy/04_hierarchy_anonymous.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**UTF-16 position encoding**
-
-Columns after non-ASCII text count UTF-16 code units
-
-```snap
-tests/snap/document_symbol/symbol_hierarchy/05_hierarchy_utf16.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Symbol Kinds
-
-<!-- BEGIN GENERATED ITEMS: symbol_kinds -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Core symbol kinds**
-
-Namespaces, classes, structs, unions, enums and their members, functions,
-variables, fields, structured bindings and lambdas all appear in the outline
-with a mapped LSP symbol kind
-
-```snap
-tests/snap/document_symbol/symbol_kinds/01_kinds_basic.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Template declarations**
-
-Class, function and variable templates carry a `template ` detail prefix;
-concepts and abbreviated function templates (`concept auto` parameters)
-appear as well
-
-```snap
-tests/snap/document_symbol/symbol_kinds/02_kinds_templates.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Template specializations and deduction guides**
-
-Explicit and partial specializations of class and variable templates appear
-with their template arguments in the name; members nest under their
-specialization; deduction guides render their deduced signature
-
-```snap
-tests/snap/document_symbol/symbol_kinds/03_kinds_specializations.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Type aliases**
-
-`typedef`, `using` aliases and alias templates appear in the outline with a
-`type alias` detail
-
-```snap
-tests/snap/document_symbol/symbol_kinds/04_kinds_type_aliases.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Explicit instantiation directives**
-
-Class, function and variable explicit instantiations appear as childless
-symbols
-
-```snap
-tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#1744 -->
-
-**Macro definitions**
-
-Object-like and function-like macros appear in the outline, with parameters
-detailed for function-like forms
-
-```snap
-tests/snap/document_symbol/symbol_kinds/06_kinds_macros.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial -->
-
-**Macros in the preamble region**
-
-Macros in the leading directive run are not outlined in editor requests yet
-
-```snap
-tests/snap/document_symbol/symbol_kinds/07_macro_preamble.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Module declarations**
-
-An interface unit's module declaration outlines the module it defines
-
-```snap
-tests/snap/document_symbol/symbol_kinds/08_kinds_modules.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Symbol Detail
-
-<!-- BEGIN GENERATED ITEMS: symbol_detail -->
-
-<!-- BEGIN CAPABILITY: supported clangd#520 clangd#601 clangd#1232 -->
-
-**Function signatures**
-
-Parameter and return types in the `detail` field disambiguate overloads;
-constructors drop the `void` return type
-
-```snap
-tests/snap/document_symbol/symbol_detail/01_detail_signatures.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Variable and field types**
-
-Variable details show the declared type, while lambdas render as `(lambda)`
-
-```snap
-tests/snap/document_symbol/symbol_detail/02_detail_variable_types.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#221 -->
-
-**Default argument stripping**
-
-The signature is derived from the function type, so default parameter values
-never leak into the outline
-
-```snap
-tests/snap/document_symbol/symbol_detail/03_detail_default_arguments.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**Base classes in detail**
-
-Derived class details do not include their base classes yet
-
-```snap
-tests/snap/document_symbol/symbol_detail/04_detail_base_classes.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#2221 -->
-
-**Multiline signature ranges**
-
-The symbol range starts at the beginning of the declaration and spans the
-full signature, so editor sticky scroll anchors correctly
-
-```snap
-tests/snap/document_symbol/symbol_detail/05_detail_multiline_signatures.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Scoped types**
-
-A written class scope appears in the detail exactly once, for nested
-classes, template-ids, aliases and dependent names alike
-
-```snap
-tests/snap/document_symbol/symbol_detail/06_detail_scoped_types.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Missing Symbols
-
-<!-- BEGIN GENERATED ITEMS: missing_symbols -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2226 -->
-
-**Include directives**
-
-`#include` directives do not appear in the outline yet
-
-```snap
-tests/snap/document_symbol/missing_symbols/01_missing_includes.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/03_anonymous_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -291,23 +53,10 @@ tests/snap/document_symbol/missing_symbols/01_missing_includes.cpp
 
 **Local symbols**
 
-Variables and types declared inside function bodies nest under their
-function
+Variables, types and lambdas declared in a function body nest under the function
 
-```snap
-tests/snap/document_symbol/missing_symbols/02_local_symbols.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**`#pragma mark` navigation markers**
-
-Editor section markers do not appear in the outline yet
-
-```snap
-tests/snap/document_symbol/missing_symbols/04_missing_pragma_mark.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/04_local_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -316,10 +65,273 @@ tests/snap/document_symbol/missing_symbols/04_missing_pragma_mark.cpp
 
 **Friend function definitions**
 
-A friend function defined inline in a class appears under that class
+A friend function defined inside a class lists under that class
 
-```snap
-tests/snap/document_symbol/missing_symbols/05_friend_definitions.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/05_friend_definitions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#499 -->
+
+**Access sections**
+
+Members are not grouped under their `public` and `private` sections yet
+
+```case
+tests-next/document_symbol/symbol_hierarchy/06_access_sections
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Symbol Kinds
+
+Each symbol lists with its kind, from namespaces and classes to macros and module declarations.
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_kinds -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Core symbol kinds**
+
+Namespaces, classes, unions, enums and their members, functions, variables, fields, bindings and lambdas each list with their kind
+
+```case
+tests-next/document_symbol/symbol_kinds/01_core_kinds
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**Templates**
+
+Class, function and variable templates read `template` in their detail, and concepts and abbreviated templates list too
+
+A primary template's extent starts after its `template <...>` line, where
+a specialization's includes it.
+
+```case
+tests-next/document_symbol/symbol_kinds/02_templates
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**Specializations and deduction guides**
+
+Specializations list with their template arguments and their own members, and a deduction guide with the signature it deduces
+
+An explicit instantiation of a function template is named without its
+arguments.
+
+```case
+tests-next/document_symbol/symbol_kinds/03_specializations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**Type aliases**
+
+`typedef` and `using` aliases and alias templates list as type aliases
+
+```case
+tests-next/document_symbol/symbol_kinds/04_type_aliases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**Explicit instantiations**
+
+Explicit instantiations of class, function and variable templates list without members
+
+A function template's instantiation is named without its arguments.
+
+```case
+tests-next/document_symbol/symbol_kinds/05_explicit_instantiations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1744 -->
+
+**Macros**
+
+Object-like and function-like macros list, a function-like one with its parameters as detail
+
+Macros in the leading run of directives, before any declaration, are
+missing from the editor's outline yet.
+
+```case
+tests-next/document_symbol/symbol_kinds/06_macros
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module declarations**
+
+A module interface unit lists the module it declares
+
+```case
+tests-next/document_symbol/symbol_kinds/07_modules
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2226 -->
+
+**Include directives**
+
+`#include` directives do not list in the outline yet
+
+```case
+tests-next/document_symbol/symbol_kinds/10_includes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**#pragma mark**
+
+`#pragma mark` sections do not list in the outline yet
+
+```case
+tests-next/document_symbol/symbol_kinds/11_pragma_marks
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Symbol Detail
+
+The `detail` beside a name tells overloads apart and shows a variable's declared type.
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_detail -->
+
+<!-- BEGIN CAPABILITY: supported clangd#520 clangd#601 clangd#1232 -->
+
+**Function signatures**
+
+Parameter and return types in the `detail` field disambiguate overloads; constructors drop the `void` return type
+
+```case
+tests-next/document_symbol/symbol_detail/01_detail_signatures
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Variable and field types**
+
+A variable or field shows its declared type as detail, a lambda `(lambda)`
+
+```case
+tests-next/document_symbol/symbol_detail/02_variable_types
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#221 -->
+
+**Default arguments**
+
+A function's detail lists its parameter types without their default values
+
+```case
+tests-next/document_symbol/symbol_detail/03_default_arguments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**Base classes**
+
+A derived class's detail does not name its base classes yet
+
+```case
+tests-next/document_symbol/symbol_detail/04_base_classes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**Scoped types**
+
+A type written with its class scope keeps that scope once in the detail, dependent names included
+
+```case
+tests-next/document_symbol/symbol_detail/05_scoped_types
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Symbol Ranges
+
+Each symbol carries the extent of its whole declaration and the range of its name, which the editor selects when you pick it.
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_ranges -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Names and extents**
+
+A symbol's extent covers its whole declaration, and its name the whole written name, `~Widget`, `operator==` and `operator bool` included
+
+```case
+tests-next/document_symbol/symbol_ranges/01_selection_ranges
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2221 -->
+
+**Multiline signatures**
+
+A declaration spanning lines extends from its first line to its last
+
+```case
+tests-next/document_symbol/symbol_ranges/02_multiline_signatures
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#475 -->
+
+**Symbols from macros**
+
+A symbol a macro invocation declares lists at the invocation, not at the macro's definition
+
+```case
+tests-next/document_symbol/symbol_ranges/03_macro_expansions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1941 -->
+
+**Names in macro arguments**
+
+A name written in a macro's arguments is the symbol's name; one written in the macro's body falls back to the invocation
+
+```case
+tests-next/document_symbol/symbol_ranges/04_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -328,61 +340,30 @@ tests/snap/document_symbol/missing_symbols/05_friend_definitions.cpp
 
 ## Symbol Tags
 
-<!-- BEGIN GENERATED ITEMS: symbol_tags -->
+Tags mark a symbol as deprecated or describe its access and storage.
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_tags -->
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**Deprecated tag**
+**Deprecated symbols**
 
-Deprecated symbols do not carry the LSP `deprecated` symbol tag yet
+A deprecated symbol does not carry the Deprecated tag yet
 
-```snap
-tests/snap/document_symbol/symbol_tags/01_tags_deprecated.cpp
+```case
+tests-next/document_symbol/symbol_tags/01_deprecated
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2123 -->
 
-**Access and storage indicators**
+**Access and storage tags**
 
-Outline entries do not expose access, static, virtual or abstract modifiers
-yet
+The outline does not tag members with their access, `static`, `virtual` or abstractness yet
 
-```snap
-tests/snap/document_symbol/symbol_tags/02_tags_modifiers.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Location Correctness
-
-<!-- BEGIN GENERATED ITEMS: location_correctness -->
-
-<!-- BEGIN CAPABILITY: supported clangd#475 -->
-
-**Symbols from macro expansions**
-
-A symbol produced by a macro invocation is located at the invocation, not at
-the macro definition
-
-```snap
-tests/snap/document_symbol/location_correctness/01_macro_symbols.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#1941 -->
-
-**Names spelled in macro arguments**
-
-The selection range points at the name written in the macro argument; names
-spelled in the macro body fall back to the invocation site
-
-```snap
-tests/snap/document_symbol/location_correctness/02_macro_argument_names.cpp
+```case
+tests-next/document_symbol/symbol_tags/02_modifiers
 ```
 
 <!-- END CAPABILITY -->

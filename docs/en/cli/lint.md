@@ -47,6 +47,88 @@ finding several units report identically, notes included, appears once in
 the report, which is sorted by file and position and keeps the notes
 clang-tidy attaches.
 
+## Examples
+
+### Compiler Warnings
+
+A compiler warning is a finding only when the checks name it.
+
+<!-- BEGIN GENERATED ITEMS: lint/checks -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Compiler warnings as findings**
+
+A warning the build enables is a finding only when the checks name it
+
+The compiler warnings a unit's command enables are findings when `Checks` lists their `clang-diagnostic-<flag>` name, reported under that name. The others stay out of the report.
+
+```case
+tests-next/lint/checks/02_compiler_warnings
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Findings
+
+A finding in a shared header is reported once, and `NOLINT` comments silence findings in every file.
+
+<!-- BEGIN GENERATED ITEMS: lint/findings -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Header findings reported once**
+
+A header is checked in every unit that includes it, and its findings are reported once
+
+Each translation unit checks the headers it includes, as clang-tidy does, so a finding in a shared header comes from every unit that includes it. The report merges them into one line and lists every finding by file and position.
+
+```case
+tests-next/lint/findings/01_header_findings_merge
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Suppression comments**
+
+NOLINT comments silence findings in headers as well as in the file being checked
+
+`// NOLINT` silences its own line, `// NOLINTNEXTLINE` the next one, and `// NOLINTBEGIN` and `// NOLINTEND` everything between them, for every check or for the ones named in parentheses. They count in every file a unit reads, as clang-tidy reads them.
+
+```case
+tests-next/lint/findings/03_suppression_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Files Kept Out
+
+A rule keeps files out of the report.
+
+<!-- BEGIN GENERATED ITEMS: lint/scope -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Keep files out of lint**
+
+A rule with `lint = false` keeps its files out of the report, headers and units alike
+
+A vendored library is neither checked as a unit of its own nor reported where the project's units include it.
+
+```case
+tests-next/lint/scope/01_keep_files_out
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## clang-tidy Integration Quality
 
 Issues that affect the quality of clang-tidy diagnostics within a language server:

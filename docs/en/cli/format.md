@@ -38,3 +38,77 @@ would change), `1` when `--check` found files to format, `2` when the run
 could not complete: the arguments do not parse, clang-format was not found
 or failed on a file, the workspace, its configuration or a compilation
 database could not be loaded, or the requested configuration does not exist.
+
+## Examples
+
+### The Build's Files
+
+Without paths, the build's own files are formatted; named paths narrow the run or add files to it.
+
+<!-- BEGIN GENERATED ITEMS: format/files -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Format the build's files**
+
+Without paths, the build's sources and the headers they include are formatted; vendored and system headers are left alone
+
+```case
+tests-next/format/files/01_build_files
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Format named paths**
+
+A named file is formatted whether or not the build knows it; a named directory narrows the build's files to those under it
+
+```case
+tests-next/format/files/02_named_paths
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Rewriting in Place
+
+A run rewrites every file that does not follow its style yet.
+
+<!-- BEGIN GENERATED ITEMS: format/rewrite -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Format in place**
+
+Without `--check` every file of the build is rewritten to its style
+
+```case
+tests-next/format/rewrite/01_format_in_place
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Checking
+
+`--check` reports what would change and writes nothing.
+
+<!-- BEGIN GENERATED ITEMS: format/check -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Check formatting**
+
+With `--check` nothing is rewritten; each place clang-format would change is reported
+
+```case
+tests-next/format/check/01_check_formatting
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->

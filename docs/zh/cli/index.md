@@ -18,3 +18,57 @@
 - `clice index --show-symbol <name>` 输出索引中记录的符号信息：种类、名称和标志，拼出其限定名的父级链，规范声明所在的文件，以及各文件中定义、声明和引用的数量。名称按显示形式（`Box<int>`）或限定形式（`ns::Box<int>`）匹配；`#<hash>` 按符号标识指定符号，文件局部符号就是通过这种方式访问的。
 - `clice index --show-file <path>` 输出文件已持久化的数据行：构建这些行所依据的内容版本、每个变体及贡献它的翻译单元，按关系类型统计的行数，以及身份只存在于该文件中的文件局部符号。
 - `clice index --show-tu <path>` 输出翻译单元的清单：索引时间、它为哪些文件贡献了数据行，以及它的包含树。
+
+## 示例
+
+### 构建索引
+
+每次运行都会为构建中的所有翻译单元建立索引，规则排除的翻译单元除外。
+
+<!-- BEGIN GENERATED ITEMS: index/batch -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**构建索引**
+
+为构建中的每个翻译单元建立索引，让编辑器会话热启动
+
+```case
+tests-next/index/batch/01_build_the_index
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**将翻译单元排除在索引构建之外**
+
+设置了 `index = false` 的规则会将匹配的翻译单元排除在索引构建之外；打开时仍会编译这些翻译单元
+
+```case
+tests-next/index/batch/02_keep_units_out
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 在服务器运行时
+
+编辑器的服务器持有索引时，`clice index` 会将索引工作交给它。
+
+<!-- BEGIN GENERATED ITEMS: index/delegation -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**通过运行中的服务器**
+
+编辑器的 clice 服务器运行期间，`clice index` 和 `--fresh` 会请求该服务器建立索引，而不是与其同时建立索引
+
+```case
+tests-next/index/delegation/01_running_server
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->

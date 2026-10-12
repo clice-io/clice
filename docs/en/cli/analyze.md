@@ -62,3 +62,102 @@ An annotation file is `{"name": "compile_time", "unit": "s", "values": {"src/mai
 ## Answers
 
 Every answer is one JSON object, or `{"error": "...", "stale": [...]}` with exit code 1 when the question cannot be answered (no index, an unknown module or file, an invalid glob), or 2 when the arguments do not parse; an index missing some units fails with those units in `stale`.
+
+## Examples
+
+### Directory Modules
+
+By default each directory is a module, and its dependencies follow what its files name.
+
+<!-- BEGIN GENERATED ITEMS: analyze/dependencies -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Directory modules**
+
+Each directory is a module, and a file naming another module's entity makes the dependency
+
+A header naming another module's entity is an interface edge, which would
+become an import of the module's interface; a source alone makes an
+implementation edge. Outside a git repository the churn annotation is left
+out, with a warning.
+
+```case
+tests-next/analyze/dependencies/01_directory_modules
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Cycles
+
+Modules whose interfaces depend on each other form a cycle, listed with the edges to cut.
+
+<!-- BEGIN GENERATED ITEMS: analyze/cycles -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Directory cycles**
+
+Modules whose interfaces name each other form a cycle, listed with the lightest edges whose removal breaks it
+
+Here util names two of core's entities and core one of util's, so the edge
+from core to util is the one to cut. core's source calls into feature, and
+feature's header names core's Logger: a source makes an implementation
+edge, which closes no cycle.
+
+```case
+tests-next/analyze/cycles/01_directory_cycle
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Edges
+
+The `edge` view lists what one module names of another.
+
+<!-- BEGIN GENERATED ITEMS: analyze/views -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**What an edge carries**
+
+The edge view lists every entity one module names of another, with the locator that names it, the header that owns it and each use
+
+An entity is an interface use when a header of the naming module names it,
+as util/clock.h names both of these.
+
+```case
+tests-next/analyze/views/01_edge
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Weighing by Annotations
+
+An annotation file weighs the results, here by compile time.
+
+<!-- BEGIN GENERATED ITEMS: analyze/annotations -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Weighing by compile time**
+
+An annotation file weighs each translation unit by what rebuilding it costs, here seconds of compile time
+
+core/fast.h is included by app/main.cpp alone, but partitioned into modules
+every source imports core, directly or through util's interface: an edit to
+it rebuilds three units instead of one.
+
+```case
+tests-next/analyze/annotations/01_compile_time
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->

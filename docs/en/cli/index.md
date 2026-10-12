@@ -18,3 +18,57 @@ The same command reads the persisted index without touching it. Every mode print
 - `clice index --show-symbol <name>` prints what the index records about a symbol: its kind, name and flags, the parent chain that spells its qualified name, the file holding its canonical declaration, and per file how many definitions, declarations and references it has. The name is matched as displayed (`Box<int>`) or qualified (`ns::Box<int>`); `#<hash>` names a symbol by its identity, which is how file-local symbols are reached.
 - `clice index --show-file <path>` prints a file's persisted rows: the content generation the rows were built from, every variant with the translation units that contributed it, the row counts by relation kind, and the file-local symbols whose identities live only in this file.
 - `clice index --show-tu <path>` prints a translation unit's manifest: when it was indexed, the files it contributed rows to, and its include tree.
+
+## Examples
+
+### Building the Index
+
+A run indexes every translation unit of the build, except those a rule keeps out.
+
+<!-- BEGIN GENERATED ITEMS: index/batch -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Build the index**
+
+Index every translation unit of the build, so an editor session starts warm
+
+```case
+tests-next/index/batch/01_build_the_index
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Keep units out of indexing**
+
+A rule with `index = false` keeps its units out; they still compile when opened
+
+```case
+tests-next/index/batch/02_keep_units_out
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Beside a Running Server
+
+While an editor's server holds the index, `clice index` hands it the work.
+
+<!-- BEGIN GENERATED ITEMS: index/delegation -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Through a running server**
+
+While an editor's clice server runs, `clice index` and `--fresh` ask it to index instead of indexing alongside it
+
+```case
+tests-next/index/delegation/01_running_server
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->

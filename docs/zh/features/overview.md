@@ -6,42 +6,38 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 
 将 clice 用作编辑器后端时可用的语言服务器协议功能。
 
-<!-- The status matrix is generated from the snapshot fixtures under
-     tests/snap/. Do not edit the region between the GENERATED markers by
-     hand — edit the fixtures (or OVERVIEW_ROWS in tools/docs/feature.ts)
-     and run `node tools/docs/feature.ts update`. -->
+<!-- The status matrix counts the documented cases each feature page shows,
+     in the order of the sidebar. Do not edit the region between the
+     GENERATED markers by hand — run `pixi run update-feature-docs`. -->
 
 <!-- BEGIN GENERATED OVERVIEW -->
 
-| 功能                               | 状态                                       |
-| ---------------------------------- | ------------------------------------------ |
-| [代码补全](./completion.md)        | 支持 57 项                                 |
-| [悬停](./hover.md)                 | 支持 38 项 · 部分支持 19 项 · 不支持 10 项 |
-| [签名帮助](./signature-help.md)    | 支持 14 项                                 |
-| [代码导航](./navigation.md)        | 支持 79 项 · 部分支持 12 项 · 不支持 25 项 |
-| [文档链接](./document-links.md)    | 支持 7 项 · 部分支持 1 项 · 不支持 1 项    |
-| [语义 Token](./semantic-tokens.md) | 支持 56 项 · 部分支持 2 项 · 不支持 10 项  |
-| [内联提示](./inlay-hints.md)       | 支持 34 项 · 部分支持 6 项 · 不支持 4 项   |
-| [折叠范围](./folding-ranges.md)    | 支持 24 项                                 |
-| [文档符号](./document-symbols.md)  | 支持 20 项 · 部分支持 1 项 · 不支持 6 项   |
-| [选择范围](./selection-ranges.md)  | 支持 10 项                                 |
-| [格式化](./formatting.md)          | 已实现                                     |
-| [诊断](./diagnostics.md)           | 部分支持                                   |
-| [代码操作](./code-action.md)       | 支持 60 项                                 |
+| 功能                                 | 状态                                      |
+| ------------------------------------ | ----------------------------------------- |
+| [代码补全](./completion.md)          | 支持 34 项 · 不支持 2 项                  |
+| [悬停](./hover.md)                   | 支持 31 项 · 部分支持 9 项 · 不支持 21 项 |
+| [签名帮助](./signature-help.md)      | 支持 8 项 · 部分支持 2 项 · 不支持 8 项   |
+| [代码导航](./navigation.md)          | 支持 76 项 · 部分支持 8 项 · 不支持 27 项 |
+| [重命名](./rename.md)                | 支持 4 项                                 |
+| [诊断](./diagnostics.md)             | 支持 9 项                                 |
+| [代码操作](./code-action.md)         | 支持 37 项 · 部分支持 1 项                |
+| [语义 Token](./semantic-tokens.md)   | 支持 38 项 · 部分支持 3 项 · 不支持 7 项  |
+| [内联提示](./inlay-hints.md)         | 支持 22 项 · 部分支持 2 项 · 不支持 6 项  |
+| [文档链接](./document-links.md)      | 支持 7 项 · 部分支持 1 项                 |
+| [文档符号](./document-symbols.md)    | 支持 15 项 · 部分支持 4 项 · 不支持 7 项  |
+| [折叠范围](./folding-ranges.md)      | 支持 19 项                                |
+| [选择范围](./selection-ranges.md)    | 支持 10 项                                |
+| [格式化](./formatting.md)            | 支持 4 项                                 |
+| [C++20 模块](./modules.md)           | 支持 6 项 · 部分支持 1 项 · 不支持 1 项   |
+| [头文件上下文](./header-contexts.md) | 支持 4 项 · 不支持 1 项                   |
+| [编译](./compilation.md)             | 支持 4 项 · 部分支持 2 项                 |
 
 <!-- END GENERATED OVERVIEW -->
 
 ## 图例
 
-有 fixture 支撑的功能，按测试语料所确认的状态，统计文档中各项能力的数量：
+每项功能均按状态统计其页面中记录的能力数量：
 
 - **支持** — 该能力可用；快照（snapshot）锁定其行为
 - **部分支持** — 尚不完整；快照锁定目前可用的行为
 - **不支持** — 已记录的功能缺口，已跟踪但尚未实现
-
-尚未纳入 fixture 流水线的功能仍使用手动指定的标签：
-
-- **已实现** — 核心功能可用，仅有少量不足
-- **部分支持** — 关键子系统缺失（如模块支持）
-- **存根** — 处理器已存在，但返回空结果或 null
-- **计划中** — 已完成设计，但尚未实现

@@ -57,6 +57,74 @@ JoinFlavor => JoinKind
 
 编辑器里的重命名会选中光标处的名称，或说明该处的符号为什么无法重命名。它读取已打开的缓冲区而不是磁盘，返回的编辑带有这些缓冲区的版本号。遇到冲突或过期文件时，返回一个列出它们的错误；警告、不予改动的位置以及经启发式做出的修改会显示在一条消息中。
 
+## 示例
+
+### 重命名符号
+
+试运行会显示计划，正式运行则会写入文件。
+
+<!-- BEGIN GENERATED ITEMS: refactor/edits -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**先生成计划，再写入**
+
+试运行会列出修改而不写入文件，正式运行则会改写文件
+
+`--dry-run` 会按文件列出重命名将更改的所有名称，以及保持原样、留待你检查的位置：`CALL` 的宏体中写有 `compute`，但索引无法判断宏体中的名称指向哪个符号。不使用 `--dry-run` 时会改写文件。重命名类时，其构造函数也会一并重命名。
+
+```case
+tests-next/refactor/edits/01_plan_then_write
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 有歧义的名称
+
+多个符号同名时，需要通过定位信息选定其中一个，否则不会执行任何重命名。
+
+<!-- BEGIN GENERATED ITEMS: refactor/locators -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**指定有歧义的符号名称**
+
+若输入的名称对应两个符号，会列出这两个符号，使用带作用域的名称或候选项的 `symbol` 即可选定其中一个
+
+名称有歧义时，不会执行任何重命名。每个候选项都带有一个 `symbol`，可将其原样传给 `--symbol`。
+
+```case
+tests-next/refactor/locators/02_ambiguous_name
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 批量重命名
+
+一次运行即可规划一组重命名操作并将更改写入文件。
+
+<!-- BEGIN GENERATED ITEMS: refactor/lists -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**一次完成一组重命名**
+
+在文件中列出要执行的重命名操作，每行一个 `<symbol> => <new name>`，即可在一次运行中完成全部重命名
+
+每一行的重命名操作都基于同一个索引进行规划，文件只写入一次，所有重命名要么全部完成，要么全部不执行。空行和以 `//` 开头的行会被跳过。
+
+```case
+tests-next/refactor/lists/01_rename_list
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## 已知限制
 
 - 这些检查都是静态的：索引看不到的语义变化——实参依赖查找（argument-dependent lookup）找到了另一个函数、叫新名称的成员截获了其类内的某处使用、函数内叫新名称的局部变量或模板参数与被重命名的符号冲突或将其遮蔽、某个重载无法与重命名后的函数共存——都发现不了。重命名之后请构建一次。

@@ -2,295 +2,361 @@
 
 Rich information cards for the symbol under the cursor.
 
-<!-- The capability sections below are generated from the snapshot fixtures in
-     tests/snap/hover/. Do not edit the regions between the GENERATED
-     markers by hand — edit the fixture doc headers and run
-     `node tools/docs/feature.ts update`. -->
+<!-- The cards in the sections below are generated from the documented cases
+     in tests-next/hover/. Do not edit the regions between the
+     GENERATED markers by hand — edit the cases' README.md and run
+     `pixi run update-feature-docs`. -->
 
-## Symbol Information
+## Symbols
 
-<!-- BEGIN GENERATED ITEMS: symbol_information -->
+The card names what the symbol is and the scope it is declared in, and shows its declaration.
+
+<!-- BEGIN GENERATED ITEMS: hover/symbols -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Qualified name**
+**Symbol kinds**
 
-The hover card shows the enclosing namespace and class scope
+The card's title names what the symbol is: namespace, struct, union, enum, enumerator, alias, field, function
 
-```snap
-tests/snap/hover/symbol_information/01_qualified_name.cpp
+```case
+tests-next/hover/symbols/01_symbol_kinds
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Symbol kind**
+**Scopes**
 
-The card names what the symbol is: struct, enum, function, field, …
+The card says which namespace, class or function the symbol is declared in
 
-```snap
-tests/snap/hover/symbol_information/02_symbol_kind.cpp
+```case
+tests-next/hover/symbols/02_scopes
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Access specifier**
+**Access**
 
-Members show their public / protected / private access
+A member's definition reads its `public`, `protected` or `private` access
 
-```snap
-tests/snap/hover/symbol_information/03_access_specifier.cpp
+```case
+tests-next/hover/symbols/03_access
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Definition rendering**
+**Definitions**
 
-The card includes the symbol's source definition
+The card shows the symbol's declaration as source, at its definition and at its uses
 
-```snap
-tests/snap/hover/symbol_information/04_definition_rendering.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#710 -->
-
-**Initializer truncation**
-
-Huge initializers render truncated, not in full
-
-The rendered definition omits the initializer, and the evaluated
-`Value` field shows the first ten of its 256 elements.
-
-```snap
-tests/snap/hover/symbol_information/05_initializer_truncation.cpp
+```case
+tests-next/hover/symbols/04_definitions
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: partial clangd#2474 -->
 
-**Virtual modifiers**
+**Virtual methods**
 
-`virtual` / `override` / `final` show on method hover
+A method's definition reads `virtual`, `override` or `final` as written, so an override written without them gives no sign it is virtual
 
-Modifiers written in the source render (`virtual … = 0`, `override`,
-`final`), but an overriding method that omits the redundant `virtual`
-keyword gives no sign of its virtuality — the card lacks the
-`virtual void draw() override` form the issue asks for.
-
-```snap
-tests/snap/hover/symbol_information/06_virtual_modifiers.cpp
+```case
+tests-next/hover/symbols/05_virtual_modifiers
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#436 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#436 -->
 
-**Anonymous namespace scope**
+**Anonymous namespaces**
 
-`(anonymous namespace)` shows in the scope display
+The scope of a card leaves anonymous namespaces out
 
-The cards render, but the anonymous segment is dropped from the
-scope display: a top-level anonymous member shows no scope line at
-all, and `outer::(anonymous)` shows just `outer`.
+```case
+tests-next/hover/symbols/06_anonymous_namespaces
+```
 
-```snap
-tests/snap/hover/symbol_information/07_anon_namespace_scope.cpp
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**Deprecated symbols**
+
+A deprecated function's card does not say it is deprecated yet
+
+The message of `[[deprecated]]` tells what to use instead; the card shows
+neither the deprecation nor the message.
+
+```case
+tests-next/hover/symbols/13_deprecation
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Symbols from headers**
+
+A symbol declared in an included header shows its documentation and definition
+
+```case
+tests-next/hover/symbols/14_header_symbols
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Type Information
+## Functions
 
-<!-- BEGIN GENERATED ITEMS: type_information -->
+A function's card lists its return type and its parameters.
 
-<!-- BEGIN CAPABILITY: supported -->
-
-**Variable types**
-
-Variable hover preserves pointer, reference and array declarators
-
-A variable's card pretty-prints its declared type, spelling the pointer,
-reference and array declarators the way they read in source.
-
-```snap
-tests/snap/hover/type_information/01_variable_type.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Type aliases**
-
-Hover can show the desugared `aka` form
-
-A sugared type shows its underlying type as `Alias (aka int)`. The
-`show_aka` option turns the `aka` suffix off.
-
-```snap
-tests/snap/hover/type_information/02_aka_desugar.cpp
-```
-
-<!-- END CAPABILITY -->
+<!-- BEGIN GENERATED ITEMS: hover/functions -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **Function signatures**
 
-Function hover reports return types, parameter names and defaults
+A function's card lists its return type and each parameter with its name and default
 
-A function's card lists its return type, each parameter with its name,
-and any default argument.
-
-```snap
-tests/snap/hover/type_information/03_function_signature.cpp
+```case
+tests-next/hover/functions/01_signatures
 ```
 
 <!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Variables
+
+A variable's card spells its type as written, and its value when that is known at compile time.
+
+<!-- BEGIN GENERATED ITEMS: hover/variables -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Declarator types**
+
+A variable's card spells its pointer, reference and array declarators as written
+
+```case
+tests-next/hover/variables/01_declarators
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constant values**
+
+A variable or enumerator whose value is known at compile time shows it
+
+```case
+tests-next/hover/variables/02_constant_values
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#710 -->
+
+**Long initializers**
+
+A long initializer is left out of the definition, and the value shows its first elements
+
+```case
+tests-next/hover/variables/04_long_initializers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`__func__`**
+
+Hovering `__func__` shows the name of the function it is in, when the function is not a template
+
+```case
+tests-next/hover/variables/06_predefined_identifiers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Members of Types
+
+A class lists its members and an enum its enumerators.
+
+<!-- BEGIN GENERATED ITEMS: hover/members -->
+
+<!-- BEGIN CAPABILITY: supported clangd#959 -->
+
+**Members of types**
+
+A class lists its data members and member types, an enum its enumerators with their values
+
+`max_members` caps the list, 20 by default; `0` shows the declaration alone.
+
+```case
+tests-next/hover/members/01_type_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Type Aliases
+
+A type spelled through an alias shows what the alias stands for.
+
+<!-- BEGIN GENERATED ITEMS: hover/aliases -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Type aliases**
+
+A type spelled through an alias shows what it stands for, as `Alias (aka int)`
+
+With `show_aka = false` the card keeps the alias alone.
+
+```case
+tests-next/hover/aliases/01_aka
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2020 -->
+
+**Aliases of structs**
+
+An alias names the struct it stands for, but does not show its members yet
+
+```case
+tests-next/hover/aliases/02_alias_targets
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2219 -->
+
+**C anonymous struct typedefs**
+
+In C, a struct named only by its typedef shows under the typedef's name
+
+The definition line still spells it `struct Point`, a name C does not
+know for it.
+
+```case
+tests-next/hover/aliases/03_c_anonymous_structs
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Deduced Types
+
+`auto` and `decltype` show the type they stand for.
+
+<!-- BEGIN GENERATED ITEMS: hover/deduced_types -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**`auto`**
+
+Hovering `auto` shows the type it stands for, or that it is not deduced yet in a template
+
+```case
+tests-next/hover/deduced_types/01_auto
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`decltype`**
+
+Hovering `decltype` shows the type it yields, the reference a parenthesized name adds included
+
+```case
+tests-next/hover/deduced_types/02_decltype
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**auto through an alias**
+
+An `auto` deduced from an alias keeps the alias's name beside what it stands for
+
+```case
+tests-next/hover/deduced_types/03_alias_spelling
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#493 clangd#1768 -->
+
+**Generic lambda parameters**
+
+A generic lambda's `auto` shows the type a call deduces, but its parameter and the parameter's members do not
+
+Inside the body the parameter reads as `auto`, and `point.x` has no card.
+
+```case
+tests-next/hover/deduced_types/06_generic_lambdas
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Templates
+
+A template parameter shows its kind and default, and a use of a template the arguments it is instantiated with.
+
+<!-- BEGIN GENERATED ITEMS: hover/templates -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **Template parameters**
 
-Template hover distinguishes type, template-template and non-type parameters
+A template parameter shows its kind, a type, a template or a value, with its default
 
-Each template parameter kind reports its form: a type parameter, a
-template-template parameter, and a non-type parameter with its default.
-
-```snap
-tests/snap/hover/type_information/04_template_params.cpp
+```case
+tests-next/hover/templates/01_template_parameters
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: unsupported clangd#230 -->
 
-**`auto` deduction**
+**Template arguments**
 
-Placeholder hover shows the type it resolves to
+A use of a template shows the types it is instantiated with, but not which parameter each argument binds yet
 
-Hovering an `auto` placeholder shows the type substituted for it —
-builtins, pointers, lambdas, template instantiations, and the
-`/* not deduced */` marker inside an uninstantiated template.
-
-```snap
-tests/snap/hover/type_information/05_auto_deduction.cpp
+```case
+tests-next/hover/templates/02_instantiation_arguments
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: unsupported clangd#435 -->
 
-**`decltype` deduction**
+**Deduced class arguments**
 
-Decltype hover distinguishes value, reference and dependent forms
+A variable whose class template arguments are deduced shows them, while the class name beside it shows the template alone
 
-Hovering a `decltype` or `decltype(auto)` placeholder shows the resolved
-type, including the reference the parenthesized-expression rule adds.
-
-```snap
-tests/snap/hover/type_information/06_decltype_deduction.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#435 -->
-
-**CTAD**
-
-Class placeholder hover shows its deduced template arguments
-
-With class template argument deduction the variable's card shows the
-deduced `Box<int>`, but hovering the class-name spelling still reports
-the primary template without its arguments.
-
-```snap
-tests/snap/hover/type_information/07_ctad_arguments.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#230 -->
-
-**Instantiation arguments**
-
-Template use hover does not show parameter-to-argument bindings yet
-
-A use of a template shows the substituted types (`Wrapper<int>`,
-`identity<int>`, `int x`), but not an explicit `T = int` mapping of each
-parameter to the argument it was bound to.
-
-```snap
-tests/snap/hover/type_information/08_instantiation_args.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#493 -->
-
-**Lambda `auto` parameters**
-
-Generic lambda parameters do not show their deduced type yet
-
-Hovering the `auto` parameter of a generic lambda yields no card; the
-deduced parameter type is not shown.
-
-```snap
-tests/snap/hover/type_information/09_lambda_auto_params.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Sugared `auto`**
-
-Alias spelling survives `auto` deduction
-
-Hover keeps the alias spelling and appends its desugared form, so `auto`
-deduced from an aliased return type reads as `Outer // aka: int`.
-
-```snap
-tests/snap/hover/type_information/10_sugared_auto.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2156 -->
-
-**Type formatting**
-
-Long and nested rendered types are not rewrapped or aligned
-
-Long or nested types are not rewrapped or aligned.
-
-```snap
-tests/snap/hover/type_information/11_clang_format_types.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#2219 -->
-
-**Anonymous struct typedef**
-
-C typedef hover names an anonymous struct after its alias
-
-Both the alias and a variable of it report a clean `Point` card rather
-than presenting the anonymous type as a separately named struct.
-
-```snap
-tests/snap/hover/type_information/12_c_typedef_anon.cpp
+```case
+tests-next/hover/templates/03_deduced_class_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -299,112 +365,86 @@ tests/snap/hover/type_information/12_c_typedef_anon.cpp
 
 **Concept constraints**
 
-Constrained placeholders lose their constraint on hover
+A concept and a constrained parameter show the constraint, but an `Addable auto` placeholder shows only the deduced type
 
-The constrained-parameter and concept-reference cards carry the
-constraint, but hovering the placeholder of a constrained `Addable auto`
-variable shows only the deduced type — the constraint is dropped.
-
-```snap
-tests/snap/hover/type_information/13_concept_constraints.cpp
+```case
+tests-next/hover/templates/04_concept_constraints
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Layout Information
+## Layout
 
-<!-- BEGIN GENERATED ITEMS: layout_information -->
+Fields and classes show their size and alignment as the compiler lays them out.
+
+<!-- BEGIN GENERATED ITEMS: hover/layout -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **Field layout**
 
-Size, offset, alignment and padding show on field hover
+A field shows its offset, size and alignment, and the padding after it
 
-```snap
-tests/snap/hover/layout_information/01_field_layout.cpp
+```case
+tests-next/hover/layout/01_field_layout
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1763 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#1763 -->
 
-**Type-level layout**
+**Type layout**
 
-Hovering the type itself shows its size, alignment and padding
+A class shows its size and alignment, but not how much of it is padding yet
 
-Size and alignment show on the type card today; the total padding
-does not yet.
-
-```snap
-tests/snap/hover/layout_information/02_type_layout.cpp
+```case
+tests-next/hover/layout/02_type_layout
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1771 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#1771 -->
 
-**Vtable offset**
+**Vtable slots**
 
-Virtual methods show their table slot
+A virtual method does not show its slot in the vtable yet
 
-The method card renders without any vtable fact today.
-
-```snap
-tests/snap/hover/layout_information/03_vtable_offset.cpp
+```case
+tests-next/hover/layout/03_vtable_slots
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Expression Context
+## Call Arguments
 
-<!-- BEGIN GENERATED ITEMS: expression_context -->
+An argument at a call shows the parameter it is passed to, and how it is passed.
 
-<!-- BEGIN CAPABILITY: supported -->
-
-**Constant evaluation**
-
-Constant-expression hover reports evaluated values
-
-When an initializer is a constant expression, the card evaluates it and
-shows the resulting value.
-
-```snap
-tests/snap/hover/expression_context/01_constant_value.cpp
-```
-
-<!-- END CAPABILITY -->
+<!-- BEGIN GENERATED ITEMS: hover/arguments -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **Call arguments**
 
-Argument hover identifies its bound parameter
+An argument at a call shows the parameter it is passed as
 
-Hovering an argument at a call site shows the parameter it is passed to,
-naming the parameter it binds.
-
-```snap
-tests/snap/hover/expression_context/02_callee_arguments.cpp
+```case
+tests-next/hover/arguments/01_bound_parameters
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Pass semantics**
+**Pass modes**
 
-Argument hover distinguishes value and reference passing
+An argument's card says whether it is passed by value, by reference or by const reference
 
-The argument card states how the value reaches the callee: copied by
-value, or bound to a mutable or const reference parameter.
-
-```snap
-tests/snap/hover/expression_context/03_pass_semantics.cpp
+```case
+tests-next/hover/arguments/02_pass_modes
 ```
 
 <!-- END CAPABILITY -->
@@ -413,288 +453,100 @@ tests/snap/hover/expression_context/03_pass_semantics.cpp
 
 **Implicit conversions**
 
-Argument hover reports the target type of an implicit conversion
+An argument converted on its way to the parameter names the type it is converted to
 
-When an argument reaches a parameter through an implicit conversion, the
-card notes the target type, for both built-in and user-defined
-conversions.
-
-```snap
-tests/snap/hover/expression_context/04_implicit_conversion.cpp
+```case
+tests-next/hover/arguments/03_conversions
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1016 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#1622 -->
 
-**String literals**
+**Record arguments**
 
-String-literal hover reports its size in bytes
+A record passed to a call that is evaluated at compile time shows the call's value as its own
 
-A string-literal card reports the array type and its size in bytes
-(`const char[6]`, `Size: 6 bytes` — the length plus the null
-terminator), not an explicit character count.
-
-```snap
-tests/snap/hover/expression_context/05_string_length.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#1669 -->
-
-**Numeric literals**
-
-Numeric literals have no type or value hover yet
-
-Hovering a numeric literal yields no card, unlike character and string
-literals, whose type and value are shown.
-
-```snap
-tests/snap/hover/expression_context/06_numeric_literal_type.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#1622 -->
-
-**Record variables**
-
-Record hover can show a misleading enclosing constant value
-
-Hovering a record-typed argument of a constant-evaluable call currently
-reports that call's value (`Value = 7`) on the variable — a value that
-is not the record's own.
-
-```snap
-tests/snap/hover/expression_context/07_record_value_misleading.cpp
+```case
+tests-next/hover/arguments/04_record_arguments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Documentation
+## Expressions
 
-<!-- BEGIN GENERATED ITEMS: documentation -->
+Literals and `this` show what they are.
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN GENERATED ITEMS: hover/expressions -->
 
-**Doxygen `///` comments**
+<!-- BEGIN CAPABILITY: unsupported clangd#1016 clangd#1669 -->
 
-Declaration documentation appears on hover
+**Literals**
 
-Applies to plain functions, primary templates and their specializations;
-a reference resolves to the most specialized declaration's comment.
+A string literal shows its type and size, while a number shows nothing yet
 
-```snap
-tests/snap/hover/documentation/01_doxygen_comments.cpp
+The size counts the terminating null; the string's length is not shown.
+
+```case
+tests-next/hover/expressions/01_literals
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Synthesized accessor docs**
+**`this`**
 
-Trivial getters/setters get a generated one-line description
+Hovering `this` shows the type it points to, in a class and in a class template
 
-A trivial getter or setter with no comment of its own gets a synthesized
-"Trivial accessor/setter for `field`." line in its hover card.
-
-```snap
-tests/snap/hover/documentation/02_accessor_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#1320 -->
-
-**`@copydoc` tags**
-
-Copied documentation is not resolved onto the receiving symbol yet
-
-A `@copydoc target` tag remains literal instead of copying `target`'s
-documentation into this symbol's hover card.
-
-```snap
-tests/snap/hover/documentation/03_copydoc.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#2504 -->
-
-**Inherited override docs**
-
-An override with no comment does not inherit the base method's documentation
-yet
-
-An overriding method with no comment of its own has no description on its
-hover card.
-
-```snap
-tests/snap/hover/documentation/04_inherit_overridden_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#2506 -->
-
-**Overload doc sharing**
-
-A later overload does not reuse the first overload's documentation yet
-
-Consecutive overloads often document only the first; a later undocumented
-overload has no description on its hover card.
-
-```snap
-tests/snap/hover/documentation/05_overload_doc_sharing.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#1936 -->
-
-**Inherited constructor docs**
-
-Inherited constructors have no documentation hover yet
-
-The name in a `using Base::Base;` declaration resolves to the class rather
-than an inherited constructor, so the base constructor's documentation has
-no hover surface.
-
-```snap
-tests/snap/hover/documentation/06_inherited_ctor_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#974 -->
-
-**Banner comments**
-
-A separated section banner still attaches to the following declaration
-
-A `// ==== Section ====` banner followed by a blank line is misattributed
-as documentation for the declaration below it, so the banner text appears
-in the card.
-
-```snap
-tests/snap/hover/documentation/07_comment_association.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Declaration vs definition comments**
-
-The declaration's doc wins over a definition-site comment
-
-The declaration's `///` documentation appears at both the declaration and
-definition sites instead of the definition's plain `//` note.
-
-```snap
-tests/snap/hover/documentation/08_decl_vs_def_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#2057 -->
-
-**Whitespace and newlines**
-
-Markdown tables in comments lose their line breaks on hover
-
-A markdown table written across several `///` lines is flattened onto one
-line, so the table does not render.
-
-```snap
-tests/snap/hover/documentation/09_whitespace_preserve.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#1040 -->
-
-**Comment indentation**
-
-Indented documentation blocks lose their leading indentation on hover
-
-A doc comment whose body contains an indented block loses the block's
-offset, and its blank line collapses.
-
-```snap
-tests/snap/hover/documentation/10_comment_indentation.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#1226 -->
-
-**Template keyword from a macro**
-
-Documentation on a macro-produced template is missing from hover
-
-When the `template` keyword is produced by a macro expansion, the
-declaration's doc comment does not appear on hover, and the card carries
-no description.
-
-```snap
-tests/snap/hover/documentation/11_macro_template_doc.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2148 -->
-
-**Comment suppression option**
-
-Misattributed documentation cannot be suppressed by configuration yet
-
-A stray comment such as a section banner separated from the code by a blank
-line always reaches the hover card, and no option suppresses it.
-
-```snap
-tests/snap/hover/documentation/12_comment_suppression.cpp
+```case
+tests-next/hover/expressions/02_this
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Macro Hover
+## Macros
 
-<!-- BEGIN GENERATED ITEMS: macro_hover -->
+A macro shows its `#define`, and a use of it what it expands to.
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN GENERATED ITEMS: hover/macros -->
 
-**Definition text at every site**
+<!-- BEGIN CAPABILITY: partial clangd#2642 -->
 
-`#define`, use, `#ifdef`, `defined` and `#undef` all show the macro's definition
+**Use before definition**
 
-A macro's hover card carries its `#define` text wherever the name
-appears: the definition itself, a use, an `#ifdef` guard, a `defined`
-test and an `#undef`.
+A macro name used above its own `#define` has no card, while a use below it does
 
-```snap
-tests/snap/hover/macro_hover/01_macro_definition_sites.cpp
+```case
+tests-next/hover/macros/01_use_before_definition
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Fully-expanded preview**
+**Every site of a macro**
 
-A function-like macro use shows its arguments substituted through the body
+The definition, a use, `#ifdef`, `defined` and `#undef` all show the macro's `#define`
 
-Hovering a function-like macro invocation shows the `#define` text and a
-preview of the fully-expanded result with the call's arguments spliced in.
+```case
+tests-next/hover/macros/02_definition_sites
+```
 
-```snap
-tests/snap/hover/macro_hover/02_expansion_preview.cpp
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Expansion preview**
+
+A use of a function-like macro shows what it expands to with its arguments
+
+```case
+tests-next/hover/macros/03_expansion_preview
 ```
 
 <!-- END CAPABILITY -->
@@ -703,215 +555,326 @@ tests/snap/hover/macro_hover/02_expansion_preview.cpp
 
 **Command-line macros**
 
-`-D` definitions hover with a synthesized `#define`
+A macro defined with `-D` shows the `#define` it amounts to
 
-A macro defined on the command line (`-DFROM_CLI=7`) shows a synthesized
-`#define FROM_CLI 7` in its hover card, then its expansion.
-
-```snap
-tests/snap/hover/macro_hover/03_cli_macros.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial -->
-
-**Nested macro in arguments**
-
-A nested macro argument shows its definition without an expansion preview
-
-The expansion preview starts at the outer invocation, so hovering an
-inner macro named inside the arguments shows only its definition, not an
-expansion preview.
-
-```snap
-tests/snap/hover/macro_hover/04_nested_arg_expansion.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial clangd#2642 -->
-
-**Use before definition**
-
-A macro use before its definition has no hover yet
-
-A macro name used in an `#if` above its own `#define` has no hover, while a
-use after the definition works normally.
-
-```snap
-tests/snap/hover/macro_hover/05_expansion_before_definition.cpp
+```case
+tests-next/hover/macros/04_command_line
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**`#define` inside the preamble**
+**Macros in arguments**
 
-A leading macro definition has no hover card
+A macro inside another macro's arguments shows its definition, but no expansion
 
-A `#define` in the leading run of directives before the first declaration
-has no hover card, while definitions after a declaration do.
-
-```snap
-tests/snap/hover/macro_hover/06_preamble_define_hover.cpp
+```case
+tests-next/hover/macros/05_nested_arguments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Special Hover Targets
+## Include Directives
 
-<!-- BEGIN GENERATED ITEMS: special_hover_targets -->
+An `#include` shows the file it resolves to.
 
-<!-- BEGIN CAPABILITY: supported clangd#959 -->
+<!-- BEGIN GENERATED ITEMS: hover/directives -->
 
-**Members on type hover**
+<!-- BEGIN CAPABILITY: supported -->
 
-Hovering an enum or struct type lists its members
+**Include directives**
 
-A class lists its data members and member types, an enum its
-enumerators with their values; member functions are left out. The
-`max_members` option caps the list, 20 entries by default, and `0`
-turns it off.
+Hovering an `#include` shows the file it resolves to
 
-```snap
-tests/snap/hover/special_hover_targets/01_type_members_on_hover.cpp
+```case
+tests-next/hover/directives/01_include_paths
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2020 -->
+<!-- END GENERATED ITEMS -->
 
-**Typedef underlying struct**
+## Documentation
 
-Hovering an alias expands the aliased definition
+A declaration's documentation comment shows in its card, wherever the symbol is hovered.
 
-The card resolves the alias to its underlying type name, but does not
-expand that struct's definition or member list.
+<!-- BEGIN GENERATED ITEMS: hover/documentation -->
 
-```snap
-tests/snap/hover/special_hover_targets/02_typedef_underlying.cpp
-```
+<!-- BEGIN CAPABILITY: supported -->
 
-<!-- END CAPABILITY -->
+**Documentation comments**
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
+A declaration's `///` comment shows in its card, at the declaration and at every use
 
-**Keyword documentation**
+A use of a template shows the comment of the specialization it picks.
 
-Language keywords do not have documentation hover yet
-
-Hovering a keyword such as `const` or `virtual` produces no card.
-
-```snap
-tests/snap/hover/special_hover_targets/03_keyword_docs.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#1862 -->
-
-**Attribute documentation**
-
-Hovering an attribute shows its description
-
-The attribute's own documentation renders in the card, for both GNU
-`__attribute__` spellings and C++ `[[...]]` attributes.
-
-```snap
-tests/snap/hover/special_hover_targets/04_attributes.cpp
+```case
+tests-next/hover/documentation/01_doc_comments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Include directive hover**
+**Getters and setters**
 
-Hovering an `#include` shows the resolved header path
+A trivial getter or setter without a comment of its own is described as accessing its field
 
-The card resolves the quoted header to its file on disk.
-
-```snap
-tests/snap/hover/special_hover_targets/05_include_hover.cpp
+```case
+tests-next/hover/documentation/02_accessors
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: partial clangd#1320 -->
 
-**`this` expression**
+**@copydoc**
 
-Hovering `this` shows the pointed-to class type
+A `@copydoc` command shows as written instead of the documentation it names
 
-Works in a plain class and inside a class template.
-
-```snap
-tests/snap/hover/special_hover_targets/06_this_hover.cpp
+```case
+tests-next/hover/documentation/03_copydoc
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: unsupported clangd#2504 -->
 
-**Predefined identifiers**
+**Overrides**
 
-`__func__` hover shows the current function name
+An override without a comment of its own does not show the documentation of what it overrides
 
-The value resolves in a concrete function; inside a template only the
-approximate type is known.
-
-```snap
-tests/snap/hover/special_hover_targets/07_predefined_identifiers.cpp
+```case
+tests-next/hover/documentation/04_overrides
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: partial clangd#2506 -->
 
-**No hover on meaningless tokens**
+**Overloads**
 
-Builtin keywords and empty bodies yield no card
+An overload without a comment does not show the documentation of the overload before it
 
-Hovering a builtin type keyword or the inside of an empty body
-produces no card at all, so editors show nothing rather than noise.
-(Numeric and bool literals also have no card today, but that is a
-tracked gap — see the numeric-literal item — not a promise.)
+```case
+tests-next/hover/documentation/05_overloads
+```
 
-```snap
-tests/snap/hover/special_hover_targets/08_no_hover_negatives.cpp
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1936 -->
+
+**Inherited constructors**
+
+The name in `using Base::Base` shows the implicit move constructor, not the constructors it inherits
+
+```case
+tests-next/hover/documentation/06_inherited_constructors
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#974 -->
+
+**Banner comments**
+
+A section banner above a declaration shows as its documentation, even with a blank line between
+
+```case
+tests-next/hover/documentation/07_banner_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**Declaration and definition**
+
+The declaration's `///` comment shows at the declaration and the definition, unless the definition is hovered first
+
+Hovered first after a change, the definition's plain `//` comment takes its
+place at both.
+
+```case
+tests-next/hover/documentation/08_declaration_and_definition
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2057 -->
+
+**Markdown tables**
+
+A table in a comment runs together on one line
+
+```case
+tests-next/hover/documentation/09_markdown_tables
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1040 -->
+
+**Indented blocks**
+
+An indented block in a comment loses its indentation and the blank line before it
+
+```case
+tests-next/hover/documentation/10_indented_blocks
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2148 -->
+
+**Stray comments**
+
+A note separated from a declaration by a blank line shows as its documentation, and no option turns that off
+
+```case
+tests-next/hover/documentation/11_stray_comments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2662 -->
 
-**GTK-Doc and kernel-doc**
+**GTK-Doc comments**
 
-GObject Introspection annotations do not appear in hover cards yet
+GTK-Doc's name line, parameter entries and annotations show as written
 
-GTK-Doc / kernel-doc comment syntax and GObject Introspection
-annotations are not parsed into the hover card.
-
-```snap
-tests/snap/hover/special_hover_targets/09_gtk_doc.cpp
+```case
+tests-next/hover/documentation/12_gtk_doc
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2669 -->
 
-**LaTeX math in Doxygen**
+**Formulas**
 
-Inline Doxygen formulas are not rendered as math
+A Doxygen formula shows as its source
 
-The formula text is not rendered as math.
+```case
+tests-next/hover/documentation/13_latex_formulas
+```
 
-```snap
-tests/snap/hover/special_hover_targets/10_latex_math.cpp
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**Doxygen commands**
+
+`@brief`, `@param` and `@return` show as written, not as parts of the card yet
+
+A parameter's description could sit beside that parameter in the card, and
+the return description beside the return type; today the whole comment shows
+as text, commands included.
+
+```case
+tests-next/hover/documentation/18_doxygen_commands
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Modules
+
+A module name shows the file of its interface unit, and a declaration from a module shows whether it is exported and the documentation its interface gives it.
+
+<!-- BEGIN GENERATED ITEMS: hover/modules -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module names**
+
+A module name shows the file of its interface unit, in an `import` and in the module declaration
+
+```case
+tests-next/hover/modules/01_module_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Exported declarations**
+
+A declaration of a module interface reads `export` when the module exports it
+
+```case
+tests-next/hover/modules/02_export_status
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Documented exports**
+
+A symbol imported from a module shows the documentation written in its interface
+
+```case
+tests-next/hover/modules/04_documented_exports
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Attributes and Keywords
+
+Attributes and keywords such as `const` or `virtual` have meanings of their own for a card to explain.
+
+<!-- BEGIN GENERATED ITEMS: hover/attributes -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
+
+**Attributes**
+
+Hovering an attribute shows clang's description of it, for GNU and standard spellings
+
+The description still reads as clang's reStructuredText source, its code
+examples run together.
+
+```case
+tests-next/hover/attributes/01_attributes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
+
+**Keywords**
+
+Hovering a keyword such as `const` or `virtual` shows nothing yet
+
+```case
+tests-next/hover/attributes/02_keywords
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Nothing to Show
+
+Where there is nothing worth a card, none appears.
+
+<!-- BEGIN GENERATED ITEMS: hover/no_card -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Nothing to show**
+
+A builtin type keyword or the inside of an empty body shows no card
+
+```case
+tests-next/hover/no_card/01_meaningless_tokens
 ```
 
 <!-- END CAPABILITY -->
@@ -920,150 +883,18 @@ tests/snap/hover/special_hover_targets/10_latex_math.cpp
 
 ## Presentation
 
-<!-- BEGIN GENERATED ITEMS: presentation -->
+A card is markdown, or plain text for an editor that cannot show markdown.
+
+<!-- BEGIN GENERATED ITEMS: hover/presentation -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Markdown rendering**
+**Plain text cards**
 
-Cards render as markdown, or plain text via `parse_comment_as_markdown =
-false`
+Cards are markdown, or plain text for editors that cannot show markdown
 
-```snap
-tests/snap/hover/presentation/01_presentation.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Module-Related
-
-<!-- BEGIN GENERATED ITEMS: module_related -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**Import statement hover**
-
-Hovering `import` does not describe the imported module yet
-
-Hovering an `import` declaration does not yet describe the imported
-module.
-
-```snap
-tests/snap/hover/module_related/01_import_hover.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Module name hover**
-
-Hovering a module name shows the interface unit that defines it
-
-The card names the module and the file of its interface unit, on the
-name in an `import` and in the module declaration alike.
-
-```snap
-tests/snap/hover/module_related/02_module_name_hover/main.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Export status hover**
-
-The card of a module's declaration shows whether the module exports it
-
-An exported declaration's definition reads `export`, whether exported
-on its own or in an `export` block; a declaration the module keeps to
-itself, or a member of an exported class, does not.
-
-```snap
-tests/snap/hover/module_related/03_export_status.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Hover Correctness
-
-Robustness on inputs that have broken other tooling.
-
-<!-- BEGIN GENERATED ITEMS: hover_correctness -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**MSVC inheritance model**
-
-MSVC inheritance model attributes do not alter record hover
-
-Under an MSVC target, the implicit inheritance attribute does not leak
-into the record or method card.
-
-```snap
-tests/snap/hover/hover_correctness/01_ms_inheritance.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Most-vexing-parse**
-
-Direct initialization and a function declaration have distinct hover cards
-
-The direct initialization appears as a variable, while the most-vexing
-form appears as a function declaration.
-
-```snap
-tests/snap/hover/hover_correctness/02_object_vs_function.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Large unsigned enum constant**
-
-Hovering a `0xFFFF...ULL` enumerator does not crash
-
-The card renders the full unsigned value without overflowing or failing.
-
-```snap
-tests/snap/hover/hover_correctness/03_large_enum_value.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Call with default arguments**
-
-Hovering a call that omits defaults does not crash
-
-The call card renders the callee signature with its default arguments.
-
-```snap
-tests/snap/hover/hover_correctness/04_default_args_call.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Macro-shadowed symbol**
-
-A function-like macro shadows a same-named function at the call site
-
-The card shows the active macro and its expansion instead of the shadowed
-function.
-
-```snap
-tests/snap/hover/hover_correctness/05_macro_shadowed_symbol.cpp
+```case
+tests-next/hover/presentation/01_plain_text
 ```
 
 <!-- END CAPABILITY -->

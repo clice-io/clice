@@ -5,8 +5,6 @@
 - [x] Clang diagnostics (errors, warnings, notes)
 - [x] Severity mapping (Error, Warning)
 - [x] Diagnostic ranges with source locations
-- [x] Related information (notes attached to diagnostics)
-- [x] Errors from included headers placed on the `#include` that brought them in, and errors from template instantiations on the code that requested the instantiation
 - [x] Warnings raised by directives in the preamble (`#warning`, `#pragma message`, macro redefinitions)
 - [x] File URI conversion for cross-file diagnostics
 - [x] Pull diagnostics model (`textDocument/diagnostic`) for clients that declare support for it; other clients get their diagnostics pushed
@@ -34,6 +32,94 @@
 
 - [x] Diagnostics for template instantiation errors in preamble headers ([clangd#137](https://github.com/clangd/clangd/issues/137))
 
+## Errors in Included Headers
+
+An error inside a header is reported on the `#include` that brings it in, so it shows in the file you are editing.
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/headers -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Errors in included headers**
+
+An error inside an included header shows on the line that includes it
+
+The first error of each included header is reported on its `#include` line, with a note at the place in the header where it occurred. The header's other errors belong to the header and show when it is opened.
+
+```case
+tests-next/diagnostics/headers/01_errors_on_include
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Template Instantiations
+
+An error inside a template is reported on the code that instantiates it.
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/templates -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Errors in template instantiations**
+
+An error inside a template shows where the code asks for the instantiation
+
+When a template fails for the arguments it is instantiated with, the error is reported on the code that requested the instantiation, not inside the template. Its notes lead through the chain of instantiations to the place in the template where it failed.
+
+```case
+tests-next/diagnostics/templates/01_instantiation_errors
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Notes
+
+The notes clang attaches to an error travel with it as related information.
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/notes -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Notes as related information**
+
+The notes clang attaches to an error point to the places they name
+
+An error comes with the notes that explain it, such as where a name was first defined or which candidate a call could not use. Each note is related information of the error, so an editor shows it beside the error and jumps to its place.
+
+```case
+tests-next/diagnostics/notes/01_related_information
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Files Without a Compilation Database
+
+A file the compilation database does not list still compiles, with a command clice guesses.
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/guidance -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**No compilation database**
+
+A file no compilation database lists compiles with a guessed command and says so
+
+Without a `compile_commands.json` entry, a file still compiles, with a command clice guesses. When that leaves an include unresolved, a warning at the top of the file explains why and links to the setup guide. Once the database lists the file, the warning goes, and the errors left are the code's own.
+
+```case
+tests-next/diagnostics/guidance/01_no_database
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## Tags
 
 - [x] `Deprecated` tag for `-Wdeprecated` diagnostics and `modernize-*` clang-tidy findings
@@ -56,7 +142,6 @@
 - [x] `// NOLINT` comment suppression
 - [x] `// NOLINTNEXTLINE` comment suppression
 - [x] `// NOLINTBEGIN` / `// NOLINTEND` block suppression
-- [x] `NOLINT` comments silence compiler warnings too, while clang-tidy runs on the file
 - [ ] `NOLINT` for include-cleaner diagnostics ([clangd#1982](https://github.com/clangd/clangd/issues/1982))
 - [ ] Configurable severity per diagnostic category in config file ([clangd#1937](https://github.com/clangd/clangd/issues/1937))
 - [ ] Filter diagnostics by version control diff — only show warnings near changed lines ([clangd#822](https://github.com/clangd/clangd/issues/822))
@@ -82,7 +167,82 @@
 
 ## clang-tidy Integration
 
-- [x] clang-tidy diagnostics on open files, with the checks of the nearest `.clang-tidy` (a small default set without one), turned off by `[diagnostics] clang_tidy = false`
+clang-tidy runs on open files with the checks the project's `.clang-tidy` enables, and its findings show beside the compiler's.
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/clang_tidy -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**clang-tidy findings**
+
+clang-tidy runs on open files with the checks the nearest `.clang-tidy` enables
+
+Each finding names its check and links to the check's documentation. The checks come from the nearest `.clang-tidy` above the file, as `clang-tidy` itself reads it.
+
+```case
+tests-next/diagnostics/clang_tidy/01_findings
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Without a configuration file**
+
+Without a `.clang-tidy`, a small set of checks runs
+
+A project with no `.clang-tidy` still gets a few checks that rarely misfire, such as unused declarations, which an editor shows faded.
+
+```case
+tests-next/diagnostics/clang_tidy/02_default_checks
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Silencing with NOLINT**
+
+`NOLINT` comments silence findings on their line, and compiler warnings too
+
+`// NOLINT` silences its own line and `// NOLINTNEXTLINE` the next, for every check or the ones named in parentheses. While clang-tidy runs on the file, they silence compiler warnings on those lines as well.
+
+```case
+tests-next/diagnostics/clang_tidy/04_nolint
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Fixes as quick fixes**
+
+A finding that carries a fix offers it as a quick fix
+
+The fix a check attaches to its finding is offered among the quick fixes at the finding; applying it clears the finding.
+
+```case
+tests-next/diagnostics/clang_tidy/05_quick_fix
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Turning clang-tidy off**
+
+`clang_tidy = false` keeps clang-tidy off open files
+
+With clang-tidy off, open files show only the compiler's diagnostics, whatever the `.clang-tidy` enables.
+
+```case
+tests-next/diagnostics/clang_tidy/09_turned_off
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 - [x] Checks too slow for an editor, and those unreliable on code being edited, left out in the editor; `clice lint` runs them
 - [x] `.clang-tidy` edits apply to open files at their next compile
 - [x] A crash of a clang-tidy check pauses clang-tidy on that file, not its other features

@@ -140,6 +140,55 @@ On stdout, the build plan. `wrapping` holds the module sources, mirrors and the 
 
 The build compiles `stdSources` and each module in order, each with its library's include roots and its `mirrors` first on the include path, and adds `mirrors` and `-include prelude.h` to every program compilation the rewrite leaves untouched. A rewritten module compiles its primary interface, `interfaces` and `partitions` as module interface units and its `sources` as implementation units, with the workspace root on the include path for the prelude; `moved` lists the sources that joined another module, `path=module`.
 
+## Examples
+
+### Wrapping a Library
+
+A library's headers become a module the program imports, without a source file edited.
+
+<!-- BEGIN GENERATED ITEMS: modularize/libraries -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Wrap a library**
+
+A library's headers become a module interface unit that includes them and exports the names they declare, with the program's includes left as they are
+
+The program still includes `<alpha/alpha.h>`: with `wrap/mirror/alpha`
+first on its include path the header reads empty, and `wrap/prelude.h`,
+force-included, imports `alpha` and defines the macros its headers did.
+
+```case
+tests-next/modularize/libraries/01_one_library
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Rewriting a Program Module
+
+A module of the program marked for rewriting becomes a named module, its files rewritten in place.
+
+<!-- BEGIN GENERATED ITEMS: modularize/program -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Rewrite a program module**
+
+A directory of the program becomes a named module: its header a partition, its source an implementation unit, and the files including the header import the module
+
+The header goes; the partition `app.core:text` takes its place, and the
+primary interface `app/core/module.cppm` re-exports it.
+
+```case
+tests-next/modularize/program/01_one_module
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## Known Limitations
 
 - Module units must be built with full BMIs (`-fno-modules-reduced-bmi` on clang): a reduced BMI drops the global module fragment's declarations the purview never names, partial specializations among them.

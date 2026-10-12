@@ -1,9 +1,9 @@
 # Semantic Tokens
 
-<!-- The capability sections below are generated from the snapshot fixtures in
-     tests/snap/semantic_tokens/. Do not edit the regions between the GENERATED
-     markers by hand — edit the fixture spec headers and run
-     `node tools/docs/feature.ts update`. -->
+<!-- The cards in the sections below are generated from the documented cases
+     in tests-next/semantic_tokens/. Do not edit the regions between the
+     GENERATED markers by hand — edit the cases' README.md and run
+     `pixi run update-feature-docs`. -->
 
 clice classifies every token of a document with its own token-kind vocabulary,
 which is richer than the standard LSP token types and consistent across all
@@ -14,7 +14,7 @@ configuration.
 
 Kinds derived from the token stream itself, independent of the AST.
 
-<!-- BEGIN GENERATED ITEMS: lexical_tokens -->
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/lexical -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -22,8 +22,8 @@ Kinds derived from the token stream itself, independent of the AST.
 
 Line, block and documentation comments receive comment tokens
 
-```snap
-tests/snap/semantic_tokens/lexical_tokens/01_comments.cpp
+```case
+tests-next/semantic_tokens/lexical/01_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -34,8 +34,8 @@ tests/snap/semantic_tokens/lexical_tokens/01_comments.cpp
 
 Numbers, characters and strings receive literal tokens
 
-```snap
-tests/snap/semantic_tokens/lexical_tokens/02_literals.cpp
+```case
+tests-next/semantic_tokens/lexical/02_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -44,62 +44,22 @@ tests/snap/semantic_tokens/lexical_tokens/02_literals.cpp
 
 **Keywords**
 
-Alternative operator spellings and contextual specifiers retain keyword
-tokens
+Alternative operator spellings and contextual specifiers retain keyword tokens
 
-```snap
-tests/snap/semantic_tokens/lexical_tokens/03_keywords.cpp
+```case
+tests-next/semantic_tokens/lexical/03_keywords
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Preprocessor directives**
+**Primitive types**
 
-`#if` chains keep directive kinds; disabled branches keep lexical kinds;
-pragma arguments stay plain
+Built-in types use a distinct token kind instead of plain `keyword`
 
-```snap
-tests/snap/semantic_tokens/lexical_tokens/04_directives.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Inactive regions**
-
-Tokens in untaken branches keep their lexical kinds and carry the `inactive`
-modifier; unclassified tokens become plain `identifier` carriers, so even a
-lone `}` line dims
-
-```snap
-tests/snap/semantic_tokens/lexical_tokens/05_inactive_regions.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Header names**
-
-Quoted and angled include filenames receive string tokens
-
-```snap
-tests/snap/semantic_tokens/lexical_tokens/06_include_names.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Inactive preamble regions**
-
-Untaken branches among the leading directives dim the same way
-
-```snap
-tests/snap/semantic_tokens/lexical_tokens/07_inactive_preamble.cpp
+```case
+tests-next/semantic_tokens/lexical/04_primitive_types
 ```
 
 <!-- END CAPABILITY -->
@@ -108,11 +68,10 @@ tests/snap/semantic_tokens/lexical_tokens/07_inactive_preamble.cpp
 
 **Literal prefixes and suffixes**
 
-Literal prefixes, suffixes and separators do not receive distinct tokens
-yet
+Literal prefixes and suffixes do not receive tokens of their own yet
 
-```snap
-tests/snap/semantic_tokens/lexical_tokens/08_literal_affixes.cpp
+```case
+tests-next/semantic_tokens/lexical/05_literal_affixes
 ```
 
 <!-- END CAPABILITY -->
@@ -123,8 +82,8 @@ tests/snap/semantic_tokens/lexical_tokens/08_literal_affixes.cpp
 
 Escape sequences are not highlighted distinctly inside literals yet
 
-```snap
-tests/snap/semantic_tokens/lexical_tokens/09_escape_sequences.cpp
+```case
+tests-next/semantic_tokens/lexical/06_escape_sequences
 ```
 
 <!-- END CAPABILITY -->
@@ -135,20 +94,8 @@ tests/snap/semantic_tokens/lexical_tokens/09_escape_sequences.cpp
 
 Declarator and expression operators do not receive distinct token kinds yet
 
-```snap
-tests/snap/semantic_tokens/lexical_tokens/10_declarator_operators.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Primitive token type**
-
-Built-in types use a distinct token kind instead of plain `keyword`
-
-```snap
-tests/snap/semantic_tokens/lexical_tokens/11_primitive_types.cpp
+```case
+tests-next/semantic_tokens/lexical/07_declarator_operators
 ```
 
 <!-- END CAPABILITY -->
@@ -159,8 +106,20 @@ tests/snap/semantic_tokens/lexical_tokens/11_primitive_types.cpp
 
 Matching brackets do not receive pair-specific token kinds yet
 
-```snap
-tests/snap/semantic_tokens/lexical_tokens/12_bracket_pairs.cpp
+```case
+tests-next/semantic_tokens/lexical/08_brackets
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial clangd#2209 -->
+
+**Attribute names**
+
+Attribute names and their expressions do not receive semantic tokens yet
+
+```case
+tests-next/semantic_tokens/lexical/09_attributes
 ```
 
 <!-- END CAPABILITY -->
@@ -171,17 +130,28 @@ tests/snap/semantic_tokens/lexical_tokens/12_bracket_pairs.cpp
 
 Names classified by the declaration they define or reference.
 
-<!-- BEGIN GENERATED ITEMS: declarations -->
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/declarations -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Declared names**
+
+Each declared name is colored by what it declares
+
+```case
+tests-next/semantic_tokens/declarations/01_declared_names
+```
+
+<!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **Namespaces**
 
-Namespace definitions, references, nesting and aliases receive namespace
-tokens
+Namespace definitions, references, nesting and aliases receive namespace tokens
 
-```snap
-tests/snap/semantic_tokens/declarations/01_namespaces.cpp
+```case
+tests-next/semantic_tokens/declarations/02_namespaces
 ```
 
 <!-- END CAPABILITY -->
@@ -192,8 +162,8 @@ tests/snap/semantic_tokens/declarations/01_namespaces.cpp
 
 Type definitions and references keep their respective type kinds
 
-```snap
-tests/snap/semantic_tokens/declarations/02_types.cpp
+```case
+tests-next/semantic_tokens/declarations/03_types
 ```
 
 <!-- END CAPABILITY -->
@@ -204,8 +174,8 @@ tests/snap/semantic_tokens/declarations/02_types.cpp
 
 Function declarations, definitions and calls receive function tokens
 
-```snap
-tests/snap/semantic_tokens/declarations/03_functions.cpp
+```case
+tests-next/semantic_tokens/declarations/04_functions
 ```
 
 <!-- END CAPABILITY -->
@@ -216,8 +186,8 @@ tests/snap/semantic_tokens/declarations/03_functions.cpp
 
 Variable declarations and references keep their respective variable kinds
 
-```snap
-tests/snap/semantic_tokens/declarations/04_variables.cpp
+```case
+tests-next/semantic_tokens/declarations/05_variables
 ```
 
 <!-- END CAPABILITY -->
@@ -226,11 +196,10 @@ tests/snap/semantic_tokens/declarations/04_variables.cpp
 
 **Templates**
 
-Template parameters receive type or variable kinds, and template names carry
-`templated`
+Template parameters receive type or variable kinds, and a declared template carries `templated`
 
-```snap
-tests/snap/semantic_tokens/declarations/05_templates.cpp
+```case
+tests-next/semantic_tokens/declarations/06_templates
 ```
 
 <!-- END CAPABILITY -->
@@ -241,8 +210,8 @@ tests/snap/semantic_tokens/declarations/05_templates.cpp
 
 Concept definitions and constraint uses receive concept tokens
 
-```snap
-tests/snap/semantic_tokens/declarations/06_concepts.cpp
+```case
+tests-next/semantic_tokens/declarations/07_concepts
 ```
 
 <!-- END CAPABILITY -->
@@ -253,8 +222,8 @@ tests/snap/semantic_tokens/declarations/06_concepts.cpp
 
 Labels and their `goto` references receive label tokens
 
-```snap
-tests/snap/semantic_tokens/declarations/07_labels.cpp
+```case
+tests-next/semantic_tokens/declarations/08_labels
 ```
 
 <!-- END CAPABILITY -->
@@ -268,142 +237,8 @@ Structured binding names receive variable tokens at definition and use
 The opening `[` deliberately carries no token; only the binding names
 themselves are highlighted.
 
-```snap
-tests/snap/semantic_tokens/declarations/08_structured_bindings.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#868 -->
-
-**Lambda init-captures**
-
-Lambda init-captures receive variable tokens
-
-```snap
-tests/snap/semantic_tokens/declarations/09_lambda_init_capture.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Deduction guides**
-
-Deduction guides and their guided templates receive type tokens
-
-```snap
-tests/snap/semantic_tokens/declarations/10_deduction_guides.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#316 -->
-
-**Explicit instantiation**
-
-Explicit class instantiations highlight template names and written arguments
-
-```snap
-tests/snap/semantic_tokens/declarations/11_explicit_instantiation_class.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Variable templates**
-
-Variable template declarations, definitions and specializations receive
-variable tokens
-
-```snap
-tests/snap/semantic_tokens/declarations/12_variable_templates.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Out-of-line member definitions**
-
-Qualified names keep method kinds and modifiers
-
-```snap
-tests/snap/semantic_tokens/declarations/13_out_of_line_methods.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Alias templates**
-
-The alias name carries the type kind and the `templated` modifier
-
-```snap
-tests/snap/semantic_tokens/declarations/14_alias_templates.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Template template parameters**
-
-Template-template parameters receive type tokens at declaration and use
-
-```snap
-tests/snap/semantic_tokens/declarations/15_template_template_params.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Friend declarations**
-
-Befriended names resolve to their targets; inline friends define
-
-```snap
-tests/snap/semantic_tokens/declarations/16_friend_declarations.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Function explicit instantiation directives**
-
-Identifiers in a function explicit-instantiation directive are painted
-
-```snap
-tests/snap/semantic_tokens/declarations/17_explicit_instantiation_function.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Variable explicit instantiation directives**
-
-Identifiers in a variable explicit-instantiation directive are painted
-
-```snap
-tests/snap/semantic_tokens/declarations/18_explicit_instantiation_variable.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Explicit instantiation member bodies**
-
-A dependent name paints as its actual resolution: agreeing kinds keep the
-modifiers all instantiations share, disagreeing kinds paint a conflict
-
-```snap
-tests/snap/semantic_tokens/declarations/19_explicit_instantiation_member_bodies.cpp
+```case
+tests-next/semantic_tokens/declarations/09_structured_bindings
 ```
 
 <!-- END CAPABILITY -->
@@ -415,7 +250,7 @@ tests/snap/semantic_tokens/declarations/19_explicit_instantiation_member_bodies.
 Reference sites retain the semantic kind of the declaration they resolve to,
 including names reached through language-specific lookup rules.
 
-<!-- BEGIN GENERATED ITEMS: references -->
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/references -->
 
 <!-- BEGIN CAPABILITY: supported clangd#122 -->
 
@@ -423,8 +258,8 @@ including names reached through language-specific lookup rules.
 
 Member initializer lists highlight initialized names as fields
 
-```snap
-tests/snap/semantic_tokens/references/01_member_init_list.cpp
+```case
+tests-next/semantic_tokens/references/01_member_initializers
 ```
 
 <!-- END CAPABILITY -->
@@ -435,32 +270,8 @@ tests/snap/semantic_tokens/references/01_member_init_list.cpp
 
 The introduced name keeps its target's kind
 
-```snap
-tests/snap/semantic_tokens/references/02_using_declarations.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#213 -->
-
-**`sizeof...`**
-
-The pack parameter keeps its type-parameter token
-
-```snap
-tests/snap/semantic_tokens/references/03_sizeof_pack.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#1283 -->
-
-**`using enum`**
-
-Using declarations highlight enum names at the using site
-
-```snap
-tests/snap/semantic_tokens/references/04_using_enum.cpp
+```case
+tests-next/semantic_tokens/references/02_using_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -476,8 +287,8 @@ template's declarations and keep their kinds. Members of a bare template
 parameter have no candidate declaration and currently get no token;
 heuristic coloring for such names remains open.
 
-```snap
-tests/snap/semantic_tokens/references/05_dependent_names.cpp
+```case
+tests-next/semantic_tokens/references/05_dependent_names
 ```
 
 <!-- END CAPABILITY -->
@@ -486,93 +297,46 @@ tests/snap/semantic_tokens/references/05_dependent_names.cpp
 
 **Lambda captures**
 
-By-copy and by-reference captures reference the captured variable; `this`
-stays a keyword
+By-copy and by-reference captures reference the captured variable; `this` stays a keyword
 
-```snap
-tests/snap/semantic_tokens/references/06_lambda_captures.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Range-based for**
-
-Range-for variables keep variable tokens at definitions and uses
-
-```snap
-tests/snap/semantic_tokens/references/07_range_for.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Enum underlying types**
-
-The enum-base reference keeps its type kind
-
-```snap
-tests/snap/semantic_tokens/references/08_enum_base.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial -->
-
-**Dependent using declarations**
-
-Dependent using declarations remain unpainted
-
-The introduced name and its uses currently get no token; the reserved
-dependent-name modifier is not emitted yet.
-
-```snap
-tests/snap/semantic_tokens/references/09_dependent_using.cpp
+```case
+tests-next/semantic_tokens/references/06_lambda_captures
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Modules
+## Special Members
 
-<!-- BEGIN GENERATED ITEMS: modules -->
+Constructors, destructors and operator functions read as the methods they are, with modifiers of their own.
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/special_members -->
 
-**Module declarations**
+<!-- BEGIN CAPABILITY: supported clangd#1509 clangd#2078 clangd#872 -->
 
-Module declarations tokenize contextual keywords, dotted names and private
-fragments
+**Constructors and destructors**
 
-```snap
-tests/snap/semantic_tokens/modules/01_modules.cpp
+Constructors and destructors use method tokens with dedicated modifiers
+
+A destructor name renders as two tokens: the `~` carries the method
+kind and the declaration/definition modifiers, the class name after it
+stays a reference to the class.
+
+```case
+tests-next/semantic_tokens/special_members/01_constructors_destructors
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Module partitions**
+**Operator names**
 
-Module declarations tokenize partition names
+An operator function's name keeps `operator` as a keyword, and each call to it is an operator token
 
-```snap
-tests/snap/semantic_tokens/modules/02_module_partition.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**`module` and `import` as identifiers**
-
-Contextual keywords keep their semantic kinds outside module declarations
-
-```snap
-tests/snap/semantic_tokens/modules/03_module_keyword_identifier.cpp
+```case
+tests-next/semantic_tokens/special_members/02_operator_names
 ```
 
 <!-- END CAPABILITY -->
@@ -581,7 +345,9 @@ tests/snap/semantic_tokens/modules/03_module_keyword_identifier.cpp
 
 ## Token Modifiers
 
-<!-- BEGIN GENERATED ITEMS: token_modifiers -->
+Modifiers add what the kind leaves out: a definition, a `static` or `const` symbol, a deprecated one, one from a system header.
+
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/modifiers -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
@@ -589,8 +355,8 @@ tests/snap/semantic_tokens/modules/03_module_keyword_identifier.cpp
 
 Declaration and definition modifiers distinguish the two sites
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/01_decl_def_modifiers.cpp
+```case
+tests-next/semantic_tokens/modifiers/01_declaration_definition
 ```
 
 <!-- END CAPABILITY -->
@@ -601,8 +367,8 @@ tests/snap/semantic_tokens/token_modifiers/01_decl_def_modifiers.cpp
 
 Static members and locals carry the static modifier
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/02_static_modifier.cpp
+```case
+tests-next/semantic_tokens/modifiers/02_static
 ```
 
 <!-- END CAPABILITY -->
@@ -616,8 +382,8 @@ Const values and methods, plus enum members, carry the readonly modifier
 Readonly is currently value-based: a pointer to const counts as
 readonly even though the pointer itself can change.
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/03_readonly_modifier.cpp
+```case
+tests-next/semantic_tokens/modifiers/03_readonly
 ```
 
 <!-- END CAPABILITY -->
@@ -628,8 +394,8 @@ tests/snap/semantic_tokens/token_modifiers/03_readonly_modifier.cpp
 
 Virtual methods and abstract classes carry virtual or abstract modifiers
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/04_virtual_abstract.cpp
+```case
+tests-next/semantic_tokens/modifiers/04_virtual_abstract
 ```
 
 <!-- END CAPABILITY -->
@@ -640,8 +406,8 @@ tests/snap/semantic_tokens/token_modifiers/04_virtual_abstract.cpp
 
 Deprecated declarations and uses carry the deprecated modifier
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/05_deprecated_modifier.cpp
+```case
+tests-next/semantic_tokens/modifiers/05_deprecated
 ```
 
 <!-- END CAPABILITY -->
@@ -652,8 +418,8 @@ tests/snap/semantic_tokens/token_modifiers/05_deprecated_modifier.cpp
 
 Symbols from system headers carry the default-library modifier
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/06_default_library.cpp
+```case
+tests-next/semantic_tokens/modifiers/06_default_library
 ```
 
 <!-- END CAPABILITY -->
@@ -664,44 +430,44 @@ tests/snap/semantic_tokens/token_modifiers/06_default_library.cpp
 
 Symbols do not carry function, class, file or global scope modifiers yet
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/07_scope_modifiers.cpp
+```case
+tests-next/semantic_tokens/modifiers/07_scopes
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#839 -->
+<!-- BEGIN CAPABILITY: partial clangd#839 -->
 
-**Mutable reference and pointer**
+**Mutable arguments**
 
-Mutable reference and pointer arguments do not carry a modifier yet
+An argument passed by mutable reference or pointer does not carry a modifier yet
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/08_mutable_reference.cpp
+```case
+tests-next/semantic_tokens/modifiers/08_mutable_arguments
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**Deduced**
+**Deduced types**
 
-Deduced types do not carry a dedicated modifier yet
+`auto` and `decltype` do not carry the deduced modifier yet
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/09_deduced_modifier.cpp
+```case
+tests-next/semantic_tokens/modifiers/09_deduced_types
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1521 -->
+<!-- BEGIN CAPABILITY: supported clangd#1521 -->
 
 **User-defined operators**
 
-Overloaded operators do not differ from built-in operators yet
+A call to an overloaded operator is an operator token with the `userDefined` modifier
 
-```snap
-tests/snap/semantic_tokens/token_modifiers/10_user_defined_operator.cpp
+```case
+tests-next/semantic_tokens/modifiers/10_overloaded_operators
 ```
 
 <!-- END CAPABILITY -->
@@ -715,196 +481,65 @@ written name refers to entities of different kinds at once, no single token
 type is correct; such names receive the dedicated **conflict** token type,
 which clients typically display in a neutral color.
 
-<!-- BEGIN GENERATED ITEMS: conflict_ambiguity -->
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/ambiguity -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Type vs function**
+**Conflicting names**
 
-A name naming both renders as `conflict`
+A name that means both a type and a function or variable renders as `conflict`
 
-```snap
-tests/snap/semantic_tokens/conflict_ambiguity/01_conflict_using.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Type vs variable**
-
-A name naming both renders as `conflict`
-
-```snap
-tests/snap/semantic_tokens/conflict_ambiguity/02_conflict_type_variable.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Same-kind overload sets**
-
-A name naming only functions is no conflict
-
-```snap
-tests/snap/semantic_tokens/conflict_ambiguity/03_using_overloads.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Injected class name**
-
-An injected class name keeps its class token when used as a constructor
-
-The written name renders as the class; the constructor reference it
-implies paints nothing extra — the `(` stays token-free.
-
-```snap
-tests/snap/semantic_tokens/conflict_ambiguity/04_injected_class_name.cpp
+```case
+tests-next/semantic_tokens/ambiguity/01_conflicts
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
 
-## Token Correctness
+## Preprocessor
 
-Shapes clice pins deliberately, including issues clangd got wrong.
+Directives, header names and macro expansions receive tokens of their own, while the body of a macro definition keeps its lexical kinds.
 
-<!-- BEGIN GENERATED ITEMS: token_correctness -->
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/preprocessor -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1509 clangd#2078 clangd#872 -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**Constructors and destructors**
+**Preprocessor directives**
 
-Constructors and destructors use method tokens with dedicated modifiers
+Directives keep their directive kind, and the code of an untaken branch keeps its lexical kinds
 
-A destructor name renders as two tokens: the `~` carries the method
-kind and the declaration/definition modifiers, the class name after it
-stays a reference to the class.
+Pragma arguments other than numbers stay plain.
 
-```snap
-tests/snap/semantic_tokens/token_correctness/01_constructors_destructors.cpp
+```case
+tests-next/semantic_tokens/preprocessor/01_directives
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Anonymous parameters**
+**Header names**
 
-Unnamed parameters produce no tokens
+Quoted and angled header names receive header tokens
 
-The punctuation after an unnamed parameter's type stays token-free.
-
-```snap
-tests/snap/semantic_tokens/token_correctness/02_anonymous_parameters.cpp
+```case
+tests-next/semantic_tokens/preprocessor/02_header_names
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Operator names**
+**Untaken branches**
 
-The `operator` keyword and call-site punctuation stay plain
+Tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier
 
-An operator's written name is keyword plus punctuation, so no name
-token is painted: `operator` keeps its keyword classification and
-call sites emit nothing on the operator symbol.
+Text with no kind of its own becomes a plain `identifier` token, so even a
+lone `}` line dims.
 
-```snap
-tests/snap/semantic_tokens/token_correctness/03_operator_names.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Destructors of class templates**
-
-The `~` shape holds under templates
-
-```snap
-tests/snap/semantic_tokens/token_correctness/04_template_destructor.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Conversion operators**
-
-Written as keywords, converting uses paint nothing extra
-
-```snap
-tests/snap/semantic_tokens/token_correctness/05_conversion_operators.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Pseudo-destructor on a template parameter**
-
-The `~` paints nothing; the type name keeps its kind
-
-```snap
-tests/snap/semantic_tokens/token_correctness/06_pseudo_destructor.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Defaulted and deleted members**
-
-Special-member names keep their definition tokens
-
-```snap
-tests/snap/semantic_tokens/token_correctness/07_defaulted_deleted.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Attributes
-
-<!-- BEGIN GENERATED ITEMS: attributes -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2209 -->
-
-**Attribute names**
-
-Attribute names and their expressions do not receive semantic tokens yet
-
-```snap
-tests/snap/semantic_tokens/attributes/01_attributes.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## Macros
-
-Tokens inside macro definition bodies keep their lexical kinds; highlighting
-them from their expansions belongs to a future expansion-preview feature.
-
-<!-- BEGIN GENERATED ITEMS: macros -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Macro definition and expansion**
-
-Macro definitions and expansions receive semantic tokens
-
-```snap
-tests/snap/semantic_tokens/macros/01_macro.cpp
+```case
+tests-next/semantic_tokens/preprocessor/03_inactive_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -913,11 +548,10 @@ tests/snap/semantic_tokens/macros/01_macro.cpp
 
 **Expansion sites and arguments**
 
-Expansion names are macros, written arguments keep their semantics,
-definition bodies stay lexical
+Expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
 
-```snap
-tests/snap/semantic_tokens/macros/02_macro_expansion.cpp
+```case
+tests-next/semantic_tokens/preprocessor/04_macro_expansions
 ```
 
 <!-- END CAPABILITY -->
@@ -928,8 +562,161 @@ tests/snap/semantic_tokens/macros/02_macro_expansion.cpp
 
 Object-like and function-like macros do not receive distinct token kinds yet
 
-```snap
-tests/snap/semantic_tokens/macros/03_macro_kinds.cpp
+```case
+tests-next/semantic_tokens/preprocessor/05_macro_kinds
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Leading Directives
+
+The includes and macros a file starts with are compiled apart from the rest of it, and their tokens read the same as anywhere else.
+
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/preamble -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Inactive preamble regions**
+
+Untaken branches among the leading directives dim the same way
+
+```case
+tests-next/semantic_tokens/preamble/01_inactive_preamble
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macro definition and expansion**
+
+A macro's definition and its expansions receive macro tokens
+
+```case
+tests-next/semantic_tokens/preamble/02_preamble_macros
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Modules
+
+Module declarations and imports receive tokens for their keywords and names.
+
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/modules -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module declarations**
+
+Module declarations tokenize contextual keywords, dotted names and private fragments
+
+```case
+tests-next/semantic_tokens/modules/01_module_declarations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Module partitions**
+
+Module declarations tokenize partition names
+
+```case
+tests-next/semantic_tokens/modules/02_partitions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`module` and `import` as identifiers**
+
+Contextual keywords keep their semantic kinds outside module declarations
+
+```case
+tests-next/semantic_tokens/modules/03_contextual_keywords
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Inactive Code Regions
+
+Every token inside an untaken preprocessor branch carries the `inactive`
+modifier while keeping its lexical kind, so editors dim the region by
+styling the modifier without losing the syntax colors underneath. Tokens
+without a classification in dead code — bare identifiers and plain
+punctuation — are emitted as the unstyled `identifier` type, giving the
+whole region token coverage. The clice VS Code extension renders the
+regions dimmed out of the box; other editors style the modifier directly
+(e.g. `@lsp.mod.inactive` in Neovim).
+
+- [x] Dim inactive preprocessor branches ([clangd#132](https://github.com/clangd/clangd/issues/132))
+- [x] Correct inactive boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))
+- [x] Preserve syntax highlighting within inactive regions ([clangd#1664](https://github.com/clangd/clangd/issues/1664))
+- [x] Keep inactive regions distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
+- [ ] Unreachable code dimming ([clangd#1828](https://github.com/clangd/clangd/issues/1828))
+
+### Untaken Branches
+
+A branch the preprocessor skips is dimmed, whichever directive opens it.
+
+<!-- BEGIN GENERATED ITEMS: inactive_regions/branches -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Untaken branches**
+
+Lines of a branch the preprocessor skips are dimmed, an `#else` after a taken branch included
+
+```case
+tests-next/inactive_regions/branches/02_else_branch
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Header Contexts
+
+In a header, the dimmed branches are those its [host](./header-contexts.md) skips.
+
+<!-- BEGIN GENERATED ITEMS: inactive_regions/contexts -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Switching the host**
+
+A header shows the branches its chosen host takes, and switching hosts updates the dimming at once
+
+```case
+tests-next/inactive_regions/contexts/01_host_switch
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Edits
+
+The dimming follows an edit to a condition as you type.
+
+<!-- BEGIN GENERATED ITEMS: inactive_regions/updates -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Editing a condition**
+
+Editing the macro a condition tests moves the dimming to the branch now skipped, before the file is saved
+
+```case
+tests-next/inactive_regions/updates/01_edited_condition
 ```
 
 <!-- END CAPABILITY -->
@@ -955,23 +742,6 @@ Curated issues without a fixture yet:
       sets ([clangd#484](https://github.com/clangd/clangd/issues/484),
       [clangd#686](https://github.com/clangd/clangd/issues/686),
       [clangd#1057](https://github.com/clangd/clangd/issues/1057))
-
-## Inactive Code Regions
-
-Every token inside an untaken preprocessor branch carries the `inactive`
-modifier while keeping its lexical kind, so editors dim the region by
-styling the modifier without losing the syntax colors underneath. Tokens
-without a classification in dead code — bare identifiers and plain
-punctuation — are emitted as the unstyled `identifier` type, giving the
-whole region token coverage. The clice VS Code extension renders the
-regions dimmed out of the box; other editors style the modifier directly
-(e.g. `@lsp.mod.inactive` in Neovim).
-
-- [x] Dim inactive preprocessor branches ([clangd#132](https://github.com/clangd/clangd/issues/132))
-- [x] Correct inactive boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))
-- [x] Preserve syntax highlighting within inactive regions ([clangd#1664](https://github.com/clangd/clangd/issues/1664))
-- [x] Keep inactive regions distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
-- [ ] Unreachable code dimming ([clangd#1828](https://github.com/clangd/clangd/issues/1828))
 
 ## Format String Highlighting
 

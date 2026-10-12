@@ -1,48 +1,38 @@
 # 文档符号
 
-<!-- The capability sections below are generated from the snapshot fixtures in
-     tests/snap/document_symbol/. Do not edit the regions between the GENERATED
-     markers by hand — edit the fixture spec headers and run
-     `node tools/docs/feature.ts update`. -->
+<!-- The cards in the sections below are generated from the documented cases
+     in tests-next/document_symbol/. Do not edit the regions between the
+     GENERATED markers by hand — edit the cases' README.md and run
+     `pixi run update-feature-docs`. -->
 
 通过 `textDocument/documentSymbol` 提供文件大纲和面包屑导航：嵌套符号树包含范围、选择范围和 `detail` 字段，该字段用于区分重载并显示所声明的类型。
 
 ## 符号层级
 
-<!-- BEGIN GENERATED ITEMS: symbol_hierarchy -->
+符号在大纲中的嵌套关系与代码中一致：成员位于所属类之下，局部符号位于所属函数之下。
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_hierarchy -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**嵌套符号树**
+**嵌套作用域**
 
-符号按代码中书写的作用域嵌套；作用域外的定义以限定名称显示在其实际书写的位置
+命名空间、类及其成员在大纲中的嵌套关系与代码中一致
 
-```snap
-tests/snap/document_symbol/symbol_hierarchy/01_hierarchy_nesting.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/01_nested_scopes
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**符号范围和选择范围**
+**作用域外定义（out-of-line definitions）**
 
-符号范围覆盖整个声明；选择范围覆盖完整书写的名称，包括 `~Widget`、`operator==` 和 `operator bool` 等由多个 Token 组成的名称
+作用域外定义按代码中的书写位置列出，并显示其限定名；多次打开的命名空间每次打开都会单独列出
 
-```snap
-tests/snap/document_symbol/symbol_hierarchy/02_hierarchy_selection_ranges.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#499 -->
-
-**按访问说明符分组**
-
-访问说明符尚未在大纲中形成分组节点
-
-```snap
-tests/snap/document_symbol/symbol_hierarchy/03_hierarchy_access_specifiers.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/02_qualified_definitions
 ```
 
 <!-- END CAPABILITY -->
@@ -51,220 +41,10 @@ tests/snap/document_symbol/symbol_hierarchy/03_hierarchy_access_specifiers.cpp
 
 **匿名作用域和内联作用域**
 
-匿名命名空间、未命名结构体和联合体的成员归在占位名称下；内联命名空间的成员仍归在该内联命名空间节点下
+匿名命名空间、匿名结构体和匿名联合体的成员会归在各自的占位名称下，内联命名空间则保留自己的节点
 
-```snap
-tests/snap/document_symbol/symbol_hierarchy/04_hierarchy_anonymous.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**UTF-16 位置编码**
-
-非 ASCII 文本之后的列位置按 UTF-16 代码单元计数
-
-```snap
-tests/snap/document_symbol/symbol_hierarchy/05_hierarchy_utf16.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## 符号种类
-
-<!-- BEGIN GENERATED ITEMS: symbol_kinds -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**核心符号种类**
-
-命名空间、类、结构体、联合体、枚举及其成员、函数、变量、字段、结构化绑定（structured bindings）和 Lambda 都会出现在大纲中，并映射到相应的 LSP 符号种类
-
-```snap
-tests/snap/document_symbol/symbol_kinds/01_kinds_basic.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**模板声明**
-
-类模板、函数模板和变量模板的详细信息带有 `template ` 前缀；Concept 和简写函数模板（使用 `concept auto` 参数）也会出现在大纲中
-
-```snap
-tests/snap/document_symbol/symbol_kinds/02_kinds_templates.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**模板特化和推导指引**
-
-类模板和变量模板的显式特化与偏特化会在名称中显示模板实参；成员嵌套在所属特化下；推导指引显示推导出的签名
-
-```snap
-tests/snap/document_symbol/symbol_kinds/03_kinds_specializations.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**类型别名**
-
-`typedef`、`using` 别名和别名模板会出现在大纲中，详细信息为 `type alias`
-
-```snap
-tests/snap/document_symbol/symbol_kinds/04_kinds_type_aliases.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**显式实例化指令**
-
-类、函数和变量的显式实例化都显示为没有子节点的符号
-
-```snap
-tests/snap/document_symbol/symbol_kinds/05_kinds_explicit_instantiations.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#1744 -->
-
-**宏定义**
-
-对象式宏和函数式宏会出现在大纲中，函数式宏的详细信息还会列出参数
-
-```snap
-tests/snap/document_symbol/symbol_kinds/06_kinds_macros.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: partial -->
-
-**Preamble 区域中的宏**
-
-对于编辑器发起的请求，文件开头连续预处理指令中的宏尚未列入大纲
-
-```snap
-tests/snap/document_symbol/symbol_kinds/07_macro_preamble.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**模块声明**
-
-接口单元的模块声明会在大纲中显示它所定义的模块
-
-```snap
-tests/snap/document_symbol/symbol_kinds/08_kinds_modules.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## 符号详细信息
-
-<!-- BEGIN GENERATED ITEMS: symbol_detail -->
-
-<!-- BEGIN CAPABILITY: supported clangd#520 clangd#601 clangd#1232 -->
-
-**函数签名**
-
-`detail` 字段中的参数类型和返回类型用于区分重载；构造函数省略 `void` 返回类型
-
-```snap
-tests/snap/document_symbol/symbol_detail/01_detail_signatures.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**变量和字段类型**
-
-变量的详细信息显示声明的类型，Lambda 则显示为 `(lambda)`
-
-```snap
-tests/snap/document_symbol/symbol_detail/02_detail_variable_types.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#221 -->
-
-**移除默认实参**
-
-签名根据函数类型生成，因此参数默认值不会出现在大纲中
-
-```snap
-tests/snap/document_symbol/symbol_detail/03_detail_default_arguments.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**详细信息中的基类**
-
-派生类的详细信息尚未包含其基类
-
-```snap
-tests/snap/document_symbol/symbol_detail/04_detail_base_classes.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#2221 -->
-
-**多行签名范围**
-
-符号范围从声明起始处开始，覆盖完整签名，使编辑器的粘性滚动能够正确定位
-
-```snap
-tests/snap/document_symbol/symbol_detail/05_detail_multiline_signatures.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**带作用域的类型**
-
-代码中书写的类作用域在详细信息中恰好出现一次，嵌套类、模板标识（template-id）、别名和依赖名称均如此
-
-```snap
-tests/snap/document_symbol/symbol_detail/06_detail_scoped_types.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## 缺失的符号
-
-<!-- BEGIN GENERATED ITEMS: missing_symbols -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2226 -->
-
-**包含指令**
-
-`#include` 指令尚未出现在大纲中
-
-```snap
-tests/snap/document_symbol/missing_symbols/01_missing_includes.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/03_anonymous_scopes
 ```
 
 <!-- END CAPABILITY -->
@@ -273,22 +53,10 @@ tests/snap/document_symbol/missing_symbols/01_missing_includes.cpp
 
 **局部符号**
 
-函数体内声明的变量和类型嵌套在所属函数下
+在函数体中声明的变量、类型和 Lambda 会嵌套在该函数之下
 
-```snap
-tests/snap/document_symbol/missing_symbols/02_local_symbols.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**`#pragma mark` 导航标记**
-
-编辑器分节标记尚未显示在大纲中
-
-```snap
-tests/snap/document_symbol/missing_symbols/04_missing_pragma_mark.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/04_local_symbols
 ```
 
 <!-- END CAPABILITY -->
@@ -297,10 +65,270 @@ tests/snap/document_symbol/missing_symbols/04_missing_pragma_mark.cpp
 
 **友元函数定义**
 
-在类中内联定义的友元函数显示在该类下
+在类内定义的友元函数会列在该类之下
 
-```snap
-tests/snap/document_symbol/missing_symbols/05_friend_definitions.cpp
+```case
+tests-next/document_symbol/symbol_hierarchy/05_friend_definitions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#499 -->
+
+**访问控制区段**
+
+成员尚未按所属的 `public` 和 `private` 访问控制区段分组
+
+```case
+tests-next/document_symbol/symbol_hierarchy/06_access_sections
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 符号种类
+
+所有符号列出时都会标明其种类，包括命名空间、类、宏和模块声明。
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_kinds -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**核心符号种类**
+
+命名空间、类、联合体、枚举及其成员，以及函数、变量、字段、绑定和 Lambda 都会标明各自的种类
+
+```case
+tests-next/document_symbol/symbol_kinds/01_core_kinds
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**模板**
+
+类模板、函数模板和变量模板的详细信息中会显示 `template`，Concept 和简写模板（abbreviated templates）也会列出
+
+主模板（primary template）的范围从 `template <...>` 所在行之后开始，而模板特化（template specialization）的范围则包含这一行。
+
+```case
+tests-next/document_symbol/symbol_kinds/02_templates
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**模板特化和推导指引（deduction guides）**
+
+模板特化会显示其模板实参及自身成员，推导指引则显示其推导出的签名
+
+函数模板的显式实例化（explicit instantiation）在列出时，名称中不包含实参。
+
+```case
+tests-next/document_symbol/symbol_kinds/03_specializations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**类型别名**
+
+`typedef` 和 `using` 别名以及别名模板都会作为类型别名列出
+
+```case
+tests-next/document_symbol/symbol_kinds/04_type_aliases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**显式实例化**
+
+类模板、函数模板和变量模板的显式实例化都会列出，但不包含成员
+
+函数模板实例化的名称中不包含实参。
+
+```case
+tests-next/document_symbol/symbol_kinds/05_explicit_instantiations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1744 -->
+
+**宏**
+
+对象式宏和函数式宏都会列出，函数式宏还会在详细信息中显示其参数
+
+文件开头、首个声明之前的一连串预处理指令中的宏，目前还不会显示在编辑器大纲中。
+
+```case
+tests-next/document_symbol/symbol_kinds/06_macros
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模块声明**
+
+模块接口单元会列出其声明的模块
+
+```case
+tests-next/document_symbol/symbol_kinds/07_modules
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported clangd#2226 -->
+
+**包含指令**
+
+`#include` 指令目前还不会显示在大纲中
+
+```case
+tests-next/document_symbol/symbol_kinds/10_includes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**#pragma mark**
+
+`#pragma mark` 区段目前还不会显示在大纲中
+
+```case
+tests-next/document_symbol/symbol_kinds/11_pragma_marks
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 符号详细信息
+
+名称旁的 `detail` 用于区分重载，并显示变量的声明类型。
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_detail -->
+
+<!-- BEGIN CAPABILITY: supported clangd#520 clangd#601 clangd#1232 -->
+
+**函数签名**
+
+`detail` 字段中的参数类型和返回类型用于区分重载；构造函数会省略 `void` 返回类型
+
+```case
+tests-next/document_symbol/symbol_detail/01_detail_signatures
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**变量和字段类型**
+
+变量或字段在详细信息中显示其声明类型，Lambda 则显示 `(lambda)`
+
+```case
+tests-next/document_symbol/symbol_detail/02_variable_types
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#221 -->
+
+**默认实参**
+
+函数的详细信息会列出参数类型，不包含默认值
+
+```case
+tests-next/document_symbol/symbol_detail/03_default_arguments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**基类**
+
+派生类的详细信息目前还不会显示其基类名称
+
+```case
+tests-next/document_symbol/symbol_detail/04_base_classes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**带作用域的类型**
+
+类型名中写出的类作用域限定会在详细信息中保留，且只出现一次，待决名（dependent names）也不例外
+
+```case
+tests-next/document_symbol/symbol_detail/05_scoped_types
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 符号范围
+
+每个符号都包含其完整声明的范围和名称范围；选择该符号时，编辑器会选中其名称。
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_ranges -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**名称与声明范围**
+
+符号的声明范围涵盖整个声明，名称范围涵盖代码中写出的完整名称，包括 `~Widget`、`operator==` 和 `operator bool`
+
+```case
+tests-next/document_symbol/symbol_ranges/01_selection_ranges
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2221 -->
+
+**多行签名**
+
+跨行声明的范围从第一行延伸至最后一行
+
+```case
+tests-next/document_symbol/symbol_ranges/02_multiline_signatures
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#475 -->
+
+**宏声明的符号**
+
+宏调用声明的符号列在调用位置，而非宏定义处
+
+```case
+tests-next/document_symbol/symbol_ranges/03_macro_expansions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1941 -->
+
+**宏实参中的名称**
+
+写在宏实参中的名称用作符号名称；若名称写在宏体中，则回退到宏调用处
+
+```case
+tests-next/document_symbol/symbol_ranges/04_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -309,58 +337,30 @@ tests/snap/document_symbol/missing_symbols/05_friend_definitions.cpp
 
 ## 符号标签
 
-<!-- BEGIN GENERATED ITEMS: symbol_tags -->
+标签用于标记符号已弃用，或描述其访问权限和存储属性。
+
+<!-- BEGIN GENERATED ITEMS: document_symbol/symbol_tags -->
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**弃用标签**
+**已弃用的符号**
 
-已弃用的符号尚未带有 LSP `deprecated` 符号标签
+已弃用的符号尚无 Deprecated 标签
 
-```snap
-tests/snap/document_symbol/symbol_tags/01_tags_deprecated.cpp
+```case
+tests-next/document_symbol/symbol_tags/01_deprecated
 ```
 
 <!-- END CAPABILITY -->
 
 <!-- BEGIN CAPABILITY: unsupported clangd#2123 -->
 
-**访问权限与存储属性标识**
+**访问权限与存储属性标签**
 
-大纲条目尚未显示访问权限、静态、虚或抽象修饰信息
+大纲尚未用标签标明成员的访问权限、`static`、`virtual` 或抽象性
 
-```snap
-tests/snap/document_symbol/symbol_tags/02_tags_modifiers.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- END GENERATED ITEMS -->
-
-## 位置准确性
-
-<!-- BEGIN GENERATED ITEMS: location_correctness -->
-
-<!-- BEGIN CAPABILITY: supported clangd#475 -->
-
-**宏展开生成的符号**
-
-宏调用生成的符号定位到宏调用处，而非宏定义处
-
-```snap
-tests/snap/document_symbol/location_correctness/01_macro_symbols.cpp
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported clangd#1941 -->
-
-**宏实参中书写的名称**
-
-选择范围指向宏实参中书写的名称；对于宏体中书写的名称，则回退到宏调用处
-
-```snap
-tests/snap/document_symbol/location_correctness/02_macro_argument_names.cpp
+```case
+tests-next/document_symbol/symbol_tags/02_modifiers
 ```
 
 <!-- END CAPABILITY -->

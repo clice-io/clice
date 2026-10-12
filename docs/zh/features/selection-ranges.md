@@ -2,23 +2,25 @@
 
 按语法扩大和缩小选区（`textDocument/selectionRange`）：每一步都把选区扩大到外层的下一个构造——表达式、连同分号的语句、声明、代码块——也会停在只有文本才看得出的位置，例如一对括号的内部、字符串字面量或注释的文本。以只读模式提供服务、没有编译出 AST 的文件，只有基于文本的这些步骤。
 
-<!-- The capability sections below are generated from the snapshot fixtures in
-     tests/snap/selection_range/. Do not edit the regions between the GENERATED
-     markers by hand — edit the fixture doc headers and run
-     `node tools/docs/feature.ts update`. -->
+<!-- The cards in the sections below are generated from the documented cases
+     in tests-next/selection_range/. Do not edit the regions between the
+     GENERATED markers by hand — edit the cases' README.md and run
+     `pixi run update-feature-docs`. -->
 
 ## 语法范围
 
-<!-- BEGIN GENERATED ITEMS: syntax_ranges -->
+从光标所在的名称开始，按代码结构逐步向外扩大选区。
+
+<!-- BEGIN GENERATED ITEMS: selection_range/syntax_ranges -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**表达式嵌套**
+**嵌套表达式**
 
-每一步把选区扩大到外层的下一个表达式，先到括号内部，再到括号本身
+选区从光标所在的名称开始，逐步扩大到包围它的各层表达式和语句
 
-```snap
-tests/snap/selection_range/syntax_ranges/01_expression_nesting.cpp
+```case
+tests-next/selection_range/syntax_ranges/01_nested_expression
 ```
 
 <!-- END CAPABILITY -->
@@ -27,12 +29,12 @@ tests/snap/selection_range/syntax_ranges/01_expression_nesting.cpp
 
 **语句和声明**
 
-语句或声明先选中分号之前的部分，再连同结尾的分号一起选中
+先选中语句或声明中分号前的部分，再将结尾的分号纳入选区
 
 局部变量从声明符扩大到整条声明语句。成员、全局变量或函数的声明以同样的方式纳入分号；模板的声明先纳入分号，再纳入 `template` 头。
 
-```snap
-tests/snap/selection_range/syntax_ranges/02_statement_semicolon.cpp
+```case
+tests-next/selection_range/syntax_ranges/02_statements
 ```
 
 <!-- END CAPABILITY -->
@@ -41,10 +43,10 @@ tests/snap/selection_range/syntax_ranges/02_statement_semicolon.cpp
 
 **实参和形参列表**
 
-调用的实参和函数的形参先不带括号选中，再连同括号选中
+先选中调用的实参列表和函数的形参列表，再将两侧的圆括号纳入选区
 
-```snap
-tests/snap/selection_range/syntax_ranges/03_argument_lists.cpp
+```case
+tests-next/selection_range/syntax_ranges/03_argument_lists
 ```
 
 <!-- END CAPABILITY -->
@@ -53,10 +55,10 @@ tests/snap/selection_range/syntax_ranges/03_argument_lists.cpp
 
 **模板实参和形参列表**
 
-模板实参和模板形参先在尖括号以内选中，再连同尖括号选中
+先选中尖括号内的模板实参列表和模板形参列表，再将尖括号纳入选区
 
-```snap
-tests/snap/selection_range/syntax_ranges/04_template_lists.cpp
+```case
+tests-next/selection_range/syntax_ranges/04_template_lists
 ```
 
 <!-- END CAPABILITY -->
@@ -65,12 +67,12 @@ tests/snap/selection_range/syntax_ranges/04_template_lists.cpp
 
 **宏实参**
 
-写在宏实参中的名字或表达式先在其书写位置选中，然后是实参列表，最后是整个宏调用
+先在宏实参的书写位置选中其中的名称或表达式，再依次选中实参列表和整个宏调用
 
 宏的替换文本在实参周围写出的代码，在文件中没有自己的位置：选区从实参直接扩大到宏调用。
 
-```snap
-tests/snap/selection_range/syntax_ranges/05_macro_arguments.cpp
+```case
+tests-next/selection_range/syntax_ranges/05_macro_arguments
 ```
 
 <!-- END CAPABILITY -->
@@ -79,10 +81,10 @@ tests/snap/selection_range/syntax_ranges/05_macro_arguments.cpp
 
 **Lambda 表达式**
 
-Lambda 的捕获列表、形参列表和函数体在扩大到整个 Lambda 之前各占一步
+在选区扩大到整个 Lambda 表达式的过程中，捕获列表、形参列表和函数体各自对应一个选择步骤
 
-```snap
-tests/snap/selection_range/syntax_ranges/06_lambdas.cpp
+```case
+tests-next/selection_range/syntax_ranges/06_lambdas
 ```
 
 <!-- END CAPABILITY -->
@@ -91,12 +93,12 @@ tests/snap/selection_range/syntax_ranges/06_lambdas.cpp
 
 **代码块及其内容**
 
-代码块中的语句、类的成员和命名空间中的声明先不带大括号选中，再连同大括号选中
+先选中代码块中的语句、类中的成员和命名空间中的声明，再将两侧的花括号纳入选区
 
 光标位于代码块内的空行上时，从代码块的内容开始选择。
 
-```snap
-tests/snap/selection_range/syntax_ranges/07_blocks.cpp
+```case
+tests-next/selection_range/syntax_ranges/07_blocks
 ```
 
 <!-- END CAPABILITY -->
@@ -105,18 +107,20 @@ tests/snap/selection_range/syntax_ranges/07_blocks.cpp
 
 ## 文本范围
 
-<!-- BEGIN GENERATED ITEMS: text_ranges -->
+仅由文本确定的选择步骤：选中字面量引号内的内容、注释的文本或指令所在的行。
+
+<!-- BEGIN GENERATED ITEMS: selection_range/text_ranges -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
 **字符串和字符字面量**
 
-字符串或字符字面量的文本先不带引号选中，再连同引号选中
+先选中字符串或字符字面量的文本，再将引号纳入选区
 
 编码前缀、原始字符串的定界符和用户定义后缀都不算在文本之内。
 
-```snap
-tests/snap/selection_range/text_ranges/01_literals.cpp
+```case
+tests-next/selection_range/text_ranges/01_literals
 ```
 
 <!-- END CAPABILITY -->
@@ -125,10 +129,10 @@ tests/snap/selection_range/text_ranges/01_literals.cpp
 
 **注释**
 
-先选中不含注释标记的注释文本，再选中整条注释，然后是它所在的那一串连续注释行
+先选中不含注释标记的注释文本，再选中整条注释，最后选中它所在的一组连续注释行
 
-```snap
-tests/snap/selection_range/text_ranges/02_comments.cpp
+```case
+tests-next/selection_range/text_ranges/02_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -137,10 +141,10 @@ tests/snap/selection_range/text_ranges/02_comments.cpp
 
 **预处理指令**
 
-先选中指令所包含的头文件名或其宏体中的括号，再选中整行指令
+先选中指令引入的头文件名或宏体中的括号范围，再选中指令所在的整行
 
-```snap
-tests/snap/selection_range/text_ranges/03_directives/main.cpp
+```case
+tests-next/selection_range/text_ranges/03_directives
 ```
 
 <!-- END CAPABILITY -->

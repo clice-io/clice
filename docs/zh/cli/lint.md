@@ -30,6 +30,88 @@ lint = false
 
 每个翻译单元从最近的 `.clang-tidy` 读取配置，继承方式与 clang-tidy 一致。与 clang-tidy 相同，只有 `Checks` 启用了某条编译器警告对应的 `clang-diagnostic-<flag>` 名称时，这条警告才算作检查结果。所有文件中的 `NOLINT`、`NOLINTNEXTLINE` 以及 `NOLINTBEGIN`/`NOLINTEND` 注释都会生效。头文件会在每个包含它的翻译单元中被检查，这与 clang-tidy 的行为一致；若多个翻译单元报出完全相同的结果，连 note 也一样，该结果在报告中只出现一次；报告按文件和位置排序，并保留 clang-tidy 附加的 note。
 
+## 示例
+
+### 编译器警告
+
+只有检查项指定的编译器警告才会计入检查结果。
+
+<!-- BEGIN GENERATED ITEMS: lint/checks -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**将编译器警告计入检查结果**
+
+构建启用的警告只有在检查项中指定时才会计入检查结果
+
+翻译单元的编译命令所启用的编译器警告，只有在 `Checks` 中列出了对应的 `clang-diagnostic-<flag>` 名称时，才会计入检查结果，并以该名称报告。其余警告不会出现在报告中。
+
+```case
+tests-next/lint/checks/02_compiler_warnings
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 检查结果
+
+共享头文件中的同一条检查结果只会报告一次，`NOLINT` 注释可在每个文件中抑制检查结果。
+
+<!-- BEGIN GENERATED ITEMS: lint/findings -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**头文件中的检查结果只报告一次**
+
+每个翻译单元都会检查其包含的头文件，头文件中的检查结果只报告一次
+
+与 clang-tidy 一样，每个翻译单元都会检查其包含的头文件，因此每个包含共享头文件的翻译单元都会报告该头文件中的同一条检查结果。报告会将这些重复结果合并为一行，并按文件和位置列出所有检查结果。
+
+```case
+tests-next/lint/findings/01_header_findings_merge
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**抑制注释**
+
+NOLINT 注释可抑制头文件和正在检查的文件中的检查结果
+
+`// NOLINT` 抑制所在行的检查结果，`// NOLINTNEXTLINE` 抑制下一行的检查结果，`// NOLINTBEGIN` 和 `// NOLINTEND` 抑制两者之间所有行的检查结果；它们可针对所有检查项，也可仅针对括号内指定的检查项。这些注释在翻译单元读取的每个文件中均生效，处理方式与 clang-tidy 一致。
+
+```case
+tests-next/lint/findings/03_suppression_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 排除的文件
+
+规则可将文件排除在报告之外。
+
+<!-- BEGIN GENERATED ITEMS: lint/scope -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**将文件排除在 Lint 检查之外**
+
+包含 `lint = false` 的规则会将匹配的文件排除在报告之外，无论是头文件还是翻译单元
+
+随项目附带的第三方库既不会作为独立的翻译单元接受检查，也不会在项目的翻译单元包含它时出现在报告中。
+
+```case
+tests-next/lint/scope/01_keep_files_out
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## clang-tidy 集成质量
 
 影响语言服务器中 clang-tidy 诊断质量的问题：

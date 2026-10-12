@@ -57,6 +57,81 @@ The command reads the disk; unsaved editor buffers are invisible to it. Save the
 
 The editor's rename selects the name under the cursor, or says why the symbol there cannot be renamed. The edits it returns are versioned against the open buffers, which it reads instead of the disk. Conflicts and stale files answer an error naming them; warnings, the places left alone and the edits made through heuristics are shown in a message.
 
+## Examples
+
+### Renaming a Symbol
+
+A dry run shows the plan, and a run without it writes the files.
+
+<!-- BEGIN GENERATED ITEMS: refactor/edits -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Plan, then write**
+
+A dry run lists the edits without writing them, and a run without it rewrites the files
+
+`--dry-run` answers with every name the rename would change, file by file, and
+with the places it leaves alone for you to check: the body of `CALL` spells
+`compute`, but the index cannot tell what a macro body names. Without
+`--dry-run` the files are rewritten. Renaming a class renames its constructors
+with it.
+
+```case
+tests-next/refactor/edits/01_plan_then_write
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Ambiguous Names
+
+A name several symbols spell renames nothing until a locator picks one.
+
+<!-- BEGIN GENERATED ITEMS: refactor/locators -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Name an ambiguous symbol**
+
+A name two symbols spell lists both, and a scoped name or a candidate's `symbol` picks one
+
+Nothing is renamed while the name is ambiguous. Each candidate carries a
+`symbol` to pass back to `--symbol` as it is.
+
+```case
+tests-next/refactor/locators/02_ambiguous_name
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Many Renames
+
+A list of renames is planned and written in one run.
+
+<!-- BEGIN GENERATED ITEMS: refactor/lists -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Rename a list at once**
+
+A file listing renames, one `<symbol> => <new name>` a line, makes them all in one run
+
+Every line is planned against the same index and the files are written once,
+all of the renames or none of them. Blank lines and lines starting with `//`
+are skipped.
+
+```case
+tests-next/refactor/lists/01_rename_list
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## Known Limitations
 
 - The checks are static: a change of meaning the index cannot see — argument-dependent lookup finding another function, a member of the new name capturing a use inside its class, a local or a template parameter of the new name clashing with or hiding the renamed one inside a function, an overload that cannot coexist with the renamed function — goes unnoticed. Build after renaming.

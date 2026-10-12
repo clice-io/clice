@@ -47,3 +47,125 @@
 `stale` 列出答案不得不略过其数据行的文件：它们在磁盘上的内容已经与建立索引时不一致，索引为它们保存的位置会指向移动过的文本。仅因所包含的头文件发生变化的文件，仍用它上一次的数据行作答。定义位于已过期文件中的符号会被报告为未找到，并给出文件名，这样读者就能区分“不存在”和“尚未建立索引”。只有答案查阅过的文件才会被检查：在文件建立索引之后新增的符号只会缺席，因为没有任何数据行指向那个文件——要询问磁盘的当前状态，请用 `--fresh`。索引从不读取编辑器中未保存的缓冲区：它描述的是磁盘上的内容。
 
 `--fresh` 会在作答前把索引更新到与磁盘一致：若编辑器会话正打开着该工作区，由它的服务器执行这轮索引；否则由命令自己运行索引器，尚无索引时从零开始建立。两种情况下都只重新编译输入发生变化的翻译单元。不加 `--fresh` 时，没有索引的工作区只会返回错误。
+
+## 示例
+
+### 问题
+
+每个问题都指定一个符号或文件，答案包含索引中有关它的信息。
+
+<!-- BEGIN GENERATED ITEMS: query/basics -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**符号的引用**
+
+所有出现某个方法名称的位置，包括其声明
+
+```case
+tests-next/query/basics/01_references
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**按名称搜索符号**
+
+名称查询会匹配按单词边界对齐的子序列
+
+```case
+tests-next/query/basics/02_symbol_search
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: partial -->
+
+**关于符号的问题**
+
+按名称、id 或所在行查找符号，查询它的定义和使用位置、调用者、它继承自哪些类型，以及文件中有哪些声明
+
+```case
+tests-next/query/basics/03_symbol_questions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**关于文件的问题**
+
+列出项目中的文件、某个文件包含的文件及包含它的文件、修改头文件的影响范围，以及与头文件对应的源文件
+
+```case
+tests-next/query/basics/04_file_questions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 按路径缩小范围
+
+使用 `path:` 条件可以将搜索范围缩小到部分文件，并找到仅在单个文件中可见的名称。
+
+<!-- BEGIN GENERATED ITEMS: query/names -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**文件局部符号**
+
+借助 `path:`，可以在文件内按名称查找仅在该文件中可见的符号，例如静态符号、局部符号和参数
+
+```case
+tests-next/query/names/05_file_local_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**按路径缩小范围**
+
+`path:` 过滤条件只保留指定路径下文件中的符号；路径可写为相对于工作区根目录的路径、文件名或绝对路径
+
+```case
+tests-next/query/names/06_path_filters
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### 已更改的文件
+
+答案会略过建立索引后发生更改的文件，`--fresh` 则会先将索引更新到最新状态。
+
+<!-- BEGIN GENERATED ITEMS: query/freshness -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**索引建立后更改的文件**
+
+对于建立索引后磁盘内容发生更改的文件，答案会略过索引中记录的相关信息，并在 `stale` 中列出这些文件
+
+```case
+tests-next/query/freshness/01_withheld_rows
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**回答前刷新索引**
+
+使用 `--fresh` 时，会先将索引更新到最新状态再回答问题；如果尚无索引，则会先建立索引
+
+```case
+tests-next/query/freshness/02_fresh_batch
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->

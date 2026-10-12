@@ -12,6 +12,50 @@ A JSON schema of the whole configuration is published at [`clice-config.schema.j
 
 Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the workspace root.
 
+## Editor Settings
+
+Settings an editor passes in `initializationOptions` take the place of the same settings in the file.
+
+<!-- BEGIN GENERATED ITEMS: config/layers -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Editor settings over the file**
+
+Rules the editor sends replace the rules of `clice.toml`
+
+`clice.toml` gives `main.cpp` the macro it uses, and the file compiles. An editor that sends its own `rules` in its settings replaces the file's rules rather than adding to them, so here the macro is gone.
+
+```case
+tests-next/config/layers/01_editor_overrides
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Restarting
+
+An edit to the configuration applies when the server starts again.
+
+<!-- BEGIN GENERATED ITEMS: config/loading -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Changes need a restart**
+
+clice reads `clice.toml` when the server starts, so an edit applies at the next start
+
+The rule's macro changes while the server runs, and `main.cpp` keeps the error until the server is started again.
+
+```case
+tests-next/config/loading/04_edited_file
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## Several Folders
 
 Each workspace folder the editor opens is a project of its own, with its own `clice.toml`, compilation databases and cache directory, as long as it holds a `clice.toml` or a `compile_commands.json` (in the folder itself or one of its immediate subdirectories, where discovery looks). A folder with neither that sits inside another open folder is part of that folder's project instead; and inside a folder, a directory holding its own `clice.toml` or database serves, as a project of its own, the files the folder's project does not build. A file opened outside every folder belongs to the nearest directory above it holding a `clice.toml` or a `compile_commands.json` (directly or in its `build/` directory), which is then served as if it were open, unless a served project loads that database already. A file is compiled by the project whose database lists it; a header without an entry of its own borrows a host from a project whose sources include it, preferring the project whose folder holds it. Workspace symbol search spans every project, and navigation — references, definitions and declarations, call and type hierarchies, implementations — reaches into the projects that declare the symbol in the same file. A file open in the editor answers only through the project serving it, so its unsaved edits are what every query sees.
@@ -500,6 +544,88 @@ patterns = ["src/**", "include/**"]
 default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
 ```
 
+## Rules in Practice
+
+Each example shows what a rule does to the files it matches.
+
+<!-- BEGIN GENERATED ITEMS: project/rules -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Files without a database**
+
+Files a rule matches compile with its default command, and files created later join the index
+
+`src/main.cpp` compiles under the rule's command, with no note that the command was guessed. A file created while the server runs compiles the same way at once and is indexed at the next look at the disk.
+
+```case
+tests-next/project/rules/01_default_command
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Databases in priority order**
+
+A file several databases list takes its command from the first one, and the others stay on offer as contexts
+
+Database `a` lists `main.cpp` with `-DFROM_A`; database `b` lists it with `-DFROM_B` and also lists `other.cpp`. `main.cpp` compiles with the command from `a` and can be switched to the one from `b`, while `other.cpp` takes its command from `b`.
+
+```case
+tests-next/project/rules/03_database_order
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Patterns start at `clice.toml`**
+
+A relative pattern matches paths under the directory of the `clice.toml` that declares it
+
+The rule appends `-DFEATURE` to the files under `src/`: `src/main.cpp` compiles, while `other.cpp`, beside `clice.toml`, misses the macro.
+
+```case
+tests-next/project/rules/05_relative_patterns
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Remove flags from commands**
+
+A rule takes flags out of a file's command, and a later rule's remove cancels an earlier append
+
+The database gives `main.cpp` both `-DBROKEN` and `-include prefix.h`, which the first rule removes, so it compiles. For `other.cpp` the second rule appends `-DFEATURE` and the third removes it again.
+
+```case
+tests-next/project/rules/09_remove_flags
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## Switching Configurations
 
 The `configuration` tags on rules form a menu, and one tag is active per project; untagged rules always apply. The active one is, in priority order, the `--configuration <tag>` argument (accepted by `clice serve`, `clice index`, `clice lint` and `clice inspect`), the persisted selection, or `default_configuration`. A selection is made from the editor — in VS Code the status bar shows the active configuration and clicking it opens the menu, other clients call `clice/switchConfiguration` — and is stored in `state.json` under `cache_dir`, never in `clice.toml`; it takes effect when the server is started again, which the VS Code extension does on its own. Each configuration keeps its own index under `cache_dir`, so switching back and forth never reindexes what a configuration already indexed. The tags are also how the batch commands choose an index: `clice index --configuration release` builds the release index, and `clice index --stats` reports the index of the configuration it resolves the same way.
+
+<!-- BEGIN GENERATED ITEMS: project/configurations -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**One command per board**
+
+Tagged rules form a menu of build configurations, and a switch applies when the server starts again
+
+Each board's rule gives its own default command, and `board-a` is the default configuration. Under it the header's `BOARD_B` branch is inactive; after switching to `board-b` and restarting, the `BOARD_A` branch is.
+
+```case
+tests-next/project/configurations/03_board_defaults
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->

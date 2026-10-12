@@ -12,6 +12,50 @@ clice 从工作区根目录的 `clice.toml` 读取配置；若该文件不存在
 
 文件中的相对路径和模式相对于配置文件自身所在的目录解析；通过 `initializationOptions` 传入的值则相对于工作区根目录解析。
 
+## 编辑器设置
+
+编辑器通过 `initializationOptions` 传入的设置会覆盖文件中的同名设置。
+
+<!-- BEGIN GENERATED ITEMS: config/layers -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**编辑器设置优先于文件配置**
+
+编辑器发送的规则会替换 `clice.toml` 中的规则
+
+`clice.toml` 为 `main.cpp` 提供了它使用的宏，因此该文件可以编译通过。如果编辑器在设置中发送自己的 `rules`，就会替换文件中的规则，而不是追加规则，因此本例中的宏会丢失。
+
+```case
+tests-next/config/layers/01_editor_overrides
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 重启
+
+对配置的修改会在服务器下次启动时生效。
+
+<!-- BEGIN GENERATED ITEMS: config/loading -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**修改后需要重启**
+
+clice 在服务器启动时读取 `clice.toml`，因此修改会在下次启动时生效
+
+服务器运行期间，规则中的宏发生了变化，但 `main.cpp` 仍然报错，直到服务器重新启动。
+
+```case
+tests-next/config/loading/04_edited_file
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## 多个文件夹
 
 编辑器打开的每个工作区文件夹，只要含有 `clice.toml` 或 `compile_commands.json`（位于该文件夹本身或其直接子目录中，即发现机制会查找的位置），就是一个独立的项目，各有自己的 `clice.toml`、编译数据库和缓存目录。两者都没有、且位于另一个已打开文件夹之内的文件夹，则属于那个文件夹的项目；而在一个文件夹内部，含有自己的 `clice.toml` 或数据库的目录，会作为独立的项目，服务那些该文件夹的项目不构建的文件。在所有文件夹之外打开的文件，归属于其上方最近的、含有 `clice.toml` 或 `compile_commands.json`（直接位于该目录中，或位于其 `build/` 目录中）的目录；随后该目录会像已打开的文件夹一样得到服务，除非某个正在服务的项目已经加载了那份数据库。文件由数据库中列有它的项目负责编译；没有自身条目的头文件，会从源文件包含了它的项目中借用宿主，并优先选择文件夹中含有该头文件的项目。工作区符号搜索覆盖所有项目；导航——查找引用、跳转到定义与声明、调用层级与类型层级、查找实现——会延伸到那些在同一文件中声明了该符号的项目。编辑器中打开的文件只通过服务它的项目作答，因此每个查询看到的都是它未保存的修改。
@@ -500,6 +544,88 @@ patterns = ["src/**", "include/**"]
 default_command = "arm-none-eabi-gcc -std=c23 -mcpu=cortex-m4 -Iinclude"
 ```
 
+## 规则应用示例
+
+每个示例都展示规则对匹配文件的作用。
+
+<!-- BEGIN GENERATED ITEMS: project/rules -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**没有编译数据库的文件**
+
+规则匹配到的文件使用该规则的默认命令编译，之后创建的文件也会加入索引
+
+`src/main.cpp` 使用规则指定的命令编译，不会提示该命令是推测得出的。在服务器运行期间创建的文件会立即以相同方式编译，并在下次扫描磁盘时加入索引。
+
+```case
+tests-next/project/rules/01_default_command
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**按优先级排列的编译数据库**
+
+文件出现在多个编译数据库中时，使用第一个数据库提供的命令，其余命令仍可作为上下文供选择
+
+编译数据库 `a` 为 `main.cpp` 列出的命令带有 `-DFROM_A`；编译数据库 `b` 为它列出的命令带有 `-DFROM_B`，还列出了 `other.cpp`。`main.cpp` 使用 `a` 中的命令编译，也可以切换到 `b` 中的命令，而 `other.cpp` 使用 `b` 中的命令。
+
+```case
+tests-next/project/rules/03_database_order
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模式以 `clice.toml` 为基准**
+
+相对模式匹配声明它的 `clice.toml` 所在目录下的路径
+
+规则会向 `src/` 下文件的编译命令追加 `-DFEATURE`：`src/main.cpp` 可以编译，而与 `clice.toml` 同目录的 `other.cpp` 缺少该宏。
+
+```case
+tests-next/project/rules/05_relative_patterns
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**从命令中移除标志**
+
+规则会从文件的命令中移除标志，后续规则的移除操作会抵消先前规则的追加操作
+
+编译数据库为 `main.cpp` 提供的命令同时包含 `-DBROKEN` 和 `-include prefix.h`，第一条规则将它们移除，因此该文件可以编译。对于 `other.cpp`，第二条规则追加 `-DFEATURE`，第三条规则又将其移除。
+
+```case
+tests-next/project/rules/09_remove_flags
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
 ## 切换配置
 
 规则上的 `configuration` 标签构成一份菜单，每个项目中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——VS Code 的状态栏显示生效的配置，点击即可打开菜单，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，VS Code 扩展会自行重启服务器。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index --stats` 报告按同样方式解析出的配置所对应的索引。
+
+<!-- BEGIN GENERATED ITEMS: project/configurations -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**每块板卡一条命令**
+
+带标签的规则组成构建配置菜单，配置切换会在服务器下次启动时生效
+
+每块板卡的规则都指定了各自的默认命令，`board-a` 是默认配置。使用该配置时，头文件中的 `BOARD_B` 分支处于非活动状态；切换到 `board-b` 并重启后，处于非活动状态的则是 `BOARD_A` 分支。
+
+```case
+tests-next/project/configurations/03_board_defaults
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
