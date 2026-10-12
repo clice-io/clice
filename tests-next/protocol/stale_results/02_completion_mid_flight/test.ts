@@ -67,7 +67,9 @@ test("read with an edit", async (t) => {
         },
     ]);
     const reply = replies.get("completion")?.result as
-        proto.CompletionList | proto.CompletionItem[] | null;
+        | proto.CompletionList
+        | proto.CompletionItem[]
+        | null;
     const items = Array.isArray(reply) ? reply : (reply?.items ?? []);
     await t.show(
         "completion",
