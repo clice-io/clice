@@ -788,7 +788,7 @@ tests/navigation/implicit_targets/08_implicit_conversions
 
 强制类型转换可跳转到其调用的构造函数或转换运算符
 
-在 `static_cast` 上，或在 C 风格强制类型转换的括号上执行“跳转到定义”，会跳转到它所选的构造函数或它调用的用户定义转换运算符。
+在 `static_cast` 上、C 风格强制类型转换的括号上或函数式类型转换的类型上执行“跳转到定义”，会跳转到它所选的构造函数或它调用的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/09_casts

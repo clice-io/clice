@@ -1681,7 +1681,7 @@ void stmt_references(const clang::Stmt* S,
         return;
     }
 
-    /// static_cast<double>(m) / (double)m
+    /// static_cast<double>(m) / (double)m / double(m)
     /// ^~~~ reference to the conversion function the cast calls
     if(auto* NCE = llvm::dyn_cast<clang::CXXNamedCastExpr>(S)) {
         refer_conversion(out, NCE, NCE->getOperatorLoc());
@@ -1689,6 +1689,10 @@ void stmt_references(const clang::Stmt* S,
     }
     if(auto* CSCE = llvm::dyn_cast<clang::CStyleCastExpr>(S)) {
         refer_conversion(out, CSCE, CSCE->getLParenLoc());
+        return;
+    }
+    if(auto* FCE = llvm::dyn_cast<clang::CXXFunctionalCastExpr>(S)) {
+        refer_conversion(out, FCE, FCE->getBeginLoc());
         return;
     }
 

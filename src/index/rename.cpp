@@ -437,6 +437,7 @@ RenamePlan plan_rename(const IndexQuery& query,
         }
     };
 
+    clang::IdentifierTable keywords(cxx());
     for(auto& member: target.group) {
         for(auto kind: {RelationKind::Definition,
                         RelationKind::Declaration,
@@ -455,7 +456,6 @@ RenamePlan plan_rename(const IndexQuery& query,
                     // one on another name is a macro's invocation.
                     auto written =
                         llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
-                    clang::IdentifierTable keywords(cxx());
                     if(llvm::any_of(written, identifier_char) &&
                        keywords.get(written).getTokenID() == clang::tok::identifier) {
                         plan.unconfirmed.push_back(

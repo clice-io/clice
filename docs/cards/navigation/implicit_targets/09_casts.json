@@ -4,13 +4,13 @@
   "subtopic": "implicit_targets",
   "title": "Cast conversion navigation",
   "summary": "A cast navigates to the constructor or conversion operator it runs",
-  "prose": "Go-to-definition on a `static_cast`, or on the parenthesis of a C-style\ncast, reaches the constructor it selects or the user-defined conversion\noperator it calls.",
+  "prose": "Go-to-definition on a `static_cast`, on the parenthesis of a C-style cast\nor on the type of a functional cast reaches the constructor it selects or\nthe user-defined conversion operator it calls.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Meters {\n    explicit operator double() const;\n};\n\nstruct Foo {\n    explicit Foo(int value);\n};\n\nvoid use(Meters m) {\n    double d = static_cast<double>(m);\n    double e = (double)m;\n    Foo f = static_cast<Foo>(42);\n}\n",
+      "text": "struct Meters {\n    explicit operator double() const;\n};\n\nstruct Foo {\n    explicit Foo(int value);\n};\n\nvoid use(Meters m) {\n    double d = static_cast<double>(m);\n    double e = (double)m;\n    double g = double(m);\n    Foo f = static_cast<Foo>(42);\n}\n",
       "markers": [
         {
           "name": "cast_conv",
@@ -25,9 +25,15 @@
           "range": false
         },
         {
+          "name": "functional_cast",
+          "begin": 205,
+          "end": 205,
+          "range": false
+        },
+        {
           "name": "cast_ctor",
-          "begin": 202,
-          "end": 202,
+          "begin": 228,
+          "end": 228,
           "range": false
         }
       ]
@@ -62,6 +68,28 @@
         {
           "label": "c_cast",
           "marker": "c_cast",
+          "value": {
+            "definition": [
+              {
+                "$place": "explicit ⟦operator double⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 28
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "functional_cast",
+          "marker": "functional_cast",
           "value": {
             "definition": [
               {
