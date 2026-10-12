@@ -276,7 +276,8 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
 
 /// A placeholder colors as the type it stands for when that type is named
 /// by a builtin keyword or a class; a pointer, a function or a type not
-/// deduced yet leaves the keyword alone.
+/// deduced yet leaves the keyword alone. Of the class's modifiers it keeps
+/// where the class is from: the keyword is no deprecated or abstract use.
 Classified classify_placeholder(clang::QualType type) {
     Classified result;
     if(type.isNull()) {
@@ -286,6 +287,12 @@ Classified classify_placeholder(clang::QualType type) {
         result.kind = SymbolKind::Primitive;
     } else if(const auto* tag = type->getAsTagDecl()) {
         result = classify_decl(tag, RelationKind::Reference);
+        constexpr auto kept = SymbolModifiers::to_mask(SymbolModifiers::GlobalScope) |
+                              SymbolModifiers::to_mask(SymbolModifiers::FileScope) |
+                              SymbolModifiers::to_mask(SymbolModifiers::ClassScope) |
+                              SymbolModifiers::to_mask(SymbolModifiers::FunctionScope) |
+                              SymbolModifiers::to_mask(SymbolModifiers::DefaultLibrary);
+        result.modifiers &= kept;
     } else {
         return result;
     }

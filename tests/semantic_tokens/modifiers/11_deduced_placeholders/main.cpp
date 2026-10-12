@@ -1,6 +1,7 @@
 // A placeholder colors as the type it stands for only when that type is
 // named by a keyword or a class: a pointer, a type a template has not
-// deduced yet and an init-capture's unwritten `auto` keep the keyword.
+// deduced yet and an init-capture's unwritten `auto` keep the keyword. It
+// is no use of a deprecated class.
 
 struct Point {
     int x;
@@ -20,3 +21,6 @@ void generic(T input) {
 }
 
 auto lambda = [§(capture)captured = value] { return captured; };
+
+struct [[deprecated]] Legacy {};
+§(deprecated)auto legacy = Legacy{};

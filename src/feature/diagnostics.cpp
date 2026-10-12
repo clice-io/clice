@@ -106,8 +106,9 @@ private:
     /// the first of the errors landing on one spot kept; any other to its
     /// first note in the main file. A borrowed includer context is the
     /// host's code: an error raised there moves to where the main file
-    /// takes part in it, a note, and a fatal one, which silences everything
-    /// after it, to the top. Nothing else concerns the main file.
+    /// takes part in it, a note, and to the top a fatal one, which silences
+    /// everything after it, or a missing header, the likely cause of what
+    /// goes wrong after it. Nothing else concerns the main file.
     bool place(const Diagnostic& main,
                llvm::ArrayRef<Diagnostic> notes,
                protocol::Diagnostic& diagnostic) {
@@ -147,7 +148,8 @@ private:
                 where = "In includer context";
                 if(auto note = llvm::find_if(notes, in_main); note != notes.end()) {
                     anchor = note->range;
-                } else if(main.id.level == DiagnosticLevel::Fatal) {
+                } else if(main.id.level == DiagnosticLevel::Fatal ||
+                          main.id.value == clang::diag::err_pp_file_not_found) {
                     anchor = LocalSourceRange{0, 0};
                 }
             } else {

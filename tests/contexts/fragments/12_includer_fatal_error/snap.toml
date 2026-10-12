@@ -1,0 +1,4 @@
+[test."ops.def"]
+diagnostics = [
+    { at = "⟦⟧OP(add)", severity = "error", message = "In includer context: recursive template instantiation exceeded maximum depth of 1024", source = "clang", code = "err_template_recursion_depth_exceeded" },
+]

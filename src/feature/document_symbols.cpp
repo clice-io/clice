@@ -97,6 +97,25 @@ auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> 
     return detail;
 }
 
+/// The template arguments an explicit instantiation of a function names:
+/// as written, or as deduced when it writes none.
+auto instantiation_args(const clang::ExplicitInstantiationDecl& directive,
+                        const clang::FunctionDecl& function) -> std::string {
+    std::string args;
+    llvm::raw_string_ostream stream(args);
+    clang::PrintingPolicy policy(function.getASTContext().getLangOpts());
+    if(auto count = directive.getNumTemplateArgs(); count && *count != 0) {
+        llvm::SmallVector<clang::TemplateArgumentLoc> written;
+        for(unsigned index = 0; index < *count; index += 1) {
+            written.push_back(directive.getTemplateArg(index));
+        }
+        clang::printTemplateArgumentList(stream, written, policy);
+    } else if(const auto* deduced = function.getTemplateSpecializationArgs()) {
+        clang::printTemplateArgumentList(stream, deduced->asArray(), policy);
+    }
+    return args;
+}
+
 /// Collects the outline by walking the unit's cached Semantics node table —
 /// the DFS pre-order record of the main file's written AST — instead of
 /// running another RecursiveASTVisitor over the TU. Nesting comes for free:
@@ -173,9 +192,17 @@ private:
         // An explicit instantiation directive outlines as a childless symbol
         // of its specialization: the instantiated members sit at the pattern.
         if(const auto* directive = llvm::dyn_cast<clang::ExplicitInstantiationDecl>(decl)) {
-            add_symbol(*directive->getSpecialization(),
-                       directive->getNameLoc(),
-                       directive->getSourceRange());
+            const auto* specialization = directive->getSpecialization();
+            auto* symbol =
+                add_symbol(*specialization, directive->getNameLoc(), directive->getSourceRange());
+            // name_of spells the arguments of a function specialization
+            // only when it is an explicit specialization: a library's
+            // `extern template` would otherwise name every use of it so.
+            const auto* function = llvm::dyn_cast<clang::FunctionDecl>(specialization);
+            if(symbol && function &&
+               clang::isTemplateInstantiation(function->getTemplateSpecializationKind())) {
+                symbol->name += instantiation_args(*directive, *function);
+            }
             return false;
         }
 

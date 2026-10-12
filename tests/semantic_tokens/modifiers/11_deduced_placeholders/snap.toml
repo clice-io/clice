@@ -30,3 +30,8 @@ modifiers = ["deduced"]
 text = "captured"
 type = "variable"
 modifiers = ["definition", "functionScope"]
+
+[answers.deprecated.semantic_token]
+text = "auto"
+type = "struct"
+modifiers = ["deduced", "globalScope"]
