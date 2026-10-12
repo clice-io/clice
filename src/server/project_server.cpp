@@ -19,6 +19,7 @@ import :server.project_server;
 import :support.logging;
 import :vfs.cache_store;
 import :vfs.path;
+import :worker.probe;
 import :worker.protocol;
 
 namespace clice {
@@ -410,6 +411,7 @@ void ProjectServer::tick_databases() {
     auto events = tracker->tick_cdb();
     if(!events.empty()) {
         dispatch(events);
+        server.probe.happened(LoopEvent::DatabaseChange);
     }
 }
 
@@ -518,6 +520,9 @@ kota::task<> ProjectServer::checkpoint_task() {
     while(true) {
         co_await kota::sleep(SchedulingStack::checkpoint_interval());
         co_await sched.checkpoint();
+        if(sched.store.last_save_shards() > 0) {
+            server.probe.happened(LoopEvent::Checkpoint);
+        }
         drain_store_evictions();
     }
 }

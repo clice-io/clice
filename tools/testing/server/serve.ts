@@ -17,10 +17,12 @@ import { Workspace } from "../../client/workspace.ts";
 import { anomaliesInLogFiles, serverEnv } from "../../process_gate.ts";
 import { withTimeout } from "../../promise.ts";
 import {
+    WatchRequest,
     type BuildKind,
     type ContextItem,
     type CurrentContextResult,
     type ListConfigurationsResult,
+    type LoopEvent,
     type QueryContextResult,
     type StatsResult,
     type SwitchConfigurationResult,
@@ -124,6 +126,12 @@ export interface ServerOptions {
 export interface Park {
     reached(): Promise<void>;
     release(): Promise<void>;
+}
+
+/// An event of the server's background loops the test waits for
+/// (`s.watch`).
+export interface Watch {
+    reached(): Promise<void>;
 }
 
 interface BuildCounts {
@@ -945,6 +953,25 @@ export class Serve extends Client {
                 this.server === placed
                     ? this.ask(`release ${where}`, (client) => client.release(id))
                     : Promise.resolve(),
+        };
+    }
+
+    /// Watch for the next `event` of the server's background loops, which
+    /// no request of the test's starts (clice/internal/watch): a database
+    /// change the database loop applied, files the disk loop found
+    /// changed, a checkpoint that committed index shards. Resolves once
+    /// placed; `reached` resolves at the event.
+    async watch(event: LoopEvent): Promise<Watch> {
+        const id = await this.ask(
+            `watch for ${event}`,
+            async (client) => (await client.sendRequest(WatchRequest, { event })).id,
+        );
+        const placed = this.server;
+        return {
+            reached: () =>
+                this.server === placed
+                    ? this.ask(`${event} seen`, (client) => client.parkedBy(id))
+                    : Promise.reject(new Error(`the ${event} watch: its server is gone`)),
         };
     }
 

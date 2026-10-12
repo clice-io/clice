@@ -82,10 +82,11 @@ test("background ticks see a rewrite", async (t) => {
     const s = await t.start({ config: { tracker: { workspace_poll_seconds: 1 } } });
     await s.indexed();
     await targets(t, s, "v1");
-    // No hook and no save, and the index answers without a look at the
+    // No poll and no save, and the index answers without a look at the
     // disk: only a tick of the loop sees the rewrite.
+    const seen = await s.watch("diskChange");
     t.disk.write("header.h", HEADER_V2);
-    await t.elapse(3_000, "the 1 s workspace loop's tick, three times over");
+    await seen.reached();
     await s.indexed();
     await targets(t, s, "v2");
 });

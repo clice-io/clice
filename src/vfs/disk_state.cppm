@@ -183,8 +183,9 @@ public:
     void expire_under(llvm::StringRef dir);
 
     /// Look at every watched flag, then at the files that are due, longest
-    /// due first, for about `budget` of wall time.
-    void tick(Clock::duration budget);
+    /// due first, for about `budget` of wall time. Returns how many files
+    /// the looks found changed.
+    std::size_t tick(Clock::duration budget);
 
     /// Look at these files now, due or not, under any policy.
     void look(llvm::ArrayRef<Fid> fids);

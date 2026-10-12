@@ -295,13 +295,25 @@ struct GateParams {
     std::string uri;
 };
 
+/// clice/internal/watch — TEST-ONLY, present while project.test_hooks is on.
+/// Watches for the next `event` of the server's background loops after it
+/// is placed: "databaseChange", the database loop applied a changed
+/// compilation database; "diskChange", the disk loop's looks found files
+/// changed; "checkpoint", a checkpoint committed index shards (see
+/// LoopEvent). The reply is a hold id: clice/internal/held announces the
+/// event.
+struct WatchParams {
+    std::string event;
+};
+
 struct ReleaseParams {
     std::uint64_t id = 0;
 };
 
 struct ReleaseResult {};
 
-/// Notification: the hold parked a reply.
+/// Notification: the hold parked a reply, the gate a request's work, or the
+/// watch saw its event.
 struct HeldParams {
     std::uint64_t id = 0;
 };

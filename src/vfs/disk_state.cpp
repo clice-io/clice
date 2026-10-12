@@ -165,7 +165,8 @@ void DiskState::add_package(llvm::StringRef dir) {
     });
 }
 
-void DiskState::tick(Clock::duration budget) {
+std::size_t DiskState::tick(Clock::duration budget) {
+    auto before = changes.size();
     look_flags();
 
     // Due by the schedule's clock; the budget is wall time, and every tick
@@ -202,7 +203,7 @@ void DiskState::tick(Clock::duration budget) {
             batch.push_back(entry.fid);
         }
         if(batch.empty()) {
-            return;
+            return changes.size() - before;
         }
         std::ranges::sort(batch, {}, [&](Fid fid) { return path(fid); });
         StatusBatch statuses;
@@ -212,7 +213,7 @@ void DiskState::tick(Clock::duration budget) {
                     auto& file = files.find(rest)->second;
                     schedule(rest, file, file.due);
                 }
-                return;
+                return changes.size() - before;
             }
             looked += 1;
             look_at(fid, statuses);

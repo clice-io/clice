@@ -25,9 +25,10 @@ test("cdb stamped tick settles", async (t) => {
 test("cdb polling loop live", async (t) => {
     const s = await t.start({ config: { tracker: { workspace_poll_seconds: 1 } } });
     await t.show("before", s.errors("main.cpp"));
+    // No poll: the database loop's own ticks see the stamp settle and
+    // reload.
+    const reload = await s.watch("databaseChange");
     t.disk.database({ "main.cpp": ["-DFEATURE"] });
-    // No hook: the database loop ticks every 250 ms and reloads after two
-    // ticks see one stamp.
-    await t.elapse(3_000, "the database loop's two settling ticks, three times over");
+    await reload.reached();
     expect(await s.errors("main.cpp")).toEqual([]);
 });

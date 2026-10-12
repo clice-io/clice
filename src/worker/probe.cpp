@@ -13,12 +13,23 @@ llvm::StringRef build_kind_name(BuildKind kind) {
     return build_kind_names[std::to_underlying(kind)];
 }
 
-std::optional<BuildKind> parse_build_kind(llvm::StringRef name) {
-    auto it = llvm::find(build_kind_names, name);
-    if(it == build_kind_names.end()) {
+/// The enumerator `names` spells `name` for.
+template <typename Enum, std::size_t N>
+static std::optional<Enum> parse_name(const std::array<llvm::StringLiteral, N>& names,
+                                      llvm::StringRef name) {
+    auto it = llvm::find(names, name);
+    if(it == names.end()) {
         return std::nullopt;
     }
-    return static_cast<BuildKind>(it - build_kind_names.begin());
+    return static_cast<Enum>(it - names.begin());
+}
+
+std::optional<BuildKind> parse_build_kind(llvm::StringRef name) {
+    return parse_name<BuildKind>(build_kind_names, name);
+}
+
+std::optional<LoopEvent> parse_loop_event(llvm::StringRef name) {
+    return parse_name<LoopEvent>(loop_event_names, name);
 }
 
 kota::task<> BuildProbe::returned(BuildKind kind, llvm::StringRef file) {
@@ -36,16 +47,20 @@ kota::task<> BuildProbe::returned(BuildKind kind, llvm::StringRef file) {
     co_await released->wait();
 }
 
-std::uint64_t BuildProbe::hold(BuildKind kind, std::string file) {
+std::uint64_t BuildProbe::take_id() {
     auto id = next_id;
     next_id += 1;
+    return id;
+}
+
+std::uint64_t BuildProbe::hold(BuildKind kind, std::string file) {
+    auto id = take_id();
     placed.push_back({.id = id, .kind = kind, .file = std::move(file)});
     return id;
 }
 
 std::uint64_t BuildProbe::gate(std::string tag) {
-    auto id = next_id;
-    next_id += 1;
+    auto id = take_id();
     standing.push_back({.id = id, .tag = std::move(tag)});
     return id;
 }
@@ -112,6 +127,26 @@ void BuildProbe::release_all() {
         release_gate(gate);
     }
     standing.clear();
+}
+
+std::uint64_t BuildProbe::watch(LoopEvent event) {
+    auto id = take_id();
+    watches.push_back({.id = id, .event = event});
+    return id;
+}
+
+void BuildProbe::happened(LoopEvent event) {
+    llvm::SmallVector<std::uint64_t> seen;
+    std::erase_if(watches, [&](const Watch& watch) {
+        if(watch.event != event) {
+            return false;
+        }
+        seen.push_back(watch.id);
+        return true;
+    });
+    for(auto id: seen) {
+        on_held.emit(id);
+    }
 }
 
 }  // namespace clice

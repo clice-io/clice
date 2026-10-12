@@ -1287,6 +1287,21 @@ void LSPClient::register_extensions() {
                         co_return to_raw(ext::ReleaseResult{});
                     });
 
+    peer.on_request("clice/internal/watch",
+                    [this](RequestContext& ctx, const ext::WatchParams& params) -> RawResult {
+                        auto& srv = this->server;
+                        if(!srv.test_hooks()) {
+                            co_await kota::fail(hooks_off());
+                        }
+                        auto event = parse_loop_event(params.event);
+                        if(!event) {
+                            co_await kota::fail(kota::ipc::Error{
+                                protocol::ErrorCode::InvalidParams,
+                                R"(a watch names "databaseChange", "diskChange" or "checkpoint")"});
+                        }
+                        co_return to_raw(ext::HoldResult{srv.probe.watch(*event)});
+                    });
+
     peer.on_request("clice/internal/logFlood",
                     [this](RequestContext& ctx, const ext::LogFloodParams& params) -> RawResult {
                         // Load-generating hook: a stray client must not be able to

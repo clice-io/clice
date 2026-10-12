@@ -11,30 +11,34 @@ import { generate, test, type Serve, type TestContext } from "@clice/tools/testi
 // saves both.
 const IDLE = { project: { idle_timeout_ms: 1_000 } };
 
-async function cutShort(t: TestContext, env: Record<string, string> = {}): Promise<Serve> {
+async function serve(t: TestContext, env: Record<string, string> = {}): Promise<Serve> {
     t.disk.write(generate.units(2));
-    const s = await t.start({ config: IDLE, env });
+    return t.start({ config: IDLE, env });
+}
+
+async function cutShort(s: Serve): Promise<void> {
     const first = await s.park("index", "unit_0.cpp", { at: "reply" });
     const second = await s.park("index", "unit_1.cpp", { at: "reply" });
     await first.reached();
     await first.release();
     await second.reached();
-    return s;
 }
 
 test("checkpoint survives a kill", async (t) => {
-    const s = await cutShort(t, { CLICE_TEST_CHECKPOINT_MS: "100" });
-    await t.elapse(
-        1_000,
-        "checkpoints every 100 ms (CLICE_TEST_CHECKPOINT_MS) commit the merged unit",
-    );
+    const s = await serve(t, { CLICE_TEST_CHECKPOINT_MS: "100" });
+    // Placed before the merge: the first checkpoint to commit shards is
+    // the one after it.
+    const checkpoint = await s.watch("checkpoint");
+    await cutShort(s);
+    await checkpoint.reached();
     await s.kill();
     await t.cli("index");
 });
 
 // Zed kills the server as soon as the shutdown request is answered.
 test("shutdown reply follows the save", async (t) => {
-    const s = await cutShort(t);
+    const s = await serve(t);
+    await cutShort(s);
     // The raw client: the shutdown request alone, with no exit after it.
     await s.client.sendRequest(proto.ShutdownRequest.type);
     await s.kill();
@@ -45,7 +49,8 @@ test(
     "sigterm saves the round",
     { except: { win32: "Windows has no SIGTERM to send" } },
     async (t) => {
-        const s = await cutShort(t);
+        const s = await serve(t);
+        await cutShort(s);
         // The raw client: the signal is what the test sends, not a request.
         s.client.child.kill("SIGTERM");
         expect(await s.client.exited).toBe(0);

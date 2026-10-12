@@ -314,6 +314,20 @@ export interface GateParams {
 
 export const GateRequest = new RequestType<GateParams, HoldResult, void>("clice/internal/gate");
 
+/// What the server's background loops do that a test waits for: the
+/// database loop applied a changed compilation database, the disk loop's
+/// looks found files changed, a checkpoint committed index shards.
+export type LoopEvent = "databaseChange" | "diskChange" | "checkpoint";
+
+/// clice/internal/watch — TEST-ONLY, present while project.test_hooks is on.
+/// Watches for the next `event` after it is placed. The reply is a hold id:
+/// clice/internal/held announces the event.
+export interface WatchParams {
+    event: LoopEvent;
+}
+
+export const WatchRequest = new RequestType<WatchParams, HoldResult, void>("clice/internal/watch");
+
 export interface ReleaseParams {
     id: number;
 }

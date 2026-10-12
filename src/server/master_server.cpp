@@ -671,7 +671,9 @@ kota::task<> MasterServer::poll_task() {
     constexpr auto budget = std::chrono::milliseconds(2);
     while(true) {
         co_await kota::sleep(interval);
-        files.disk.tick(budget);
+        if(files.disk.tick(budget) > 0) {
+            probe.happened(LoopEvent::DiskChange);
+        }
         for(auto& project: projects) {
             project->tick_databases();
         }

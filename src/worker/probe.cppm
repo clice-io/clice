@@ -28,13 +28,34 @@ llvm::StringRef build_kind_name(BuildKind kind);
 
 std::optional<BuildKind> parse_build_kind(llvm::StringRef name);
 
+/// What the server's background loops do that a test waits for, as no
+/// request of the test's starts it.
+enum class LoopEvent : std::uint8_t {
+    /// The database loop applied a change of a compilation database.
+    DatabaseChange,
+    /// The disk loop's looks found files changed.
+    DiskChange,
+    /// A checkpoint committed index shards.
+    Checkpoint,
+};
+
+/// The events' names in the protocol, by LoopEvent.
+constexpr inline std::array<llvm::StringLiteral, 3> loop_event_names = {
+    "databaseChange",
+    "diskChange",
+    "checkpoint",
+};
+
+std::optional<LoopEvent> parse_loop_event(llvm::StringRef name);
+
 /// Test instrumentation of the builds the worker pool dispatches, fed only
 /// while test hooks are on (project.test_hooks, see WorkerPool::probe): how
 /// many builds of each kind a worker ran per file, and holds that park a
 /// build's reply between its arrival and its delivery. Parked, the build is
 /// still in flight to the master — its round has not finished, the requests
 /// waiting on it wait on — though its worker is free again: a test acts
-/// while the master waits for a build, without making one slow.
+/// while the master waits for a build, without making one slow. Watches
+/// announce what the background loops did, which parks nothing.
 class BuildProbe {
 public:
     /// Builds a worker ran to their end — answered, or died running — per
@@ -80,7 +101,16 @@ public:
     /// Release every hold and gate: a stopping pool parks nothing.
     void release_all();
 
-    /// A hold parked a reply, or a gate a request's work; carries its id.
+    /// Watch for the next `event`; on_held announces it under the returned
+    /// id, drawn with the holds'.
+    std::uint64_t watch(LoopEvent event);
+
+    /// A background loop did `event`: every watch for it is announced and
+    /// dropped.
+    void happened(LoopEvent event);
+
+    /// A hold parked a reply, a gate a request's work, or a watch saw its
+    /// event; carries its id.
     Signal<std::uint64_t> on_held;
 
     struct Hold {
@@ -118,8 +148,16 @@ public:
     }
 
 private:
+    struct Watch {
+        std::uint64_t id;
+        LoopEvent event;
+    };
+
+    std::uint64_t take_id();
+
     std::vector<Hold> placed;
     std::vector<Gate> standing;
+    std::vector<Watch> watches;
     std::uint64_t next_id = 1;
 };
 
