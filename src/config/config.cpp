@@ -265,14 +265,18 @@ struct DenyUnknownKeys {
     constexpr static bool deny_unknown_fields = true;
 };
 
-/// The end of the key or value below `node` that starts at `begin`.
+/// The end of the key or value below `node` that starts at `begin`, the
+/// innermost one: an array of tables starts where its first table does.
 static std::optional<toml::source_position> end_at(const toml::node& node,
                                                    const toml::source_position& begin) {
     auto at = [&](const toml::node& child) -> std::optional<toml::source_position> {
+        if(auto end = end_at(child, begin)) {
+            return end;
+        }
         if(child.source().begin == begin) {
             return child.source().end;
         }
-        return end_at(child, begin);
+        return std::nullopt;
     };
     if(auto* table = node.as_table()) {
         for(auto& [key, value]: *table) {
