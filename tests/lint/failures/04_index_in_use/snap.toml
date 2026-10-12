@@ -6,8 +6,8 @@ Linted 1 translation unit in #s: 1 finding.
 exit = 1
 
 ["beside a server"."$ clice lint --index --workers 2"]
-stderr = [
-    "warning: Another clice process (pid #) is writing the index cache at ${WS}/.clice; index persistence is disabled for this process",
-    "error: Cannot persist the index at ${WS}/.clice; see the log for the cause and rerun",
-]
+stderr = '''
+warning: Another clice process (pid #) is writing the index cache at ${WS}/.clice; index persistence is disabled for this process
+error: Cannot persist the index at ${WS}/.clice; see the log for the cause and rerun
+'''
 exit = 2

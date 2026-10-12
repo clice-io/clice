@@ -90,7 +90,7 @@ function resourceless(text: string): string {
 /// elided.
 export function normalize(text: string, root: string): string {
     return portable(text, root)
-        .replace(/\.clice\/logs\/[^/\s"']+/g, ".clice/logs/${SESSION}")
+        .replace(/\b\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_\d+\b/g, "${SESSION}")
         .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b/g, "#time")
         .replace(/\b\d+(\.\d+)?(ms|s)\b/g, "#$2")
         .replace(/\b\d+(\.\d+)? (B|KB|MB|GB)\b/g, "# $2")
@@ -113,7 +113,7 @@ export function buildVersion(): string {
 
 /// Warnings and errors from stderr, the log decoration dropped; plain lines
 /// (a message the command prints itself) stay, progress lines go.
-function stderrLines(stderr: string): string[] {
+function stderrText(stderr: string): string {
     const out: string[] = [];
     // A Windows log line ends in \r\r\n: the logger's \r\n through a
     // text-mode stream.
@@ -123,12 +123,12 @@ function stderrLines(stderr: string): string[] {
         }
         const log = LOG_LINE.exec(line);
         if (log === null) {
-            out.push(`stderr: ${line}`);
+            out.push(line.trimEnd());
         } else if (log[1] === "warning" || log[1] === "error" || log[1] === "critical") {
             out.push(`${log[1]}: ${log[2] ?? ""}`);
         }
     }
-    return out;
+    return out.join("\n");
 }
 
 /// Every string of a JSON value, keys included, through `map`.
@@ -459,7 +459,7 @@ export async function runCommand(
     }
     const versioned = (text: string): string => text.replaceAll(buildVersion(), "${VERSION}");
     const stdout = stdoutText(resourceless(versioned(result.stdout)), root);
-    const stderr = stderrLines(normalize(resourceless(versioned(result.stderr)), root));
+    const stderr = stderrText(normalize(resourceless(versioned(result.stderr)), root));
     const files = written(before, contents(root));
     return {
         label: [
@@ -469,7 +469,7 @@ export async function runCommand(
         ].join(" "),
         transcript: {
             ...(stdout === "" || options.stdout !== undefined ? {} : { stdout }),
-            ...(stderr.length === 0 ? {} : { stderr }),
+            ...(stderr === "" ? {} : { stderr }),
             ...ending(result.status, result.signal),
             ...(Object.keys(files).length === 0 ? {} : { files }),
         },

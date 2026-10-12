@@ -10,7 +10,5 @@ stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/b/.clice/logs/${SESSION}
 '''
-stderr = [
-    "warning: [guidance] Cache directory ${WS}/shared/.clice serves the project at ${WS}/a; ${WS}/b keeps its cache in ${WS}/b/.clice",
-]
+stderr = "warning: [guidance] Cache directory ${WS}/shared/.clice serves the project at ${WS}/a; ${WS}/b keeps its cache in ${WS}/b/.clice"
 exit = 0

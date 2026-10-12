@@ -5,11 +5,11 @@ killed = "SIGPIPE"
 killed = "SIGPIPE"
 
 ["a full nonblocking pipe"."$ clice inspect document_symbol big.cpp (stdout: fifo unread)"]
-stderr = ["error: Cannot write the output: Resource temporarily unavailable"]
+stderr = "error: Cannot write the output: Resource temporarily unavailable"
 exit = 1
 
 ["an unwritable output"."$ clice inspect document_symbol main.cpp (stdout: read only)"]
-stderr = ["error: Cannot write the output: Bad file descriptor"]
+stderr = "error: Cannot write the output: Bad file descriptor"
 exit = 1
 
 ["stderr merged into stdout"."$ clice inspect document_symbol big.cpp (stdout: merged)"]

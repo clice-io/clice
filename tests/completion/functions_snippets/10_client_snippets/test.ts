@@ -13,6 +13,7 @@ const config = {
 test("plain text client", async (t) => {
     const s = await t.start({ config });
     s.open("main.cpp");
+    await s.sync();
     await t.show("call", s.completion(t.marker("call")), { parts: ["insert"] });
 });
 
@@ -24,5 +25,6 @@ test("snippet client", async (t) => {
         },
     });
     s.open("main.cpp");
+    await s.sync();
     await t.show("call", s.completion(t.marker("call")), { parts: ["insert"] });
 });

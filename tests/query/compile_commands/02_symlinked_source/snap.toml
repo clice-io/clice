@@ -3,10 +3,10 @@ stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = [
-    "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable",
-    "warning: Toolchain resolve failed for ${WS}/real/main.cpp: Driver ${WS}/missing-cc not found or not executable",
-]
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+warning: Toolchain resolve failed for ${WS}/real/main.cpp: Driver ${WS}/missing-cc not found or not executable
+'''
 exit = 0
 
 ["through a symlink"."$ clice query --method compileCommand --path link/main.cpp"]
@@ -29,8 +29,8 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = [
-    "error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable",
-    "warning: Toolchain resolve failed for ${WS}/real/main.cpp: Driver ${WS}/missing-cc not found or not executable",
-]
+stderr = '''
+error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
+warning: Toolchain resolve failed for ${WS}/real/main.cpp: Driver ${WS}/missing-cc not found or not executable
+'''
 exit = 0

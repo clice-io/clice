@@ -26,6 +26,7 @@ test("excluded unit escalates when read", async (t) => {
     // compiles it at once when it is opened.
     const s = await t.start({ config: { project: { readonly: "auto" } } });
     s.open("third_party/lib.cpp", { pull: false });
+    await s.sync();
     await t.show("symbols", s.documentSymbols("third_party/lib.cpp"));
     // Nothing pulled: the compile the escalation started pushed these.
     await t.show("pushed", s.pushes("third_party/lib.cpp"));

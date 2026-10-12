@@ -6,6 +6,7 @@ test(async (t) => {
     const s = await t.start();
     await s.indexed();
     s.open("main.cpp");
+    await s.sync();
     const m = t.marker("use");
     await t.show("use", {
         definition: s.definition(m),
