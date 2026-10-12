@@ -1,3 +1,8 @@
 [answers.method]
-wrong = "go to implementation should reach the out-of-line definition (clangd#854)"
+implementation = ["void Widget::⟦draw⟧() {}"]
+
+[answers.virtual_method]
+implementation = ["void Widget::⟦paint⟧() {}"]
+
+[answers.definition]
 implementation = []

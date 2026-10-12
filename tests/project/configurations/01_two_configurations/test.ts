@@ -36,10 +36,15 @@ test("restart activates the selection", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
     await t.show("debug", { main: s.inactiveLines("main.cpp"), gated: s.errors("gated.cpp") });
+    // After a restart main.cpp compiles before its lines are asked: an
+    // answer from its shard, which the background index may write first,
+    // carries no inactive lines until the compile refreshes it.
     await switchTo(s, "release");
+    expect(await s.errors("main.cpp")).toEqual([]);
     await t.show("release", { menu: s.configurations(), main: s.inactiveLines("main.cpp") });
     expect(await s.errors("gated.cpp")).toEqual([]);
     await switchTo(s, "debug");
+    expect(await s.errors("main.cpp")).toEqual([]);
     await t.show("debug again", { menu: s.configurations(), main: s.inactiveLines("main.cpp") });
 });
 

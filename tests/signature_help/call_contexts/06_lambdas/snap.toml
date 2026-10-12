@@ -1,6 +1,11 @@
-[answers.pos]
-wrong = "names the call operator instead of the lambda, square (clangd#86)"
-
 [answers.pos.signature_help]
-signatures = ["operator()(⟦int n⟧) -> int"]
+signatures = ["square(⟦int n⟧) -> int"]
+active = 0
+
+[answers.unnamed.signature_help]
+signatures = ["(⟦int n⟧) -> int"]
+active = 0
+
+[answers.generic.signature_help]
+signatures = ["twice(⟦auto x⟧) -> auto"]
 active = 0

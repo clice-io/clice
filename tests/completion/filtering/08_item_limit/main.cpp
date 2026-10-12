@@ -1,5 +1,4 @@
-// The limit on the number of items is not implemented: every candidate is
-// still sent.
+int a_lpha;
 int alpha_one;
 int alpha_two;
 int alpha_three;

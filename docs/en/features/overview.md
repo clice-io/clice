@@ -15,21 +15,21 @@ Language Server Protocol features available when using clice as an editor backen
 | Feature                                   | Status                                    |
 | ----------------------------------------- | ----------------------------------------- |
 | [Code Completion](./completion.md)        | 35 supported · 1 unsupported              |
-| [Hover](./hover.md)                       | 37 supported · 8 partial · 16 unsupported |
-| [Signature Help](./signature-help.md)     | 8 supported · 2 partial · 8 unsupported   |
-| [Code Navigation](./navigation.md)        | 76 supported · 8 partial · 27 unsupported |
+| [Hover](./hover.md)                       | 38 supported · 8 partial · 15 unsupported |
+| [Signature Help](./signature-help.md)     | 12 supported · 1 partial · 5 unsupported  |
+| [Code Navigation](./navigation.md)        | 94 supported · 2 partial · 14 unsupported |
 | [Rename](./rename.md)                     | 4 supported                               |
 | [Diagnostics](./diagnostics.md)           | 9 supported                               |
 | [Code Action](./code-action.md)           | 38 supported                              |
 | [Semantic Tokens](./semantic-tokens.md)   | 38 supported · 3 partial · 7 unsupported  |
-| [Inlay Hints](./inlay-hints.md)           | 22 supported · 2 partial · 6 unsupported  |
+| [Inlay Hints](./inlay-hints.md)           | 25 supported · 1 partial · 4 unsupported  |
 | [Document Links](./document-links.md)     | 7 supported · 1 partial                   |
 | [Document Symbols](./document-symbols.md) | 15 supported · 4 partial · 7 unsupported  |
 | [Folding Ranges](./folding-ranges.md)     | 19 supported                              |
 | [Selection Ranges](./selection-ranges.md) | 10 supported                              |
 | [Formatting](./formatting.md)             | 4 supported                               |
-| [C++20 Modules](./modules.md)             | 7 supported · 1 unsupported               |
-| [Header Contexts](./header-contexts.md)   | 4 supported · 1 unsupported               |
+| [C++20 Modules](./modules.md)             | 7 supported                               |
+| [Header Contexts](./header-contexts.md)   | 5 supported                               |
 | [Compilation](./compilation.md)           | 5 supported · 1 partial                   |
 
 <!-- END GENERATED OVERVIEW -->

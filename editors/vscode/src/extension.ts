@@ -317,16 +317,21 @@ export async function activate(context: ExtensionContext) {
         traceOutputChannel: traceChannel,
         middleware: {
             provideDocumentSemanticTokens: registerInactiveRegions(() => client, context),
-            // Space triggers exist only for `import ` module completion.
-            // This guard is intentionally stricter than the server-side
-            // detection (exact single-space forms only): it merely avoids
-            // request round-trips, while the server independently answers
-            // space triggers outside import contexts with an empty list.
+            // Space triggers exist only for the module names after `import `
+            // and `module `. This guard is intentionally stricter than the
+            // server-side detection (exact single-space forms only): it
+            // merely avoids request round-trips, while the server
+            // independently answers space triggers elsewhere with an empty
+            // list.
             provideCompletionItem: async (document, position, context, token, next) => {
                 if (context.triggerCharacter === " ") {
                     const line = document.lineAt(position.line).text.slice(0, position.character);
                     const trimmed = line.trimStart();
-                    if (trimmed !== "import " && trimmed !== "export import ") {
+                    if (
+                        trimmed !== "import " &&
+                        trimmed !== "export import " &&
+                        trimmed !== "module "
+                    ) {
                         return [];
                     }
                 }

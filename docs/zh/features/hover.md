@@ -663,11 +663,11 @@ tests/hover/documentation/05_overloads
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1936 -->
+<!-- BEGIN CAPABILITY: supported clangd#1936 -->
 
 **继承构造函数**
 
-`using Base::Base` 中的名称显示隐式移动构造函数，而不是它继承的构造函数
+`using Base::Base` 中的名称显示它继承的构造函数及其文档
 
 ```case
 tests/hover/documentation/06_inherited_constructors

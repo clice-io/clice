@@ -1,5 +1,4 @@
-[answers.implementation]
-wrong = "should offer math, the module the unit implements"
-
 [answers.implementation.completion]
-items = []
+items = [
+    { label = "math", kind = "Module", insert = "math", replace = "module ⟦ma⟧;" },
+]

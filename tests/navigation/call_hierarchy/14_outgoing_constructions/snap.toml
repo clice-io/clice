@@ -8,12 +8,14 @@ outgoing_calls = [
         name = "Widget",
         kind = "Method",
         at = "⟦Widget⟧(int w, int h);",
+        detail = "Widget::Widget",
         sites = ["Widget a⟦(⟧1, 2);", "Widget b⟦{⟧3, 4};"],
     },
     {
         name = "operator+",
         kind = "Operator",
         at = "Widget ⟦operator+⟧(const Widget& other) const;",
+        detail = "Widget::operator+",
         sites = ["return a ⟦+⟧ b;"],
     },
 ]

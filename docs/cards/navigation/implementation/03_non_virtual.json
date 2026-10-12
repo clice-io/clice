@@ -2,22 +2,34 @@
   "id": "navigation/implementation/03_non_virtual",
   "topic": "navigation",
   "subtopic": "implementation",
-  "title": "Non-virtual function",
-  "summary": "Non-virtual declarations do not navigate to out-of-line definitions yet",
-  "prose": "Go-to-implementation on a non-virtual function declaration does not reach\nits out-of-line definition and returns nothing.",
-  "status": "unsupported",
+  "title": "Functions nothing overrides",
+  "summary": "A function nothing overrides is implemented by its definition",
+  "prose": "Go-to-implementation on the declaration of a function nothing overrides,\nvirtual or not, reaches its out-of-line definition. On the definition\nitself there is nowhere further to go.",
+  "status": "supported",
   "issues": [
     "clangd#854"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Widget {\n    void draw();\n};\n\nvoid Widget::draw() {}\n",
+      "text": "struct Widget {\n    void draw();\n    virtual void paint();\n};\n\nvoid Widget::draw() {}\n\nvoid Widget::paint() {}\n",
       "markers": [
         {
           "name": "method",
           "begin": 25,
           "end": 25,
+          "range": false
+        },
+        {
+          "name": "virtual_method",
+          "begin": 50,
+          "end": 50,
+          "range": false
+        },
+        {
+          "name": "definition",
+          "begin": 100,
+          "end": 100,
           "range": false
         }
       ]
@@ -31,7 +43,50 @@
           "label": "method",
           "marker": "method",
           "value": {
-            "wrong": "go to implementation should reach the out-of-line definition (clangd#854)",
+            "implementation": [
+              {
+                "$place": "void Widget::⟦draw⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 17
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "virtual_method",
+          "marker": "virtual_method",
+          "value": {
+            "implementation": [
+              {
+                "$place": "void Widget::⟦paint⟧() {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 18
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "definition",
+          "marker": "definition",
+          "value": {
             "implementation": []
           }
         }

@@ -267,8 +267,10 @@ ZEST_CASE(IncludeReplaceSpan) {
 ZEST_CASE(IncludeNameWithSpaces) {
     auto closed = detect_completion_context("#include \"my header.h\"", 12);
     ZEXPECT(closed.replace.end == 21u);
+    ZEXPECT(closed.closed);
     auto open = detect_completion_context("#include \"my header.h", 12);
     ZEXPECT(open.replace.end == 12u);
+    ZEXPECT(!open.closed);
 }
 
 ZEST_CASE(ImportReplaceSpan) {
@@ -279,6 +281,49 @@ ZEST_CASE(ImportReplaceSpan) {
 
 ZEST_CASE(ImportMemberAccess) {
     ZEXPECT(detect_completion_context("import->x", 8).kind == CompletionContext::None);
+}
+
+ZEST_CASE(HasIncludeAngled) {
+    auto ctx = detect_completion_context("#if __has_include(<sys/ty>)", 25);
+    ZEXPECT(ctx.kind == CompletionContext::IncludeAngled);
+    ZEXPECT(ctx.prefix == "sys/ty");
+    ZEXPECT(ctx.replace.begin == 23u);
+    ZEXPECT(ctx.replace.end == 25u);
+}
+
+ZEST_CASE(HasIncludeQuoted) {
+    std::string text = "#elif defined(A) && __has_include_next(\"conf";
+    auto ctx = detect_completion_context(text, text.size());
+    ZEXPECT(ctx.kind == CompletionContext::IncludeQuoted);
+    ZEXPECT(ctx.prefix == "conf");
+}
+
+ZEST_CASE(HasIncludeUnclosedName) {
+    // An editor closes the parenthesis but not the name: it ends at `)`.
+    std::string text = "#if __has_include(<ve) && __has_include(<b>)";
+    auto ctx = detect_completion_context(text, 21);
+    ZEXPECT(ctx.prefix == "ve");
+    ZEXPECT(ctx.replace.end == 21u);
+    ZEXPECT(!ctx.closed);
+}
+
+ZEST_CASE(HasIncludeWritten) {
+    // Past a whole header name the cursor is in the condition again.
+    std::string text = "#if __has_include(<a.h>) && ";
+    ZEXPECT(detect_completion_context(text, text.size()).kind == CompletionContext::None);
+    text += "__has_include(<b";
+    ZEXPECT(detect_completion_context(text, text.size()).prefix == "b");
+    ZEXPECT(detect_completion_context("#define H __has_include(<a", 26).kind ==
+            CompletionContext::None);
+}
+
+ZEST_CASE(ModuleDeclaration) {
+    auto ctx = detect_completion_context("module ma;\n", 9);
+    ZEXPECT(ctx.kind == CompletionContext::ModuleDeclaration);
+    ZEXPECT(ctx.prefix == "ma");
+    ZEXPECT(ctx.closed);
+    ZEXPECT(detect_completion_context("export module ma", 16).kind == CompletionContext::None);
+    ZEXPECT(detect_completion_context("module.field", 12).kind == CompletionContext::None);
 }
 
 };  // ZEST_SUITE(DetectCompletionContext)
@@ -392,6 +437,21 @@ ZEST_CASE(InterfaceSkipsInternal) {
 }
 
 };  // ZEST_SUITE(CompleteModuleImport)
+
+ZEST_SUITE(CompleteModuleDeclaration) {
+
+ZEST_CASE(PrimaryInterfacesOnly) {
+    clice::DependencyGraph modules;
+    modules.add_module("math", Fid{1});
+    modules.add_module("math:detail", Fid{2});
+    modules.add_module("matrix", Fid{3});
+    modules.add_module("io", Fid{4});
+
+    ZEXPECT(complete_module_declaration(modules, "ma") ==
+            std::vector<std::string>{"math", "matrix"});
+}
+
+};  // ZEST_SUITE(CompleteModuleDeclaration)
 
 }  // namespace
 }  // namespace clice::testing

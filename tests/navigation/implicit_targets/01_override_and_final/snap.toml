@@ -1,7 +1,5 @@
 [answers.override]
-wrong = "should reach Base::draw, the method it overrides"
-definition = []
+definition = ["virtual void ⟦draw⟧();"]
 
 [answers.final]
-wrong = "should reach Base::paint, the method it overrides"
-definition = []
+definition = ["virtual void ⟦paint⟧();"]

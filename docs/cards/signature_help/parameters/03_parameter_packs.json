@@ -3,27 +3,37 @@
   "topic": "signature_help",
   "subtopic": "parameters",
   "title": "Parameter packs",
-  "summary": "A parameter pack shows as the template declares it, marked for its first argument only",
+  "summary": "A parameter pack shows as the template declares it, marked for every argument it takes",
   "prose": "",
-  "status": "partial",
-  "issues": [
-    "clangd#638"
-  ],
+  "status": "supported",
+  "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename... Args>\nvoid emit(Args... args);\n\nint main() {\n    emit();\n    emit(1, 2);\n}\n",
+      "text": "template <typename... Args>\nvoid emit(Args... args);\n\ntemplate <typename... Args>\nvoid log_at(int level, Args... args);\n\ntemplate <typename... Ts>\nstruct Tuple {};\n\nint main() {\n    emit();\n    emit(1, 2);\n    log_at(0, 1, 2);\n    Tuple<int, char, double> tuple;\n}\n",
       "markers": [
         {
           "name": "pos",
-          "begin": 76,
-          "end": 76,
+          "begin": 187,
+          "end": 187,
           "range": false
         },
         {
           "name": "second",
-          "begin": 91,
-          "end": 91,
+          "begin": 202,
+          "end": 202,
+          "range": false
+        },
+        {
+          "name": "after_level",
+          "begin": 223,
+          "end": 223,
+          "range": false
+        },
+        {
+          "name": "template_pack",
+          "begin": 248,
+          "end": 248,
           "range": false
         }
       ]
@@ -49,10 +59,33 @@
           "label": "second",
           "marker": "second",
           "value": {
-            "wrong": "the pack is not marked for its second argument (clangd#638)",
             "signature_help": {
               "signatures": [
-                "emit(Args ...args) -> void"
+                "emit(⟦Args ...args⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "after_level",
+          "marker": "after_level",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "log_at(int level, ⟦Args ...args⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "template_pack",
+          "marker": "template_pack",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "Tuple<⟦typename ...Ts⟧> -> struct"
               ],
               "active": 0
             }

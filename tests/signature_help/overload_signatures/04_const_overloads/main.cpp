@@ -6,4 +6,6 @@ struct Buffer {
 int main() {
     Buffer b;
     b.at(§(pos)0);
+    const Buffer& view = b;
+    view.at(§(const_object)0);
 }

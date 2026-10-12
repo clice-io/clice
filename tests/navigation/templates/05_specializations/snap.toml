@@ -2,7 +2,7 @@
 definition = ["T ⟦identity⟧(T value) {"]
 
 [answers.spec]
-definition = ["int ⟦identity⟧<int>(int value) {"]
+definition = ["T ⟦identity⟧(T value) {"]
 
 [answers.class_primary]
 definition = ["struct ⟦Box⟧ {"]

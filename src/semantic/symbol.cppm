@@ -211,6 +211,12 @@ struct RelationKind {
         /// names: navigation from the keyword reaches it, but the keyword
         /// is no reference to it.
         Deduced,
+        /// At a keyword that leads to a declaration it does not spell —
+        /// `override` and `final` to the methods they override, `new` to
+        /// the constructor it runs, which its parentheses reference — the
+        /// declaration: navigation from the keyword reaches it, but the
+        /// keyword is no reference to it.
+        Implied,
     };
 
     constexpr RelationKind() = default;

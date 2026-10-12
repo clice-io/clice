@@ -30,13 +30,13 @@ tests/signature_help/overload_signatures/03_active_parameter
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#50 -->
+<!-- BEGIN CAPABILITY: supported clangd#50 -->
 
 **const 重载**
 
-对于非 const 对象，会同时列出 const 和非 const 重载，且两者的显示内容相同
+参数相同的 const 与非 const 重载，只显示对象实际调用的那一个
 
-标签省略了末尾的 `const`，因此无法区分两者。
+非 const 对象调用非 const 重载；const 对象只能调用 const 重载，其标签以 `const` 结尾。
 
 ```case
 tests/signature_help/overload_signatures/04_const_overloads
@@ -127,11 +127,13 @@ tests/signature_help/call_contexts/05_functors
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#86 -->
+<!-- BEGIN CAPABILITY: supported clangd#86 -->
 
 **Lambda 调用**
 
-调用 Lambda 时，会显示其参数，并使用名称 `operator()`，而不是 Lambda 自身的名称
+调用 Lambda 时，以存放它的变量的名称显示其参数
+
+就地调用的 Lambda 没有名称，因此只单独显示其参数。
 
 ```case
 tests/signature_help/call_contexts/06_lambdas
@@ -179,11 +181,13 @@ tests/signature_help/call_contexts/09_inherited_constructors
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#795 -->
+<!-- BEGIN CAPABILITY: supported clangd#795 -->
 
 **函数式宏**
 
-目前还不为函数式宏的实参提供签名帮助
+函数式宏的实参显示宏自身的参数，而不是其展开结果的参数
+
+在宏实参中调用的函数显示其自身的签名。
 
 ```case
 tests/signature_help/call_contexts/10_macros
@@ -225,11 +229,11 @@ tests/signature_help/parameters/02_c_variadics
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#638 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **参数包**
 
-参数包按模板声明中的写法显示，且仅在光标位于其第一个实参上时才会标记
+参数包按模板声明中的写法显示，光标位于它接收的任一实参上时都会标记
 
 ```case
 tests/signature_help/parameters/03_parameter_packs
@@ -251,7 +255,7 @@ tests/signature_help/parameters/05_explicit_object_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#517 -->
+<!-- BEGIN CAPABILITY: unsupported clangd#517 clangd#638 -->
 
 **转发函数**
 

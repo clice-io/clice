@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "modules",
   "title": "Module implementation units",
-  "summary": "The module name in an implementation unit navigates to the interface unit declaring the module",
-  "prose": "A use of an exported function reaches its definition in the implementation\nunit. The reverse direction, from the interface's module name to the units\nimplementing it, is not offered yet.",
-  "status": "partial",
+  "summary": "The module names of an interface and its implementation units navigate to each other",
+  "prose": "The module name in an implementation unit reaches the interface unit\ndeclaring the module, and the interface's module name the units\nimplementing it. A use of an exported function reaches its definition in\nthe implementation unit.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -65,19 +65,18 @@
           "label": "iface_module_name",
           "marker": "iface_module_name",
           "value": {
-            "wrong": "should lead to impl.cpp, the unit implementing the module, as the implementation unit's name leads here",
             "definition": [
               {
-                "$place": "export module ⟦store⟧;",
-                "path": "iface.cppm",
+                "$place": "impl.cpp │ module ⟦store⟧;",
+                "path": "impl.cpp",
                 "range": {
                   "start": {
                     "line": 0,
-                    "character": 14
+                    "character": 7
                   },
                   "end": {
                     "line": 0,
-                    "character": 19
+                    "character": 12
                   }
                 }
               }

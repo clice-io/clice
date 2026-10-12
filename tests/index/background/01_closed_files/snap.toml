@@ -27,7 +27,7 @@ declaration = ["virtual void ⟦speak⟧() {}"]
 implementation = ["void ⟦speak⟧() override {} @+6", "void ⟦speak⟧() override {} @+10"]
 references = ["virtual void ⟦speak⟧() {}"]
 call_hierarchy = [
-    { name = "speak", kind = "Method", at = "virtual void ⟦speak⟧() {}" },
+    { name = "speak", kind = "Method", at = "virtual void ⟦speak⟧() {}", detail = "Animal::speak" },
 ]
 
 [test.dog]
@@ -87,6 +87,7 @@ outgoing_calls = [
 [test.add_call]
 definition = ["int ⟦add⟧(int a, int b) {"]
 declaration = ["int ⟦add⟧(int a, int b) {"]
+implementation = ["int ⟦add⟧(int a, int b) {"]
 references = ["int ⟦add⟧(int a, int b) {", "int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"]
 uses = ["int x = ⟦add⟧(1, 2);", "int y = ⟦add⟧(3, 4);"]
 call_hierarchy = [
@@ -106,6 +107,23 @@ definition = ["int ⟦global_var⟧ = 42;"]
 declaration = ["int ⟦global_var⟧ = 42;"]
 references = ["int ⟦global_var⟧ = 42;", "return ⟦global_var⟧ + 1;", "return ⟦global_var⟧ * 2;"]
 uses = ["return ⟦global_var⟧ + 1;", "return ⟦global_var⟧ * 2;"]
+call_hierarchy = [
+    { name = "global_var", kind = "Variable", at = "int ⟦global_var⟧ = 42;" },
+]
+incoming_calls = [
+    {
+        name = "use_global",
+        kind = "Function",
+        at = "int ⟦use_global⟧() {",
+        sites = ["return ⟦global_var⟧ + 1;"],
+    },
+    {
+        name = "use_global_again",
+        kind = "Function",
+        at = "int ⟦use_global_again⟧() {",
+        sites = ["return ⟦global_var⟧ * 2;"],
+    },
+]
 
 [test.blank]
 definition = []
@@ -134,6 +152,7 @@ incoming_calls = [
 [test.area_decl]
 definition = ["nav.cpp │ int ⟦area⟧(const Shape& s) {"]
 declaration = ["nav.cpp │ int ⟦area⟧(const Shape& s) {"]
+implementation = ["nav.cpp │ int ⟦area⟧(const Shape& s) {"]
 references = [
     "nav.cpp │ int ⟦area⟧(const Shape& s) {",
     "nav.cpp │ return ⟦area⟧(global_shape);",
@@ -185,6 +204,17 @@ declaration = ["Shape ⟦global_shape⟧;"]
 type_definition = ["nav.h │ struct ⟦Shape⟧ {"]
 references = ["Shape ⟦global_shape⟧;", "return area(⟦global_shape⟧);"]
 uses = ["return area(⟦global_shape⟧);"]
+call_hierarchy = [
+    { name = "global_shape", kind = "Variable", at = "Shape ⟦global_shape⟧;" },
+]
+incoming_calls = [
+    {
+        name = "shape_area",
+        kind = "Function",
+        at = "int ⟦shape_area⟧() {",
+        sites = ["return area(⟦global_shape⟧);"],
+    },
+]
 
 [test.area_scale]
 definition = ["nav.h │ int ⟦area_scale⟧(const Shape& s);"]
@@ -209,7 +239,7 @@ declaration = ["virtual void ⟦render⟧() = 0;"]
 implementation = ["nav.cpp │ void GLRenderer::⟦render⟧() {}"]
 references = ["virtual void ⟦render⟧() = 0;"]
 call_hierarchy = [
-    { name = "render", kind = "Method", at = "virtual void ⟦render⟧() = 0;" },
+    { name = "render", kind = "Method", at = "virtual void ⟦render⟧() = 0;", detail = "Renderer::render" },
 ]
 
 [test.render_middle]
@@ -218,13 +248,14 @@ declaration = ["nav.cpp │ void GLRenderer::⟦render⟧() {}"]
 implementation = ["nav.cpp │ void DebugGLRenderer::⟦render⟧() {}"]
 references = ["nav.cpp │ void GLRenderer::⟦render⟧() {}", "void ⟦render⟧() override; @+0"]
 call_hierarchy = [
-    { name = "render", kind = "Method", at = "nav.cpp │ void GLRenderer::⟦render⟧() {}" },
+    { name = "render", kind = "Method", at = "nav.cpp │ void GLRenderer::⟦render⟧() {}", detail = "GLRenderer::render" },
 ]
 
 [test.make_unit_shape]
 definition = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {"]
 declaration = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {"]
 type_definition = ["struct ⟦Shape⟧ {"]
+implementation = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {"]
 references = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {", "Shape ⟦make_unit_shape⟧();"]
 call_hierarchy = [
     { name = "make_unit_shape", kind = "Function", at = "nav.cpp │ Shape ⟦make_unit_shape⟧() {" },

@@ -3,27 +3,27 @@
   "topic": "inlay_hints",
   "subtopic": "type_hints",
   "title": "Explicitly spelled initializers",
-  "summary": "A type the initializer already spells, in a cast or a functional cast, is still hinted",
-  "prose": "",
-  "status": "partial",
+  "summary": "A type the initializer already spells, in a cast or a functional cast, gets no hint",
+  "prose": "A class template whose arguments the initializer leaves to deduction is still\nhinted.",
+  "status": "supported",
   "issues": [
     "clangd#1749"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "int compute();\n\nvoid use() {\n    auto widened = static_cast<long>(compute());\n    auto braced = int{42};\n    auto plain = compute();\n}\n",
+      "text": "template <typename T>\nstruct Box {\n    Box(T first, T second);\n};\n\nint compute();\n\nvoid use() {\n    auto widened = static_cast<long>(compute());\n    auto braced = int{42};\n    auto boxed = Box<int>(1, 2);\n    auto listed = Box<int>{3, 4};\n    auto grouped = (long{5});\n    auto plain = compute();\n    auto inferred = Box(1, 2);\n    auto copied = auto(plain);\n}\n",
       "markers": [
         {
           "name": "spelled",
-          "begin": 33,
-          "end": 104,
+          "begin": 100,
+          "end": 268,
           "range": true
         },
         {
           "name": "deduced",
-          "begin": 109,
-          "end": 132,
+          "begin": 273,
+          "end": 358,
           "range": true
         }
       ]
@@ -37,36 +37,35 @@
           "label": "spelled",
           "marker": "spelled",
           "value": {
-            "wrong": "the cast on the right already spells the type, which needs no hint (clangd#1749)",
             "inlay_hints": [
               {
                 "line": {
-                  "$place": "auto widened⟨: long⟩ = static_cast<long>(compute());",
+                  "$place": "auto boxed = Box<int>(⟨first:⟩1, ⟨second:⟩2);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 3,
+                      "line": 10,
                       "character": 4
                     },
                     "end": {
-                      "line": 3,
-                      "character": 48
+                      "line": 10,
+                      "character": 32
                     }
                   }
                 }
               },
               {
                 "line": {
-                  "$place": "auto braced⟨: int⟩ = int{42};",
+                  "$place": "auto listed = Box<int>{⟨first:⟩3, ⟨second:⟩4};",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 11,
                       "character": 4
                     },
                     "end": {
-                      "line": 4,
-                      "character": 26
+                      "line": 11,
+                      "character": 33
                     }
                   }
                 }
@@ -85,12 +84,44 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 13,
                       "character": 4
                     },
                     "end": {
-                      "line": 5,
+                      "line": 13,
                       "character": 27
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto inferred⟨: Box<int>⟩ = Box(⟨first:⟩1, ⟨second:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 30
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto copied⟨: int⟩ = auto(plain);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 30
                     }
                   }
                 }

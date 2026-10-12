@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "implicit_construction",
   "title": "Lambda init-capture",
-  "summary": "A lambda init-capture does not navigate to its move constructor yet",
-  "prose": "Go-to-definition on the `=` of a lambda init-capture does not reach the\nconstructor that builds the captured value.",
-  "status": "unsupported",
+  "summary": "A lambda init-capture navigates to the constructor building the capture",
+  "prose": "Go-to-definition on the `=` of a lambda init-capture reaches the\nconstructor that builds the captured value.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -29,8 +29,22 @@
           "label": "capture",
           "marker": "capture",
           "value": {
-            "wrong": "should reach Widget(Widget&&), the constructor building the capture",
-            "definition": []
+            "definition": [
+              {
+                "$place": "⟦Widget⟧(Widget&& other);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 10
+                  }
+                }
+              }
+            ]
           }
         }
       ]

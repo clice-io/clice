@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "implicit_targets",
   "title": "Range-based for",
-  "summary": "The range-for colon does not navigate to `begin()` or `end()` yet",
-  "prose": "Go-to-definition on the `:` of a range-based for does not reach the\n`begin()` or `end()` chosen for the range.",
-  "status": "unsupported",
+  "summary": "The range-for colon navigates to `begin()` and `end()`",
+  "prose": "Go-to-definition on the `:` of a range-based for reaches the `begin()` and\n`end()` chosen for the range.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -29,8 +29,36 @@
           "label": "colon",
           "marker": "colon",
           "value": {
-            "wrong": "should reach Range::begin and Range::end, which the loop calls",
-            "definition": []
+            "definition": [
+              {
+                "$place": "Iterator ⟦begin⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 18
+                  }
+                }
+              },
+              {
+                "$place": "Iterator ⟦end⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 16
+                  }
+                }
+              }
+            ]
           }
         }
       ]

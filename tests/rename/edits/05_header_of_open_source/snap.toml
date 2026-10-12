@@ -1,5 +1,5 @@
-[answers.measure]
+[test.measure]
 wrong = "renaming a function declared in a header fails as if the header were never indexed, when the only file including it is the one open in the editor"
 
-[answers.measure.rename]
+[test.measure.rename]
 error = "cannot rename `measure`: these files changed since they were indexed, or were never indexed: ${WS}/shapes.h"

@@ -2,9 +2,10 @@
 issues: [clangd#854]
 ---
 
-# Non-virtual function
+# Functions nothing overrides
 
-Non-virtual declarations do not navigate to out-of-line definitions yet
+A function nothing overrides is implemented by its definition
 
-Go-to-implementation on a non-virtual function declaration does not reach
-its out-of-line definition and returns nothing.
+Go-to-implementation on the declaration of a function nothing overrides,
+virtual or not, reaches its out-of-line definition. On the definition
+itself there is nowhere further to go.

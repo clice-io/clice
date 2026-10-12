@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "implicit_construction",
   "title": "Copy/move construction and assignment",
-  "summary": "Assignment `=` navigates to the assignment operator, while copy and move initialization do not",
-  "prose": "Go-to-definition on the `=` of an assignment reaches the assignment\noperator. The `=` that introduces a copy- or move-initialization\n(`T b = a;`) is initialization syntax rather than an operator call and is\nnot yet resolved.",
-  "status": "partial",
+  "summary": "The `=` of an initialization or an assignment navigates to the function it runs",
+  "prose": "Go-to-definition on the `=` of an assignment reaches the assignment\noperator, and on the `=` of a copy- or move-initialization (`T b = a;`) the\ncopy or move constructor that builds the variable.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -41,16 +41,44 @@
           "label": "copy_eq",
           "marker": "copy_eq",
           "value": {
-            "wrong": "should reach Widget(const Widget&), the copy constructor the initialization runs",
-            "definition": []
+            "definition": [
+              {
+                "$place": "⟦Widget⟧(const Widget& other);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 10
+                  }
+                }
+              }
+            ]
           }
         },
         {
           "label": "move_eq",
           "marker": "move_eq",
           "value": {
-            "wrong": "should reach Widget(Widget&&), the move constructor the initialization runs",
-            "definition": []
+            "definition": [
+              {
+                "$place": "⟦Widget⟧(Widget&& other);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 10
+                  }
+                }
+              }
+            ]
           }
         },
         {

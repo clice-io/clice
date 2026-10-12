@@ -3,9 +3,9 @@
   "topic": "navigation",
   "subtopic": "call_hierarchy",
   "title": "Qualified name for member functions",
-  "summary": "A member function's call hierarchy item is produced, but its name field carries only the bare method name (`draw`), not the qualified `Circle::draw` that would tell it apart from a free function",
+  "summary": "A member function's call hierarchy item shows its qualified name (`Circle::draw`) beside its name, telling it apart from a free function",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -29,7 +29,6 @@
           "label": "method",
           "marker": "method",
           "value": {
-            "wrong": "the item should name Circle::draw, to tell the method from a free function",
             "call_hierarchy": [
               {
                 "name": "draw",
@@ -47,7 +46,8 @@
                       "character": 17
                     }
                   }
-                }
+                },
+                "detail": "Circle::draw"
               }
             ],
             "incoming_calls": [],

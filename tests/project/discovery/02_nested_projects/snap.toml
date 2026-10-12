@@ -1,8 +1,8 @@
 ["nested projects load on open".generated]
 inactive = ["⟦int generated_for = 2;⟧"]
 contexts = [
-    { label = "-std=c++20 -DP1", description = "${WS}/group-a/p1", host = "group-a/shared/generated.cpp" },
-    { label = "-std=c++20 -DP2", description = "${WS}/group-a/p2", host = "group-a/shared/generated.cpp" },
+    { label = "-DP1", description = "${WS}/group-a/p1", host = "group-a/shared/generated.cpp" },
+    { label = "-DP2", description = "${WS}/group-a/p2", host = "group-a/shared/generated.cpp" },
 ]
 
 ["nested projects load on open".indexed]

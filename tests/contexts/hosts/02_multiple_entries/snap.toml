@@ -1,6 +1,5 @@
 [test."main.cpp"]
-wrong = "each label lists every -D, -O, -std and -g flag of its command, the shared -std=c++20 included, rather than only the flags that set the commands apart"
 contexts = [
-    { label = "-std=c++20 -DCONFIG_A", description = "${WS}", host = "main.cpp" },
-    { label = "-std=c++20 -DCONFIG_B", description = "${WS}", host = "main.cpp" },
+    { label = "-DCONFIG_A", description = "${WS}", host = "main.cpp" },
+    { label = "-DCONFIG_B", description = "${WS}", host = "main.cpp" },
 ]

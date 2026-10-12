@@ -951,12 +951,16 @@ void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
 /// The declarations the hovered token refers to, straight from the semantic
 /// map: names anchored at the token are collected from its owner chain (the
 /// emitting node is always an ancestor-or-self of the token's innermost
-/// owner). Rightmost touched token wins, matching the selection bias.
+/// owner). Rightmost touched token wins, matching the selection bias, but a
+/// separator — `:`, `=`, `&&`, `||`, `?` — leading to what it does not spell
+/// (a range-for's `begin`, a copy's constructor) gives way to the token it
+/// follows: `for(auto& x: xs)` hovered right after `x` is `x`.
 auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touched)
     -> llvm::SmallVector<const clang::NamedDecl*, 4> {
     const Semantics& semantics = unit.semantics();
     auto spelled = semantics.spelled_tokens();
     llvm::SmallVector<const clang::NamedDecl*, 4> decls;
+    llvm::SmallVector<const clang::NamedDecl*, 4> separated;
 
     /// Whether the token is a later token the occurrence's name owns: any
     /// token of `~Foo` or `operator==` names the function, `Foo` the
@@ -1018,12 +1022,27 @@ auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touc
         if(!named.empty()) {
             return named;
         }
+        auto spells_operator = [](const clang::NamedDecl* decl) {
+            return decl->getDeclName().getNameKind() == clang::DeclarationName::CXXOperatorName;
+        };
+        if(!decls.empty() && &token != &touched.front() &&
+           llvm::is_contained({clang::tok::colon,
+                               clang::tok::equal,
+                               clang::tok::ampamp,
+                               clang::tok::pipepipe,
+                               clang::tok::question},
+                              token.kind()) &&
+           llvm::none_of(decls, spells_operator)) {
+            separated = std::move(decls);
+            decls.clear();
+            continue;
+        }
         if(!decls.empty()) {
             break;
         }
     }
 
-    return decls;
+    return decls.empty() ? separated : decls;
 }
 
 auto pick_decl_to_use(llvm::ArrayRef<const clang::NamedDecl*> candidates)

@@ -47,23 +47,47 @@ std::size_t missing_context_errors(llvm::ArrayRef<protocol::Diagnostic> diagnost
     });
 }
 
-/// Human-readable summary of the distinguishing flags of a command.
-static std::string flags_label(Project& ws, ConfigID config) {
+/// The flags a context's label tells a command by: each -D, -O, -std and
+/// -g, a separate value joined to its -D or -O.
+static llvm::SmallVector<std::string> state_flags(Project& ws, ConfigID config) {
     auto argv = ws.cdb.render_full(config);
-    std::string desc;
-    for(std::size_t j = 0; j < argv.size(); ++j) {
+    llvm::SmallVector<std::string> flags;
+    for(std::size_t j = 0; j < argv.size(); j += 1) {
         llvm::StringRef a(argv[j]);
         if(a.starts_with("-D") || a.starts_with("-O") || a.starts_with("-std=") ||
            a.starts_with("-g")) {
-            if(!desc.empty())
-                desc += ' ';
-            desc += argv[j];
+            flags.push_back(a.str());
             if((a == "-D" || a == "-O") && j + 1 < argv.size()) {
-                desc += argv[++j];
+                j += 1;
+                flags.back() += argv[j];
             }
         }
     }
-    return desc;
+    return flags;
+}
+
+/// What sets the command `config` apart from the others in `group`, the
+/// commands the listing offers side by side: those of its flags some other
+/// command lacks, or all of them when it stands alone.
+static std::string flags_label(Project& ws, ConfigID config, llvm::ArrayRef<ConfigID> group) {
+    llvm::SmallVector<llvm::SmallVector<std::string>> others;
+    for(auto other: group) {
+        if(other != config) {
+            others.push_back(state_flags(ws, other));
+        }
+    }
+    std::string label;
+    for(auto& flag: state_flags(ws, config)) {
+        if(!others.empty() &&
+           llvm::all_of(others, [&](auto& flags) { return llvm::is_contained(flags, flag); })) {
+            continue;
+        }
+        if(!label.empty()) {
+            label += ' ';
+        }
+        label += flag;
+    }
+    return label;
 }
 
 /// The command `host` lends the header `path_id` under its entry `entry`,
@@ -82,20 +106,40 @@ static ConfigID own_config(Project& ws, Fid path_id, ConfigID entry) {
     return ws.build.resolve(path_id, entry, CommandSource::CDBExact, path, path).config;
 }
 
-/// The listing's item for `host` lending the command `applied`: named by
-/// the host, the configuration's distinguishing flags when the host has
-/// several, and the place it enters the header at when it does at more
-/// than one.
+/// The commands the file's own `entries` compile it as, one per entry.
+static llvm::SmallVector<ConfigID, 2> own_configs(Project& ws, Fid path_id, const auto& entries) {
+    llvm::SmallVector<ConfigID, 2> configs;
+    for(auto& entry: entries) {
+        configs.push_back(own_config(ws, path_id, entry.config));
+    }
+    return configs;
+}
+
+/// The commands `host` lends the header `path_id`, one per command of the
+/// host's.
+static llvm::SmallVector<ConfigID, 2>
+    lent_configs(Project& ws, Fid path_id, Fid host, llvm::ArrayRef<Candidate> commands) {
+    llvm::SmallVector<ConfigID, 2> configs;
+    for(auto& entry: commands) {
+        configs.push_back(lent_config(ws, path_id, host, entry));
+    }
+    return configs;
+}
+
+/// The listing's item for `host` lending the command `applied`, one of the
+/// commands `lent` it lends the header: named by the host, the flags that
+/// set the command apart when it lends several, and the place it enters
+/// the header at when it does at more than one.
 static ext::ContextItem host_item(Project& ws,
                                   Fid host,
                                   ConfigID applied,
-                                  bool several_configs,
+                                  llvm::ArrayRef<ConfigID> lent,
                                   std::optional<std::uint32_t> occurrence) {
     auto shown = ws.file_table.display(host);
     ext::ContextItem item;
     item.label = llvm::sys::path::filename(shown).str();
-    if(several_configs) {
-        if(auto desc = flags_label(ws, applied); !desc.empty()) {
+    if(lent.size() > 1) {
+        if(auto desc = flags_label(ws, applied, lent); !desc.empty()) {
             item.label = std::format("{} [{}]", item.label, desc);
         }
         item.command_hash = ws.cdb.entry_hash_hex(applied);
@@ -109,10 +153,12 @@ static ext::ContextItem host_item(Project& ws,
     return item;
 }
 
-/// The listing's item for the file's own entry `index`, compiling as
-/// `applied`.
-static ext::ContextItem own_item(Project& ws, Fid path_id, std::size_t index, ConfigID applied) {
-    auto desc = flags_label(ws, applied);
+/// The listing's item for the file's own entry `index` of `own`, the
+/// commands its entries compile it as.
+static ext::ContextItem
+    own_item(Project& ws, Fid path_id, std::size_t index, llvm::ArrayRef<ConfigID> own) {
+    auto applied = own[index];
+    auto desc = flags_label(ws, applied, own);
     ext::ContextItem item;
     item.label = desc.empty() ? std::format("config #{}", index) : desc;
     item.description =
@@ -145,19 +191,17 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
         if(occurrences == 0) {
             continue;
         }
-        auto commands = host_commands(ws, path_id, host_id);
-        for(auto& entry: commands) {
-            auto applied = lent_config(ws, path_id, host_id, entry);
+        auto lent = lent_configs(ws, path_id, host_id, host_commands(ws, path_id, host_id));
+        for(auto applied: lent) {
             if(dedup_hosts && !seen_configs.insert(ws.cdb.entry_hash_hex(applied)).second) {
                 continue;
             }
             if(occurrences == 1) {
-                all_items.push_back(
-                    host_item(ws, host_id, applied, commands.size() > 1, std::nullopt));
+                all_items.push_back(host_item(ws, host_id, applied, lent, std::nullopt));
                 continue;
             }
             for(std::uint32_t n = 0; n < occurrences; n += 1) {
-                all_items.push_back(host_item(ws, host_id, applied, commands.size() > 1, n));
+                all_items.push_back(host_item(ws, host_id, applied, lent, n));
             }
         }
     }
@@ -167,11 +211,10 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // switchContext would then reject. Offered even when hosts
     // exist, so a host override can be switched back to the file's
     // own command.
-    auto entries = ws.build.entries(path_id);
-    for(std::size_t i = 0; i < entries.size(); i += 1) {
-        auto applied = own_config(ws, path_id, entries[i].config);
-        if(seen_configs.insert(ws.cdb.entry_hash_hex(applied)).second) {
-            all_items.push_back(own_item(ws, path_id, i, applied));
+    auto own = own_configs(ws, path_id, ws.build.entries(path_id));
+    for(std::size_t i = 0; i < own.size(); i += 1) {
+        if(seen_configs.insert(ws.cdb.entry_hash_hex(own[i])).second) {
+            all_items.push_back(own_item(ws, path_id, i, own));
         }
     }
 
@@ -203,7 +246,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
             result.context = host_item(ws,
                                        host,
                                        lent_config(ws, path_id, host, entry),
-                                       commands.size() > 1,
+                                       lent_configs(ws, path_id, host, commands),
                                        several ? std::optional(occurrence) : std::nullopt);
         };
     auto own = [&](llvm::StringRef hash, llvm::StringRef base) {
@@ -216,7 +259,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
                          commands,
                          [&](const Candidate& command) { return command.config == entry.config; }) -
                      commands.begin();
-        result.context = own_item(ws, path_id, index, own_config(ws, path_id, entry.config));
+        result.context = own_item(ws, path_id, index, own_configs(ws, path_id, commands));
     };
 
     // The choice, else what resolve_command picks: the file's own command
