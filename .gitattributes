@@ -1,12 +1,8 @@
 # SCM syntax highlighting & preventing 3-way merges
 pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
 
-# Force LF line endings for test data so that byte offsets from clang
+# Force LF line endings for the cases so that byte offsets from clang
 # (which reads from disk) match the content sent by didOpen in tests.
-# tests/snap fixtures additionally pin their snapshots' offsets and the
-# sha256 handshake between clice inspect and the TS harness.
-tests/data/** text eol=lf
-tests/snap/** text eol=lf
 tests-next/** text eol=lf
 # Cases about CRLF line endings keep the bytes they are written in.
 tests-next/compile/encoding/02_line_endings/*.h -text
@@ -14,7 +10,6 @@ tests-next/compile/encoding/02_line_endings/*.cpp -text
 tests-next/format/document/06_crlf_line_endings/*.cpp -text
 
 # Treat trace files as binary to suppress text diffs
-tests/smoke/*.jsonl linguist-generated=true binary
 tests-next/**/trace.jsonl linguist-generated=true binary
-# Generated feature docs are parsed by tools/docs/feature.ts marker regexes.
+# Generated feature docs are parsed by tools/testing/docs/site.ts marker regexes.
 docs/**/*.md text eol=lf

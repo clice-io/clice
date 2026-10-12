@@ -2,6 +2,7 @@
 --
 -- Usage: nvim -l editors/nvim/tests/e2e.lua <clice-executable> <fixture-dir>
 --
+-- The fixtures are copies of cases (pixi run -e editor editor-prepare).
 -- Starts clice through the shipped LSP config (../lsp/clice.lua), opens
 -- the fixture's main file, waits for diagnostics, then checks that
 -- hover, definition and completion respond with well-formed results, and
@@ -40,19 +41,17 @@ local scenarios = {
         index_symbol = 'add',
         definition_file = 'main.cpp',
     },
-    hover_on_imported_symbol = {
-        file = 'use.cpp',
+    imported_symbol = {
+        file = 'main.cpp',
         symbol = 'magic_number()',
         index_symbol = 'magic_number',
         definition_file = 'defs.cppm',
     },
-    header_context = {
-        file = 'utils.h',
-        symbol = 'distance(p',
-        index_symbol = 'calc',
-        -- no definition_file: cross-file definition into headers is a
-        -- known index gap.
-        context = 'main.cpp',
+    two_hosts = {
+        file = 'shared.h',
+        symbol = 'VALUE_TYPE',
+        index_symbol = 'get_value',
+        context = 'int_host.cpp',
     },
 }
 
@@ -131,7 +130,7 @@ local function request(method, params)
 end
 
 -- Definition is index-based: poll workspace/symbol until the expected
--- symbol shows up, mirroring wait_for_index in the integration tests.
+-- symbol shows up.
 step 'wait for index'
 local indexed = vim.wait(60000, function()
     local responses = vim.lsp.buf_request_sync(buf, 'workspace/symbol', {

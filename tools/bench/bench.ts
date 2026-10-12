@@ -33,8 +33,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { fileURLToPath } from "node:url";
-import { CliceClient, logFiles, withTimeout } from "../client/client.ts";
+import { CliceClient } from "../client/client.ts";
 import { Workspace } from "../client/workspace.ts";
+import { logFiles } from "../process_gate.ts";
+import { withTimeout } from "../promise.ts";
 import { computeStats, parsePerfLines, summarize, type Stats } from "./perf.ts";
 
 const REPO_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));

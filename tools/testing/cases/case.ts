@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import yaml from "js-yaml";
-import { parseAnnotations, type AnnotatedSource } from "../../snap/annotation.ts";
+import { parseAnnotations, type AnnotatedSource } from "./annotation.ts";
 import type { MarkerAnchor } from "./anchors.ts";
 import { MARKED, inputFiles, mergeProjects, posix, readProject, type Project } from "./project.ts";
 import { SUITES, TOPICS } from "./topics.ts";

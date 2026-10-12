@@ -55,9 +55,6 @@
       "name": "Unit Test",
       "program": "${workspaceFolder}/build/Debug/bin/bin/unittests",
       "args": ["--test-filter=${input:filter}"],
-      "env": {
-        "CLICE_TEST_DATA_DIR": "${workspaceFolder}/tests/data"
-      },
       "cwd": "${workspaceFolder}"
     },
     {
@@ -66,9 +63,6 @@
       "name": "Release Unit Test",
       "program": "${workspaceFolder}/build/RelWithDebInfo/bin/bin/unittests",
       "args": ["--test-filter=${input:filter}"],
-      "env": {
-        "CLICE_TEST_DATA_DIR": "${workspaceFolder}/tests/data"
-      },
       "cwd": "${workspaceFolder}"
     }
   ],

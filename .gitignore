@@ -41,7 +41,6 @@ benchmarks/workloads/
 
 .clice/
 compile_commands.json
-!tests/data/**/compile_commands.json
 perf.data
 flamegraph.svg
 
@@ -49,7 +48,6 @@ flamegraph.svg
 *.vsix
 dist/
 out/
-!tests/data/cdb/**/out/
 cache/
 node_modules/
 .vscode-test/

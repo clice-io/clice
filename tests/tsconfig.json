@@ -18,11 +18,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": [
-    "integration/**/*.ts",
-    "snap/**/*.ts",
-    "compat/**/*.ts",
-    "zed/**/*.ts",
-    "tools/**/*.ts"
-  ]
+  "include": ["compat/**/*.ts", "zed/**/*.ts"]
 }

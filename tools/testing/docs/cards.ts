@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseAnnotations } from "../../snap/annotation.ts";
+import { parseAnnotations } from "../cases/annotation.ts";
 import type { Case } from "../cases/case.ts";
 import { statusOf, writeSnapshot, type Snapshot } from "../cases/output.ts";
 import { MARKED, REPO_ROOT, copyName } from "../cases/project.ts";

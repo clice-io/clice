@@ -1,13 +1,9 @@
 # tests-next
 
 The test system clice ships its first release with. The old suites under
-`tests/` (`integration/`, `snap/`, `smoke/` and their `data/`) migrate into it
-case by case and are deleted once empty, and this directory then takes the name
-`tests/`; the framework under `tools/testing/` then replaces `tools/snap`,
-`tools/replay.ts` and the session layer of `tools/client`. Nothing here is
-compatible with the old formats, on purpose. Until then the docs still come
-from `tests/snap`, and the coverage check (below) runs only by hand: a
-partial set of cases leaves most of the surface unexercised.
+`tests/` (`integration/`, `snap/`, `smoke/`) migrated into it and are gone;
+this directory takes the name `tests/` next. Until then the coverage check
+(below) runs only by hand.
 
 This file is the contract: how tests are organized, what a case is made of, how
 it asserts, how the docs come out of it, and what tests never do.
@@ -425,7 +421,13 @@ an exemption naming nothing uncovered fails too.
 
 - **`editors/NN_name/`**: a project and the scenario every editor client runs on
   it (`scenario.json`: the file, the symbol, where it is defined, the header
-  context); each client's harness reads it.
+  context); each client's harness reads it. Until then the editors'
+  end-to-end tests (`pixi run -e editor editor-test`) run on copies of three
+  cases, `lifecycle/editor_sessions/01_hello_world`,
+  `modules/imports/01_imported_symbol` and `contexts/switching/01_two_hosts`
+  (`tools/testing/cases/copy.ts`), each harness naming the file and symbol
+  in a scenario table of its own: changing one of these cases changes those
+  tests.
 - **`nightly/projects.json`**: pinned real projects, indexed in full on the free
   runners; a crash, a hang, a unit clice fails that the compiler accepts, or a
   file where inspect and server disagree fails it. Counts, sizes, memory and
@@ -475,7 +477,7 @@ CLICE_CASES=hover/ …               the cases under a path
 CLICE_CASES_SHARD=2/4 …            shard 2 of 4: whole subtopics, balanced by case count
 UPDATE_SNAPSHOTS=1 …               rewrite outputs, print the summary
 npm run coverage -w tests-next     after a full run
-npm test -w tools                  the framework's own tests
+npm test -w tools                  the tools' own tests, the framework's among them
 ```
 
 Commands run under the pixi environment, whose `clang-format` `clice format`

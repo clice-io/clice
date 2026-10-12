@@ -1,2 +1,0 @@
-[[rules]]
-default_command = ["clang++", "-std=c++20", "-DFROM_RULE"]

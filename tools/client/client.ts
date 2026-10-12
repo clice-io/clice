@@ -1,14 +1,13 @@
-/// CliceClient — LSP client for integration testing, on
-/// vscode-languageserver-protocol.
+/// CliceClient — LSP client for the case framework, the benchmarks and
+/// the Zed suite, on vscode-languageserver-protocol.
 ///
-/// The client owns its whole lifecycle: spawn (stdio or socket), typed
-/// requests including clice's custom protocol, diagnostics tracking,
-/// stderr pump with sanitizer-marker latching, graceful shutdown with the
-/// clean-exit gate, and the anomaly gate over the bound workspace's logs.
+/// The client owns its whole lifecycle: spawn, typed requests including
+/// clice's custom protocol, diagnostics tracking, stderr pump with
+/// sanitizer-marker latching, and graceful shutdown with the clean-exit
+/// gate.
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as fs from "node:fs";
-import * as net from "node:net";
 import * as path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import * as proto from "vscode-languageserver-protocol";
@@ -48,7 +47,6 @@ import {
     type SyncResult,
 } from "../protocol/protocol.ts";
 import {
-    anomalyGateFailure,
     anomaliesInMessages,
     processGateFailures,
     SANITIZER_MARKERS,
@@ -57,30 +55,7 @@ import {
 } from "../process_gate.ts";
 import { canonicalUri, Workspace } from "./workspace.ts";
 
-export {
-    anomaliesInLogFiles,
-    crashTracesInLogFiles,
-    logFiles,
-    SANITIZER_MARKERS,
-} from "../process_gate.ts";
-export { runProcess, type ProcessOptions, type ProcessResult } from "./process.ts";
 import { withTimeout } from "../promise.ts";
-
-// The harness's timing helpers are reached through this module.
-export { withTimeout } from "../promise.ts";
-
-// Standard timing constants — use these instead of hardcoded sleep values.
-export const MTIME_GRANULARITY = 1_100; // Filesystem mtime precision + margin
-export const STABILIZE_DELAY = 500; // Server stabilization after an operation
-export const IDLE_TIMEOUT = 5_000; // Idle soak time in lifecycle tests
-export const EDIT_SUPERSEDE_DELAY = 300; // An edit arrives while SLOW_SOURCE still parses
-
-/// Two hundred thousand trivial declarations: slow to parse on any
-/// hardware, so an edit or a cancel arrives while a request still waits on
-/// the compile, and cheap to abandon (the worker polls the stop flag per
-/// declaration).
-export const SLOW_SOURCE =
-    Array.from({ length: 200_000 }, (_, i) => `int v${i};`).join("\n") + "\n";
 
 export function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -121,20 +96,6 @@ export async function waitUntil<T>(
         `Timed out after ${timeout}ms waiting for ${description}; ` +
             `last state: ${formatWaitState(lastState)}`,
     );
-}
-
-/// Normalize a definition/references response to a list of Locations.
-export function locationsOf<T>(result: T | T[] | null | undefined): T[] {
-    if (result === null || result === undefined) {
-        return [];
-    }
-    return Array.isArray(result) ? result : [result];
-}
-
-/// Narrow a definition/declaration response (which may be typed as
-/// LocationLink[]) to plain Locations; the server always returns Locations.
-export function asLocations(result: unknown): proto.Location[] {
-    return locationsOf(result as proto.Location | proto.Location[] | null);
 }
 
 const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
@@ -216,9 +177,6 @@ export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     protected connection: proto.ProtocolConnection;
     private transport: Transport;
-    /// Non-null only in socket mode: the LSP transport rides this socket
-    /// instead of the child's stdio, and must be torn down with the client.
-    private socket: net.Socket | null = null;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
     /// Every publishDiagnostics received, in order.
@@ -350,49 +308,6 @@ export class CliceClient {
         if (client.stderrDrainedFromStart) {
             client.spawnStderrPump();
         }
-        return client;
-    }
-
-    /// Spawn a server in `--mode socket` and connect the LSP transport over
-    /// TCP instead of stdio. The listener isn't ready the instant the
-    /// process starts, so poll-connect until it accepts (or the process
-    /// dies / times out). stderr stays on the child's pipe and is drained.
-    static async startSocket(
-        executable: string,
-        port: number,
-        options: {
-            host?: string | undefined;
-            args?: string[] | undefined;
-            env?: Record<string, string> | undefined;
-        } = {},
-    ): Promise<CliceClient> {
-        const host = options.host ?? "127.0.0.1";
-        const child = spawn(
-            executable,
-            options.args ?? ["serve", "--mode", "socket", "--port", String(port)],
-            { stdio: ["pipe", "pipe", "pipe"], env: { ...serverEnv(), ...options.env } },
-        );
-        let socket: net.Socket | null = null;
-        for (let i = 0; i < 150; i++) {
-            if (child.exitCode !== null) {
-                child.kill("SIGKILL");
-                throw new Error("server exited before accepting connections");
-            }
-            try {
-                socket = await connectSocket(host, port);
-                break;
-            } catch {
-                await sleep(200);
-            }
-        }
-        if (socket === null) {
-            child.kill("SIGKILL");
-            throw new Error(`server did not listen on port ${port} within 30s`);
-        }
-        const client = new CliceClient(child, { reader: socket, writer: socket });
-        client.socket = socket;
-        client.stderrDrainedFromStart = true;
-        client.spawnStderrPump();
         return client;
     }
 
@@ -700,9 +615,6 @@ export class CliceClient {
         } catch {
             // Already torn down.
         }
-        if (this.socket !== null) {
-            this.socket.destroy();
-        }
     }
 
     // === stderr pump =====================================================
@@ -783,8 +695,7 @@ export class CliceClient {
     /// [normalizedUri, content].
     ///
     /// `text` overrides the on-disk content (an editor buffer may differ
-    /// from disk); annotated snapshot fixtures open their stripped text
-    /// this way.
+    /// from disk).
     open(filepath: string, version = 0, options: { text?: string } = {}): [string, string] {
         const target = this.resolvePath(filepath);
         const content = options.text ?? fs.readFileSync(target, "utf8");
@@ -841,14 +752,6 @@ export class CliceClient {
         });
     }
 
-    async waitDiagnostics(uri: string, timeout = 30_000): Promise<void> {
-        uri = this.normalizeUri(uri);
-        if (this.diagnostics.has(uri)) {
-            return;
-        }
-        await withTimeout(this.armDiagnostics(uri), timeout, `diagnostics ${uri}`);
-    }
-
     /// Open a file (path may be workspace-relative) and trigger compilation
     /// via hover. Waits for diagnostics.
     async openAndWait(
@@ -861,14 +764,6 @@ export class CliceClient {
         await this.hoverAt(uri, 0, 0);
         await withTimeout(arrived, timeout, `diagnostics ${uri}`);
         return [uri, content];
-    }
-
-    /// Trigger recompilation via hover and wait for fresh diagnostics.
-    /// Useful after didChange or on-disk file modifications.
-    async waitForRecompile(uri: string, timeout = 60_000): Promise<void> {
-        const arrived = this.armDiagnostics(uri);
-        await this.hoverAt(uri, 0, 0);
-        await withTimeout(arrived, timeout, `diagnostics ${uri}`);
     }
 
     /// Pull the document's diagnostics (textDocument/diagnostic); clice
@@ -899,47 +794,11 @@ export class CliceClient {
         );
     }
 
-    assertNoErrors(uri: string, msg = ""): void {
-        const errors = this.errors(uri);
-        if (errors.length > 0) {
-            throw new Error(
-                msg
-                    ? `${msg}: ${JSON.stringify(errors)}`
-                    : `Expected no errors, got: ${JSON.stringify(errors)}`,
-            );
-        }
-    }
-
-    assertHasErrors(uri: string, msg = ""): void {
-        if (this.errors(uri).length === 0) {
-            throw new Error(msg || "Expected at least one error diagnostic");
-        }
-    }
-
-    assertCleanCompile(uri: string): void {
-        const diags = this.diagnostics.get(uri) ?? [];
-        if (diags.length > 0) {
-            throw new Error(`Expected clean compile, got: ${JSON.stringify(diags)}`);
-        }
-    }
-
     // === Anomaly gate ====================================================
 
     /// Anomaly IDs from window/logMessage notifications (master process).
     anomaliesInLogMessages(): string[] {
         return anomaliesInMessages(this.logMessages.map((message) => message.message));
-    }
-
-    /// Assert the session produced zero anomalies (client messages + logs).
-    /// Runs in every integration test teardown: anomalies are internal
-    /// clice bugs and must never occur on regular paths. `root` overrides
-    /// the log directory (defaults to the bound workspace).
-    assertNoAnomaly(root?: string | null): void {
-        const logsRoot = root !== undefined ? root : (this.workspace?.root ?? null);
-        const failure = anomalyGateFailure(this.anomaliesInLogMessages(), logsRoot);
-        if (failure !== null) {
-            throw new Error(failure);
-        }
     }
 
     /// Guidance texts from window/logMessage notifications.
@@ -1023,68 +882,6 @@ export class CliceClient {
         });
     }
 
-    /// URIs of the references at a position (declaration excluded).
-    async referenceUris(uri: string, line: number, character: number): Promise<string[]> {
-        const refs = await this.referencesAt(uri, line, character, {
-            includeDeclaration: false,
-        });
-        return (refs ?? []).map((ref) => ref.uri);
-    }
-
-    /// URIs of the definitions at a position.
-    async definitionUris(uri: string, line: number, character: number): Promise<string[]> {
-        return asLocations(await this.definitionAt(uri, line, character)).map(
-            (location) => location.uri,
-        );
-    }
-
-    /// Poll definitions at a position until expectedUri shows up.
-    async waitForDefinition(
-        uri: string,
-        line: number,
-        character: number,
-        expectedUri: string,
-        timeoutSeconds = 30,
-    ): Promise<boolean> {
-        for (let i = 0; i < timeoutSeconds; i++) {
-            if ((await this.definitionUris(uri, line, character)).includes(expectedUri)) {
-                return true;
-            }
-            await sleep(1_000);
-        }
-        return false;
-    }
-
-    /// Poll references at a position until expectedUri shows up.
-    async waitForReference(
-        uri: string,
-        line: number,
-        character: number,
-        expectedUri: string,
-        timeoutSeconds = 30,
-    ): Promise<boolean> {
-        for (let i = 0; i < timeoutSeconds; i++) {
-            if ((await this.referenceUris(uri, line, character)).includes(expectedUri)) {
-                return true;
-            }
-            await sleep(1_000);
-        }
-        return false;
-    }
-
-    /// Poll workspace/symbol until a specific symbol appears in the index.
-    async waitForIndex(uri: string, symbolName = "add", timeoutSeconds = 30): Promise<boolean> {
-        await this.hoverAt(uri, 0, 0);
-        for (let i = 0; i < timeoutSeconds; i++) {
-            const result = await this.workspaceSymbols(symbolName);
-            if (result?.some((s) => s.name === symbolName)) {
-                return true;
-            }
-            await sleep(1_000);
-        }
-        return false;
-    }
-
     completionAt(
         uri: string,
         line: number,
@@ -1140,8 +937,7 @@ export class CliceClient {
     async inactiveLines(uri: string): Promise<number[]> {
         const result = await this.semanticTokensFull(uri);
         const provider = this.initResult?.capabilities.semanticTokensProvider as
-            | proto.SemanticTokensOptions
-            | undefined;
+            proto.SemanticTokensOptions | undefined;
         const bit = provider?.legend.tokenModifiers.indexOf("inactive") ?? -1;
         if (bit < 0) {
             throw new Error("server legend misses the inactive modifier");
@@ -1272,16 +1068,6 @@ export class CliceClient {
         );
     }
 
-    /// Poll the stats hook until no project has background indexing queued
-    /// or running.
-    async waitForIndexIdle(timeout = 60_000): Promise<void> {
-        await waitUntil(async () => (await this.stats()).indexIdle, {
-            timeout,
-            interval: 200,
-            description: "background indexing to go idle",
-        });
-    }
-
     counterparts(uri: string): Promise<CounterpartsResult> {
         return this.sendRequest(CounterpartsRequest, { uri });
     }
@@ -1342,16 +1128,4 @@ export class CliceClient {
         this.parked.delete(id);
         await this.sendRequest(ReleaseRequest, { id });
     }
-}
-
-/// Open a TCP connection, resolving once connected and rejecting on error.
-function connectSocket(host: string, port: number): Promise<net.Socket> {
-    return new Promise((resolve, reject) => {
-        const socket = net.createConnection({ host, port });
-        socket.once("connect", () => {
-            socket.off("error", reject);
-            resolve(socket);
-        });
-        socket.once("error", reject);
-    });
 }

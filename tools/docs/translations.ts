@@ -7,7 +7,7 @@
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { REPO_ROOT } from "../compile_commands.ts";
+import { REPO_ROOT } from "../repo.ts";
 
 function fail(message: string): never {
     console.error(message);

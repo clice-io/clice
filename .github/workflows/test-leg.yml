@@ -29,17 +29,11 @@ on:
       asset_name:
         type: string
         default: ""
-      # The shard numbers 1..n of a suite split over n runners, as a JSON
+      # The shard numbers 1..n of the cases split over n runners, as a JSON
       # array.
-      integration_shards:
-        type: string
-        default: "[1, 2]"
-      snap_shards:
-        type: string
-        default: "[1]"
       cases_shards:
         type: string
-        default: "[1]"
+        default: "[1, 2, 3]"
       editor:
         type: boolean
         default: false
@@ -227,76 +221,6 @@ jobs:
       - name: Unit tests
         timeout-minutes: 10
         run: pixi run -e test-run unit-test ${{ inputs.build_type }}
-
-  smoke:
-    needs: build
-    runs-on: ${{ inputs.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/download-programs
-        with:
-          target: ${{ inputs.target }}
-          build_type: ${{ inputs.build_type }}
-          environments: ${{ env.TEST_ENVIRONMENTS }}
-          activate-environment: ${{ env.TEST_ACTIVATE }}
-
-      - name: Smoke tests
-        timeout-minutes: 5
-        run: pixi run -e test-run smoke-test ${{ inputs.build_type }}
-
-  integration:
-    needs: build
-    name: integration ${{ matrix.shard }}/${{ strategy.job-total }}
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(inputs.integration_shards) }}
-    runs-on: ${{ inputs.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/download-programs
-        with:
-          target: ${{ inputs.target }}
-          build_type: ${{ inputs.build_type }}
-          environments: ${{ env.TEST_ENVIRONMENTS }}
-          activate-environment: ${{ env.TEST_ACTIVATE }}
-
-      - name: Integration tests
-        timeout-minutes: 30
-        run: pixi run -e test-run integration-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
-
-  snap:
-    needs: build
-    name: snap ${{ matrix.shard }}/${{ strategy.job-total }}
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(inputs.snap_shards) }}
-    runs-on: ${{ inputs.os }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/download-programs
-        with:
-          target: ${{ inputs.target }}
-          build_type: ${{ inputs.build_type }}
-          environments: ${{ env.TEST_ENVIRONMENTS }}
-          activate-environment: ${{ env.TEST_ACTIVATE }}
-
-      - name: Snap tests
-        timeout-minutes: 20
-        run: pixi run -e test-run snap-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
 
   cases:
     needs: build

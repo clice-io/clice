@@ -1,11 +1,11 @@
 module;
 
 #include "modules/prelude.h"
-/// Primary semantic-tokens coverage lives in the snapshot corpus
-/// (tests/snap/semantic_tokens/), which pins both the standalone and the
-/// server path. This file keeps only what that corpus cannot express:
-/// preamble state under a real PCH split, module imports (which need
-/// dependency modules), and the encoder math the snapshots decode away.
+/// Primary semantic-tokens coverage lives in the cases
+/// (tests-next/semantic_tokens/), which pin both the inspect and the
+/// server path. This file drives the feature layer directly: preamble
+/// state under a real PCH split, module imports (which need dependency
+/// modules), and the encoder math the snapshots decode away.
 
 module clice;
 

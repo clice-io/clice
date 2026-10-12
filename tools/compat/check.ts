@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Workspace } from "../client/workspace.ts";
-import { REPO_ROOT } from "../compile_commands.ts";
+import { REPO_ROOT } from "../repo.ts";
 import { compileCommand, lint } from "./clice.ts";
 import { entryArguments, entrySource, readDatabase, samePath } from "./database.ts";
 import { compilerMacros, writeExpectations } from "./macros.ts";

@@ -1,12 +1,11 @@
 /// Workspace — a directory a clice server is pointed at, with relative-path
-/// file operations, CDB generation and cache-store inspection as members,
-/// so tests never juggle absolute paths or raw fs calls.
+/// file operations and its servers' logs as members, so callers never
+/// juggle absolute paths or raw fs calls.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { URI } from "vscode-uri";
-import { buildCDBEntry, generateCDB } from "../compile_commands.ts";
 import { logFiles } from "../process_gate.ts";
 
 /// The harness-wide canonical URI spelling: percent-decoded. vscode-uri
@@ -21,14 +20,6 @@ export function canonicalUri(uri: string): string {
     }
 }
 
-export interface CDBOptions {
-    extraArgs?: string[] | undefined;
-    std?: string | undefined;
-    /// Where the database is written, workspace-relative; default
-    /// compile_commands.json at the root.
-    at?: string | undefined;
-}
-
 export class Workspace {
     // Not a constructor parameter property: those don't survive Node's
     // strip-only TS mode, and bench.ts runs this file under plain node.
@@ -38,8 +29,7 @@ export class Workspace {
         this.root = root;
     }
 
-    /// A fresh temp-directory workspace. Removal is the creator's business —
-    /// the session fixture registers it for teardown.
+    /// A fresh temp-directory workspace. Removal is the creator's business.
     ///
     /// realpath matters: macOS's tmpdir is a symlink (/var/folders ->
     /// /private/var), and the server canonicalizes discovered TU paths, so
@@ -89,21 +79,6 @@ export class Workspace {
         fs.writeFileSync(target, content);
     }
 
-    /// Copy the files directly inside `dir` to the workspace root — a data
-    /// workspace's sources, without the build directories a configure left
-    /// beside them.
-    copyFiles(dir: string): void {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            if (entry.isFile()) {
-                fs.copyFileSync(path.join(dir, entry.name), this.path(entry.name));
-            }
-        }
-    }
-
-    mkdir(rel: string): void {
-        fs.mkdirSync(this.path(rel), { recursive: true });
-    }
-
     rm(rel: string): void {
         fs.rmSync(this.path(rel), { recursive: true, force: true });
     }
@@ -111,32 +86,6 @@ export class Workspace {
     /// Remove the whole workspace directory.
     remove(): void {
         fs.rmSync(this.root, { recursive: true, force: true });
-    }
-
-    /// Write a compile_commands.json for the given source files.
-    writeCDB(files: string[], options: CDBOptions = {}): void {
-        this.writeEntries(
-            files.map((f) => [f, options.extraArgs ?? []]),
-            options,
-        );
-    }
-
-    /// Write a compile_commands.json with per-file extra arguments; a file
-    /// may appear multiple times to model multi-configuration projects.
-    writeEntries(entries: [string, string[]][], options: CDBOptions = {}): void {
-        const data = entries.map(([f, args]) =>
-            buildCDBEntry(this.root, this.path(f), {
-                extraArgs: args,
-                std: options.std,
-            }),
-        );
-        this.write(options.at ?? "compile_commands.json", JSON.stringify(data, null, 2));
-    }
-
-    /// Generate compile_commands.json via CMake (workspaces with a
-    /// CMakeLists.txt).
-    generateCDB(): void {
-        generateCDB(this.root);
     }
 
     /// The text of every log file named `name` ("master.log", "SF-0.log")
@@ -157,113 +106,5 @@ export class Workspace {
             this.log("master.log").split(`] clice worker crashed in: clice/worker/${tag}`).length -
             1
         );
-    }
-
-    /// Write a clice.toml that pins cache_dir to <workspace>/.clice/.
-    pinCacheDir(): void {
-        this.write("clice.toml", '[project]\ncache_dir = "${workspace}/.clice"\n');
-    }
-
-    /// The versioned cache store root the server opened: the one
-    /// `v<N>` directory under `.clice/cache`, so a version bump on the
-    /// C++ side never leaves the helpers reading a stale tree. Throws
-    /// when there is none yet or more than one.
-    cacheRoot(): string {
-        const versions = this.cacheVersions();
-        const [only] = versions;
-        if (versions.length !== 1 || only === undefined) {
-            throw new Error(
-                `expected one cache version directory under ${this.cacheBase()}, found [${versions.join(", ")}]`,
-            );
-        }
-        return path.join(this.cacheBase(), only);
-    }
-
-    /// The index library of a build configuration under the cache store,
-    /// if it exists: `index/default` for the anonymous one, else the
-    /// directory named by the lowercase tag, `~` and its hash.
-    indexLibrary(configuration?: string): string | undefined {
-        const dir = path.join(this.cacheRoot(), "index");
-        if (!fs.existsSync(dir)) {
-            return undefined;
-        }
-        const wanted =
-            configuration === undefined
-                ? (name: string) => name === "default"
-                : (name: string) => name.startsWith(`${configuration.toLowerCase()}~`);
-        const match = fs.readdirSync(dir).find(wanted);
-        return match === undefined ? undefined : path.join(dir, match);
-    }
-
-    private cacheBase(): string {
-        return this.path(path.join(".clice", "cache"));
-    }
-
-    private cacheVersions(): string[] {
-        if (!fs.existsSync(this.cacheBase())) {
-            return [];
-        }
-        return fs
-            .readdirSync(this.cacheBase(), { withFileTypes: true })
-            .filter((entry) => entry.isDirectory() && /^v\d+$/.test(entry.name))
-            .map((entry) => entry.name);
-    }
-
-    private globCache(sub: string, suffix: string): string[] {
-        // No store yet (a read-only session opens none) is an empty
-        // namespace, not an error.
-        if (this.cacheVersions().length === 0) {
-            return [];
-        }
-        const dir = path.join(this.cacheRoot(), sub);
-        if (!fs.existsSync(dir)) {
-            return [];
-        }
-        return fs
-            .readdirSync(dir)
-            .filter((name) => name.endsWith(suffix))
-            .sort()
-            .map((name) => path.join(dir, name));
-    }
-
-    /// All .pch files in the cache store, sorted. A .pch.idx never matches
-    /// (it does not end in ".pch").
-    pchFiles(): string[] {
-        return this.globCache("pch", ".pch");
-    }
-
-    pchIdxFiles(): string[] {
-        return this.globCache("pch", ".pch.idx");
-    }
-
-    pcmFiles(): string[] {
-        return this.globCache("pcm", ".pcm");
-    }
-
-    /// In-flight tmp files of all store instances. Committed blobs appear
-    /// atomically, so anything under tmp/ is either an in-flight write of a
-    /// live server or crash residue awaiting cleanup.
-    tmpFiles(): string[] {
-        if (this.cacheVersions().length === 0) {
-            return [];
-        }
-        const tmpDir = path.join(this.cacheRoot(), "tmp");
-        if (!fs.existsSync(tmpDir)) {
-            return [];
-        }
-        return fs
-            .readdirSync(tmpDir, { recursive: true, encoding: "utf8" })
-            .map((name) => path.join(tmpDir, name))
-            .filter((p) => {
-                // A live server may commit or remove a blob between the
-                // readdir and this stat; a vanished entry is simply not an
-                // in-flight file.
-                try {
-                    return fs.statSync(p).isFile();
-                } catch {
-                    return false;
-                }
-            })
-            .sort();
     }
 }

@@ -1,12 +1,11 @@
 module;
 
 #include "modules/prelude.h"
-/// Primary inlay-hint coverage lives in the snapshot corpus
-/// (tests/snap/inlay_hint/), which pins both the standalone and the server
-/// path under default options. This file keeps only what the corpus cannot
-/// reach: block-end and default-argument hints are off by default and only
-/// selectable through InlayHintsOptions, and the corpus asks for whole files,
-/// never a range.
+/// Primary inlay-hint coverage lives in the cases
+/// (tests-next/inlay_hints/), which pin both the inspect and the server
+/// path. This file drives the feature layer directly: block-end and
+/// default-argument hints, off by default, through InlayHintsOptions, and
+/// requests over a range.
 
 module clice;
 

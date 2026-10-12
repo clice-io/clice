@@ -4,7 +4,7 @@
 
 import * as path from "node:path";
 import type { FileExpectation, Scenario } from "@clice/tools/compat/scenario";
-import { REPO_ROOT } from "@clice/tools/compile-commands";
+import { REPO_ROOT } from "@clice/tools/repo";
 
 const GCC = "/usr/bin/gcc";
 const GXX = "/usr/bin/g++";

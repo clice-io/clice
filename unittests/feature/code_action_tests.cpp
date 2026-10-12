@@ -1,11 +1,10 @@
 module;
 
 #include "modules/prelude.h"
-/// What each code action renders is pinned by the snapshot corpus
-/// (tests/snap/code_action/); these cases apply one action and compile the
-/// result, which the corpus cannot: the edited file must be the expected
-/// text, compile cleanly and, for a definition, define the function the
-/// action was offered on.
+/// What each code action renders is pinned by the cases
+/// (tests-next/code_actions/); these tests apply one action and compile the
+/// result: the edited file must be the expected text, compile cleanly and,
+/// for a definition, define the function the action was offered on.
 
 module clice;
 

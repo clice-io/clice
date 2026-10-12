@@ -1,0 +1,38 @@
+/// Tests for the test client's initialization overlay (tools/client/client.ts).
+
+import * as path from "node:path";
+import { expect, test } from "vitest";
+import { initializationOptionsFor } from "./client.ts";
+import { Workspace } from "./workspace.ts";
+
+const ws = new Workspace(path.join(path.sep, "ws"));
+
+test("defaults overlay the caller's options", () => {
+    const options = initializationOptionsFor(ws, {
+        initializationOptions: { project: { stateful_worker_count: 3 }, tracker: {} },
+    });
+    expect(options).toEqual({
+        project: {
+            cache_dir: ws.path(".clice"),
+            stateful_worker_count: 3,
+            stateless_worker_count: 1,
+            idle_timeout_ms: 0,
+            test_hooks: true,
+        },
+        tracker: { workspace_poll_seconds: 0 },
+    });
+});
+
+test("without test defaults only the cache is pinned", () => {
+    // A benchmark runs the server's real defaults: nothing but the cache
+    // location is added, so the defaults stay spelled in the C++ config.
+    const options = initializationOptionsFor(ws, {
+        initializationOptions: { rules: [{ compile_commands: ["/cdb"] }] },
+        testDefaults: false,
+    });
+    expect(options).toEqual({
+        rules: [{ compile_commands: ["/cdb"] }],
+        project: { cache_dir: ws.path(".clice") },
+        tracker: {},
+    });
+});

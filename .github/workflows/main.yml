@@ -36,9 +36,6 @@ jobs:
               - '**/*.{h,c,cc,cpp,cppm,hpp,ts,js,lua,md,yml,yaml,jsonc}'
             docs:
               - 'docs/**'
-              # The site renders the feature pages' snap fences from the
-              # fixture corpus, so a snapshot change alone must redeploy.
-              - 'tests/snap/**'
             vscode:
               - 'editors/vscode/**'
               - '.github/workflows/publish-vscode.yml'

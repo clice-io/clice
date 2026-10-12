@@ -13,7 +13,6 @@ export const SANITIZER_MARKERS = [
 ] as const;
 
 const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
-const CRASH_TRACE_MARKER = "=== CRASH STACK TRACE ===";
 
 /// The environment servers under test run in: every freshness answer given
 /// without a look at the disk is checked against one, a contradiction
@@ -22,10 +21,7 @@ export function serverEnv(): NodeJS.ProcessEnv {
     return { ...process.env, CLICE_SHADOW_FRESHNESS: "1" };
 }
 
-export function logFiles(root: string | null, ignoreLogs?: ReadonlySet<string>): string[] {
-    if (root === null) {
-        return [];
-    }
+export function logFiles(root: string): string[] {
     const logsDir = path.join(root, ".clice", "logs");
     if (!fs.existsSync(logsDir)) {
         return [];
@@ -34,16 +30,12 @@ export function logFiles(root: string | null, ignoreLogs?: ReadonlySet<string>):
         .readdirSync(logsDir, { recursive: true, encoding: "utf8" })
         .filter((name) => name.endsWith(".log"))
         .sort()
-        .map((name) => path.join(logsDir, name))
-        .filter((file) => !(ignoreLogs?.has(file) ?? false));
+        .map((name) => path.join(logsDir, name));
 }
 
-export function anomaliesInLogFiles(
-    root: string | null,
-    ignoreLogs?: ReadonlySet<string>,
-): string[] {
+export function anomaliesInLogFiles(root: string): string[] {
     const found: string[] = [];
-    for (const logFile of logFiles(root, ignoreLogs)) {
+    for (const logFile of logFiles(root)) {
         for (const line of fs.readFileSync(logFile, "utf8").split("\n")) {
             const match = ANOMALY_PATTERN.exec(line);
             if (match) {
@@ -59,21 +51,6 @@ export function anomaliesInMessages(messages: string[]): string[] {
         const id = ANOMALY_PATTERN.exec(message)?.[1];
         return id === undefined ? [] : [id];
     });
-}
-
-export function crashTracesInLogFiles(
-    root: string | null,
-    ignoreLogs?: ReadonlySet<string>,
-): string[] {
-    const traces: string[] = [];
-    for (const logFile of logFiles(root, ignoreLogs)) {
-        const text = fs.readFileSync(logFile, "utf8");
-        const pos = text.indexOf(CRASH_TRACE_MARKER);
-        if (pos !== -1) {
-            traces.push(`--- ${path.basename(logFile)} ---\n${text.slice(pos)}`);
-        }
-    }
-    return traces;
 }
 
 export function serverStderrExcerpt(stderrText: string): string {
@@ -125,18 +102,4 @@ export function processGateFailures(input: ProcessGateInput): string[] {
         failures.push("server stderr contains sanitizer/runtime error output");
     }
     return failures;
-}
-
-export function anomalyGateFailure(
-    notifications: string[],
-    root: string | null,
-    ignoreLogs?: ReadonlySet<string>,
-): string | null {
-    const found = [...notifications, ...anomaliesInLogFiles(root, ignoreLogs)];
-    if (found.length === 0) {
-        return null;
-    }
-    const traces = crashTracesInLogFiles(root, ignoreLogs);
-    const detail = traces.length > 0 ? "\n" + traces.join("\n") : "";
-    return `clice reported internal anomalies: ${found.join(", ")}${detail}`;
 }

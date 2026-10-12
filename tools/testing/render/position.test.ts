@@ -13,7 +13,7 @@ import {
     resolveLocation,
     withoutBom,
 } from "./position.ts";
-import { parseAnnotations } from "../../snap/annotation.ts";
+import { parseAnnotations } from "../cases/annotation.ts";
 import { loadCases } from "../cases/case.ts";
 import { CASES_DIR, MARKED } from "../cases/project.ts";
 
