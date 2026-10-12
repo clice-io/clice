@@ -193,6 +193,8 @@ std::optional<SymbolModifiers::Kind> scope_modifier(const clang::NamedDecl* decl
     if(context->isTranslationUnit() && decl->isTemplateParameter()) {
         return std::nullopt;
     }
+    // Visible, not external, linkage: a C enumerator has no linkage yet
+    // reaches every file its enum does.
     if(!clang::isExternallyVisible(decl->getLinkageInternal())) {
         return SymbolModifiers::FileScope;
     }
@@ -284,7 +286,7 @@ Classified classify_placeholder(clang::QualType type) {
         return result;
     }
     if(type->isBuiltinType()) {
-        result.kind = SymbolKind::Primitive;
+        result = {SymbolKind::Primitive, SymbolModifiers::to_mask(SymbolModifiers::GlobalScope)};
     } else if(const auto* tag = type->getAsTagDecl()) {
         result = classify_decl(tag, RelationKind::Reference);
         constexpr auto kept = SymbolModifiers::to_mask(SymbolModifiers::GlobalScope) |

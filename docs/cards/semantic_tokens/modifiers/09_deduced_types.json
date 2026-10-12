@@ -45,7 +45,8 @@
               "text": "auto",
               "type": "primitive",
               "modifiers": [
-                "deduced"
+                "deduced",
+                "globalScope"
               ]
             }
           }
@@ -72,7 +73,8 @@
               "text": "decltype",
               "type": "primitive",
               "modifiers": [
-                "deduced"
+                "deduced",
+                "globalScope"
               ]
             }
           }

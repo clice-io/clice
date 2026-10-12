@@ -1,7 +1,7 @@
 [answers.auto.semantic_token]
 text = "auto"
 type = "primitive"
-modifiers = ["deduced"]
+modifiers = ["deduced", "globalScope"]
 
 [answers.auto_class.semantic_token]
 text = "auto"
@@ -11,4 +11,4 @@ modifiers = ["deduced", "globalScope"]
 [answers.decltype.semantic_token]
 text = "decltype"
 type = "primitive"
-modifiers = ["deduced"]
+modifiers = ["deduced", "globalScope"]

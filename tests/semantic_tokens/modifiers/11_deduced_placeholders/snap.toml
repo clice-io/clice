@@ -15,7 +15,7 @@ modifiers = ["deduced", "globalScope"]
 [answers.decltype_auto.semantic_token]
 text = "decltype"
 type = "primitive"
-modifiers = ["deduced"]
+modifiers = ["deduced", "globalScope"]
 
 [answers.dependent.semantic_token]
 text = "auto"
@@ -24,7 +24,7 @@ type = "keyword"
 [answers.non_dependent.semantic_token]
 text = "auto"
 type = "primitive"
-modifiers = ["deduced"]
+modifiers = ["deduced", "globalScope"]
 
 [answers.capture.semantic_token]
 text = "captured"
