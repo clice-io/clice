@@ -272,10 +272,10 @@ auto dedup_priority(protocol::CompletionItemKind kind, bool is_macro) -> int {
     }
 }
 
-/// Extract the function signature (parameter list) from a CodeCompletionString.
-/// Returns something like "(int x, float y) const" for display in
-/// labelDetails.detail.
-auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
+/// Extract the function signature (parameter list) from a CodeCompletionString,
+/// followed by the function's qualifiers when `qualifiers` is set. Returns
+/// something like "(int x, float y) const" for display in labelDetails.detail.
+auto extract_signature(const clang::CodeCompletionString& ccs, bool qualifiers) -> std::string {
     std::string signature;
     bool in_parens = false;
     bool closed = false;
@@ -307,12 +307,12 @@ auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
                 // A function that cannot be called where completion happens
                 // (a destructor after `T::`) carries its whole parameter list
                 // as informative chunks, parentheses included. After the
-                // list come a method's qualifiers, ` const`.
+                // list come the function's qualifiers, ` const`.
                 llvm::StringRef text = chunk.Text ? chunk.Text : "";
                 if(text == "(") {
                     in_parens = true;
                 }
-                if(in_parens || closed) {
+                if(in_parens || (closed && qualifiers)) {
                     signature += text;
                 }
                 if(text == ")") {
@@ -925,7 +925,7 @@ public:
         auto add_requirement = [&](const clang::CodeCompletionString& pattern) {
             Candidate item{
                 .label = pattern.getAllTypedText(),
-                .signature = extract_signature(pattern),
+                .signature = extract_signature(pattern, /*qualifiers=*/false),
                 .return_type = extract_return_type(pattern),
             };
             if(item.signature.empty()) {
@@ -982,7 +982,10 @@ public:
                                                               getAllocator(),
                                                               getCodeCompletionTUInfo(),
                                                               /*IncludeBriefComments=*/false);
-            item.signature = extract_signature(ccs);
+            // Clang gives a variable holding a lambda the signature of its
+            // call operator, whose `const` is no part of calling it.
+            bool method = llvm::isa_and_present<clang::CXXMethodDecl>(declaration->getAsFunction());
+            item.signature = extract_signature(ccs, /*qualifiers=*/method);
             item.return_type = extract_return_type(ccs);
             if(is_callable) {
                 insert_call(item,
@@ -1055,7 +1058,7 @@ public:
                                                                 getAllocator(),
                                                                 getCodeCompletionTUInfo(),
                                                                 /*IncludeBriefComments=*/false)) {
-                        item.signature = extract_signature(*ccs);
+                        item.signature = extract_signature(*ccs, /*qualifiers=*/false);
                         if(function_like && options.enable_function_arguments_snippet &&
                            client.snippets) {
                             item.insert = build_snippet(*ccs);

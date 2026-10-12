@@ -1,0 +1,10 @@
+[answers.method.completion]
+items = [
+    { label = "reset()", kind = "Method", detail = "void" },
+    { label = "value() const", kind = "Method", detail = "int" },
+]
+
+[answers.lambda.completion]
+items = [
+    { label = "twice(int x)", kind = "Variable", detail = "int" },
+]
