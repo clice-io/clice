@@ -988,28 +988,14 @@ public:
     /// were written there, with a Deduced relation: navigation from the keyword
     /// reaches the type, references to the type never list the keyword.
     void project_placeholder(const Semantics& semantics, std::uint32_t index) {
-        const auto& entry = semantics.node(index);
-        clang::SourceRange keyword;
-        if(const auto* loc = entry.node.get<clang::TypeLoc>()) {
-            if(auto auto_loc = loc->getAs<clang::AutoTypeLoc>()) {
-                keyword = auto_loc.isDecltypeAuto()
-                              ? clang::SourceRange(auto_loc.getNameLoc(), auto_loc.getRParenLoc())
-                              : clang::SourceRange(auto_loc.getNameLoc());
-            } else if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
-                keyword = decltype_loc.getDecltypeLoc();
-            } else if(auto param_loc = loc->getAs<clang::TemplateTypeParmTypeLoc>();
-                      param_loc && param_loc.getDecl()->isImplicit()) {
-                keyword = param_loc.getNameLoc();
-            }
-        } else if(const auto* function = entry.node.get<clang::FunctionDecl>()) {
-            if(const auto* proto = function->getType()->getAs<clang::FunctionProtoType>();
-               proto && proto->hasTrailingReturn()) {
-                keyword = function->getTypeSpecStartLoc();
-            }
-        }
-        if(keyword.isInvalid() || entry.flags.in_instantiation) {
+        if(semantics.node(index).flags.in_instantiation) {
             return;
         }
+        auto placeholder = resolve_placeholder(semantics, index, unit.resolver());
+        if(!placeholder) {
+            return;
+        }
+        auto [keyword, type] = *placeholder;
         auto location = unit.file_location(keyword.getBegin());
         if(location != unit.spelling_location(keyword.getBegin())) {
             return;
@@ -1018,25 +1004,6 @@ public:
         auto spelling = unit.token_spelling(location);
         if(spelling != "auto" && spelling != "decltype") {
             return;
-        }
-
-        auto owner = index;
-        while(!semantics.node(owner).node.get<clang::Decl>()) {
-            owner = semantics.node(owner).parent;
-        }
-        const auto* decl = semantics.node(owner).node.get<clang::Decl>();
-        auto type = types::deduced_type(entry.node.dyn_typed(), decl);
-        if(type.isNull()) {
-            return;
-        }
-        if(const auto* AT = llvm::dyn_cast<clang::AutoType>(type.getTypePtr());
-           AT && AT->getDeducedKind() != clang::DeducedKind::Deduced) {
-            // A dependent initializer leaves `auto` to instantiation.
-            const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
-            if(!var || !var->getInit()) {
-                return;
-            }
-            type = unit.resolver().deduce(var);
         }
 
         clang::SourceRange name(location, unit.file_location(keyword.getEnd()));

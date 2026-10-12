@@ -78,7 +78,7 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
         auto token = advance();
         auto keyword = token.text(content);
         std::optional<BlockDirective::Kind> kind;
-        std::optional<std::uint32_t> mark_text;
+        std::optional<std::uint32_t> mark_text_begin;
         if(keyword == "if" || keyword == "ifdef" || keyword == "ifndef") {
             kind = BlockDirective::Kind::If;
         } else if(keyword == "elif" || keyword == "elifdef" || keyword == "elifndef" ||
@@ -95,7 +95,7 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
             } else if(is_spelled(token, "endregion")) {
                 kind = BlockDirective::Kind::EndRegion;
             } else if(is_spelled(token, "mark")) {
-                mark_text = token.range.end;
+                mark_text_begin = token.range.end;
             }
         }
         while(!token.is_eod() && !token.is_eof()) {
@@ -108,10 +108,10 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
             info.include_directives.push_back(range);
         } else if(keyword == "define") {
             info.macro_definitions.push_back(range);
-        } else if(mark_text) {
+        } else if(mark_text_begin) {
             info.pragma_marks.push_back({
                 .range = range,
-                .text = {*mark_text, range.end}
+                .text = {*mark_text_begin, range.end}
             });
         }
     };

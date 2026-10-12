@@ -4,7 +4,7 @@
   "subtopic": "symbol_kinds",
   "title": "Specializations and deduction guides",
   "summary": "Specializations list with their template arguments and their own members, and a deduction guide with the signature it deduces",
-  "prose": "An explicit instantiation of a function template is named without its\narguments.",
+  "prose": "",
   "status": "partial",
   "issues": [],
   "files": [

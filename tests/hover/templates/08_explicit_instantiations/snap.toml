@@ -36,7 +36,7 @@ range = "template struct ⟦Box⟧<Item>;"
 
 [answers.function_directive.hover]
 markdown = '''
-### function `run`
+### function `run<long>`
 
 ---
 → `void`

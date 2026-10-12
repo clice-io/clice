@@ -103,12 +103,12 @@ std::string template_args(const clang::NamedDecl& decl) {
     if(auto arg_locs = template_specialization_arg_locs(decl)) {
         clang::printTemplateArgumentList(os, *arg_locs, policy);
     } else if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(&decl)) {
-        /// An explicit specialization's written arguments are not always
-        /// recorded; the converted ones spell the same specialization. An
-        /// explicitly specialized member of a class template reports the
-        /// same kind but has no argument list of its own.
+        /// The written arguments of an explicit specialization or
+        /// instantiation are not always recorded; the converted ones spell
+        /// the same specialization. An explicitly specialized member of a
+        /// class template has no argument list of its own.
         if(const auto* args = function->getTemplateSpecializationArgs();
-           args && function->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization) {
+           args && function->getTemplateSpecializationKind() != clang::TSK_ImplicitInstantiation) {
             clang::printTemplateArgumentList(os, args->asArray(), policy);
         }
     } else if(auto* record = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {

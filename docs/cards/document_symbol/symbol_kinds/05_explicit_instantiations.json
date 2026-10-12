@@ -4,7 +4,7 @@
   "subtopic": "symbol_kinds",
   "title": "Explicit instantiations",
   "summary": "Explicit instantiations of class, function and variable templates list without members",
-  "prose": "A function template's instantiation is named without its arguments.",
+  "prose": "",
   "status": "partial",
   "issues": [],
   "files": [

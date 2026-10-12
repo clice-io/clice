@@ -173,21 +173,9 @@ private:
         // An explicit instantiation directive outlines as a childless symbol
         // of its specialization: the instantiated members sit at the pattern.
         if(const auto* directive = llvm::dyn_cast<clang::ExplicitInstantiationDecl>(decl)) {
-            const auto* specialization = directive->getSpecialization();
-            auto* symbol =
-                add_symbol(*specialization, directive->getNameLoc(), directive->getSourceRange());
-            // name_of spells a function's arguments only for an explicit
-            // specialization; a member of a class template has none.
-            const auto* function = llvm::dyn_cast<clang::FunctionDecl>(specialization);
-            if(symbol && function &&
-               clang::isTemplateInstantiation(function->getTemplateSpecializationKind())) {
-                if(const auto* args = function->getTemplateSpecializationArgs()) {
-                    llvm::raw_string_ostream stream(symbol->name);
-                    clang::printTemplateArgumentList(stream,
-                                                     args->asArray(),
-                                                     unit.context().getPrintingPolicy());
-                }
-            }
+            add_symbol(*directive->getSpecialization(),
+                       directive->getNameLoc(),
+                       directive->getSourceRange());
             return false;
         }
 
@@ -339,19 +327,17 @@ private:
             .children = std::move(symbols),
         };
 
-        auto contains = [](const DocumentSymbol& symbol, LocalSourceRange range) {
-            return symbol.range.begin <= range.begin && range.end <= symbol.range.end;
-        };
-        auto holder = [&](DocumentSymbol& scope, LocalSourceRange range) -> DocumentSymbol* {
+        auto child_containing = [](DocumentSymbol& scope,
+                                   LocalSourceRange range) -> DocumentSymbol* {
             auto child = llvm::find_if(scope.children, [&](const DocumentSymbol& child) {
-                return contains(child, range);
+                return child.range.contains(range);
             });
             return child == scope.children.end() ? nullptr : &*child;
         };
 
         for(auto [index, mark]: llvm::enumerate(marks)) {
             auto* scope = &root;
-            while(auto* child = holder(*scope, mark.range)) {
+            while(auto* child = child_containing(*scope, mark.range)) {
                 scope = child;
             }
 
@@ -371,27 +357,25 @@ private:
 
             auto end = scope->range.end;
             for(const auto& next: llvm::ArrayRef(marks).drop_front(index + 1)) {
-                if(!contains(*scope, next.range)) {
+                if(!scope->range.contains(next.range)) {
                     break;
                 }
-                if(!holder(*scope, next.range)) {
+                if(!child_containing(*scope, next.range)) {
                     end = next.range.begin;
                     break;
                 }
             }
 
             auto& siblings = scope->children;
-            auto owned = std::stable_partition(siblings.begin(),
-                                               siblings.end(),
-                                               [&](const DocumentSymbol& sibling) {
-                                                   return sibling.range.begin < mark.range.begin ||
-                                                          sibling.range.begin >= end;
-                                               });
-            for(auto& child: llvm::make_range(owned, siblings.end())) {
+            auto owned =
+                std::ranges::stable_partition(siblings, [&](const DocumentSymbol& sibling) {
+                    return sibling.range.begin < mark.range.begin || sibling.range.begin >= end;
+                });
+            for(auto& child: owned) {
                 symbol.range.end = std::max(symbol.range.end, child.range.end);
                 symbol.children.push_back(std::move(child));
             }
-            siblings.erase(owned, siblings.end());
+            siblings.erase(owned.begin(), owned.end());
             siblings.push_back(std::move(symbol));
         }
 

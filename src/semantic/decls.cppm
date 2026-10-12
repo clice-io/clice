@@ -74,6 +74,25 @@ auto resolve_forwarding_params(const clang::FunctionDecl* decl, unsigned max_dep
 /// A pack parameter left unresolved says nothing about the eventual use.
 bool binds_mutable_reference(const clang::ParmVarDecl* param, const clang::ParmVarDecl* forwarded);
 
+/// An argument of a call and the parameter it binds to, with the one
+/// resolve_forwarding_params resolves that to (the same outside a pack).
+struct ParameterBinding {
+    const clang::Expr* argument;
+    const clang::ParmVarDecl* param;
+    const clang::ParmVarDecl* forwarded;
+
+    /// Whether the callee may modify the argument through a mutable lvalue
+    /// reference (binds_mutable_reference), a forwarding reference, which
+    /// binds anything, excluded.
+    bool mutable_reference() const;
+};
+
+/// The arguments of a call or construction with the parameters they bind
+/// to, in order. The object a call is made on and the left operand of an
+/// overloaded operator are left out, and so are the arguments of a call
+/// through no declared function and those past the last parameter.
+auto parameter_bindings(const clang::Stmt* call) -> llvm::SmallVector<ParameterBinding>;
+
 /// Given a callee expression, if the call is through a function pointer,
 /// try to find the declaration of the corresponding function pointer
 /// type, so that we can recover argument names from it.

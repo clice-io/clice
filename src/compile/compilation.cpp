@@ -320,9 +320,7 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     auto& instance = *self.instance;
     instance.createVirtualFileSystem(params.vfs, diagnostic_consumer.get());
     instance.createDiagnostics(diagnostic_consumer.release(), true);
-    // A missing header is fatal to clang, which then reports nothing after
-    // it; the file reads on, so every missing header and what follows is
-    // reported.
+    // A missing header is fatal to clang, which then reports nothing after it.
     instance.getDiagnostics().setSeverity(clang::diag::err_pp_file_not_found,
                                           clang::diag::Severity::Error,
                                           {});

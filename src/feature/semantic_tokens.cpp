@@ -274,35 +274,6 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
     return {kind, modifiers};
 }
 
-/// A placeholder type written in the code — the `auto` of a declaration, a
-/// `decltype(...)` — and the type it stands for.
-struct Placeholder {
-    clang::SourceLocation location;
-    clang::QualType type;
-};
-
-std::optional<Placeholder> placeholder(const SemanticNode& node) {
-    if(const auto* decl = node.get<clang::DeclaratorDecl>()) {
-        const auto* auto_type = decl->getType()->getContainedAutoType();
-        const auto* type_info = decl->getTypeSourceInfo();
-        if(!auto_type || !type_info) {
-            return std::nullopt;
-        }
-        auto location = type_info->getTypeLoc().getContainedAutoTypeLoc().getNameLoc();
-        // An init-capture's type is not written; its `auto` sits at the name.
-        if(location == decl->getLocation()) {
-            return std::nullopt;
-        }
-        return Placeholder{location, auto_type->getDeducedType()};
-    }
-    if(const auto* loc = node.get<clang::TypeLoc>()) {
-        if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
-            return Placeholder{decltype_loc.getBeginLoc(), decltype_loc.getType()};
-        }
-    }
-    return std::nullopt;
-}
-
 /// A placeholder colors as the type it stands for when that type is named
 /// by a builtin keyword or a class; a pointer, a function or a type not
 /// deduced yet leaves the keyword alone.
@@ -320,33 +291,6 @@ Classified classify_placeholder(clang::QualType type) {
     }
     result.modifiers |= SymbolModifiers::to_mask(SymbolModifiers::Deduced);
     return result;
-}
-
-/// The callee and the arguments a call or construction passes to its
-/// parameters; no callee for anything else.
-std::pair<const clang::FunctionDecl*, llvm::ArrayRef<const clang::Expr*>>
-    call_arguments(const SemanticNode& node) {
-    if(const auto* call = node.get<clang::CallExpr>()) {
-        // A literal's suffix calls its operator on a value no one wrote.
-        if(llvm::isa<clang::UserDefinedLiteral>(call)) {
-            return {};
-        }
-        llvm::ArrayRef<const clang::Expr*> args(call->getArgs(), call->getNumArgs());
-        if(const auto* op = llvm::dyn_cast<clang::CXXOperatorCallExpr>(call)) {
-            if(op->getOperator() != clang::OO_Call && op->getOperator() != clang::OO_Subscript) {
-                return {};
-            }
-            args = args.drop_front();
-        }
-        return {llvm::dyn_cast_or_null<clang::FunctionDecl>(call->getCalleeDecl()), args};
-    }
-    if(const auto* construct = node.get<clang::CXXConstructExpr>()) {
-        return {
-            construct->getConstructor(),
-            {construct->getArgs(), construct->getNumArgs()}
-        };
-    }
-    return {};
 }
 
 /// Classifies every spelled token of the main file in one ordered
@@ -669,9 +613,7 @@ private:
                     if(entry.flags.in_instantiation) {
                         break;
                     }
-                    if(auto deduced = placeholder(node)) {
-                        anchor(deduced->location, classify_placeholder(deduced->type), false);
-                    }
+                    anchor_placeholder(static_cast<std::uint32_t>(entry_index));
                     mark_mutable_arguments(node);
                     break;
                 }
@@ -679,33 +621,45 @@ private:
         }
     }
 
-    /// An argument the callee may modify, through a parameter that is a
-    /// reference or a pointer to non-const, marks the name it writes.
+    /// The keyword of a placeholder node `index` writes colors as the type
+    /// it stands for; an init-capture's implicit `auto` sits at the name.
+    void anchor_placeholder(std::uint32_t index) {
+        auto placeholder = resolve_placeholder(semantics, index, unit.resolver());
+        if(!placeholder) {
+            return;
+        }
+        auto token = spelled_index(placeholder->keyword.getBegin());
+        if(!token || semantics.token_preprocessed_away(*token) ||
+           !llvm::is_contained({clang::tok::kw_auto, clang::tok::kw_decltype},
+                               semantics.spelled_tokens()[*token].kind())) {
+            return;
+        }
+        combine(token_semantics[*token], classify_placeholder(placeholder->type));
+    }
+
+    /// An argument the callee may modify, through a mutable lvalue
+    /// reference or a pointer to non-const, marks the name it passes.
     void mark_mutable_arguments(const SemanticNode& node) {
-        auto [callee, args] = call_arguments(node);
-        if(!callee) {
+        const auto* call = node.get<clang::Stmt>();
+        if(!llvm::isa_and_present<clang::CallExpr, clang::CXXConstructExpr>(call)) {
             return;
         }
-        const auto* prototype = callee->getType()->getAs<clang::FunctionProtoType>();
-        if(!prototype) {
-            return;
-        }
-        for(auto [type, arg]: llvm::zip(prototype->getParamTypes(), args)) {
-            bool reference = type->isLValueReferenceType();
-            if((!reference && !type->isPointerType()) ||
-               type->getPointeeType().isConstQualified() || type->isDependentType()) {
+        for(const auto& binding: decls::parameter_bindings(call)) {
+            auto type = binding.forwarded->getType();
+            SymbolModifiers::Kind modifier;
+            if(binding.mutable_reference()) {
+                modifier = SymbolModifiers::UsedAsMutableReference;
+            } else if(type->isPointerType() && !type->getPointeeType().isConstQualified()) {
+                modifier = SymbolModifiers::UsedAsMutablePointer;
+            } else {
                 continue;
             }
 
-            const clang::Expr* expr = arg;
-            if(const auto* cast = llvm::dyn_cast<clang::ImplicitCastExpr>(expr)) {
-                expr = cast->getSubExprAsWritten();
-            }
+            const auto* expr = binding.argument->IgnoreParenImpCasts();
             if(const auto* unary = llvm::dyn_cast<clang::UnaryOperator>(expr);
                unary && unary->getOpcode() == clang::UO_AddrOf) {
-                expr = unary->getSubExpr();
+                expr = unary->getSubExpr()->IgnoreParens();
             }
-
             clang::SourceLocation location;
             if(const auto* name = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
                 location = name->getLocation();
@@ -713,9 +667,7 @@ private:
                 location = member->getMemberLoc();
             }
             if(auto index = spelled_index(location)) {
-                usage_modifiers[*index] |=
-                    SymbolModifiers::to_mask(reference ? SymbolModifiers::UsedAsMutableReference
-                                                       : SymbolModifiers::UsedAsMutablePointer);
+                usage_modifiers[*index] |= SymbolModifiers::to_mask(modifier);
             }
         }
     }

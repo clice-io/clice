@@ -1706,6 +1706,53 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
     return spelled(resolve_references(semantics, index, resolver));
 }
 
+std::optional<Placeholder> resolve_placeholder(const Semantics& semantics,
+                                               std::uint32_t index,
+                                               types::TemplateResolver& resolver) {
+    const auto& entry = semantics.node(index);
+    clang::SourceRange keyword;
+    if(const auto* loc = entry.node.get<clang::TypeLoc>()) {
+        if(auto auto_loc = loc->getAs<clang::AutoTypeLoc>()) {
+            keyword = auto_loc.isDecltypeAuto()
+                          ? clang::SourceRange(auto_loc.getNameLoc(), auto_loc.getRParenLoc())
+                          : clang::SourceRange(auto_loc.getNameLoc());
+        } else if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
+            keyword = decltype_loc.getDecltypeLoc();
+        } else if(auto param_loc = loc->getAs<clang::TemplateTypeParmTypeLoc>();
+                  param_loc && param_loc.getDecl()->isImplicit()) {
+            keyword = param_loc.getNameLoc();
+        }
+    } else if(const auto* function = entry.node.get<clang::FunctionDecl>()) {
+        if(const auto* proto = function->getType()->getAs<clang::FunctionProtoType>();
+           proto && proto->hasTrailingReturn()) {
+            keyword = function->getTypeSpecStartLoc();
+        }
+    }
+    if(keyword.isInvalid()) {
+        return std::nullopt;
+    }
+
+    auto owner = index;
+    while(!semantics.node(owner).node.get<clang::Decl>()) {
+        owner = semantics.node(owner).parent;
+    }
+    const auto* decl = semantics.node(owner).node.get<clang::Decl>();
+    auto type = types::deduced_type(entry.node.dyn_typed(), decl);
+    if(type.isNull()) {
+        return std::nullopt;
+    }
+    if(const auto* AT = llvm::dyn_cast<clang::AutoType>(type.getTypePtr());
+       AT && AT->getDeducedKind() != clang::DeducedKind::Deduced) {
+        // A dependent initializer leaves `auto` to instantiation.
+        const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
+        if(!var || !var->getInit()) {
+            return std::nullopt;
+        }
+        type = resolver.deduce(var);
+    }
+    return Placeholder{keyword, type};
+}
+
 bool is_written(const Semantics& semantics, std::uint32_t index) {
     auto& entry = semantics.node(index);
     auto* expr = entry.node.get<clang::Expr>();
@@ -1734,52 +1781,15 @@ bool is_written(const Semantics& semantics, std::uint32_t index) {
         return op->isIncrementDecrementOp();
     }
 
-    const clang::FunctionDecl* callee = nullptr;
-    llvm::ArrayRef<const clang::Expr*> args;
-    if(auto* call = llvm::dyn_cast<clang::CallExpr>(parent)) {
-        callee = call->getDirectCallee();
-        args = {call->getArgs(), call->getNumArgs()};
-    } else if(auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(parent)) {
-        callee = construct->getConstructor();
-        args = {construct->getArgs(), construct->getNumArgs()};
-    }
-
-    // The object a call is made on leads the arguments of an operator call
-    // and of a call to an explicit object member function; the parameters
-    // list it unless the callee is an implicit object member.
-    auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(callee);
-    bool explicit_object = method && method->isExplicitObjectMemberFunction();
-    std::size_t skipped_params = 0;
-    if(auto* call = llvm::dyn_cast<clang::CXXOperatorCallExpr>(parent)) {
+    if(auto* call = llvm::dyn_cast<clang::CXXOperatorCallExpr>(parent);
+       call && is_expr(call->getArg(0))) {
         auto op = call->getOperator();
-        if(is_expr(call->getArg(0))) {
-            return call->isAssignmentOp() || op == clang::OO_PlusPlus || op == clang::OO_MinusMinus;
-        }
-        args = args.drop_front();
-        if(!method || explicit_object) {
-            skipped_params = 1;
-        }
-    } else if(explicit_object) {
-        args = args.drop_front();
-        skipped_params = 1;
+        return call->isAssignmentOp() || op == clang::OO_PlusPlus || op == clang::OO_MinusMinus;
     }
-
-    auto it = llvm::find_if(args, is_expr);
-    if(!callee || it == args.end()) {
-        return false;
-    }
-    auto position = skipped_params + (it - args.begin());
-    if(position >= callee->getNumParams()) {
-        return false;
-    }
-    auto* param = callee->getParamDecl(position);
-    auto* forwarded = param;
-    if(decls::underlying_pack_type(param)) {
-        forwarded = decls::resolve_forwarding_params(callee)[position];
-    }
-    // A reference collapsed from `T&&` or `auto&&` is not spelled as one.
-    return decls::binds_mutable_reference(param, forwarded) &&
-           forwarded->getType()->castAs<clang::LValueReferenceType>()->isSpelledAsLValue();
+    return llvm::any_of(decls::parameter_bindings(parent),
+                        [&](const decls::ParameterBinding& binding) {
+                            return is_expr(binding.argument) && binding.mutable_reference();
+                        });
 }
 
 bool NameOccurrence::owns_whole_name() const {
