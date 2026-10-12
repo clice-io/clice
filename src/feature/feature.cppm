@@ -429,9 +429,14 @@ auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
                                  const PositionMap& map,
                                  PositionEncoding encoding) -> protocol::SelectionRange;
 
+/// The outline of the main file, a `#define` in it only outside the
+/// inactive regions. The overload without a regions argument scans the
+/// unit itself — correct only for units compiled without a PCH, as with
+/// semantic_tokens.
 auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
-auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
-    -> std::vector<protocol::DocumentSymbol>;
+auto document_symbols(CompilationUnitRef unit,
+                      llvm::ArrayRef<std::uint32_t> inactive_regions,
+                      PositionEncoding encoding) -> std::vector<protocol::DocumentSymbol>;
 
 auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
                                   const PositionMap& map,

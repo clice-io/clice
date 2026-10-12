@@ -102,7 +102,8 @@ auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> 
 /// a symbol's frame stays open while the walk index is inside its subtree.
 class Collector {
 public:
-    explicit Collector(CompilationUnitRef unit) : unit(unit) {}
+    Collector(CompilationUnitRef unit, llvm::ArrayRef<std::uint32_t> inactive_regions) :
+        unit(unit), inactive_regions(inactive_regions) {}
 
     auto collect() -> std::vector<DocumentSymbol> {
         auto nodes = unit.semantics().node_entries();
@@ -141,13 +142,20 @@ public:
         }
 
         for(auto directive: unit.semantics().macro_definitions()) {
-            add_macro(directive);
+            if(!inactive(directive.begin)) {
+                add_macro(directive);
+            }
         }
 
         return std::move(symbols);
     }
 
 private:
+    bool inactive(std::uint32_t offset) const {
+        auto bounds = std::ranges::upper_bound(inactive_regions, offset) - inactive_regions.begin();
+        return bounds % 2 == 1;
+    }
+
     /// Restore the insertion cursor of every symbol whose subtree the walk
     /// has left.
     void close_frames(std::uint32_t index) {
@@ -338,6 +346,8 @@ private:
     };
 
     CompilationUnitRef unit;
+    /// Sorted begin/end offset pairs.
+    llvm::ArrayRef<std::uint32_t> inactive_regions;
     std::vector<DocumentSymbol> symbols;
     std::vector<DocumentSymbol>* cursor = &symbols;
     std::vector<Frame> frames;
@@ -389,17 +399,25 @@ auto to_protocol_symbol(const DocumentSymbol& symbol,
     return result;
 }
 
-}  // namespace
-
-auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
-    auto result = Collector(unit).collect();
+auto outline(CompilationUnitRef unit, llvm::ArrayRef<std::uint32_t> inactive_regions)
+    -> std::vector<DocumentSymbol> {
+    auto result = Collector(unit, inactive_regions).collect();
     sort_symbols(result);
     return result;
 }
 
-auto document_symbols(CompilationUnitRef unit, PositionEncoding encoding)
-    -> std::vector<protocol::DocumentSymbol> {
-    return document_symbols_to_protocol(document_symbols(unit), unit.positions(), encoding);
+}  // namespace
+
+auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
+    return outline(unit, inactive_regions(unit).regions);
+}
+
+auto document_symbols(CompilationUnitRef unit,
+                      llvm::ArrayRef<std::uint32_t> inactive_regions,
+                      PositionEncoding encoding) -> std::vector<protocol::DocumentSymbol> {
+    return document_symbols_to_protocol(outline(unit, inactive_regions),
+                                        unit.positions(),
+                                        encoding);
 }
 
 auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,

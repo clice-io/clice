@@ -43,6 +43,16 @@ struct DocumentEntry {
     std::vector<std::uint8_t> open_conditionals;
     std::vector<std::uint32_t> preamble_inactive_regions;
 
+    /// The preamble share from the compile params, then the own scan past
+    /// the PCH bound, seeded by the conditional stack the preamble left
+    /// open.
+    std::vector<std::uint32_t> inactive_regions() {
+        auto regions = preamble_inactive_regions;
+        auto scan = feature::inactive_regions(unit, open_conditionals, pch.second);
+        regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
+        return regions;
+    }
+
     // Per-document serialization mutex
     kota::mutex strand;
 
@@ -451,35 +461,32 @@ void StatefulWorker::register_handlers() {
     });
 
     // === Query (hover, definition, semantic tokens, etc.) ===
-    peer.on_request([this](RequestContext& ctx, const worker::QueryParams& params)
-                        -> RequestResult<worker::QueryParams> {
-        using K = worker::QueryKind;
-        auto kind = kota::meta::enum_name(params.kind, "Unknown");
-        switch(params.kind) {
-            case K::Hover:
-                return with_ast(kind, params, [&](DocumentEntry& doc) {
-                    auto result = feature::hover(doc.unit, params.offset, params.config.hover);
-                    return result ? to_raw(*result) : kota::codec::RawValue{"null"};
-                });
-            case K::SemanticTokens:
-                return with_ast(kind, params, [&](DocumentEntry& doc) {
-                    // The preamble share from the compile params, then
-                    // the own scan past the PCH bound, seeded by the
-                    // conditional stack the preamble left open.
-                    auto regions = doc.preamble_inactive_regions;
-                    auto scan =
-                        feature::inactive_regions(doc.unit, doc.open_conditionals, doc.pch.second);
-                    regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
-                    return to_raw(
-                        feature::semantic_tokens(doc.unit, regions, PositionEncoding::UTF16));
-                });
-            case K::DocumentSymbol:
-                return with_ast(kind, params, [&](DocumentEntry& doc) {
-                    return to_raw(feature::document_symbols(doc.unit, PositionEncoding::UTF16));
-                });
-        }
-        std::unreachable();
-    });
+    peer.on_request(
+        [this](RequestContext& ctx,
+               const worker::QueryParams& params) -> RequestResult<worker::QueryParams> {
+            using K = worker::QueryKind;
+            auto kind = kota::meta::enum_name(params.kind, "Unknown");
+            switch(params.kind) {
+                case K::Hover:
+                    return with_ast(kind, params, [&](DocumentEntry& doc) {
+                        auto result = feature::hover(doc.unit, params.offset, params.config.hover);
+                        return result ? to_raw(*result) : kota::codec::RawValue{"null"};
+                    });
+                case K::SemanticTokens:
+                    return with_ast(kind, params, [&](DocumentEntry& doc) {
+                        auto regions = doc.inactive_regions();
+                        return to_raw(
+                            feature::semantic_tokens(doc.unit, regions, PositionEncoding::UTF16));
+                    });
+                case K::DocumentSymbol:
+                    return with_ast(kind, params, [&](DocumentEntry& doc) {
+                        auto regions = doc.inactive_regions();
+                        return to_raw(
+                            feature::document_symbols(doc.unit, regions, PositionEncoding::UTF16));
+                    });
+            }
+            std::unreachable();
+        });
 }
 
 int run_stateful_worker_mode(const std::string& worker_name,
