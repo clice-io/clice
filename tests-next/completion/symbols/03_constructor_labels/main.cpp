@@ -1,5 +1,6 @@
-// Class template constructors, constructor templates and deduction guides
-// complete as the bare class name, never a templated spelling.
+// Class template constructors and constructor templates complete as the bare
+// class name, never a templated spelling; deduction guides, written or
+// generated, have no name to complete.
 template <typename T, typename U>
 struct Bazzz {
     Bazzz() {}

@@ -185,7 +185,7 @@ auto unchecked_naming_class(clang::Sema& sema, clang::CodeCompletionContext& con
 }
 
 /// In bundle mode several candidates may share one label: a class and its
-/// constructors/deduction guides, or a declaration shadowed by a macro.
+/// constructors, or a declaration shadowed by a macro.
 /// Label dedup keeps the highest-priority item. An active macro always
 /// wins: the preprocessor rewrites the completed token, so a shadowed
 /// declaration is not what the completion would invoke.
@@ -746,11 +746,25 @@ public:
             context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
         types::TemplateResolver resolver(sema.getASTContext());
         auto* naming = unchecked_naming_class(sema, context);
-        auto behind_non_public_base = [&](const clang::CodeCompletionResult& candidate) {
+        auto left_out = [&](const clang::CodeCompletionResult& candidate) {
+            auto* declaration = candidate.Declaration;
+            // A hidden declaration is not what its name means here.
+            if(!declaration || candidate.Hidden ||
+               candidate.Availability == CXAvailability_NotAccessible) {
+                return true;
+            }
+            // Clang gives a deduction guide no name to type.
+            if(declaration->getDeclName().getNameKind() ==
+               clang::DeclarationName::CXXDeductionGuideName) {
+                return true;
+            }
+            if(member_access && rarely_accessed(declaration)) {
+                return true;
+            }
             // A using-declaration is named where it is, not where its target is.
             const clang::NamedDecl* found = candidate.ShadowDecl;
             if(!found) {
-                found = candidate.Declaration;
+                found = declaration;
             }
             auto* owner = llvm::dyn_cast<clang::CXXRecordDecl>(found->getDeclContext());
             if(!naming || !owner) {
@@ -891,11 +905,7 @@ public:
                 }
 
                 case clang::CodeCompletionResult::RK_Declaration: {
-                    // A hidden declaration is not what its name means here.
-                    if(!candidate.Declaration || candidate.Hidden ||
-                       candidate.Availability == CXAvailability_NotAccessible ||
-                       (member_access && rarely_accessed(candidate.Declaration)) ||
-                       behind_non_public_base(candidate)) {
+                    if(left_out(candidate)) {
                         break;
                     }
                     // Sema leaves a using-declaration naming a member of a
