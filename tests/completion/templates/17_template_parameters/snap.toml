@@ -1,0 +1,20 @@
+[answers.function_template.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]
+
+[answers.pointer.completion]
+items = [
+    { label = "template", kind = "Keyword" },
+    { label = "x", kind = "Field", detail = "int" },
+    { label = "y", kind = "Field", detail = "int" },
+]
+
+[answers.specialization.completion]
+items = [
+    { label = "get()", kind = "Method", detail = "geometry::Point *" },
+    { label = "template", kind = "Keyword" },
+    { label = "value", kind = "Field", detail = "geometry::Point" },
+]

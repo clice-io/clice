@@ -1,0 +1,29 @@
+[answers.copy.hover]
+markdown = '''
+### variable `first`
+
+---
+Type: `struct Points`
+
+---
+```cpp
+// In walk
+auto first = points
+```
+'''
+range = "auto ⟦first⟧ = points;"
+
+[answers.element.hover]
+markdown = '''
+### variable `point`
+
+---
+Type: `auto`
+
+---
+```cpp
+// In walk
+auto point
+```
+'''
+range = "for (auto ⟦point⟧ : points) {"

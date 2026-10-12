@@ -21,7 +21,18 @@ namespace clice::types {
 /// The `resolved` cache persists across multiple resolve() calls on the same unit.
 class TemplateResolver {
 public:
-    explicit TemplateResolver(clang::ASTContext& context) : context(context) {}
+    using Arguments = llvm::SmallVector<clang::TemplateArgument, 4>;
+
+    /// What `function`'s template is instantiated with, for a unit that
+    /// holds no instantiation of it: a completion stops before the code
+    /// that instantiates the template, which another compile of it saw.
+    struct Assumption {
+        const clang::FunctionDecl* function;
+        Arguments arguments;
+    };
+
+    explicit TemplateResolver(clang::ASTContext& context, Assumption assumption = {}) :
+        context(context), assumption(std::move(assumption)) {}
 
     clang::QualType resolve(clang::QualType type);
 
@@ -94,19 +105,10 @@ public:
         return lookup(decl->getQualifier(), decl->getDeclName());
     }
 
-    /// The arguments of `function`'s template in its only instantiation,
-    /// for a unit that holds none: a completion stops before the code that
-    /// instantiates the template, which another compile of it made.
-    using Arguments = llvm::SmallVector<clang::TemplateArgument, 4>;
-
-    void assume(const clang::FunctionDecl* function, Arguments arguments) {
-        assumed.insert_or_assign(function, std::move(arguments));
-    }
-
 private:
     clang::ASTContext& context;
 
-    llvm::DenseMap<const clang::FunctionDecl*, Arguments> assumed;
+    Assumption assumption;
 
     /// Cache of resolved dependent types, keyed by AST node pointer.
     /// Shared across resolve() calls within the same TU for performance.

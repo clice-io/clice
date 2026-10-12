@@ -25,30 +25,30 @@ using llvm::dyn_cast_or_null;
 // For now, inlay hints are always anchored at the left or right of their range.
 enum class HintSide : std::uint8_t { Left, Right };
 
-/// The spellings a written type gives its parts: every alias and template
-/// specialization in it, through the aliases' own definitions, keyed by the
-/// canonical type each names. Clang substitutes a class template's members
-/// with its canonical arguments, so the `first` of a
+/// The types the code wrote for the parts of a type: every alias and
+/// template specialization in it, through the aliases' own definitions,
+/// keyed by the canonical type each names. Clang substitutes a class
+/// template's members with its canonical arguments, so the `first` of a
 /// `std::map<std::string, Point>` element is a `const basic_string<char>`;
-/// the map's own spelling gives the `std::string` back.
-class Spellings {
+/// the map as written gives the `std::string` back.
+class WrittenTypes {
 public:
-    explicit Spellings(clang::ASTContext& context) : context(context) {}
+    explicit WrittenTypes(clang::ASTContext& context) : context(context) {}
 
     void collect(clang::QualType written) {
         /// The sugar of one type all names one canonical type: the code
         /// wrote the outermost, an alias's definition the ones beneath.
-        bool spelled = false;
+        bool named = false;
         while(!written.isNull()) {
             const auto* type = written.getTypePtr();
             if(llvm::isa<clang::PointerType, clang::ReferenceType>(type)) {
                 written = type->getPointeeType();
-                spelled = false;
+                named = false;
                 continue;
             }
-            if(!spelled && llvm::isa<clang::TypedefType, clang::TemplateSpecializationType>(type)) {
+            if(!named && llvm::isa<clang::TypedefType, clang::TemplateSpecializationType>(type)) {
                 add(written);
-                spelled = true;
+                named = true;
             }
             if(const auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(type)) {
                 for(const auto& argument: TST->template_arguments()) {
@@ -64,9 +64,9 @@ public:
         }
     }
 
-    /// `type` with each part clang left canonical spelled as written, when
-    /// the written types spell it one way only.
-    clang::QualType respell(clang::QualType type) const {
+    /// `type` with each part clang left canonical as the code wrote it, when
+    /// the code wrote it one way only.
+    clang::QualType as_written(clang::QualType type) const {
         auto qualifiers = type.getLocalQualifiers();
         const auto* bare = type.getTypePtr();
         while(const auto* subst = llvm::dyn_cast<clang::SubstTemplateTypeParmType>(bare)) {
@@ -76,42 +76,42 @@ public:
         if(!bare->isCanonicalUnqualified()) {
             return type;
         }
-        if(auto it = spellings.find(bare); it != spellings.end() && !it->second.isNull()) {
+        if(auto it = types.find(bare); it != types.end() && !it->second.isNull()) {
             return context.getQualifiedType(it->second, qualifiers);
         }
         if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(bare)) {
             return context.getQualifiedType(
-                context.getPointerType(respell(pointer->getPointeeType())),
+                context.getPointerType(as_written(pointer->getPointeeType())),
                 qualifiers);
         }
         if(const auto* reference = llvm::dyn_cast<clang::LValueReferenceType>(bare)) {
             return context.getQualifiedType(
-                context.getLValueReferenceType(respell(reference->getPointeeType())),
+                context.getLValueReferenceType(as_written(reference->getPointeeType())),
                 qualifiers);
         }
         if(const auto* reference = llvm::dyn_cast<clang::RValueReferenceType>(bare)) {
             return context.getQualifiedType(
-                context.getRValueReferenceType(respell(reference->getPointeeType())),
+                context.getRValueReferenceType(as_written(reference->getPointeeType())),
                 qualifiers);
         }
         return type;
     }
 
 private:
-    /// Two spellings of one type leave it as clang has it: nothing says
-    /// which one the code meant.
-    void add(clang::QualType written) {
-        auto spelling = written.getLocalUnqualifiedType();
+    /// Two ways the code wrote one type leave it as clang has it: nothing
+    /// says which one the code meant.
+    void add(clang::QualType type) {
+        auto unqualified = type.getLocalUnqualifiedType();
         auto [it, inserted] =
-            spellings.try_emplace(context.getCanonicalType(spelling).getTypePtr(), spelling);
+            types.try_emplace(context.getCanonicalType(unqualified).getTypePtr(), unqualified);
         if(!inserted && !it->second.isNull() &&
-           it->second.getAsString() != spelling.getAsString()) {
+           it->second.getAsString() != unqualified.getAsString()) {
             it->second = clang::QualType();
         }
     }
 
     clang::ASTContext& context;
-    llvm::DenseMap<const clang::Type*, clang::QualType> spellings;
+    llvm::DenseMap<const clang::Type*, clang::QualType> types;
 };
 
 // for a ParmVarDecl from a function declaration, returns the corresponding
@@ -1072,11 +1072,11 @@ private:
         if(auto* decl = dyn_cast<clang::DecompositionDecl>(var)) {
             // The bindings come out of the type the code wrote for what it
             // decomposes: a range-for's range, else the initializer.
-            Spellings spellings(unit.context());
+            WrittenTypes written_types(unit.context());
             auto range = range_inits.find(decl);
             const auto* written = range != range_inits.end() ? range->second : decl->getInit();
             if(written) {
-                spellings.collect(written->getType());
+                written_types.collect(written->getType());
             }
             for(auto* binding: decl->bindings()) {
                 auto type = binding->getType();
@@ -1088,7 +1088,7 @@ private:
                 if(binding->getHoldingVar()) {
                     type = type.getCanonicalType();
                 }
-                add_type_hint(binding->getLocation(), spellings.respell(type), /*Prefix=*/": ");
+                add_type_hint(binding->getLocation(), written_types.as_written(type), /*Prefix=*/": ");
             }
             return;
         }
@@ -1103,8 +1103,9 @@ private:
                 // (and then just print the type deduced for the `auto`).
                 add_type_hint(var->getLocation(), var->getType(), /*Prefix=*/": ");
             } else if(type->isDependentType() && var->getInit()) {
-                // A dependent initializer leaves `auto` to instantiation:
-                // the template's only instantiation fixes it.
+                // A dependent initializer leaves `auto` to instantiation;
+                // the resolver still tells the type where the template's
+                // only instantiation or a class template's members do.
                 if(auto deduced = unit.resolver().deduce(var);
                    !deduced.isNull() && !deduced->isDependentType()) {
                     add_type_hint(var->getLocation(), deduced, /*Prefix=*/": ");

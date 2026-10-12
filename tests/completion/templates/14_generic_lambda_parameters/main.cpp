@@ -17,4 +17,7 @@ void scale(Point* begin, Point* end) {
     for_each(begin, end, [](auto& p) { p.§(algorithm); });
     auto by = [](const auto& l, const auto& r) { return l.§(two_parameters) < r.x; };
     by(*begin, *end);
+    auto echo = [](auto value) { return value.§(several); };
+    echo(Point{});
+    echo(1);
 }

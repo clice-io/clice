@@ -1449,8 +1449,9 @@ Features::RawResult Features::implementation(Ticket ticket,
     }
     std::vector<index::Site> sites;
     for(auto symbol: cursor->symbols) {
-        // A dependent name implements the template with what the template
-        // resolves it to, as an override implements a virtual function.
+        // What a name may mean — a dependent name's resolution, an overload
+        // set's candidates, a using-declaration's targets — implements it,
+        // as an override implements a virtual function.
         if(query.relates(*cursor, symbol, RelationKind::WeakReference)) {
             llvm::append_range(
                 sites,

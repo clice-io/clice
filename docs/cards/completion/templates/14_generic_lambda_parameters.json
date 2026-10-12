@@ -4,7 +4,7 @@
   "subtopic": "templates",
   "title": "Generic lambda parameters",
   "summary": "An `auto` parameter of a lambda completes the members of the type the lambda is called with",
-  "prose": "The call can come after the lambda, or be the algorithm the lambda is\npassed to: completion reads how the code around it instantiates the\nlambda. A lambda called with several types completes nothing.",
+  "prose": "The call can come after the lambda, or be the algorithm the lambda is\npassed to. A lambda called with several types completes nothing.",
   "status": "supported",
   "issues": [
     "clangd#493",
@@ -13,7 +13,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Point {\n    int x;\n    int y;\n};\n\ntemplate <class It, class F>\nF for_each(It first, It last, F f) {\n    for (; first != last; ++first) {\n        f(*first);\n    }\n    return f;\n}\n\nvoid scale(Point* begin, Point* end) {\n    auto norm = [](auto p) { return p.; };\n    norm(Point{});\n    for_each(begin, end, [](auto& p) { p.; });\n    auto by = [](const auto& l, const auto& r) { return l. < r.x; };\n    by(*begin, *end);\n}\n",
+      "text": "struct Point {\n    int x;\n    int y;\n};\n\ntemplate <class It, class F>\nF for_each(It first, It last, F f) {\n    for (; first != last; ++first) {\n        f(*first);\n    }\n    return f;\n}\n\nvoid scale(Point* begin, Point* end) {\n    auto norm = [](auto p) { return p.; };\n    norm(Point{});\n    for_each(begin, end, [](auto& p) { p.; });\n    auto by = [](const auto& l, const auto& r) { return l. < r.x; };\n    by(*begin, *end);\n    auto echo = [](auto value) { return value.; };\n    echo(Point{});\n    echo(1);\n}\n",
       "markers": [
         {
           "name": "called",
@@ -31,6 +31,12 @@
           "name": "two_parameters",
           "begin": 392,
           "end": 392,
+          "range": false
+        },
+        {
+          "name": "several",
+          "begin": 471,
+          "end": 471,
           "range": false
         }
       ]
@@ -109,6 +115,15 @@
                   "detail": "int"
                 }
               ]
+            }
+          }
+        },
+        {
+          "label": "several",
+          "marker": "several",
+          "value": {
+            "completion": {
+              "items": []
             }
           }
         }

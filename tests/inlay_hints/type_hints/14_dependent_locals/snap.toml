@@ -10,3 +10,16 @@ inlay_hints = [
 
 [answers.several]
 inlay_hints = []
+
+[answers.uninstantiated]
+inlay_hints = [
+    { line = "auto total⟨: int⟩ = items.size();" },
+]
+
+[answers.defaulted]
+inlay_hints = []
+
+[answers.explicit_arguments]
+inlay_hints = [
+    { line = "auto* built = create<B>(⟨args:⟩u);" },
+]

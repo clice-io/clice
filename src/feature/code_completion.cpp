@@ -507,8 +507,8 @@ private:
 /// class found again by its qualified name, each specialization formed
 /// again. Null where a part names nothing found here — a lambda, a local
 /// class, a declaration after the completion point.
-struct Carrier {
-    Carrier(clang::Sema& sema, clang::SourceLocation loc) :
+struct Rebuilder {
+    Rebuilder(clang::Sema& sema, clang::SourceLocation loc) :
         sema(sema), ast(sema.getASTContext()), loc(loc) {}
 
     clang::QualType type(clang::QualType from) {
@@ -547,35 +547,35 @@ struct Carrier {
     std::optional<clang::TemplateArgument> argument(const clang::TemplateArgument& from) {
         switch(from.getKind()) {
             case clang::TemplateArgument::Type: {
-                auto carried = type(from.getAsType());
-                if(carried.isNull()) {
+                auto rebuilt = type(from.getAsType());
+                if(rebuilt.isNull()) {
                     return std::nullopt;
                 }
-                return clang::TemplateArgument(carried);
+                return clang::TemplateArgument(rebuilt);
             }
             case clang::TemplateArgument::Integral: {
-                auto carried = type(from.getIntegralType());
-                if(carried.isNull()) {
+                auto rebuilt = type(from.getIntegralType());
+                if(rebuilt.isNull()) {
                     return std::nullopt;
                 }
-                return clang::TemplateArgument(ast, from.getAsIntegral(), carried);
+                return clang::TemplateArgument(ast, from.getAsIntegral(), rebuilt);
             }
             case clang::TemplateArgument::Template: {
-                auto* carried = llvm::dyn_cast_or_null<clang::TemplateDecl>(
+                auto* rebuilt = llvm::dyn_cast_or_null<clang::TemplateDecl>(
                     find(from.getAsTemplate().getAsTemplateDecl()));
-                if(!carried) {
+                if(!rebuilt) {
                     return std::nullopt;
                 }
-                return clang::TemplateArgument(clang::TemplateName(carried));
+                return clang::TemplateArgument(clang::TemplateName(rebuilt));
             }
             case clang::TemplateArgument::Pack: {
                 llvm::SmallVector<clang::TemplateArgument, 4> elements;
                 for(const auto& element: from.pack_elements()) {
-                    auto carried = argument(element);
-                    if(!carried) {
+                    auto rebuilt = argument(element);
+                    if(!rebuilt) {
                         return std::nullopt;
                     }
-                    elements.push_back(*carried);
+                    elements.push_back(*rebuilt);
                 }
                 return clang::TemplateArgument::CreatePackCopy(ast, elements);
             }
@@ -608,17 +608,17 @@ struct Carrier {
         /// As written: a parameter pack's arguments one by one.
         clang::TemplateArgumentListInfo written(loc, loc);
         for(const auto& from_argument: specialization->getTemplateArgs().asArray()) {
-            auto carried = argument(from_argument);
-            if(!carried) {
+            auto rebuilt = argument(from_argument);
+            if(!rebuilt) {
                 return {};
             }
             auto add = [&](const clang::TemplateArgument& each) {
                 written.addArgument(sema.getTrivialTemplateArgumentLoc(each, {}, loc));
             };
-            if(carried->getKind() == clang::TemplateArgument::Pack) {
-                llvm::for_each(carried->pack_elements(), add);
+            if(rebuilt->getKind() == clang::TemplateArgument::Pack) {
+                llvm::for_each(rebuilt->pack_elements(), add);
             } else {
-                add(*carried);
+                add(*rebuilt);
             }
         }
         auto type = sema.CheckTemplateIdType(clang::ElaboratedTypeKeyword::None,
@@ -708,7 +708,8 @@ public:
     types::TemplateResolver::Arguments instantiated_later(clang::Sema& sema,
                                                           const clang::FunctionDecl* function) {
         auto& source_manager = sema.getSourceManager();
-        auto [file, offset] = source_manager.getDecomposedExpansionLoc(function->getLocation());
+        auto [file, offset] =
+            source_manager.getDecomposedLoc(source_manager.getFileLoc(function->getLocation()));
         if(file != source_manager.getMainFileID()) {
             return {};
         }
@@ -724,7 +725,8 @@ public:
                 source_manager(source_manager), offset(offset) {}
 
             bool matches(clang::FunctionDecl* function) {
-                auto [file, at] = source_manager.getDecomposedExpansionLoc(function->getLocation());
+                auto [file, at] = source_manager.getDecomposedLoc(
+                    source_manager.getFileLoc(function->getLocation()));
                 return file == source_manager.getMainFileID() && at == offset &&
                        function->getDescribedFunctionTemplate();
             }
@@ -761,14 +763,14 @@ public:
             return {};
         }
 
-        Carrier carrier(sema, sema.getPreprocessor().getCodeCompletionLoc());
+        Rebuilder rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc());
         types::TemplateResolver::Arguments arguments;
         for(const auto& argument: instantiation->getTemplateSpecializationArgs()->asArray()) {
-            auto carried = carrier.argument(argument);
-            if(!carried) {
+            auto rebuilt = rebuilder.argument(argument);
+            if(!rebuilt) {
                 return {};
             }
-            arguments.push_back(*carried);
+            arguments.push_back(*rebuilt);
         }
         return arguments;
     }
@@ -838,14 +840,14 @@ public:
                 /// The code after the completion point instantiates the
                 /// template the completion is in, a generic lambda as the
                 /// argument of a call above all.
-                std::optional<types::TemplateResolver> informed;
                 if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(sema.CurContext);
                    !tag && function && function->getDescribedFunctionTemplate()) {
                     if(auto arguments = instantiated_later(sema, function); !arguments.empty()) {
-                        informed.emplace(ast);
-                        informed->assume(function, std::move(arguments));
-                        object = informed->member_object(base, arrow);
-                        tag = object.isNull() ? nullptr : informed->resolve_tag(object);
+                        types::TemplateResolver informed(
+                            ast,
+                            {.function = function, .arguments = std::move(arguments)});
+                        object = informed.member_object(base, arrow);
+                        tag = object.isNull() ? nullptr : informed.resolve_tag(object);
                     }
                 }
             } else if(!reported->isDependentType()) {

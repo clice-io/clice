@@ -1,5 +1,8 @@
 [answers.template_call]
-implementation = ["void ⟦foo⟧() {}"]
+implementation = ["void ⟦foo⟧() {} @+4"]
 
 [answers.lambda_call]
 implementation = ["void ⟦bar⟧() {}"]
+
+[answers.several_calls]
+implementation = []

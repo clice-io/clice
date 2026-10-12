@@ -4,36 +4,48 @@
   "subtopic": "type_hints",
   "title": "Binding aliases",
   "summary": "The bindings of a container's elements keep the aliases the container was declared with",
-  "prose": "Iterating a `std::map<std::string, Point>` shows each key as a\n`const std::string`, where the standard library's own instantiation names\nonly `basic_string<char>`. Two aliases of one type leave it unaliased.",
+  "prose": "Iterating a `std::map<std::string, Point>` shows each key as a\n`const std::string`, not as `basic_string<char>`. Two aliases of one type\nleave it unaliased.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "#include <map>\n#include <string>\n#include <tuple>\n\nstruct Point {\n    int x;\n    int y;\n};\n\nusing Count = unsigned long;\nusing Size = unsigned long;\n\nvoid walk(std::map<std::string, Point>& points,\n          std::tuple<std::string, Point>& entry,\n          std::map<Count, Size>& sizes) {\n    for (auto& [name, point] : points) {\n    }\n    auto& [label, origin] = entry;\n    for (auto& [count, size] : sizes) {\n    }\n    std::string text;\n    auto copy = text;\n}\n",
+      "text": "#include <map>\n#include <string>\n#include <tuple>\n\nstruct Point {\n    int x;\n    int y;\n};\n\nusing Count = unsigned long;\nusing Size = unsigned long;\nusing Table = std::map<std::string, Point>;\n\nvoid walk(std::map<std::string, Point>& points,\n          std::tuple<std::string, Point>& entry,\n          std::map<Count, Size>& sizes) {\n    for (auto& [name, point] : points) {\n    }\n    auto& [label, origin] = entry;\n    for (auto& [count, size] : sizes) {\n    }\n    std::string text;\n    auto copy = text;\n}\n\nvoid look(Table& table, std::tuple<std::string*, Point>& found) {\n    for (auto& [key, value] : table) {\n    }\n    auto& [where, place] = found;\n}\n",
       "markers": [
         {
           "name": "map",
-          "begin": 293,
-          "end": 329,
+          "begin": 337,
+          "end": 373,
           "range": true
         },
         {
           "name": "tuple",
-          "begin": 340,
-          "end": 370,
+          "begin": 384,
+          "end": 414,
           "range": true
         },
         {
           "name": "two_aliases",
-          "begin": 375,
-          "end": 410,
+          "begin": 419,
+          "end": 454,
           "range": true
         },
         {
           "name": "variable",
-          "begin": 443,
-          "end": 460,
+          "begin": 487,
+          "end": 504,
+          "range": true
+        },
+        {
+          "name": "through_alias",
+          "begin": 578,
+          "end": 612,
+          "range": true
+        },
+        {
+          "name": "pointer",
+          "begin": 623,
+          "end": 652,
           "range": true
         }
       ]
@@ -69,11 +81,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 15,
+                      "line": 16,
                       "character": 4
                     },
                     "end": {
-                      "line": 15,
+                      "line": 16,
                       "character": 40
                     }
                   }
@@ -93,11 +105,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 17,
+                      "line": 18,
                       "character": 4
                     },
                     "end": {
-                      "line": 17,
+                      "line": 18,
                       "character": 34
                     }
                   }
@@ -117,11 +129,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 18,
+                      "line": 19,
                       "character": 4
                     },
                     "end": {
-                      "line": 18,
+                      "line": 19,
                       "character": 39
                     }
                   }
@@ -141,12 +153,60 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 21,
+                      "line": 22,
                       "character": 4
                     },
                     "end": {
-                      "line": 21,
+                      "line": 22,
                       "character": 21
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "through_alias",
+          "marker": "through_alias",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "for (auto& [key⟨: const std::string⟩, value⟨: Point⟩] : table) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 26,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 26,
+                      "character": 38
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "pointer",
+          "marker": "pointer",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto& [where⟨: std::string *⟩, place⟨: Point⟩] = found;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 33
                     }
                   }
                 }

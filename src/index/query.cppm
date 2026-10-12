@@ -366,7 +366,8 @@ public:
     /// Whether the index serving the cursor's file relates `symbol` to the
     /// cursor by `kind`: Deduced, the cursor is a keyword standing for it
     /// (an `auto` or `decltype` the type names), not a name of it;
-    /// WeakReference, a dependent name the template resolves to it.
+    /// WeakReference, a name that may mean it (a dependent name, an
+    /// overload set, a using-declaration).
     bool relates(const Cursor& cursor, SymbolHash symbol, RelationKind kind) const;
 
     /// Sites implementing the symbol: derived types for a class-like

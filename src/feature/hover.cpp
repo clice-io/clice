@@ -285,7 +285,7 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
     if(type.isNull() || !type->isDependentType()) {
         return type;
     }
-    /// The instantiated parameter keeps the spelling the call deduced; the
+    /// The instantiated parameter keeps the aliases the call deduced; the
     /// resolver works from canonical template arguments.
     if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(value)) {
         // The helper keeps its clangd signature, which speaks mutable
@@ -295,7 +295,7 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
         }
     }
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-       var && type->isUndeducedAutoType()) {
+       var && var->getInit() && type->getContainedAutoType()) {
         auto deduced = unit.resolver().deduce(var);
         return deduced.isNull() ? type : deduced;
     }

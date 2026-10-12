@@ -17,3 +17,13 @@ inlay_hints = [
 inlay_hints = [
     { line = "auto copy⟨: std::string⟩ = text;" },
 ]
+
+[answers.through_alias]
+inlay_hints = [
+    { line = "for (auto& [key⟨: const std::string⟩, value⟨: Point⟩] : table) {" },
+]
+
+[answers.pointer]
+inlay_hints = [
+    { line = "auto& [where⟨: std::string *⟩, place⟨: Point⟩] = found;" },
+]

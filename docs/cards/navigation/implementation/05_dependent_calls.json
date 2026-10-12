@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nvoid process(T& obj) {\n    obj.foo();\n}\n\nstruct A {\n    void foo() {}\n};\n\nvoid run(A a) {\n    process(a);\n}\n\nstruct B {\n    void bar() {}\n};\n\nvoid generic(B b) {\n    auto call = [](auto& x) { x.bar(); };\n    call(b);\n}\n",
+      "text": "template <typename T>\nvoid process(T& obj) {\n    obj.foo();\n}\n\nstruct A {\n    void foo() {}\n};\n\nvoid run(A a) {\n    process(a);\n}\n\nstruct B {\n    void bar() {}\n};\n\nvoid generic(B b) {\n    auto call = [](auto& x) { x.bar(); };\n    call(b);\n}\n\ntemplate <typename T>\nvoid twice(T& obj) {\n    obj.foo();\n}\n\nstruct C {\n    void foo() {}\n};\n\nvoid both(A a, C c) {\n    twice(a);\n    twice(c);\n}\n",
       "markers": [
         {
           "name": "template_call",
@@ -22,6 +22,12 @@
           "name": "lambda_call",
           "begin": 216,
           "end": 216,
+          "range": false
+        },
+        {
+          "name": "several_calls",
+          "begin": 293,
+          "end": 293,
           "range": false
         }
       ]
@@ -37,7 +43,7 @@
           "value": {
             "implementation": [
               {
-                "$place": "void ⟦foo⟧() {}",
+                "$place": "void ⟦foo⟧() {} @+4",
                 "path": "main.cpp",
                 "range": {
                   "start": {
@@ -73,6 +79,13 @@
                 }
               }
             ]
+          }
+        },
+        {
+          "label": "several_calls",
+          "marker": "several_calls",
+          "value": {
+            "implementation": []
           }
         }
       ]
