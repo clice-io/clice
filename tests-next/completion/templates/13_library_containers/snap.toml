@@ -1,8 +1,8 @@
 [answers.inside.completion]
 items = [
     { label = "assign(vector<vector<T>> &rows)", kind = "Method", detail = "void" },
-    { label = "get_allocator()", kind = "Method", detail = "allocator_type" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "get_allocator() const", kind = "Method", detail = "allocator_type" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "start", kind = "Field", detail = "T *" },
     { label = "template", kind = "Keyword" },
 ]
@@ -10,14 +10,14 @@ items = [
 [answers.concrete.completion]
 items = [
     { label = "assign(vector<vector<Point>> &rows)", kind = "Method", detail = "void" },
-    { label = "get_allocator()", kind = "Method", detail = "allocator_type" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "get_allocator() const", kind = "Method", detail = "allocator_type" },
+    { label = "size() const", kind = "Method", detail = "int" },
 ]
 
 [answers.dependent.completion]
 items = [
     { label = "assign(vector<vector<T>> &rows)", kind = "Method", detail = "void" },
-    { label = "get_allocator()", kind = "Method", detail = "allocator_type" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "get_allocator() const", kind = "Method", detail = "allocator_type" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]

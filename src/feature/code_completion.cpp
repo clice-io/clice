@@ -220,10 +220,12 @@ auto dedup_priority(protocol::CompletionItemKind kind, bool is_macro) -> int {
 }
 
 /// Extract the function signature (parameter list) from a CodeCompletionString.
-/// Returns something like "(int x, float y)" for display in labelDetails.detail.
+/// Returns something like "(int x, float y) const" for display in
+/// labelDetails.detail.
 auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
     std::string signature;
     bool in_parens = false;
+    bool closed = false;
 
     for(const auto& chunk: ccs) {
         using CK = clang::CodeCompletionString::ChunkKind;
@@ -235,6 +237,7 @@ auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
             case CK::CK_RightParen:
                 signature += ')';
                 in_parens = false;
+                closed = true;
                 break;
             case CK::CK_Placeholder:
             case CK::CK_CurrentParameter:
@@ -250,16 +253,18 @@ auto extract_signature(const clang::CodeCompletionString& ccs) -> std::string {
             case CK::CK_Informative: {
                 // A function that cannot be called where completion happens
                 // (a destructor after `T::`) carries its whole parameter list
-                // as informative chunks, parentheses included.
+                // as informative chunks, parentheses included. After the
+                // list come a method's qualifiers, ` const`.
                 llvm::StringRef text = chunk.Text ? chunk.Text : "";
                 if(text == "(") {
                     in_parens = true;
                 }
-                if(in_parens) {
+                if(in_parens || closed) {
                     signature += text;
                 }
                 if(text == ")") {
                     in_parens = false;
+                    closed = true;
                 }
                 break;
             }

@@ -1,57 +1,57 @@
 [answers.reference.completion]
 items = [
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.const_reference.completion]
 items = [
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.value.completion]
 items = [
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.forwarding.completion]
 items = [
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.decltype_auto.completion]
 items = [
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.pointer.completion]
 items = [
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.decltype_member.completion]
 items = [
     { label = "push_back(const T &value)", kind = "Method", detail = "void" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.decltype_parenthesized.completion]
 items = [
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]
 
 [answers.decayed_array.completion]
 items = [
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]

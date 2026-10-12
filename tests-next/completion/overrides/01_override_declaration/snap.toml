@@ -5,5 +5,5 @@ items = [
 
 [answers.inside_override.completion]
 items = [
-    { label = "draw(int x, int y)", kind = "Method", detail = "int", insert = "draw" },
+    { label = "draw(int x, int y) const", kind = "Method", detail = "int", insert = "draw" },
 ]

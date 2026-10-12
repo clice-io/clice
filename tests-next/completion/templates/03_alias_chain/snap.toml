@@ -1,6 +1,6 @@
 [answers.pos.completion]
 items = [
     { label = "data", kind = "Field", detail = "T *" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "template", kind = "Keyword" },
 ]

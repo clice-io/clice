@@ -2,7 +2,7 @@
 items = [
     { label = "Vec", kind = "Class" },
     { label = "capacity", kind = "Variable", detail = "int" },
-    { label = "size()", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
     { label = "value_type", kind = "TypeParameter" },
 ]
 
