@@ -144,8 +144,11 @@ bool declares_std_move(clang::ASTContext& context, clang::SourceLocation locatio
 void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     auto unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
+    // A class still being typed has no closing brace for the constructor
+    // to go before.
     if(!record || !record->isThisDeclarationADefinition() || record->isInvalidDecl() ||
-       record->isUnion() || record->isLambda() || record->getName().empty()) {
+       record->isUnion() || record->isLambda() || record->getName().empty() ||
+       record->getBraceRange().getEnd().isInvalid()) {
         return;
     }
     // A base without a usable default constructor would need its own

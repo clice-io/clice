@@ -1,0 +1,5 @@
+#pragma once
+
+namespace std {
+using size_t = decltype(sizeof 0);
+}

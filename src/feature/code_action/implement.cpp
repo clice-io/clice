@@ -96,8 +96,11 @@ std::optional<std::string> override_declaration(clang::ASTContext& context,
 void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
     auto unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
+    // A class still being typed has no closing brace for the overrides to
+    // go before.
     if(!record || !record->isThisDeclarationADefinition() || record->isDependentType() ||
-       record->getNumBases() == 0 || !record->isAbstract()) {
+       record->getNumBases() == 0 || !record->isAbstract() ||
+       record->getBraceRange().getEnd().isInvalid()) {
         return;
     }
 
