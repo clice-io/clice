@@ -47,10 +47,9 @@ test("workers die with it", LINUX, async (t) => {
     const workers = s.client.workerPids();
     expect(workers).toHaveLength(2);
     await s.kill();
-    // No event marks another process gone: the kernel's death signal to
-    // the workers lands as the server exits, and they are reaped soon after.
-    for (let tries = 0; workers.some(alive); tries++) {
-        expect(tries, "the workers outlived their server").toBeLessThan(100);
-        await t.elapse(100, "a killed process leaving /proc");
-    }
+    // No event marks another process gone. The workers ask the kernel to
+    // kill them with their server (PR_SET_PDEATHSIG), which it does as
+    // the server exits: what is left is a killed process's teardown.
+    await t.elapse(2_000, "killed workers leaving /proc");
+    expect(workers.filter(alive)).toEqual([]);
 });

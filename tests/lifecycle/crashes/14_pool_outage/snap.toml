@@ -1,8 +1,13 @@
 [test."symbols during the outage"]
 workspace_symbols = []
 
-[test."pending during the outage"]
-value = ["index round at 6/9, 8 files queued"]
+[test."pending at the revival"]
+value = [
+    "clice/worker/tuRun ${WS}/unit_5.cpp: work parked in its worker by gate 14",
+    "index ${WS}/unit_5.cpp",
+    "index ${WS}/unit_6.cpp",
+    "index round at 6/9, 6 files queued",
+]
 
 [test.sync]
 failed = []
