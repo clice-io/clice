@@ -453,23 +453,6 @@ llvm::SmallVector<NameOccurrence, 2>
                         std::uint32_t index,
                         types::TemplateResolver* resolver = nullptr);
 
-/// A keyword standing for a type it does not spell, and that type.
-struct Placeholder {
-    clang::SourceRange keyword;
-    clang::QualType type;
-};
-
-/// The placeholder node `index` writes — `auto`, `decltype(auto)`,
-/// `decltype(expr)`, an abbreviated template's `auto`, the `auto` before a
-/// trailing return type — with the type types::deduced_type gives it, or
-/// the one `resolver` deduces where a dependent initializer leaves `auto`
-/// to instantiation; nothing where the node writes none or no type is
-/// known. The keyword is where clang locates it: an init-capture's
-/// implicit `auto` sits at the captured name.
-std::optional<Placeholder> resolve_placeholder(const Semantics& semantics,
-                                               std::uint32_t index,
-                                               types::TemplateResolver& resolver);
-
 /// Whether node `index`, a name used as an expression, is written there:
 /// the target of an assignment or compound assignment, the operand of an
 /// increment or decrement (overloaded operators included), or an argument

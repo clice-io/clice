@@ -1706,53 +1706,6 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
     return spelled(resolve_references(semantics, index, resolver));
 }
 
-std::optional<Placeholder> resolve_placeholder(const Semantics& semantics,
-                                               std::uint32_t index,
-                                               types::TemplateResolver& resolver) {
-    const auto& entry = semantics.node(index);
-    clang::SourceRange keyword;
-    if(const auto* loc = entry.node.get<clang::TypeLoc>()) {
-        if(auto auto_loc = loc->getAs<clang::AutoTypeLoc>()) {
-            keyword = auto_loc.isDecltypeAuto()
-                          ? clang::SourceRange(auto_loc.getNameLoc(), auto_loc.getRParenLoc())
-                          : clang::SourceRange(auto_loc.getNameLoc());
-        } else if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
-            keyword = decltype_loc.getDecltypeLoc();
-        } else if(auto param_loc = loc->getAs<clang::TemplateTypeParmTypeLoc>();
-                  param_loc && param_loc.getDecl()->isImplicit()) {
-            keyword = param_loc.getNameLoc();
-        }
-    } else if(const auto* function = entry.node.get<clang::FunctionDecl>()) {
-        if(const auto* proto = function->getType()->getAs<clang::FunctionProtoType>();
-           proto && proto->hasTrailingReturn()) {
-            keyword = function->getTypeSpecStartLoc();
-        }
-    }
-    if(keyword.isInvalid()) {
-        return std::nullopt;
-    }
-
-    auto owner = index;
-    while(!semantics.node(owner).node.get<clang::Decl>()) {
-        owner = semantics.node(owner).parent;
-    }
-    const auto* decl = semantics.node(owner).node.get<clang::Decl>();
-    auto type = types::deduced_type(entry.node.dyn_typed(), decl);
-    if(type.isNull()) {
-        return std::nullopt;
-    }
-    if(const auto* AT = llvm::dyn_cast<clang::AutoType>(type.getTypePtr());
-       AT && AT->getDeducedKind() != clang::DeducedKind::Deduced) {
-        // A dependent initializer leaves `auto` to instantiation.
-        const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
-        if(!var || !var->getInit()) {
-            return std::nullopt;
-        }
-        type = resolver.deduce(var);
-    }
-    return Placeholder{keyword, type};
-}
-
 bool is_written(const Semantics& semantics, std::uint32_t index) {
     auto& entry = semantics.node(index);
     auto* expr = entry.node.get<clang::Expr>();

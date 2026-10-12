@@ -276,32 +276,6 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
     return {kind, modifiers};
 }
 
-/// A placeholder colors as the type it stands for when that type is named
-/// by a builtin keyword or a class; a pointer, a function or a type not
-/// deduced yet leaves the keyword alone. Of the class's modifiers it keeps
-/// where the class is from: the keyword is no deprecated or abstract use.
-Classified classify_placeholder(clang::QualType type) {
-    Classified result;
-    if(type.isNull()) {
-        return result;
-    }
-    if(type->isBuiltinType()) {
-        result = {SymbolKind::Primitive, SymbolModifiers::to_mask(SymbolModifiers::GlobalScope)};
-    } else if(const auto* tag = type->getAsTagDecl()) {
-        result = classify_decl(tag, RelationKind::Reference);
-        constexpr auto kept = SymbolModifiers::to_mask(SymbolModifiers::GlobalScope) |
-                              SymbolModifiers::to_mask(SymbolModifiers::FileScope) |
-                              SymbolModifiers::to_mask(SymbolModifiers::ClassScope) |
-                              SymbolModifiers::to_mask(SymbolModifiers::FunctionScope) |
-                              SymbolModifiers::to_mask(SymbolModifiers::DefaultLibrary);
-        result.modifiers &= kept;
-    } else {
-        return result;
-    }
-    result.modifiers |= SymbolModifiers::to_mask(SymbolModifiers::Deduced);
-    return result;
-}
-
 /// Classifies every spelled token of the main file in one ordered
 /// pass over the semantic map: lexical kinds straight from the token kind,
 /// macros/includes/imports/attributes from the owning SemanticNode, and
@@ -617,33 +591,15 @@ private:
                         anchor_name(occurrence.location,
                                     classify_decl(occurrence.decl, occurrence.kind));
                     }
-                    // What an instantiation deduces or passes differs from
-                    // one instantiation to the next: the written code only.
-                    if(entry.flags.in_instantiation) {
-                        break;
+                    // What an instantiation passes differs from one
+                    // instantiation to the next: the written code only.
+                    if(!entry.flags.in_instantiation) {
+                        mark_mutable_arguments(node);
                     }
-                    anchor_placeholder(static_cast<std::uint32_t>(entry_index));
-                    mark_mutable_arguments(node);
                     break;
                 }
             }
         }
-    }
-
-    /// The keyword of a placeholder node `index` writes colors as the type
-    /// it stands for; an init-capture's implicit `auto` sits at the name.
-    void anchor_placeholder(std::uint32_t index) {
-        auto placeholder = resolve_placeholder(semantics, index, unit.resolver());
-        if(!placeholder) {
-            return;
-        }
-        auto token = spelled_index(placeholder->keyword.getBegin());
-        if(!token || semantics.token_preprocessed_away(*token) ||
-           !llvm::is_contained({clang::tok::kw_auto, clang::tok::kw_decltype},
-                               semantics.spelled_tokens()[*token].kind())) {
-            return;
-        }
-        combine(token_semantics[*token], classify_placeholder(placeholder->type));
     }
 
     /// An argument the callee may modify, through a mutable lvalue

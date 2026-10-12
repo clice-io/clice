@@ -36,15 +36,13 @@ inline void combine(Classified& result, Classified candidate) {
 /// A token's classification once the semantic layer has spoken: the
 /// semantic kind when there is one, the lexical kind otherwise. A
 /// semantic kind beats the lexical directive kinds (a macro named in an
-/// `#ifdef` is a macro) and keywords (`auto` colors as the type it
-/// deduces); any other disagreement is a Conflict.
+/// `#ifdef` is a macro); any other disagreement is a Conflict.
 inline Classified final_classification(Classified semantic, Classified lexical) {
     if(semantic.kind == SymbolKind::Invalid) {
         return lexical;
     }
     if(lexical.kind != SymbolKind::Invalid && lexical.kind != SymbolKind::Directive &&
-       lexical.kind != SymbolKind::Header && lexical.kind != SymbolKind::Keyword &&
-       lexical.kind != semantic.kind) {
+       lexical.kind != SymbolKind::Header && lexical.kind != semantic.kind) {
         semantic.kind = SymbolKind::Conflict;
     }
     return semantic;
