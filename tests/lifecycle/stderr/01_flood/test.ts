@@ -30,6 +30,7 @@ test("a flood never wedges", async (t) => {
     const client = s.client;
     const value = t.at("main.cpp", "int |value");
     s.open("main.cpp");
+    await s.sync();
     // About 1 MB in ten batches, far past the pipe and the server's own
     // buffer; a hover after each batch is answered all the same.
     const first = await s.hover(value);
