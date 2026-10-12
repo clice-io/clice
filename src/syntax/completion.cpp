@@ -81,16 +81,17 @@ bool follows_access_operator(llvm::StringRef text, std::uint32_t offset) {
     return start == operand.size() || !clang::isDigit(operand[start]);
 }
 
-std::vector<llvm::StringRef> written_designators(llvm::StringRef text, std::uint32_t offset) {
+std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::uint32_t offset) {
     struct Group {
         bool braces = false;
-        std::vector<llvm::StringRef> designators;
+        std::vector<WrittenDesignator> designators;
     };
 
     std::vector<Group> groups;
     auto previous = clang::tok::unknown;
     bool directive = false;
     bool designator = false;
+    bool after_field = false;
     Lexer lexer(text);
     for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= offset;
         token = lexer.advance()) {
@@ -101,8 +102,13 @@ std::vector<llvm::StringRef> written_designators(llvm::StringRef text, std::uint
             directive = !token.is_eod();
             continue;
         }
-        if(designator && token.is_identifier()) {
-            groups.back().designators.push_back(token.text(text));
+        if(after_field &&
+           (token.kind == clang::tok::period || token.kind == clang::tok::l_square)) {
+            groups.back().designators.back().whole = false;
+        }
+        after_field = designator && token.is_identifier();
+        if(after_field) {
+            groups.back().designators.push_back({.field = token.text(text), .whole = true});
         }
         designator = token.kind == clang::tok::period && !groups.empty() && groups.back().braces &&
                      (previous == clang::tok::l_brace || previous == clang::tok::comma);

@@ -828,8 +828,9 @@ public:
         types::TemplateResolver resolver(sema.getASTContext());
         auto* naming = unchecked_naming_class(sema, context);
         // In `{ .` the fields rank in declaration order, the order C++
-        // designates them in: there only those after the last one written
-        // may follow, while C leaves out only the ones written.
+        // designates them in: there those before the last one written
+        // cannot follow. A field designated as a whole cannot be again; one
+        // designated in part (`.inner.x = 1`) can (`.inner.y = 2`).
         llvm::StringMap<std::uint32_t> field_order;
         llvm::StringSet<> designated;
         if(member_access && !context.getBaseExpr()) {
@@ -838,21 +839,20 @@ public:
                        .resolveTypeToTagDecl(context.getBaseType()))) {
                 field_order = designator_order(record);
             }
-            auto written = written_designators(content, prefix.typed.begin);
-            if(sema.getLangOpts().CPlusPlus) {
-                std::optional<std::uint32_t> last;
-                for(auto name: written) {
-                    if(auto it = field_order.find(name); it != field_order.end()) {
-                        last = std::max(last.value_or(0), it->second);
-                    }
+            std::uint32_t passed = 0;
+            for(auto designator: written_designators(content, prefix.typed.begin)) {
+                if(designator.whole) {
+                    designated.insert(designator.field);
                 }
-                for(auto& [name, order]: field_order) {
-                    if(last && order <= *last) {
-                        designated.insert(name);
-                    }
+                if(auto it = field_order.find(designator.field);
+                   sema.getLangOpts().CPlusPlus && it != field_order.end()) {
+                    passed = std::max(passed, it->second);
                 }
-            } else {
-                designated.insert(written.begin(), written.end());
+            }
+            for(auto& [name, order]: field_order) {
+                if(order < passed) {
+                    designated.insert(name);
+                }
             }
         }
 

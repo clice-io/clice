@@ -1,0 +1,12 @@
+[answers.after_part.completion]
+items = [
+    { label = "id", kind = "Field", detail = "int" },
+    { label = "origin", kind = "Field", detail = "struct point" },
+    { label = "items", kind = "Field", detail = "int[4]" },
+]
+
+[answers.after_whole.completion]
+items = [
+    { label = "id", kind = "Field", detail = "int" },
+    { label = "items", kind = "Field", detail = "int[4]" },
+]

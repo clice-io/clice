@@ -1,0 +1,10 @@
+[answers.after_part.completion]
+items = [
+    { label = "origin", kind = "Field", detail = "Point" },
+    { label = "color", kind = "Field", detail = "int" },
+]
+
+[answers.after_whole.completion]
+items = [
+    { label = "color", kind = "Field", detail = "int" },
+]

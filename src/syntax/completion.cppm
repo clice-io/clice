@@ -52,11 +52,20 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
 /// access.
 bool follows_access_operator(llvm::StringRef text, std::uint32_t offset);
 
-/// The fields the braced initializer around `offset` designates already,
+/// A designator written in a braced initializer, by the field it starts
+/// with.
+struct WrittenDesignator {
+    llvm::StringRef field;
+    /// Whether it designates the field as a whole (`.inner = {}`) rather
+    /// than a part of it (`.inner.x = 1`, `.items[0] = 1`).
+    bool whole;
+};
+
+/// The designators the braced initializer around `offset` has already,
 /// where the text before `offset` ends in a `.` starting a designator of
-/// its own (`{ .width = 800, .`): the first name of each, in order. Empty
-/// anywhere else, after a `.` continuing a designator (`.inner.`) too.
-std::vector<llvm::StringRef> written_designators(llvm::StringRef text, std::uint32_t offset);
+/// its own (`{ .width = 800, .`), in order. Empty anywhere else, after a
+/// `.` continuing a designator (`.inner.`) too.
+std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::uint32_t offset);
 
 /// The names an `import` in the unit whose module declaration `unit`
 /// scanned can take that start with `prefix`: the graph's other provided

@@ -56,8 +56,18 @@ ZEST_SUITE(WrittenDesignators) {
 
 auto designators(llvm::StringRef text, std::size_t offset = llvm::StringRef::npos) {
     std::vector<std::string> names;
-    for(auto name: written_designators(text, std::min(offset, text.size()))) {
-        names.push_back(name.str());
+    for(auto designator: written_designators(text, std::min(offset, text.size()))) {
+        names.push_back(designator.field.str());
+    }
+    return names;
+}
+
+auto whole(llvm::StringRef text) {
+    std::vector<std::string> names;
+    for(auto designator: written_designators(text, text.size())) {
+        if(designator.whole) {
+            names.push_back(designator.field.str());
+        }
     }
     return names;
 }
@@ -74,6 +84,12 @@ ZEST_CASE(NestedBraces) {
 
 ZEST_CASE(CommasInCalls) {
     ZEXPECT(designators("f({ .a = g(1, .5), .") == std::vector<std::string>{"a"});
+}
+
+ZEST_CASE(DesignatedInPart) {
+    llvm::StringRef text = "Shape s = { .origin.x = 1, .items[0] = 2, .id{3}, .color = 4, .";
+    ZEXPECT(designators(text) == std::vector<std::string>{"origin", "items", "id", "color"});
+    ZEXPECT(whole(text) == std::vector<std::string>{"id", "color"});
 }
 
 ZEST_CASE(ContinuedDesignator) {
