@@ -27,14 +27,14 @@ function quote(word: string): string {
 }
 
 /// Every spelling of the workspace root the output may use: as given,
-/// resolved, with forward slashes, with a lowercase drive.
+/// resolved, with forward slashes, each with a lowercase drive.
 function rootForms(root: string): string[] {
     const forms = new Set<string>();
     for (const form of [root, fs.realpathSync.native(root)]) {
-        const slashed = form.split(path.sep).join("/");
-        forms.add(form);
-        forms.add(slashed);
-        forms.add(slashed.replace(/^[A-Z]:/, (drive) => drive.toLowerCase()));
+        for (const spelled of [form, form.split(path.sep).join("/")]) {
+            forms.add(spelled);
+            forms.add(spelled.replace(/^[A-Z]:/, (drive) => drive.toLowerCase()));
+        }
         forms.add(JSON.stringify(form).slice(1, -1));
     }
     return [...forms].sort((a, b) => b.length - a.length);

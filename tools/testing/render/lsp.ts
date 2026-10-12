@@ -320,7 +320,7 @@ export class AnswerContext {
 /// crash streak.
 export function elideCrash(text: string): string {
     return text.replace(
-        /killed by signal \d+ \(\w+\)|terminated by (?:exception )?0x[0-9A-Fa-f]+(?: \([^)]*\))?|(?:killed by signal|exited with code) \d+(?= \(crash streak)/g,
+        /killed by signal \d+ \(\w+\)|terminated by (?:exception )?0x[0-9A-Fa-f]+(?: \([^)]*\))?|(?:killed by signal|exited with code) -?\d+(?= \(crash streak)/g,
         "${CRASH}",
     );
 }

@@ -47,7 +47,7 @@ test("a flood never wedges", async (t) => {
     // The mirror says where it dropped lines, however many each time. A
     // note may follow the part of a line the full pipe took.
     const gaps = drained
-        .split("\n")
+        .split(/\r*\n/)
         .filter((line) => line.includes("[logging]"))
         .map((line) => line.slice(line.indexOf("[logging]")).replace(/\d+/g, "#"));
     await t.show("gap reports", [...new Set(gaps)]);

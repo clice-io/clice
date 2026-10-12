@@ -48,7 +48,7 @@ describe("normalize", () => {
         expect(elideCrash("Worker SL-0 killed by signal 4 (crash streak: 0)")).toBe(
             "Worker SL-0 ${CRASH} (crash streak: 0)",
         );
-        expect(elideCrash("Worker SL-0 exited with code 3221225501 (crash streak: 0)")).toBe(
+        expect(elideCrash("Worker SL-0 exited with code -1073741795 (crash streak: 0)")).toBe(
             "Worker SL-0 ${CRASH} (crash streak: 0)",
         );
     });
