@@ -2940,7 +2940,7 @@ clang::QualType TemplateResolver::member_object(const clang::Expr* base, bool ar
 }
 
 clang::QualType TemplateResolver::arrow_pointee(clang::QualType type) {
-    PseudoInstantiator instantiator(context, resolved);
+    PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.resolve(instantiator.arrow_target(type));
 }
 
