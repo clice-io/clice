@@ -1,22 +1,3 @@
-[answers.in_macro]
-wrong = "the fix would edit the macro's definition as well; only its opening parenthesis lands in the argument and the code no longer compiles, so no fix should be offered here"
-
-[[answers.in_macro.code_actions]]
-kind = "quickfix"
-title = "place parentheses around the assignment to silence this warning"
-compiles = false
-errors = ["expected '}'", "unterminated function-like macro invocation"]
-
-[answers.in_macro.code_actions.edits]
-"main.cpp" = '''
-
- int check(int value) {
--    ASSIGN_IF(value);
-+    ASSIGN_IF((value);
-     return value;
- }
-'''
-
 [[answers.in_macro.code_actions]]
 kind = "refactor.inline.macro"
 title = "Expand macro 'ASSIGN_IF'"

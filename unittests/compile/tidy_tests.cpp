@@ -279,6 +279,38 @@ ZEST_CASE(FixItReplacements) {
     ZEXPECT(error->fix[1].text.empty());
 }
 
+ZEST_CASE(MacroArgumentFixes) {
+    llvm::StringRef content = R"(#define ASSIGN_IF(x) if (x = 1) {}
+#define CHECK(x) (x)
+int f(int value, int total) {
+    ASSIGN_IF(value);
+    return CHECK(totl);
+}
+)";
+    auto unit = compile_main(
+        {
+            {"main.cpp", content.str()}
+    },
+        {});
+    ZASSERT(unit.completed());
+    // Clang drops the `)` it cannot place after `1` in the definition: the
+    // `(` left in the argument is no fix.
+    auto parentheses = llvm::find_if(unit.diagnostics(), [](const Diagnostic& diag) {
+        return llvm::StringRef(diag.message).starts_with("place parentheses");
+    });
+    ZASSERT(parentheses != unit.diagnostics().end());
+    ZEXPECT(parentheses->fix.empty());
+
+    auto typo = llvm::find_if(unit.diagnostics(), [](const Diagnostic& diag) {
+        return diag.id.level == DiagnosticLevel::Error;
+    });
+    ZASSERT(typo != unit.diagnostics().end());
+    auto offset = static_cast<std::uint32_t>(content.find("totl"));
+    ZASSERT(typo->fix.size() == 1);
+    ZEXPECT(typo->fix[0].range == LocalSourceRange{offset, offset + 4});
+    ZEXPECT(typo->fix[0].text == "total");
+}
+
 ZEST_CASE(ResolveConfigChain) {
     TempDir tmp;
     tmp.touch(".clang-tidy",

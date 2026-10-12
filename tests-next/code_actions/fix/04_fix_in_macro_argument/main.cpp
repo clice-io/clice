@@ -1,6 +1,6 @@
 // A warning inside a macro's expansion whose fix would edit both the
-// macro's argument and its definition: only the edit in the argument lands,
-// and the code no longer compiles.
+// macro's argument and its definition offers no fix: the edit in the
+// argument alone would not compile.
 
 #define ASSIGN_IF(x) if (x = 1) {}
 

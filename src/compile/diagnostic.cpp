@@ -247,11 +247,14 @@ public:
     }
 
     /// The replacements a diagnostic's fix-it hints spell, all of them or
-    /// none: one inside a macro expansion, but for one within a single
-    /// macro argument, which edits the argument, or in another file leaves
-    /// the fix unexpressed, and so do edits that overlap, which an editor
-    /// refuses (misc-unused-parameters removes both `f(1)` and its `1`
-    /// from `f(f(1))`).
+    /// none: one inside a macro expansion, but for a replacement within a
+    /// single macro argument, which edits the argument, or in another file
+    /// leaves the fix unexpressed, and so do edits that overlap, which an
+    /// editor refuses (misc-unused-parameters removes both `f(1)` and its
+    /// `1` from `f(f(1))`). An insertion is no such exception: clang drops
+    /// a hint whose place it cannot find in a macro, the end of a token
+    /// there, without a trace, and the insertions left in the argument may
+    /// be half a fix (the `(` of a pair of parentheses).
     auto fix(const clang::Diagnostic& diagnostic) -> std::vector<TextReplacement> {
         auto& sm = unit->SM();
         std::vector<TextReplacement> edits;
@@ -259,7 +262,9 @@ public:
             auto& range = hint.RemoveRange;
             auto begin = range.getBegin();
             auto end = range.getEnd();
-            if(begin.isMacroID() && end.isMacroID() && sm.getFileID(begin) == sm.getFileID(end)) {
+            bool insertion = range.isCharRange() && begin == end;
+            if(!insertion && begin.isMacroID() && end.isMacroID() &&
+               sm.getFileID(begin) == sm.getFileID(end)) {
                 range = clang::CharSourceRange(
                     {sm.getTopMacroCallerLoc(begin), sm.getTopMacroCallerLoc(end)},
                     range.isTokenRange());
