@@ -95,18 +95,6 @@ tests/modules/units/03_global_fragment
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
-
-**Header units**
-
-Importing a header as a header unit, `import "local.h";` or `import <util.h>;`, is not supported yet
-
-```case
-tests/modules/units/09_header_units
-```
-
-<!-- END CAPABILITY -->
-
 <!-- END GENERATED ITEMS -->
 
 ## Edits
@@ -148,3 +136,7 @@ tests/modules/failures/01_broken_module
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
+
+## Known Limitations
+
+- **Header units**. `import "util.h";` and `import <util.h>;` are not supported. Each such import is an error saying so, and nothing the header declares is visible after it; include the header instead.
