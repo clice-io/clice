@@ -542,7 +542,7 @@ void LSPClient::register_lifecycle() {
 
     peer.on_notification([this]([[maybe_unused]] const protocol::ExitParams& params) {
         LOG_INFO("Exit notification received");
-        this->server.exit_before_shutdown = !past_shutdown(this->server.lifecycle);
+        this->server.exit_before_shutdown |= !past_shutdown(this->server.lifecycle);
         this->server.schedule_shutdown();
     });
 }
