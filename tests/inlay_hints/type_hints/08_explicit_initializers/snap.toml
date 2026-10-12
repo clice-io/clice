@@ -1,10 +1,12 @@
 [answers.spelled]
 inlay_hints = [
     { line = "auto boxed = Box<int>(⟨first:⟩1, ⟨second:⟩2);" },
+    { line = "auto listed = Box<int>{⟨first:⟩3, ⟨second:⟩4};" },
 ]
 
 [answers.deduced]
 inlay_hints = [
     { line = "auto plain⟨: int⟩ = compute();" },
     { line = "auto inferred⟨: Box<int>⟩ = Box(⟨first:⟩1, ⟨second:⟩2);" },
+    { line = "auto copied⟨: int⟩ = auto(plain);" },
 ]

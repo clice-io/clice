@@ -16,13 +16,17 @@ namespace {
 
 /// The name a call of a lambda goes by: the identifier written before its
 /// opening parenthesis (`square` in `square(`), empty when another
-/// expression is called (`make()(`).
+/// expression is called (`make()(`) or a macro wrote the parenthesis.
 std::string callee_name(clang::Sema& sema, clang::SourceLocation open_paren) {
+    auto& sources = sema.getSourceManager();
+    if(sources.isMacroArgExpansion(open_paren)) {
+        open_paren = sources.getSpellingLoc(open_paren);
+    }
     if(!open_paren.isFileID()) {
         return {};
     }
     auto token = clang::Lexer::findPreviousToken(open_paren,
-                                                 sema.getSourceManager(),
+                                                 sources,
                                                  sema.getLangOpts(),
                                                  /*IncludeComments=*/false);
     if(!token || !token->is(clang::tok::raw_identifier)) {

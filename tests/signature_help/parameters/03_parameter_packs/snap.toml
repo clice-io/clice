@@ -5,3 +5,11 @@ active = 0
 [answers.second.signature_help]
 signatures = ["emit(⟦Args ...args⟧) -> void"]
 active = 0
+
+[answers.after_level.signature_help]
+signatures = ["log_at(int level, ⟦Args ...args⟧) -> void"]
+active = 0
+
+[answers.template_pack.signature_help]
+signatures = ["Tuple<⟦typename ...Ts⟧> -> struct"]
+active = 0

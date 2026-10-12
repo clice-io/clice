@@ -1,0 +1,11 @@
+[answers.lvalue.signature_help]
+signatures = ["data() const & -> const char *"]
+active = 0
+
+[answers.rvalue.signature_help]
+signatures = ["data() && -> const char *"]
+active = 0
+
+[answers.qualified.signature_help]
+signatures = ["size() const -> int"]
+active = 0

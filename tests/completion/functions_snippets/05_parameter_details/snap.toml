@@ -1,6 +1,6 @@
 [answers.default_argument.completion]
 items = [
-    { label = "configure(int timeout, int retries = 3)", kind = "Function", detail = "int" },
+    { label = "configure(int timeout, int retries = 3, int delay = 10)", kind = "Function", detail = "int" },
 ]
 
 [answers.variadic.completion]

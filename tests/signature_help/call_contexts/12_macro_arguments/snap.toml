@@ -1,0 +1,15 @@
+[answers.inside_call.signature_help]
+signatures = ["CHECK(⟦cond⟧, msg)"]
+active = 0
+
+[answers.parenthesized.signature_help]
+signatures = ["CHECK(⟦cond⟧, msg)"]
+active = 0
+
+[answers.named_variadic.signature_help]
+signatures = ["TRACE(format, ⟦args...⟧)"]
+active = 0
+
+[answers.lambda.signature_help]
+signatures = ["square(⟦int n⟧) -> int"]
+active = 0

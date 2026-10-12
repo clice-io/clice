@@ -5,3 +5,7 @@ active = 0
 [answers.unnamed.signature_help]
 signatures = ["(⟦int n⟧) -> int"]
 active = 0
+
+[answers.generic.signature_help]
+signatures = ["twice(⟦auto x⟧) -> auto"]
+active = 0

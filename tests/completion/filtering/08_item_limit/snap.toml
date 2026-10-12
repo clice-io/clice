@@ -3,6 +3,7 @@ items = [
     { label = "alpha_one", kind = "Variable", detail = "int" },
     { label = "alpha_three", kind = "Variable", detail = "int" },
     { label = "alpha_two", kind = "Variable", detail = "int" },
+    { label = "a_lpha", kind = "Variable", detail = "int" },
 ]
 
 [configured.pos.completion]
