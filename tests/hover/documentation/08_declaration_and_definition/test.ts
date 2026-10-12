@@ -6,6 +6,7 @@ import { test } from "@clice/tools/testing";
 test("declaration first", async (t) => {
     const s = await t.start();
     s.open("main.cpp");
+    await s.sync();
     await t.show("at_decl", s.hover(t.marker("at_decl")));
     await t.show("at_def", s.hover(t.marker("at_def")));
 });
@@ -13,6 +14,7 @@ test("declaration first", async (t) => {
 test("definition first", async (t) => {
     const s = await t.start();
     s.open("main.cpp");
+    await s.sync();
     await t.show("at_def", s.hover(t.marker("at_def")));
     await t.show("at_decl", s.hover(t.marker("at_decl")));
 });

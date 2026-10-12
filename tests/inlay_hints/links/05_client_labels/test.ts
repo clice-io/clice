@@ -6,11 +6,13 @@ import { test } from "@clice/tools/testing";
 test("plain client", async (t) => {
     const s = await t.start();
     s.open("main.cpp");
+    await s.sync();
     await t.show("main.cpp", s.inlayHints("main.cpp"), { parts: ["links"] });
 });
 
 test("inlay hint client", async (t) => {
     const s = await t.start({ capabilities: { textDocument: { inlayHint: {} } } });
     s.open("main.cpp");
+    await s.sync();
     await t.show("main.cpp", s.inlayHints("main.cpp"), { parts: ["links"] });
 });

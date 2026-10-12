@@ -10,6 +10,7 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     const s = await t.start({ crash: { request: "query:Hover", file: "main.cpp" } });
     s.open("main.cpp");
+    await s.sync();
     await t.show("hover", s.hover(t.at("main.cpp", "int |add")));
     await t.show("crashes", await s.crashes());
     // The editor's output channel: window/logMessage, not modelled by the

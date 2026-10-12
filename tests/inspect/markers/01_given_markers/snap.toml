@@ -99,13 +99,13 @@ stdout = '''
 exit = 0
 
 [test."$ clice inspect hover main.cpp --markers=markers.json #2"]
-stderr = ["error: --markers puts a marker outside the text of main.cpp"]
+stderr = "error: --markers puts a marker outside the text of main.cpp"
 exit = 1
 
 [test."$ clice inspect hover main.cpp --markers=markers.json #3"]
-stderr = ["error: --markers names a point and a range use"]
+stderr = "error: --markers names a point and a range use"
 exit = 1
 
 [test."$ clice inspect hover . --markers=markers.json"]
-stderr = ["error: ${WS} is a directory, not a source file"]
+stderr = "error: ${WS} is a directory, not a source file"
 exit = 1

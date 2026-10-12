@@ -1398,16 +1398,17 @@ void LSPClient::publish_config_diagnostics() {
         // a clean load clears diagnostics from a previous broken state.
         by_file.try_emplace(project->config_path);
         for(auto& issue: project->config_issues) {
-            // rich_error positions are 1-based; LSP wants 0-based. An unknown
-            // position (0) maps to the file top. The range spans a single
-            // character — clients render it as the whole token anyway.
-            auto line = issue.line > 0 ? issue.line - 1 : 0;
-            auto character = issue.column > 0 ? issue.column - 1 : 0;
+            // Issue positions are 1-based; LSP wants 0-based. An unknown
+            // position (0) maps to the file top.
+            auto position = [](std::uint32_t line, std::uint32_t column) {
+                return protocol::Position{.line = line > 0 ? line - 1 : 0,
+                                          .character = column > 0 ? column - 1 : 0};
+            };
 
             protocol::Diagnostic diagnostic;
             diagnostic.range = protocol::Range{
-                .start = protocol::Position{.line = line, .character = character    },
-                .end = protocol::Position{.line = line, .character = character + 1},
+                .start = position(issue.line, issue.column),
+                .end = position(issue.end_line, issue.end_column),
             };
             diagnostic.severity = issue.severity == ConfigIssue::Severity::Error
                                       ? protocol::DiagnosticSeverity::Error

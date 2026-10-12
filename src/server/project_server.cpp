@@ -130,10 +130,11 @@ void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init
             cache_dir.clear();
             project.config.project.cache_dir_defaulted = false;
         }
-        LOG_WARN("Cache directory {} already serves another project; {} uses {}",
-                 requested,
-                 root,
-                 cache_dir.empty() ? std::string("none") : cache_dir);
+        LOG_GUIDANCE("Cache directory {} already serves another project; {} {}",
+                     requested,
+                     root,
+                     cache_dir.empty() ? std::string("keeps no cache")
+                                       : std::format("keeps its cache in {}", cache_dir));
     }
 
     auto& cfg = project.config.project;

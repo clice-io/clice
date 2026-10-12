@@ -5,5 +5,6 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     const s = await t.start();
     s.open("x.inc");
+    await s.sync();
     await t.show("symbols", s.documentSymbols("x.inc"));
 });

@@ -201,21 +201,21 @@ Options:
 exit = 0
 
 ["unknown subcommand"."$ clice bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   bogus",
-    "stderr:   ^~~~~",
-    "stderr:   unknown subcommand 'bogus'",
-]
+stderr = '''
+at argv[0]:
+  bogus
+  ^~~~~
+  unknown subcommand 'bogus'
+'''
 exit = 2
 
 ["unknown option"."$ clice serve --bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   --bogus",
-    "stderr:   ^~~~~~~",
-    "stderr:   unknown option '--bogus'",
-]
+stderr = '''
+at argv[0]:
+  --bogus
+  ^~~~~~~
+  unknown option '--bogus'
+'''
 exit = 2
 
 ["unknown option"."$ clice query --bogus"]
@@ -237,48 +237,48 @@ stdout = '''
 exit = 2
 
 ["unknown option"."$ clice index --bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   --bogus",
-    "stderr:   ^~~~~~~",
-    "stderr:   unknown option '--bogus'",
-]
+stderr = '''
+at argv[0]:
+  --bogus
+  ^~~~~~~
+  unknown option '--bogus'
+'''
 exit = 2
 
 ["unknown option"."$ clice lint --bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   --bogus",
-    "stderr:   ^~~~~~~",
-    "stderr:   unknown option '--bogus'",
-]
+stderr = '''
+at argv[0]:
+  --bogus
+  ^~~~~~~
+  unknown option '--bogus'
+'''
 exit = 2
 
 ["unknown option"."$ clice format --bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   --bogus",
-    "stderr:   ^~~~~~~",
-    "stderr:   unknown option '--bogus'",
-]
+stderr = '''
+at argv[0]:
+  --bogus
+  ^~~~~~~
+  unknown option '--bogus'
+'''
 exit = 2
 
 ["unknown option"."$ clice inspect --bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   --bogus",
-    "stderr:   ^~~~~~~",
-    "stderr:   unknown option '--bogus'",
-]
+stderr = '''
+at argv[0]:
+  --bogus
+  ^~~~~~~
+  unknown option '--bogus'
+'''
 exit = 2
 
 ["unknown option"."$ clice analyze --bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   --bogus",
-    "stderr:   ^~~~~~~",
-    "stderr:   unknown option '--bogus'",
-]
+stderr = '''
+at argv[0]:
+  --bogus
+  ^~~~~~~
+  unknown option '--bogus'
+'''
 exit = 2
 
 ["unknown option"."$ clice modularize --bogus"]
@@ -291,10 +291,10 @@ stdout = '''
 exit = 2
 
 ["unknown option"."$ clice worker --bogus"]
-stderr = [
-    "stderr: at argv[0]:",
-    "stderr:   --bogus",
-    "stderr:   ^~~~~~~",
-    "stderr:   unknown option '--bogus'",
-]
+stderr = '''
+at argv[0]:
+  --bogus
+  ^~~~~~~
+  unknown option '--bogus'
+'''
 exit = 2
