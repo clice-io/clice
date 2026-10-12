@@ -87,7 +87,8 @@ enum class InternalLinkage : std::uint8_t {
     Const,
 };
 
-/// How often a file names one entity, and the first line it does.
+/// How often a file names one entity, and the first line it does; 0 for
+/// uses a hypothetical move supposes, which have no line.
 struct Use {
     std::uint32_t entity = 0;
     std::uint32_t count = 0;
@@ -123,6 +124,10 @@ struct Entity {
     /// Times the owner names it beyond declaring it: a TU-local entity an
     /// inline function of its header uses is exposed by that function.
     std::uint32_t self_uses = 0;
+
+    /// The first line the owner names it on beyond declaring it; 0 when
+    /// only a fragment the owner pastes in does, or the owner is supposed.
+    std::uint32_t self_line = 0;
 
     /// What its definition in the owner names, nested definitions apart,
     /// itself and the owner's other entities included: the uses that move

@@ -35,7 +35,6 @@ stdout = '''
 exit = 0
 
 [test."$ clice analyze modules --move-entity \"#e754d0209128f76a path:core/str.h=app/helper.h\" --view edge --from core --to app"]
-wrong = "uses_helper names helper on line 14 of core/str.h, which the use reads as core/str.h:0"
 stdout = '''
 {
   "from": "core",
@@ -47,7 +46,7 @@ stdout = '''
       "owner": "app/helper.h",
       "users": [
         "core/str.cpp:4",
-        "core/str.h:0"
+        "core/str.h:14"
       ],
       "interface": true
     }

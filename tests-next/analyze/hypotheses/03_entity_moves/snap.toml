@@ -226,7 +226,6 @@ stdout = '''
 exit = 0
 
 ["moved declarations"."$ clice analyze modules --move-entity Clock=meta/clock.h --view edge --from meta --to core"]
-wrong = "meta/clock.h is the file the move supposes, which has no lines: its uses read meta/clock.h:0 where the path alone is expected"
 stdout = '''
 {
   "from": "meta",
@@ -237,7 +236,7 @@ stdout = '''
       "entity": "Str",
       "owner": "core/str.h",
       "users": [
-        "meta/clock.h:0"
+        "meta/clock.h"
       ],
       "interface": true
     },
@@ -246,7 +245,7 @@ stdout = '''
       "entity": "length",
       "owner": "core/str.h",
       "users": [
-        "meta/clock.h:0"
+        "meta/clock.h"
       ],
       "interface": true
     }
