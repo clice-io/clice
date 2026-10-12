@@ -507,8 +507,7 @@ private:
 /// class found again by its qualified name, each specialization formed
 /// again. Null where a part names nothing found here — a lambda, a local
 /// class, a declaration after the completion point.
-class Carrier {
-public:
+struct Carrier {
     Carrier(clang::Sema& sema, clang::SourceLocation loc) :
         sema(sema), ast(sema.getASTContext()), loc(loc) {}
 
@@ -584,7 +583,6 @@ public:
         }
     }
 
-private:
     clang::QualType builtin_type(clang::BuiltinType::Kind kind) {
         switch(kind) {
 #define BUILTIN_TYPE(Id, SingletonId)                                                              \
