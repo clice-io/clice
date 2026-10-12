@@ -1,2 +1,8 @@
 [answers.method]
 implementation = ["void Widget::⟦draw⟧() {}"]
+
+[answers.virtual_method]
+implementation = ["void Widget::⟦paint⟧() {}"]
+
+[answers.definition]
+implementation = []

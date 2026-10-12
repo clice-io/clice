@@ -3,7 +3,7 @@
   "topic": "navigation",
   "subtopic": "call_hierarchy",
   "title": "Non-function targets",
-  "summary": "A call hierarchy opens on a variable or an enum constant",
+  "summary": "A call hierarchy opens on a variable, a field or an enum constant",
   "prose": "Preparing a call hierarchy on a variable, a field or an enum constant\noffers an item whose incoming calls are the functions using it.",
   "status": "supported",
   "issues": [
@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "int counter = 0;\n\nenum Mode {\n    Fast,\n    Slow,\n};\n\nint next() {\n    return counter++;\n}\n\nMode pick() {\n    return Fast;\n}\n",
+      "text": "int counter = 0;\n\nenum Mode {\n    Fast,\n    Slow,\n};\n\nstruct Tally {\n    int hits = 0;\n\n    void bump() {\n        hits += 1;\n    }\n};\n\nint next() {\n    return counter++;\n}\n\nMode pick() {\n    return Fast;\n}\n",
       "markers": [
         {
           "name": "variable",
@@ -24,6 +24,12 @@
           "name": "enumerator",
           "begin": 34,
           "end": 34,
+          "range": false
+        },
+        {
+          "name": "field",
+          "begin": 77,
+          "end": 77,
           "range": false
         }
       ]
@@ -66,11 +72,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 15,
                       "character": 4
                     },
                     "end": {
-                      "line": 7,
+                      "line": 15,
                       "character": 8
                     }
                   }
@@ -81,11 +87,11 @@
                     "path": "main.cpp",
                     "range": {
                       "start": {
-                        "line": 8,
+                        "line": 16,
                         "character": 11
                       },
                       "end": {
-                        "line": 8,
+                        "line": 16,
                         "character": 18
                       }
                     }
@@ -130,11 +136,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 11,
+                      "line": 19,
                       "character": 5
                     },
                     "end": {
-                      "line": 11,
+                      "line": 19,
                       "character": 9
                     }
                   }
@@ -145,12 +151,77 @@
                     "path": "main.cpp",
                     "range": {
                       "start": {
-                        "line": 12,
+                        "line": 20,
                         "character": 11
                       },
                       "end": {
-                        "line": 12,
+                        "line": 20,
                         "character": 15
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": []
+          }
+        },
+        {
+          "label": "field",
+          "marker": "field",
+          "value": {
+            "call_hierarchy": [
+              {
+                "name": "hits",
+                "kind": "Field",
+                "at": {
+                  "$place": "int ⟦hits⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "Tally::hits"
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "bump",
+                "kind": "Method",
+                "at": {
+                  "$place": "void ⟦bump⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "Tally::bump",
+                "sites": [
+                  {
+                    "$place": "⟦hits⟧ += 1;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 11,
+                        "character": 8
+                      },
+                      "end": {
+                        "line": 11,
+                        "character": 12
                       }
                     }
                   }

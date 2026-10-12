@@ -316,12 +316,13 @@ tests/navigation/implementation/02_sibling_overrides
 
 <!-- BEGIN CAPABILITY: supported clangd#854 -->
 
-**Non-virtual function**
+**Functions nothing overrides**
 
 A function nothing overrides is implemented by its definition
 
-Go-to-implementation on the declaration of a function that is not
-overridden, virtual or not, reaches its out-of-line definition.
+Go-to-implementation on the declaration of a function nothing overrides,
+virtual or not, reaches its out-of-line definition. On the definition
+itself there is nowhere further to go.
 
 ```case
 tests/navigation/implementation/03_non_virtual
@@ -735,10 +736,10 @@ tests/navigation/implicit_targets/02_break_and_continue
 
 **`delete` expression**
 
-`delete` navigates to the destructor it runs
+`delete` navigates to the destructor and the deallocation function it runs
 
-Go-to-definition on `delete` reaches the destructor it runs, besides a
-class's own `operator delete`.
+Go-to-definition on `delete` reaches the destructor it runs and the class's
+own `operator delete`.
 
 ```case
 tests/navigation/implicit_targets/03_delete_expressions
@@ -814,9 +815,9 @@ tests/navigation/implicit_targets/07_user_defined_literals
 
 A condition or `!` navigates to the conversion operator it runs
 
-Go-to-definition on the parenthesis of a condition, or on the `!`, `&&`,
-`||` or `?` whose operand converts, reaches the user-defined conversion
-operator that tests the operand.
+Go-to-definition on the parenthesis of an `if` condition, or on the `!`,
+`&&`, `||` or `?` whose operand converts, reaches the user-defined
+conversion operator that tests the operand.
 
 ```case
 tests/navigation/implicit_targets/08_implicit_conversions
@@ -830,8 +831,9 @@ tests/navigation/implicit_targets/08_implicit_conversions
 
 A cast navigates to the constructor or conversion operator it runs
 
-Go-to-definition on a `static_cast` reaches the constructor it selects, or
-the user-defined conversion operator it calls.
+Go-to-definition on a `static_cast`, or on the parenthesis of a C-style
+cast, reaches the constructor it selects or the user-defined conversion
+operator it calls.
 
 ```case
 tests/navigation/implicit_targets/09_casts
@@ -1025,10 +1027,11 @@ tests/navigation/implicit_construction/09_lambda_captures
 
 **Structured bindings**
 
-Structured binding names navigate to the bindings, not underlying fields or accessors
+A structured binding's name is its own definition
 
-Go-to-definition on a structured binding name resolves to the binding
-itself rather than the underlying field or accessor it names.
+Go-to-definition on the name a structured binding declares stays on the
+binding, as on any declared name; the member or accessor it binds to is
+not a definition of it.
 
 ```case
 tests/navigation/implicit_construction/10_structured_bindings
@@ -1195,7 +1198,7 @@ tests/navigation/call_hierarchy/04_signature_details
 
 **Qualified name for member functions**
 
-A member function's call hierarchy item shows its qualified name (`Circle::draw`) as its detail, telling it apart from a free function
+A member function's call hierarchy item shows its qualified name (`Circle::draw`) beside its name, telling it apart from a free function
 
 ```case
 tests/navigation/call_hierarchy/05_qualified_names
@@ -1205,7 +1208,7 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Follow virtual dispatch**
+**Calls through an override**
 
 A call through a class that overrides a virtual method is an incoming call of the override alone
 
@@ -1222,7 +1225,7 @@ tests/navigation/call_hierarchy/06_virtual_dispatch
 
 **Non-function targets**
 
-A call hierarchy opens on a variable or an enum constant
+A call hierarchy opens on a variable, a field or an enum constant
 
 Preparing a call hierarchy on a variable, a field or an enum constant
 offers an item whose incoming calls are the functions using it.
@@ -1311,22 +1314,6 @@ Subtypes of a base include classes that derive from it through a class template,
 
 ```case
 tests/navigation/type_hierarchy/04_template_bases
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Template subtypes**
-
-A class template deriving from a non-template base is one subtype of it
-
-`template <typename T> struct Derived : Base` makes every specialization of
-`Derived` derive from `Base`: the subtype is the template, `Derived`, not
-one specialization such as the `Derived<Foo>` the code uses.
-
-```case
-tests/navigation/type_hierarchy/05_template_arguments
 ```
 
 <!-- END CAPABILITY -->

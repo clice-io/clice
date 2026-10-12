@@ -1,2 +1,2 @@
 [answers.delete]
-definition = ["⟦~Widget⟧();"]
+definition = ["⟦~Widget⟧();", "static void ⟦operator delete⟧(void* memory);"]

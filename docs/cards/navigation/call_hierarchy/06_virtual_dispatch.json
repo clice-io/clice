@@ -2,7 +2,7 @@
   "id": "navigation/call_hierarchy/06_virtual_dispatch",
   "topic": "navigation",
   "subtopic": "call_hierarchy",
-  "title": "Follow virtual dispatch",
+  "title": "Calls through an override",
   "summary": "A call through a class that overrides a virtual method is an incoming call of the override alone",
   "prose": "`d.draw()` on a `Derived&` runs `Derived::draw` or an override below it,\nnever `Base::draw`, so only the override lists it among its incoming calls.",
   "status": "supported",

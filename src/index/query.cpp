@@ -98,6 +98,11 @@ llvm::SmallVector<SymbolRef, 4>
     return chain;
 }
 
+bool is_function(SymbolKind kind) {
+    return llvm::is_contained({SymbolKind::Function, SymbolKind::Method, SymbolKind::Operator},
+                              kind);
+}
+
 /// Whether the shard declares or defines the symbol, not only name it.
 bool declares(const Shard& shard, SymbolHash hash) {
     bool found = false;
@@ -422,13 +427,37 @@ std::optional<IndexQuery::Cursor> IndexQuery::symbol_at(Fid file, std::uint32_t 
         return std::nullopt;
     }
     std::optional<Cursor> cursor;
+    auto is_macro = [&](SymbolHash hash) {
+        auto info = symbol_info(hash, file);
+        return info && info->kind == SymbolKind::Macro;
+    };
+    // A separator — `:`, `=`, `&&`, `||`, `?` — leading to what it does not
+    // spell (a range-for's `begin`, a copy's constructor) gives way to the
+    // name it follows: `for(auto& x: xs)` with the cursor right after `x`
+    // stands on `x`.
+    std::unique_ptr<llvm::MemoryBuffer> storage;
+    auto separates = [&](const Named& named) {
+        if(named.range.begin != offset || named.range.length() > 2 ||
+           llvm::any_of(named.symbols, [&](SymbolHash hash) {
+               auto info = symbol_info(hash, file);
+               return info && name_form(info->flags) == NameForm::Operator;
+           })) {
+            return false;
+        }
+        auto text = source_text(*source, storage);
+        return text && llvm::is_contained({":", "=", "&&", "||", "?"},
+                                          text->slice(named.range.begin, named.range.end));
+    };
     auto hit = [&](const Shard& shard) {
-        auto named = named_at(shard, offset, [&](SymbolHash hash) {
-            auto info = symbol_info(hash, file);
-            return info && info->kind == SymbolKind::Macro;
-        });
+        auto named = named_at(shard, offset, is_macro);
         if(!named) {
             return false;
+        }
+        if(offset > 0 && separates(*named)) {
+            if(auto before = named_at(shard, offset - 1, is_macro);
+               before && before->range.end == offset) {
+                named = std::move(before);
+            }
         }
         auto site = IndexSource{.file = file,
                                 .path = source->path,
@@ -667,15 +696,10 @@ std::vector<IndexQuery::Edge> IndexQuery::edges(SymbolHash hash,
     return located_edges(by_target);
 }
 
-std::vector<IndexQuery::Edge> IndexQuery::users(SymbolHash hash, Fid anchor) const {
+std::vector<IndexQuery::Edge> IndexQuery::referencing_functions(SymbolHash hash, Fid anchor) const {
     // Each file's function definitions, by their extents.
     llvm::DenseMap<const Shard*, std::vector<std::pair<LocalSourceRange, SymbolHash>>> functions;
-    auto function_kind = [&](SymbolHash symbol, Fid file) {
-        auto info = symbol_info(symbol, file);
-        return info && (info->kind == SymbolKind::Function || info->kind == SymbolKind::Method ||
-                        info->kind == SymbolKind::Operator);
-    };
-    llvm::DenseMap<SymbolHash, std::vector<Site>> by_user;
+    llvm::DenseMap<SymbolHash, std::vector<Site>> by_function;
     for_each_relation(
         hash,
         anchor,
@@ -690,30 +714,32 @@ std::vector<IndexQuery::Edge> IndexQuery::users(SymbolHash hash, Fid anchor) con
             auto [it, inserted] = functions.try_emplace(source.shard);
             if(inserted) {
                 source.shard->for_each_relation([&](SymbolHash symbol, const Relation& defined) {
-                    if(defined.kind == RelationKind::Definition &&
-                       defined.definition_range().contains(defined.range) &&
-                       function_kind(symbol, source.file)) {
+                    if(defined.kind != RelationKind::Definition ||
+                       !defined.definition_range().contains(defined.range)) {
+                        return true;
+                    }
+                    if(auto info = symbol_info(symbol, source.file);
+                       info && is_function(info->kind)) {
                         it->second.emplace_back(defined.definition_range(), symbol);
                     }
                     return true;
                 });
             }
-            // The innermost function holding the reference.
-            std::optional<std::pair<LocalSourceRange, SymbolHash>> user;
+            std::optional<std::pair<LocalSourceRange, SymbolHash>> innermost;
             for(auto& function: it->second) {
                 if(function.first.contains(relation.range) &&
-                   (!user || user->first.contains(function.first))) {
-                    user = function;
+                   (!innermost || innermost->first.contains(function.first))) {
+                    innermost = function;
                 }
             }
-            if(user) {
+            if(innermost) {
                 if(auto site = source.site(relation.range)) {
-                    by_user[user->second].push_back(*site);
+                    by_function[innermost->second].push_back(*site);
                 }
             }
             return true;
         });
-    return located_edges(by_user);
+    return located_edges(by_function);
 }
 
 std::vector<IndexQuery::Edge>
@@ -751,11 +777,11 @@ IndexQuery::CallGraph IndexQuery::call_graph(SymbolHash root,
     CallGraph graph;
     if(options.callers) {
         auto info = symbol_info(root, anchor);
+        bool value = info && llvm::is_contained(
+                                 {SymbolKind::Variable, SymbolKind::Field, SymbolKind::EnumMember},
+                                 info->kind);
         graph.callers =
-            info && (info->kind == SymbolKind::Variable || info->kind == SymbolKind::Field ||
-                     info->kind == SymbolKind::EnumMember)
-                ? users(root, anchor)
-                : edges(root, anchor, RelationKind::Caller);
+            value ? referencing_functions(root, anchor) : edges(root, anchor, RelationKind::Caller);
     }
     if(options.callees) {
         graph.callees = edges(root, anchor, RelationKind::Callee);
@@ -990,8 +1016,7 @@ std::vector<Site> IndexQuery::implementation(SymbolHash hash, Fid anchor) const 
         }
     }
     // A function nothing overrides is implemented by its own definition.
-    if(result.empty() && (info->kind == SymbolKind::Function || info->kind == SymbolKind::Method ||
-                          info->kind == SymbolKind::Operator)) {
+    if(result.empty() && is_function(info->kind)) {
         return sites(hash, anchor, RelationKind::Definition);
     }
     return result;

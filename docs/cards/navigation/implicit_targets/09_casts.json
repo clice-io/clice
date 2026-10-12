@@ -4,13 +4,13 @@
   "subtopic": "implicit_targets",
   "title": "Cast conversion navigation",
   "summary": "A cast navigates to the constructor or conversion operator it runs",
-  "prose": "Go-to-definition on a `static_cast` reaches the constructor it selects, or\nthe user-defined conversion operator it calls.",
+  "prose": "Go-to-definition on a `static_cast`, or on the parenthesis of a C-style\ncast, reaches the constructor it selects or the user-defined conversion\noperator it calls.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Meters {\n    explicit operator double() const;\n};\n\nstruct Foo {\n    explicit Foo(int value);\n};\n\nvoid use(Meters m) {\n    double d = static_cast<double>(m);\n    Foo f = static_cast<Foo>(42);\n}\n",
+      "text": "struct Meters {\n    explicit operator double() const;\n};\n\nstruct Foo {\n    explicit Foo(int value);\n};\n\nvoid use(Meters m) {\n    double d = static_cast<double>(m);\n    double e = (double)m;\n    Foo f = static_cast<Foo>(42);\n}\n",
       "markers": [
         {
           "name": "cast_conv",
@@ -19,9 +19,15 @@
           "range": false
         },
         {
+          "name": "c_cast",
+          "begin": 179,
+          "end": 179,
+          "range": false
+        },
+        {
           "name": "cast_ctor",
-          "begin": 176,
-          "end": 176,
+          "begin": 202,
+          "end": 202,
           "range": false
         }
       ]
@@ -34,6 +40,28 @@
         {
           "label": "cast_conv",
           "marker": "cast_conv",
+          "value": {
+            "definition": [
+              {
+                "$place": "explicit ⟦operator double⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 28
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "c_cast",
+          "marker": "c_cast",
           "value": {
             "definition": [
               {

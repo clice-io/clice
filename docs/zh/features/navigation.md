@@ -304,11 +304,11 @@ tests/navigation/implementation/02_sibling_overrides
 
 <!-- BEGIN CAPABILITY: supported clangd#854 -->
 
-**非虚函数**
+**没有被重写的函数**
 
 没有被重写的函数，其实现就是它的定义
 
-对于没有被重写的函数，无论是否为虚函数，在其声明上执行“跳转到实现”都会跳转到其单独给出的定义。
+对于没有被重写的函数，无论是否为虚函数，在其声明上执行“跳转到实现”都会跳转到其单独给出的定义。在定义本身上执行时，已没有可以再跳转的地方。
 
 ```case
 tests/navigation/implementation/03_non_virtual
@@ -702,9 +702,9 @@ tests/navigation/implicit_targets/02_break_and_continue
 
 **`delete` 表达式**
 
-`delete` 可跳转到它调用的析构函数
+`delete` 可跳转到它调用的析构函数和内存释放函数
 
-在 `delete` 上执行“跳转到定义”，除了类自身的 `operator delete`，还会跳转到它调用的析构函数。
+在 `delete` 上执行“跳转到定义”，可跳转到它调用的析构函数，以及类自身的 `operator delete`。
 
 ```case
 tests/navigation/implicit_targets/03_delete_expressions
@@ -774,7 +774,7 @@ tests/navigation/implicit_targets/07_user_defined_literals
 
 条件判断或 `!` 可跳转到其调用的转换运算符
 
-在条件判断的括号上，或在操作数需要转换的 `!`、`&&`、`||` 或 `?` 上执行“跳转到定义”，会跳转到用于判断该操作数真假的用户定义转换运算符。
+在 `if` 条件的括号上，或在操作数需要转换的 `!`、`&&`、`||` 或 `?` 上执行“跳转到定义”，会跳转到用于判断该操作数真假的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/08_implicit_conversions
@@ -788,7 +788,7 @@ tests/navigation/implicit_targets/08_implicit_conversions
 
 强制类型转换可跳转到其调用的构造函数或转换运算符
 
-在 `static_cast` 上执行“跳转到定义”，会跳转到它所选的构造函数，或它调用的用户定义转换运算符。
+在 `static_cast` 上，或在 C 风格强制类型转换的括号上执行“跳转到定义”，会跳转到它所选的构造函数或它调用的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/09_casts
@@ -962,9 +962,9 @@ tests/navigation/implicit_construction/09_lambda_captures
 
 **结构化绑定（structured bindings）**
 
-结构化绑定名称可跳转到绑定本身，而非底层字段或访问器
+结构化绑定的名称就是它自己的定义
 
-在结构化绑定名称上执行“跳转到定义”，会解析到绑定本身，而非该名称所对应的底层字段或访问器。
+在结构化绑定所声明的名称上执行“跳转到定义”，会停留在该绑定上，与其他被声明的名称一样；它所绑定的成员或访问器并不是它的定义。
 
 ```case
 tests/navigation/implicit_construction/10_structured_bindings
@@ -1126,7 +1126,7 @@ tests/navigation/call_hierarchy/04_signature_details
 
 **成员函数的限定名称**
 
-成员函数的调用层次结构条目会在详情中显示其限定名称（`Circle::draw`），以便与自由函数区分开
+成员函数的调用层次结构条目会在名称旁显示其限定名称（`Circle::draw`），以便与自由函数区分开
 
 ```case
 tests/navigation/call_hierarchy/05_qualified_names
@@ -1136,7 +1136,7 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**跟踪虚函数分派**
+**经由重写方法的调用**
 
 通过重写了虚方法的类发起的调用，只算作该重写方法的传入调用
 
@@ -1152,7 +1152,7 @@ tests/navigation/call_hierarchy/06_virtual_dispatch
 
 **非函数目标**
 
-可以在变量或枚举常量上打开调用层次结构
+可以在变量、字段或枚举常量上打开调用层次结构
 
 在变量、字段或枚举常量上准备调用层次结构时，会返回一个条目，其传入调用就是使用它的各个函数。
 
@@ -1240,20 +1240,6 @@ tests/navigation/type_hierarchy/03_subtypes
 
 ```case
 tests/navigation/type_hierarchy/04_template_bases
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**模板子类型**
-
-继承自非模板基类的类模板是该基类的一个子类型
-
-`template <typename T> struct Derived : Base` 让 `Derived` 的每个特化都继承自 `Base`：子类型是模板 `Derived` 本身，而不是代码中用到的 `Derived<Foo>` 这类单个特化。
-
-```case
-tests/navigation/type_hierarchy/05_template_arguments
 ```
 
 <!-- END CAPABILITY -->

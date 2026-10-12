@@ -5,6 +5,14 @@ enum Mode {
     Slow,
 };
 
+struct Tally {
+    int §(field)hits = 0;
+
+    void bump() {
+        hits += 1;
+    }
+};
+
 int next() {
     return counter++;
 }

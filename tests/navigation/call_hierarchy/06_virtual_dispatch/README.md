@@ -1,4 +1,4 @@
-# Follow virtual dispatch
+# Calls through an override
 
 A call through a class that overrides a virtual method is an incoming call
 of the override alone

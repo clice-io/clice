@@ -4,7 +4,7 @@
   "subtopic": "implicit_targets",
   "title": "Implicit conversion operators",
   "summary": "A condition or `!` navigates to the conversion operator it runs",
-  "prose": "Go-to-definition on the parenthesis of a condition, or on the `!`, `&&`,\n`||` or `?` whose operand converts, reaches the user-defined conversion\noperator that tests the operand.",
+  "prose": "Go-to-definition on the parenthesis of an `if` condition, or on the `!`,\n`&&`, `||` or `?` whose operand converts, reaches the user-defined\nconversion operator that tests the operand.",
   "status": "supported",
   "issues": [
     "clangd#1931"
@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Guard {\n    explicit operator bool() const;\n};\n\nvoid use(Guard g) {\n    if (g) {}\n    bool ok = !g;\n    bool both = g && ok;\n    int pick = g ? 1 : 0;\n}\n",
+      "text": "struct Guard {\n    explicit operator bool() const;\n};\n\nvoid use(Guard g) {\n    if (g) {}\n    bool ok = !g;\n    bool both = g && ok;\n    bool either = ok || g;\n    int pick = g ? 1 : 0;\n}\n",
       "markers": [
         {
           "name": "condition",
@@ -33,9 +33,15 @@
           "range": false
         },
         {
+          "name": "disjunction",
+          "begin": 153,
+          "end": 153,
+          "range": false
+        },
+        {
           "name": "conditional",
-          "begin": 149,
-          "end": 149,
+          "begin": 176,
+          "end": 176,
           "range": false
         }
       ]
@@ -92,6 +98,28 @@
         {
           "label": "conjunction",
           "marker": "conjunction",
+          "value": {
+            "definition": [
+              {
+                "$place": "explicit ⟦operator bool⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 26
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "disjunction",
+          "marker": "disjunction",
           "value": {
             "definition": [
               {

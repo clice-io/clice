@@ -524,11 +524,11 @@ public:
             return;
         }
         add_pair_relation(decl, RelationKind::TypeDefinition, target, decl->getLocation());
-        if(!llvm::isa<clang::CXXRecordDecl>(target)) {
+        auto type = types::unwrap(value_type(decl));
+        if(!llvm::isa<clang::CXXRecordDecl>(target) || type->isDependentType()) {
             return;
         }
-        auto pointee = unit.resolver().arrow_pointee(types::unwrap(value_type(decl)));
-        if(auto* pointed = pointee.isNull() ? nullptr : types::decl_of(types::unwrap(pointee))) {
+        if(auto* pointed = types::decl_of(types::unwrap(unit.resolver().arrow_pointee(type)))) {
             add_pair_relation(decl, RelationKind::TypeDefinition, pointed, decl->getLocation());
         }
     }

@@ -448,11 +448,14 @@ RenamePlan plan_rename(const IndexQuery& query,
                 }
                 auto offsets = spellings(*text.text, site.range.begin, site.range.end, old_name);
                 if(offsets.empty()) {
-                    // A relation on punctuation (a construction's paren) spells
-                    // no name; one on another name is a macro's invocation.
+                    // A relation on punctuation (a construction's paren) or a
+                    // keyword (the destructor `delete` runs) spells no name;
+                    // one on another name is a macro's invocation.
                     auto written =
                         llvm::StringRef(*text.text).slice(site.range.begin, site.range.end);
-                    if(llvm::any_of(written, identifier_char)) {
+                    clang::IdentifierTable keywords(cxx());
+                    if(llvm::any_of(written, identifier_char) &&
+                       keywords.get(written).getTokenID() == clang::tok::identifier) {
                         plan.unconfirmed.push_back(
                             {.site = site,
                              .reason = std::format("the name is written here as `{}`",

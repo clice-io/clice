@@ -1002,33 +1002,32 @@ void refer_hidden(References& out, const clang::Stmt* S, types::TemplateResolver
     }
 }
 
-/// The conversion function a user-defined conversion of `expr` calls.
-const clang::CXXConversionDecl* conversion_of(const clang::Expr* expr) {
-    expr = expr->IgnoreParens();
-    if(auto* EWC = llvm::dyn_cast<clang::ExprWithCleanups>(expr)) {
-        expr = EWC->getSubExpr()->IgnoreParens();
-    }
-    auto* cast = llvm::dyn_cast<clang::CastExpr>(expr);
-    return cast ? llvm::dyn_cast_if_present<clang::CXXConversionDecl>(cast->getConversionFunction())
-                : nullptr;
-}
-
 /// A reference at `location`, the token standing for the conversion, to the
 /// conversion function `expr` calls when it converts (an `if consteval` has
 /// no condition).
 void refer_conversion(References& out, const clang::Expr* expr, clang::SourceLocation location) {
-    if(expr) {
-        refer(out, conversion_of(expr), RelationKind::Reference, location);
+    if(!expr) {
+        return;
+    }
+    expr = expr->IgnoreParens();
+    if(auto* EWC = llvm::dyn_cast<clang::ExprWithCleanups>(expr)) {
+        expr = EWC->getSubExpr()->IgnoreParens();
+    }
+    if(auto* cast = llvm::dyn_cast<clang::CastExpr>(expr)) {
+        refer(out,
+              llvm::dyn_cast_if_present<clang::CXXConversionDecl>(cast->getConversionFunction()),
+              RelationKind::Reference,
+              location);
     }
 }
 
 /// References at `location` to the functions a generated statement tree
 /// calls by the names the language fixes (`begin`, `await_ready`,
 /// `return_value`).
-void refer_protocol_calls(References& out,
-                          const clang::Stmt* S,
-                          llvm::ArrayRef<llvm::StringRef> names,
-                          clang::SourceLocation location) {
+void refer_calls_named(References& out,
+                       const clang::Stmt* S,
+                       llvm::ArrayRef<llvm::StringRef> names,
+                       clang::SourceLocation location) {
     if(!S) {
         return;
     }
@@ -1041,7 +1040,7 @@ void refer_protocol_calls(References& out,
         }
     }
     for(auto* child: S->children()) {
-        refer_protocol_calls(out, child, names, location);
+        refer_calls_named(out, child, names, location);
     }
 }
 
@@ -1727,8 +1726,8 @@ void stmt_references(const clang::Stmt* S,
     /// loop variable's `*__begin` initializer have no nodes. The `:` leads
     /// to the `begin` and `end` the loop calls.
     if(auto* FRS = llvm::dyn_cast<clang::CXXForRangeStmt>(S)) {
-        refer_protocol_calls(out, FRS->getBeginStmt(), {"begin"}, FRS->getColonLoc());
-        refer_protocol_calls(out, FRS->getEndStmt(), {"end"}, FRS->getColonLoc());
+        refer_calls_named(out, FRS->getBeginStmt(), {"begin"}, FRS->getColonLoc());
+        refer_calls_named(out, FRS->getEndStmt(), {"end"}, FRS->getColonLoc());
         for(const clang::Stmt* generated:
             {static_cast<const clang::Stmt*>(FRS->getBeginStmt()),
              static_cast<const clang::Stmt*>(FRS->getEndStmt()),
@@ -1772,10 +1771,10 @@ void stmt_references(const clang::Stmt* S,
                 }
             }
             for(auto* call: {CSE->getReadyExpr(), CSE->getSuspendExpr(), CSE->getResumeExpr()}) {
-                refer_protocol_calls(out,
-                                     call,
-                                     {"await_ready", "await_suspend", "await_resume"},
-                                     CSE->getKeywordLoc());
+                refer_calls_named(out,
+                                  call,
+                                  {"await_ready", "await_suspend", "await_resume"},
+                                  CSE->getKeywordLoc());
             }
         }
         for(auto* child: CSE->children()) {
@@ -1788,10 +1787,10 @@ void stmt_references(const clang::Stmt* S,
     /// co_return value;
     /// ^~~~ reference to the promise's `return_value` or `return_void`
     if(auto* CRS = llvm::dyn_cast<clang::CoreturnStmt>(S)) {
-        refer_protocol_calls(out,
-                             CRS->getPromiseCall(),
-                             {"return_value", "return_void"},
-                             CRS->getKeywordLoc());
+        refer_calls_named(out,
+                          CRS->getPromiseCall(),
+                          {"return_value", "return_void"},
+                          CRS->getKeywordLoc());
         refer_hidden(out, CRS->getPromiseCall(), resolver);
         return;
     }

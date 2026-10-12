@@ -15,3 +15,18 @@ incoming_calls = [
     { name = "pick", kind = "Function", at = "Mode ⟦pick⟧() {", sites = ["return ⟦Fast⟧;"] },
 ]
 outgoing_calls = []
+
+[answers.field]
+call_hierarchy = [
+    { name = "hits", kind = "Field", at = "int ⟦hits⟧ = 0;", detail = "Tally::hits" },
+]
+incoming_calls = [
+    {
+        name = "bump",
+        kind = "Method",
+        at = "void ⟦bump⟧() {",
+        detail = "Tally::bump",
+        sites = ["⟦hits⟧ += 1;"],
+    },
+]
+outgoing_calls = []

@@ -1473,8 +1473,7 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
     // The item stands for the symbol, not the cursor: anchored at the
     // symbol's canonical site, expanding from a use renders the same root
     // as expanding from the declaration. A symbol no source places (an
-    // implicitly declared `operator delete`) has no item. A variable, a
-    // field or an enumerator is called by the functions using it.
+    // implicitly declared `operator delete`) has no item.
     std::vector<protocol::CallHierarchyItem> items;
     for(auto& located: query.resolve_at(*cursor)) {
         auto kind = located.symbol.kind;
@@ -1484,7 +1483,7 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
             items.push_back(to_lsp::call_hierarchy_item(located.symbol,
                                                         located.site,
                                                         located.extent,
-                                                        query.container_name(located.symbol.hash)));
+                                                        query.qualified_name(located.symbol.hash)));
         }
     }
     if(items.empty())
@@ -1528,7 +1527,7 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
             {to_lsp::call_hierarchy_item(edge.symbol.symbol,
                                          edge.symbol.site,
                                          edge.symbol.extent,
-                                         query.container_name(edge.symbol.symbol.hash)),
+                                         query.qualified_name(edge.symbol.symbol.hash)),
              to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
@@ -1554,7 +1553,7 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
             {to_lsp::call_hierarchy_item(edge.symbol.symbol,
                                          edge.symbol.site,
                                          edge.symbol.extent,
-                                         query.container_name(edge.symbol.symbol.hash)),
+                                         query.qualified_name(edge.symbol.symbol.hash)),
              to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
@@ -1580,7 +1579,7 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
             items.push_back(to_lsp::type_hierarchy_item(located.symbol,
                                                         located.site,
                                                         located.extent,
-                                                        query.container_name(located.symbol.hash)));
+                                                        query.qualified_name(located.symbol.hash)));
         }
     }
     if(items.empty())
@@ -1595,7 +1594,7 @@ static std::vector<protocol::TypeHierarchyItem>
         results.push_back(to_lsp::type_hierarchy_item(located.symbol,
                                                       located.site,
                                                       located.extent,
-                                                      query.container_name(located.symbol.hash)));
+                                                      query.qualified_name(located.symbol.hash)));
     }
     return results;
 }

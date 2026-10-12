@@ -94,8 +94,9 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// entity hashes name a partition's module, not the partition; v31: an
 /// implementation unit's module declaration is a Declaration of its
 /// module, keywords and punctuation that call or name a declaration carry
-/// an occurrence of it, and a smart pointer's pointee is a type definition
-/// of what holds it).
+/// an occurrence of it (`override`, `final` and `new` with an Implied
+/// relation), and a smart pointer's pointee is a type definition of what
+/// holds it).
 constexpr inline std::uint32_t index_format_version = 31;
 
 /// Serialize a reflected index blob to `os` as a verified-readable

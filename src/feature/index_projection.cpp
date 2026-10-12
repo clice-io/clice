@@ -63,6 +63,13 @@ LangProfile& profile_for(clang::Language lang, clang::LangStandard::Kind std) {
     return profiles.try_emplace({lang, std}, lang, std).first->second;
 }
 
+/// Whether `spelling` is a contextual keyword of overriding — `override`,
+/// `final`, MSVC's `sealed` — which leads to the methods it overrides
+/// without spelling their names.
+bool overrides(llvm::StringRef spelling) {
+    return spelling == "override" || spelling == "final" || spelling == "sealed";
+}
+
 LangProfile& profile_for(const clang::LangOptions& lang_opts) {
     return profile_for(lang_opts.CPlusPlus ? clang::Language::CXX : clang::Language::C,
                        lang_opts.LangStd);
@@ -211,11 +218,8 @@ auto index_semantic_tokens(llvm::StringRef content,
             if(llvm::is_contained(covered, occ_it->target)) {
                 continue;
             }
-            // `override` and `final` lead to the methods they override,
-            // whose names they do not spell.
             auto info = resolve(occ_it->target);
-            if(info &&
-               ((spelling != "override" && spelling != "final") || info->name == spelling)) {
+            if(info && (!overrides(spelling) || info->name == spelling)) {
                 combine(semantic, {info->kind, 0});
             }
         }
@@ -342,6 +346,11 @@ auto index_semantic_tokens(llvm::StringRef content,
             if(covering != module_spans.begin() && token.range.end <= (covering - 1)->end) {
                 semantic = semantic_at((covering - 1)->begin, {});
             }
+        }
+
+        // The contextual keyword, unless it names something.
+        if(semantic.kind == SymbolKind::Invalid && overrides(spelling)) {
+            lexical = {SymbolKind::Keyword, 0};
         }
 
         Classified result = final_classification(semantic, lexical);

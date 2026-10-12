@@ -3,19 +3,19 @@
   "topic": "navigation",
   "subtopic": "implicit_targets",
   "title": "`delete` expression",
-  "summary": "`delete` navigates to the destructor it runs",
-  "prose": "Go-to-definition on `delete` reaches the destructor it runs, besides a\nclass's own `operator delete`.",
+  "summary": "`delete` navigates to the destructor and the deallocation function it runs",
+  "prose": "Go-to-definition on `delete` reaches the destructor it runs and the class's\nown `operator delete`.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Widget {\n    ~Widget();\n};\n\nvoid dispose(Widget* widget) {\n    delete widget;\n}\n",
+      "text": "struct Widget {\n    ~Widget();\n    static void operator delete(void* memory);\n};\n\nvoid dispose(Widget* widget) {\n    delete widget;\n}\n",
       "markers": [
         {
           "name": "delete",
-          "begin": 70,
-          "end": 70,
+          "begin": 117,
+          "end": 117,
           "range": false
         }
       ]
@@ -41,6 +41,20 @@
                   "end": {
                     "line": 1,
                     "character": 11
+                  }
+                }
+              },
+              {
+                "$place": "static void ⟦operator delete⟧(void* memory);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 31
                   }
                 }
               }
