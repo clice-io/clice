@@ -18,7 +18,7 @@ namespace clice::index {
 class WriterLock {
 public:
     /// nullopt when another process holds the lock (logged with the
-    /// holder's pid where the platform lets it be read).
+    /// holder's pid when it recorded one).
     static std::optional<WriterLock> acquire(llvm::StringRef cache_dir);
 
     WriterLock(WriterLock&& other) noexcept : fd(other.fd) {

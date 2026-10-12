@@ -481,11 +481,9 @@ ZEST_CASE(WriterLockAtCacheRoot) {
     auto db = index::open_database(store, "x");
     ZASSERT(db != nullptr);
     ZASSERT(!llvm::sys::fs::exists(path::join(index::library_directory(store, "x"), "index.lock")));
-#ifndef _WIN32
     auto held = read_file(path::join(store.root_dir(), "index.lock"));
     ZASSERT(held);
     ZASSERT(llvm::StringRef(*held).trim() == std::to_string(llvm::sys::Process::getProcessId()));
-#endif
     lock.reset();
     auto released = read_file(path::join(store.root_dir(), "index.lock"));
     ZASSERT((released.has_value() && released->empty()));
