@@ -230,8 +230,9 @@ function byteOf(text: string, offset: number): number {
     return Buffer.byteLength(text.slice(0, offset), "utf8");
 }
 
-/// A module import, which a file compiled alone cannot resolve.
-const MODULE_IMPORT = /^[ \t]*(?:export[ \t]+)?import(?:[ \t]+[\w:<"]|[:<"])/m;
+/// A module import, which a file compiled alone cannot resolve; one in an
+/// inactive branch counts too.
+const MODULE_IMPORT = /^[ \t]*(?:export[ \t]+)?import(?:[ \t]+\w|[ \t]*(?:[<"]|:(?!:)))/m;
 
 function rangeKey({ begin, end }: RawRange): string {
     return `${String(begin)}-${String(end)}`;
