@@ -8,10 +8,11 @@ Linted 1 translation unit in #s: 3 findings.
 exit = 1
 
 ["missing include"."$ clice lint --workers 2"]
-wrong = "clang-tidy still reports both divisions besides the missing header; every finding of the unit is lost after that error"
 stdout = '''
+${WS}/include.cpp:2:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 ${WS}/include.cpp:5:10: error: 'missing.h' file not found [clang-diagnostic-error]
-Linted 1 translation unit in #s: 1 finding.
+${WS}/include.cpp:8:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
+Linted 1 translation unit in #s: 3 findings.
 '''
 stderr = ["warning: 1 unresolved includes"]
 exit = 1

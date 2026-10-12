@@ -32,6 +32,10 @@ public:
     /// The context of the clang-tidy checker.
     ClangTidyContext context;
 
+    /// The engine the checks report through in a batch run (see
+    /// tidy::configure); the compiler's otherwise.
+    std::unique_ptr<clang::DiagnosticsEngine> engine;
+
     /// The instances of checks that are enabled for the current Language.
     std::vector<std::unique_ptr<ClangTidyCheck>> checks;
 

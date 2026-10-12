@@ -564,7 +564,11 @@ void run_feature(FileEntry& entry,
     params.kind = CompilationKind::Content;
     prepare(params);
     if(clang_tidy) {
-        params.tidy = tidy::resolve_tidy_params(file.path).params;
+        auto resolution = tidy::resolve_tidy_params(file.path);
+        if(!resolution.error.empty()) {
+            LOG_WARN("{}", resolution.error);
+        }
+        params.tidy = std::move(resolution.params);
     }
 
     auto unit = clice::compile(params);

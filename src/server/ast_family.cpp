@@ -782,6 +782,9 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     if(project.config.diagnostics.clang_tidy &&
        project.build.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
+        if(!tidy_config->error.empty()) {
+            LOG_WARN("{}", tidy_config->error);
+        }
         if(!session->tidy_crash && session->crashed_pch.empty() &&
            !session->quarantine->crashed(compile_kind) &&
            !session->quarantine->barred(tidy_kind, Quarantine::Clock::now())) {

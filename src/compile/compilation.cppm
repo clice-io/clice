@@ -69,6 +69,10 @@ struct TidyParams {
 struct TidyResolution {
     TidyParams params;
     std::vector<DepFile> files;
+
+    /// Why a configuration file on the way did not parse, as clang-tidy
+    /// reports it; the resolution reads on past it as clang-tidy does.
+    std::string error;
 };
 
 /// Resolve the effective clang-tidy configuration for `file` from its

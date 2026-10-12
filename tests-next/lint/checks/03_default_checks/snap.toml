@@ -6,9 +6,9 @@ Linted 1 translation unit in #s: 1 finding.
 exit = 1
 
 ["checks without -*"."$ clice lint --workers 2"]
-wrong = "clang-tidy also reports the unused variable here: its checks start from the compiler warnings (clang-diagnostic-*), which this Checks list leaves on"
 stdout = '''
+${WS}/main.cpp:9:9: warning: unused variable 'unused' [clang-diagnostic-unused-variable]
 ${WS}/main.cpp:10:12: warning: use nullptr [modernize-use-nullptr]
-Linted 1 translation unit in #s: 1 finding.
+Linted 1 translation unit in #s: 2 findings.
 '''
 exit = 1

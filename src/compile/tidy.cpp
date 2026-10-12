@@ -218,6 +218,48 @@ private:
     }
 };
 
+/// clang-tidy's own provider, but for a configuration file that does not
+/// parse: clang-tidy prints why and reads on as if the file were absent;
+/// this reads on the same, keeping why.
+class ConfigFiles : public clang::tidy::FileOptionsProvider {
+public:
+    explicit ConfigFiles(llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> disk) :
+        FileOptionsProvider(
+            clang::tidy::ClangTidyGlobalOptions(),
+            [] {
+                auto opts = clang::tidy::ClangTidyOptions::getDefaults();
+                opts.Checks->clear();
+                return opts;
+            }(),
+            clang::tidy::ClangTidyOptions(),
+            std::move(disk)) {
+        ConfigHandlers = {
+            {".clang-tidy", [this](llvm::MemoryBufferRef config) { return parse(config); }},
+        };
+    }
+
+    /// Each configuration file that did not parse, as the parser reports it.
+    std::string error;
+
+private:
+    llvm::ErrorOr<clang::tidy::ClangTidyOptions> parse(llvm::MemoryBufferRef config) {
+        std::string messages;
+        llvm::raw_string_ostream os(messages);
+        auto parsed = clang::tidy::parseConfigurationWithDiags(
+            config,
+            [&](const llvm::SMDiagnostic& diagnostic) {
+                diagnostic.print(nullptr, os, /*ShowColors=*/false);
+            });
+        if(parsed) {
+            return parsed;
+        }
+        error += std::format("Invalid .clang-tidy {}:\n{}", config.getBufferIdentifier(), messages);
+        clang::tidy::ClangTidyOptions absent;
+        absent.InheritParentConfig = true;
+        return absent;
+    }
+};
+
 }  // namespace
 
 using namespace clang::tidy;
@@ -318,8 +360,17 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
     if(std::optional<std::string> user = llvm::sys::Process::GetEnv("USER")) {
         opts.User = user;
     }
-    // clang::clangd::provideDefaultChecks
-    opts.Checks = params.checks.empty() ? default_checks : params.checks;
+    // clang::clangd::provideDefaultChecks. A configuration's Checks extend
+    // clang-tidy's own default list in a batch run, as in clang-tidy: the
+    // compiler's warnings stay findings unless they say -*. (The static
+    // analyzer, the rest of that list, is not built in.)
+    if(params.checks.empty()) {
+        opts.Checks = default_checks;
+    } else if(params.batch) {
+        opts.Checks = "clang-diagnostic-*," + params.checks;
+    } else {
+        opts.Checks = params.checks;
+    }
     // clang::clangd::disableUnusableChecks, after the configuration's own
     // list so that no configuration enables them again. A batch run never
     // parses code mid-edit.
@@ -533,13 +584,21 @@ clang::DiagnosticsEngine::Level
     bool in_main_file =
         diag.hasSourceManager() && is_inside_main_file(diag.getLocation(), diag.getSourceManager());
     llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
-    if((in_main_file || batch) && context.shouldSuppressDiagnostic(level,
-                                                                   diag,
-                                                                   tidy_suppressed_errors,
-                                                                   /*AllowIO=*/batch,
-                                                                   /*EnableNolintBlocks=*/true)) {
-        // FIXME: should we expose the suppression error (invalid use of
-        // NOLINT comments)?
+    bool suppressed =
+        (in_main_file || batch) && context.shouldSuppressDiagnostic(level,
+                                                                    diag,
+                                                                    tidy_suppressed_errors,
+                                                                    /*AllowIO=*/batch,
+                                                                    /*EnableNolintBlocks=*/true);
+    // A NOLINT comment that pairs with none is an error of clang-tidy's
+    // own, reported once per file. The editor leaves them out, as clangd
+    // does.
+    if(batch) {
+        for(auto& error: tidy_suppressed_errors) {
+            context.diag(error);
+        }
+    }
+    if(suppressed) {
         return clang::DiagnosticsEngine::Ignored;
     }
     // The compiler decides its own diagnostics in system macros: an error
@@ -635,9 +694,23 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         finder_options);
     checker->batch = params.batch;
 
-    checker->context.setDiagnosticsEngine(
-        std::make_unique<clang::DiagnosticOptions>(instance.getDiagnosticOpts()),
-        &instance.getDiagnostics());
+    // A batch run's checks report through an engine of their own, as in
+    // clang-tidy: the compiler's stops reporting after a fatal error (a
+    // missing header) and applies the command's -Werror and -w to them.
+    if(params.batch) {
+        auto options = std::make_unique<clang::DiagnosticOptions>();
+        checker->engine =
+            std::make_unique<clang::DiagnosticsEngine>(instance.getDiagnostics().getDiagnosticIDs(),
+                                                       *options,
+                                                       instance.getDiagnostics().getClient(),
+                                                       /*ShouldOwnClient=*/false);
+        checker->engine->setSourceManager(&instance.getSourceManager());
+        checker->context.setDiagnosticsEngine(std::move(options), checker->engine.get());
+    } else {
+        checker->context.setDiagnosticsEngine(
+            std::make_unique<clang::DiagnosticOptions>(instance.getDiagnosticOpts()),
+            &instance.getDiagnostics());
+    }
     checker->context.setASTContext(&instance.getASTContext());
     // TODO: is `file_name` always the file to check?
     checker->context.setCurrentFile(file_name);
@@ -668,18 +741,11 @@ TidyResolution resolve_tidy_params(llvm::StringRef file) {
     // carry no checks, so a tree without any configuration resolves to an
     // empty list and the consumer's built-in default set applies.
     auto reads = llvm::makeIntrusiveRefCnt<ConfigReads>();
-    tidy::FileOptionsProvider provider(
-        tidy::ClangTidyGlobalOptions(),
-        [] {
-            auto opts = tidy::ClangTidyOptions::getDefaults();
-            opts.Checks->clear();
-            return opts;
-        }(),
-        tidy::ClangTidyOptions(),
-        reads);
+    ConfigFiles provider(reads);
     auto opts = provider.getOptions(file);
 
     TidyResolution resolution;
+    resolution.error = llvm::StringRef(provider.error).rtrim().str();
     auto& params = resolution.params;
     params.checks = opts.Checks.value_or(std::string());
     for(auto& [key, value]: opts.CheckOptions) {

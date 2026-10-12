@@ -324,6 +324,15 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
         if(!start) {
             continue;
         }
+        // clang-tidy's name for a compiler error: its warning's, for one
+        // -Werror raises.
+        std::string check(raw.id.name);
+        if(clang_error) {
+            auto option =
+                unit.context().getDiagnostics().getDiagnosticIDs()->getWarningOptionForDiag(
+                    raw.id.value);
+            check = std::format("clang-diagnostic-{}", option.empty() ? "error" : option);
+        }
         out.push_back({
             .file = std::string(file),
             .line = start->line + 1,
@@ -331,9 +340,7 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             .error =
                 raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal,
             .message = raw.message,
-            // clang-tidy's name for compiler errors; plain errors carry no
-            // warning-option name of their own.
-            .check = clang_error ? "clang-diagnostic-error" : std::string(raw.id.name),
+            .check = std::move(check),
         });
         last_kept = true;
     }

@@ -313,6 +313,9 @@ struct LintPass {
     std::size_t checked = 0;
     std::size_t failed = 0;
     std::vector<worker::TidyDiagnostic> findings;
+    /// The .clang-tidy errors reported so far, each once for all the units
+    /// it fails.
+    llvm::StringSet<> config_errors;
     kota::event task_done{false};
 };
 
@@ -339,8 +342,23 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
     TURunFamily::Plan plan;
     plan.index = with_index && stack.project.build.indexed(file);
     if(stack.project.build.lintable(file)) {
-        plan.tidy = tidy::resolve_tidy_params(stack.project.file_table.spelling(path_id)).params;
-        plan.tidy->batch = true;
+        auto resolution = tidy::resolve_tidy_params(stack.project.file_table.spelling(path_id));
+        // Checked under a configuration it does not have, the unit would
+        // report what was not asked for and miss what was.
+        if(!resolution.error.empty()) {
+            if(pass.config_errors.insert(resolution.error).second) {
+                LOG_ERROR("{}", resolution.error);
+            }
+            pass.failed += 1;
+        } else {
+            plan.tidy = std::move(resolution.params);
+            plan.tidy->batch = true;
+        }
+    }
+    if(!plan.tidy && !plan.index) {
+        pass.inflight -= 1;
+        pass.task_done.set();
+        co_return;
     }
 
     // One retry: a lost run or a preemption says nothing about the TU, and
