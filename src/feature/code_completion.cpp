@@ -774,6 +774,58 @@ public:
             return access && *access != clang::AS_public;
         };
 
+        /// What accepting a call inserts, unless its arguments are written
+        /// already: the arguments to fill in, else, when the name is called
+        /// here, its parentheses.
+        auto insert_call =
+            [&](Candidate& item, const clang::CodeCompletionString& ccs, bool called_here) {
+                if(arguments_follow) {
+                    return;
+                }
+                if(client.snippets && !options.bundle_overloads &&
+                   options.enable_function_arguments_snippet) {
+                    item.insert = build_snippet(ccs);
+                    item.snippet = !item.insert.empty();
+                }
+                if(called_here && options.insert_paren_in_function_call && !item.snippet) {
+                    if(client.snippets) {
+                        item.insert = escape_snippet(item.label) + "($0)";
+                        item.snippet = true;
+                    } else {
+                        item.insert = item.label + "()";
+                    }
+                }
+            };
+
+        /// After `t.`, `t->` or `T::` on a template parameter, Sema offers
+        /// what the constraints on it require as patterns: a name and, for
+        /// a call, the types of the arguments it is called with.
+        bool requirements = false;
+        if(member_access) {
+            requirements = llvm::isa<clang::TemplateTypeParmType>(context.getBaseType());
+        } else if(auto spec = context.getCXXScopeSpecifier()) {
+            auto scope = (*spec)->getScopeRep();
+            requirements = scope.getKind() == clang::NestedNameSpecifier::Kind::Type &&
+                           llvm::isa<clang::TemplateTypeParmType>(scope.getAsType());
+        }
+        auto add_requirement = [&](const clang::CodeCompletionString& pattern) {
+            Candidate item{
+                .label = pattern.getAllTypedText(),
+                .signature = extract_signature(pattern),
+                .return_type = extract_return_type(pattern),
+            };
+            if(item.signature.empty()) {
+                // After `T::` a name without a call is mostly a type the
+                // constraints name, `typename T::value_type`.
+                item.kind = member_access ? protocol::CompletionItemKind::Field
+                                          : protocol::CompletionItemKind::TypeParameter;
+            } else {
+                item.kind = protocol::CompletionItemKind::Method;
+                insert_call(item, pattern, /*called_here=*/true);
+            }
+            add(item);
+        };
+
         auto add_declaration = [&](clang::CodeCompletionResult& candidate) {
             auto* declaration = candidate.Declaration;
             // A qualifier clang does not mark informative must be
@@ -805,44 +857,30 @@ public:
                 item.bundle = item.label;
             }
 
-            auto* ccs = candidate.CreateCodeCompletionString(sema,
-                                                             context,
-                                                             getAllocator(),
-                                                             getCodeCompletionTUInfo(),
-                                                             /*IncludeBriefComments=*/false);
-            if(ccs) {
-                item.signature = extract_signature(*ccs);
-                item.return_type = extract_return_type(*ccs);
-                bool arguments = is_callable && !options.bundle_overloads &&
-                                 options.enable_function_arguments_snippet;
-                bool template_arguments = options.enable_template_arguments_snippet &&
-                                          llvm::isa<clang::ClassTemplateDecl,
-                                                    clang::TypeAliasTemplateDecl,
-                                                    clang::VarTemplateDecl>(declaration);
-                if(client.snippets && !arguments_follow && (arguments || template_arguments)) {
-                    item.insert = build_snippet(*ccs);
-                    item.snippet = !item.insert.empty();
-                    // Every parameter defaulted: nothing to fill in,
-                    // but the name alone does not name a type.
-                    if(template_arguments && !item.snippet) {
-                        item.insert = item.label + "<>";
-                    }
-                }
-            }
-
-            // A call gets its parentheses unless it has them already
-            // or the name is not being called here.
-            bool callable_here = candidate.FunctionCanBeCall && !candidate.DeclaringEntity &&
-                                 !context.isUsingDeclaration();
-            if(options.insert_paren_in_function_call && !item.snippet && callable_here &&
-               !arguments_follow &&
-               (kind == protocol::CompletionItemKind::Function ||
-                kind == protocol::CompletionItemKind::Method)) {
-                if(client.snippets) {
-                    item.insert = escape_snippet(item.label) + "($0)";
-                    item.snippet = true;
-                } else {
-                    item.insert = item.label + "()";
+            auto& ccs = *candidate.CreateCodeCompletionString(sema,
+                                                              context,
+                                                              getAllocator(),
+                                                              getCodeCompletionTUInfo(),
+                                                              /*IncludeBriefComments=*/false);
+            item.signature = extract_signature(ccs);
+            item.return_type = extract_return_type(ccs);
+            if(is_callable) {
+                insert_call(item,
+                            ccs,
+                            kind != protocol::CompletionItemKind::Constructor &&
+                                candidate.FunctionCanBeCall && !candidate.DeclaringEntity &&
+                                !context.isUsingDeclaration());
+            } else if(options.enable_template_arguments_snippet && client.snippets &&
+                      !arguments_follow &&
+                      llvm::isa<clang::ClassTemplateDecl,
+                                clang::TypeAliasTemplateDecl,
+                                clang::VarTemplateDecl>(declaration)) {
+                item.insert = build_snippet(ccs);
+                item.snippet = !item.insert.empty();
+                // Every parameter defaulted: nothing to fill in,
+                // but the name alone does not name a type.
+                if(!item.snippet) {
+                    item.insert = item.label + "<>";
                 }
             }
 
@@ -871,6 +909,10 @@ public:
                             .kind = protocol::CompletionItemKind::Method,
                             .insert = pattern_text(pattern, /*whole=*/false) + ";",
                         });
+                        break;
+                    }
+                    if(requirements) {
+                        add_requirement(pattern);
                         break;
                     }
                     add_pattern(pattern);

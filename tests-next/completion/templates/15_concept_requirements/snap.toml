@@ -1,8 +1,10 @@
-[answers.member]
-wrong = "should complete as methods with their parameter lists, draw() and resize(int, int)"
-
 [answers.member.completion]
 items = [
-    { label = "draw", kind = "Keyword" },
-    { label = "resize", kind = "Keyword" },
+    { label = "draw()", kind = "Method" },
+    { label = "resize(int, int)", kind = "Method" },
+]
+
+[answers.nested.completion]
+items = [
+    { label = "unit", kind = "TypeParameter" },
 ]
