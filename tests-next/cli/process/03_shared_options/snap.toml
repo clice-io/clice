@@ -29,16 +29,12 @@ stderr = ["stderr: ${WS}/missing: not a directory"]
 exit = 2
 
 ["a missing workspace"."$ clice lint --workspace missing"]
-wrong = "the error blames a missing compile_commands.json, not the workspace that does not exist"
-stderr = ["error: Nothing to lint: no compile_commands.json found under ${WS}/missing"]
+stderr = ["error: ${WS}/missing: not a directory"]
 exit = 2
 
 ["a missing workspace"."$ clice index --workspace missing"]
-wrong = "the error blames a missing compile_commands.json, not the workspace that does not exist, which the run creates for its log"
-stdout = "Session log: ${WS}/missing/.clice/logs/${SESSION}"
-stderr = ["error: Nothing to index: no compile_commands.json found under ${WS}/missing"]
+stderr = ["error: ${WS}/missing: not a directory"]
 exit = 1
 
 ["a missing workspace"."left behind"]
-wrong = "a run on a workspace that does not exist leaves a .clice directory there"
-value = ["missing/.clice/CACHEDIR.TAG", "missing/.clice/index.lock", "missing/.clice/owner"]
+value = []

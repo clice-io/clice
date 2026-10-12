@@ -29,9 +29,5 @@ stderr = ["stderr: ${WS}/missing: not a directory"]
 exit = 2
 
 ["an unknown configuration"."$ clice format --configuration nope"]
-wrong = "with no configuration declared, the error lists an empty `()` instead of saying the project declares none"
-stderr = [
-    "error: --configuration nope names no rule's configuration ()",
-    "stderr: the requested configuration does not exist",
-]
+stderr = ["stderr: --configuration nope names no configuration: no rule declares one"]
 exit = 2

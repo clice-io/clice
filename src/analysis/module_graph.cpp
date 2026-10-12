@@ -6,9 +6,11 @@ module clice;
 
 import :analysis.module_graph;
 import :command.command;
+import :config.config;
 import :index.serialization;
 import :index.symbol_query;
 import :project.command_resolver;
+import :project.configuration;
 import :project.open_index;
 import :project.project;
 import :syntax.lexer;
@@ -1382,12 +1384,16 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
         globs.push_back(std::move(*glob));
     }
 
-    CanonicalPath root(workspace);
+    auto config = Config::load_from_workspace(CanonicalPath(workspace));
+    if(auto checked = check_requested_configuration(config, configuration); !checked) {
+        return std::unexpected(LoadError{.message = std::move(checked.error())});
+    }
     FileTable files;
     files.spell_root(workspace);
     Project project{files};
     CommandResolver commands{project};
-    auto loaded = load_index(project, commands, root, configuration, /*with_build=*/false);
+    auto loaded =
+        load_index(project, commands, std::move(config), configuration, /*with_build=*/false);
     if(!loaded) {
         return std::unexpected(LoadError{.message = "no usable index; run `clice index` first"});
     }
@@ -1413,7 +1419,8 @@ std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
             return std::unexpected(LoadError{.message = std::move(edited.error())});
         }
     }
-    return LoadedFacts{.root = llvm::StringRef(root).str(), .facts = std::move(facts)};
+    return LoadedFacts{.root = llvm::StringRef(project.config.workspace_root).str(),
+                       .facts = std::move(facts)};
 }
 
 std::expected<void, std::string> move_entities(Facts& facts,

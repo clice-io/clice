@@ -107,12 +107,10 @@ stdout = '''
 exit = 2
 
 [test."$ clice analyze modules --configuration nowhere"]
-wrong = "the index is there: the error should say that no rule declares the configuration nowhere, as the log line does, not ask to run clice index"
 stdout = '''
 {
-  "error": "no usable index; run `clice index` first",
+  "error": "--configuration nowhere names no configuration: no rule declares one",
   "stale": []
 }
 '''
-stderr = ["error: --configuration nowhere names no rule's configuration ()"]
 exit = 1

@@ -1,14 +1,9 @@
 [test."$ clice index --configuration release"]
-wrong = "warns that it uses debug although --configuration names release"
 stderr = [
-    "warning: Rules declare configurations debug, release but default_configuration is unset; using debug",
     "error: request failed: the running clice server indexes configuration 'debug', not 'release'",
 ]
 exit = 1
 
 [test."$ clice index --configuration debug"]
 stdout = "Indexed through the running clice server (pid #)."
-stderr = [
-    "warning: Rules declare configurations debug, release but default_configuration is unset; using debug",
-]
 exit = 0

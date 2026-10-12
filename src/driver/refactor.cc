@@ -4,7 +4,9 @@ module;
 
 module clice;
 
+import :config.config;
 import :driver.driver;
+import :project.configuration;
 import :project.open_index;
 import :server.query_commands;
 import :vfs.file_system;
@@ -204,11 +206,15 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
         return 1;
     }
     auto spelling = workspace_spelling(opts.workspace.value_or(""));
-    CanonicalPath root(spelling);
+    auto config = Config::load_from_workspace(CanonicalPath(spelling));
     auto configuration = opts.configuration.value_or("");
+    if(auto checked = check_requested_configuration(config, configuration); !checked) {
+        print_json(Failure{.error = std::move(checked.error())});
+        return 1;
+    }
     std::vector<std::string> failed;
     if(opts.fresh) {
-        auto refreshed = refresh(spelling, configuration, self_path);
+        auto refreshed = refresh(spelling, config, configuration, self_path);
         if(!refreshed) {
             print_json(Failure{.error = refreshed.error()});
             return 1;
@@ -224,7 +230,8 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
     CommandResolver commands{project};
     ContextsBlob saved;
     EditorContext contexts{project, commands, saved};
-    auto loaded = load_index(project, commands, root, configuration, /*with_build=*/true);
+    auto loaded =
+        load_index(project, commands, std::move(config), configuration, /*with_build=*/true);
     if(!loaded) {
         print_json(Failure{
             .error =

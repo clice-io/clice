@@ -2,9 +2,13 @@ module;
 
 #include "modules/prelude.h"
 
+#include "support/logging.macros.h"
+
 module clice;
 
+import :config.config;
 import :driver.driver;
+import :project.configuration;
 import :sched.batch;
 import :support.logging;
 
@@ -55,8 +59,14 @@ int run_lint(Spelling root,
              std::uint32_t workers,
              bool with_index,
              const char* self_path) {
+    auto config = Config::load_from_workspace(CanonicalPath(root));
+    if(auto checked = check_requested_configuration(config, configuration); !checked) {
+        LOG_ERROR("{}", checked.error());
+        return 2;
+    }
     auto result = run_batch_lint({
         .root = std::move(root),
+        .config = std::move(config),
         .configuration = std::move(configuration),
         .workers = workers,
         .self_path = self_path,
@@ -93,7 +103,11 @@ CommandHandler build(const char* self_path) {
         opts.log.apply();
         logging::stderr_logger("lint", logging::options);
 
-        return run_lint(workspace_spelling(opts.workspace.value_or("")),
+        auto workspace = workspace_spelling(opts.workspace.value_or(""));
+        if(!workspace_exists(workspace)) {
+            return 2;
+        }
+        return run_lint(std::move(workspace),
                         opts.configuration.value_or(""),
                         opts.workers.value_or(0),
                         static_cast<bool>(opts.index),

@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :config.config;
 import :driver.driver;
 import :project.configuration;
 import :project.open_index;
@@ -186,11 +187,15 @@ int run_query(const QueryOptions& opts, const char* self_path) {
         return 1;
     }
     auto spelling = workspace_spelling(opts.workspace.value_or(""));
-    CanonicalPath root(spelling);
+    auto config = Config::load_from_workspace(CanonicalPath(spelling));
     auto configuration = opts.configuration.value_or("");
+    if(auto checked = check_requested_configuration(config, configuration); !checked) {
+        print_json(Failure{.error = std::move(checked.error())});
+        return 1;
+    }
     std::vector<std::string> failed;
     if(opts.fresh) {
-        auto refreshed = refresh(spelling, configuration, self_path);
+        auto refreshed = refresh(spelling, config, configuration, self_path);
         if(!refreshed) {
             print_json(Failure{.error = refreshed.error()});
             return 1;
@@ -210,14 +215,18 @@ int run_query(const QueryOptions& opts, const char* self_path) {
     llvm::SmallVector<Fid> dropped;
     bool opened = false;
     if(with_build) {
-        if(auto loaded = load_index(project, commands, root, configuration, /*with_build=*/true)) {
+        if(auto loaded = load_index(project,
+                                    commands,
+                                    std::move(config),
+                                    configuration,
+                                    /*with_build=*/true)) {
             dropped = std::move(loaded->dropped);
             saved.bytes = std::move(loaded->contexts);
             contexts.load();
             opened = true;
         }
     } else {
-        opened = open_index(project, root, configuration);
+        opened = open_index(project, std::move(config), configuration);
     }
     if(!opened) {
         print_json(Failure{

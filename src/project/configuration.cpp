@@ -82,14 +82,20 @@ bool declares_configuration(const Config& config, llvm::StringRef name) {
     return llvm::is_contained(config.configurations(), name);
 }
 
-bool check_requested_configuration(const Config& config, llvm::StringRef requested) {
+std::expected<void, std::string> check_requested_configuration(const Config& config,
+                                                               llvm::StringRef requested) {
     if(requested.empty() || declares_configuration(config, requested)) {
-        return true;
+        return {};
     }
-    LOG_ERROR("--configuration {} names no rule's configuration ({})",
-              requested,
-              llvm::join(config.configurations(), ", "));
-    return false;
+    auto tags = config.configurations();
+    if(tags.empty()) {
+        return std::unexpected(
+            std::format("--configuration {} names no configuration: no rule declares one",
+                        requested));
+    }
+    return std::unexpected(std::format("--configuration {} names no rule's configuration ({})",
+                                       requested,
+                                       llvm::join(tags, ", ")));
 }
 
 std::string resolve_configuration(const Config& config, llvm::StringRef requested) {
@@ -120,7 +126,13 @@ std::string resolve_configuration(const Config& config, llvm::StringRef requeste
             llvm::join(tags, ", "),
             fallback);
     }
-    LOG_INFO("Active configuration: {} (default)", fallback);
+    if(config.default_configuration.empty()) {
+        LOG_WARN("Rules declare configurations {} but default_configuration is unset; using {}",
+                 llvm::join(tags, ", "),
+                 fallback);
+    } else {
+        LOG_INFO("Active configuration: {} (default)", fallback);
+    }
     return fallback.str();
 }
 

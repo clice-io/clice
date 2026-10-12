@@ -4,18 +4,20 @@ module;
 
 module clice:project.open_index;
 
+import :config.config;
 import :project.command_resolver;
 import :project.project;
 
 namespace clice {
 
 /// Open a project's persisted index for reading: the configuration
-/// resolved, the cache store and the blob database opened read-only, the
-/// global table and the search index bound in place from the database's
-/// read snapshot (pinned for the project's lifetime), shards fetched
-/// on first use. Nothing is decoded or copied. False — with the cause
-/// logged — when there is no usable index.
-bool open_index(Project& project, CanonicalRef root, llvm::StringRef requested_configuration);
+/// resolved (`requested_configuration` one `config` declares, see
+/// check_requested_configuration), the cache store and the blob database
+/// opened read-only, the global table and the search index bound in place
+/// from the database's read snapshot (pinned for the project's lifetime),
+/// shards fetched on first use. Nothing is decoded or copied. False — with
+/// the cause logged — when there is no usable index.
+bool open_index(Project& project, Config config, llvm::StringRef requested_configuration);
 
 /// What load_index found beyond the tables: the translation units the
 /// load dropped as stale or partially written, whose index is absent
@@ -34,7 +36,7 @@ struct LoadedIndex {
 /// there is no usable index.
 std::optional<LoadedIndex> load_index(Project& project,
                                       CommandResolver& commands,
-                                      CanonicalRef root,
+                                      Config config,
                                       llvm::StringRef requested_configuration,
                                       bool with_build);
 

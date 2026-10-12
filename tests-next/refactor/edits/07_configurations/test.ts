@@ -8,13 +8,7 @@ test("each configuration's index", async (t) => {
     await t.cli("refactor rename --symbol compute --to evaluate --configuration release --dry-run");
 });
 
-test(
-    "an unknown configuration",
-    { errors: ["--configuration nope names no rule's configuration"] },
-    async (t) => {
-        await t.cli("index --workers 2");
-        await t.cli(
-            "refactor rename --symbol compute --to evaluate --configuration nope --dry-run",
-        );
-    },
-);
+test("an unknown configuration", async (t) => {
+    await t.cli("index --workers 2");
+    await t.cli("refactor rename --symbol compute --to evaluate --configuration nope --dry-run");
+});

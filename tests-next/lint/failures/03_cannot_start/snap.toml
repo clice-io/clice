@@ -3,12 +3,11 @@ stderr = ["error: Nothing to lint: no compile_commands.json found under ${WS}"]
 exit = 2
 
 ["missing workspace"."$ clice lint --workspace nowhere --workers 2"]
-stderr = ["error: Nothing to lint: no compile_commands.json found under ${WS}/nowhere"]
+stderr = ["error: ${WS}/nowhere: not a directory"]
 exit = 2
 
 ["missing workspace".created]
-wrong = "a workspace that does not exist should be reported as missing; the run creates it, with a cache inside"
-value = ["nowhere/.clice/CACHEDIR.TAG"]
+value = []
 
 ["invalid worker count"."$ clice lint --workers many"]
 stderr = [

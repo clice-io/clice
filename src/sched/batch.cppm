@@ -4,6 +4,7 @@ module;
 
 module clice:sched.batch;
 
+import :config.config;
 import :worker.protocol;
 
 namespace clice {
@@ -22,8 +23,12 @@ struct BatchOptions {
     /// under this spelling.
     Spelling root;
 
-    /// The build configuration to activate (`--configuration`); empty
-    /// takes the persisted selection, else the default.
+    /// The workspace's configuration, as the command loaded it.
+    Config config;
+
+    /// The build configuration to activate (`--configuration`), one
+    /// `config` declares (check_requested_configuration); empty takes the
+    /// persisted selection, else the default.
     std::string configuration;
 
     /// Stateless worker count override; 0 keeps the config's values.
@@ -86,8 +91,12 @@ struct BatchLintOptions {
     /// under this spelling.
     Spelling root;
 
-    /// The build configuration to activate (`--configuration`); empty
-    /// takes the persisted selection, else the default.
+    /// The workspace's configuration, as the command loaded it.
+    Config config;
+
+    /// The build configuration to activate (`--configuration`), one
+    /// `config` declares (check_requested_configuration); empty takes the
+    /// persisted selection, else the default.
     std::string configuration;
 
     /// Stateless worker count override; 0 keeps the config's values.

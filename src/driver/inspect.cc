@@ -764,7 +764,8 @@ int run_inspect(const InspectOptions& opts) {
         auto root = workspace_of(identity);
         project.config = Config::load_from_workspace(root);
         auto requested = opts.configuration.value_or("");
-        if(!check_requested_configuration(project.config, requested)) {
+        if(auto checked = check_requested_configuration(project.config, requested); !checked) {
+            LOG_ERROR("{}", checked.error());
             return 1;
         }
         // What the server discovers when the file is opened: the databases

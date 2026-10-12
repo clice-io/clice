@@ -159,17 +159,18 @@ struct BatchLifetime {
     }
 };
 
-/// Shared batch startup: the finalized config with the run's overrides,
+/// Shared batch startup: the command's config with the run's overrides,
 /// the session file logger, and the worker pool. `log_tag` names the log
 /// files after the subcommand.
 bool start_batch(BatchStack& stack,
+                 Config config,
                  const Spelling& root,
                  std::uint32_t workers,
                  llvm::StringRef self_path,
                  llvm::StringRef log_tag) {
     auto& project = stack.project;
     stack.files.spell_root(root);
-    project.config = Config::load_from_workspace(CanonicalPath(root));
+    project.config = std::move(config);
     auto& cfg = project.config.project;
     cfg.idle_timeout_ms.value = 0;
     if(workers != 0) {
@@ -210,18 +211,18 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     ScopedTimer timer;
     auto& project = stack.project;
 
-    bool started = start_batch(stack, options.root, options.workers, options.self_path, "index");
+    bool started = start_batch(stack,
+                               options.config,
+                               options.root,
+                               options.workers,
+                               options.self_path,
+                               "index");
     result.log_dir = stack.log_dir;
     if(!started) {
         result.exit_code = 1;
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
         // command hangs instead of exiting.
-        co_await stack.pool.stop();
-        co_return;
-    }
-    if(!check_requested_configuration(project.config, options.configuration)) {
-        result.exit_code = 1;
         co_await stack.pool.stop();
         co_return;
     }
@@ -454,7 +455,12 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     ScopedTimer timer;
     auto& project = stack.project;
 
-    if(!start_batch(stack, options.root, options.workers, options.self_path, "lint")) {
+    if(!start_batch(stack,
+                    options.config,
+                    options.root,
+                    options.workers,
+                    options.self_path,
+                    "lint")) {
         result.exit_code = 2;
         // See run(): stop the partially started pool or the loop never
         // drains.
@@ -465,11 +471,6 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     // not race the plan's own runs, and without --index nothing may touch
     // the persisted index — the read-only load queues no reconciliation
     // or removal writes, so the shutdown save commits nothing.
-    if(!check_requested_configuration(project.config, options.configuration)) {
-        result.exit_code = 2;
-        co_await stack.pool.stop();
-        co_return;
-    }
     project.config.project.enable_indexing.value = false;
 
     auto report = bootstrap_project(project,
@@ -714,9 +715,10 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
             return result;
         }
     }
-    if(!check_requested_configuration(project.config, options.configuration)) {
+    if(auto checked = check_requested_configuration(project.config, options.configuration);
+       !checked) {
         result.exit_code = 2;
-        result.error = "the requested configuration does not exist";
+        result.error = std::move(checked.error());
         return result;
     }
     auto configuration = resolve_configuration(project.config, options.configuration);

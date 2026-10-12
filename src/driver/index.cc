@@ -6,6 +6,7 @@ module;
 
 module clice;
 
+import :config.config;
 import :driver.driver;
 import :index.database;
 import :index.query;
@@ -129,7 +130,8 @@ int run_indexing(Spelling root,
                  std::uint32_t workers,
                  const char* self_path) {
     auto config = Config::load_from_workspace(CanonicalPath(root));
-    if(!check_requested_configuration(config, configuration)) {
+    if(auto checked = check_requested_configuration(config, configuration); !checked) {
+        LOG_ERROR("{}", checked.error());
         return 1;
     }
     auto& cache_dir = config.project.cache_dir;
@@ -162,6 +164,7 @@ int run_indexing(Spelling root,
 
     auto result = run_batch_index({
         .root = std::move(root),
+        .config = std::move(config),
         .configuration = std::move(configuration),
         .workers = workers,
         .self_path = self_path,
@@ -796,7 +799,9 @@ CommandHandler build(const char* self_path) {
         logging::stderr_logger("index", logging::options);
 
         auto spelling = workspace_spelling(opts.workspace.value_or(""));
-        CanonicalPath ws(spelling);
+        if(!workspace_exists(spelling)) {
+            return 1;
+        }
         auto configuration = opts.configuration.value_or("");
         std::size_t modes = (opts.show_symbol ? 1 : 0) + (opts.show_file ? 1 : 0) +
                             (opts.show_tu ? 1 : 0) + (opts.stats || opts.variants ? 1 : 0);
@@ -807,12 +812,21 @@ CommandHandler build(const char* self_path) {
             return 1;
         }
         if(opts.show_symbol || opts.show_file || opts.show_tu || opts.stats || opts.variants) {
+            auto config = Config::load_from_workspace(CanonicalPath(spelling));
+            if(auto checked = check_requested_configuration(config, configuration); !checked) {
+                LOG_ERROR("{}", checked.error());
+                return 1;
+            }
             FileTable files;
             // Answers name files under the workspace as the command line does.
             files.spell_root(spelling);
             Project project{files};
             CommandResolver commands{project};
-            auto loaded = load_index(project, commands, ws, configuration, /*with_build=*/false);
+            auto loaded = load_index(project,
+                                     commands,
+                                     std::move(config),
+                                     configuration,
+                                     /*with_build=*/false);
             if(!loaded) {
                 return 1;
             }

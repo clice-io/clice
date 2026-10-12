@@ -65,12 +65,10 @@ stdout = '''
 exit = 0
 
 [test."$ clice query --configuration nope --method symbolSearch --symbol debug_only"]
-wrong = "the answer says the index could not be opened and suggests `clice index`, where the configuration name is what is wrong"
 stdout = '''
 {
-  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "error": "--configuration nope names no rule's configuration (debug, release)",
   "stale": []
 }
 '''
-stderr = ["error: --configuration nope names no rule's configuration (debug, release)"]
 exit = 1

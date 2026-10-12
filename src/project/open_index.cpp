@@ -24,11 +24,7 @@ Spelling inspected_path(const Project& project, llvm::StringRef argument) {
 namespace {
 
 /// Resolve the configuration and open the store and database read-only.
-bool open_database(Project& project, CanonicalRef root, llvm::StringRef requested_configuration) {
-    auto config = Config::load_from_workspace(root);
-    if(!check_requested_configuration(config, requested_configuration)) {
-        return false;
-    }
+bool open_database(Project& project, Config config, llvm::StringRef requested_configuration) {
     auto configuration = resolve_configuration(config, requested_configuration);
     // Read-only: the default cache directory exists as soon as the config
     // resolves it, so only the versioned store inside it proves an index
@@ -48,7 +44,7 @@ bool open_database(Project& project, CanonicalRef root, llvm::StringRef requeste
         return false;
     }
     project.config = std::move(config);
-    project.project_index.workspace = root;
+    project.project_index.workspace = project.config.workspace_root;
     project.store.emplace(std::move(*store));
     project.build.reset_active(configuration);
     project.index_db = index::open_database(*project.store, configuration, /*read_only=*/true);
@@ -65,8 +61,8 @@ bool open_database(Project& project, CanonicalRef root, llvm::StringRef requeste
 
 }  // namespace
 
-bool open_index(Project& project, CanonicalRef root, llvm::StringRef requested_configuration) {
-    if(!open_database(project, root, requested_configuration)) {
+bool open_index(Project& project, Config config, llvm::StringRef requested_configuration) {
+    if(!open_database(project, std::move(config), requested_configuration)) {
         return false;
     }
     if(!project.project_index.open(*project.index_db, project.file_table)) {
@@ -79,10 +75,10 @@ bool open_index(Project& project, CanonicalRef root, llvm::StringRef requested_c
 
 std::optional<LoadedIndex> load_index(Project& project,
                                       CommandResolver& commands,
-                                      CanonicalRef root,
+                                      Config config,
                                       llvm::StringRef requested_configuration,
                                       bool with_build) {
-    if(!open_database(project, root, requested_configuration)) {
+    if(!open_database(project, std::move(config), requested_configuration)) {
         return std::nullopt;
     }
     // The store is the writer's engine; its load is the only reader of
@@ -120,7 +116,7 @@ std::optional<LoadedIndex> load_index(Project& project,
     if(with_build) {
         auto remembered = store.remembered();
         load_build(project,
-                   root,
+                   project.config.workspace_root,
                    project.build.active_configuration(),
                    remembered.sources,
                    remembered.provisional);

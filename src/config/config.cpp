@@ -213,13 +213,8 @@ void Config::finalize(CanonicalRef workspace_root) {
             compiled_rules.push_back(std::move(*compiled));
         }
     }
-    auto tags = configurations();
-    if(!tags.empty() && default_configuration.empty()) {
-        LOG_WARN("Rules declare configurations {} but default_configuration is unset; using {}",
-                 llvm::join(tags, ", "),
-                 tags.front());
-    } else if(!default_configuration.empty() &&
-              !llvm::is_contained(tags, llvm::StringRef(default_configuration))) {
+    if(!default_configuration.empty() &&
+       !llvm::is_contained(configurations(), llvm::StringRef(default_configuration))) {
         LOG_WARN("default_configuration = {} names no rule's configuration", default_configuration);
     }
 }
