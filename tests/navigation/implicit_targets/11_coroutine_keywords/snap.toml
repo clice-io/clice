@@ -1,10 +1,12 @@
 [answers.co_await_kw]
-wrong = "should reach the awaiter's methods the expression calls"
-definition = []
+definition = [
+    "bool ⟦await_ready⟧() const noexcept; @-17",
+    "void ⟦await_suspend⟧(std::coroutine_handle<>) const noexcept;",
+    "int ⟦await_resume⟧() const noexcept;",
+]
 
 [answers.co_yield_kw]
 definition = ["Awaiter ⟦yield_value⟧(int value);"]
 
 [answers.co_return_kw]
-wrong = "should reach the promise's return_value, which co_return calls"
-definition = []
+definition = ["void ⟦return_value⟧(int value);"]

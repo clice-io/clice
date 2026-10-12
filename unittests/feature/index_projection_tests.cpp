@@ -115,6 +115,25 @@ int total(Point point, int base) {
     expect_tokens_match_ast();
 }
 
+ZEST_CASE(OverrideTokensMatchAst) {
+    // `override` and `final` lead to the methods they override without
+    // spelling them; a class's `final` leads nowhere.
+    add_main("main.cpp", R"cpp(
+struct Base {
+    virtual void draw();
+    virtual void paint();
+};
+
+struct Derived final : Base {
+    void draw() override;
+    void paint() final;
+};
+)cpp");
+    ZASSERT(compile());
+    extract_entries();
+    expect_tokens_match_ast();
+}
+
 ZEST_CASE(ModuleTokensMatchAst) {
     add_main("main.cpp", R"cpp(
 export module demo.core;

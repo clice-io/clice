@@ -1,3 +1,2 @@
 [answers.delete]
-wrong = "should reach Widget::~Widget, the destructor it runs"
-definition = []
+definition = ["⟦~Widget⟧();", "static void ⟦operator delete⟧(void* memory);"]

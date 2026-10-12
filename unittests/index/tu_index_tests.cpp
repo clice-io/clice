@@ -1123,7 +1123,7 @@ int main() {
     }
 }
 
-ZEST_CASE(ImplementationUnitReference) {
+ZEST_CASE(ImplementationUnitDeclaration) {
     add_files("main.cpp", R"(
 #[foo.cppm]
 export module foo;
@@ -1135,7 +1135,8 @@ module §(m)⟦§(m)foo⟧;
     ZASSERT(compile_with_modules());
     decode_index(index::build_tu_index(*unit));
 
-    // An implementation unit's declaration is a Reference, not a Definition.
+    // An implementation unit's module declaration is a Declaration of the
+    // module, not a Definition.
     auto occs = select("m");
     ZASSERT(!occs.empty());
     ZASSERT(occs.front().range == range("m"));
@@ -1144,16 +1145,16 @@ module §(m)⟦§(m)foo⟧;
     auto it = index.relations.find(occs.front().target);
     ZASSERT(it != index.relations.end());
 
-    bool found_reference = false;
+    bool found_declaration = false;
     for(auto& r: it->second) {
         if(r.kind == RelationKind::Definition) {
             ZASSERT(false);
         }
-        if(r.kind == RelationKind::Reference) {
-            found_reference = true;
+        if(r.kind == RelationKind::Declaration) {
+            found_declaration = true;
         }
     }
-    ZASSERT(found_reference);
+    ZASSERT(found_declaration);
 }
 
 ZEST_CASE(OverrideRelation) {
@@ -1999,18 +2000,19 @@ ZEST_CASE(HierarchyOccurrenceRelations) {
 
     ZEXPECT(spelled_in("all") ==
             std::vector<Spelled>{
-                {"demo",    SymbolKind::Namespace, {RelationKind::Definition}                     },
-                {"Base",    SymbolKind::Struct,    {RelationKind::Definition}                     },
-                {"~Base",   SymbolKind::Method,    {RelationKind::Definition}                     },
-                {"value",   SymbolKind::Method,    {RelationKind::Declaration}                    },
-                {"Derived", SymbolKind::Struct,    {RelationKind::Definition}                     },
-                {"Base",    SymbolKind::Struct,    {RelationKind::Reference}                      },
-                {"value",   SymbolKind::Method,    {RelationKind::Declaration}                    },
-                {"use",     SymbolKind::Function,  {RelationKind::Definition}                     },
-                {"Base",    SymbolKind::Struct,    {RelationKind::Reference}                      },
-                {"b",       SymbolKind::Parameter, {RelationKind::Definition}                     },
-                {"b",       SymbolKind::Parameter, {RelationKind::Reference}                      },
-                {"value",   SymbolKind::Method,    {RelationKind::Reference, RelationKind::Caller}},
+                {"demo",     SymbolKind::Namespace, {RelationKind::Definition}                     },
+                {"Base",     SymbolKind::Struct,    {RelationKind::Definition}                     },
+                {"~Base",    SymbolKind::Method,    {RelationKind::Definition}                     },
+                {"value",    SymbolKind::Method,    {RelationKind::Declaration}                    },
+                {"Derived",  SymbolKind::Struct,    {RelationKind::Definition}                     },
+                {"Base",     SymbolKind::Struct,    {RelationKind::Reference}                      },
+                {"value",    SymbolKind::Method,    {RelationKind::Declaration}                    },
+                {"override", SymbolKind::Method,    {RelationKind::Implied}                        },
+                {"use",      SymbolKind::Function,  {RelationKind::Definition}                     },
+                {"Base",     SymbolKind::Struct,    {RelationKind::Reference}                      },
+                {"b",        SymbolKind::Parameter, {RelationKind::Definition}                     },
+                {"b",        SymbolKind::Parameter, {RelationKind::Reference}                      },
+                {"value",    SymbolKind::Method,    {RelationKind::Reference, RelationKind::Caller}},
     });
 }
 
@@ -2070,14 +2072,21 @@ ZEST_CASE(CoAwaitReferencesOperator) {
                                       {"coro",      SymbolKind::Function,  {RelationKind::Definition}},
                                       {"Awaitable", SymbolKind::Struct,    {RelationKind::Reference} },
                                       {"value",     SymbolKind::Parameter, {RelationKind::Definition}},
+                                      {"co_await",  SymbolKind::Method,    {RelationKind::Reference} },
                                       {"co_await",  SymbolKind::Operator,  {RelationKind::Reference} },
+                                      {"co_await",  SymbolKind::Method,    {RelationKind::Reference} },
+                                      {"co_await",  SymbolKind::Method,    {RelationKind::Reference} },
                                       {"value",     SymbolKind::Parameter, {RelationKind::Reference} },
     });
+    // Beside `operator co_await`, the keyword names the three awaiter
+    // methods it calls.
     auto keyword = select("await");
     auto declaration = select("operator");
-    ZASSERT(keyword.size() == 1U);
+    ZASSERT(keyword.size() == 4U);
     ZASSERT(declaration.size() == 1U);
-    ZEXPECT(keyword.front().target == declaration.front().target);
+    ZEXPECT(llvm::any_of(keyword, [&](const index::Occurrence& occurrence) {
+        return occurrence.target == declaration.front().target;
+    }));
 }
 
 ZEST_CASE(InvalidBindingKeepsFile) {

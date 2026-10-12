@@ -38,6 +38,11 @@ public:
     /// `operator->` chains for an arrow. Null when it does not resolve.
     clang::QualType member_object(const clang::Expr* base, bool arrow);
 
+    /// What `->` reaches from an object of class type `type` through its
+    /// `operator->` chain — a smart pointer's pointee — resolved. Null when
+    /// the class has no `operator->`.
+    clang::QualType arrow_pointee(clang::QualType type);
+
     /// What an `auto` variable a dependent initializer left undeduced
     /// deduces to, resolved. Null when the initializer does not resolve.
     clang::QualType deduce(const clang::VarDecl* var);

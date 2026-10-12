@@ -1,8 +1,7 @@
 # `co_await` / `co_yield` / `co_return`
 
-`co_yield` navigates to its promise method, while other coroutine keywords
-do not
+Coroutine keywords navigate to the methods they call
 
-Go-to-definition on `co_yield` reaches the promise's `yield_value`. The
-`co_await` and `co_return` keywords do not yet reach the awaiter's or
-promise's methods.
+Go-to-definition on `co_await` reaches the awaiter's `await_ready`,
+`await_suspend` and `await_resume`; on `co_yield`, the promise's
+`yield_value`; on `co_return`, the promise's `return_value`.

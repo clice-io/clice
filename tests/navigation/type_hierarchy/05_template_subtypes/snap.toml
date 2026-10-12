@@ -1,5 +1,4 @@
 [answers.base]
-wrong = "the subtype should name Derived<Foo>, the specialization the code uses (clangd#31)"
 type_hierarchy = [
     { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
 ]

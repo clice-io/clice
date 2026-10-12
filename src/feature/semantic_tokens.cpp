@@ -553,9 +553,9 @@ private:
                     /// separators stay unpainted, matching the import side.
                     anchor_offset(module->keyword.begin, {SymbolKind::Keyword, 0});
                     Classified name{SymbolKind::Module,
-                                    unit.defines_module()
-                                        ? SymbolModifiers::to_mask(SymbolModifiers::Definition)
-                                        : 0};
+                                    SymbolModifiers::to_mask(unit.defines_module()
+                                                                 ? SymbolModifiers::Definition
+                                                                 : SymbolModifiers::Declaration)};
                     for(auto& part: module->name_parts) {
                         anchor_offset(part.begin, name);
                     }
@@ -588,6 +588,11 @@ private:
                         resolve_occurrences(semantics,
                                             static_cast<std::uint32_t>(entry_index),
                                             &unit.resolver())) {
+                        /// `override`, `final` and `new` spell none of the
+                        /// declarations they lead to.
+                        if(occurrence.kind.is_one_of(RelationKind::Implied)) {
+                            continue;
+                        }
                         anchor_name(occurrence.location,
                                     classify_decl(occurrence.decl, occurrence.kind));
                     }

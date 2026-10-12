@@ -1,0 +1,2 @@
+[answers.delete]
+definition = ["void ⟦operator delete⟧(Node* node, std::destroying_delete_t);"]

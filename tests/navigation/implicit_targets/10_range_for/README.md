@@ -1,6 +1,6 @@
 # Range-based for
 
-The range-for colon does not navigate to `begin()` or `end()` yet
+The range-for colon navigates to `begin()` and `end()`
 
-Go-to-definition on the `:` of a range-based for does not reach the
-`begin()` or `end()` chosen for the range.
+Go-to-definition on the `:` of a range-based for reaches the `begin()` and
+`end()` chosen for the range.

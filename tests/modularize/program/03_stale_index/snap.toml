@@ -1,0 +1,17 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 4 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "error": "some files changed since they were indexed; run `clice index` first",
+  "stale": [
+    "${WS}/app/core/text.h"
+  ]
+}
+'''
+exit = 1

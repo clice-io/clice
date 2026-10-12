@@ -401,7 +401,8 @@ int y = §(ref)⟦x⟧;
     decoded = decode_utf8_tokens(unit->main_content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
-    EXPECT_TOKEN("mod", SymbolKind::Module);
+    // An implementation unit declares the module its interface defines.
+    EXPECT_TOKEN("mod", SymbolKind::Module, SymbolModifiers::to_mask(SymbolModifiers::Declaration));
     EXPECT_TOKEN("ref",
                  SymbolKind::Variable,
                  SymbolModifiers::to_mask(SymbolModifiers::GlobalScope));

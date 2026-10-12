@@ -293,7 +293,8 @@ struct LoadedFacts {
 struct LoadError {
     std::string message;
 
-    /// The units the load dropped as stale or partially written, sorted.
+    /// The units the load dropped as stale or partially written, or the
+    /// files changed since they were indexed, sorted.
     std::vector<std::string> dropped;
 };
 
@@ -305,7 +306,7 @@ using FactsEdit =
 /// The facts of the files the `scope` globs select out of the index of
 /// `workspace` (default: the workspace's own files outside dot
 /// directories), after `edit`, and the workspace root; none from an index
-/// that lacks a unit.
+/// that lacks a unit or describes a file as it no longer is.
 std::expected<LoadedFacts, LoadError> load_facts(const Spelling& workspace,
                                                  llvm::StringRef configuration,
                                                  llvm::ArrayRef<std::string> scope,

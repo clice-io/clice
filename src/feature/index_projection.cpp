@@ -63,6 +63,13 @@ LangProfile& profile_for(clang::Language lang, clang::LangStandard::Kind std) {
     return profiles.try_emplace({lang, std}, lang, std).first->second;
 }
 
+/// Whether `spelling` is a contextual keyword of overriding — `override`,
+/// `final`, MSVC's `sealed` — which leads to the methods it overrides
+/// without spelling their names.
+bool overrides(llvm::StringRef spelling) {
+    return spelling == "override" || spelling == "final" || spelling == "sealed";
+}
+
 LangProfile& profile_for(const clang::LangOptions& lang_opts) {
     return profile_for(lang_opts.CPlusPlus ? clang::Language::CXX : clang::Language::C,
                        lang_opts.LangStd);
@@ -186,7 +193,7 @@ auto index_semantic_tokens(llvm::StringRef content,
     // entries on one anchor (merged shard variants) combine — kind
     // disagreement is a Conflict, like instantiation disagreement on the
     // AST path.
-    auto semantic_at = [&](std::uint32_t begin) {
+    auto semantic_at = [&](std::uint32_t begin, llvm::StringRef spelling) {
         Classified semantic;
         llvm::SmallVector<index::SymbolHash, 4> covered;
 
@@ -211,7 +218,8 @@ auto index_semantic_tokens(llvm::StringRef content,
             if(llvm::is_contained(covered, occ_it->target)) {
                 continue;
             }
-            if(auto info = resolve(occ_it->target)) {
+            auto info = resolve(occ_it->target);
+            if(info && (!overrides(spelling) || info->name == spelling)) {
                 combine(semantic, {info->kind, 0});
             }
         }
@@ -327,7 +335,7 @@ auto index_semantic_tokens(llvm::StringRef content,
         // an entry anchored on `operator` names nothing written there.
         Classified semantic;
         if(kind == clang::tok::identifier || kind == clang::tok::tilde) {
-            semantic = semantic_at(token.range.begin);
+            semantic = semantic_at(token.range.begin, spelling);
         }
         if(semantic.kind == SymbolKind::Invalid && lexical_class.identifier_like &&
            !module_spans.empty()) {
@@ -336,8 +344,13 @@ auto index_semantic_tokens(llvm::StringRef content,
                                                      {},
                                                      &LocalSourceRange::begin);
             if(covering != module_spans.begin() && token.range.end <= (covering - 1)->end) {
-                semantic = semantic_at((covering - 1)->begin);
+                semantic = semantic_at((covering - 1)->begin, {});
             }
+        }
+
+        // The contextual keyword, unless it names something.
+        if(semantic.kind == SymbolKind::Invalid && overrides(spelling)) {
+            lexical = {SymbolKind::Keyword, 0};
         }
 
         Classified result = final_classification(semantic, lexical);

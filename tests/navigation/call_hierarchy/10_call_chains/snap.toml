@@ -87,6 +87,8 @@ outgoing_calls = [
 ]
 
 [answers.gate]
-call_hierarchy = []
+call_hierarchy = [
+    { name = "cursor", kind = "Variable", at = "int ⟦cursor⟧ = 0;" },
+]
 incoming_calls = []
 outgoing_calls = []
