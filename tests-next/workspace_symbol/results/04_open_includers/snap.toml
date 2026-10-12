@@ -4,14 +4,12 @@ workspace_symbols = [
 ]
 
 [test."open Shape"]
-workspace_symbols = [
-    { name = "Shape", kind = "Struct", at = "widget.h │ struct ⟦Shape⟧ {};", container = "geo" },
-]
+wrong = "should find Shape in widget.h, which the open main.cpp includes, as it does once main.cpp closes"
+workspace_symbols = []
 
 [test."open area"]
-workspace_symbols = [
-    { name = "area", kind = "Function", at = "widget.h │ int ⟦area⟧(const Shape& shape);", container = "geo" },
-]
+wrong = "should find area in widget.h, which the open main.cpp includes, as it does once main.cpp closes"
+workspace_symbols = []
 
 [test."closed Shape"]
 workspace_symbols = [

@@ -57,8 +57,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     // this class and are installed here.
     sched.pump.compiled_by_session = [this](Fid path_id) {
         auto session = sessions.find(path_id);
-        return session && session->serving == ServingMode::Escalated &&
-               project.project_index.manifests.contains(path_id);
+        return session && session->serving == ServingMode::Escalated;
     };
     sched.pump.on_attempt_finished = [this](Fid path_id) {
         index_attempt_finished(path_id);

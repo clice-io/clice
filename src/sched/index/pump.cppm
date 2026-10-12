@@ -50,10 +50,7 @@ public:
     /// Whether an open document's own compile serves the file: debt other
     /// than a change of its own content then is cleared without a background
     /// compile, which would compile the file a second time. The serving
-    /// side enqueues the file again when the document closes. A file the
-    /// index never held is compiled all the same: that run indexes the
-    /// headers it includes, which the document's compile leaves out of the
-    /// index.
+    /// side enqueues the file again when the document closes.
     std::function<bool(Fid path_id)> compiled_by_session;
 
     /// Emitted when store shards that may be index-served changed (merged,
