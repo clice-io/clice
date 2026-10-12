@@ -1385,9 +1385,10 @@ void parse_rst(llvm::StringRef input, markup::Document& output) {
             auto body = take_block(i, indent);
             if(directive == "code-block" || directive == "code") {
                 output.add_code_block(std::move(body), argument == "c++" ? "cpp" : argument.str());
-            } else if(directive == "note" || directive == "warning") {
-                paragraph =
-                    (directive == "note" ? "Note: " : "Warning: ") + argument.str() + " " + body;
+            } else if(directive.equals_insensitive("note") ||
+                      directive.equals_insensitive("warning")) {
+                paragraph = (directive.equals_insensitive("note") ? "Note: " : "Warning: ") +
+                            argument.str() + " " + body;
                 flush();
             }
             continue;
