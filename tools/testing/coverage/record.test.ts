@@ -20,10 +20,10 @@ const recorded = (surface: "method" | "invocation" | "config"): string[] =>
 describe("records", () => {
     test("invocations drop values", () => {
         recordInvocation(["analyze", "modules", "--view=edge", "--from", "core"]);
-        recordInvocation(["inspect", "--annotations", "hover", "/tmp/a.cpp"]);
+        recordInvocation(["inspect", "--configuration", "release", "hover", "/tmp/a.cpp"]);
         expect(recorded("invocation")).toEqual([
             "analyze modules --view --from",
-            "inspect --annotations",
+            "inspect --configuration",
         ]);
     });
 
