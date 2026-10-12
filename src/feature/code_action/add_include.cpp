@@ -43,7 +43,41 @@ struct QualifiedName {
     std::string name;
     /// The chain's span in the main file.
     LocalSourceRange range;
+    /// The number of arguments of the call the name is the callee of.
+    std::optional<std::size_t> arguments;
 };
+
+/// The number of arguments of the argument list `tokens` open; nullopt
+/// when they open none or it is never closed.
+std::optional<std::size_t> call_arguments(llvm::ArrayRef<clang::syntax::Token> tokens) {
+    if(tokens.empty() || tokens.front().kind() != clang::tok::l_paren) {
+        return std::nullopt;
+    }
+    std::size_t commas = 0;
+    std::uint32_t depth = 0;
+    for(const auto& token: tokens) {
+        switch(token.kind()) {
+            case clang::tok::l_paren:
+            case clang::tok::l_square:
+            case clang::tok::l_brace: depth += 1; break;
+            case clang::tok::r_paren:
+            case clang::tok::r_square:
+            case clang::tok::r_brace:
+                depth -= 1;
+                if(depth == 0) {
+                    return &token == &tokens[1] ? 0 : commas + 1;
+                }
+                break;
+            case clang::tok::comma:
+                if(depth == 1) {
+                    commas += 1;
+                }
+                break;
+            default: break;
+        }
+    }
+    return std::nullopt;
+}
 
 /// None for a member named through `.` or `->`: the object's class
 /// declares it, not a header.
@@ -95,7 +129,37 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnitRef unit, std::uin
     }
     result.name = tokens[last].text(SM).str();
     result.range = {offset_of(tokens[first]), offset_of(tokens[last]) + tokens[last].length()};
+    result.arguments = call_arguments(tokens.drop_front(last + 1));
     return result;
+}
+
+/// The header of a standard function the mapping leaves out because its
+/// overloads live in different headers, told apart as include-cleaner does,
+/// by the number of arguments of the call.
+std::optional<clang::tooling::stdlib::Header>
+    overloaded_standard_header(llvm::StringRef scope, const QualifiedName& name) {
+    struct Overload {
+        llvm::StringRef name;
+        std::size_t arguments;
+        llvm::StringRef header;
+    };
+
+    constexpr std::array overloads = {
+        Overload{"move",   1, "<utility>"  },
+        Overload{"move",   3, "<algorithm>"},
+        Overload{"move",   4, "<algorithm>"},
+        Overload{"remove", 1, "<cstdio>"   },
+        Overload{"remove", 3, "<algorithm>"},
+    };
+    if(scope != "std::") {
+        return std::nullopt;
+    }
+    for(const auto& overload: overloads) {
+        if(overload.name == name.name && overload.arguments == name.arguments) {
+            return clang::tooling::stdlib::Header::named(overload.header);
+        }
+    }
+    return std::nullopt;
 }
 
 /// Where the text the user edits ends: a header compiled in its
@@ -275,15 +339,19 @@ void add_include(CompilationUnitRef unit,
         scopes.push_back("");
     }
     for(auto scope: scopes) {
-        auto symbol = stdlib::Symbol::named(scope, name->name, language);
-        if(!symbol) {
+        std::optional<stdlib::Header> header;
+        if(auto symbol = stdlib::Symbol::named(scope, name->name, language)) {
+            header = symbol->header();
+        } else if(auto overloaded = overloaded_standard_header(scope, *name)) {
+            header = overloaded;
+        } else {
             continue;
         }
-        for(auto header: symbol->headers()) {
+        if(header) {
             out.push_back(CodeAction{
-                .title = std::format("Add #include {}", header.name()),
+                .title = std::format("Add #include {}", header->name()),
                 .kind = protocol::CodeActionKind::QuickFix,
-                .edits = {{{insertion.offset, insertion.offset}, insertion.text(header.name())}},
+                .edits = {{{insertion.offset, insertion.offset}, insertion.text(header->name())}},
             });
         }
         // A standard library name spelled with its namespace: the index
