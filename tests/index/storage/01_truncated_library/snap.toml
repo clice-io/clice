@@ -1,11 +1,11 @@
-["cut mid-page"."$ clice index"]
+["cut after the meta pages"."$ clice index"]
 stdout = '''
 Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["cut mid-page"."$ clice query --method symbolSearch --symbol add"]
+["cut after the meta pages"."$ clice query --method symbolSearch --symbol add"]
 stdout = '''
 {
   "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
@@ -13,11 +13,11 @@ stdout = '''
 }
 '''
 stderr = [
-    "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is shorter than its pages (8192 of 20480 bytes); run `clice index` to repair it",
+    "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is shorter than its pages (# KB of # KB); run `clice index` to repair it",
 ]
 exit = 1
 
-["cut mid-page"."$ clice index #2"]
+["cut after the meta pages"."$ clice index #2"]
 stdout = '''
 Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -27,7 +27,7 @@ stderr = [
 ]
 exit = 0
 
-["cut mid-page"."$ clice query --method symbolSearch --symbol add #2"]
+["cut after the meta pages"."$ clice query --method symbolSearch --symbol add #2"]
 stdout = '''
 {
   "result": {

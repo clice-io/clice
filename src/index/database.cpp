@@ -22,6 +22,7 @@ module clice;
 
 import :index.database;
 import :support.logging;
+import :support.text;
 import :vfs.cache_store;
 import :vfs.file_system;
 import :vfs.path;
@@ -595,11 +596,11 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
                 mdb_txn_abort(txn);
                 mdb_env_close(env);
                 LOG_WARN(
-                    "Index database at {} is shorter than its pages ({} of {} bytes); run "
+                    "Index database at {} is shorter than its pages ({} of {}); run "
                     "`clice index` to repair it",
                     path,
-                    length,
-                    declared);
+                    format_bytes(length),
+                    format_bytes(declared));
                 return nullptr;
             }
         } else if(int cover_rc = cover_declared_pages(env)) {
