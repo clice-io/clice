@@ -80,7 +80,7 @@ test("readonly on builds no pch", async (t) => {
     s.open("main.cpp", { pull: false });
     await s.sync();
     // Completion still answers, from a full parse without a preamble.
-    await t.show("completion", s.completion(t.at("main.cpp", "return tw|ice(2)")));
+    await t.show("completion", s.completion(t.at("main.cpp", "return twic|e(2)")));
     await t.show("pushes", s.pushes("main.cpp"));
     expect((await s.counts()).pch).toBe(0);
 });
@@ -158,7 +158,7 @@ test("completion escalates", async (t) => {
     const s = await t.start(AUTO);
     s.open("main.cpp", { pull: false });
     await s.sync();
-    await t.show("completion", s.completion(t.at("main.cpp", "return tw|ice(2)")));
+    await t.show("completion", s.completion(t.at("main.cpp", "return twic|e(2)")));
     await t.show("completed", s.pushes("main.cpp"));
     await t.show("read", s.hover(t.marker("add")));
     await t.show("pushed", s.pushes("main.cpp"));
