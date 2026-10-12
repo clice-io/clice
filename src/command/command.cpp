@@ -804,7 +804,12 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
     auto observed = vfs::read_observed(source.path);
     if(!observed) {
-        LOG_ERROR("Failed to read compilation database from {}", path);
+        // A database not built yet is no failure: the callers wait for it.
+        if(observed.error() != std::errc::no_such_file_or_directory) {
+            LOG_ERROR("Failed to read compilation database from {}: {}",
+                      path,
+                      observed.error().message());
+        }
         return std::nullopt;
     }
     auto database = file_table.intern(CanonicalPath(Spelling::absolute(source.path)));
