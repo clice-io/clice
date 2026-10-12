@@ -342,6 +342,8 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
     // A TU outside the lint set is here for the index only.
     TURunFamily::Plan plan;
     plan.index = with_index && stack.project.build.indexed(file);
+    // A unit fails once, however many of its steps do.
+    bool failed = false;
     if(stack.project.build.lintable(file)) {
         auto resolution = tidy::resolve_tidy_params(stack.project.file_table.spelling(path_id));
         // Checked under a configuration it does not have, the unit would
@@ -350,13 +352,16 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
             if(pass.config_errors.insert(resolution.error).second) {
                 LOG_ERROR("{}", resolution.error);
             }
-            pass.failed += 1;
+            failed = true;
         } else {
             plan.tidy = std::move(resolution.params);
             plan.tidy->batch = true;
         }
     }
     if(!plan.tidy && !plan.index) {
+        if(failed) {
+            pass.failed += 1;
+        }
         pass.inflight -= 1;
         pass.task_done.set();
         co_return;
@@ -386,7 +391,7 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
                                  std::back_inserter(pass.findings),
                                  [&](const worker::TidyDiagnostic& d) {
                                      auto& files = stack.project.file_table;
-                                     return d.check == "clang-diagnostic-error" ||
+                                     return d.compiler_error ||
                                             stack.project.build.lintable(files.resolve(
                                                 files.intern(Spelling::absolute(d.file))));
                                  });
@@ -397,26 +402,29 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
             // Skipped means no real compile command (the index path keeps
             // the last-known index then; lint has nothing to keep) — either way
             // the TU went unchecked.
-            pass.failed += 1;
+            failed = true;
             LOG_WARN("Lint failed for {}: {}",
                      file,
                      outcome.error.empty() ? "no compile command found" : outcome.error);
             break;
         }
         case TURunFamily::Result::Crashed: {
-            pass.failed += 1;
+            failed = true;
             LOG_WARN("Lint gave up on {}: {}", file, outcome.error);
             break;
         }
         case TURunFamily::Result::Lost:
         case TURunFamily::Result::Preempted: {
-            pass.failed += 1;
+            failed = true;
             LOG_WARN("Lint gave up on {} after a retry: {}", file, outcome.error);
             break;
         }
         case TURunFamily::Result::Shutdown: {
             break;
         }
+    }
+    if(failed) {
+        pass.failed += 1;
     }
     pass.inflight -= 1;
     pass.task_done.set();

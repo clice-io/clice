@@ -373,6 +373,10 @@ struct TidyDiagnostic {
     /// Error (warning otherwise): the check is in WarningsAsErrors.
     bool error = false;
 
+    /// The compiler's own error, which no header filter or lint set leaves
+    /// out.
+    bool compiler_error = false;
+
     std::string message;
 
     /// Check name, e.g. "bugprone-integer-division".

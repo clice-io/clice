@@ -346,6 +346,7 @@ static void collect_tidy_diagnostics(CompilationUnitRef unit,
             .column = start->character + 1,
             .error =
                 raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal,
+            .compiler_error = clang_error,
             .message = raw.message,
             .check = std::move(check),
         });
