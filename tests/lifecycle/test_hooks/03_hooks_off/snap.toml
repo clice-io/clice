@@ -14,6 +14,10 @@ message = "test hooks are not enabled"
 code = -32600
 message = "test hooks are not enabled"
 
+[test.refused.watch]
+code = -32600
+message = "test hooks are not enabled"
+
 [test.diagnostics]
 diagnostics = []
 

@@ -1,3 +1,4 @@
+import { WatchRequest } from "@clice/tools/protocol";
 import { refusal, test } from "@clice/tools/testing";
 
 // The test hooks answer only a server started with project.test_hooks:
@@ -11,6 +12,7 @@ test(async (t) => {
         hold: await refusal(s.client.hold("compile", uri)),
         gate: await refusal(s.client.gate("compile", uri)),
         release: await refusal(s.client.release(1)),
+        watch: await refusal(s.client.sendRequest(WatchRequest, { event: "checkpoint" })),
     });
     await t.show("diagnostics", s.diagnostics("main.cpp"));
     await t.show("builds counted", (await s.stats()).builds.length);
