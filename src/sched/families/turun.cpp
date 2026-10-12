@@ -82,10 +82,14 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     if(resolved.source == CommandSource::Fallback ||
        (resolved.source == CommandSource::Inferred && !project.build.unit(path_id))) {
         // A file whose manifest survives keeps serving its last-known index,
-        // so skipping it loses nothing. One without a manifest (dropped or
-        // never built) stays uncovered — count that as a failure so a batch
-        // run reports the debt instead of exiting clean.
-        if(!project.project_index.manifests.contains(path_id)) {
+        // and a header other units read — a forced include, one created
+        // where they looked for it — is indexed by theirs: skipping either
+        // loses nothing. One with neither (dropped or never built, read by
+        // nothing) stays uncovered — count that as a failure so a batch run
+        // reports the debt instead of exiting clean.
+        auto readers = project.dep_graph.find_readers(path_id);
+        if(!project.project_index.manifests.contains(path_id) &&
+           llvm::all_of(readers, [&](Fid reader) { return reader == path_id; })) {
             finished[path_id] = {.result = Result::Failed,
                                  .error = "no compile command found; the file stays uncovered"};
             co_return RoundOutcome::Failed;

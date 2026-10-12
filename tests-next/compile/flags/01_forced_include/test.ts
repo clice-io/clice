@@ -34,6 +34,9 @@ test("edits pay no import scan", async (t) => {
 test("forced header edit", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
+    // The first index of the closed unit is done before the edits, which
+    // would otherwise preempt it and fold it into theirs.
+    await s.indexed();
     const original = t.disk.read("force.h");
     t.disk.write("force.h", "#define FORCED_RENAMED 1\n");
     await t.show("renamed", s.errors("main.cpp"));

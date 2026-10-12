@@ -26,5 +26,4 @@ errors = [
 ]
 
 ["forced header edit".failed]
-wrong = "a change to a header forced in with -include sends the header itself to be indexed, which fails for want of a command of its own"
-value = ["force.h"]
+value = []
