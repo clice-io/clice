@@ -7,7 +7,7 @@ struct Base {
 };
 
 struct Derived : Base {
-    using Base::Base;
+    using Base::§(using_name)Base;
 };
 
 void build() {

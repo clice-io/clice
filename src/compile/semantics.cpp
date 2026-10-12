@@ -1125,9 +1125,15 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
     /// using Foo::bar;
     ///             ^~~~ reference
     /// Shadows are synthetic; reference their underlying targets so hover
-    /// and the index see the real declarations.
+    /// and the index see the real declarations. `using Base::Base` names
+    /// no copy or move constructor of the base: none is ever inherited.
     if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(D)) {
         for(auto* shadow: UD->shadows()) {
+            auto* constructor = llvm::dyn_cast_if_present<clang::CXXConstructorDecl>(
+                shadow->getTargetDecl()->getAsFunction());
+            if(constructor && constructor->isCopyOrMoveConstructor()) {
+                continue;
+            }
             refer_name(out,
                        shadow->getTargetDecl(),
                        RelationKind::WeakReference,

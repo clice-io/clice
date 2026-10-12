@@ -3,6 +3,12 @@ items = [
     { label = ":api", kind = "Module" },
 ]
 
+[answers.declaration.completion]
+items = [
+    { label = "lib", kind = "Module" },
+    { label = "math", kind = "Module" },
+]
+
 [answers.colon.completion]
 items = [
     { label = ":api", kind = "Module" },

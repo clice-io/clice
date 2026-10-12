@@ -1,5 +1,5 @@
 ---
-issues: [clangd#517]
+issues: [clangd#517, clangd#638]
 ---
 
 # Forwarding functions

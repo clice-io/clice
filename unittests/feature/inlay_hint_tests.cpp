@@ -525,7 +525,7 @@ ZEST_CASE(DefaultArguments) {
             }
         )c",
         {.default_arguments = true});
-    EXPECT_SIZE(6);
+    EXPECT_SIZE(5);
     EXPECT_HINT("0", "a: ...");
     EXPECT_HINT("1", ", baz: Baz{}");
     EXPECT_HINT("2", ", baz: Baz{}");

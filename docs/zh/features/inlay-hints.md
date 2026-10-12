@@ -131,11 +131,11 @@ tests/inlay_hints/parameter_hints/16_near_matches
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1364 -->
+<!-- BEGIN CAPABILITY: supported clangd#1364 -->
 
 **继承构造函数**
 
-调用通过 `using Base::Base` 继承的构造函数时，参数名会丢失
+通过 `using Base::Base` 引入的构造函数，按基类声明中的写法显示参数名
 
 ```case
 tests/inlay_hints/parameter_hints/17_inherited_constructors
@@ -229,11 +229,13 @@ tests/inlay_hints/type_hints/07_auto_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1749 -->
+<!-- BEGIN CAPABILITY: supported clangd#1749 -->
 
 **显式写出的初始化器**
 
-即使初始化器已在强制类型转换或函数式类型转换中写出类型，仍会显示该类型的提示
+初始化器已在强制类型转换或函数式类型转换中写出的类型，不再显示提示
+
+初始化器只写出类模板名、模板实参留待推导时，仍会显示提示。
 
 ```case
 tests/inlay_hints/type_hints/08_explicit_initializers
@@ -329,11 +331,11 @@ tests/inlay_hints/designator_hints/05_aggregates_only
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2540 -->
+<!-- BEGIN CAPABILITY: supported clangd#2540 -->
 
 **圆括号聚合初始化**
 
-C++20 的 `Point(1, 2)` 写法目前还没有提示
+C++20 的 `Point(1, 2)` 写法会显示与花括号写法相同的指派符，即 `.x=` 和 `.y=`
 
 ```case
 tests/inlay_hints/designator_hints/07_parenthesized_init
