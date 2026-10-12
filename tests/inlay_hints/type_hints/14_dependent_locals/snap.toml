@@ -1,0 +1,12 @@
+[answers.function]
+inlay_hints = [
+    { line = "auto kept⟨: Point⟩ = value;" },
+]
+
+[answers.lambda]
+inlay_hints = [
+    { line = "auto width⟨: int⟩ = point.x;" },
+]
+
+[answers.several]
+inlay_hints = []
