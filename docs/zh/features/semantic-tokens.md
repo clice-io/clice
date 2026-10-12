@@ -437,18 +437,6 @@ tests/semantic_tokens/modifiers/08_mutable_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
-
-**推导出的类型**
-
-`auto` 和 `decltype` 按其所代表的类型着色，并带有推导修饰符
-
-```case
-tests/semantic_tokens/modifiers/09_deduced_types
-```
-
-<!-- END CAPABILITY -->
-
 <!-- BEGIN CAPABILITY: supported clangd#1521 -->
 
 **用户定义的运算符**

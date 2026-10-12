@@ -448,18 +448,6 @@ tests/semantic_tokens/modifiers/08_mutable_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
-
-**Deduced types**
-
-`auto` and `decltype` color as the type they stand for, with the deduced modifier
-
-```case
-tests/semantic_tokens/modifiers/09_deduced_types
-```
-
-<!-- END CAPABILITY -->
-
 <!-- BEGIN CAPABILITY: supported clangd#1521 -->
 
 **User-defined operators**
