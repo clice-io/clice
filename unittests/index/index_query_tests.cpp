@@ -15,7 +15,6 @@ import :sched.families.turun;
 import :sched.graph;
 import :sched.index.pump;
 import :server.ast_projection;
-import :server.editor_context;
 import :server.live_sources;
 import :server.session_store;
 import :unittests.utils.merge_unit;
@@ -75,8 +74,7 @@ IndexStore index_store{loop, project, resolver};
 TURunFamily turun{graph, project, resolver, pcm, index_store, pool};
 IndexPump indexer{loop, project, turun, index_store, pool};
 PCHFamily pch{graph, project, pool};
-EditorContext editor{project, resolver, index_store.contexts};
-ServerLiveSources live{project, pch, store, projections, editor};
+ServerLiveSources live{project, pch, store, projections};
 index::FreshnessGate gate{project.file_table};
 index::IndexQuery query{project.project_index, project.file_table, &gate, &live};
 

@@ -80,7 +80,15 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
             // The session's own index when current (the quarantine fallback
             // — the worker cannot be asked, the index is still true), else
             // the disk shard admitted by freshness clause 4.
-            if(auto serving = query.serving(session.path_id)) {
+            auto serving = query.serving(session.path_id);
+            // The disk shard merges every context the file compiles in, or
+            // holds its first command's: a context the user chose waits for
+            // its own compile.
+            if(serving && serving->kind == index::IndexSource::Kind::Shard &&
+               session.serving == ServingMode::Escalated && contexts.selection(session.path_id)) {
+                serving.reset();
+            }
+            if(serving) {
                 // An index answer must not strand an escalated session's
                 // pending build: this request still pulls the compile it
                 // would otherwise have waited on, just without blocking.

@@ -8,7 +8,6 @@ import :index.query;
 import :project.project;
 import :sched.families.pch;
 import :server.ast_projection;
-import :server.editor_context;
 import :server.session_store;
 
 namespace clice {
@@ -21,9 +20,8 @@ public:
     ServerLiveSources(Project& project,
                       PCHFamily& pch,
                       const SessionStore& sessions,
-                      const ASTProjectionTable& projections,
-                      const EditorContext& editor) :
-        project(project), pch(pch), sessions(sessions), projections(projections), editor(editor) {}
+                      const ASTProjectionTable& projections) :
+        project(project), pch(pch), sessions(sessions), projections(projections) {}
 
     bool is_open(Fid file) const override;
     std::optional<index::IndexSource> buffer_index(Fid file) const override;
@@ -51,7 +49,6 @@ private:
     PCHFamily& pch;
     const SessionStore& sessions;
     const ASTProjectionTable& projections;
-    const EditorContext& editor;
 };
 
 }  // namespace clice

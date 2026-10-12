@@ -29,7 +29,7 @@ ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     sched(loop, project, commands, server.pool),
     ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions),
     dispatcher(project, contexts, ast, server.pool),
-    live_sources(project, sched.pch, sessions, ast.projections, contexts),
+    live_sources(project, sched.pch, sessions, ast.projections),
     index_query(project.project_index, project.file_table, &freshness, &live_sources),
     features(ast, dispatcher, index_query, project, contexts, sched.pump, sessions),
     invalidator(project, sessions, contexts, ast.projections, sched.pcm, sched.store) {

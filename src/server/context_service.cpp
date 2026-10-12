@@ -47,8 +47,8 @@ std::size_t missing_context_errors(llvm::ArrayRef<protocol::Diagnostic> diagnost
     });
 }
 
-/// The flags of a command that set its macros, standard and optimization
-/// level: each -D, -O, -std and -g, a separate value joined to its -D or -O.
+/// The flags a context's label tells a command by: each -D, -O, -std and
+/// -g, a separate value joined to its -D or -O.
 static llvm::SmallVector<std::string> state_flags(Project& ws, ConfigID config) {
     auto argv = ws.cdb.render_full(config);
     llvm::SmallVector<std::string> flags;
@@ -104,6 +104,15 @@ static ConfigID lent_config(Project& ws, Fid path_id, Fid host, const Candidate&
 static ConfigID own_config(Project& ws, Fid path_id, ConfigID entry) {
     auto path = ws.file_table.resolve(path_id);
     return ws.build.resolve(path_id, entry, CommandSource::CDBExact, path, path).config;
+}
+
+/// The commands the file's own `entries` compile it as, one per entry.
+static llvm::SmallVector<ConfigID, 2> own_configs(Project& ws, Fid path_id, const auto& entries) {
+    llvm::SmallVector<ConfigID, 2> configs;
+    for(auto& entry: entries) {
+        configs.push_back(own_config(ws, path_id, entry.config));
+    }
+    return configs;
 }
 
 /// The commands `host` lends the header `path_id`, one per command of the
@@ -202,10 +211,7 @@ std::vector<ext::ContextItem> ContextService::contexts(Fid path_id) {
     // switchContext would then reject. Offered even when hosts
     // exist, so a host override can be switched back to the file's
     // own command.
-    llvm::SmallVector<ConfigID, 2> own;
-    for(auto& entry: ws.build.entries(path_id)) {
-        own.push_back(own_config(ws, path_id, entry.config));
-    }
+    auto own = own_configs(ws, path_id, ws.build.entries(path_id));
     for(std::size_t i = 0; i < own.size(); i += 1) {
         if(seen_configs.insert(ws.cdb.entry_hash_hex(own[i])).second) {
             all_items.push_back(own_item(ws, path_id, i, own));
@@ -253,11 +259,7 @@ ext::CurrentContextResult ContextService::current_context(const Session* session
                          commands,
                          [&](const Candidate& command) { return command.config == entry.config; }) -
                      commands.begin();
-        llvm::SmallVector<ConfigID, 2> own;
-        for(auto& command: commands) {
-            own.push_back(own_config(ws, path_id, command.config));
-        }
-        result.context = own_item(ws, path_id, index, own);
+        result.context = own_item(ws, path_id, index, own_configs(ws, path_id, commands));
     };
 
     // The choice, else what resolve_command picks: the file's own command
