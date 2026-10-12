@@ -749,13 +749,7 @@ public:
             if(!CCE->getParenOrBraceRange().isValid()) {
                 return;
             }
-            // An inherited constructor is an implicit declaration standing
-            // in for the base constructor `using Base::Base` names.
-            const clang::CXXConstructorDecl* ctor = CCE->getConstructor();
-            if(auto inherited = ctor->getInheritedConstructor()) {
-                ctor = inherited.getConstructor();
-            }
-            call(ctor, CCE->getParenOrBraceRange().getBegin());
+            call(decls::constructor_of(CCE), CCE->getParenOrBraceRange().getBegin());
             return;
         }
 

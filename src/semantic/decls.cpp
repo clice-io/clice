@@ -262,6 +262,14 @@ auto normalize(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
     return decl;
 }
 
+auto constructor_of(const clang::CXXConstructExpr* construct) -> const clang::CXXConstructorDecl* {
+    auto* constructor = construct->getConstructor();
+    if(auto inherited = constructor->getInheritedConstructor()) {
+        return inherited.getConstructor();
+    }
+    return constructor;
+}
+
 namespace {
 
 template <typename TemplateDeclTy>

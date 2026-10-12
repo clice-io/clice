@@ -1,7 +1,5 @@
 [answers.paren]
-wrong = "should reach Base(int x), the constructor using Base::Base brings in"
-definition = []
+definition = ["⟦Base⟧(int x);"]
 
 [answers.brace]
-wrong = "should reach Base(int x), the constructor using Base::Base brings in"
-definition = []
+definition = ["⟦Base⟧(int x);"]

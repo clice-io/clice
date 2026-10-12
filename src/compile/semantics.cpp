@@ -1432,7 +1432,7 @@ void stmt_references(const clang::Stmt* S,
         /// Implicit constructions have no written parens: the reference
         /// carries an invalid location.
         refer(out,
-              CE->getConstructor(),
+              decls::constructor_of(CE),
               RelationKind::Reference,
               CE->getParenOrBraceRange().getBegin());
         return;

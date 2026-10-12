@@ -37,6 +37,11 @@ auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
 /// of their pattern.
 auto normalize(const clang::NamedDecl* decl) -> const clang::NamedDecl*;
 
+/// The constructor a construction runs, as the source names it: an
+/// inherited constructor is an implicit declaration standing in for the
+/// base constructor `using Base::Base` names.
+auto constructor_of(const clang::CXXConstructExpr* construct) -> const clang::CXXConstructorDecl*;
+
 /// If exactly one non-explicit specialization of the templated decl
 /// exists, return it, nullptr otherwise.
 auto only_instantiation(clang::NamedDecl* templated_decl) -> clang::NamedDecl*;

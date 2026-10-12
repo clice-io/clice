@@ -323,6 +323,24 @@ ZEST_CASE(ClassTemplate) {
     GO_TO_DEFINITION("implicit_full", "full_spec");
 }
 
+ZEST_CASE(InheritedConstructorCall) {
+    build_index(R"(
+            struct Base {
+                §(base)⟦Base⟧(int x) {}
+            };
+            struct Derived : Base {
+                using Base::Base;
+            };
+            void build() {
+                Derived d §(paren)(3);
+                Derived e §(brace){4};
+            }
+        )");
+
+    GO_TO_DEFINITION("paren", "base");
+    GO_TO_DEFINITION("brace", "base");
+}
+
 ZEST_CASE(FunctionTemplate) {
     build_index(R"(
             template <typename T> void §(primary_decl)foo();
