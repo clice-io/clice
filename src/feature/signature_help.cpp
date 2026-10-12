@@ -14,25 +14,43 @@ namespace clice::feature {
 
 namespace {
 
+/// The token written right before `location`; none when a macro wrote
+/// what is there.
+std::optional<clang::Token> token_before(clang::Sema& sema, clang::SourceLocation location) {
+    auto& sources = sema.getSourceManager();
+    if(sources.isMacroArgExpansion(location)) {
+        location = sources.getSpellingLoc(location);
+    }
+    if(!location.isFileID()) {
+        return std::nullopt;
+    }
+    return clang::Lexer::findPreviousToken(location,
+                                           sources,
+                                           sema.getLangOpts(),
+                                           /*IncludeComments=*/false);
+}
+
 /// The name a call of a lambda goes by: the identifier written before its
 /// opening parenthesis (`square` in `square(`), empty when another
-/// expression is called (`make()(`) or a macro wrote the parenthesis.
+/// expression is called (`make()(`).
 std::string callee_name(clang::Sema& sema, clang::SourceLocation open_paren) {
-    auto& sources = sema.getSourceManager();
-    if(sources.isMacroArgExpansion(open_paren)) {
-        open_paren = sources.getSpellingLoc(open_paren);
-    }
-    if(!open_paren.isFileID()) {
-        return {};
-    }
-    auto token = clang::Lexer::findPreviousToken(open_paren,
-                                                 sources,
-                                                 sema.getLangOpts(),
-                                                 /*IncludeComments=*/false);
+    auto token = token_before(sema, open_paren);
     if(!token || !token->is(clang::tok::raw_identifier)) {
         return {};
     }
     return token->getRawIdentifier().str();
+}
+
+/// Whether a member call writes its object, `b.at(` or `p->at(`: Sema
+/// ranks overloads by the object only then. An implicit `this` takes no
+/// part, which leaves a const and a non-const overload tied.
+bool object_written(clang::Sema& sema, clang::SourceLocation open_paren) {
+    auto name = token_before(sema, open_paren);
+    if(!name || !name->is(clang::tok::raw_identifier)) {
+        return false;
+    }
+    auto access = token_before(sema, name->getLocation());
+    return access && access->isOneOf(clang::tok::period, clang::tok::arrow);
 }
 
 /// Whether `method` differs from `better`, a method Sema ranked above it,
@@ -92,11 +110,13 @@ public:
         policy.CleanUglifiedParameters = true;
         policy.SuppressTemplateArgsInCXXConstructors = true;
 
+        bool ranked = object_written(sema, open_paren);
         llvm::SmallVector<const clang::FunctionDecl*> listed;
         for(auto& candidate: range) {
             if(auto* function = candidate.getFunction()) {
-                if(llvm::any_of(listed,
-                                [&](auto* better) { return dominated(function, better); })) {
+                if(ranked && llvm::any_of(listed, [&](auto* better) {
+                       return dominated(function, better);
+                   })) {
                     continue;
                 }
                 listed.push_back(function);
@@ -296,7 +316,7 @@ auto macro_call_at(CompilationUnitRef unit, std::uint32_t offset) -> std::option
             continue;
         }
 
-        auto lexer = Lexer::from_line(text, begin);
+        auto lexer = Lexer::from_line(text, begin, {.lang_opts = &unit.lang_options()});
         auto token = lexer.advance();
         while(!token.is_eof() && token.range.begin < begin) {
             token = lexer.advance();
@@ -378,6 +398,9 @@ auto signature_help(CompilationParams& params, const SignatureHelpOptions&)
     auto offset = std::get<1>(params.completion);
     auto* consumer = new SignatureCollector(help, complete_options);
     auto unit = complete(params, consumer);
+    if(!unit.completed()) {
+        return help;
+    }
 
     // Inside a call written in a macro's arguments Sema's signature is the
     // call's; one written outside the macro, which Sema may report too,

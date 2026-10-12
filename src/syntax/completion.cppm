@@ -40,7 +40,8 @@ struct PreambleCompletionContext {
     /// include, its last path component — typed part and untyped rest.
     LocalSourceRange replace;
 
-    /// An import or module declaration that ends in its semicolon already.
+    /// The name ends in its delimiter already: a header name's `>` or `"`,
+    /// an import's or a module declaration's semicolon.
     bool closed = false;
 };
 

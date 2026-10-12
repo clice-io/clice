@@ -267,8 +267,10 @@ ZEST_CASE(IncludeReplaceSpan) {
 ZEST_CASE(IncludeNameWithSpaces) {
     auto closed = detect_completion_context("#include \"my header.h\"", 12);
     ZEXPECT(closed.replace.end == 21u);
+    ZEXPECT(closed.closed);
     auto open = detect_completion_context("#include \"my header.h", 12);
     ZEXPECT(open.replace.end == 12u);
+    ZEXPECT(!open.closed);
 }
 
 ZEST_CASE(ImportReplaceSpan) {
@@ -294,6 +296,15 @@ ZEST_CASE(HasIncludeQuoted) {
     auto ctx = detect_completion_context(text, text.size());
     ZEXPECT(ctx.kind == CompletionContext::IncludeQuoted);
     ZEXPECT(ctx.prefix == "conf");
+}
+
+ZEST_CASE(HasIncludeUnclosedName) {
+    // An editor closes the parenthesis but not the name: it ends at `)`.
+    std::string text = "#if __has_include(<ve) && __has_include(<b>)";
+    auto ctx = detect_completion_context(text, 21);
+    ZEXPECT(ctx.prefix == "ve");
+    ZEXPECT(ctx.replace.end == 21u);
+    ZEXPECT(!ctx.closed);
 }
 
 ZEST_CASE(HasIncludeWritten) {

@@ -1,3 +1,10 @@
+[answers.implicit_this.signature_help]
+signatures = [
+    "at(int row, ⟦int column⟧) const -> const int &",
+    "at(int row, ⟦int column⟧) -> int &",
+]
+active = 0
+
 [answers.lvalue.signature_help]
 signatures = ["data() const & -> const char *"]
 active = 0

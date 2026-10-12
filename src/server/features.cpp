@@ -914,16 +914,14 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             // the rest of the path through a closing delimiter already there.
             llvm::StringRef text = session->text;
             char closer = angled ? '>' : '"';
-            auto line_end = std::min(text.find_first_of("\r\n", pctx.replace.end), text.size());
-            auto close = text.slice(pctx.replace.end, line_end).find(closer);
             auto edit = [&](const IncludeCandidate& candidate) {
                 auto end = pctx.replace.end;
                 if(candidate.is_directory) {
                     if(text.substr(end).starts_with("/")) {
                         end += 1;
                     }
-                } else if(close != llvm::StringRef::npos) {
-                    end += close + 1;
+                } else if(pctx.closed) {
+                    end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
                 }
                 return protocol::TextEdit{
                     .range = *map.range({pctx.replace.begin, end}, PositionEncoding::UTF16),

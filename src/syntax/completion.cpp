@@ -147,8 +147,9 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
     auto first = lexer.advance();
 
     // A header name half typed from `begin`, the text after an include's
-    // keyword or `__has_include(`: taken textually up to the cursor.
-    auto header_name = [&](std::uint32_t begin) -> PreambleCompletionContext {
+    // keyword or `__has_include(`: taken textually up to the cursor. In
+    // `__has_include(` the name ends at the parenthesis closing the call.
+    auto header_name = [&](std::uint32_t begin, bool parenthesized) -> PreambleCompletionContext {
         auto argument = text.slice(begin, offset).ltrim();
         CompletionContext kind;
         if(argument.consume_front("\"")) {
@@ -164,6 +165,9 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         // ends its name at the first space.
         char closer = kind == CompletionContext::IncludeQuoted ? '"' : '>';
         auto line = text.slice(offset, text.find_first_of("\r\n", offset));
+        if(parenthesized) {
+            line = line.take_until([](char c) { return c == ')'; });
+        }
         bool closed = line.contains(closer);
         auto end = offset;
         while(end < offset + line.size() && text[end] != '/' && text[end] != closer &&
@@ -172,7 +176,8 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         }
         return {kind,
                 argument.str(),
-                LocalSourceRange(offset - static_cast<std::uint32_t>(component.size()), end)};
+                LocalSourceRange(offset - static_cast<std::uint32_t>(component.size()), end),
+                closed};
     };
 
     if(first.is_directive_hash() && before_cursor(first)) {
@@ -181,7 +186,7 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
             return {};
         }
         if(keyword.text(text) == "include") {
-            return header_name(keyword.range.end);
+            return header_name(keyword.range.end, /*parenthesized=*/false);
         }
         // In a condition, a `__has_include(` whose header name the cursor
         // is in: the lexer reads a whole one as a single token.
@@ -201,7 +206,8 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
             after_has_include = token.is_identifier() && (token.text(text) == "__has_include" ||
                                                           token.text(text) == "__has_include_next");
         }
-        return header_begin ? header_name(*header_begin) : PreambleCompletionContext{};
+        return header_begin ? header_name(*header_begin, /*parenthesized=*/true)
+                            : PreambleCompletionContext{};
     }
 
     // `[export] import` opening a logical line always means an import

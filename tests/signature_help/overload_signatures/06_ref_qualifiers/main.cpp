@@ -6,6 +6,15 @@ struct Text {
 
 Text make();
 
+struct Grid {
+    int& at(int row, int column);
+    const int& at(int row, int column) const;
+
+    int sum() const {
+        return at(0, §(implicit_this)1);
+    }
+};
+
 int main() {
     Text text;
     text.data(§(lvalue));
