@@ -48,7 +48,5 @@ stdout = '''
 Indexed 3 translation units in #s: 3 file shards (# KB), 5 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = [
-    'warning: No rule names a compilation database; the 2 found apply in this order, an earlier one winning for a file both list: ${WS}/group-a/p1/compile_commands.json, ${WS}/group-a/p2/compile_commands.json. To switch between them instead, declare each on a tagged rule: [[rules]] configuration = "..." compile_commands = ["..."]',
-]
+stderr = 'warning: No rule names a compilation database; the 2 found apply in this order, an earlier one winning for a file both list: ${WS}/group-a/p1/compile_commands.json, ${WS}/group-a/p2/compile_commands.json. To switch between them instead, declare each on a tagged rule: [[rules]] configuration = "..." compile_commands = ["..."]'
 exit = 0

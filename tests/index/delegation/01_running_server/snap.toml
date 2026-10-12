@@ -43,9 +43,7 @@ stdout = '''
 exit = 0
 
 ["refuses a writer it cannot ask"."$ clice index"]
-stderr = [
-    "error: another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done",
-]
+stderr = "error: another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done"
 exit = 1
 
 ["refuses a writer it cannot ask"."$ clice query --method symbolSearch --symbol compute --fresh"]

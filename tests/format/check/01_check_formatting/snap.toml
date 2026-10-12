@@ -1,14 +1,14 @@
 [test."$ clice format --check"]
 stdout = "Checked 1 file in #s: 1 needs formatting."
-stderr = [
-    "stderr: ${WS}/main.cpp:1:4: error: code should be clang-formatted [-Wclang-format-violations]",
-    "stderr: int  main( ) { return 0 ; }",
-    "stderr:    ^",
-    "stderr: ${WS}/main.cpp:1:11: error: code should be clang-formatted [-Wclang-format-violations]",
-    "stderr: int  main( ) { return 0 ; }",
-    "stderr:           ^",
-    "stderr: ${WS}/main.cpp:1:24: error: code should be clang-formatted [-Wclang-format-violations]",
-    "stderr: int  main( ) { return 0 ; }",
-    "stderr:                        ^",
-]
+stderr = '''
+${WS}/main.cpp:1:4: error: code should be clang-formatted [-Wclang-format-violations]
+int  main( ) { return 0 ; }
+   ^
+${WS}/main.cpp:1:11: error: code should be clang-formatted [-Wclang-format-violations]
+int  main( ) { return 0 ; }
+          ^
+${WS}/main.cpp:1:24: error: code should be clang-formatted [-Wclang-format-violations]
+int  main( ) { return 0 ; }
+                       ^
+'''
 exit = 1

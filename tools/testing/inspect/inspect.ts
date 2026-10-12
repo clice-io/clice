@@ -230,6 +230,9 @@ function byteOf(text: string, offset: number): number {
     return Buffer.byteLength(text.slice(0, offset), "utf8");
 }
 
+/// A module import, which a file compiled alone cannot resolve.
+const MODULE_IMPORT = /^[ \t]*(?:export[ \t]+)?import(?:[ \t]+[\w:<"]|[:<"])/m;
+
 function rangeKey({ begin, end }: RawRange): string {
     return `${String(begin)}-${String(end)}`;
 }
@@ -237,6 +240,7 @@ function rangeKey({ begin, end }: RawRange): string {
 export class Inspect extends Client {
     private readonly root: string;
     private readonly sources: readonly string[];
+    private readonly importers: ReadonlySet<string>;
     private readonly config: Record<string, unknown> | undefined;
     private readonly scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-markers-"));
     private readonly batches = new Map<string, Promise<Entry>>();
@@ -245,7 +249,8 @@ export class Inspect extends Client {
     private readonly compiled = new Map<string, string[]>();
     private runs = 0;
 
-    /// `sources` are the copy's files that compile on their own.
+    /// `sources` are the copy's source files: those importing a module
+    /// cannot compile alone and have no answer here.
     constructor(
         root: string,
         marks: readonly MarkerAnchor[],
@@ -253,7 +258,10 @@ export class Inspect extends Client {
     ) {
         super(marks);
         this.root = root;
-        this.sources = options.sources;
+        this.importers = new Set(
+            options.sources.filter((file) => MODULE_IMPORT.test(this.text(file))),
+        );
+        this.sources = options.sources.filter((file) => !this.importers.has(file));
         this.config = options.config;
         if (options.config !== undefined) {
             recordConfig(options.config);
@@ -264,8 +272,9 @@ export class Inspect extends Client {
         return new AnswerContext(this.root, (file) => this.text(file));
     }
 
-    /// The errors of every source and every file inspected, each compiled
-    /// alone; a source no request inspected compiles now.
+    /// The errors of every source but an importer and of every file
+    /// inspected, each compiled alone; a source no request inspected
+    /// compiles now.
     async compileErrors(): Promise<string[]> {
         for (const file of this.sources) {
             if (!this.compiled.has(file)) {
@@ -634,6 +643,9 @@ export class Inspect extends Client {
 
     /// One `clice inspect` of `file`; a failed compile or run fails.
     private async run(feature: string, file: string, places?: Places): Promise<Entry> {
+        if (this.importers.has(file)) {
+            this.cannot(`${feature} in a module importer`, file);
+        }
         const args = ["inspect", feature, path.join(this.root, file)];
         if (places !== undefined) {
             this.runs += 1;

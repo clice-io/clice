@@ -21,7 +21,7 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 1
 
 [test."$ clice analyze modules --view nope"]
@@ -94,7 +94,7 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 1
 
 [test."$ clice analyze modules --depth deep"]
