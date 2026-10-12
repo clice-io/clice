@@ -8,11 +8,19 @@ semantic_tokens = [
     { at = "⟦ */⟧", type = "comment" },
     { at = "⟦/// a doc comment⟧", type = "comment" },
     { at = "⟦int⟧ after_comments = 0;", type = "primitive" },
-    { at = "int ⟦after_comments⟧ = 0;", type = "variable", modifiers = ["definition"] },
+    {
+        at = "int ⟦after_comments⟧ = 0;",
+        type = "variable",
+        modifiers = ["definition", "globalScope"],
+    },
     { at = "int after_comments = ⟦0⟧;", type = "number" },
     { at = "⟦/* first⟧", type = "comment" },
     { at = "⟦second */⟧ int after_block = 1;", type = "comment" },
     { at = "second */ ⟦int⟧ after_block = 1;", type = "primitive" },
-    { at = "second */ int ⟦after_block⟧ = 1;", type = "variable", modifiers = ["definition"] },
+    {
+        at = "second */ int ⟦after_block⟧ = 1;",
+        type = "variable",
+        modifiers = ["definition", "globalScope"],
+    },
     { at = "second */ int after_block = ⟦1⟧;", type = "number" },
 ]

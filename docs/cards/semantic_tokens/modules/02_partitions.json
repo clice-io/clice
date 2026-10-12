@@ -167,7 +167,8 @@
                 },
                 "type": "variable",
                 "modifiers": [
-                  "definition"
+                  "definition",
+                  "globalScope"
                 ]
               },
               {

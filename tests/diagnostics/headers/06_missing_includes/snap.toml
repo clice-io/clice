@@ -1,6 +1,7 @@
 [test."main.cpp"]
-wrong = "only the first missing header is reported; the two after it are not"
 diagnostics = [
     { at = '#include ⟦"missing_a.h"⟧', severity = "error", message = "'missing_a.h' file not found", source = "clang", code = "err_pp_file_not_found", related = [] },
+    { at = '#include ⟦"missing_b.h"⟧', severity = "error", message = "'missing_b.h' file not found", source = "clang", code = "err_pp_file_not_found", related = [] },
+    { at = '#include ⟦"missing_c.h"⟧', severity = "error", message = "'missing_c.h' file not found", source = "clang", code = "err_pp_file_not_found", related = [] },
     { at = "return ⟦undeclared⟧;", severity = "error", message = "use of undeclared identifier 'undeclared'", source = "clang", code = "err_undeclared_var_use", related = [] },
 ]

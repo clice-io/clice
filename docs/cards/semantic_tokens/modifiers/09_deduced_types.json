@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "modifiers",
   "title": "Deduced types",
-  "summary": "`auto` and `decltype` do not carry the deduced modifier yet",
+  "summary": "`auto` and `decltype` color as the type they stand for, with the deduced modifier",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -41,10 +41,12 @@
           "label": "auto",
           "marker": "auto",
           "value": {
-            "wrong": "should carry the deduced modifier",
             "semantic_token": {
               "text": "auto",
-              "type": "keyword"
+              "type": "primitive",
+              "modifiers": [
+                "deduced"
+              ]
             }
           }
         },
@@ -52,10 +54,13 @@
           "label": "auto_class",
           "marker": "auto_class",
           "value": {
-            "wrong": "should be colored as the type it deduces, with the deduced modifier",
             "semantic_token": {
               "text": "auto",
-              "type": "keyword"
+              "type": "struct",
+              "modifiers": [
+                "deduced",
+                "globalScope"
+              ]
             }
           }
         },
@@ -63,10 +68,12 @@
           "label": "decltype",
           "marker": "decltype",
           "value": {
-            "wrong": "should carry the deduced modifier",
             "semantic_token": {
               "text": "decltype",
-              "type": "keyword"
+              "type": "primitive",
+              "modifiers": [
+                "deduced"
+              ]
             }
           }
         }

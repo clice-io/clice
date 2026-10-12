@@ -7,11 +7,19 @@ semantic_tokens = [
     { at = "export module demo.⟦core⟧;", type = "module", modifiers = ["definition"] },
     { at = "⟦export⟧ int exported_value = 1;", type = "keyword" },
     { at = "export ⟦int⟧ exported_value = 1;", type = "primitive" },
-    { at = "export int ⟦exported_value⟧ = 1;", type = "variable", modifiers = ["definition"] },
+    {
+        at = "export int ⟦exported_value⟧ = 1;",
+        type = "variable",
+        modifiers = ["definition", "globalScope"],
+    },
     { at = "export int exported_value = ⟦1⟧;", type = "number" },
     { at = "⟦module⟧ :private;", type = "keyword" },
     { at = "module :⟦private⟧;", type = "keyword" },
     { at = "⟦int⟧ private_value = 2;", type = "primitive" },
-    { at = "int ⟦private_value⟧ = 2;", type = "variable", modifiers = ["definition"] },
+    {
+        at = "int ⟦private_value⟧ = 2;",
+        type = "variable",
+        modifiers = ["definition", "globalScope"],
+    },
     { at = "int private_value = ⟦2⟧;", type = "number" },
 ]

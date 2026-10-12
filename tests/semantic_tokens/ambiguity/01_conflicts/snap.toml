@@ -1,17 +1,19 @@
 [answers.type.semantic_token]
 text = "Widget"
 type = "struct"
-modifiers = ["definition"]
+modifiers = ["definition", "globalScope"]
 
 [answers.function.semantic_token]
 text = "Widget"
 type = "function"
-modifiers = ["declaration"]
+modifiers = ["declaration", "globalScope"]
 
 [answers.type_and_function.semantic_token]
 text = "Widget"
 type = "conflict"
+modifiers = ["globalScope"]
 
 [answers.type_and_variable.semantic_token]
 text = "Thing"
 type = "conflict"
+modifiers = ["globalScope"]

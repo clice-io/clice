@@ -333,7 +333,7 @@
                     "detail": "struct"
                   },
                   {
-                    "name": "zero",
+                    "name": "zero<long>",
                     "kind": "Function",
                     "at": {
                       "$place": "template long ⟦zero⟧<long>();",
@@ -880,7 +880,7 @@
                     }
                   },
                   {
-                    "name": "zero",
+                    "name": "zero<long>",
                     "kind": "Function",
                     "at": {
                       "$place": "template long ⟦zero⟧<long>();",

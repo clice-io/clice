@@ -61,7 +61,10 @@
           "value": {
             "semantic_token": {
               "text": "local",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -81,7 +84,10 @@
           "value": {
             "semantic_token": {
               "text": "local",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -91,7 +97,10 @@
           "value": {
             "semantic_token": {
               "text": "field",
-              "type": "field"
+              "type": "field",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         },
@@ -101,7 +110,10 @@
           "value": {
             "semantic_token": {
               "text": "local",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -111,7 +123,10 @@
           "value": {
             "semantic_token": {
               "text": "local",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         }

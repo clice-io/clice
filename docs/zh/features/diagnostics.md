@@ -8,14 +8,7 @@
 - [x] Preamble 中的预处理指令所产生的警告（`#warning`、`#pragma message`、宏重定义）
 - [x] 跨文件诊断的文件 URI 转换
 - [x] 拉取式诊断模型（`textDocument/diagnostic`），用于声明支持它的客户端；其他客户端的诊断仍由服务端推送
-- [ ] 报告所有因缺少 `#include` 而产生的错误，而不只是第一个——解析器遇到首个致命错误后便会停止
-
-  ```cpp
-  #include "missing_a.h"  // error reported
-  #include "missing_b.h"  // error NOT reported (parser already stopped)
-  #include "missing_c.h"  // error NOT reported
-  ```
-
+- [x] 每个缺失的 `#include` 都会报告，而不只是第一个，其后的代码也照常检查
 - [ ] 显示源自头文件的诊断的完整包含链（[clangd#1392](https://github.com/clangd/clangd/issues/1392)）
 
   ```

@@ -121,7 +121,7 @@
                 "detail": "template void (T)"
               },
               {
-                "name": "convert",
+                "name": "convert<int>",
                 "kind": "Function",
                 "at": {
                   "$place": "template void ⟦convert⟧<int>(int);",
@@ -348,7 +348,7 @@
                 }
               },
               {
-                "name": "convert",
+                "name": "convert<int>",
                 "kind": "Function",
                 "at": {
                   "$place": "template void ⟦convert⟧<int>(int);",

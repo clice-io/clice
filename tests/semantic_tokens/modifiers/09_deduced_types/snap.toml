@@ -1,20 +1,14 @@
-[answers.auto]
-wrong = "should carry the deduced modifier"
-
 [answers.auto.semantic_token]
 text = "auto"
-type = "keyword"
-
-[answers.auto_class]
-wrong = "should be colored as the type it deduces, with the deduced modifier"
+type = "primitive"
+modifiers = ["deduced"]
 
 [answers.auto_class.semantic_token]
 text = "auto"
-type = "keyword"
-
-[answers.decltype]
-wrong = "should carry the deduced modifier"
+type = "struct"
+modifiers = ["deduced", "globalScope"]
 
 [answers.decltype.semantic_token]
 text = "decltype"
-type = "keyword"
+type = "primitive"
+modifiers = ["deduced"]

@@ -70,7 +70,8 @@
               "type": "variable",
               "modifiers": [
                 "declaration",
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -84,7 +85,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -97,7 +99,8 @@
               "text": "current",
               "type": "field",
               "modifiers": [
-                "definition"
+                "definition",
+                "classScope"
               ]
             }
           }
@@ -111,7 +114,8 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "static"
+                "static",
+                "functionScope"
               ]
             }
           }
@@ -124,7 +128,8 @@
               "text": "bump",
               "type": "method",
               "modifiers": [
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -137,7 +142,8 @@
               "text": "total",
               "type": "variable",
               "modifiers": [
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -150,7 +156,8 @@
               "text": "calls",
               "type": "variable",
               "modifiers": [
-                "static"
+                "static",
+                "functionScope"
               ]
             }
           }

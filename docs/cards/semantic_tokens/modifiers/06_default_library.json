@@ -38,7 +38,8 @@
               "text": "system_helper",
               "type": "function",
               "modifiers": [
-                "defaultLibrary"
+                "defaultLibrary",
+                "globalScope"
               ]
             }
           }

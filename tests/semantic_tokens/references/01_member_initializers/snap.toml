@@ -1,11 +1,14 @@
 [answers.width.semantic_token]
 text = "width"
 type = "field"
+modifiers = ["classScope"]
 
 [answers.w.semantic_token]
 text = "w"
 type = "parameter"
+modifiers = ["functionScope"]
 
 [answers.height.semantic_token]
 text = "height"
 type = "field"
+modifiers = ["classScope"]

@@ -136,8 +136,7 @@ interface RawSymbol {
     kind: string;
     range: RawRange;
     selection_range: RawRange;
-    /// Symbol tag names, should clice inspect report them.
-    tags?: string[] | null;
+    deprecated: boolean;
     children: RawSymbol[];
 }
 
@@ -198,6 +197,7 @@ const LSP_SYMBOL_KIND: Record<string, string> = {
     Function: "Function",
     Method: "Method",
     Macro: "Constant",
+    Directive: "File",
     Comment: "String",
     Character: "String",
     String: "String",
@@ -469,7 +469,7 @@ export class Inspect extends Client {
             selection: this.location(file, raw.selection_range),
             detail: raw.detail,
             range: this.location(file, raw.range),
-            tags: raw.tags ?? [],
+            tags: raw.deprecated ? ["Deprecated"] : [],
             children: raw.children.map(convert),
         });
         return ((await this.document("document_symbol", file)) as RawSymbol[]).map(convert);

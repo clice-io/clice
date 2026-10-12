@@ -105,7 +105,8 @@
               "text": "Widget",
               "type": "class",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -118,7 +119,8 @@
               "text": "Point",
               "type": "struct",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -131,7 +133,8 @@
               "text": "Storage",
               "type": "union",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -144,7 +147,8 @@
               "text": "Flags",
               "type": "enum",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -157,7 +161,8 @@
               "text": "Mode",
               "type": "enum",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -168,7 +173,10 @@
           "value": {
             "semantic_token": {
               "text": "Point",
-              "type": "struct"
+              "type": "struct",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -180,7 +188,8 @@
               "text": "PointAlias",
               "type": "type",
               "modifiers": [
-                "definition"
+                "definition",
+                "fileScope"
               ]
             }
           }
@@ -193,7 +202,8 @@
               "text": "WidgetAlias",
               "type": "type",
               "modifiers": [
-                "definition"
+                "definition",
+                "fileScope"
               ]
             }
           }
@@ -204,7 +214,10 @@
           "value": {
             "semantic_token": {
               "text": "Widget",
-              "type": "class"
+              "type": "class",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -214,7 +227,10 @@
           "value": {
             "semantic_token": {
               "text": "Widget",
-              "type": "class"
+              "type": "class",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -224,7 +240,10 @@
           "value": {
             "semantic_token": {
               "text": "PointAlias",
-              "type": "type"
+              "type": "type",
+              "modifiers": [
+                "fileScope"
+              ]
             }
           }
         },
@@ -234,7 +253,10 @@
           "value": {
             "semantic_token": {
               "text": "Mode",
-              "type": "enum"
+              "type": "enum",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -244,7 +266,10 @@
           "value": {
             "semantic_token": {
               "text": "Mode",
-              "type": "enum"
+              "type": "enum",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         }

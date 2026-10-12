@@ -4,4 +4,5 @@ issues: [clangd#839]
 
 # Mutable arguments
 
-An argument passed by mutable reference or pointer does not carry a modifier yet
+An argument the callee may modify, through a reference or a pointer to
+non-const, carries a modifier

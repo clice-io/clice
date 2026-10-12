@@ -57,7 +57,8 @@
               "text": "orchard",
               "type": "namespace",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -70,7 +71,8 @@
               "text": "Tree",
               "type": "struct",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -83,7 +85,8 @@
               "text": "height",
               "type": "field",
               "modifiers": [
-                "definition"
+                "definition",
+                "classScope"
               ]
             }
           }
@@ -96,7 +99,8 @@
               "text": "grow",
               "type": "function",
               "modifiers": [
-                "declaration"
+                "declaration",
+                "globalScope"
               ]
             }
           }
@@ -109,7 +113,8 @@
               "text": "tree",
               "type": "parameter",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }

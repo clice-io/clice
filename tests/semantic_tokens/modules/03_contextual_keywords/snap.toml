@@ -1,23 +1,24 @@
 [answers.module_def.semantic_token]
 text = "module"
 type = "struct"
-modifiers = ["definition"]
+modifiers = ["definition", "functionScope"]
 
 [answers.module_use.semantic_token]
 text = "module"
 type = "struct"
+modifiers = ["functionScope"]
 
 [answers.m.semantic_token]
 text = "m"
 type = "variable"
-modifiers = ["definition"]
+modifiers = ["definition", "functionScope"]
 
 [answers.import.semantic_token]
 text = "import"
 type = "variable"
-modifiers = ["definition"]
+modifiers = ["definition", "functionScope"]
 
 [answers.module_def2.semantic_token]
 text = "module"
 type = "variable"
-modifiers = ["definition"]
+modifiers = ["definition", "functionScope"]

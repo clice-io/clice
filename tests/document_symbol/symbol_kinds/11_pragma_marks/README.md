@@ -1,3 +1,3 @@
-# #pragma mark
+# Pragma mark sections
 
-`#pragma mark` sections do not list in the outline yet
+`#pragma mark - Name` opens a section that groups the symbols after it

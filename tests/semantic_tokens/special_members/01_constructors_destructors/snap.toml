@@ -1,28 +1,29 @@
 [answers.Session_decl.semantic_token]
 text = "Session"
 type = "method"
-modifiers = ["declaration", "constructorOrDestructor"]
+modifiers = ["declaration", "constructorOrDestructor", "classScope"]
 
 [answers.tilde_decl.semantic_token]
 text = "~"
 type = "method"
-modifiers = ["declaration", "constructorOrDestructor"]
+modifiers = ["declaration", "constructorOrDestructor", "classScope"]
 
 [answers.Session_use.semantic_token]
 text = "Session"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.Session_def.semantic_token]
 text = "Session"
 type = "method"
-modifiers = ["definition", "constructorOrDestructor"]
+modifiers = ["definition", "constructorOrDestructor", "classScope"]
 
 [answers.tilde_def.semantic_token]
 text = "~"
 type = "method"
-modifiers = ["definition", "constructorOrDestructor"]
+modifiers = ["definition", "constructorOrDestructor", "classScope"]
 
 [answers.tilde_use.semantic_token]
 text = "~"
 type = "method"
-modifiers = ["constructorOrDestructor"]
+modifiers = ["constructorOrDestructor", "classScope"]

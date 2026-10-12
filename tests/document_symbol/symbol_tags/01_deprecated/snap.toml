@@ -1,6 +1,11 @@
 [answers.outline]
-wrong = "the deprecated open_v1 carries no Deprecated tag"
 document_symbols = [
-    { name = "open_v1", kind = "Function", at = '[[deprecated("use open_v2")]] void ⟦open_v1⟧();', detail = "void ()", tags = [] },
+    {
+        name = "open_v1",
+        kind = "Function",
+        at = '[[deprecated("use open_v2")]] void ⟦open_v1⟧();',
+        detail = "void ()",
+        tags = ["Deprecated"],
+    },
     { name = "open_v2", kind = "Function", at = "void ⟦open_v2⟧();", detail = "void ()", tags = [] },
 ]

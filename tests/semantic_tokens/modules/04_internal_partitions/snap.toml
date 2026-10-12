@@ -7,6 +7,6 @@ semantic_tokens = [
     { at = "module demo.⟦core⟧:detail;", type = "module", modifiers = ["definition"] },
     { at = "module demo.core:⟦detail⟧;", type = "module", modifiers = ["definition"] },
     { at = "⟦int⟧ detail_value = 1;", type = "primitive" },
-    { at = "int ⟦detail_value⟧ = 1;", type = "variable", modifiers = ["definition"] },
+    { at = "int ⟦detail_value⟧ = 1;", type = "variable", modifiers = ["definition", "globalScope"] },
     { at = "int detail_value = ⟦1⟧;", type = "number" },
 ]

@@ -5,3 +5,4 @@ type = "none"
 [answers.T.semantic_token]
 text = "T"
 type = "type"
+modifiers = ["functionScope"]

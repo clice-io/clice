@@ -167,6 +167,38 @@ bool is_virtual(const clang::Decl* decl) {
     return false;
 }
 
+/// Where `decl` is visible from: a function, a class, its file, or
+/// everywhere; nothing for a template parameter without a meaningful
+/// context (a variable template's).
+std::optional<SymbolModifiers::Kind> scope_modifier(const clang::NamedDecl* decl) {
+    const clang::DeclContext* context = decl->getDeclContext();
+    // The class name injected into a class belongs to the class's scope.
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
+       record && record->isInjectedClassName()) {
+        context = context->getParent();
+    }
+    // A lambda's captures are its function's locals.
+    if(const auto* record = llvm::dyn_cast<clang::RecordDecl>(context);
+       record && record->isLambda() && llvm::isa<clang::FieldDecl>(decl)) {
+        return SymbolModifiers::FunctionScope;
+    }
+    for(; !context->isFileContext(); context = context->getParent()) {
+        if(context->isFunctionOrMethod()) {
+            return SymbolModifiers::FunctionScope;
+        }
+        if(context->isRecord()) {
+            return SymbolModifiers::ClassScope;
+        }
+    }
+    if(context->isTranslationUnit() && decl->isTemplateParameter()) {
+        return std::nullopt;
+    }
+    if(!clang::isExternallyVisible(decl->getLinkageInternal())) {
+        return SymbolModifiers::FileScope;
+    }
+    return SymbolModifiers::GlobalScope;
+}
+
 /// The classification a decl occurrence contributes: the decl's symbol kind
 /// plus modifiers derived from the decl and the occurrence role.
 Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
@@ -211,8 +243,9 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
             decl = templated_decl;
     }
 
-    // TODO: add scope-based modifiers once the local model supports them.
-
+    if(auto scope = scope_modifier(decl)) {
+        modifiers |= mask(*scope);
+    }
     if(is_const(decl)) {
         modifiers |= mask(SymbolModifiers::Readonly);
     }
@@ -239,6 +272,81 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
     }
 
     return {kind, modifiers};
+}
+
+/// A placeholder type written in the code — the `auto` of a declaration, a
+/// `decltype(...)` — and the type it stands for.
+struct Placeholder {
+    clang::SourceLocation location;
+    clang::QualType type;
+};
+
+std::optional<Placeholder> placeholder(const SemanticNode& node) {
+    if(const auto* decl = node.get<clang::DeclaratorDecl>()) {
+        const auto* auto_type = decl->getType()->getContainedAutoType();
+        const auto* type_info = decl->getTypeSourceInfo();
+        if(!auto_type || !type_info) {
+            return std::nullopt;
+        }
+        auto location = type_info->getTypeLoc().getContainedAutoTypeLoc().getNameLoc();
+        // An init-capture's type is not written; its `auto` sits at the name.
+        if(location == decl->getLocation()) {
+            return std::nullopt;
+        }
+        return Placeholder{location, auto_type->getDeducedType()};
+    }
+    if(const auto* loc = node.get<clang::TypeLoc>()) {
+        if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
+            return Placeholder{decltype_loc.getBeginLoc(), decltype_loc.getType()};
+        }
+    }
+    return std::nullopt;
+}
+
+/// A placeholder colors as the type it stands for when that type is named
+/// by a builtin keyword or a class; a pointer, a function or a type not
+/// deduced yet leaves the keyword alone.
+Classified classify_placeholder(clang::QualType type) {
+    Classified result;
+    if(type.isNull()) {
+        return result;
+    }
+    if(type->isBuiltinType()) {
+        result.kind = SymbolKind::Primitive;
+    } else if(const auto* tag = type->getAsTagDecl()) {
+        result = classify_decl(tag, RelationKind::Reference);
+    } else {
+        return result;
+    }
+    result.modifiers |= SymbolModifiers::to_mask(SymbolModifiers::Deduced);
+    return result;
+}
+
+/// The callee and the arguments a call or construction passes to its
+/// parameters; no callee for anything else.
+std::pair<const clang::FunctionDecl*, llvm::ArrayRef<const clang::Expr*>>
+    call_arguments(const SemanticNode& node) {
+    if(const auto* call = node.get<clang::CallExpr>()) {
+        // A literal's suffix calls its operator on a value no one wrote.
+        if(llvm::isa<clang::UserDefinedLiteral>(call)) {
+            return {};
+        }
+        llvm::ArrayRef<const clang::Expr*> args(call->getArgs(), call->getNumArgs());
+        if(const auto* op = llvm::dyn_cast<clang::CXXOperatorCallExpr>(call)) {
+            if(op->getOperator() != clang::OO_Call && op->getOperator() != clang::OO_Subscript) {
+                return {};
+            }
+            args = args.drop_front();
+        }
+        return {llvm::dyn_cast_or_null<clang::FunctionDecl>(call->getCalleeDecl()), args};
+    }
+    if(const auto* construct = node.get<clang::CXXConstructExpr>()) {
+        return {
+            construct->getConstructor(),
+            {construct->getArgs(), construct->getNumArgs()}
+        };
+    }
+    return {};
 }
 
 /// Classifies every spelled token of the main file in one ordered
@@ -287,6 +395,7 @@ private:
         Classified semantic;
         if(auto it = token_semantics.find(index); it != token_semantics.end()) {
             semantic = it->second;
+            semantic.modifiers |= usage_modifiers.lookup(index);
         }
 
         Classified result = final_classification(semantic, lexical);
@@ -555,8 +664,58 @@ private:
                         anchor_name(occurrence.location,
                                     classify_decl(occurrence.decl, occurrence.kind));
                     }
+                    // What an instantiation deduces or passes differs from
+                    // one instantiation to the next: the written code only.
+                    if(entry.flags.in_instantiation) {
+                        break;
+                    }
+                    if(auto deduced = placeholder(node)) {
+                        anchor(deduced->location, classify_placeholder(deduced->type), false);
+                    }
+                    mark_mutable_arguments(node);
                     break;
                 }
+            }
+        }
+    }
+
+    /// An argument the callee may modify, through a parameter that is a
+    /// reference or a pointer to non-const, marks the name it writes.
+    void mark_mutable_arguments(const SemanticNode& node) {
+        auto [callee, args] = call_arguments(node);
+        if(!callee) {
+            return;
+        }
+        const auto* prototype = callee->getType()->getAs<clang::FunctionProtoType>();
+        if(!prototype) {
+            return;
+        }
+        for(auto [type, arg]: llvm::zip(prototype->getParamTypes(), args)) {
+            bool reference = type->isLValueReferenceType();
+            if((!reference && !type->isPointerType()) ||
+               type->getPointeeType().isConstQualified() || type->isDependentType()) {
+                continue;
+            }
+
+            const clang::Expr* expr = arg;
+            if(const auto* cast = llvm::dyn_cast<clang::ImplicitCastExpr>(expr)) {
+                expr = cast->getSubExprAsWritten();
+            }
+            if(const auto* unary = llvm::dyn_cast<clang::UnaryOperator>(expr);
+               unary && unary->getOpcode() == clang::UO_AddrOf) {
+                expr = unary->getSubExpr();
+            }
+
+            clang::SourceLocation location;
+            if(const auto* name = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
+                location = name->getLocation();
+            } else if(const auto* member = llvm::dyn_cast<clang::MemberExpr>(expr)) {
+                location = member->getMemberLoc();
+            }
+            if(auto index = spelled_index(location)) {
+                usage_modifiers[*index] |=
+                    SymbolModifiers::to_mask(reference ? SymbolModifiers::UsedAsMutableReference
+                                                       : SymbolModifiers::UsedAsMutablePointer);
             }
         }
     }
@@ -636,6 +795,8 @@ private:
     DirectiveContext directive_context = DirectiveContext::None;
     std::uint32_t previous_end = 0;
     llvm::DenseMap<std::uint32_t, Classified> token_semantics;
+    /// Modifiers a token's use adds to whatever names it, by spelled index.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> usage_modifiers;
     llvm::ArrayRef<LexicalInfo::Comment> comments;
     std::size_t next_comment = 0;
     /// Cursor of has_logical_newline over `comments`.

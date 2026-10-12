@@ -324,6 +324,7 @@ struct DocumentSymbol {
     SymbolKind kind = SymbolKind::Invalid;
     LocalSourceRange range;
     LocalSourceRange selection_range;
+    bool deprecated = false;
     std::vector<DocumentSymbol> children;
 };
 

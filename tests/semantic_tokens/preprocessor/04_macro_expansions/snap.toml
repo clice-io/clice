@@ -9,6 +9,7 @@ type = "macro"
 [answers.value.semantic_token]
 text = "value"
 type = "variable"
+modifiers = ["globalScope"]
 
 [answers.CALL.semantic_token]
 text = "CALL"

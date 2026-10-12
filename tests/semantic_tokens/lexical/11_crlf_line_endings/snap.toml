@@ -5,7 +5,7 @@ semantic_tokens = [
     { at = "⟦/* a block⟧", type = "comment" },
     { at = "⟦   comment */⟧", type = "comment" },
     { at = "⟦int⟧ read() {", type = "primitive" },
-    { at = "int ⟦read⟧() {", type = "function", modifiers = ["definition"] },
+    { at = "int ⟦read⟧() {", type = "function", modifiers = ["definition", "globalScope"] },
     { at = "⟦return⟧ 1;", type = "keyword" },
     { at = "return ⟦1⟧;", type = "number" },
     { at = '⟦const⟧ char* raw = R"(line1', type = "keyword" },
@@ -13,7 +13,7 @@ semantic_tokens = [
     {
         at = 'const char* ⟦raw⟧ = R"(line1',
         type = "variable",
-        modifiers = ["definition", "readonly"],
+        modifiers = ["definition", "readonly", "globalScope"],
     },
     { at = 'const char* raw = ⟦R"(line1⟧', type = "string" },
     { at = '⟦line2)"⟧;', type = "string" },

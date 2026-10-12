@@ -41,7 +41,9 @@
                   }
                 },
                 "detail": "void ()",
-                "tags": []
+                "tags": [
+                  "Deprecated"
+                ]
               },
               {
                 "name": "open_v2",

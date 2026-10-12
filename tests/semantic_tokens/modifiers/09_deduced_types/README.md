@@ -1,3 +1,3 @@
 # Deduced types
 
-`auto` and `decltype` do not carry the deduced modifier yet
+`auto` and `decltype` color as the type they stand for, with the deduced modifier

@@ -69,7 +69,8 @@
               "text": "twice",
               "type": "function",
               "modifiers": [
-                "declaration"
+                "declaration",
+                "globalScope"
               ]
             }
           }
@@ -82,7 +83,8 @@
               "text": "twice",
               "type": "function",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -95,7 +97,8 @@
               "text": "start",
               "type": "method",
               "modifiers": [
-                "declaration"
+                "declaration",
+                "classScope"
               ]
             }
           }
@@ -109,7 +112,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -120,7 +124,10 @@
           "value": {
             "semantic_token": {
               "text": "start",
-              "type": "method"
+              "type": "method",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         },
@@ -132,7 +139,8 @@
               "text": "reset",
               "type": "method",
               "modifiers": [
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -143,7 +151,10 @@
           "value": {
             "semantic_token": {
               "text": "twice",
-              "type": "function"
+              "type": "function",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         }

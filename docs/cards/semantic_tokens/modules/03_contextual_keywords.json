@@ -57,7 +57,8 @@
               "text": "module",
               "type": "struct",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }
@@ -68,7 +69,10 @@
           "value": {
             "semantic_token": {
               "text": "module",
-              "type": "struct"
+              "type": "struct",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -80,7 +84,8 @@
               "text": "m",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }
@@ -93,7 +98,8 @@
               "text": "import",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }
@@ -106,7 +112,8 @@
               "text": "module",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }

@@ -69,7 +69,10 @@
           "value": {
             "semantic_token": {
               "text": "value",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
