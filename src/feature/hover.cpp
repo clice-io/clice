@@ -282,7 +282,7 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
 /// generic lambda's `auto` parameter is the type its only call passes.
 auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> clang::QualType {
     auto type = value->getType();
-    if(!type->isDependentType()) {
+    if(type.isNull() || !type->isDependentType()) {
         return type;
     }
     /// The instantiated parameter keeps the spelling the call deduced; the

@@ -3,9 +3,9 @@
   "topic": "inlay_hints",
   "subtopic": "type_hints",
   "title": "Instantiated templates",
-  "summary": "A template body shows its hints once, and a variable whose type depends on the template shows the type the template's only instantiation gives it",
+  "summary": "A template body shows its hints once, but a variable whose type depends on the template shows none even when the only instantiation fixes it",
   "prose": "With two instantiations deducing different types there is no one type to show.",
-  "status": "supported",
+  "status": "partial",
   "issues": [
     "clangd#2275"
   ],
@@ -37,6 +37,7 @@
           "label": "single",
           "marker": "single",
           "value": {
+            "wrong": "the only instantiation, Single<char>, fixes the type of copy, which should show : char (clangd#2275)",
             "inlay_hints": [
               {
                 "line": {
@@ -50,22 +51,6 @@
                     "end": {
                       "line": 5,
                       "character": 19
-                    }
-                  }
-                }
-              },
-              {
-                "line": {
-                  "$place": "auto copy⟨: char⟩ = T();",
-                  "path": "main.cpp",
-                  "range": {
-                    "start": {
-                      "line": 6,
-                      "character": 8
-                    },
-                    "end": {
-                      "line": 6,
-                      "character": 24
                     }
                   }
                 }
