@@ -45,13 +45,9 @@ test(
     },
 );
 
-test(
-    "an unwritable output",
-    { except: { win32: "the error names the system's reason, which Windows words apart" } },
-    async (t) => {
-        await t.cli(inspect("main.cpp"), { stdout: "read only" });
-    },
-);
+test("an unwritable output", async (t) => {
+    await t.cli(inspect("main.cpp"), { stdout: "read only" });
+});
 
 // `2>&1` shares stderr's open file with stdout: only a serving master may
 // make it nonblocking, or a slow reader fails the writes.
