@@ -1,6 +1,6 @@
 ---
 name: translate-docs
-description: clice's glossary and page conventions for the Chinese (docs/zh) tree, on top of the shared translation rules of clice-io/docs. Read BEFORE translating, reviewing, or editing any docs/zh page.
+description: Read before translating, reviewing or editing any docs/zh page — clice's glossary and page conventions, on top of the shared translation rules of clice-io/docs.
 ---
 
 # Translating the clice docs into Chinese

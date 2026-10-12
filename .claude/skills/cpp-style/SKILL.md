@@ -1,6 +1,6 @@
 ---
 name: cpp-style
-description: clice C++ coding conventions — redundancy elimination (the rule we care most about), file organization, error/defense policy, template deduction and type-trait rules, naming, logging, modern C++/LLVM API preferences. Read BEFORE writing or modifying any C++ code.
+description: Read before writing, modifying or reviewing any C++ code — redundancy (the rule we care most about), modules and files, errors and defense, async, logging, naming, words, templates, API preferences.
 ---
 
 # clice C++ Coding Style
@@ -28,10 +28,10 @@ defending against ghosts.
   before you're done — simplification that removes a concept beats one
   that merely shortens lines.
 - **Delete, don't comment out.** Git history is the archive.
-
 - **One behavior difference is one options field.** Two behaviors of the
-  same logic are selected by a boolean in an options struct (`Options{.disk_only}`),
-  not by a subclass, a dummy collaborator, or a parallel code path.
+  same logic are selected by a boolean in an options struct
+  (`SemanticsOptions{.instantiations = true}`), not by a subclass, a dummy
+  collaborator, or a parallel code path.
 - **Cross-cutting invariants get a single writer.** Accounting, budgets,
   ownership and visibility guarantees live in one type whose methods are the
   only transitions and whose doc comment lists the invariants; before coding,
@@ -89,45 +89,13 @@ defending against ghosts.
 
 ## Error Handling (control flow)
 
-- **Prefer `if` with init-statements to tightly scope error variables**, but avoid them when they compromise code readability or flatten control flow.
-- **Omit redundant conditions:** If the error type provides an `operator bool` or evaluates implicitly (e.g., standard error codes, custom error wrappers), omit the redundant condition check.
-- **Avoid forced `else` branches:** If scoping the variable inside the `if` requires you to introduce an `else` block for the success path (especially when returning early on error), declare the variable in the local scope instead to keep the control flow flat.
-
-```cpp
-// Good: Omit redundant condition when the type has operator bool
-if (auto err = foo()) {
-    /* handle error */
-}
-
-// Bad: Redundant condition check
-if (auto err = foo(); err) {
-    /* handle error */
-}
-
-// Good: Use init-statement when a custom condition is required,
-// AND the variable isn't needed outside the if-statement
-if (auto result = foo(); !result.has_value()) {
-    /* handle error */
-}
-
-// --- Scope and Control Flow Considerations ---
-
-// Bad: Using init-statement forces an 'else' block because 'result'
-// goes out of scope, leading to nested/redundant code.
-if (auto result = get_data(); !result.has_value()) {
-    return result.error();
-} else {
-    process(result.value()); // Success path is forced into a nested block
-}
-
-// Good: Declare as a regular local variable to allow early exit
-// and keep the success path un-nested (flat control flow).
-auto result = get_data();
-if (!result.has_value()) {
-    return result.error();
-}
-process(result.value());
-```
+- Scope an error variable with an `if` init-statement when nothing after
+  the `if` needs it: `if (auto result = foo(); !result.has_value())`.
+- A type with `operator bool` needs no condition: `if (auto err = foo())`,
+  never `if (auto err = foo(); err)`.
+- When the success path needs the variable, declare it as a plain local
+  and return early on the error — never an init-statement that forces the
+  success path into an `else`.
 
 ## Concurrency & Async
 
@@ -205,51 +173,17 @@ Domain words with one meaning each — use them only in that meaning:
 - **stamp**: in `vfs` only, a file's change fingerprint (size + mtime +
   ctime).
 
-## Template & Type Traits
+## Templates, Type Traits & Concepts
 
-- Do NOT blindly add `std::remove_cvref_t` on every template parameter. Understand C++ template argument deduction rules:
-  - `template<typename T> void f(T x)` — `T` is always deduced as a non-reference, non-cv-qualified type. No need for `remove_cvref_t`.
-  - `template<typename T> void f(T& x)` — `T` is deduced as the referred-to type (possibly cv-qualified, but never a reference). No need for `remove_cvref_t` to strip references.
-  - `template<typename T> void f(const T& x)` — `T` is deduced as a non-const, non-reference type. No need for `remove_cvref_t`.
-  - `template<typename T> void f(T&& x)` — **forwarding reference**: `T` CAN be deduced as an lvalue reference (e.g., `int&`). This is the ONLY case where `std::remove_cvref_t<T>` is needed to get the bare type.
-  - Class template parameters and return types are also never deduced as references; don't add `remove_cvref_t` on them either.
-
-## Type Traits & Concepts (C++20/23)
-
-- This project targets C++20/23. Use variable templates directly for type traits — do NOT use the old pattern of wrapping a class template static member in a variable template. Prefer:
-
-  ```cpp
-  // Good: directly specialize a variable template
-  template<typename T>
-  inline constexpr bool is_my_type_v = false;
-
-  template<>
-  inline constexpr bool is_my_type_v<MyType> = true;
-  ```
-
-  ```cpp
-  // Bad: unnecessary class template wrapper
-  template<typename T>
-  struct is_my_type : std::false_type {};
-
-  template<>
-  struct is_my_type<MyType> : std::true_type {};
-
-  template<typename T>
-  inline constexpr bool is_my_type_v = is_my_type<T>::value;
-  ```
-
-- When defining a concept that checks a type trait, do NOT add `std::remove_cvref_t` unless you specifically intend the concept to see through references/cv-qualifiers. If the concept is meant for a bare type, just use `T` directly — the caller is responsible for passing the right type.
-
-  ```cpp
-  // Good
-  template<typename T>
-  concept MyTrait = is_my_type_v<T>;
-
-  // Bad: unnecessary remove_cvref_t
-  template<typename T>
-  concept MyTrait = is_my_type_v<std::remove_cvref_t<T>>;
-  ```
+- `std::remove_cvref_t<T>` only where `T` can be deduced as a reference:
+  a forwarding reference `T&&`. `T`, `T&` and `const T&` parameters,
+  class template parameters and return types never deduce one.
+- A type trait is a variable template specialized directly
+  (`template<> inline constexpr bool is_my_type_v<MyType> = true;`), never
+  a variable template wrapping a class template's `::value`.
+- A concept over a trait uses `T` as is (`concept MyTrait = is_my_type_v<T>;`)
+  unless it deliberately sees through references and cv-qualifiers; the
+  caller passes the right type.
 
 ## String Literals
 

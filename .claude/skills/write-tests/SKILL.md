@@ -1,6 +1,6 @@
 ---
 name: write-tests
-description: How to write clice tests — cases under tests/ (their contract is tests/README.md), C++ unit tests, hard rules and known pitfalls. Read BEFORE writing or modifying anything under tests/ or unittests/.
+description: Read before writing or modifying anything under tests/ or unittests/, or the tools' own tests — the case workflow, unit tests, hard rules and known pitfalls.
 ---
 
 # Writing clice tests
@@ -26,8 +26,7 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
    when the inherited script does not fit; a `README.md` only when the case
    shows a capability a reader should see. A case that pins an edge or a
    fixed bug has no README.
-3. Run it alone:
-   `CLICE_CASES=<topic>/<subtopic>/NN_name CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice pixi run npm run cases -w tests`.
+3. Run it alone: `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run cases-test`.
    `UPDATE_SNAPSHOTS=1` writes its `snap.toml` (and a documented case's card
    under `docs/cards/`) and prints what changed: review every block like
    code. What clice gets wrong stays in the output, with
@@ -39,10 +38,9 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
 
 ## Hard rules
 
-- **Never** skip, `.fails` or `.todo` a test, weaken an assertion or a
-  snapshot to get green, or add retries around flakiness — fix the root
-  cause. `except: { <platform>: "why" }` is for a test with no meaning on a
-  platform, never for one that fails there.
+- `.fails`, `.todo` and a weakened assertion or snapshot are skipping a
+  test (CLAUDE.md). `except: { <platform>: "why" }` is for a test with no
+  meaning on a platform, never for one that fails there.
 - An `answers` test whose inspect and server outputs differ shows a real
   divergence: fix it, or declare `paths` with the reason. Never
   `UPDATE_SNAPSHOTS` over it.
@@ -62,7 +60,7 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
 ## Known pitfalls (each cost a real debugging session)
 
 - JS numbers mangle 64-bit values: parse such JSON with `JSON.rawJSON` or a
-  BigInt reviver; `clice query` answers carry symbol ids as `#<hex>` strings
+  BigInt reviver; the CLI's answers name symbols by `#<hex>` locator strings
   for this reason.
 - Python-style truthiness does not port: `expect([]).toBeFalsy()` fails —
   assert `length` explicitly.
@@ -74,23 +72,23 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
   server; `spawnSync` has a 1MB default `maxBuffer` that silently kills
   children.
 - `§` is always a marker: a literal `(` right after an unnamed one is
-  written `§()`, and case text never contains a literal `§` — a full-dump
-  canary once collapsed to one line because of a `§` in its own comment.
+  written `§()`, and case text never contains a literal `§`, comments
+  included.
 - Include-completion cases use an include prefix unique to the case: the
   pixi env's `$PREFIX/include` leaks into the search path and `-nostdinc`
   does not stop it. Completion statements end with `;` — an unterminated
   statement drags the next marker into recovery context.
 - Windows file timestamps tick at ~15.6 ms: two touches inside one tick
   stat equal, so a test that needs distinct mtimes sets them explicitly.
-- LMDB reads come from a resident snapshot: `advance` after a write before
+- LMDB reads come from a resident snapshot: advance it after a write before
   expecting visibility, and a test double wrapping `BlobDatabase` must
-  forward `advance`/`retire`/`grow` or the snapshot never moves. Probe blob
+  forward `advance_read_snapshot`/`retire_old_snapshot`/`grow` or the
+  snapshot never moves. Probe blob
   keys go through the path pool's canonical spelling (Windows 8.3 short
   names hash differently).
-- Tester's module compile once wrote no BMI at all (the syntax-only
-  overload cleared the output file) and module tests stayed green on
-  lexical tokens alone — when touching the Tester compile path, check that
-  a PCM is really produced.
+- Module tests stay green on lexical tokens alone even when the Tester
+  writes no BMI at all: when touching the Tester compile path, check that a
+  PCM is really produced.
 - Under `-ffreestanding` clang recognizes no library builtins
   (`getBuiltinID` is 0): logic keyed on builtin recognition behaves
   differently in unit tests than under a hosted `clice inspect`.
@@ -108,6 +106,8 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
 
 ## C++ unit tests (zest)
 
+- Names of at most four words; what belongs in a unit test rather than a
+  case is in `tests/README.md`, "Unit tests".
 - zest constructs a fresh suite object for every `ZEST_CASE`: no `reset()`
   / `clear()` helpers, shared initialization goes in the suite's
   constructor (`ZEST_SUITE(Name)` declares `struct NameTEST`). A

@@ -1,13 +1,13 @@
 ---
 name: upgrade-llvm
-description: Complete workflow for upgrading the LLVM clice builds with and links — the xclang release, the pins, regenerating modules/, API adaptation, changelogs. Arg = the xclang version, e.g. 23.1.2.1. Its Step 4 is also how modules/ is regenerated after any other library modules/ wraps moves.
+description: Read before upgrading xclang/LLVM (arg = the xclang version, e.g. 23.1.2.1), touching MODULE.bazel, .bazelrc, BUILD.bazel or bazel/, or regenerating modules/ after a library bump.
 ---
 
 Upgrade LLVM to a new version. Accepts the xclang version as argument (e.g., `23.1.2.1`: LLVM 23.1.2, xclang's first build of it).
 
-The compiler clice builds with and the LLVM/Clang libraries it links both come from one [xclang](https://github.com/clice-io/xclang) release: xclang's Bazel module (registry https://bazel.clice.io) brings the toolchain and the release's `libclang-<version>-<triple>[-asan].tar.xz` archives as repositories, and the conda package `xclang` (channel `https://conda.clice.io`) the LLVM tools the tests and the packaging run. They always move together: the archives hold ThinLTO bitcode, which only the LLVM that wrote it is sure to read. clice imports libclang's headers, with every other third-party library's, through the generated module in `modules/`, so an upgrade regenerates it before anything builds. Follow each step in order. Steps that involve CI should use polling (check every ~5 minutes) to wait for completion.
+The compiler clice builds with and the LLVM/Clang libraries it links both come from one [xclang](https://github.com/clice-io/xclang) release: xclang's Bazel module (registry https://bazel.clice.io) brings the toolchain and the release's `libclang-<version>-<triple>[-asan].tar.xz` archives as repositories, and the conda package `xclang` (channel `https://conda.clice.io`) the LLVM tools the tests and the packaging run. They always move together: the archives hold ThinLTO bitcode, which only the LLVM that wrote it is sure to read. clice imports libclang's headers, with every other third-party library's, through the generated module in `modules/`, so an upgrade regenerates it before anything builds. Follow each step in order.
 
-**Read `toolchain-changelog.md` in this directory before touching `MODULE.bazel`, `.bazelrc`, `BUILD.bazel` or `bazel/`**: it records every platform pitfall met so far (symptom, cause, fix, how to check). Every new one is appended there in the same shape; a toolchain change without an entry is not finished.
+**Read `toolchain-changelog.md` in this directory before touching `MODULE.bazel`, `.bazelrc`, `BUILD.bazel` or `bazel/`**: it records the platform pitfalls that still apply (symptom, cause, fix, how to check). Every new one is added there in the same shape; a toolchain change without an entry is not finished.
 
 The work runs on two boxes (the agent-box skill), leased once and kept for the whole upgrade: a Linux one, which also cross-builds arm64 Linux and both Windows targets as CI does, and a macOS one, which builds its own and x64 macOS.
 
@@ -23,14 +23,14 @@ Every target clice builds needs its `libclang-<VERSION>-<triple>.tar.xz`, and th
 
 ## Step 2: A clice to Regenerate With
 
-On both boxes, build clice from `main` as it is, before any pin moves, and keep it aside:
+On both boxes, build clice from this tree before any pin moves, and keep it aside:
 
 ```bash
 pixi run build RelWithDebInfo
 rm -rf ~/clice-bin && cp -RL build/RelWithDebInfo/bin ~/clice-bin
 ```
 
-The new headers need not build the old `modules/` (a name it exports may be gone upstream), and regenerating only reads them: any recent clice does.
+The new headers need not build the old `modules/` (a name it exports may be gone upstream), and regenerating only reads them. But the clice must carry this tree's own `clice modularize`: one built from an older tree writes another shape (thousands of extra lines of enum wrappers). main's CI build artifact (`build-<triple>-RelWithDebInfo`) serves as well; a box that skips the build then needs `pixi run install-tests` before Step 4, or `npx bazel` gets a 404.
 
 ## Step 3: Pin It
 
@@ -64,6 +64,7 @@ Each configuration takes about half a minute. Nothing under `modules/` but `dema
 - `generate` compiles `demand.cpp` first, so a header that moved or went upstream stops it there: fix the include in `demand.cpp`, as the API adaptation of Step 5 would in clice's own files.
 - A warning from `clice modularize` stops it too: a header the partition leaves to the program means a library's include directory moved (the partition's globs are in `scripts/modules.py`).
 - What only some configurations export lands under their conditions in `deps.cppm`; what clice uses on one platform alone is written under that platform's `#ifdef` in `demand.cpp` (`llvm/Support/WindowsError.h` under `_WIN32`).
+- The macOS wrappings list lmdb, spdlog and simdjson after kotatsu, the Linux ones before it; that order difference alone is expected.
 
 The diff of `modules/` is part of the upgrade's review: names the libraries dropped or renamed, and macros that changed.
 
@@ -85,9 +86,9 @@ Strategy:
 
 1. Fix header/namespace changes first (mechanical). A header, name or macro clice now needs that `modules/` does not export goes into `demand.cpp`, and Step 4 runs again.
 2. Fix type system and signature changes (requires understanding semantics)
-3. Update test expectations (AST structure changes affect test output)
+3. Update the case outputs upstream changed: `UPDATE_SNAPSHOTS=1`, every changed block reviewed like code (the write-tests skill)
 4. Ensure `pixi run unit-test RelWithDebInfo` passes
-5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an agent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unittests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
+5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an Opus subagent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unittests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
 6. Bump `index_format_version` in `src/index/serialization.cppm`: entity hashes (`src/compile/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
 7. A library clice starts using directly is added to `LLVM_LIBRARIES` in `bazel/BUILD.bazel`. xclang's libclang archives carry only the libraries clice uses: one they lack goes into xclang's `toolchain/cmake/caches/clang.cmake` (`LLVM_Development_DISTRIBUTION_COMPONENTS`) first, and needs a new xclang release
 
@@ -95,44 +96,22 @@ When a fix is not obvious, read the LLVM source code to understand the new API. 
 
 Then the unit tests and the cases on the Linux box, and a build of every other configuration on the box that builds it: `pixi run build Debug` on both boxes (the ASan libclang, built with assertions, declares more than the release one), `pixi run build RelWithDebInfo` on macOS, and `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:<triple>` for the cross ones. CI runs them all, but a configuration that does not build is found faster here.
 
-## Step 6: Create PR
+## Step 6: Write the Changelogs (REQUIRED)
 
-```bash
-git checkout -b chore/upgrade-llvm-XX
-git add -A
-git commit -m "chore: upgrade LLVM to XX.Y.Z"
-git push -u origin chore/upgrade-llvm-XX
-gh pr create --title "chore: upgrade LLVM to XX.Y.Z" --body "..."
-```
+Toolchain-level findings on clice's side (`MODULE.bazel`, `.bazelrc`, `BUILD.bazel`, `bazel/`, CI mechanics; the toolchain itself keeps its own notes in xclang) go to `toolchain-changelog.md` in this directory, in its symptom / cause / fix / check shape. API changes go to `llvm-changelog.md`, maintainer reference material, deliberately not a docs page.
 
-## Step 7: Write the Changelogs (REQUIRED)
-
-Toolchain-level findings on clice's side (`MODULE.bazel`, `.bazelrc`, `BUILD.bazel`, `bazel/`, CI mechanics; the toolchain itself keeps its own notes in xclang) go to `toolchain-changelog.md` in this directory, in its symptom / cause / fix / check table shape. API changes go to `llvm-changelog.md` as described below.
-
-**Every LLVM upgrade MUST append to `llvm-changelog.md` in this skill's directory** (`.claude/skills/upgrade-llvm/llvm-changelog.md`). It is maintainer reference material, deliberately not a docs page.
-
-Add a new H2 section (e.g., `## LLVM 22 → 23`) documenting all breaking changes encountered. For each API change, record:
+Every LLVM upgrade adds a new H2 section to `llvm-changelog.md` (e.g., `## LLVM 22 → 23`) documenting all breaking changes encountered. For each API change, record:
 
 - Change description
 - Upstream commit hash
 - PR number (link to `https://github.com/llvm/llvm-project/pull/<NUM>`)
 - Impact on clice
 
-To find upstream commits, search the LLVM git history between version tags:
+To find upstream commits, search the LLVM git history between version tags (`git log --oneline llvmorg-<OLD>..llvmorg-<NEW> -- clang/include/clang/AST/` in `../llvm-project`, or the GitHub history). Group changes by category with a table per category, as the newest section does.
 
-```bash
-# If ../llvm-project exists locally:
-cd ../llvm-project
-git log --oneline llvmorg-<OLD>..llvmorg-<NEW> -- clang/include/clang/AST/
-```
+## Step 7: Report and Wait
 
-If the LLVM source is not available locally, look up changes on GitHub by searching the LLVM repository commit history.
-
-Group changes by category (Type System, NNS, Driver/Frontend, Other) with a table per category. See the existing `LLVM 21 → 22` section as a template.
-
-## Step 8: Report to User
-
-Present a summary to the user and **wait for confirmation** before considering the upgrade complete. The summary should include:
+Present a summary to the maintainer and **wait for confirmation** before opening the PR. The summary should include:
 
 - All API changes that were adapted and how they were resolved
 - What the regenerated `modules/` dropped, and what `demand.cpp` gained
@@ -140,10 +119,14 @@ Present a summary to the user and **wait for confirmation** before considering t
 - Any unavoidable behavior changes from upstream LLVM (e.g., TypePrinter output differences, type sugar changes) that affect user-visible features like hover
 - The LLVM changelog that was written
 
-The user decides whether all changes are acceptable or if adjustments are needed. Do NOT push final changes or mark the work as done until the user confirms.
+The maintainer decides whether all changes are acceptable or if adjustments are needed.
+
+## Step 8: The PR
+
+From the branch `chore/upgrade-llvm-<major>` (created from fresh `origin/main` at the start, CLAUDE.md), the pr skill takes over; the title is `chore: upgrade LLVM to <X.Y.Z>`.
 
 ## Notes
 
 - **Other libraries**: a version bump of kotatsu or any other library `modules/` wraps (its `bazel_dep` in `MODULE.bazel`) is Steps 2 and 4 alone, then the build; so is clice starting to use a header or macro `modules/` does not export yet. A new library is added to `LIBRARIES` in `modules/modules.bzl` and to the partition in `scripts/modules.py`.
-- **Private headers**: clice includes no private clang headers, and xclang's libclang archives carry none since 23.1.2.6; one clice starts to need goes into xclang's libclang package (`toolchain/` in xclang) first.
+- **Private headers**: clice includes no private clang headers, and xclang's libclang archives carry none; one clice starts to need goes into xclang's libclang package (`toolchain/` in xclang) first.
 - **Debug builds**: ASan builds (`bazel/clice.bazelrc`'s Debug) link the ASan libclang, which xclang builds for x86_64 Linux and arm64 macOS (its `@libclang` follows `--features=asan`); the other targets have no Debug build.

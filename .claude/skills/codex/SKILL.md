@@ -1,15 +1,16 @@
 ---
 name: codex
-description: Drive the codex CLI (GPT-6 astra) as a delegate — adversarial plan review, code review, debugging, test writing, scoped implementation. Read BEFORE invoking codex.
+description: Read before running the codex CLI (GPT-6 astra) — the additional reviewer of the pr skill's self-review, plan attacks, debugging, scoped implementation. Only when codex is logged in and has quota.
 ---
 
 # Codex Delegation
 
-`codex` is an installed CLI agent backed by GPT-6 astra — cheap, strong, and
-independent of this session's blind spots. Prefer it for: adversarial review of
-a design or plan, pre-PR code review, root-causing a bug, adding tests to probe
-behavior, and implementing well-scoped tasks. The independence is the value: it
-was not part of writing the thing it reviews.
+`codex` is an installed CLI agent backed by GPT-6 astra. Its value is
+independence: it did not write what it reviews. It is always optional — an
+additional reviewer beside the Opus reviewers of the pr skill, a second
+opinion on a plan, a debugger, an implementer of a well-scoped task. Use it
+only when it is logged in (`codex login status`) and has quota; when either
+fails, carry on without it and without comment.
 
 ## Invocation
 
@@ -17,7 +18,7 @@ was not part of writing the thing it reviews.
 codex exec -m gpt-6-astra -c model_reasoning_effort=xhigh \
   --dangerously-bypass-approvals-and-sandbox \
   -o /tmp/codex-<topic>.md \
-  "<prompt>"
+  "<prompt>" < /dev/null
 ```
 
 - Always pass `-o` — it writes the final reply to a file; stdout mixes it into
@@ -50,22 +51,23 @@ codex exec -m gpt-6-astra -c model_reasoning_effort=xhigh \
   (review, test writing, implementation) must be told in the prompt which
   rule files to read first, e.g. `.claude/CLAUDE.md` and the cpp-style skill.
 
-The canonical code-review invocation is the standard form with a prompt that
-loads the repo rules and reviews the branch diff:
+The review command for the pr skill's self-review loads the repo rules and
+carries the same fixed constraints as the Opus reviewers:
 
 ```bash
 codex exec -m gpt-6-astra -c model_reasoning_effort=xhigh \
   --dangerously-bypass-approvals-and-sandbox -o /tmp/codex-review-<topic>.md \
   "Read .claude/CLAUDE.md and .claude/skills/cpp-style/SKILL.md and apply
 their rules. Review the changes in 'git diff origin/main...HEAD' for
-correctness, style, and test coverage. Report ranked findings, each with
-file:line and a concrete failure scenario."
+correctness, rule violations and test coverage. Report only defects that
+lead to a concrete failure scenario, each with file:line and the scenario.
+Nothing outside this diff's scope; no refactoring or style-preference
+suggestions." < /dev/null
 ```
 
-The built-in `codex exec review --base origin/main` collects the diff itself,
-but `--base` is mutually exclusive with the prompt argument, so it can never
-see the repo rules — use it only as a quick rules-blind supplementary pass
-(also `--uncommitted`, `--commit <sha>`).
+`codex exec review --base origin/main` cannot take a prompt (`--base` and the
+prompt argument are mutually exclusive), so it never sees the repo rules — not
+for self-review.
 
 ## Multi-round sessions
 
@@ -76,8 +78,8 @@ fresh session. Execution-scoped flags are NOT inherited from the resumed
 session: repeat `-m gpt-6-astra`, `-c model_reasoning_effort=xhigh`,
 `--dangerously-bypass-approvals-and-sandbox`, and a fresh `-o` path on every
 resume, or the follow-up silently runs on the default model at default
-effort, sandboxed, and without an output file. `codex exec fork <session-id>` branches one history
-into independent continuations.
+effort, sandboxed, and without an output file. `codex exec fork <session-id>`
+branches one history into independent continuations.
 
 ## Wording
 
@@ -101,9 +103,9 @@ only a fresh session recovers). Rules:
 
 - **Codex output is hypothesis, not verdict.** Every concrete claim ("this
   input breaks it") gets an empirical probe before you act on it; "looks fine"
-  carries no weight. Experience runs both ways — codex has correctly refuted
-  arguments this side was sure of, and confidently asserted things a probe then
-  disproved. The probe decides, never authority.
+  carries no weight. Codex has correctly refuted arguments this side was sure
+  of, and confidently asserted things a probe then disproved. The probe
+  decides, never authority.
 - **Adversarial loop** (plans/designs): write the doc → codex attacks it
   (demand concrete counterexamples, not general commentary) → probe each
   counterexample → revise the doc, recording adopted and refuted findings →
@@ -111,16 +113,16 @@ only a fresh session recovers). Rules:
   confirmed finding.
 - **When codex edits code** (implementation, debug fixes, new tests): review
   its diff as you would a PR — you own what gets committed. Verification
-  (build + suites) happens in the main session, and the hard rules (never
-  weaken tests, never push unverified) apply unchanged to codex-authored code.
-  Any run that may modify files gets its own git worktree — the main checkout
-  is for analysis-only runs, or edits will race with this session's.
+  (build + suites) happens in the main session, and the hard rules apply
+  unchanged to codex-authored code. Any run that may modify files gets its
+  own git worktree — the main checkout is for analysis-only runs, or edits
+  will race with this session's.
 - **Never let codex run the cases while this session might also run them**
   — two full runs at once on one machine slow both. Either codex runs them
   and you don't, or codex analyzes and you verify.
 - **Keep codex's raw output out of the main context.** Progress checks on a
   background run (log tail, new commits, report landed?) and the review of a
-  codex-authored diff go through a cheaper subagent that returns a digest or
+  codex-authored diff go through an Opus subagent that returns a digest or
   ranked findings; the main session spot-checks and decides.
 
 ## Recipes
@@ -128,15 +130,15 @@ only a fresh session recovers). Rules:
 - **Plan review**: point it at the doc path; ask for attacks ranked by
   severity, each with a minimal counterexample. Fold confirmed findings back
   into the doc.
-- **Code review**: the canonical review command above — the primary
-  self-review pass of the pr skill.
+- **Code review**: the review command above, beside the pr skill's Opus
+  reviewers.
 - **Debug**: give the failing test, the repro command, and the suspect area;
   ask for a root-cause hypothesis plus the experiment that would confirm it.
   Let it run the repro itself.
 - **Test writing**: point it at the write-tests skill, `tests/README.md`
-  and 2-3 neighboring cases as the template; ask it to add cases probing a specific behavior
-  and report which outputs look wrong versus expected. Suspicious snapshot
-  diffs are findings — never `UPDATE_SNAPSHOTS` over them.
+  and 2-3 neighboring cases as the template; ask it to add cases probing a
+  specific behavior and report which outputs look wrong versus expected.
+  Suspicious snapshot diffs are findings — never `UPDATE_SNAPSHOTS` over them.
 - **Implementation**: a well-scoped task with acceptance criteria and pointers
   to the 2-3 existing features whose structure it should copy. Then review and
   verify as above.
@@ -145,9 +147,10 @@ only a fresh session recovers). Rules:
 
 To stop a hung run, kill the PID you recorded at launch (`$!` for a shell
 background job, the task's PID otherwise) and its subtree — other codex
-runs may be live in parallel. When the PID is lost, `pgrep -af 'codex
-exe[c]'` lists the candidates to pick from; never `pkill -f 'codex exec'`,
-which matches your own shell's command line and kills it.
+runs may be live in parallel. When the PID is lost,
+`pgrep -af 'codex exe[c]'` lists the candidates to pick from; never
+`pkill -f 'codex exec'`, which matches your own shell's command line and
+kills it.
 
 If a run dies before writing `-o`, the transcript is at
 `~/.codex/sessions/YYYY/MM/DD/*.jsonl`; the final reply is the last record

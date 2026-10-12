@@ -1,6 +1,6 @@
 ---
 name: docs
-description: The clice documentation system — generated feature/config pages, how clice runs the shared en↔zh translation checker, and the pixi commands driving them. Read BEFORE editing anything under docs/.
+description: Read before editing anything under docs/, and for the end-of-branch docs sync — generated feature and config pages, the en↔zh translation checker, the pixi commands driving them.
 ---
 
 # Documentation system
@@ -74,8 +74,8 @@ references here and in the translate-docs skill. What clice adds on top:
 
 Generated regions and translations are synced **once per branch, right
 before the pre-push checks** of the pr skill — not after every case or
-page edit, and not in the main conversation: delegate it to a subagent so
-the report output and page texts never enter the main context. Give the
+page edit, and not in the main conversation: delegate it to an Opus
+subagent so the report output and page texts never enter the main context. Give the
 subagent this skill and `git diff --name-only origin/main...HEAD`; its
 brief is:
 
@@ -95,14 +95,9 @@ brief is:
 4. Report back: pages touched, how many segments were translated, and
    anything deliberately left as is.
 
-**docs/ contains no changelog content at all** — neither per-page
-"Changelog" sections nor standalone changelog pages. Both were removed
-deliberately (2026-09) as redundant maintenance burden; do not reintroduce
-them. Feature history lives in git/PRs; LLVM upgrade notes live in the
-upgrade-llvm skill's `llvm-changelog.md`. For future deliberately
-untranslated pages, the checker takes `--ignore=GLOB` (none today): a
-matching page needs no zh counterpart and no mapping; pass it to the pixi
-tasks and the action's `ignore` input alike.
+**docs/ contains no changelog content** — neither per-page "Changelog"
+sections nor changelog pages. Feature history lives in git and PRs; LLVM
+upgrade notes live in the upgrade-llvm skill's `llvm-changelog.md`.
 
 ## What belongs in a "Known Limitations" section
 
@@ -115,7 +110,3 @@ one-way: an internal item graduates into a doc limitation only once it is
 decided to be design (or long-term deferral), and a doc limitation is removed
 only when the design changes. Never reference internal IDs, file paths, or
 timelines in docs.
-
-The contract went live 2026-09-02: all pages machine-drafted, recorded,
-`check` green, and the gate wired into the CI docs check. The legacy hand-written zh tree it replaced survives in
-git history.

@@ -1,6 +1,6 @@
 ---
 name: format
-description: Format all project source files (C++, Python, Lua, JS/TS, Markdown, JSON, TOML, YAML). Run before every commit.
+description: Format every source file (C++, Python, Lua, JS/TS, Markdown, JSON, TOML, YAML) — run before every commit.
 ---
 
 Run: `pixi run format`
