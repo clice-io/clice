@@ -1,7 +1,8 @@
 // A container built the way the standard library builds std::vector: a
 // protected base holding the allocator, its `get_allocator` brought in with
 // a using-declaration. The element of a dependent `vector<vector<T>>`
-// completes as the element of a concrete one does.
+// completes as the element of a concrete one does; inside the container, the
+// protected base's members are accessible too.
 template <class T>
 struct allocator {};
 
@@ -24,6 +25,10 @@ public:
     using base::get_allocator;
     reference operator[](int index);
     int size() const;
+
+    void assign(vector<vector<T>>& rows) {
+        rows[0].§(inside);
+    }
 };
 
 struct Point {
