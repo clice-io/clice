@@ -15,6 +15,10 @@ void bindings() {
     for (auto& §(range_variable)item : items) {
         (void)item;
     }
+    Pair pairs[2]{};
+    for (auto [§(range_binding)key, value] : pairs) {
+        (void)key;
+    }
     int threshold = 3;
     auto above = [&§(capture)threshold](int v) { return v > §(capture_use)threshold; };
     (void)above;

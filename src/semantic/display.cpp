@@ -687,7 +687,8 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
         /// qualified.
         auto sugared = type;
         while(const auto* deduced = llvm::dyn_cast<clang::DeducedType>(sugared.getTypePtr())) {
-            if(!deduced->isDeduced()) {
+            /// A placeholder deduced as dependent has no type yet.
+            if(deduced->getDeducedType().isNull()) {
                 break;
             }
             sugared =
@@ -1225,8 +1226,9 @@ void print_decomposition(const clang::DecompositionDecl& decl,
     bindings += ']';
     decl.getTypeSourceInfo()->getType().print(os, policy, bindings);
 
+    /// A range-for's bindings are initialized from the range's iterator.
     const clang::Expr* init = decl.getInit();
-    if(!init || policy.SuppressInitializers) {
+    if(!init || policy.SuppressInitializers || decl.isCXXForRangeDecl()) {
         return;
     }
     bool call = decl.getInitStyle() == clang::VarDecl::CallInit;

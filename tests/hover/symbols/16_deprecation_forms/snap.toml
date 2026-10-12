@@ -61,3 +61,18 @@ void reset()
 ```
 '''
 range = "⟦reset⟧();"
+
+[answers.template_argument.hover]
+markdown = '''
+### struct `OldBox`
+
+---
+Deprecated: use Box
+
+---
+```cpp
+// In namespace deprecation_forms
+template <typename T> struct OldBox {}
+```
+'''
+range = "Uses<⟦OldBox⟧> uses;"

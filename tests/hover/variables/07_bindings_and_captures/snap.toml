@@ -43,6 +43,21 @@ auto &item
 '''
 range = "for (auto& ⟦item⟧ : items) {"
 
+[answers.range_binding.hover]
+markdown = '''
+### variable `key`
+
+---
+Type: `int`
+
+---
+```cpp
+// In bindings
+auto [key, value]
+```
+'''
+range = "for (auto [⟦key⟧, value] : pairs) {"
+
 [answers.capture.hover]
 markdown = '''
 ### variable `threshold`

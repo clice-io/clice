@@ -271,14 +271,19 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
     return "";
 }
 
-/// The kind a card names its declaration by. Unlike a token's kind, an
-/// operator function is a function or a method like any other, and a
-/// template is the entity it declares.
-auto card_kind(const clang::NamedDecl* decl) -> SymbolKind {
+/// The entity a template declares, the declaration itself otherwise: it
+/// holds the kind and the attributes.
+auto templated(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
     if(const auto* template_decl = llvm::dyn_cast<clang::TemplateDecl>(decl);
        template_decl && template_decl->getTemplatedDecl()) {
-        decl = template_decl->getTemplatedDecl();
+        return template_decl->getTemplatedDecl();
     }
+    return decl;
+}
+
+/// The kind a card names its declaration by. Unlike a token's kind, an
+/// operator function is a function or a method like any other.
+auto card_kind(const clang::NamedDecl* decl) -> SymbolKind {
     if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
         return function->isCXXClassMember() ? SymbolKind::Method : SymbolKind::Function;
     }
@@ -312,8 +317,8 @@ auto decl_hover(const clang::NamedDecl* decl,
         info.documentation = synthesize_documentation(decl);
     }
 
-    info.kind = card_kind(decl);
-    if(std::string message; decl->getMostRecentDecl()->isDeprecated(&message)) {
+    info.kind = card_kind(templated(decl));
+    if(std::string message; templated(decl)->getMostRecentDecl()->isDeprecated(&message)) {
         info.deprecation = std::move(message);
     }
 
@@ -1211,23 +1216,65 @@ bool is_hard_line_break_after(llvm::StringRef line, llvm::StringRef rest) {
     return punctuation_indicates_line_break(line) || is_hard_line_break_indicator(rest);
 }
 
-/// The text of inline reStructuredText: ``literals`` as code, links and
-/// cross references (`text <target>`_, :ref:`text <target>`) as their text.
+/// Plain reStructuredText with its inline markup taken out: backslash
+/// escapes, *emphasis*, **strong** and the trailing underscore of a
+/// reference_.
+auto rst_plain(llvm::StringRef text) -> std::string {
+    constexpr llvm::StringLiteral opening = " \t([{<'\"-/:";
+    constexpr llvm::StringLiteral closing = " \t)]}>'\"-/:.,;!?";
+
+    std::string plain;
+    for(std::size_t i = 0; i < text.size(); i += 1) {
+        char c = text[i];
+        if(c == '\\' && i + 1 < text.size()) {
+            i += 1;
+            if(!llvm::isSpace(text[i])) {
+                plain += text[i];
+            }
+            continue;
+        }
+
+        if(c == '*' && (i == 0 || opening.contains(text[i - 1]))) {
+            auto marker = text.substr(i).starts_with("**") ? llvm::StringRef("**") : "*";
+            auto inner = i + marker.size();
+            auto end = text.find(marker, inner);
+            if(inner < text.size() && !llvm::isSpace(text[inner]) && end != llvm::StringRef::npos &&
+               !llvm::isSpace(text[end - 1]) &&
+               (end + marker.size() == text.size() ||
+                closing.contains(text[end + marker.size()]))) {
+                plain += rst_plain(text.slice(inner, end));
+                i = end + marker.size() - 1;
+                continue;
+            }
+        }
+
+        if(c == '_' && i > 0 && llvm::isAlnum(text[i - 1]) &&
+           (i + 1 == text.size() || closing.contains(text[i + 1]))) {
+            continue;
+        }
+        plain += c;
+    }
+    return plain;
+}
+
+/// The text of inline reStructuredText: ``literals`` and interpreted text
+/// as code, links and cross references (`text <target>`_, :ref:`text
+/// <target>`) as their text.
 void parse_rst_inline(llvm::StringRef text, markup::Paragraph& out) {
     while(!text.empty()) {
         auto tick = text.find('`');
         if(tick == llvm::StringRef::npos) {
-            out.append_text(text);
+            out.append_text(rst_plain(text));
             return;
         }
 
         if(text.substr(tick).starts_with("``")) {
             auto end = text.find("``", tick + 2);
             if(end == llvm::StringRef::npos) {
-                out.append_text(text);
+                out.append_text(rst_plain(text));
                 return;
             }
-            out.append_text(text.substr(0, tick));
+            out.append_text(rst_plain(text.substr(0, tick)));
             out.append_code(text.slice(tick + 2, end));
             text = text.substr(end + 2);
             continue;
@@ -1235,7 +1282,7 @@ void parse_rst_inline(llvm::StringRef text, markup::Paragraph& out) {
 
         auto end = text.find('`', tick + 1);
         if(end == llvm::StringRef::npos) {
-            out.append_text(text);
+            out.append_text(rst_plain(text));
             return;
         }
 
@@ -1251,7 +1298,7 @@ void parse_rst_inline(llvm::StringRef text, markup::Paragraph& out) {
                 role = true;
             }
         }
-        out.append_text(before);
+        out.append_text(rst_plain(before));
 
         auto content = text.slice(tick + 1, end);
         text = text.substr(end + 1);
@@ -1271,20 +1318,6 @@ void parse_rst_inline(llvm::StringRef text, markup::Paragraph& out) {
         }
         out.append_text(content);
     }
-}
-
-/// The fence language of a code-block directive's argument.
-auto rst_code_language(llvm::StringRef argument) -> std::string {
-    if(argument == "c++") {
-        return "cpp";
-    }
-    if(argument == "objective-c") {
-        return "objc";
-    }
-    if(argument == "none" || argument == "text") {
-        return "";
-    }
-    return argument.str();
 }
 
 /// Renders clang's attribute documentation, which is reStructuredText
@@ -1326,51 +1359,32 @@ void parse_rst(llvm::StringRef input, markup::Document& output) {
     };
 
     std::string paragraph;
-    bool literal_follows = false;
     auto flush = [&] {
-        llvm::StringRef text = llvm::StringRef(paragraph).trim();
-        if(text.ends_with("::")) {
-            /// A literal block follows: "Example::" reads "Example:", and
-            /// "Example ::" or a lone "::" lose the colons.
-            literal_follows = true;
-            text = text.drop_back();
-            if(text == ":" || text.ends_with(" :")) {
-                text = text.drop_back().rtrim();
-            }
-        }
-        if(!text.empty()) {
+        if(auto text = llvm::StringRef(paragraph).trim(); !text.empty()) {
             parse_rst_inline(text, output.add_paragraph());
         }
         paragraph.clear();
     };
 
-    std::size_t paragraph_indent = 0;
+    /// The number of the last `#.` item of the list going on, 0 outside one.
+    std::size_t numbered = 0;
     for(std::size_t i = 0; i < lines.size();) {
-        auto line = lines[i];
-        auto text = line.trim();
-        auto indent = indent_of(line);
+        auto text = lines[i].trim();
         if(text.empty()) {
             flush();
             i += 1;
             continue;
         }
 
-        if(literal_follows) {
-            literal_follows = false;
-            if(indent > paragraph_indent) {
-                output.add_code_block(take_block(i, paragraph_indent), "");
-                continue;
-            }
-        }
-
         if(text.consume_front(".. ")) {
             flush();
+            auto indent = indent_of(lines[i]);
             auto [directive, argument] = text.split("::");
             argument = argument.trim();
             i += 1;
             auto body = take_block(i, indent);
             if(directive == "code-block" || directive == "code") {
-                output.add_code_block(std::move(body), rst_code_language(argument));
+                output.add_code_block(std::move(body), argument == "c++" ? "cpp" : argument.str());
             } else if(directive == "note" || directive == "warning") {
                 paragraph =
                     (directive == "note" ? "Note: " : "Warning: ") + argument.str() + " " + body;
@@ -1379,19 +1393,18 @@ void parse_rst(llvm::StringRef input, markup::Document& output) {
             continue;
         }
 
-        /// A section title is underlined; the title stays a paragraph.
-        if(text.size() >= 3 && llvm::all_equal(text) &&
-           llvm::StringRef("=-~^*").contains(text[0])) {
-            flush();
-            i += 1;
-            continue;
-        }
-
-        bool item = text.starts_with("- ") || text.starts_with("* ") || text.starts_with("#. ") ||
+        bool auto_numbered = text.starts_with("#. ");
+        bool item = auto_numbered || text.starts_with("- ") || text.starts_with("* ") ||
                     (llvm::isDigit(text[0]) && text.drop_while(llvm::isDigit).starts_with(". "));
         if(item || paragraph.empty()) {
             flush();
-            paragraph_indent = indent;
+            if(auto_numbered) {
+                numbered += 1;
+                paragraph = std::to_string(numbered);
+                text = text.drop_front(1);
+            } else if(indent_of(lines[i]) == 0) {
+                numbered = 0;
+            }
         }
         paragraph += text;
         paragraph += ' ';
