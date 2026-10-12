@@ -17,10 +17,10 @@ function big(t: TestContext): void {
     t.disk.write("big.cpp", generate.functions(SYMBOLS));
 }
 
-const POSIX = { except: { win32: "Windows has no SIGPIPE, FIFOs or sh" } };
+const POSIX = { except: { win32: "Windows has no FIFOs or sh" } };
 
 // A reader leaving ends the command quietly, as SIGPIPE ends any other.
-test("a reader that leaves", POSIX, async (t) => {
+test("a reader that leaves", async (t) => {
     big(t);
     await t.cli(INSPECT, { stdout: "closed early" });
 });

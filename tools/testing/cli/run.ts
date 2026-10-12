@@ -385,6 +385,19 @@ function spawnClice(
     });
 }
 
+/// How a run ended: its exit status, or the signal that killed it. Windows
+/// has no SIGPIPE: there clice ends with 141 where a reader that left would
+/// kill it (driver::write_output), the status a POSIX shell reports for
+/// that death, and it reads as the signal.
+function ending(status: number | null, signal: NodeJS.Signals | null): Table {
+    if (status === null) {
+        return { killed: String(signal) };
+    }
+    return process.platform === "win32" && status === 141
+        ? { killed: "SIGPIPE" }
+        : { exit: status };
+}
+
 /// Every file under `root` but the caches, by relative path.
 function contents(root: string): Map<string, Buffer> {
     const out = new Map<string, Buffer>();
@@ -457,9 +470,7 @@ export async function runCommand(
         transcript: {
             ...(stdout === "" || options.stdout !== undefined ? {} : { stdout }),
             ...(stderr.length === 0 ? {} : { stderr }),
-            ...(result.status === null
-                ? { killed: String(result.signal) }
-                : { exit: result.status }),
+            ...ending(result.status, result.signal),
             ...(Object.keys(files).length === 0 ? {} : { files }),
         },
         status: result.status,
