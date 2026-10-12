@@ -413,11 +413,11 @@ tests/semantic_tokens/modifiers/06_default_library
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#352 -->
+<!-- BEGIN CAPABILITY: supported clangd#352 -->
 
 **作用域修饰符**
 
-符号尚不带有函数、类、文件或全局作用域修饰符
+每个名称都标明其可见范围：所在函数、所在类、所在文件或全局
 
 ```case
 tests/semantic_tokens/modifiers/07_scopes
@@ -425,11 +425,11 @@ tests/semantic_tokens/modifiers/07_scopes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#839 -->
+<!-- BEGIN CAPABILITY: supported clangd#839 -->
 
 **可修改的实参**
 
-通过非 const 引用或指针传递的实参尚不带有修饰符
+若被调函数可能经由非 const 引用或指针修改某个实参，该实参会带有修饰符
 
 ```case
 tests/semantic_tokens/modifiers/08_mutable_arguments
@@ -437,11 +437,11 @@ tests/semantic_tokens/modifiers/08_mutable_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **推导出的类型**
 
-`auto` 和 `decltype` 尚不带有推导修饰符
+`auto` 和 `decltype` 按其所代表的类型着色，并带有推导修饰符
 
 ```case
 tests/semantic_tokens/modifiers/09_deduced_types

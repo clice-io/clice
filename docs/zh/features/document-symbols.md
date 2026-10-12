@@ -119,7 +119,7 @@ tests/document_symbol/symbol_kinds/02_templates
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: partial -->
 
 **模板特化和推导指引（deduction guides）**
 
@@ -145,7 +145,7 @@ tests/document_symbol/symbol_kinds/04_type_aliases
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: partial -->
 
 **显式实例化**
 
@@ -197,11 +197,11 @@ tests/document_symbol/symbol_kinds/10_includes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**#pragma mark**
+**Pragma mark 区段**
 
-`#pragma mark` 区段目前还不会显示在大纲中
+`#pragma mark - Name` 开启一个区段，将其后的符号归入其中
 
 ```case
 tests/document_symbol/symbol_kinds/11_pragma_marks
@@ -341,11 +341,11 @@ tests/document_symbol/symbol_ranges/04_macro_arguments
 
 <!-- BEGIN GENERATED ITEMS: document_symbol/symbol_tags -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **已弃用的符号**
 
-已弃用的符号尚无 Deprecated 标签
+已弃用的符号带有 Deprecated 标签，编辑器会以删除线显示
 
 ```case
 tests/document_symbol/symbol_tags/01_deprecated

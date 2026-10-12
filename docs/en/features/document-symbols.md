@@ -120,7 +120,7 @@ tests/document_symbol/symbol_kinds/02_templates
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: partial -->
 
 **Specializations and deduction guides**
 
@@ -147,7 +147,7 @@ tests/document_symbol/symbol_kinds/04_type_aliases
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: partial -->
 
 **Explicit instantiations**
 
@@ -200,11 +200,11 @@ tests/document_symbol/symbol_kinds/10_includes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**#pragma mark**
+**Pragma mark sections**
 
-`#pragma mark` sections do not list in the outline yet
+`#pragma mark - Name` opens a section that groups the symbols after it
 
 ```case
 tests/document_symbol/symbol_kinds/11_pragma_marks
@@ -344,11 +344,11 @@ Tags mark a symbol as deprecated or describe its access and storage.
 
 <!-- BEGIN GENERATED ITEMS: document_symbol/symbol_tags -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Deprecated symbols**
 
-A deprecated symbol does not carry the Deprecated tag yet
+A deprecated symbol carries the Deprecated tag, which editors strike through
 
 ```case
 tests/document_symbol/symbol_tags/01_deprecated

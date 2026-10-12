@@ -21,10 +21,10 @@ Language Server Protocol features available when using clice as an editor backen
 | [Rename](./rename.md)                     | 4 supported                               |
 | [Diagnostics](./diagnostics.md)           | 9 supported                               |
 | [Code Action](./code-action.md)           | 38 supported                              |
-| [Semantic Tokens](./semantic-tokens.md)   | 38 supported · 3 partial · 7 unsupported  |
+| [Semantic Tokens](./semantic-tokens.md)   | 41 supported · 2 partial · 5 unsupported  |
 | [Inlay Hints](./inlay-hints.md)           | 22 supported · 2 partial · 6 unsupported  |
 | [Document Links](./document-links.md)     | 7 supported · 1 partial                   |
-| [Document Symbols](./document-symbols.md) | 15 supported · 4 partial · 7 unsupported  |
+| [Document Symbols](./document-symbols.md) | 17 supported · 6 partial · 3 unsupported  |
 | [Folding Ranges](./folding-ranges.md)     | 19 supported                              |
 | [Selection Ranges](./selection-ranges.md) | 10 supported                              |
 | [Formatting](./formatting.md)             | 4 supported                               |

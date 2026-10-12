@@ -424,11 +424,11 @@ tests/semantic_tokens/modifiers/06_default_library
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#352 -->
+<!-- BEGIN CAPABILITY: supported clangd#352 -->
 
 **Scope modifiers**
 
-Symbols do not carry function, class, file or global scope modifiers yet
+Every name carries where it is visible from: its function, its class, its file or everywhere
 
 ```case
 tests/semantic_tokens/modifiers/07_scopes
@@ -436,11 +436,11 @@ tests/semantic_tokens/modifiers/07_scopes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#839 -->
+<!-- BEGIN CAPABILITY: supported clangd#839 -->
 
 **Mutable arguments**
 
-An argument passed by mutable reference or pointer does not carry a modifier yet
+An argument the callee may modify, through a reference or a pointer to non-const, carries a modifier
 
 ```case
 tests/semantic_tokens/modifiers/08_mutable_arguments
@@ -448,11 +448,11 @@ tests/semantic_tokens/modifiers/08_mutable_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Deduced types**
 
-`auto` and `decltype` do not carry the deduced modifier yet
+`auto` and `decltype` color as the type they stand for, with the deduced modifier
 
 ```case
 tests/semantic_tokens/modifiers/09_deduced_types
