@@ -2,9 +2,9 @@
 
 ## Run Tests
 
-clice has four types of tests that run on every change: unit tests, integration tests, smoke tests, and snap tests. Compatibility tests, which need real build systems and compilers, run separately.
+clice has two test suites that run on every change: the unit tests and the cases. Compatibility tests, which need real build systems and compilers, and the editor tests run separately.
 
-All test dependencies (node/npm for the integration suite and tools, python for scripts/) are managed by pixi — no separate installation needed.
+All test dependencies (node/npm for the cases and tools, python for scripts/) are managed by pixi — no separate installation needed.
 
 ### Unit Tests
 
@@ -19,89 +19,44 @@ Equivalent to:
 ./build/RelWithDebInfo/bin/bin/unittests --verbose
 ```
 
-### Integration Tests
+### Cases
 
-End-to-end tests that start a real `clice serve` instance and communicate via LSP protocol.
-
-```bash
-pixi run integration-test          # default RelWithDebInfo
-pixi run integration-test Debug    # debug build
-```
-
-The suite is TypeScript on vitest (`tests/`), speaking LSP through the
-official vscode-languageserver-protocol stack. Equivalent to:
+Every other test is a case under `tests-next/<topic>/<subtopic>/NN_name/`: a small project of its own, the checks to run on it, and `snap.toml`, every output the case pins. A case asks a real `clice serve`, `clice inspect` or a command, through the framework in `tools/testing/`, and the feature pages of these docs show the cases that have a `README.md`. [`tests-next/README.md`](https://github.com/clice-io/clice/blob/main/tests-next/README.md) is the contract: how a case is written, how it asserts and how its output reads.
 
 ```bash
-cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
-```
-
-A change to the TypeScript also passes `npm run check` at the repository root: strict tsc and ESLint over every package.
-
-Useful variants:
-
-```bash
-npx vitest run --config integration/vitest.config.ts integration/server/memory_ownership.test.ts   # one file
-```
-
-### Smoke Tests
-
-Replay recorded LSP sessions to catch regressions in protocol handling.
-
-```bash
-pixi run smoke-test          # default RelWithDebInfo
-pixi run smoke-test Debug    # debug build
+pixi run cases-test          # default RelWithDebInfo
+pixi run cases-test Debug    # debug build
 ```
 
 Equivalent to:
 
 ```bash
-node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/RelWithDebInfo/bin/bin/clice
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice npm run cases --workspace tests-next
 ```
 
-### Snap Tests
+`CLICE_CASES=hover/` runs the cases under a path. `UPDATE_SNAPSHOTS=1` rewrites their outputs and prints which changed; review the change like code.
 
-Feature snapshot corpora under `tests/snap/<feature>/`, with sources and snapshots side by side. The snap suite (`tests/snap/snap.test.ts`, domain logic in `tools/snap/`) pins every fixture from the paths its `verify:` mode asks for: inspect (one `clice inspect` process per fixture, no server involved) and server (replayed through a real server). The integration suite plays no part in snapshots.
-
-```bash
-pixi run snap-test          # default RelWithDebInfo
-pixi run snap-test Debug    # debug build
-```
-
-Equivalent to:
-
-```bash
-cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm run snap
-```
-
-A fixture is a single `.cpp`, or a subdirectory entered through its `main.cpp` — one multi-file unit whose sibling sources (module interfaces, headers, extra sources) belong to the fixture. A fixture that documents a capability lives in a section directory of the corpus as `<section>/NN_name.cpp` (or `<section>/NN_unit/main.cpp`) and opens with a `/// # Capability name` doc header — the name alone, at most five words — followed by its metadata list, where `status` (`supported`, `partial` or `unsupported`) is required, and a one-sentence summary paragraph that becomes the capability card's summary: the directory keys the feature page's generated region, the two-digit number orders the item within it, and the header feeds the page (see `tools/docs/feature.ts`). Edge-case fixtures without a doc header stay at the corpus root. Corpus-wide compile flags live in the corpus's `corpus.json` manifest; a fixture appends its own with `- flags: [...]`. Each server-path run materializes the fixture into a throwaway workspace (sources arrive on disk with `§`-annotations already stripped), so fixtures never share state and background indexing — off by default, enabled per fixture with `- indexing: true` — sees the same bytes the compiler does. A fixture that deliberately does not compile cleanly declares `- diagnostics: expected`; unexpected diagnostics fail the fixture, and so does a clean compile under that declaration.
-
-By default a fixture is `verify: both` with `snap: shared`: the inspect and server results must render byte-identically and are pinned by one `<name>.snap.yml`. A fixture whose two paths legitimately differ declares `- snap: separate` in its `///` doc header (with a `// snap:` comment explaining why) and each path pins its own `<name>.inspect.snap.yml` / `<name>.server.snap.yml`. A known-wrong divergence is declared as `- snap: skip`: the fixture runs nowhere and keeps no snapshot until the two paths agree. A feature that exists on only one path (include and import completion answered by the server; index dumps with no LSP request shape) declares `- verify: server` or `- verify: inspect` and that side owns the plain `<name>.snap.yml`.
-
-`UPDATE_SNAPSHOTS=1` updates everything in one run: inspect tests run first and own shared snapshot bodies; the server side can only update its own variants. A shared snapshot mismatch on the server side is a real divergence between the server pipeline and the direct feature call — investigate it instead of regenerating over it.
+A change to the TypeScript also passes `npm run check` at the repository root: strict tsc and ESLint over every package. `npm test --workspace tools` runs the tools' own tests.
 
 ### Run All Tests
 
 ```bash
-pixi run test                # runs unit + integration + smoke + snap
+pixi run test                # runs unit + cases
 pixi run test Debug          # all tests with debug build
 ```
 
 ## Editor E2E Tests
 
-Smoke tests that run real editors (headless Neovim and VSCode) against a locally built clice binary, covering startup, first diagnostics, hover, definition and completion on two fixtures (including a C++20 modules project). CI runs them in the `test-editor` job on Linux with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
+Smoke tests that run real editors (headless Neovim and VSCode) against a locally built clice binary, covering startup, first diagnostics, hover, definition and completion, and on a header the commands that show and switch its compilation context. They run on copies of three cases — a single file, a C++20 modules project and a header with two hosts — that `editor-prepare` writes under `.cache/editors`. CI runs them on the Linux x64 and macOS arm64 legs with the latest stable editor releases, on purpose unpinned: the job exists to catch breakage caused by new editor versions.
 
 ```bash
 $ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
-$ pixi run -e editor editor-test  # nvim + vscode, both fixtures
+$ pixi run -e editor editor-test  # nvim + vscode, all three projects
 ```
 
 Prerequisites outside the pixi env:
 
 - `nvim` (stable) on `PATH` for `nvim-e2e`.
-- A system `cmake`/`ninja`/`clang` for `editor-prepare` to configure the CMake-based module fixture (same assumption the integration tests make).
 - A display (or `xvfb-run`) plus the usual Electron system libraries for `vscode-e2e`.
 
 ## Compatibility Tests

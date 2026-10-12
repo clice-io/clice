@@ -115,10 +115,9 @@ only a fresh session recovers). Rules:
   weaken tests, never push unverified) apply unchanged to codex-authored code.
   Any run that may modify files gets its own git worktree — the main checkout
   is for analysis-only runs, or edits will race with this session's.
-- **Never let codex run the integration or snap suites while this session
-  might also run them** — concurrent runs in one checkout clobber each other's
-  workspace `.clice`. Either codex runs them and you don't, or codex analyzes
-  and you verify.
+- **Never let codex run the cases while this session might also run them**
+  — two full runs at once on one machine slow both. Either codex runs them
+  and you don't, or codex analyzes and you verify.
 - **Keep codex's raw output out of the main context.** Progress checks on a
   background run (log tail, new commits, report landed?) and the review of a
   codex-authored diff go through a cheaper subagent that returns a digest or
@@ -134,8 +133,8 @@ only a fresh session recovers). Rules:
 - **Debug**: give the failing test, the repro command, and the suspect area;
   ask for a root-cause hypothesis plus the experiment that would confirm it.
   Let it run the repro itself.
-- **Test writing**: point it at the write-tests skill and 2-3 neighboring
-  fixtures as the template; ask it to add cases probing a specific behavior
+- **Test writing**: point it at the write-tests skill, `tests-next/README.md`
+  and 2-3 neighboring cases as the template; ask it to add cases probing a specific behavior
   and report which outputs look wrong versus expected. Suspicious snapshot
   diffs are findings — never `UPDATE_SNAPSHOTS` over them.
 - **Implementation**: a well-scoped task with acceptance criteria and pointers

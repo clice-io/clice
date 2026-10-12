@@ -14,7 +14,7 @@ clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时还需要�
 # build (default RelWithDebInfo) into build/RelWithDebInfo
 pixi run build
 
-# unit + integration + smoke + snap tests
+# unit tests + cases
 pixi run test
 ```
 
@@ -23,9 +23,7 @@ pixi run test
 ```shell
 pixi run build Debug
 pixi run unit-test Debug
-pixi run integration-test Debug
-pixi run smoke-test Debug
-pixi run snap-test Debug
+pixi run cases-test Debug
 ```
 
 `pixi run build` 用 Bazel 构建 `//:dist`。每种构建类型都有自己的目录 `build/<type>`，其中的 `bin` 就是 Bazel 为该类型生成的输出树：clice 位于 `build/<type>/bin/bin/clice`，与之并列的是资源目录 `build/<type>/bin/lib/clang`，clice 从中读取 clang 的头文件；测试和编辑器都从这里运行它。

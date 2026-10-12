@@ -1,27 +1,25 @@
 ---
 name: test
-description: Run clice test suites. Optional args = suite (unit | integration | smoke | snap | all, default all) and build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context — test output stays out of the main conversation; only a digest returns.
+description: Run clice test suites. Optional args = suite (unit | cases | all, default all) and build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context — test output stays out of the main conversation; only a digest returns.
 context: fork
 ---
 
 Run the requested suites (default: all) against the requested build type (default `RelWithDebInfo`).
 
 - Unit tests: `pixi run unit-test [type]`
-- Integration tests: `pixi run integration-test [type]`
-- Smoke tests: `pixi run smoke-test [type]`
-- Snap tests: `pixi run snap-test [type]`
-- All tests: `pixi run test [type]`
+- Cases: `pixi run cases-test [type]`
+- Both: `pixi run test [type]`
+- The tools' own tests, which need no build: `pixi run npm test -w tools`
 
 Filtering specific tests:
 
 - Unit: `pixi run unit-test [type] -- --test-filter=SuiteName.CaseName` (also `SuiteName.*`)
-- Integration: `cd tests && CLICE_EXECUTABLE=../build/[type]/bin/bin/clice npx vitest run --config integration/vitest.config.ts integration/features/some.test.ts`
-- Smoke: `pixi run node tools/replay.ts tests/smoke/specific.jsonl --clice=./build/[type]/bin/bin/clice`
-- Snap: `cd tests && CLICE_EXECUTABLE=../build/[type]/bin/bin/clice npm run snap -- -t "<feature-or-fixture>"`
+- Cases: `CLICE_CASES=<path prefix> CLICE_EXECUTABLE=$PWD/build/[type]/bin/bin/clice pixi run npm run cases -w tests-next`, e.g. `CLICE_CASES=hover/` or `CLICE_CASES=hover/templates/06_template_forms`; the "Running" section of `tests-next/README.md` lists the rest.
+
+The compat suite (`pixi run compat-test`) and the editors' end-to-end tests (`pixi run -e editor editor-test`) need build systems and editors installed; run them only when asked.
 
 Rules:
 
 - This skill runs and reports — nothing else. Never fix code or tests from here, never skip or weaken anything, never set `UPDATE_SNAPSHOTS`. Fixing happens in the main conversation with full context.
-- Never run two suites concurrently — they share `tests/data` workspaces.
 
-Report back, per suite: pass/fail and counts. For each failure: test name, `file:line`, the assertion message or diff excerpt (trimmed), and the exact filter command to reproduce it.
+Report back, per suite: pass/fail and counts. For each failure: the test name (a case's is `<topic>/<subtopic>/<case> > <test>`), the assertion message or `snap.toml` diff excerpt (trimmed), and the exact filter command to reproduce it.

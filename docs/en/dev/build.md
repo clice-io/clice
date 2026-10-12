@@ -14,7 +14,7 @@ We ship several tasks; the commands below build and run tests:
 # build (default RelWithDebInfo) into build/RelWithDebInfo
 pixi run build
 
-# unit + integration + smoke + snap tests
+# unit tests + cases
 pixi run test
 ```
 
@@ -23,9 +23,7 @@ For finer-grained tasks (first argument sets the build type):
 ```shell
 pixi run build Debug
 pixi run unit-test Debug
-pixi run integration-test Debug
-pixi run smoke-test Debug
-pixi run snap-test Debug
+pixi run cases-test Debug
 ```
 
 `pixi run build` builds `//:dist` with Bazel. Each build type has a directory of its own, `build/<type>`, whose `bin` is Bazel's output tree of that type: clice is `build/<type>/bin/bin/clice`, next to the resource directory it reads clang's headers from, `build/<type>/bin/lib/clang`; the tests and the editors run it from there.

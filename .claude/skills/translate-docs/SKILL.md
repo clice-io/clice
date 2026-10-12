@@ -27,7 +27,7 @@ are in the docs skill.
 | Table headers                               | Option → 选项, Type → 类型, Default → 默认值, Status → 状态.                                                                                                                                                                           |
 | Status words                                | Fixed vocabulary only: 支持 / 部分支持 / 不支持 / 已实现 / 存根 / 计划中. The card sticker and the status table must use the same word, and a status table row and the card it points to use identical wording.                        |
 | Theme UI strings (查看示例, 悬停提示, 页脚) | Not in the pages; the site components switch on `lang`.                                                                                                                                                                                |
-| `snap` fences, `// snap:` blocks            | Code: never translated, comments included — they are part of the fixture, and a translated comment would no longer match the source the site renders.                                                                                  |
+| `case` fences                               | Never translated: the fence names the case whose card the site draws.                                                                                                                                                                  |
 
 ## By term
 

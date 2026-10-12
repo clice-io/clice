@@ -2,9 +2,9 @@
 
 ## 运行测试
 
-clice 有四种在每次改动时运行的测试：单元测试、集成测试、冒烟测试和快照测试。兼容性测试需要真实的构建系统和编译器，单独运行。
+clice 有两个在每次改动时运行的测试套件：单元测试和用例。兼容性测试需要真实的构建系统和编译器，与编辑器测试一样单独运行。
 
-全部测试依赖（集成测试套件和工具所需的 node/npm，以及 scripts/ 所需的 python）均由 pixi 管理，无需另行安装。
+全部测试依赖（用例和工具所需的 node/npm，以及 scripts/ 所需的 python）均由 pixi 管理，无需另行安装。
 
 ### 单元测试
 
@@ -19,88 +19,44 @@ pixi run unit-test Debug    # debug build
 ./build/RelWithDebInfo/bin/bin/unittests --verbose
 ```
 
-### 集成测试
+### 用例
 
-端到端测试会启动真实的 `clice serve` 实例，并通过 LSP 通信。
-
-```bash
-pixi run integration-test          # default RelWithDebInfo
-pixi run integration-test Debug    # debug build
-```
-
-该套件使用基于 vitest 的 TypeScript（`tests/`），并通过官方的 vscode-languageserver-protocol 栈进行 LSP 通信。等价于：
+其余测试都是 `tests-next/<topic>/<subtopic>/NN_name/` 下的用例：一个自成一体的小项目、要在它上面运行的检查，以及 `snap.toml`——用例固定下来的全部输出。用例通过 `tools/testing/` 中的框架向真实的 `clice serve`、`clice inspect` 或某个命令发出请求；本文档的功能页面展示的正是带有 `README.md` 的用例。[`tests-next/README.md`](https://github.com/clice-io/clice/blob/main/tests-next/README.md) 是这套测试的约定：用例怎么写、怎么断言、输出怎么读。
 
 ```bash
-cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm test
-```
-
-改动 TypeScript 时，还要在仓库根目录通过 `npm run check`：对每个包运行严格模式的 tsc 和 ESLint。
-
-常用变体：
-
-```bash
-npx vitest run --config integration/vitest.config.ts integration/server/memory_ownership.test.ts   # one file
-```
-
-### 冒烟测试
-
-回放已录制的 LSP 会话，以发现协议处理方面的回归问题。
-
-```bash
-pixi run smoke-test          # default RelWithDebInfo
-pixi run smoke-test Debug    # debug build
+pixi run cases-test          # default RelWithDebInfo
+pixi run cases-test Debug    # debug build
 ```
 
 等价于：
 
 ```bash
-node tools/replay.ts tests/smoke/*.jsonl \
-    --clice=./build/RelWithDebInfo/bin/bin/clice
+CLICE_EXECUTABLE=$PWD/build/RelWithDebInfo/bin/bin/clice npm run cases --workspace tests-next
 ```
 
-### 快照测试
+`CLICE_CASES=hover/` 只运行某个路径下的用例。`UPDATE_SNAPSHOTS=1` 会重写它们的输出，并列出哪些发生了变化；要像审查代码一样审查这些变化。
 
-功能快照语料库位于 `tests/snap/<feature>/`，源文件与快照并排存放。快照测试套件（`tests/snap/snap.test.ts`，领域逻辑位于 `tools/snap/`）会固定每个 fixture 在其 `verify:` 模式所要求的各条路径上的结果：inspect（每个 fixture 对应一个 `clice inspect` 进程，不涉及服务器）和 server（通过真实服务器回放）。集成测试套件完全不参与快照测试。
-
-```bash
-pixi run snap-test          # default RelWithDebInfo
-pixi run snap-test Debug    # debug build
-```
-
-等价于：
-
-```bash
-cd tests
-CLICE_EXECUTABLE=../build/RelWithDebInfo/bin/bin/clice npm run snap
-```
-
-fixture 可以是单个 `.cpp`，也可以是以 `main.cpp` 为入口的子目录——一个多文件单元，其中同级的源文件（模块接口、头文件和其他源文件）都属于该 fixture。用于说明某项能力的 fixture 位于语料库的章节目录中，命名为 `<section>/NN_name.cpp`（或 `<section>/NN_unit/main.cpp`），并以 `/// # Capability name` 文档头开头——标题只写名称，至多五个词——后接元数据列表，其中 `status`（`supported`、`partial` 或 `unsupported`）为必填项，再接一段一句话摘要，作为能力卡片的摘要：章节目录名用作功能页面生成区域的键，两位数字决定条目在该区域中的顺序，文档头内容则用于生成页面（见 `tools/docs/feature.ts`）。用于边界情况且没有文档头的 fixture 放在语料库根目录。整个语料库共用的编译标志写在该语料库的 `corpus.json` 清单中；单个 fixture 可用 `- flags: [...]` 追加自己的编译标志。server 路径每次运行时都会把 fixture 放入一次性工作区（源文件落盘时已剥除 `§` 标注），因此 fixture 之间绝不共享状态；后台索引默认关闭，可由各 fixture 使用 `- indexing: true` 开启，读取的字节与编译器完全相同。有意让编译产生诊断的 fixture 需声明 `- diagnostics: expected`；非预期诊断会使 fixture 失败，声明了该项却未产生任何诊断也同样会失败。
-
-默认情况下，fixture 使用 `verify: both` 和 `snap: shared`：inspect 与 server 两条路径的结果必须逐字节完全一致，并统一记录在一份 `<name>.snap.yml` 中。两条路径确有合理差异的 fixture 会在其 `///` 文档头中声明 `- snap: separate`（并用 `// snap:` 注释说明原因），两条路径的结果分别记录在 `<name>.inspect.snap.yml` 和 `<name>.server.snap.yml` 中。若已知两条路径的分歧是错误的，则声明 `- snap: skip`：该 fixture 不会在任一路径上运行，并且在两条路径达成一致之前不保留任何快照。仅存在于一条路径上的功能（include 和 import 代码补全由 server 响应；索引转储没有对应的 LSP 请求形式）会声明 `- verify: server` 或 `- verify: inspect`，对应路径的结果记录在普通的 `<name>.snap.yml` 中。
-
-`UPDATE_SNAPSHOTS=1` 一次运行即可更新全部内容：inspect 测试先运行，并负责更新共享快照正文；server 侧只能更新自身对应的变体。server 侧的共享快照不匹配表示 server 处理管线与直接功能调用之间确实存在分歧——应当调查原因，而不是通过重新生成快照将其覆盖。
+改动 TypeScript 时，还要在仓库根目录通过 `npm run check`：对每个包运行严格模式的 tsc 和 ESLint。`npm test --workspace tools` 运行工具自身的测试。
 
 ### 运行全部测试
 
 ```bash
-pixi run test                # runs unit + integration + smoke + snap
+pixi run test                # runs unit + cases
 pixi run test Debug          # all tests with debug build
 ```
 
 ## 编辑器 E2E 测试
 
-这些冒烟测试使用真实编辑器（无头 Neovim 和 VS Code）测试本地构建的 clice 可执行文件，在两个 fixture（其中包括一个 C++20 模块项目）上覆盖启动、首次诊断、悬停、转到定义和代码补全。CI 在 Linux 上的 `test-editor` 作业中使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
+这些冒烟测试使用真实编辑器（无头 Neovim 和 VS Code）测试本地构建的 clice 可执行文件，覆盖启动、首次诊断、悬停、转到定义和代码补全，并在头文件上覆盖显示和切换其编译上下文的命令。测试运行在三个用例的副本上——一个单文件项目、一个 C++20 模块项目，以及一个有两个宿主的头文件——这些副本由 `editor-prepare` 写入 `.cache/editors`。CI 在 Linux x64 和 macOS arm64 两条流水线上使用编辑器的最新稳定版本运行这些测试，并且有意不锁定版本：该作业用于发现编辑器新版本导致的故障。
 
 ```bash
 $ pixi run build                  # build/RelWithDebInfo/bin/bin/clice
-$ pixi run -e editor editor-test  # nvim + vscode, both fixtures
+$ pixi run -e editor editor-test  # nvim + vscode, all three projects
 ```
 
 pixi 环境之外的前置条件：
 
 - `nvim`（stable）可在 `PATH` 中找到，供 `nvim-e2e` 使用。
-- 系统提供的 `cmake`/`ninja`/`clang`，供 `editor-prepare` 配置基于 CMake 的模块 fixture（集成测试也基于这一假设）。
 - 显示环境（或 `xvfb-run`），以及 Electron 通常依赖的系统库，供 `vscode-e2e` 使用。
 
 ## 兼容性测试

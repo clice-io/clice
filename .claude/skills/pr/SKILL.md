@@ -16,10 +16,10 @@ The development flow is: branch off `main` → write code (discussing requiremen
 
 Never push anything unverified — "it compiles" is not verified, and CI is not a debugger.
 
-1. **Docs sync — once, at the end, delegated.** If the branch touched snap fixtures, config annotations, or anything under `docs/`, the generated regions and the zh translations must be brought back in step before pushing. Do not chase them while developing: batch the whole sync here, and hand it to a subagent following the docs skill's "Syncing docs at the end of a branch" recipe so the report output and page texts stay out of the main context. Repeat on later pushes only when those inputs changed again.
+1. **Docs sync — once, at the end, delegated.** If the branch touched documented cases (a `README.md` or the output of a case that has one), config annotations, or anything under `docs/`, the generated regions and the zh translations must be brought back in step before pushing. Do not chase them while developing: batch the whole sync here, and hand it to a subagent following the docs skill's "Syncing docs at the end of a branch" recipe so the report output and page texts stay out of the main context. Repeat on later pushes only when those inputs changed again.
 2. `pixi run format`.
 3. `npm run check` at the repo root when TypeScript changed.
-4. All four test suites pass locally (the test skill). Every failure on the branch is yours to fix now — even if it looks pre-existing (main is green), and never by skipping, disabling, or weakening the test.
+4. The unit tests, the cases and `npm test -w tools` pass locally (the test skill). Every failure on the branch is yours to fix now — even if it looks pre-existing (main is green), and never by skipping, disabling, or weakening the test.
 5. Read results from a full log, not a pipe: `cmd > /tmp/x.log 2>&1`, then the exit code and the log tail (`Build did NOT complete successfully`, `FAILED`, the suite summary). `| tail` reports tail's exit code (a failed build looks green), `pipefail` + `| grep error` fails when there is nothing to find. Before running a suite, check the test binary is newer than your last source edit — a "1362 passed" on a stale binary verifies nothing.
 6. Long local runs (build, suites, codex) go through Bash `run_in_background`, which notifies on exit — not a detached script polled by timed wake-ups.
 7. A platform failure you can reproduce locally is fixed locally. With a Windows checkout reachable from WSL, build and run the failing suite there before pushing; CI is not a debugger.

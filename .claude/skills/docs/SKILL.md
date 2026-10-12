@@ -9,10 +9,12 @@ description: The clice documentation system — generated feature/config pages, 
 
 - `docs/en/` — English pages. Handwritten pages (design/, guide/, dev/,
   index.md) are edited directly; feature pages (features/\*.md) contain
-  GENERATED regions rendered from snapshot fixtures, and
-  guide/configuration.md is rendered from the config schema. **Never edit
-  inside a `<!-- BEGIN GENERATED ... -->` region** — edit the fixture doc
-  header (see the write-tests skill) or the config annotations instead.
+  GENERATED regions listing the documented cases (`tests-next/README.md`,
+  "Docs"), and guide/configuration.md is rendered from the config schema.
+  **Never edit inside a `<!-- BEGIN GENERATED ... -->` region** — edit the
+  case's `README.md` or the config annotations instead.
+- `docs/cards/` — one card per documented case, written by the cases run
+  (`UPDATE_SNAPSHOTS=1`); never edit by hand.
 - `docs/zh/` — Chinese pages, equally real and equally hand-edited (by a
   person or a model). Each zh page must stay **segment-isomorphic** to its
   en counterpart: same sequence of markdown blocks, translated text in the
@@ -27,7 +29,7 @@ description: The clice documentation system — generated feature/config pages, 
 
 | command                            | what it does                                       |
 | ---------------------------------- | -------------------------------------------------- |
-| `pixi run check-feature-docs`      | feature pages match their fixtures (CI)            |
+| `pixi run check-feature-docs`      | feature pages and cards match the cases (CI)       |
 | `pixi run update-feature-docs`     | rewrite feature GENERATED regions                  |
 | `pixi run check-config-docs`       | configuration page matches the schema (CI)         |
 | `pixi run update-config-docs`      | rewrite the configuration page                     |
@@ -71,13 +73,13 @@ references here and in the translate-docs skill. What clice adds on top:
 ## Syncing docs at the end of a branch
 
 Generated regions and translations are synced **once per branch, right
-before the pre-push checks** of the pr skill — not after every fixture or
+before the pre-push checks** of the pr skill — not after every case or
 page edit, and not in the main conversation: delegate it to a subagent so
 the report output and page texts never enter the main context. Give the
 subagent this skill and `git diff --name-only origin/main...HEAD`; its
 brief is:
 
-1. If snap fixtures with doc headers or config annotations changed:
+1. If documented cases or config annotations changed:
    `pixi run update-feature-docs` and `pixi run update-config-docs`
    rewrite the en GENERATED regions.
 2. `pixi run report-doc-translations` lists every broken pair with both
