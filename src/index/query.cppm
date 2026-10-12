@@ -28,8 +28,9 @@ struct IndexSource {
         /// An open buffer's preamble region as its PCH overlay indexed it,
         /// in buffer coordinates.
         PreambleShard,
-        /// A header entry of a PCH overlay, in the coordinates of the text
-        /// the overlay indexed.
+        /// A header entry of a PCH overlay, or an imported module's
+        /// declarations an open buffer's index holds, in the coordinates of
+        /// the text the index read.
         Overlay,
     };
 
@@ -76,7 +77,8 @@ public:
     virtual void each_session(llvm::function_ref<bool(const IndexSource&)> visit) const = 0;
 
     /// The same buffers' TU indexes, which name (find_symbol) every
-    /// symbol of the unsaved text.
+    /// symbol of the unsaved text and hold the declarations of what it
+    /// names from imported modules.
     virtual void each_session_index(llvm::function_ref<bool(const TUIndex&)> visit) const = 0;
 
     /// Every open buffer's preamble index whose overlay was built from that
@@ -565,11 +567,12 @@ private:
                            SourceMask mask,
                            RelationVisitor visitor) const;
 
-    /// The `kind` relations of `hash` in the header entries of an overlay that
-    /// may contribute results: files that are themselves open serve
-    /// a buffer-true index through their sessions, and entries of text the
-    /// disk no longer holds point nowhere (clause 2). False once the
-    /// visitor stopped.
+    /// The `kind` relations of `hash` in the entries of a live TU index's
+    /// other files than its main file (an overlay's headers, a buffer's
+    /// imported declarations) that may contribute results: files that are
+    /// themselves open serve a buffer-true index through their sessions,
+    /// and entries of text the disk no longer holds point nowhere (clause
+    /// 2). False once the visitor stopped.
     bool visit_overlay_relations(const TUIndex& state,
                                  SymbolHash hash,
                                  RelationKind kind,

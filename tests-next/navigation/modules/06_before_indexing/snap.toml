@@ -1,6 +1,5 @@
 [test."before the index"]
-wrong = "should reach add in math.cppm at once, as it does after the index"
-definition = []
+definition = ["math.cppm │ int ⟦add⟧(int left, int right) {"]
 
 [test."after the index"]
 definition = ["math.cppm │ int ⟦add⟧(int left, int right) {"]

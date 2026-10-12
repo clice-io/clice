@@ -339,10 +339,14 @@ void IndexQuery::for_each_relation(SymbolHash hash,
         if(!mask.overlay || !live) {
             return true;
         }
-        live->each_overlay([&](const TUIndex& state) {
+        auto visit = [&](const TUIndex& state) {
             stopped = !visit_overlay_relations(state, hash, kind, visitor);
             return !stopped;
-        });
+        };
+        live->each_overlay(visit);
+        if(!stopped) {
+            live->each_session_index(visit);
+        }
         return !stopped;
     };
 

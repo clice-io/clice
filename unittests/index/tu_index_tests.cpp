@@ -1080,6 +1080,49 @@ int main() {
     ZEXPECT(occs.front().target == symbol_named("make").first);
 }
 
+ZEST_CASE(ImportedDeclarationsNamed) {
+    add_files("main.cpp", R"(
+#[widget.h]
+struct Widget {
+    int value;
+};
+
+#[foo.cppm]
+module;
+#include "widget.h"
+export module foo;
+export Widget make();
+export struct Point {
+    int x;
+};
+export int unused();
+
+#[main.cpp]
+import foo;
+
+int main() {
+    return make().value + Point{1}.x;
+}
+)");
+    ZASSERT(compile_with_modules());
+    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+
+    // The main file's index declares what it names from the module, in the
+    // module's file; the header behind the module is the module's to index.
+    ZASSERT(tu_index.file_indices.size() == 1U);
+    auto& [path_id, module_index] = tu_index.file_indices.front();
+    ZEXPECT(tu_index.view.path(path_id).ends_with("foo.cppm"));
+    ZEXPECT(module_index.relations.size() == 3U);
+    auto& make = module_index.relations[symbol_named("make").first];
+    ZASSERT(make.size() == 1U);
+    ZEXPECT(make.front().kind == RelationKind::Declaration);
+    for(auto name: {"Point", "x"}) {
+        auto& defined = module_index.relations[symbol_named(name).first];
+        ZASSERT(defined.size() == 1U);
+        ZEXPECT(defined.front().kind == RelationKind::Definition);
+    }
+}
+
 ZEST_CASE(ImplementationUnitReference) {
     add_files("main.cpp", R"(
 #[foo.cppm]
