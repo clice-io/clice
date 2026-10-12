@@ -11,7 +11,7 @@ Subcommands:
   index       Index a workspace ahead of time
   lint        Lint C++ source files
   format      Format C++ source files
-  inspect     Run a feature on source files and print raw results as JSON
+  inspect     Run a feature on a source file and print raw results as JSON
   analyze     Analyze the indexed workspace for refactoring
   modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
 '''
@@ -30,7 +30,7 @@ Subcommands:
   index       Index a workspace ahead of time
   lint        Lint C++ source files
   format      Format C++ source files
-  inspect     Run a feature on source files and print raw results as JSON
+  inspect     Run a feature on a source file and print raw results as JSON
   analyze     Analyze the indexed workspace for refactoring
   modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
 '''
@@ -169,10 +169,9 @@ usage: clice inspect <feature> <path> [OPTIONS]
 Options:
   -h|--help                       display this help and exit
   --config-schema                 Print the JSON schema of the clice configuration and exit
-  <FEATURE> <PATH>...             Feature to run (code_action, code_completion, document_highlight, document_links, document_symbol, folding_range, hover, inlay_hint, selection_range, semantic_tokens, signature_help) and a source file or directory
-  --annotations                   Treat inputs as annotated fixture sources: strip inline §-markers before compiling (the snap-test grammar)
+  <FEATURE> <PATH>...             Feature to run (code_action, code_completion, document_highlight, document_links, document_symbol, folding_range, hover, inlay_hint, selection_range, semantic_tokens, signature_help) and a source file
   --markers <value>               JSON file of the markers in the inspected source file, at byte offsets: {"points": {"name": 12}, "ranges": {"name": {"begin": 3, "end": 7}}}; results are keyed by these names
-  --flags <value>                 Compile flags for the inputs as a JSON string array; replaces the compile_commands.json lookup
+  --flags <value>                 Compile flags for the file as a JSON string array; replaces the compile_commands.json lookup
   --config <value>                Feature options overlay as a JSON object (only features that take options accept it)
   --configuration <value>         Build configuration to activate, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>

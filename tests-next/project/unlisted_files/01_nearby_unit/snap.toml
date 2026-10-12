@@ -14,7 +14,6 @@ stdout = '''
   "feature": "hover",
   "files": {
     "new.cpp": {
-      "stripped_hash": "63c44ae1005e4f0eeaba429e38876a9b9bc5a1bf226f7d311830841033a2f9d9",
       "result": null,
       "markers": null,
       "error": "no_markers",

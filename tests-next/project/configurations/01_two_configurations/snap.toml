@@ -154,7 +154,6 @@ stdout = '''
   "feature": "hover",
   "files": {
     "gated.cpp": {
-      "stripped_hash": "d2a756436123c2f67cc1d644b0a8d2a2a69d736a4022d9c188a25ff8911dbff2",
       "result": null,
       "markers": null,
       "error": "no_markers",
@@ -173,7 +172,6 @@ stdout = '''
   "feature": "hover",
   "files": {
     "gated.cpp": {
-      "stripped_hash": "d2a756436123c2f67cc1d644b0a8d2a2a69d736a4022d9c188a25ff8911dbff2",
       "result": null,
       "markers": null,
       "error": "no_markers",

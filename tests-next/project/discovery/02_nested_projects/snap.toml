@@ -17,7 +17,6 @@ stdout = '''
   "feature": "hover",
   "files": {
     "main.cpp": {
-      "stripped_hash": "265a3f5751275e7169957137d69d887dda3829b7ed0aca551d8cf6d095b62b86",
       "result": null,
       "markers": null,
       "error": "no_markers",
@@ -34,7 +33,6 @@ stdout = '''
   "feature": "hover",
   "files": {
     "main.cpp": {
-      "stripped_hash": "ac58542755e1a2636bcaf92efa0e3fecc5b2bbaec8c98ab273dec81d13345ffc",
       "result": null,
       "markers": null,
       "error": "no_markers",

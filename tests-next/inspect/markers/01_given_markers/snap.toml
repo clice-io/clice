@@ -4,7 +4,6 @@ stdout = '''
   "feature": "hover",
   "files": {
     "main.cpp": {
-      "stripped_hash": "d13e3c80602f17885ed0fc092f209e91a7f39641b4402abb4cba6b2c9f34d36a",
       "result": null,
       "markers": {
         "call": {
@@ -29,7 +28,6 @@ stdout = '''
   "feature": "inlay_hint",
   "files": {
     "main.cpp": {
-      "stripped_hash": "d13e3c80602f17885ed0fc092f209e91a7f39641b4402abb4cba6b2c9f34d36a",
       "result": null,
       "markers": {
         "use": [
@@ -108,5 +106,5 @@ stderr = ["error: --markers names a point and a range use"]
 exit = 1
 
 [test."$ clice inspect hover . --markers=markers.json"]
-stderr = ["error: --markers places markers in one source file, unannotated"]
+stderr = ["error: ${WS} is a directory, not a source file"]
 exit = 1
