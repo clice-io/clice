@@ -812,8 +812,8 @@ std::string template_head(CompilationUnitRef unit,
     return head;
 }
 
-/// Whether members appended at the end of the class body are public.
-bool ends_public(const clang::CXXRecordDecl* record) {
+/// The access of members appended at the end of the class body.
+clang::AccessSpecifier trailing_access(const clang::CXXRecordDecl* record) {
     auto access =
         record->getTagKind() == clang::TagTypeKind::Class ? clang::AS_private : clang::AS_public;
     for(const auto* member: record->decls()) {
@@ -821,7 +821,7 @@ bool ends_public(const clang::CXXRecordDecl* record) {
             access = specifier->getAccess();
         }
     }
-    return access == clang::AS_public;
+    return access;
 }
 
 }  // namespace
@@ -971,7 +971,7 @@ std::string template_heads(CompilationUnitRef unit,
 
 std::optional<TextReplacement> insert_members(CompilationUnitRef unit,
                                               const clang::CXXRecordDecl* record,
-                                              llvm::ArrayRef<std::string> lines) {
+                                              llvm::ArrayRef<Member> members) {
     auto brace = main_range(unit, record->getBraceRange().getEnd());
     auto head = main_range(unit, record->getBeginLoc());
     if(!brace || !head) {
@@ -1000,13 +1000,16 @@ std::optional<TextReplacement> insert_members(CompilationUnitRef unit,
     if(!own_line) {
         text += '\n';
     }
-    if(!ends_public(record)) {
-        text += record_indent;
-        text += "public:\n";
-    }
-    for(const auto& line: lines) {
+    auto access = trailing_access(record);
+    for(const auto& member: members) {
+        if(member.access != access) {
+            access = member.access;
+            text += record_indent;
+            text += clang::getAccessSpelling(access);
+            text += ":\n";
+        }
         text += indent;
-        text += line;
+        text += member.line;
         text += '\n';
     }
     if(!own_line) {

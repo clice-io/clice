@@ -16,9 +16,6 @@ compiles = true
  class Task {
 '''
 
-[answers.private_virtual]
-wrong = "the base keeps step private, as the non-virtual interface idiom does; the override should stay private instead of joining the public interface"
-
 [[answers.private_virtual.code_actions]]
 kind = "refactor.rewrite.implementPureVirtuals"
 title = "Implement pure virtual methods of 'Download'"
@@ -30,7 +27,6 @@ compiles = true
 
 -class Download : public Task {};
 +class Download : public Task {
-+public:
 +    void step() override;
 +};
 

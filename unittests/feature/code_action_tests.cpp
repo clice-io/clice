@@ -1136,6 +1136,45 @@ using size_t = decltype(sizeof 0);
     }
 }
 
+ZEST_CASE(OverridesKeepAccess) {
+    run(R"(
+class Base {
+public:
+    virtual void run() = 0;
+
+protected:
+    virtual void prepare() = 0;
+
+private:
+    virtual void step() = 0;
+};
+struct §(d)Derived : Base {
+    int state;
+};
+)");
+    apply("d", "Implement pure virtual methods of 'Derived'");
+    EXPECT_COMPILES(R"(
+class Base {
+public:
+    virtual void run() = 0;
+
+protected:
+    virtual void prepare() = 0;
+
+private:
+    virtual void step() = 0;
+};
+struct Derived : Base {
+    int state;
+    void run() override;
+protected:
+    void prepare() override;
+private:
+    void step() override;
+};
+)");
+}
+
 };  // ZEST_SUITE(code_action)
 
 }  // namespace

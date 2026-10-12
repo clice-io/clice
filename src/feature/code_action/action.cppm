@@ -109,12 +109,19 @@ std::string template_heads(CompilationUnitRef unit,
                            const clang::Decl* decl,
                            const clang::DeclContext* from);
 
-/// `lines` appended to the class body, on the body's own indentation and
-/// under a `public:` label when the body ends in another section; nullopt
-/// when the class head or brace is spelled by a macro.
+/// A member declaration of one line and the access it is declared with.
+struct Member {
+    clang::AccessSpecifier access;
+    std::string line;
+};
+
+/// `members` appended to the class body in their order, on the body's own
+/// indentation, under an access label wherever the access changes from
+/// the one the body ends in; nullopt when the class head or brace is
+/// spelled by a macro.
 std::optional<TextReplacement> insert_members(CompilationUnitRef unit,
                                               const clang::CXXRecordDecl* record,
-                                              llvm::ArrayRef<std::string> lines);
+                                              llvm::ArrayRef<Member> members);
 
 /// Visit the main file's declarations at file scope — the translation
 /// unit's and, descending, those of namespaces, linkage specifications and

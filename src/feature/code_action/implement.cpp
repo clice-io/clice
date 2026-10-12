@@ -128,7 +128,9 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
         }
     }
 
-    std::vector<std::string> lines;
+    // An override keeps its base's access (the non-virtual interface idiom
+    // keeps it private); the sections go public, protected, private.
+    std::vector<Member> members;
     for(const auto& group: groups) {
         auto specs = llvm::map_range(group, requires_noexcept);
         bool is_nothrow = llvm::is_contained(specs, std::optional(true));
@@ -139,15 +141,18 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
         // nameably here.
         for(const auto* method: group) {
             if(auto line = override_declaration(context, method, record, is_nothrow)) {
-                lines.push_back(std::move(*line));
+                members.push_back({method->getAccess(), std::move(*line)});
                 break;
             }
         }
     }
-    if(lines.empty()) {
+    if(members.empty()) {
         return;
     }
-    if(auto edit = insert_members(unit, record, lines)) {
+    llvm::stable_sort(members, [](const Member& left, const Member& right) {
+        return left.access < right.access;
+    });
+    if(auto edit = insert_members(unit, record, members)) {
         out.push_back(CodeAction{
             .title = std::format("Implement pure virtual methods of '{}'", record->getName()),
             .kind = action_kind::implement_pure_virtuals,

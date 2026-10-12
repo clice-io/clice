@@ -218,7 +218,7 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
                             parameters,
                             initializers);
 
-    auto members = insert_members(unit, record, {line});
+    auto members = insert_members(unit, record, Member{clang::AS_public, line});
     if(!members) {
         return;
     }
