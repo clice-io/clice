@@ -1,9 +1,6 @@
-[answers.default_argument]
-wrong = "the optional parameter should show with its default, configure(int timeout, int retries = 3) (clangd#100)"
-
 [answers.default_argument.completion]
 items = [
-    { label = "configure(int timeout)", kind = "Function", detail = "int" },
+    { label = "configure(int timeout, int retries = 3)", kind = "Function", detail = "int" },
 ]
 
 [answers.variadic.completion]

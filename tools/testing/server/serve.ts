@@ -36,7 +36,7 @@ import {
     renderDiagnostics,
     type Action,
     type Call,
-    type CompletionItem,
+    type Completion,
     type Counterparts,
     type Diagnostic,
     type Fold,
@@ -55,7 +55,7 @@ import {
 } from "../render/answers.ts";
 import { Client, type LocationRequest, type ReferenceOptions } from "../render/client.ts";
 import { applyEdits, type TextEdit } from "../render/edits.ts";
-import { AnswerContext, completionItems, selection, signatures, tokens } from "../render/lsp.ts";
+import { AnswerContext, completion, selection, signatures, tokens } from "../render/lsp.ts";
 import { uriToPath } from "../render/paths.ts";
 import { withoutBom, type Location, type Range } from "../render/position.ts";
 import { shown } from "../render/shown.ts";
@@ -504,11 +504,11 @@ export class Serve extends Client {
         );
     }
 
-    protected fetchCompletion(at: Anchor, trigger: string | undefined): Promise<CompletionItem[]> {
+    protected fetchCompletion(at: Anchor, trigger: string | undefined): Promise<Completion> {
         const { uri, position } = this.position(at);
         const by = trigger === undefined ? "" : ` triggered by ${JSON.stringify(trigger)}`;
         return this.ask(`completion ${describeAnchor(at)}${by}`, async (client) =>
-            completionItems(
+            completion(
                 await client.completionAt(uri, position.line, position.character, {
                     ...(trigger === undefined ? {} : { triggerCharacter: trigger }),
                 }),
@@ -663,8 +663,7 @@ export class Serve extends Client {
     protected fetchTokens(file: string): Promise<Token[]> {
         return this.ask(`semantic tokens of ${file}`, async (client) => {
             const provider = client.initResult?.capabilities.semanticTokensProvider as
-                | proto.SemanticTokensOptions
-                | undefined;
+                proto.SemanticTokensOptions | undefined;
             if (provider === undefined) {
                 throw new Error("the server advertises no semantic tokens legend");
             }

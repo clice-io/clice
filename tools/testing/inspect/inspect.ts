@@ -15,7 +15,7 @@ import { recordConfig, recordInvocation } from "../coverage/record.ts";
 import type {
     Action,
     Call,
-    CompletionItem,
+    Completion,
     Counterparts,
     Fold,
     Highlight,
@@ -83,6 +83,11 @@ interface RawCompletionItem {
         | { range: proto.Range; new_text: string }
         | { insert: proto.Range; replace: proto.Range; new_text: string }
         | null;
+}
+
+interface RawCompletionList {
+    is_incomplete: boolean;
+    items: RawCompletionItem[];
 }
 
 interface RawSignatureHelp {
@@ -291,36 +296,36 @@ export class Inspect extends Client {
         };
     }
 
-    protected async fetchCompletion(
-        at: Anchor,
-        trigger: string | undefined,
-    ): Promise<CompletionItem[]> {
+    protected async fetchCompletion(at: Anchor, trigger: string | undefined): Promise<Completion> {
         if (trigger !== undefined) {
             return this.cannot("completion triggered by a character", at);
         }
-        const raws = ((await this.atPoint("code_completion", at)) ?? []) as RawCompletionItem[];
-        return raws.map((raw) => {
-            const edit = raw.text_edit ?? undefined;
-            const split = edit !== undefined && "insert" in edit;
-            return {
-                label: raw.label + (raw.label_details?.detail ?? ""),
-                kind: raw.kind ?? "None",
-                detail: raw.detail ?? raw.label_details?.description ?? undefined,
-                deprecated: raw.tags?.includes("Deprecated") ?? false,
-                filter: raw.filter_text ?? undefined,
-                insert: edit?.new_text ?? raw.insert_text ?? undefined,
-                snippet: raw.insert_text_format === "Snippet",
-                replace:
-                    edit === undefined
-                        ? undefined
-                        : { path: at.path, range: "range" in edit ? edit.range : edit.replace },
-                insertRange:
-                    split && JSON.stringify(edit.insert) !== JSON.stringify(edit.replace)
-                        ? { path: at.path, range: edit.insert }
-                        : undefined,
-                sortText: raw.sort_text ?? "",
-            };
-        });
+        const raw = (await this.atPoint("code_completion", at)) as RawCompletionList;
+        return {
+            incomplete: raw.is_incomplete,
+            items: raw.items.map((item) => {
+                const edit = item.text_edit ?? undefined;
+                const split = edit !== undefined && "insert" in edit;
+                return {
+                    label: item.label + (item.label_details?.detail ?? ""),
+                    kind: item.kind ?? "None",
+                    detail: item.detail ?? item.label_details?.description ?? undefined,
+                    deprecated: item.tags?.includes("Deprecated") ?? false,
+                    filter: item.filter_text ?? undefined,
+                    insert: edit?.new_text ?? item.insert_text ?? undefined,
+                    snippet: item.insert_text_format === "Snippet",
+                    replace:
+                        edit === undefined
+                            ? undefined
+                            : { path: at.path, range: "range" in edit ? edit.range : edit.replace },
+                    insertRange:
+                        split && JSON.stringify(edit.insert) !== JSON.stringify(edit.replace)
+                            ? { path: at.path, range: edit.insert }
+                            : undefined,
+                    sortText: item.sort_text ?? "",
+                };
+            }),
+        };
     }
 
     protected async fetchSignatureHelp(at: Anchor): Promise<Signatures> {

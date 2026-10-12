@@ -351,6 +351,14 @@ export interface CompletionItem {
     sortText: string;
 }
 
+/// A completion reply.
+export interface Completion {
+    items: CompletionItem[];
+    /// The server sent only some of the items that match: the editor asks
+    /// again as the user types instead of filtering these.
+    incomplete: boolean;
+}
+
 function order(a: string, b: string): number {
     return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -369,12 +377,13 @@ function rank(items: readonly CompletionItem[]): CompletionItem[] {
 }
 
 /// The first items by rank, and how many more there are, so a short list
-/// never reads as "nothing else matched". The parts asked (`insert`,
-/// `filter`, `edit`) join each item.
+/// never reads as "nothing else matched"; a list the server cut short says
+/// so. The parts asked (`insert`, `filter`, `edit`) join each item.
 export function renderCompletion(
-    items: readonly CompletionItem[],
+    completion: Completion,
     options: { scope?: RenderScope; parts?: ReadonlySet<string>; limit?: number } = {},
 ): Table {
+    const { items } = completion;
     const { scope, parts = new Set<string>(), limit = 10 } = options;
     const shown = rank(items)
         .slice(0, limit)
@@ -399,7 +408,11 @@ export function renderCompletion(
                 ? { insert_range: place(item.insertRange, scope) }
                 : {}),
         }));
-    return items.length > limit ? { items: shown, more: items.length - limit } : { items: shown };
+    return {
+        items: shown,
+        ...(items.length > limit ? { more: items.length - limit } : {}),
+        ...(completion.incomplete ? { incomplete: true } : {}),
+    };
 }
 
 export interface Signature {

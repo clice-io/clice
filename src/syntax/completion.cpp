@@ -146,14 +146,10 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
 
     auto first = lexer.advance();
 
-    if(first.is_directive_hash() && before_cursor(first)) {
-        auto keyword = lexer.advance();
-        if(!keyword.is_identifier() || !before_cursor(keyword) || keyword.text(text) != "include") {
-            return {};
-        }
-        // The argument is likely half-typed, so its prefix is taken
-        // textually between the keyword token and the cursor.
-        auto argument = text.slice(keyword.range.end, offset).ltrim();
+    // A header name half typed from `begin`, the text after an include's
+    // keyword or `__has_include(`: taken textually up to the cursor.
+    auto header_name = [&](std::uint32_t begin) -> PreambleCompletionContext {
+        auto argument = text.slice(begin, offset).ltrim();
         CompletionContext kind;
         if(argument.consume_front("\"")) {
             kind = CompletionContext::IncludeQuoted;
@@ -177,17 +173,57 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         return {kind,
                 argument.str(),
                 LocalSourceRange(offset - static_cast<std::uint32_t>(component.size()), end)};
+    };
+
+    if(first.is_directive_hash() && before_cursor(first)) {
+        auto keyword = lexer.advance();
+        if(!keyword.is_identifier() || !before_cursor(keyword)) {
+            return {};
+        }
+        if(keyword.text(text) == "include") {
+            return header_name(keyword.range.end);
+        }
+        // In a condition, a `__has_include(` whose header name the cursor
+        // is in: the lexer reads a whole one as a single token.
+        if(keyword.text(text) != "if" && keyword.text(text) != "elif") {
+            return {};
+        }
+        std::optional<std::uint32_t> argument;
+        bool has_include = false;
+        for(auto token = lexer.advance();
+            !token.is_eod() && !token.is_eof() && before_cursor(token);
+            token = lexer.advance()) {
+            if(has_include && token.kind == clang::tok::l_paren) {
+                argument = token.range.end;
+            } else if(token.is_header_name()) {
+                argument.reset();
+            }
+            has_include = token.is_identifier() && (token.text(text) == "__has_include" ||
+                                                    token.text(text) == "__has_include_next");
+        }
+        return argument ? header_name(*argument) : PreambleCompletionContext{};
     }
 
     // `[export] import` opening a logical line always means an import
-    // statement; lexing (instead of textual matching) rules out longer
-    // identifiers like `importlib` and sees through comments.
-    auto import_keyword = first;
+    // statement, and `module` a module declaration; lexing (instead of
+    // textual matching) rules out longer identifiers like `importlib` and
+    // sees through comments. An interface's `export module` declares a
+    // name of its own: nothing to complete.
+    auto keyword = first;
+    bool exported = false;
     if(first.is_identifier() && before_cursor(first) && first.text(text) == "export") {
-        import_keyword = lexer.advance();
+        keyword = lexer.advance();
+        exported = true;
     }
-    if(!import_keyword.is_identifier() || !before_cursor(import_keyword) ||
-       import_keyword.text(text) != "import") {
+    if(!keyword.is_identifier() || !before_cursor(keyword)) {
+        return {};
+    }
+    CompletionContext kind;
+    if(keyword.text(text) == "import") {
+        kind = CompletionContext::Import;
+    } else if(keyword.text(text) == "module" && !exported) {
+        kind = CompletionContext::ModuleDeclaration;
+    } else {
         return {};
     }
 
@@ -195,11 +231,13 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         return {};
     }
 
-    // `import->x` in C is a member access on a variable named `import`.
-    auto prefix = text.slice(import_keyword.range.end, offset).ltrim();
-    if(!llvm::all_of(prefix, [](char c) {
-           return is_module_name_char(c) || clang::isHorizontalWhitespace(c);
-       })) {
+    // `import->x` in C is a member access on a variable named `import`,
+    // and `module.x` one on `module`.
+    auto prefix = text.slice(keyword.range.end, offset).ltrim();
+    if(!llvm::all_of(
+           prefix,
+           [](char c) { return is_module_name_char(c) || clang::isHorizontalWhitespace(c); }) ||
+       prefix.starts_with(".")) {
         return {};
     }
     auto end = offset;
@@ -216,10 +254,23 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
             break;
         }
     }
-    return {CompletionContext::Import,
+    return {kind,
             prefix.str(),
             LocalSourceRange(offset - static_cast<std::uint32_t>(prefix.size()), end),
             closed};
+}
+
+std::vector<std::string> complete_module_declaration(const DependencyGraph& graph,
+                                                     llvm::StringRef prefix) {
+    std::vector<std::string> results;
+    for(auto& entry: graph.modules()) {
+        auto name = entry.getKey();
+        if(!entry.getValue().empty() && !name.contains(':') && name.starts_with(prefix)) {
+            results.push_back(name.str());
+        }
+    }
+    std::ranges::sort(results);
+    return results;
 }
 
 std::vector<std::string> complete_module_import(const DependencyGraph& graph,

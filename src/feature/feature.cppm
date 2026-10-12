@@ -83,7 +83,10 @@ struct CodeCompletionOptions {
     <bool> bundle_overloads = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Maximum number of completion items (not yet implemented).")
+                     description =
+                         "Maximum number of completion items, the best ranked; "
+                         "`0` means no limit. A list cut short is marked "
+                         "incomplete, so the editor asks again as you type.")
     <std::uint32_t> limit = 0;
 };
 
@@ -499,7 +502,7 @@ auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options = {},
                    const CompletionClient& client = {},
                    PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<protocol::CompletionItem>;
+    -> protocol::CompletionList;
 
 /// Get the hover information for the symbol at the given offset in the
 /// main file of the unit.

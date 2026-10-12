@@ -26,7 +26,7 @@ import {
     renderWorkspaceSymbols,
     type Action,
     type Call,
-    type CompletionItem,
+    type Completion,
     type Counterparts,
     type Fold,
     type Highlight,
@@ -80,7 +80,7 @@ export abstract class Client {
     protected abstract fetchCompletion(
         at: Anchor,
         trigger: string | undefined,
-    ): Promise<CompletionItem[]>;
+    ): Promise<Completion>;
     protected abstract fetchSignatureHelp(at: Anchor): Promise<Signatures>;
     protected abstract fetchHighlights(at: Anchor): Promise<Highlight[]>;
     protected abstract fetchSelectionRange(at: Anchor): Promise<Range[]>;
@@ -131,10 +131,17 @@ export abstract class Client {
     }
 
     /// The completion at `at`, as typing `trigger` asks for it.
-    completion(at: Anchor, trigger?: string): Promise<CompletionItem[]> {
+    completion(at: Anchor, trigger?: string): Promise<Completion> {
         const scope = this.scopeAt(at);
-        return shown(this.fetchCompletion(at, trigger), "completion", (items, { parts, full }) =>
-            renderCompletion(items, { scope, parts, ...(full ? { limit: items.length } : {}) }),
+        return shown(
+            this.fetchCompletion(at, trigger),
+            "completion",
+            (completion, { parts, full }) =>
+                renderCompletion(completion, {
+                    scope,
+                    parts,
+                    ...(full ? { limit: completion.items.length } : {}),
+                }),
         );
     }
 
@@ -453,11 +460,7 @@ export abstract class Client {
 }
 
 export type LocationRequest =
-    | "definition"
-    | "declaration"
-    | "type definition"
-    | "implementation"
-    | "references";
+    "definition" | "declaration" | "type definition" | "implementation" | "references";
 
 /// How a references request asks: `declarations: false` leaves out the
 /// declarations and the definition (LSP includeDeclaration).

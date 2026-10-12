@@ -27,6 +27,8 @@ enum class CompletionContext : std::uint8_t {
     IncludeQuoted,
     IncludeAngled,
     Import,
+    /// The name in an implementation unit's `module` declaration.
+    ModuleDeclaration,
 };
 
 /// Result of detecting the completion context from source text.
@@ -38,11 +40,12 @@ struct PreambleCompletionContext {
     /// include, its last path component — typed part and untyped rest.
     LocalSourceRange replace;
 
-    /// An import statement that ends in its semicolon already.
+    /// An import or module declaration that ends in its semicolon already.
     bool closed = false;
 };
 
-/// Detect whether the cursor is inside a #include or import directive.
+/// Detect whether the cursor is in the header name of an #include or a
+/// `__has_include`, or in the name of an import or a module declaration.
 /// Pure text parsing — no compiler state needed.
 PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::uint32_t offset);
 
@@ -66,6 +69,11 @@ struct WrittenDesignator {
 /// its own (`{ .width = 800, .`), in order. Empty anywhere else, after a
 /// `.` continuing a designator (`.inner.`) too.
 std::vector<WrittenDesignator> written_designators(llvm::StringRef text, std::uint32_t offset);
+
+/// The names an implementation unit's module declaration can take that
+/// start with `prefix`: the modules the graph's interfaces provide.
+std::vector<std::string> complete_module_declaration(const DependencyGraph& graph,
+                                                     llvm::StringRef prefix);
 
 /// The names an `import` in the unit whose module declaration `unit`
 /// scanned can take that start with `prefix`: the graph's other provided

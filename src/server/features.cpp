@@ -882,7 +882,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     // completion build.
     if(!trigger_character.empty()) {
         bool served = trigger_character == " "
-                          ? pctx.kind == CompletionContext::Import
+                          ? pctx.kind == CompletionContext::Import ||
+                                pctx.kind == CompletionContext::ModuleDeclaration
                           : pctx.kind != CompletionContext::None || !offset ||
                                 follows_access_operator(session->text, *offset);
         if(!served) {
@@ -940,15 +941,21 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             }
             co_return to_raw(items);
         }
-        if(pctx.kind == CompletionContext::Import) {
-            // The module declaration precedes every import, and the scan
-            // stops before the import being typed: the scanner rejects a
-            // buffer with an unclosed directive whole. Its lexer needs the
-            // NUL terminator a copy provides.
-            llvm::StringRef text = session->text;
-            auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1).str();
-            auto module_names =
-                complete_module_import(project.dep_graph, pctx.prefix, scan_quick(declared));
+        if(pctx.kind == CompletionContext::Import ||
+           pctx.kind == CompletionContext::ModuleDeclaration) {
+            std::vector<std::string> module_names;
+            if(pctx.kind == CompletionContext::ModuleDeclaration) {
+                module_names = complete_module_declaration(project.dep_graph, pctx.prefix);
+            } else {
+                // The module declaration precedes every import, and the
+                // scan stops before the import being typed: the scanner
+                // rejects a buffer with an unclosed directive whole. Its
+                // lexer needs the NUL terminator a copy provides.
+                llvm::StringRef text = session->text;
+                auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1).str();
+                module_names =
+                    complete_module_import(project.dep_graph, pctx.prefix, scan_quick(declared));
+            }
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());
             for(auto& name: module_names) {

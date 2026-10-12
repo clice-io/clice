@@ -1,11 +1,9 @@
-[answers.angled]
-wrong = "should offer the header candidates an include offers, snap_header.h"
-
 [answers.angled.completion]
-items = []
-
-[answers.quoted]
-wrong = "should offer the header candidates an include offers, snap_header.h"
+items = [
+    { label = "snap_header.h", kind = "File", insert = "snap_header.h>", replace = "#if __has_include(<⟦snap>⟧)" },
+]
 
 [answers.quoted.completion]
-items = []
+items = [
+    { label = "snap_header.h", kind = "File", insert = 'snap_header.h"', replace = '#if __has_include("⟦snap"⟧)' },
+]
