@@ -80,7 +80,15 @@ kota::task<Features::Route> Features::pick_route(const Ticket& ticket,
             // The session's own index when current (the quarantine fallback
             // — the worker cannot be asked, the index is still true), else
             // the disk shard admitted by freshness clause 4.
-            if(auto serving = query.serving(session.path_id)) {
+            auto serving = query.serving(session.path_id);
+            // The disk shard merges every context the file compiles in, or
+            // holds its first command's: a context the user chose waits for
+            // its own compile.
+            if(serving && serving->kind == index::IndexSource::Kind::Shard &&
+               session.serving == ServingMode::Escalated && contexts.selection(session.path_id)) {
+                serving.reset();
+            }
+            if(serving) {
                 // An index answer must not strand an escalated session's
                 // pending build: this request still pulls the compile it
                 // would otherwise have waited on, just without blocking.
@@ -1315,6 +1323,18 @@ llvm::SmallVector<Features::Source> Features::sources(index::SymbolHash symbol, 
     return all;
 }
 
+std::string Features::qualified_name(index::SymbolHash symbol) {
+    if(auto name = query.qualified_name(symbol); !name.empty()) {
+        return name;
+    }
+    for(auto* peer: peers()) {
+        if(auto name = peer->qualified_name(symbol); !name.empty()) {
+            return name;
+        }
+    }
+    return {};
+}
+
 bool Features::answers_for(const index::IndexQuery& from,
                            Fid file,
                            llvm::ArrayRef<Source> asked) const {
@@ -1475,6 +1495,10 @@ Features::RawResult Features::implementation(Ticket ticket,
             }));
     }
     index::dedup_sites(sites);
+    // A function nothing overrides answers with its definition: standing
+    // on it, there is nowhere to go.
+    std::erase_if(sites,
+                  [&](const index::Site& site) { return index::covers(site, cursor->site); });
     co_return to_raw(to_lsp::locations(sites));
 }
 
@@ -1497,9 +1521,12 @@ Features::RawResult Features::call_hierarchy_prepare(Ticket ticket,
     for(auto& located: query.resolve_at(*cursor)) {
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Function || kind == SymbolKind::Method ||
-           kind == SymbolKind::Operator) {
-            items.push_back(
-                to_lsp::call_hierarchy_item(located.symbol, located.site, located.extent));
+           kind == SymbolKind::Operator || kind == SymbolKind::Variable ||
+           kind == SymbolKind::Field || kind == SymbolKind::EnumMember) {
+            items.push_back(to_lsp::call_hierarchy_item(located.symbol,
+                                                        located.site,
+                                                        located.extent,
+                                                        qualified_name(located.symbol.hash)));
         }
     }
     if(items.empty())
@@ -1539,9 +1566,11 @@ Features::RawResult Features::call_hierarchy_incoming(Fid path_id,
     }
     std::vector<protocol::CallHierarchyIncomingCall> results;
     for(auto& edge: callers) {
-        results.push_back(
-            {to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site, edge.symbol.extent),
-             to_lsp::ranges(edge.sites)});
+        results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol,
+                                                       edge.symbol.site,
+                                                       edge.symbol.extent,
+                                                       qualified_name(edge.symbol.symbol.hash)),
+                           to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
@@ -1562,9 +1591,11 @@ Features::RawResult Features::call_hierarchy_outgoing(Fid path_id,
     }
     std::vector<protocol::CallHierarchyOutgoingCall> results;
     for(auto& edge: callees) {
-        results.push_back(
-            {to_lsp::call_hierarchy_item(edge.symbol.symbol, edge.symbol.site, edge.symbol.extent),
-             to_lsp::ranges(edge.sites)});
+        results.push_back({to_lsp::call_hierarchy_item(edge.symbol.symbol,
+                                                       edge.symbol.site,
+                                                       edge.symbol.extent,
+                                                       qualified_name(edge.symbol.symbol.hash)),
+                           to_lsp::ranges(edge.sites)});
     }
     co_return to_raw(results);
 }
@@ -1586,8 +1617,10 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union) {
-            items.push_back(
-                to_lsp::type_hierarchy_item(located.symbol, located.site, located.extent));
+            items.push_back(to_lsp::type_hierarchy_item(located.symbol,
+                                                        located.site,
+                                                        located.extent,
+                                                        qualified_name(located.symbol.hash)));
         }
     }
     if(items.empty())
@@ -1596,11 +1629,14 @@ Features::RawResult Features::type_hierarchy_prepare(Ticket ticket,
 }
 
 static std::vector<protocol::TypeHierarchyItem>
-    type_items(llvm::ArrayRef<index::IndexQuery::Located> types) {
+    type_items(llvm::ArrayRef<index::IndexQuery::Located> types,
+               llvm::function_ref<std::string(index::SymbolHash)> qualified_name) {
     std::vector<protocol::TypeHierarchyItem> results;
     for(auto& located: types) {
-        results.push_back(
-            to_lsp::type_hierarchy_item(located.symbol, located.site, located.extent));
+        results.push_back(to_lsp::type_hierarchy_item(located.symbol,
+                                                      located.site,
+                                                      located.extent,
+                                                      qualified_name(located.symbol.hash)));
     }
     return results;
 }
@@ -1618,7 +1654,8 @@ Features::RawResult Features::type_hierarchy_supertypes(Fid path_id,
                       from->type_hierarchy(named, path_id, {.subtypes = false}).supertypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
-    co_return to_raw(type_items(supertypes));
+    co_return to_raw(
+        type_items(supertypes, [&](index::SymbolHash hash) { return qualified_name(hash); }));
 }
 
 Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
@@ -1634,7 +1671,8 @@ Features::RawResult Features::type_hierarchy_subtypes(Fid path_id,
                       from->type_hierarchy(named, path_id, {.supertypes = false}).subtypes,
                       [&](Fid file) { return answers_for(*from, file, asked); });
     }
-    co_return to_raw(type_items(subtypes));
+    co_return to_raw(
+        type_items(subtypes, [&](index::SymbolHash hash) { return qualified_name(hash); }));
 }
 
 std::vector<protocol::SymbolInformation> Features::workspace_symbol(llvm::StringRef text) {

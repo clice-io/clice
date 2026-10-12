@@ -1,6 +1,6 @@
 [answers.dealloc]
 call_hierarchy = [
-    { name = "operator delete", kind = "Operator", at = "void ⟦operator delete⟧(void* memory);" },
+    { name = "operator delete", kind = "Operator", at = "void ⟦operator delete⟧(void* memory);", detail = "Node::operator delete" },
 ]
 incoming_calls = [
     {
@@ -14,7 +14,7 @@ outgoing_calls = []
 
 [answers.dtor]
 call_hierarchy = [
-    { name = "~Node", kind = "Method", at = "⟦~Node⟧();" },
+    { name = "~Node", kind = "Method", at = "⟦~Node⟧();", detail = "Node::~Node" },
 ]
 incoming_calls = [
     {
@@ -33,7 +33,7 @@ outgoing_calls = []
 
 [answers.imported]
 call_hierarchy = [
-    { name = "target", kind = "Function", at = "int ⟦target⟧(int);" },
+    { name = "target", kind = "Function", at = "int ⟦target⟧(int);", detail = "lib::target" },
 ]
 incoming_calls = [
     {
@@ -47,9 +47,15 @@ outgoing_calls = []
 
 [answers.hit]
 call_hierarchy = [
-    { name = "hit", kind = "Method", at = "void ⟦hit⟧(int);" },
+    { name = "hit", kind = "Method", at = "void ⟦hit⟧(int);", detail = "Base::hit" },
 ]
 incoming_calls = [
-    { name = "run", kind = "Method", at = "void ⟦run⟧() {", sites = ["this->⟦hit⟧(1);"] },
+    {
+        name = "run",
+        kind = "Method",
+        at = "void ⟦run⟧() {",
+        detail = "Runner::run",
+        sites = ["this->⟦hit⟧(1);"],
+    },
 ]
 outgoing_calls = []

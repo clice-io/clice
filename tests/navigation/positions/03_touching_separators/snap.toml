@@ -1,0 +1,35 @@
+[answers.after_variable]
+definition = ["for(int ⟦x⟧: r) {"]
+
+[answers.after_variable.hover]
+markdown = '''
+### variable `x`
+
+---
+Type: `int`
+
+---
+```cpp
+// In use
+int x
+```
+'''
+range = "for(int ⟦x⟧: r) {"
+
+[answers.after_copy]
+definition = ["Widget ⟦copy⟧=w;"]
+
+[answers.after_copy.hover]
+markdown = '''
+### variable `copy`
+
+---
+Type: `Widget`
+
+---
+```cpp
+// In use
+Widget copy = w
+```
+'''
+range = "Widget ⟦copy⟧=w;"

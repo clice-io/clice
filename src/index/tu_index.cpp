@@ -166,17 +166,20 @@ bool is_specialization(const clang::NamedDecl* decl) {
     return false;
 }
 
+/// The type of a value; of a function, the type it returns.
+clang::QualType value_type(const clang::ValueDecl* decl) {
+    if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        return function->getReturnType();
+    }
+    return decl->getType();
+}
+
 /// The declaration go-to-type-definition reaches from a value or a
-/// function: the one its type names — a function's, the type it returns —
-/// once pointers, references and arrays are stripped, and inside a
-/// template once the resolver resolved it.
+/// function: the one its value_type names once pointers, references and
+/// arrays are stripped, and inside a template once the resolver resolved it.
 const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl,
                                            types::TemplateResolver& resolver) {
-    auto type = decl->getType();
-    if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-        type = function->getReturnType();
-    }
-    return types::decl_of(types::unwrap(resolver.resolve(type)), &resolver);
+    return types::decl_of(types::unwrap(resolver.resolve(value_type(decl))), &resolver);
 }
 
 /// Occurrences cover disjoint ranges: a name inside another symbol's
@@ -514,6 +517,24 @@ public:
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
+    /// The TypeDefinition relations of a value (a function's: its return
+    /// value): the type it is declared with, and for a smart pointer also
+    /// the type it points to.
+    void add_type_definitions(const clang::ValueDecl* decl) {
+        auto* target = type_definition_of(decl, resolver);
+        if(!target) {
+            return;
+        }
+        add_pair_relation(decl, RelationKind::TypeDefinition, target, decl->getLocation());
+        auto type = types::unwrap(value_type(decl));
+        if(!llvm::isa<clang::CXXRecordDecl>(target) || type->isDependentType()) {
+            return;
+        }
+        if(auto* pointed = types::decl_of(types::unwrap(resolver.arrow_pointee(type)))) {
+            add_pair_relation(decl, RelationKind::TypeDefinition, pointed, decl->getLocation());
+        }
+    }
+
     /// A member of a class template's specialization, or a variable
     /// template's specialization, can have another type than its pattern
     /// declares (`T value` is a Widget in `Box<Widget>`): at a name of one,
@@ -569,8 +590,8 @@ public:
     }
 
     /// Module names are indexed like macro names: an occurrence plus a
-    /// Definition/Reference relation keyed by the module's entity, so
-    /// navigation flows through the ordinary index pipeline.
+    /// Definition/Declaration/Reference relation keyed by the module's
+    /// entity, so navigation flows through the ordinary index pipeline.
     void index_modules(const Semantics& semantics) {
         auto emit = [&](llvm::StringRef name,
                         clang::FileID fid,
@@ -621,7 +642,7 @@ public:
         }
 
         // The module declaration of this unit: Definition in an interface
-        // unit or a partition, Reference in an implementation unit. The
+        // unit or a partition, Declaration in an implementation unit. The
         // declaration has no AST node or PP location; the semantics' lexical
         // scan located and cross-checked its written tokens. The occurrence
         // spans the written name, partition included.
@@ -639,7 +660,7 @@ public:
             emit(module_name,
                  unit.main_file(),
                  module.name_range(),
-                 unit.defines_module() ? RelationKind::Definition : RelationKind::Reference);
+                 unit.defines_module() ? RelationKind::Definition : RelationKind::Declaration);
             break;
         }
     }
@@ -825,8 +846,11 @@ public:
 
         if(auto* DE = node.get<clang::CXXDeleteExpr>()) {
             auto keyword = keyword_after_scope(context, DE->getBeginLoc(), DE->isGlobalDelete());
-            call(DE->getOperatorDelete(), keyword);
-            if(auto type = DE->getDestroyedType(); !type.isNull()) {
+            auto* op = DE->getOperatorDelete();
+            call(op, keyword);
+            // A destroying `operator delete` runs in place of the destructor.
+            if(auto type = DE->getDestroyedType();
+               !type.isNull() && !(op && op->isDestroyingOperatorDelete())) {
                 call(types::destructor_of(type), keyword);
             }
             return;
@@ -868,9 +892,7 @@ public:
             }
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
-            if(auto target = type_definition_of(VD, resolver)) {
-                add_pair_relation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
-            }
+            add_type_definitions(VD);
             return;
         }
 
@@ -945,9 +967,7 @@ public:
                 }
             }
 
-            if(auto target = type_definition_of(FD, resolver)) {
-                add_pair_relation(FD, RelationKind::TypeDefinition, target, FD->getLocation());
-            }
+            add_type_definitions(FD);
 
             if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(FD)) {
                 for(auto* base: method->overridden_methods()) {

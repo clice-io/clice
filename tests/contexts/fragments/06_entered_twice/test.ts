@@ -14,8 +14,14 @@ test(async (t) => {
     expect((await s.switchContext("ops.def", "ops.cpp", { occurrence: 1 })).success).toBe(true);
     await park.reached();
     const pending = s.documentSymbols("ops.def");
-    // A later reply proves the server took the request up first.
+    let answered = false;
+    void pending.then(() => {
+        answered = true;
+    });
+    // A later reply proves the server took the request up first: it waits
+    // for the chosen include's compile.
     await s.counts();
+    expect(answered).toBe(false);
     await park.release();
     await t.show("while the switch compiles", pending);
     await s.sync();

@@ -665,13 +665,6 @@ tests/completion/modules/04_interface_partitions
 
   注意：模块名称中的点是一种命名约定，并不表示语言层面的层级关系，但由点触发的补全仍能改善用户体验。
 
-- [ ] 导入头文件单元
-
-  ```cpp
-  import <^>  // suggest importable headers (same candidates as #include)
-  import "^"  // same, quoted form
-  ```
-
 - [ ] 补全符号时自动插入 `import` 语句（类似于自动包含头文件）
 
   ```cpp

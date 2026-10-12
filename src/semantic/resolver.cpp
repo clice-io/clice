@@ -2939,6 +2939,11 @@ clang::QualType TemplateResolver::member_object(const clang::Expr* base, bool ar
         instantiator.member_object(instantiator.expr_type(base), arrow));
 }
 
+clang::QualType TemplateResolver::arrow_pointee(clang::QualType type) {
+    PseudoInstantiator instantiator(context, resolved);
+    return instantiator.resolve(instantiator.arrow_target(type));
+}
+
 TemplateResolver::lookup_result
     TemplateResolver::lookup(const clang::CXXDependentScopeMemberExpr* expr) {
     PseudoInstantiator instantiator(context, resolved, options);

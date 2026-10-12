@@ -1,6 +1,6 @@
 # `override` / `final`
 
-`override` and `final` do not navigate to the overridden base method yet
+`override` and `final` navigate to the base method they override
 
-Go-to-definition on the `override` or `final` specifier does not reach the
-base class virtual method it overrides.
+Go-to-definition on the `override` or `final` specifier reaches the base
+class virtual method it overrides.

@@ -81,9 +81,13 @@ protocol::SymbolInformation symbol_information(const index::SymbolRef& symbol,
 template <typename Item>
 static Item hierarchy_item(const index::SymbolRef& symbol,
                            const index::Site& site,
-                           const index::Site& extent) {
+                           const index::Site& extent,
+                           llvm::StringRef qualified) {
     Item item;
     item.name = symbol.display_name();
+    if(qualified != item.name) {
+        item.detail = qualified.str();
+    }
     item.kind = symbol_kind(symbol.kind);
     item.uri = feature::to_uri(site.path);
     item.range = range(extent);
@@ -94,14 +98,16 @@ static Item hierarchy_item(const index::SymbolRef& symbol,
 
 protocol::CallHierarchyItem call_hierarchy_item(const index::SymbolRef& symbol,
                                                 const index::Site& site,
-                                                const index::Site& extent) {
-    return hierarchy_item<protocol::CallHierarchyItem>(symbol, site, extent);
+                                                const index::Site& extent,
+                                                llvm::StringRef qualified) {
+    return hierarchy_item<protocol::CallHierarchyItem>(symbol, site, extent, qualified);
 }
 
 protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
                                                 const index::Site& site,
-                                                const index::Site& extent) {
-    return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site, extent);
+                                                const index::Site& extent,
+                                                llvm::StringRef qualified) {
+    return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site, extent, qualified);
 }
 
 std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::LSPAny>& data) {

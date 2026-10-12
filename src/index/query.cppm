@@ -330,9 +330,10 @@ public:
 
     /// Go-to-definition from a cursor: the definition sites, or — standing
     /// on the definition itself, or when nothing defines the symbol — the
-    /// declarations (and sibling definitions), so definition and
-    /// declaration sites alternate. The cursor's own site drops out unless
-    /// it is the only site the symbol has.
+    /// declarations (and sibling definitions) and, at a specialization, the
+    /// template it specializes, so definition and declaration sites
+    /// alternate. The cursor's own site drops out unless it is the only site
+    /// the symbol has.
     std::vector<Site> definition(const Cursor& cursor) const;
 
     /// The mirror half of definition's alternation: declarations plus the
@@ -372,7 +373,8 @@ public:
 
     /// Sites implementing the symbol: derived types for a class-like
     /// symbol, overrides otherwise — through every override that only
-    /// declares to the ones below it.
+    /// declares to the ones below it; for a function nothing overrides, its
+    /// definitions.
     std::vector<Site> implementation(SymbolHash hash, Fid anchor) const;
 
     /// A symbol's definition as text: the extent's site, the text it
@@ -430,8 +432,9 @@ public:
     };
 
     /// The functions calling `root` and the ones it calls, with the call
-    /// sites; only the sides asked for are walked. A neighbour no source
-    /// places is left out.
+    /// sites; only the sides asked for are walked. A variable, a field or
+    /// an enumerator has as callers the functions using it. A neighbour no
+    /// source places is left out.
     struct CallGraphOptions {
         bool callers = true;
         bool callees = true;
@@ -522,6 +525,14 @@ private:
     /// Relations of `kind` grouped by their target symbol, each with the
     /// sites spelling it, the targets resolved to their canonical sites.
     std::vector<Edge> edges(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// The functions whose bodies reference `hash`, each with its
+    /// references, weak ones included.
+    std::vector<Edge> referencing_functions(SymbolHash hash, Fid anchor) const;
+
+    /// The edges of the sites grouped by neighbour, each neighbour at its
+    /// canonical site.
+    std::vector<Edge> located_edges(llvm::DenseMap<SymbolHash, std::vector<Site>>& by_target) const;
 
     /// A relation target, anchored at the file the relation was read from: a
     /// file naming a symbol below external scope holds one of its entries.

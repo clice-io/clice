@@ -355,6 +355,10 @@ private:
     /// This project's query, then the peers of `symbol` (peers_of).
     llvm::SmallVector<Source> sources(index::SymbolHash symbol, Fid anchor);
 
+    /// A symbol's qualified name, from this project or else the first peer
+    /// that knows it: a neighbour only a peer indexes carries its id.
+    std::string qualified_name(index::SymbolHash symbol);
+
     /// Whether `from`'s shard for `file` stands among the answers of `asked`:
     /// any project's for a closed file; for an open one only the project
     /// serving its buffer — the others hold its disk shard, which the buffer

@@ -670,13 +670,6 @@ tests/completion/modules/04_interface_partitions
 
   Note: dots in module names are a naming convention, not language-level hierarchy, but dot-triggered completion is still valuable UX.
 
-- [ ] Header unit import
-
-  ```cpp
-  import <^>  // suggest importable headers (same candidates as #include)
-  import "^"  // same, quoted form
-  ```
-
 - [ ] Auto-insert `import` statement on symbol completion (like auto-include for headers)
 
   ```cpp

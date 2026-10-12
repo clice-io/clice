@@ -8,12 +8,14 @@ outgoing_calls = [
         name = "operator int",
         kind = "Method",
         at = "conv.h │ ⟦operator int⟧() const;",
+        detail = "Conv::operator int",
         sites = ["int i = ⟦c⟧;"],
     },
     {
         name = "get",
         kind = "Method",
         at = "conv.h │ int ⟦get⟧() const;",
+        detail = "Conv::get",
         sites = ["return i + c.⟦get⟧();"],
     },
 ]

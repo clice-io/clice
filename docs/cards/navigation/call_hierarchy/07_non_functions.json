@@ -3,16 +3,16 @@
   "topic": "navigation",
   "subtopic": "call_hierarchy",
   "title": "Non-function targets",
-  "summary": "Call hierarchy preparation returns nothing for variables and enum constants",
-  "prose": "Preparing a call hierarchy on a variable or an enum constant returns\nnothing; the request is offered only for functions and methods.",
-  "status": "unsupported",
+  "summary": "A call hierarchy opens on a variable, a field or an enum constant",
+  "prose": "Preparing a call hierarchy on a variable, a field or an enum constant\noffers an item whose incoming calls are the functions using it.",
+  "status": "supported",
   "issues": [
     "clangd#1308"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "int counter = 0;\n\nenum Mode {\n    Fast,\n    Slow,\n};\n\nint next() {\n    return counter++;\n}\n\nMode pick() {\n    return Fast;\n}\n",
+      "text": "int counter = 0;\n\nenum Mode {\n    Fast,\n    Slow,\n};\n\nstruct Tally {\n    int hits = 0;\n\n    void bump() {\n        hits += 1;\n    }\n};\n\ntemplate <typename T>\nstruct Store {\n    T stored;\n};\n\ntemplate <typename T>\nstruct Reader : Store<T> {\n    T read() {\n        return this->stored;\n    }\n};\n\nint next() {\n    return counter++;\n}\n\nMode pick() {\n    return Fast;\n}\n",
       "markers": [
         {
           "name": "variable",
@@ -24,6 +24,18 @@
           "name": "enumerator",
           "begin": 34,
           "end": 34,
+          "range": false
+        },
+        {
+          "name": "field",
+          "begin": 77,
+          "end": 77,
+          "range": false
+        },
+        {
+          "name": "dependent_field",
+          "begin": 178,
+          "end": 178,
           "range": false
         }
       ]
@@ -37,9 +49,62 @@
           "label": "variable",
           "marker": "variable",
           "value": {
-            "wrong": "a call hierarchy should open on a variable, with the functions using it (clangd#1308)",
-            "call_hierarchy": [],
-            "incoming_calls": [],
+            "call_hierarchy": [
+              {
+                "name": "counter",
+                "kind": "Variable",
+                "at": {
+                  "$place": "int ⟦counter⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 11
+                    }
+                  }
+                }
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "next",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦next⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 8
+                    }
+                  }
+                },
+                "sites": [
+                  {
+                    "$place": "return ⟦counter⟧++;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 28,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 28,
+                        "character": 18
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
             "outgoing_calls": []
           }
         },
@@ -47,9 +112,193 @@
           "label": "enumerator",
           "marker": "enumerator",
           "value": {
-            "wrong": "a call hierarchy should open on an enumerator, with the functions using it (clangd#1308)",
-            "call_hierarchy": [],
-            "incoming_calls": [],
+            "call_hierarchy": [
+              {
+                "name": "Fast",
+                "kind": "EnumMember",
+                "at": {
+                  "$place": "⟦Fast⟧,",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 8
+                    }
+                  }
+                },
+                "detail": "Mode::Fast"
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "pick",
+                "kind": "Function",
+                "at": {
+                  "$place": "Mode ⟦pick⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 9
+                    }
+                  }
+                },
+                "sites": [
+                  {
+                    "$place": "return ⟦Fast⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 32,
+                        "character": 11
+                      },
+                      "end": {
+                        "line": 32,
+                        "character": 15
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": []
+          }
+        },
+        {
+          "label": "field",
+          "marker": "field",
+          "value": {
+            "call_hierarchy": [
+              {
+                "name": "hits",
+                "kind": "Field",
+                "at": {
+                  "$place": "int ⟦hits⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "Tally::hits"
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "bump",
+                "kind": "Method",
+                "at": {
+                  "$place": "void ⟦bump⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "Tally::bump",
+                "sites": [
+                  {
+                    "$place": "⟦hits⟧ += 1;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 11,
+                        "character": 8
+                      },
+                      "end": {
+                        "line": 11,
+                        "character": 12
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "outgoing_calls": []
+          }
+        },
+        {
+          "label": "dependent_field",
+          "marker": "dependent_field",
+          "value": {
+            "call_hierarchy": [
+              {
+                "name": "stored",
+                "kind": "Field",
+                "at": {
+                  "$place": "T ⟦stored⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "Store::stored"
+              }
+            ],
+            "incoming_calls": [
+              {
+                "name": "read",
+                "kind": "Method",
+                "at": {
+                  "$place": "T ⟦read⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 10
+                    }
+                  }
+                },
+                "detail": "Reader::read",
+                "sites": [
+                  {
+                    "$place": "return this->⟦stored⟧;",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 23,
+                        "character": 21
+                      },
+                      "end": {
+                        "line": 23,
+                        "character": 27
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
             "outgoing_calls": []
           }
         }

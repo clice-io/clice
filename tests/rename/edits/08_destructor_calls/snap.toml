@@ -1,0 +1,16 @@
+[answers.widget.rename]
+compiles = true
+
+[answers.widget.rename.edits]
+"main.cpp" = '''
+-struct Widget {
+-    ~Widget();
++struct Gadget {
++    ~Gadget();
+ };
+
+-void dispose(Widget* widget) {
++void dispose(Gadget* widget) {
+     delete widget;
+ }
+'''

@@ -17,7 +17,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [代码补全](./completion.md)          | 支持 36 项                                |
 | [悬停](./hover.md)                   | 支持 33 项 · 部分支持 8 项 · 不支持 20 项 |
 | [签名帮助](./signature-help.md)      | 支持 12 项 · 部分支持 1 项 · 不支持 5 项  |
-| [代码导航](./navigation.md)          | 支持 78 项 · 部分支持 8 项 · 不支持 25 项 |
+| [代码导航](./navigation.md)          | 支持 96 项 · 部分支持 2 项 · 不支持 12 项 |
 | [重命名](./rename.md)                | 支持 4 项                                 |
 | [诊断](./diagnostics.md)             | 支持 9 项                                 |
 | [代码操作](./code-action.md)         | 支持 38 项                                |
@@ -28,8 +28,8 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [折叠范围](./folding-ranges.md)      | 支持 19 项                                |
 | [选择范围](./selection-ranges.md)    | 支持 10 项                                |
 | [格式化](./formatting.md)            | 支持 4 项                                 |
-| [C++20 模块](./modules.md)           | 支持 7 项 · 不支持 1 项                   |
-| [头文件上下文](./header-contexts.md) | 支持 4 项 · 不支持 1 项                   |
+| [C++20 模块](./modules.md)           | 支持 7 项                                 |
+| [头文件上下文](./header-contexts.md) | 支持 5 项                                 |
 | [编译](./compilation.md)             | 支持 5 项 · 部分支持 1 项                 |
 
 <!-- END GENERATED OVERVIEW -->
