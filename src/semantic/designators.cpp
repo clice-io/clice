@@ -42,6 +42,7 @@ public:
         valid = true;
         field = record->field_begin();
         fields_end = record->field_end();
+        skip_unnamed_bit_fields();
         if(const auto* cxx_record = llvm::dyn_cast<clang::CXXRecordDecl>(record)) {
             base = cxx_record->bases_begin();
             bases_end = cxx_record->bases_end();
@@ -62,6 +63,7 @@ public:
             ++base;
         } else if(field != fields_end) {
             ++field;
+            skip_unnamed_bit_fields();
         }
     }
 
@@ -94,6 +96,13 @@ public:
     }
 
 private:
+    /// An unnamed bit-field is no subobject an initializer initializes.
+    void skip_unnamed_bit_fields() {
+        while(field != fields_end && field->isUnnamedBitField()) {
+            ++field;
+        }
+    }
+
     bool valid = false;
     bool is_array = false;
     bool one_field = false;
@@ -164,6 +173,21 @@ auto unwritten(const clang::InitListExpr* syntactic)
             designators,
             nested_braces,
             prefix);
+    return designators;
+}
+
+auto unwritten(const clang::CXXParenListInitExpr* init)
+    -> llvm::DenseMap<clang::SourceLocation, std::string> {
+    llvm::DenseMap<clang::SourceLocation, std::string> designators;
+    SubobjectNames names(init->getType());
+    assert(names && "parentheses initialize an aggregate");
+    for(const clang::Expr* argument: init->getUserSpecifiedInitExprs()) {
+        std::string designator;
+        if(names.append(designator, /*brace_elided=*/false)) {
+            designators.try_emplace(argument->getBeginLoc(), std::move(designator));
+        }
+        names.next();
+    }
     return designators;
 }
 

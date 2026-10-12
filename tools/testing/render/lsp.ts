@@ -6,7 +6,7 @@ import type { CounterpartsResult } from "../../protocol/protocol.ts";
 import type {
     Action,
     Call,
-    CompletionItem,
+    Completion,
     Counterparts,
     Diagnostic,
     Fold,
@@ -335,33 +335,40 @@ export function enumName(table: Record<string, unknown>, value: number): string 
 }
 
 /// `path` is the document completed in, where the items' edits apply.
-export function completionItems(
+export function completion(
     reply: proto.CompletionItem[] | proto.CompletionList | null,
     path = "",
-): CompletionItem[] {
+): Completion {
     const items = reply === null ? [] : Array.isArray(reply) ? reply : reply.items;
-    return items.map((item) => {
-        const edit = item.textEdit;
-        const split = edit !== undefined && "insert" in edit;
-        return {
-            label: item.label + (item.labelDetails?.detail ?? ""),
-            kind: item.kind === undefined ? "None" : enumName(proto.CompletionItemKind, item.kind),
-            detail: item.detail ?? item.labelDetails?.description,
-            deprecated: item.tags?.includes(proto.CompletionItemTag.Deprecated) ?? false,
-            filter: item.filterText,
-            insert: edit?.newText ?? item.insertText,
-            snippet: item.insertTextFormat === proto.InsertTextFormat.Snippet,
-            replace:
-                edit === undefined
-                    ? undefined
-                    : { path, range: "range" in edit ? edit.range : edit.replace },
-            insertRange:
-                split && JSON.stringify(edit.insert) !== JSON.stringify(edit.replace)
-                    ? { path, range: edit.insert }
-                    : undefined,
-            sortText: item.sortText ?? "",
-        };
-    });
+    const incomplete = reply !== null && !Array.isArray(reply) && reply.isIncomplete;
+    return {
+        incomplete,
+        items: items.map((item) => {
+            const edit = item.textEdit;
+            const split = edit !== undefined && "insert" in edit;
+            return {
+                label: item.label + (item.labelDetails?.detail ?? ""),
+                kind:
+                    item.kind === undefined
+                        ? "None"
+                        : enumName(proto.CompletionItemKind, item.kind),
+                detail: item.detail ?? item.labelDetails?.description,
+                deprecated: item.tags?.includes(proto.CompletionItemTag.Deprecated) ?? false,
+                filter: item.filterText,
+                insert: edit?.newText ?? item.insertText,
+                snippet: item.insertTextFormat === proto.InsertTextFormat.Snippet,
+                replace:
+                    edit === undefined
+                        ? undefined
+                        : { path, range: "range" in edit ? edit.range : edit.replace },
+                insertRange:
+                    split && JSON.stringify(edit.insert) !== JSON.stringify(edit.replace)
+                        ? { path, range: edit.insert }
+                        : undefined,
+                sortText: item.sortText ?? "",
+            };
+        }),
+    };
 }
 
 export function signatures(reply: proto.SignatureHelp | null): Signatures {

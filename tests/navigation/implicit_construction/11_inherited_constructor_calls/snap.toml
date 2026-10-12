@@ -1,3 +1,6 @@
+[answers.using_name]
+definition = ["⟦Base⟧(int x);"]
+
 [answers.paren]
 definition = ["⟦Base⟧(int x);"]
 

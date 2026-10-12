@@ -882,7 +882,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     // completion build.
     if(!trigger_character.empty()) {
         bool served = trigger_character == " "
-                          ? pctx.kind == CompletionContext::Import
+                          ? pctx.kind == CompletionContext::Import ||
+                                pctx.kind == CompletionContext::ModuleDeclaration
                           : pctx.kind != CompletionContext::None || !offset ||
                                 follows_access_operator(session->text, *offset);
         if(!served) {
@@ -913,16 +914,14 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             // the rest of the path through a closing delimiter already there.
             llvm::StringRef text = session->text;
             char closer = angled ? '>' : '"';
-            auto line_end = std::min(text.find_first_of("\r\n", pctx.replace.end), text.size());
-            auto close = text.slice(pctx.replace.end, line_end).find(closer);
             auto edit = [&](const IncludeCandidate& candidate) {
                 auto end = pctx.replace.end;
                 if(candidate.is_directory) {
                     if(text.substr(end).starts_with("/")) {
                         end += 1;
                     }
-                } else if(close != llvm::StringRef::npos) {
-                    end += close + 1;
+                } else if(pctx.closed) {
+                    end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
                 }
                 return protocol::TextEdit{
                     .range = *map.range({pctx.replace.begin, end}, PositionEncoding::UTF16),
@@ -938,17 +937,24 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 item.text_edit = edit(c);
                 items.push_back(std::move(item));
             }
-            co_return to_raw(items);
+            co_return to_raw(
+                feature::completion_list(std::move(items), project.config.code_completion.limit));
         }
-        if(pctx.kind == CompletionContext::Import) {
-            // The module declaration precedes every import, and the scan
-            // stops before the import being typed: the scanner rejects a
-            // buffer with an unclosed directive whole. Its lexer needs the
-            // NUL terminator a copy provides.
-            llvm::StringRef text = session->text;
-            auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1).str();
-            auto module_names =
-                complete_module_import(project.dep_graph, pctx.prefix, scan_quick(declared));
+        if(pctx.kind == CompletionContext::Import ||
+           pctx.kind == CompletionContext::ModuleDeclaration) {
+            std::vector<std::string> module_names;
+            if(pctx.kind == CompletionContext::ModuleDeclaration) {
+                module_names = complete_module_declaration(project.dep_graph, pctx.prefix);
+            } else {
+                // The module declaration precedes every import, and the
+                // scan stops before the import being typed: the scanner
+                // rejects a buffer with an unclosed directive whole. Its
+                // lexer needs the NUL terminator a copy provides.
+                llvm::StringRef text = session->text;
+                auto declared = text.take_front(text.rfind('\n', pctx.replace.begin) + 1).str();
+                module_names =
+                    complete_module_import(project.dep_graph, pctx.prefix, scan_quick(declared));
+            }
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());
             for(auto& name: module_names) {
@@ -961,7 +967,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 };
                 items.push_back(std::move(item));
             }
-            co_return to_raw(items);
+            co_return to_raw(
+                feature::completion_list(std::move(items), project.config.code_completion.limit));
         }
     }
 

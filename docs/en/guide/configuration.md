@@ -408,7 +408,7 @@ Collapse an overload set into a single completion item.
 | ------- | -------- | ------- |
 | `limit` | `uint32` | `0`     |
 
-Maximum number of completion items (not yet implemented).
+Maximum number of completion items, the best ranked; `0` means no limit. A list cut short is marked incomplete, so the editor asks again as you type.
 
 </div>
 

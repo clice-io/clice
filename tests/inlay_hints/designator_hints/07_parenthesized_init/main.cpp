@@ -4,3 +4,5 @@ struct Point {
 };
 
 Point p(1, 2);
+
+int corners[2](3, 4);

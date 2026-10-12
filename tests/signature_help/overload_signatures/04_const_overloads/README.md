@@ -4,6 +4,7 @@ issues: [clangd#50]
 
 # Const overloads
 
-A non-const object lists both the const and the non-const overload, and the two read the same
+Of a const and a non-const overload taking the same parameters, only the one the object calls shows
 
-The label leaves out the trailing `const`, so nothing tells them apart.
+A non-const object calls the non-const overload; a const object can call only
+the const one, whose label ends in `const`.
