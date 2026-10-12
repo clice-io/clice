@@ -43,8 +43,8 @@ function visibleEnd(line: string): string {
 }
 
 /// The diff from `before` to `after` of a file.
-export function renderDiff(path: string, before: string, after: string): string {
-    const patch = structuredPatch(path, path, before, after, undefined, undefined, { context: 2 });
+export function renderDiff(before: string, after: string): string {
+    const patch = structuredPatch("", "", before, after, undefined, undefined, { context: 2 });
     const out: string[] = [];
     patch.hunks.forEach((hunk, index) => {
         if (index > 0) {
@@ -73,7 +73,7 @@ export function renderWorkspaceEdit(
     return Object.fromEntries(
         [...edits.keys()].sort().map((path) => {
             const source = file(path);
-            return [path, renderDiff(path, source.text, applyEdits(source, edits.get(path) ?? []))];
+            return [path, renderDiff(source.text, applyEdits(source, edits.get(path) ?? []))];
         }),
     );
 }

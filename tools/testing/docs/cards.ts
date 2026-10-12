@@ -10,7 +10,8 @@ import * as path from "node:path";
 import { parseAnnotations } from "../cases/annotation.ts";
 import type { Case } from "../cases/case.ts";
 import { statusOf, writeSnapshot, type Snapshot } from "../cases/output.ts";
-import { MARKED, REPO_ROOT, copyName } from "../cases/project.ts";
+import { REPO_ROOT } from "../../repo.ts";
+import { MARKED, copyName } from "../cases/project.ts";
 import type { Range } from "../render/position.ts";
 import { Place, isList, isTable, type Value } from "../render/value.ts";
 

@@ -1,6 +1,10 @@
-import { describe, expect, test } from "vitest";
-import { Place } from "../render/value.ts";
-import { Output, readSnapshot, statusOf, writeSnapshot } from "./output.ts";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { describe, expect, test, vi } from "vitest";
+import { Place, type Table } from "../render/value.ts";
+import type { Case } from "./case.ts";
+import { Output, checkOutput, readSnapshot, statusOf, writeSnapshot } from "./output.ts";
 
 const where = {
     path: "main.cpp",
@@ -96,5 +100,40 @@ describe("known wrong", () => {
         expect(statusOf("[answers.a]\nhover = {}\n")).toBe("supported");
         expect(statusOf(flagged)).toBe("partial");
         expect(statusOf('[answers.b]\nwrong = "no"\nhover = {}\n')).toBe("unsupported");
+    });
+
+    test("flags survive a check and an update", () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clice-output-"));
+        try {
+            fs.writeFileSync(path.join(dir, "snap.toml"), flagged);
+            const c = { id: "topic/sub/01_case", dir } as Case;
+            const run = (b: Table) =>
+                new Map([
+                    [
+                        "answers",
+                        new Map([
+                            ["a", { hover: {} }],
+                            ["b", b],
+                        ]),
+                    ],
+                ]);
+            expect(() => checkOutput(c, run({ hover: {} }))).not.toThrow();
+            vi.stubEnv("UPDATE_SNAPSHOTS", "1");
+            checkOutput(c, run({ text: "x" }));
+            expect(fs.readFileSync(path.join(dir, "snap.toml"), "utf8")).toBe(
+                [
+                    "[answers.a]",
+                    "hover = {}",
+                    "",
+                    "[answers.b]",
+                    'wrong = "not yet"',
+                    'text = "x"',
+                    "",
+                ].join("\n"),
+            );
+        } finally {
+            vi.unstubAllEnvs();
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

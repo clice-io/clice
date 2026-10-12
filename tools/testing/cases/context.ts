@@ -12,7 +12,7 @@ import { block, type ShowOptions, type Shown } from "../render/shown.ts";
 import { Serve, gateLogs, type Faults, type ServerOptions } from "../server/serve.ts";
 import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { markerOf, runAnswers } from "./answers.ts";
-import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
+import { at, locate, type Anchor, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
 import { Output, type Blocks } from "./output.ts";
@@ -43,6 +43,9 @@ export interface TestContext {
     /// A marker of the case's sources, valid while its file reads as the
     /// case wrote it.
     marker(name: string): MarkerAnchor;
+    /// `path:line:column` of an anchor in the copy as it reads now, the
+    /// way the commands take a place.
+    place(anchor: Anchor): string;
     /// Let `ms` pass, where time is what the test checks; `why` names the product's
     /// interval it waits out.
     elapse(ms: number, why: string): Promise<void>;
@@ -144,6 +147,12 @@ class TestRun implements TestContext {
 
     marker(name: string): MarkerAnchor {
         return markerOf(this.case, name);
+    }
+
+    place(anchor: Anchor): string {
+        const text = this.disk.read(anchor.path);
+        const lines = text.slice(0, locate(text, anchor)).split("\n");
+        return `${anchor.path}:${String(lines.length)}:${String((lines.at(-1) ?? "").length + 1)}`;
     }
 
     elapse(ms: number, why: string): Promise<void> {

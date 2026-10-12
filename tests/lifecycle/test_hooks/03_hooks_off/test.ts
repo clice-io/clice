@@ -1,19 +1,7 @@
-import * as proto from "vscode-languageserver-protocol";
-import { test } from "@clice/tools/testing";
+import { refusal, test } from "@clice/tools/testing";
 
 // The test hooks answer only a server started with project.test_hooks:
 // an editor's server refuses them and counts no builds.
-
-async function refusal(reply: Promise<unknown>): Promise<{ code: number; message: string }> {
-    const error = await reply.then(
-        () => null,
-        (failure: unknown) => failure,
-    );
-    if (!(error instanceof proto.ResponseError)) {
-        throw new Error(`expected an error reply, got ${JSON.stringify(error)}`);
-    }
-    return { code: error.code, message: error.message };
-}
 
 test(async (t) => {
     const s = await t.start({ config: { project: { test_hooks: false } } });

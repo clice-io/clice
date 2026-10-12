@@ -1,23 +1,11 @@
 import { expect } from "vitest";
-import * as proto from "vscode-languageserver-protocol";
 import { HoldRequest, type BuildKind } from "@clice/tools/protocol";
-import { test } from "@clice/tools/testing";
+import { refusal, test } from "@clice/tools/testing";
 
 // The parks: a hold parks a build's reply in the server, a gate a
 // request's work where it starts in its worker; either way the server
 // counts the work as in flight, publishes nothing for it, and lets it go
 // on release or shutdown.
-
-async function refusal(reply: Promise<unknown>): Promise<{ code: number; message: string }> {
-    const error = await reply.then(
-        () => null,
-        (failure: unknown) => failure,
-    );
-    if (!(error instanceof proto.ResponseError)) {
-        throw new Error(`expected an error reply, got ${JSON.stringify(error)}`);
-    }
-    return { code: error.code, message: error.message };
-}
 
 test("sync waits for requests", async (t) => {
     const s = await t.start();

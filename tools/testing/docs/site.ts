@@ -11,9 +11,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import yaml from "js-yaml";
-import { rewriteRegions } from "../../docs/generated.ts";
+import { renderMarkdownTable, rewriteRegions } from "../../docs/generated.ts";
 import { loadCases } from "../cases/case.ts";
-import { CASES_DIR, REPO_ROOT } from "../cases/project.ts";
+import { REPO_ROOT } from "../../repo.ts";
+import { CASES_DIR } from "../cases/project.ts";
 import { CARDS_DIR, cardPath } from "./cards.ts";
 import { regionItems, status } from "./pages.ts";
 
@@ -113,17 +114,7 @@ function overview(): string {
                 .map((name) => `${String(counts.get(name))} ${name}`);
             return [`[${title}](./${name}.md)`, statuses.join(" · ")];
         });
-    const table = [["Feature", "Status"], ...rows];
-    const widths = [0, 1].map((column) =>
-        Math.max(...table.map((row) => row[column]?.length ?? 0)),
-    );
-    const line = (row: readonly string[]): string =>
-        `| ${row.map((cell, column) => cell.padEnd(widths[column] ?? 0)).join(" | ")} |`;
-    return [
-        line(table[0] ?? []),
-        line(widths.map((width) => "-".repeat(width))),
-        ...rows.map(line),
-    ].join("\n");
+    return renderMarkdownTable([["Feature", "Status"], ...rows]).join("\n");
 }
 
 {

@@ -9,7 +9,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Readable, Writable } from "node:stream";
 import * as proto from "vscode-languageserver-protocol";
 import {
     createProtocolConnection,
@@ -135,11 +134,6 @@ export interface InitializeOptions {
     beforeInitialized?: (() => Promise<void>) | undefined;
 }
 
-interface Transport {
-    reader: Readable;
-    writer: Writable;
-}
-
 /// The initialization options a client sends for `ws`: the caller's, with
 /// the cache pinned into the workspace (so `.clice/` cleanup prevents a
 /// stale PCH) and, unless switched off, the test defaults — one worker of
@@ -176,7 +170,6 @@ export function initializationOptionsFor(
 export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     protected connection: proto.ProtocolConnection;
-    private transport: Transport;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
     /// Every publishDiagnostics received, in order.
@@ -218,12 +211,11 @@ export class CliceClient {
     // reports and crash text arrive at exit).
     static STDERR_RETAIN_BYTES = 8 * 1024 * 1024;
 
-    private constructor(child: ChildProcessWithoutNullStreams, transport: Transport) {
+    private constructor(child: ChildProcessWithoutNullStreams) {
         this.child = child;
-        this.transport = transport;
         this.connection = createProtocolConnection(
-            new StreamMessageReader(transport.reader),
-            new StreamMessageWriter(transport.writer),
+            new StreamMessageReader(child.stdout),
+            new StreamMessageWriter(child.stdin),
         );
         this.exited = new Promise((resolve) => {
             child.on("exit", (code) => {
@@ -303,7 +295,7 @@ export class CliceClient {
             cwd: options.cwd,
             env: { ...serverEnv(), ...options.env },
         });
-        const client = new CliceClient(child, { reader: child.stdout, writer: child.stdin });
+        const client = new CliceClient(child);
         client.stderrDrainedFromStart = options.drainStderr !== false;
         if (client.stderrDrainedFromStart) {
             client.spawnStderrPump();
@@ -348,7 +340,7 @@ export class CliceClient {
             messages.flatMap((message) => ("id" in message ? [String(message.id)] : [])),
         );
         const responses = new Map<string, proto.ResponseMessage>();
-        const { reader, writer } = this.transport;
+        const { stdout: reader, stdin: writer } = this.child;
         const answered = new Promise<Map<string, proto.ResponseMessage>>((resolve) => {
             if (pending.size === 0) {
                 resolve(responses);
@@ -786,12 +778,6 @@ export class CliceClient {
     /// How many diagnostics publishes the document has received.
     publishCount(uri: string): number {
         return this.publishes.get(this.normalizeUri(uri)) ?? 0;
-    }
-
-    errors(uri: string): proto.Diagnostic[] {
-        return (this.diagnostics.get(uri) ?? []).filter(
-            (d) => d.severity === proto.DiagnosticSeverity.Error,
-        );
     }
 
     // === Anomaly gate ====================================================

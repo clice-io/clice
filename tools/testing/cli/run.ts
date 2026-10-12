@@ -416,7 +416,7 @@ function written(before: Map<string, Buffer>, after: Map<string, Buffer>): Table
                 ? "(removed)"
                 : old === undefined && now.length === 0
                   ? "(created empty)"
-                  : renderDiff(name, old?.toString("utf8") ?? "", now.toString("utf8"));
+                  : renderDiff(old?.toString("utf8") ?? "", now.toString("utf8"));
     }
     return out;
 }

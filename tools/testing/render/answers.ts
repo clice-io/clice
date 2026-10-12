@@ -554,7 +554,7 @@ export function renderFormatting(source: SourceText, edits: readonly TextEdit[] 
     if (edits === null) {
         return "(no answer)";
     }
-    return renderDiff(source.path, source.text, applyEdits(source, edits));
+    return renderDiff(source.text, applyEdits(source, edits));
 }
 
 /// A request the server refused, with the message an editor shows.

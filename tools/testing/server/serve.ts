@@ -1303,6 +1303,19 @@ export class Serve extends Client {
     }
 }
 
+/// The error a request is refused with; a reply that is no refusal fails
+/// the test.
+export async function refusal(reply: Promise<unknown>): Promise<{ code: number; message: string }> {
+    const error = await reply.then(
+        () => null,
+        (failure: unknown) => failure,
+    );
+    if (!(error instanceof proto.ResponseError)) {
+        throw new Error(`expected an error reply, got ${JSON.stringify(error)}`);
+    }
+    return { code: error.code, message: error.message };
+}
+
 let serves = 0;
 
 /// A request whose refusal is an answer: the error the server replies with

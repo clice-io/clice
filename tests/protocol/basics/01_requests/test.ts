@@ -1,7 +1,8 @@
 import { test } from "@clice/tools/testing";
 
-// Every request the server advertises is answered on a plain file: asked
-// right after the open, before any compile finished, and once it compiled.
+// The requests an editor sends as it opens a plain file are answered:
+// asked right after the open, before any compile finished, and once it
+// compiled.
 
 test("before the compile", async (t) => {
     const s = await t.start();

@@ -1,20 +1,9 @@
-import { expect } from "vitest";
 import * as proto from "vscode-languageserver-protocol";
-import { test } from "@clice/tools/testing";
+import { refusal, test } from "@clice/tools/testing";
 
 // The documents an editor opens, changes, saves and closes: the server
 // follows every change, clears a closed document's diagnostics, and
 // refuses requests about a document it does not hold.
-
-async function refusal(reply: Promise<unknown>): Promise<{ code: number; message: string }> {
-    const error = await reply.then(
-        () => null,
-        (failure: unknown) => failure,
-    );
-    expect(error).toBeInstanceOf(proto.ResponseError);
-    const { code, message } = error as proto.ResponseError<unknown>;
-    return { code, message };
-}
 
 test("open and close", async (t) => {
     const s = await t.start();

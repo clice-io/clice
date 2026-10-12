@@ -1,6 +1,4 @@
-import { expect } from "vitest";
-import * as proto from "vscode-languageserver-protocol";
-import { test } from "@clice/tools/testing";
+import { refusal, test } from "@clice/tools/testing";
 
 // One file, one buffer: a document naming an open file through a symlink
 // shares the first document's answers while their texts agree, gets none
@@ -8,16 +6,6 @@ import { test } from "@clice/tools/testing";
 // over when the first closes.
 
 const POSIX = { except: { win32: "symlinks need privileges on Windows" } };
-
-async function refusal(reply: Promise<unknown>): Promise<{ code: number; message: string }> {
-    const error = await reply.then(
-        () => null,
-        (failure: unknown) => failure,
-    );
-    expect(error).toBeInstanceOf(proto.ResponseError);
-    const { code, message } = error as proto.ResponseError<unknown>;
-    return { code, message };
-}
 
 test("a second name", POSIX, async (t) => {
     t.disk.write("real/main.cpp", t.disk.read("main.cpp"));

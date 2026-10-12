@@ -1,22 +1,12 @@
 import { expect } from "vitest";
 import * as proto from "vscode-languageserver-protocol";
-import { test } from "@clice/tools/testing";
+import { refusal, test } from "@clice/tools/testing";
 
 // `clice serve --workspace` is ready before any client speaks. What it
 // computes meanwhile is not pushed ahead of the handshake; the handshake's
 // initialized replays it, unless the document changed since, and the
 // initialize request itself is refused, the server being initialized
 // already.
-
-async function refusal(reply: Promise<unknown>): Promise<{ code: number; message: string }> {
-    const error = await reply.then(
-        () => null,
-        (failure: unknown) => failure,
-    );
-    expect(error).toBeInstanceOf(proto.ResponseError);
-    const { code, message } = error as proto.ResponseError<unknown>;
-    return { code, message };
-}
 
 /// The handshake a client sends a server that needs none: raw messages,
 /// the refusal being the point.

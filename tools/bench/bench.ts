@@ -32,14 +32,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import { fileURLToPath } from "node:url";
 import { CliceClient } from "../client/client.ts";
 import { Workspace } from "../client/workspace.ts";
 import { logFiles } from "../process_gate.ts";
 import { withTimeout } from "../promise.ts";
+import { REPO_ROOT } from "../repo.ts";
 import { computeStats, parsePerfLines, summarize, type Stats } from "./perf.ts";
-
-const REPO_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 
 const ALL_SCENARIOS = ["cold_start", "warm_start", "edit_loop", "warm_requests"] as const;
 type ScenarioName = (typeof ALL_SCENARIOS)[number];

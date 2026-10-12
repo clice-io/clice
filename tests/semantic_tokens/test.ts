@@ -1,7 +1,5 @@
 import { answers } from "@clice/tools/testing";
 
-// A case with markers asks at each of them; one without pins every token of
-// its entry file, where the whole file is the claim.
 answers(async (a) => {
     const markers = a.markers();
     if (markers.length === 0) {
