@@ -1,5 +1,5 @@
-// A template with specializations: the query takes its name as ambiguous,
-// the rename as the template and every specialization.
+// A template with specializations: its name alone names the template, to
+// the query and to the rename, which renames every specialization with it.
 template <typename T>
 struct Holder {
     Holder(T value) : value(value) {}

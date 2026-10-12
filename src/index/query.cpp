@@ -1262,7 +1262,8 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
     }
     // Spelling the name exactly decides it; otherwise every match stands.
     // A class and its constructors spell one name: asked by it, the class
-    // answers.
+    // answers. So does a template asked by its bare name: a specialization
+    // is named with its arguments.
     llvm::DenseSet<SymbolHash> exact;
     for(auto& hit: ranked.hits) {
         if(hit.rank.tier <= 1) {
@@ -1276,6 +1277,11 @@ std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) co
         }
         if(name_form(hit.symbol.flags) == NameForm::Constructor &&
            exact.contains(hit.symbol.parent)) {
+            continue;
+        }
+        if(query.args.empty() && has_flag(hit.symbol.flags, SymbolFlags::Specialization) &&
+           llvm::any_of(targets(hit.symbol.hash, hit.anchor, RelationKind::Primary),
+                        [&](const Target& primary) { return exact.contains(primary.symbol); })) {
             continue;
         }
         if(auto placed = canonical_placed(hit.symbol.hash, hit.anchor)) {

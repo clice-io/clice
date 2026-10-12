@@ -6,32 +6,25 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 [test."$ clice query --method references --symbol Holder"]
-wrong = "refused as ambiguous between the template and its specialization, while clice refactor rename takes the same locator for the template: one locator should mean one thing to every command"
 stdout = '''
 {
-  "error": "ambiguous: 2 symbols match; name one by the `symbol` of a candidate",
-  "candidates": [
-    {
-      "name": "Holder",
-      "kind": "Struct",
-      "file": "${WS}/main.cpp",
-      "line": 2,
-      "container": null,
-      "symbol": "#b9ddd5b92359f6ae"
-    },
-    {
-      "name": "Holder<bool>",
-      "kind": "Struct",
-      "file": "${WS}/main.cpp",
-      "line": 7,
-      "container": null,
-      "symbol": "#fa05ea6f87683b82"
-    }
-  ],
+  "result": {
+    "name": "Holder",
+    "kind": "Struct",
+    "symbol": "#b9ddd5b92359f6ae",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 11,
+        "context": "Holder<int> numbers;"
+      }
+    ],
+    "total": 1
+  },
   "stale": []
 }
 '''
-exit = 1
+exit = 0
 
 [test."$ clice query --method references --symbol \"Holder<bool>\""]
 stdout = '''

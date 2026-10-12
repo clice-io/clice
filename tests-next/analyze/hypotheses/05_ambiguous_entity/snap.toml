@@ -8,31 +8,142 @@ exit = 0
 [test."$ clice analyze modules --move-entity Traits=core/traits2.h"]
 stdout = '''
 {
-  "error": "--move-entity Traits=core/traits2.h: ambiguous: 3 symbols match; name one by the `symbol` of a candidate",
+  "annotations": [],
+  "files": 6,
+  "modules": [
+    {
+      "name": "app",
+      "headers": 0,
+      "sources": 1,
+      "lines": 7,
+      "layer": 0
+    },
+    {
+      "name": "core",
+      "headers": 4,
+      "sources": 0,
+      "lines": 27,
+      "layer": 0
+    },
+    {
+      "name": "third",
+      "headers": 1,
+      "sources": 0,
+      "lines": 7,
+      "layer": 0
+    }
+  ],
+  "edges": [
+    {
+      "from": "app",
+      "to": "core",
+      "interfaceEntities": 0,
+      "implementationEntities": 8,
+      "sample": [
+        "Traits<Str>::value",
+        "Key",
+        "Traits<Str>",
+        "Traits::value",
+        "Traits<Key>"
+      ]
+    }
+  ],
+  "cycles": [],
+  "cyclicModules": 0,
+  "partitionCycles": [],
+  "internalHeaders": 0,
+  "deepestChain": [
+    "core"
+  ],
+  "totals": {
+    "baseline": 5,
+    "partitioned": 5
+  },
+  "hotspots": [
+    {
+      "path": "core/key.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/str.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/traits.h",
+      "baseline": 1,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "core/traits2.h",
+      "baseline": 0,
+      "partitioned": 1,
+      "churn": null,
+      "internal": false
+    },
+    {
+      "path": "third/lib.h",
+      "baseline": 1,
+      "partitioned": 0,
+      "churn": null,
+      "internal": false
+    }
+  ],
+  "moves": [],
+  "splits": [],
+  "obstacles": {
+    "variantHeaders": 0,
+    "contextMacros": 0,
+    "borrowedMacros": 0,
+    "internalUses": 0,
+    "crossModuleRedeclarations": 0,
+    "foreignDeclarations": 0,
+    "splitDefinitions": 0,
+    "duplicateDefinitions": 0,
+    "configuringMacros": 0,
+    "implicitProviders": 0,
+    "specializations": 0
+  }
+}
+'''
+stderr = ["warning: no churn annotation: Process git ended with exit code 128"]
+exit = 0
+
+[test."$ clice analyze modules --move-entity value=core/traits2.h"]
+stdout = '''
+{
+  "error": "--move-entity value=core/traits2.h: ambiguous: 3 symbols match; name one by the `symbol` of a candidate",
   "candidates": [
     {
-      "name": "Traits",
-      "kind": "Struct",
-      "file": "${WS}/third/lib.h",
-      "line": 4,
-      "container": null,
-      "symbol": "#b12158590378cbfc"
-    },
-    {
-      "name": "Traits<Key>",
-      "kind": "Struct",
-      "file": "${WS}/core/key.h",
-      "line": 9,
-      "container": null,
-      "symbol": "#2f2442b414ccba53"
-    },
-    {
-      "name": "Traits<Str>",
-      "kind": "Struct",
+      "name": "value",
+      "kind": "Variable",
       "file": "${WS}/core/traits.h",
-      "line": 6,
-      "container": null,
-      "symbol": "#c7800760a1cf07d0"
+      "line": 7,
+      "container": "Traits<Str>",
+      "symbol": "#1db89fedc93cebea"
+    },
+    {
+      "name": "value",
+      "kind": "Variable",
+      "file": "${WS}/core/key.h",
+      "line": 10,
+      "container": "Traits<Key>",
+      "symbol": "#3a80009f1eec823c"
+    },
+    {
+      "name": "value",
+      "kind": "Variable",
+      "file": "${WS}/third/lib.h",
+      "line": 5,
+      "container": "Traits",
+      "symbol": "#5eea6509ecfb9b38"
     }
   ],
   "stale": []

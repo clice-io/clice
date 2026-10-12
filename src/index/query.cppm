@@ -462,7 +462,8 @@ public:
     /// under a cursor, or those defined on a line of the file's serving
     /// source; or by pattern, where every symbol spelling the name exactly
     /// (in any case) is the answer when there is one, and the ranked
-    /// matches stand as candidates otherwise.
+    /// matches stand as candidates otherwise. A template's name without
+    /// arguments names the template, not its specializations.
     std::vector<Located> locate(const SymbolQuery& query) const;
 
     /// Every project symbol and internal-linkage symbol with a definition
