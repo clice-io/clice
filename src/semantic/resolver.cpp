@@ -278,9 +278,9 @@ public:
 
     PseudoInstantiator(clang::ASTContext& context,
                        llvm::DenseMap<const void*, clang::QualType>& resolved,
-                       const TemplateResolver::Assumption& assumption,
+                       const ResolverOptions& options,
                        unsigned parent_indent = 0) :
-        context(context), resolved(resolved), assumption(assumption), indent(parent_indent) {}
+        context(context), resolved(resolved), options(options), indent(parent_indent) {}
 
     /// Rewrite policy. The two-phase split is the resolver's core invariant:
     /// typedef/alias expansion must never re-enter heuristic lookup, or
@@ -1919,6 +1919,9 @@ private:
     /// resolver reads its patterns with them unbound.
     const clang::TemplateArgument*
         only_instantiation_argument(const clang::TemplateTypeParmType* TTPT) const {
+        if(!options.only_instantiation) {
+            return nullptr;
+        }
         /// A template parameter belongs to the function its template adopted
         /// it into; the parameters of any other template sit elsewhere.
         auto* param = TTPT->getDecl();
@@ -1934,8 +1937,8 @@ private:
         if(!function) {
             return nullptr;
         }
-        if(function == assumption.function && TTPT->getIndex() < assumption.arguments.size()) {
-            return &assumption.arguments[TTPT->getIndex()];
+        if(function == options.assumed && TTPT->getIndex() < options.assumed_arguments.size()) {
+            return &options.assumed_arguments[TTPT->getIndex()];
         }
         auto* instantiation =
             llvm::dyn_cast_or_null<clang::FunctionDecl>(decls::only_instantiation(function));
@@ -2865,7 +2868,7 @@ private:
     clang::ASTContext& context;
     InstantiationStack stack;
     llvm::DenseMap<const void*, clang::QualType>& resolved;
-    const TemplateResolver::Assumption& assumption;
+    const ResolverOptions& options;
     llvm::SmallPtrSet<const void*, 8> active_resolutions;
     llvm::DenseSet<std::pair<const void*, void*>> active_ctd_lookups;
     llvm::SmallPtrSet<const clang::VarDecl*, 4> deducing;
@@ -2895,18 +2898,18 @@ private:
 }  // namespace
 
 clang::QualType TemplateResolver::resolve(clang::QualType type) {
-    PseudoInstantiator instantiator(context, resolved, assumption);
+    PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.resolve(type);
 }
 
 TemplateResolver::lookup_result TemplateResolver::lookup(clang::NestedNameSpecifier NNS,
                                                          clang::DeclarationName name) {
-    PseudoInstantiator instantiator(context, resolved, assumption);
+    PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.lookup(NNS, name);
 }
 
 clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
-    PseudoInstantiator instantiator(context, resolved, assumption);
+    PseudoInstantiator instantiator(context, resolved, options);
     type = instantiator.resolve(type);
     if(auto* tag = type->getAsTagDecl()) {
         return tag;
@@ -2925,25 +2928,25 @@ clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
 }
 
 clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
-    PseudoInstantiator instantiator(context, resolved, assumption);
+    PseudoInstantiator instantiator(context, resolved, options);
     auto type = instantiator.deduce_auto(var);
     return type.isNull() ? type : instantiator.resolve(type);
 }
 
 clang::QualType TemplateResolver::member_object(const clang::Expr* base, bool arrow) {
-    PseudoInstantiator instantiator(context, resolved, assumption);
+    PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.resolve_object(
         instantiator.member_object(instantiator.expr_type(base), arrow));
 }
 
 TemplateResolver::lookup_result
     TemplateResolver::lookup(const clang::CXXDependentScopeMemberExpr* expr) {
-    PseudoInstantiator instantiator(context, resolved, assumption);
+    PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.lookup_member(instantiator.member_object(expr), expr->getMember());
 }
 
 TemplateResolver::lookup_result TemplateResolver::lookup(const clang::UnresolvedMemberExpr* expr) {
-    PseudoInstantiator instantiator(context, resolved, assumption);
+    PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.lookup_member(
         instantiator.member_object(expr->getBaseType(), expr->isArrow()),
         expr->getMemberName());
@@ -2987,7 +2990,7 @@ TemplateResolver::lookup_result TemplateResolver::lookup(const clang::Unresolved
 
 llvm::SmallVector<const clang::NamedDecl*, 4>
     TemplateResolver::lookup(const clang::CallExpr* expr) {
-    PseudoInstantiator instantiator(context, resolved, assumption);
+    PseudoInstantiator instantiator(context, resolved, options);
     return instantiator.call_candidates(expr);
 }
 

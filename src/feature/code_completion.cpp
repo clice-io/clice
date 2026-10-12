@@ -705,8 +705,8 @@ public:
     /// The arguments `function`'s template takes in its only instantiation
     /// in the whole buffer, rebuilt here; none when it has no one
     /// instantiation there, or names what is not found here.
-    types::TemplateResolver::Arguments instantiated_later(clang::Sema& sema,
-                                                          const clang::FunctionDecl* function) {
+    llvm::SmallVector<clang::TemplateArgument, 4>
+        instantiated_later(clang::Sema& sema, const clang::FunctionDecl* function) {
         auto& source_manager = sema.getSourceManager();
         auto [file, offset] =
             source_manager.getDecomposedLoc(source_manager.getFileLoc(function->getLocation()));
@@ -764,7 +764,7 @@ public:
         }
 
         Rebuilder rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc());
-        types::TemplateResolver::Arguments arguments;
+        llvm::SmallVector<clang::TemplateArgument, 4> arguments;
         for(const auto& argument: instantiation->getTemplateSpecializationArgs()->asArray()) {
             auto rebuilt = rebuilder.argument(argument);
             if(!rebuilt) {
@@ -845,7 +845,7 @@ public:
                     if(auto arguments = instantiated_later(sema, function); !arguments.empty()) {
                         types::TemplateResolver informed(
                             ast,
-                            {.function = function, .arguments = std::move(arguments)});
+                            {.assumed = function, .assumed_arguments = std::move(arguments)});
                         object = informed.member_object(base, arrow);
                         tag = object.isNull() ? nullptr : informed.resolve_tag(object);
                     }

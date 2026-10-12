@@ -207,7 +207,7 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
     index::TUIndex tu;
     auto place = [&](index::SymbolHash symbol) -> std::optional<RawLocation> {
         if(bytes.empty()) {
-            bytes = index::build_tu_index(unit);
+            bytes = index::build_tu_index(unit, {.only_instantiation = true});
             tu = index::TUIndex::from_bytes(bytes);
         }
         auto main = tu.path_count() - 1;
@@ -351,7 +351,7 @@ std::optional<kota::codec::RawValue>
     run_document_highlight(CompilationUnitRef unit,
                            std::uint32_t offset,
                            [[maybe_unused]] llvm::StringRef config) {
-    auto bytes = index::build_tu_index(unit);
+    auto bytes = index::build_tu_index(unit, {.only_instantiation = true});
     auto tu = index::TUIndex::from_bytes(bytes);
     const index::Shard& shard = tu.shard_of(tu.path_count() - 1);
     auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {

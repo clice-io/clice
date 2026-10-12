@@ -12,6 +12,6 @@ test("a constructor names its class", async (t) => {
 
 test("renames the overrides", async (t) => {
     await t.cli("index --workers 2");
-    // The template's call goes too: its only instantiation calls Circle::area.
+    // The template's call is left to check: the index cannot tell what it calls.
     await t.cli("refactor rename --symbol Circle::area --to size --dry-run");
 });

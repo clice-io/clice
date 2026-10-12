@@ -404,7 +404,9 @@ tests/navigation/references/04_forwarding_factories
 
 **模板中的依赖引用**
 
-在成员上执行“查找引用”，结果会包含模板中的依赖调用位置，前提是该模板只用该成员所属的类实例化
+在成员上执行“查找引用”，结果会包含已打开文件的模板中的依赖调用位置，前提是该模板只用该成员所属的类实例化
+
+未打开的文件不提供这类调用位置。
 
 ```case
 tests/navigation/references/05_dependent_calls

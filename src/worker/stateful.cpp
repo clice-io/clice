@@ -334,10 +334,11 @@ RequestResult<worker::CompileParams>
                 result.deps = doc->unit.deps();
 
                 // Build index for main file only (main_file_only=true).
-                index_error =
-                    hand_over_index(index::build_tu_index(doc->unit, {.main_file_only = true}),
-                                    params.index_output_path,
-                                    result);
+                index_error = hand_over_index(
+                    index::build_tu_index(doc->unit,
+                                          {.main_file_only = true, .only_instantiation = true}),
+                    params.index_output_path,
+                    result);
             }
 
             if(doc->unit.completed() || doc->unit.fatal_error()) {

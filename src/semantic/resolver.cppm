@@ -6,6 +6,21 @@ module clice:semantic.resolver;
 
 namespace clice::types {
 
+/// What a parameter of a function template stands for when no
+/// instantiation in progress binds it.
+struct ResolverOptions {
+    /// The argument of the template's only instantiation in the unit. An
+    /// index stored for other units to share leaves it off: the index of a
+    /// header would differ with what each unit including it instantiates.
+    bool only_instantiation = true;
+
+    /// The arguments `assumed`'s template is instantiated with, for a unit
+    /// that holds no instantiation of it: a completion stops before the
+    /// code that instantiates the template, which another compile of it saw.
+    const clang::FunctionDecl* assumed = nullptr;
+    llvm::SmallVector<clang::TemplateArgument, 4> assumed_arguments;
+};
+
 /// This class is used to resolve dependent names in the unit.
 /// For dependent names, we cannot know the any information about the name until
 /// the template is instantiated. This can be frustrating, you cannot get
@@ -21,18 +36,8 @@ namespace clice::types {
 /// The `resolved` cache persists across multiple resolve() calls on the same unit.
 class TemplateResolver {
 public:
-    using Arguments = llvm::SmallVector<clang::TemplateArgument, 4>;
-
-    /// What `function`'s template is instantiated with, for a unit that
-    /// holds no instantiation of it: a completion stops before the code
-    /// that instantiates the template, which another compile of it saw.
-    struct Assumption {
-        const clang::FunctionDecl* function;
-        Arguments arguments;
-    };
-
-    explicit TemplateResolver(clang::ASTContext& context, Assumption assumption = {}) :
-        context(context), assumption(std::move(assumption)) {}
+    explicit TemplateResolver(clang::ASTContext& context, ResolverOptions options = {}) :
+        context(context), options(std::move(options)) {}
 
     clang::QualType resolve(clang::QualType type);
 
@@ -108,7 +113,7 @@ public:
 private:
     clang::ASTContext& context;
 
-    Assumption assumption;
+    ResolverOptions options;
 
     /// Cache of resolved dependent types, keyed by AST node pointer.
     /// Shared across resolve() calls within the same TU for performance.

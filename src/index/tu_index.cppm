@@ -26,6 +26,11 @@ struct TUIndexOptions {
     /// Keep only the entries in the main file.
     bool main_file_only = false;
 
+    /// Resolve a function template's parameters through its only
+    /// instantiation in the unit (ResolverOptions::only_instantiation):
+    /// for an open file's index, never for a stored one.
+    bool only_instantiation = false;
+
     /// Variant identities the receiver already stores, sorted. A section
     /// whose hash is among them travels as the bare hash, and an external
     /// symbol only such sections name stays out of the table: the

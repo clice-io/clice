@@ -418,7 +418,9 @@ tests/navigation/references/04_forwarding_factories
 
 **Dependent template references**
 
-Find references on a member includes its dependent call sites in a template instantiated only with the member's class
+Find references on a member includes its dependent call sites in an open file's template instantiated only with the member's class
+
+Files that are not open contribute no such call sites.
 
 ```case
 tests/navigation/references/05_dependent_calls

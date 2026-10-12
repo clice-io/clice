@@ -271,7 +271,7 @@ stdout = '''
         "kind": "Method",
         "symbol": "#f020286f8fd97f75",
         "newName": "size",
-        "edits": 7,
+        "edits": 6,
         "conflicts": [],
         "warnings": [],
         "error": null,
@@ -282,13 +282,6 @@ stdout = '''
       {
         "file": "${WS}/main.cpp",
         "edits": [
-          {
-            "line": 4,
-            "column": 47,
-            "name": "area",
-            "newName": "size",
-            "heuristic": true
-          },
           {
             "line": 6,
             "column": 41,
@@ -344,7 +337,16 @@ stdout = '''
         ]
       }
     ],
-    "unconfirmed": [],
+    "unconfirmed": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "column": 47,
+        "name": "area",
+        "reason": "the index ties no symbol to it: a dependent name it could not resolve, an inactive #if branch, or code no unit compiles",
+        "text": "double measure(const T& shape) { return shape.area(); }"
+      }
+    ],
     "conflicts": [],
     "stale": []
   },
