@@ -113,6 +113,22 @@ std::uint32_t text_end(CompilationUnitRef unit) {
     return content.size();
 }
 
+/// The start of the line after the comments opening the file, up to the
+/// last one a blank line sets apart from what follows: a license header,
+/// not the comment of the first declaration. 0 when there is none.
+std::uint32_t after_leading_comments(llvm::StringRef content, const clang::LangOptions& options) {
+    std::uint32_t offset = 0;
+    Lexer lexer(content, {.keep_comments = true, .lang_opts = &options});
+    for(auto token = lexer.advance(); token.kind == clang::tok::comment;) {
+        auto next = lexer.advance();
+        if(content.slice(token.range.end, next.range.begin).count('\n') > 1) {
+            offset = line_end(content, token.range.end);
+        }
+        token = next;
+    }
+    return offset;
+}
+
 }  // namespace
 
 /// After the last `#include` of the file's leading directives — those
@@ -122,11 +138,11 @@ std::uint32_t text_end(CompilationUnitRef unit) {
 /// code (an X-macro list, a `.tpp` body) is no place for one that must
 /// always apply. Without one, after the leading `#pragma once`, the
 /// guard's `#define` or the `module;` opening the global module fragment,
-/// else at the file's start. A module unit without that fragment opens
-/// it at the start: no include may follow the module declaration. Only an `#ifndef`/`#define` pair
-/// enclosing the whole file is a guard; a leading `#ifndef _GNU_SOURCE` block is not. A raw lex of
-/// the text rather than the directive table: the preamble's directives are compiled into the PCH
-/// and never reach this AST.
+/// else after the comments opening the file. A module unit without that
+/// fragment opens it there: no include may follow the module declaration. Only an
+/// `#ifndef`/`#define` pair enclosing the whole file is a guard; a leading `#ifndef _GNU_SOURCE`
+/// block is not. A raw lex of the text rather than the directive table: the preamble's directives
+/// are compiled into the PCH and never reach this AST.
 IncludeInsertion include_insertion(CompilationUnitRef unit) {
     auto content = unit.main_content();
     auto end = text_end(unit);
@@ -221,10 +237,14 @@ IncludeInsertion include_insertion(CompilationUnitRef unit) {
     // header compiled in its includer's context is none, whatever the
     // includer is.
     if(declares_module && !fragment && unit.is_named_module()) {
-        return {.offset = 0, .opens_fragment = true};
+        return {.offset = after_leading_comments(content, unit.lang_options()),
+                .opens_fragment = true};
     }
     const auto& level = levels[guard == Guard::Closed ? 1 : 0];
-    return {.offset = level.include.value_or(level.prologue.value_or(0))};
+    if(auto anchor = level.include ? level.include : level.prologue) {
+        return {.offset = *anchor};
+    }
+    return {.offset = after_leading_comments(content, unit.lang_options())};
 }
 
 void add_include(CompilationUnitRef unit,

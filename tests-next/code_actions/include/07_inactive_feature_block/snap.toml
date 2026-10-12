@@ -1,6 +1,3 @@
-[answers.vector]
-wrong = "the directive goes above the comment that opens the file, such as a license header; it belongs below it"
-
 [[answers.vector.code_actions]]
 kind = "quickfix"
 title = "Add #include <vector>"
@@ -8,7 +5,9 @@ compiles = true
 
 [answers.vector.code_actions.edits]
 "main.cpp" = '''
-+#include <vector>
- // A leading `#ifndef`/`#define`/`#endif` block the command line leaves
  // inactive is no include guard either: with no include to follow, the
+ // directive goes below the comment opening the file, not into the block.
++#include <vector>
+
+ #ifndef MAX_SIZE
 '''

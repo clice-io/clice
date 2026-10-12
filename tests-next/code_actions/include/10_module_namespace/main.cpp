@@ -1,5 +1,6 @@
 // A line starting with a name `module` is code outside a module unit: the
-// directive goes to the file's start without opening a module fragment.
+// directive goes below the comment opening the file without opening a module
+// fragment.
 
 namespace module {
 struct Registry {};

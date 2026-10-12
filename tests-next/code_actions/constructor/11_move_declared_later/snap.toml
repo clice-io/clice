@@ -1,6 +1,3 @@
-[answers.before]
-wrong = "the include goes above the comment that opens the file, such as a license header; it belongs below it"
-
 [[answers.before.code_actions]]
 kind = "refactor.rewrite.generateMemberwiseConstructor"
 title = "Generate a memberwise constructor for 'Before'"
@@ -8,9 +5,11 @@ compiles = true
 
 [answers.before.code_actions.edits]
 "main.cpp" = '''
-+#include <utility>
  // A declaration of std::move only after the class does not spare the include:
  // the constructor's body looks the name up where the class stands.
++#include <utility>
+
+ struct Handle {
 …
  struct Before {
      Handle handle;
