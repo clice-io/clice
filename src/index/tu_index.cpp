@@ -165,6 +165,17 @@ bool is_specialization(const clang::NamedDecl* decl) {
     return false;
 }
 
+/// The declaration go-to-type-definition reaches from a value or a
+/// function: the one its type names — a function's, the type it returns —
+/// once pointers, references and arrays are stripped.
+const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl) {
+    auto type = decl->getType();
+    if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        type = function->getReturnType();
+    }
+    return types::decl_of(types::unwrap(type));
+}
+
 /// Occurrences cover disjoint ranges: a name inside another symbol's
 /// written name — the class in `~Foo` — is that name's, and the symbol it
 /// names keeps only its relation there.
@@ -495,6 +506,41 @@ public:
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
     }
 
+    /// A member of a class template's specialization, or a variable
+    /// template's specialization, can have another type than its pattern
+    /// declares (`T value` is a Widget in `Box<Widget>`): at a name of one,
+    /// a TypeDefinition relation spanning the name holds that type, beside
+    /// the pattern's own, which carries no range.
+    void add_specialized_type(const clang::NamedDecl* decl, clang::SourceRange name) {
+        if(!llvm::isa<clang::FieldDecl, clang::VarDecl, clang::FunctionDecl>(decl)) {
+            return;
+        }
+        auto* pattern = decls::normalize(decl);
+        if(pattern == decl->getCanonicalDecl()) {
+            return;
+        }
+        auto* target = type_definition_of(llvm::cast<clang::ValueDecl>(decl));
+        if(!target) {
+            return;
+        }
+        target = decls::normalize(target);
+        auto* declared = type_definition_of(llvm::cast<clang::ValueDecl>(pattern));
+        if(declared && unit.entity(decls::normalize(declared)) == unit.entity(target)) {
+            return;
+        }
+        auto [fid, range] = unit.decompose_range(name);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+        Relation relation{
+            .kind = RelationKind::TypeDefinition,
+            .range = range,
+            .target_symbol = ensure_symbol(target),
+        };
+        index->relations[ensure_symbol(pattern)].emplace_back(relation);
+    }
+
     /// A call edge, recorded at the call expression's location.
     void add_call_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
@@ -814,7 +860,7 @@ public:
             }
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
-            if(auto target = types::decl_of(types::unwrap(VD->getType()))) {
+            if(auto target = type_definition_of(VD)) {
                 add_pair_relation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
             }
             return;
@@ -889,6 +935,10 @@ public:
                 case clang::TSK_ExplicitSpecialization: {
                     break;
                 }
+            }
+
+            if(auto target = type_definition_of(FD)) {
+                add_pair_relation(FD, RelationKind::TypeDefinition, target, FD->getLocation());
             }
 
             if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(FD)) {
@@ -1049,8 +1099,11 @@ public:
                 // occurrence inside it.
                 add_self_relation(occurrence.decl, occurrence.kind, name);
 
-                if(occurrence.kind.is_one_of(RelationKind::Reference) && is_written(semantics, i)) {
-                    add_self_relation(occurrence.decl, RelationKind::Write, name);
+                if(occurrence.kind.is_one_of(RelationKind::Reference)) {
+                    if(is_written(semantics, i)) {
+                        add_self_relation(occurrence.decl, RelationKind::Write, name);
+                    }
+                    add_specialized_type(occurrence.decl, name);
                 }
 
                 if(!occurrence.kind.is_one_of(RelationKind::Declaration,

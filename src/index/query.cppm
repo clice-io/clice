@@ -354,9 +354,15 @@ public:
     /// included.
     std::vector<PlacedHighlight> document_highlights(const Cursor& cursor) const;
 
-    /// One canonical site per distinct relation target — the two-hop query
-    /// behind go-to-type-definition.
+    /// One canonical site per distinct relation target.
     std::vector<Site> target_sites(SymbolHash hash, Fid anchor, RelationKind kind) const;
+
+    /// Go-to-type-definition of a cursor's symbol: the declarations its
+    /// type names — at a name of a member of a template's specialization,
+    /// the type the specialization gives it (TypeDefinition relations
+    /// spanning the cursor in the index serving its file), elsewhere the
+    /// type it is declared with (the relations without a range).
+    std::vector<Site> type_definition(const Cursor& cursor, SymbolHash symbol) const;
 
     /// Whether the cursor stands on a keyword standing for `symbol` — an
     /// `auto` or `decltype` the type names, not a name of it (a Deduced

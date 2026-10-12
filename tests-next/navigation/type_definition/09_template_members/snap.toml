@@ -1,14 +1,11 @@
 [answers.method]
-type_definition = []
+type_definition = ["struct ⟦Widget⟧ {"]
 
 [answers.alias_member]
-wrong = "should reach Gadget, the type value has in Boxed<Gadget>"
-type_definition = ["template <typename ⟦T⟧> @-14"]
+type_definition = ["struct ⟦Gadget⟧ {};"]
 
 [answers.member]
-wrong = "should reach Widget, the type value has in Box<Widget>"
-type_definition = ["template <typename ⟦T⟧> @-15"]
+type_definition = ["struct ⟦Widget⟧ {"]
 
 [answers.variable_template]
-wrong = "should reach Widget, the type of zero<Widget>"
-type_definition = ["template <typename ⟦T⟧> @-6"]
+type_definition = ["struct ⟦Widget⟧ {"]

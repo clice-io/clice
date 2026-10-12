@@ -1419,7 +1419,7 @@ Features::RawResult Features::type_definition(Ticket ticket,
             sites,
             gather(symbol, path_id, [&](const index::IndexQuery& from, index::SymbolHash named) {
                 if(!deduced) {
-                    return from.target_sites(named, path_id, RelationKind::TypeDefinition);
+                    return from.type_definition(*cursor, named);
                 }
                 std::vector<index::Site> own;
                 if(auto located = from.resolve(named, path_id)) {

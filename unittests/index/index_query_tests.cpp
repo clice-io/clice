@@ -226,7 +226,7 @@ ZEST_CASE(InternalTypeTarget) {
 
     auto cursor = query.symbol_at(main_id, point("var"));
     ZASSERT(cursor);
-    auto sites = query.target_sites(cursor->symbols.front(), main_id, RelationKind::TypeDefinition);
+    auto sites = query.type_definition(*cursor, cursor->symbols.front());
     ZASSERT(sites.size() == 1U);
     ZEXPECT(sites.front().path.ends_with("header.h"));
 }

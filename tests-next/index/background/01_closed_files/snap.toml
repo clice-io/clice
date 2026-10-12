@@ -222,9 +222,9 @@ call_hierarchy = [
 ]
 
 [test.make_unit_shape]
-wrong = "go to type definition on a function finds nothing; its return type, Shape, is expected"
 definition = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {"]
 declaration = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {"]
+type_definition = ["struct ⟦Shape⟧ {"]
 references = ["nav.cpp │ Shape ⟦make_unit_shape⟧() {", "Shape ⟦make_unit_shape⟧();"]
 call_hierarchy = [
     { name = "make_unit_shape", kind = "Function", at = "nav.cpp │ Shape ⟦make_unit_shape⟧() {" },

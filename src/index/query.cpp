@@ -836,6 +836,41 @@ std::vector<Site> IndexQuery::target_sites(SymbolHash hash, Fid anchor, Relation
     return result;
 }
 
+std::vector<Site> IndexQuery::type_definition(const Cursor& cursor, SymbolHash symbol) const {
+    auto anchor = cursor.site.file;
+    llvm::SmallVector<Target> found;
+    if(auto source = serving(anchor)) {
+        source->shard->lookup(symbol, RelationKind::TypeDefinition, [&](const Relation& relation) {
+            if(relation.range.contains(cursor.site.range)) {
+                found.push_back({.symbol = relation.target_symbol, .anchor = anchor});
+            }
+            return true;
+        });
+    }
+    if(found.empty()) {
+        llvm::DenseSet<SymbolHash> seen;
+        for_each_relation(
+            symbol,
+            anchor,
+            RelationKind::TypeDefinition,
+            Order::DiskFirst,
+            {.preamble = false},
+            [&](const IndexSource& source, const Relation& relation) {
+                if(!relation.range.valid() && seen.insert(relation.target_symbol).second) {
+                    found.push_back({.symbol = relation.target_symbol, .anchor = source.file});
+                }
+                return true;
+            });
+    }
+    std::vector<Site> result;
+    for(auto target: found) {
+        if(auto located = resolve(target.symbol, target.anchor)) {
+            result.push_back(std::move(located->site));
+        }
+    }
+    return result;
+}
+
 bool IndexQuery::deduced(const Cursor& cursor, SymbolHash symbol) const {
     auto source = serving(cursor.site.file);
     if(!source) {
