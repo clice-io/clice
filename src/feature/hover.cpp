@@ -13,6 +13,7 @@ import :compile.semantics;
 import :feature.feature;
 import :semantic.decls;
 import :semantic.display;
+import :semantic.resolver;
 import :semantic.symbol;
 import :semantic.types;
 
@@ -277,6 +278,31 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
     return "";
 }
 
+/// A value's type inside a template as far as the resolver reaches it: a
+/// generic lambda's `auto` parameter is the type its only call passes.
+auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> clang::QualType {
+    auto type = value->getType();
+    if(!type->isDependentType()) {
+        return type;
+    }
+    /// The instantiated parameter keeps the spelling the call deduced; the
+    /// resolver works from canonical template arguments.
+    if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(value)) {
+        // The helper keeps its clangd signature, which speaks mutable
+        // pointers; it only reads through them.
+        if(auto* instantiated =
+               decls::only_instantiation(const_cast<clang::ParmVarDecl*>(param))) {
+            return instantiated->getType();
+        }
+    }
+    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(value);
+       var && type->isUndeducedAutoType()) {
+        auto deduced = unit.resolver().deduce(var);
+        return deduced.isNull() ? type : deduced;
+    }
+    return unit.resolver().resolve(type);
+}
+
 /// Generate a hover info given the declaration.
 auto decl_hover(const clang::NamedDecl* decl,
                 const display::Options& options,
@@ -325,7 +351,7 @@ auto decl_hover(const clang::NamedDecl* decl,
     } else if(decl->isTemplateParameter()) {
         info.type = display::template_param_type(decl, options);
     } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(decl)) {
-        info.type = display::type(context, value->getType(), options);
+        info.type = display::type(context, resolved_type(value, unit), options);
     } else if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(decl)) {
         info.type = display::type(context, var_template->getTemplatedDecl()->getType(), options);
     } else if(const auto* typedef_decl = llvm::dyn_cast<clang::TypedefNameDecl>(decl)) {

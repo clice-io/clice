@@ -13,6 +13,7 @@ import :index.shard;
 import :index.tu_index;
 import :semantic.decls;
 import :semantic.display;
+import :semantic.resolver;
 import :semantic.types;
 import :support.logging;
 import :support.timer;
@@ -167,13 +168,15 @@ bool is_specialization(const clang::NamedDecl* decl) {
 
 /// The declaration go-to-type-definition reaches from a value or a
 /// function: the one its type names — a function's, the type it returns —
-/// once pointers, references and arrays are stripped.
-const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl) {
+/// once pointers, references and arrays are stripped, and inside a
+/// template once the resolver resolved it.
+const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl,
+                                           types::TemplateResolver& resolver) {
     auto type = decl->getType();
     if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
         type = function->getReturnType();
     }
-    return types::decl_of(types::unwrap(type));
+    return types::decl_of(types::unwrap(resolver.resolve(type)), &resolver);
 }
 
 /// Occurrences cover disjoint ranges: a name inside another symbol's
@@ -524,12 +527,12 @@ public:
         if(pattern == decl->getCanonicalDecl()) {
             return;
         }
-        auto* target = type_definition_of(llvm::cast<clang::ValueDecl>(decl));
+        auto* target = type_definition_of(llvm::cast<clang::ValueDecl>(decl), unit.resolver());
         if(!target) {
             return;
         }
         target = decls::normalize(target);
-        auto* declared = type_definition_of(llvm::cast<clang::ValueDecl>(pattern));
+        auto* declared = type_definition_of(llvm::cast<clang::ValueDecl>(pattern), unit.resolver());
         if(declared && unit.entity(decls::normalize(declared)) == unit.entity(target)) {
             return;
         }
@@ -865,7 +868,7 @@ public:
             }
 
             auto* VD = llvm::cast<clang::ValueDecl>(D);
-            if(auto target = type_definition_of(VD)) {
+            if(auto target = type_definition_of(VD, unit.resolver())) {
                 add_pair_relation(VD, RelationKind::TypeDefinition, target, VD->getLocation());
             }
             return;
@@ -942,7 +945,7 @@ public:
                 }
             }
 
-            if(auto target = type_definition_of(FD)) {
+            if(auto target = type_definition_of(FD, unit.resolver())) {
                 add_pair_relation(FD, RelationKind::TypeDefinition, target, FD->getLocation());
             }
 

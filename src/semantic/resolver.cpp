@@ -6,6 +6,7 @@ module;
 
 module clice;
 
+import :semantic.decls;
 import :semantic.resolver;
 import :semantic.unifier;
 import :support.logging;
@@ -1899,9 +1900,42 @@ private:
         return result;
     }
 
+    /// The argument a function template's parameter took in the template's
+    /// only instantiation: a generic lambda's `auto` parameter stands for
+    /// the type the lambda is called with. Several instantiations give no
+    /// one answer.
+    static const clang::TemplateArgument*
+        only_instantiation_argument(const clang::TemplateTypeParmType* TTPT) {
+        /// A template parameter belongs to the function its template adopted
+        /// it into; the parameters of any other template sit elsewhere.
+        auto* param = TTPT->getDecl();
+        auto* function =
+            param ? llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext()) : nullptr;
+        /// A captureless generic lambda's conversion to a function pointer
+        /// and its static invoker adopt the call operator's parameter list
+        /// after it, but calls instantiate the call operator.
+        if(auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(function);
+           method && method->getParent()->isLambda()) {
+            function = method->getParent()->getLambdaCallOperator();
+        }
+        auto* instantiation =
+            function ? llvm::dyn_cast_or_null<clang::FunctionDecl>(
+                           decls::only_instantiation(function))
+                     : nullptr;
+        if(!instantiation) {
+            return nullptr;
+        }
+        return &instantiation->getTemplateSpecializationArgs()->get(TTPT->getIndex());
+    }
+
     clang::QualType rewrite_parameter(const clang::TemplateTypeParmType* TTPT, Policy policy) {
-        // First, try to find a substitution in the instantiation stack.
-        if(auto* argument = stack.find_argument(TTPT)) {
+        // First, try to find a substitution in the instantiation stack, then
+        // in the instantiation the unit made of the parameter's function.
+        const auto* argument = stack.find_argument(TTPT);
+        if(!argument) {
+            argument = only_instantiation_argument(TTPT);
+        }
+        if(argument) {
             clang::QualType type;
 
             if(argument->getKind() == clang::TemplateArgument::Type) {
