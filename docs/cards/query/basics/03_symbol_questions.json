@@ -5,7 +5,7 @@
   "title": "Questions about symbols",
   "summary": "Look a symbol up by name, by its id or by a line, and ask where it is defined and used, who calls it, what it derives from and what a file declares",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -82,8 +82,7 @@
         {
           "label": "$ clice query --method documentSymbols --path main.cpp",
           "value": {
-            "wrong": "the symbols come in no order a reader can follow; source order (add, Dog, compute, main) is expected",
-            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"add\",\n        \"kind\": \"Function\",\n        \"startLine\": 2,\n        \"endLine\": 2,\n        \"symbol\": \"#5c1bf8ca24c752f7\"\n      },\n      {\n        \"name\": \"main\",\n        \"kind\": \"Function\",\n        \"startLine\": 5,\n        \"endLine\": 5,\n        \"symbol\": \"#70b5c0d150872970\"\n      },\n      {\n        \"name\": \"Dog\",\n        \"kind\": \"Struct\",\n        \"startLine\": 3,\n        \"endLine\": 3,\n        \"symbol\": \"#7316a0a19122a8ae\"\n      },\n      {\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"startLine\": 4,\n        \"endLine\": 4,\n        \"symbol\": \"#81df9416985c4402\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"add\",\n        \"kind\": \"Function\",\n        \"startLine\": 2,\n        \"endLine\": 2,\n        \"symbol\": \"#5c1bf8ca24c752f7\"\n      },\n      {\n        \"name\": \"Dog\",\n        \"kind\": \"Struct\",\n        \"startLine\": 3,\n        \"endLine\": 3,\n        \"symbol\": \"#7316a0a19122a8ae\"\n      },\n      {\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"startLine\": 4,\n        \"endLine\": 4,\n        \"symbol\": \"#81df9416985c4402\"\n      },\n      {\n        \"name\": \"main\",\n        \"kind\": \"Function\",\n        \"startLine\": 5,\n        \"endLine\": 5,\n        \"symbol\": \"#70b5c0d150872970\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },

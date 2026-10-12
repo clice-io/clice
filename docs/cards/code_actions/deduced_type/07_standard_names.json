@@ -4,8 +4,8 @@
   "subtopic": "deduced_type",
   "title": "Standard names of builtin types",
   "summary": "The types of `sizeof`, a pointer difference and `nullptr` expand to their standard names where those are declared",
-  "prose": "The editor does not find these names yet when a header declares them, as the standard headers do.",
-  "status": "partial",
+  "prose": "Here a header declares them, as the standard headers do.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -49,83 +49,67 @@
       "name": "answers",
       "blocks": [
         {
-          "label": "inspect",
+          "label": "in_namespace",
+          "marker": "in_namespace",
           "value": {
-            "in_namespace": {
-              "code_actions": [
-                {
-                  "kind": "refactor.rewrite.expandDeducedType",
-                  "title": "Replace 'auto' with 'std::size_t'",
-                  "compiles": true,
-                  "edits": {
-                    "main.cpp": "\n namespace geometry {\n-auto unit = sizeof(int);\n+std::size_t unit = sizeof(int);\n }\n"
-                  }
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'std::size_t'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n namespace geometry {\n-auto unit = sizeof(int);\n+std::size_t unit = sizeof(int);\n }\n"
                 }
-              ]
-            },
-            "size": {
-              "code_actions": [
-                {
-                  "kind": "refactor.rewrite.expandDeducedType",
-                  "title": "Replace 'auto' with 'std::size_t'",
-                  "compiles": true,
-                  "edits": {
-                    "main.cpp": "\n void measure(int* first, int* last) {\n-    auto bytes = sizeof(int);\n+    std::size_t bytes = sizeof(int);\n     auto distance = last - first;\n     auto none = nullptr;"
-                  }
-                }
-              ]
-            },
-            "difference": {
-              "code_actions": [
-                {
-                  "kind": "refactor.rewrite.expandDeducedType",
-                  "title": "Replace 'auto' with 'std::ptrdiff_t'",
-                  "compiles": true,
-                  "edits": {
-                    "main.cpp": " void measure(int* first, int* last) {\n     auto bytes = sizeof(int);\n-    auto distance = last - first;\n+    std::ptrdiff_t distance = last - first;\n     auto none = nullptr;\n }"
-                  }
-                }
-              ]
-            },
-            "null": {
-              "code_actions": [
-                {
-                  "kind": "refactor.rewrite.expandDeducedType",
-                  "title": "Replace 'auto' with 'std::nullptr_t'",
-                  "compiles": true,
-                  "edits": {
-                    "main.cpp": "     auto bytes = sizeof(int);\n     auto distance = last - first;\n-    auto none = nullptr;\n+    std::nullptr_t none = nullptr;\n }"
-                  }
-                }
-              ]
-            }
+              }
+            ]
           }
         },
         {
-          "label": "server",
+          "label": "size",
+          "marker": "size",
           "value": {
-            "wrong": "std::size_t, std::ptrdiff_t and std::nullptr_t come from an included header; the editor does not find them there, offering nothing for sizeof and a pointer difference and decltype(nullptr) for nullptr",
-            "in_namespace": {
-              "code_actions": []
-            },
-            "size": {
-              "code_actions": []
-            },
-            "difference": {
-              "code_actions": []
-            },
-            "null": {
-              "code_actions": [
-                {
-                  "kind": "refactor.rewrite.expandDeducedType",
-                  "title": "Replace 'auto' with 'decltype(nullptr)'",
-                  "compiles": true,
-                  "edits": {
-                    "main.cpp": "     auto bytes = sizeof(int);\n     auto distance = last - first;\n-    auto none = nullptr;\n+    decltype(nullptr) none = nullptr;\n }"
-                  }
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'std::size_t'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "\n void measure(int* first, int* last) {\n-    auto bytes = sizeof(int);\n+    std::size_t bytes = sizeof(int);\n     auto distance = last - first;\n     auto none = nullptr;"
                 }
-              ]
-            }
+              }
+            ]
+          }
+        },
+        {
+          "label": "difference",
+          "marker": "difference",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'std::ptrdiff_t'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": " void measure(int* first, int* last) {\n     auto bytes = sizeof(int);\n-    auto distance = last - first;\n+    std::ptrdiff_t distance = last - first;\n     auto none = nullptr;\n }"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "null",
+          "marker": "null",
+          "value": {
+            "code_actions": [
+              {
+                "kind": "refactor.rewrite.expandDeducedType",
+                "title": "Replace 'auto' with 'std::nullptr_t'",
+                "compiles": true,
+                "edits": {
+                  "main.cpp": "     auto bytes = sizeof(int);\n     auto distance = last - first;\n-    auto none = nullptr;\n+    std::nullptr_t none = nullptr;\n }"
+                }
+              }
+            ]
           }
         }
       ]

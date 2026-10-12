@@ -32,14 +32,6 @@
             "completion": {
               "items": [
                 {
-                  "label": "Base",
-                  "kind": "Class"
-                },
-                {
-                  "label": "Derived",
-                  "kind": "Class"
-                },
-                {
                   "label": "base_field",
                   "kind": "Field",
                   "detail": "int"
@@ -53,20 +45,6 @@
                   "label": "derived_field",
                   "kind": "Field",
                   "detail": "int"
-                },
-                {
-                  "label": "operator=(…) +2 overloads",
-                  "kind": "Method"
-                },
-                {
-                  "label": "~Base()",
-                  "kind": "Method",
-                  "detail": "void"
-                },
-                {
-                  "label": "~Derived()",
-                  "kind": "Method",
-                  "detail": "void"
                 }
               ]
             }

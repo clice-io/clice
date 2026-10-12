@@ -32,7 +32,7 @@
             "completion": {
               "items": [
                 {
-                  "label": "folded(int x)",
+                  "label": "folded(int x) const",
                   "kind": "Variable",
                   "detail": "void"
                 },

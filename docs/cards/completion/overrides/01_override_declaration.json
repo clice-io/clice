@@ -53,7 +53,7 @@
             "completion": {
               "items": [
                 {
-                  "label": "draw(int x, int y)",
+                  "label": "draw(int x, int y) const",
                   "kind": "Method",
                   "detail": "int",
                   "insert": "draw"

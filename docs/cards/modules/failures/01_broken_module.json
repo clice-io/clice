@@ -3,9 +3,9 @@
   "topic": "modules",
   "subtopic": "failures",
   "title": "Broken modules",
-  "summary": "A module that fails to build reports its own errors, and the files importing it report the import",
+  "summary": "A module that fails to build reports its own errors, and the files importing it say why it did not build",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -63,7 +63,6 @@
         {
           "label": "main.cpp",
           "value": {
-            "wrong": "Bad exists but fails to build; the import should say so and point at its error, not report the module as not found",
             "errors": [
               {
                 "at": {
@@ -81,9 +80,9 @@
                   }
                 },
                 "severity": "error",
-                "message": "module 'Bad' not found",
+                "message": "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'",
                 "source": "clang",
-                "code": "err_module_not_found"
+                "code": "err_module_not_built"
               }
             ]
           }
@@ -91,7 +90,6 @@
         {
           "label": "after an edit",
           "value": {
-            "wrong": "Bad exists but fails to build; the import should say so and point at its error, not report the module as not found",
             "errors": [
               {
                 "at": {
@@ -109,9 +107,9 @@
                   }
                 },
                 "severity": "error",
-                "message": "module 'Bad' not found",
+                "message": "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'",
                 "source": "clang",
-                "code": "err_module_not_found"
+                "code": "err_module_not_built"
               }
             ]
           }

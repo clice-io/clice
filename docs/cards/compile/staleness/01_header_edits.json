@@ -246,22 +246,9 @@
             "completion": {
               "items": [
                 {
-                  "label": "Widget",
-                  "kind": "Class"
-                },
-                {
                   "label": "alpha_member",
                   "kind": "Field",
                   "detail": "int"
-                },
-                {
-                  "label": "operator=(…) +2 overloads",
-                  "kind": "Method"
-                },
-                {
-                  "label": "~Widget()",
-                  "kind": "Method",
-                  "detail": "void"
                 }
               ]
             }
