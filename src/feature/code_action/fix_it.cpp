@@ -11,11 +11,13 @@ namespace clice::feature::action {
 
 namespace {
 
-/// Code as a fix's title shows it: its first line, cut short.
+/// Code as a fix's title shows it: its first line past the line breaks it
+/// starts with, cut short.
 std::string title_code(llvm::StringRef code) {
     if(code == "\n") {
         return R"(\n)";
     }
+    code = code.ltrim("\r\n");
     auto shown = code.split('\n').first.take_front(50);
     return shown.size() == code.size() ? shown.str() : std::format("{}…", shown);
 }
