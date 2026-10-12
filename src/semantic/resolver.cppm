@@ -94,8 +94,19 @@ public:
         return lookup(decl->getQualifier(), decl->getDeclName());
     }
 
+    /// The arguments of `function`'s template in its only instantiation,
+    /// for a unit that holds none: a completion stops before the code that
+    /// instantiates the template, which another compile of it made.
+    using Arguments = llvm::SmallVector<clang::TemplateArgument, 4>;
+
+    void assume(const clang::FunctionDecl* function, Arguments arguments) {
+        assumed.insert_or_assign(function, std::move(arguments));
+    }
+
 private:
     clang::ASTContext& context;
+
+    llvm::DenseMap<const clang::FunctionDecl*, Arguments> assumed;
 
     /// Cache of resolved dependent types, keyed by AST node pointer.
     /// Shared across resolve() calls within the same TU for performance.
