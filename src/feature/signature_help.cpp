@@ -4,6 +4,8 @@ module;
 
 module clice;
 
+import :compile.compilation;
+import :compile.compilation_unit;
 import :compile.directive;
 import :feature.feature;
 import :syntax.lexer;
@@ -43,6 +45,21 @@ bool dominated(const clang::FunctionDecl* method, const clang::FunctionDecl* bet
         auto [lhs, rhs] = pair;
         return context.hasSameType(lhs->getType(), rhs->getType());
     });
+}
+
+/// Gives `signature` its parameters, the one `argument` falls on active:
+/// past the last one, a trailing pack takes every further argument.
+void set_parameters(protocol::SignatureInformation& signature,
+                    std::vector<protocol::ParameterInformation> parameters,
+                    std::uint32_t argument,
+                    bool pack) {
+    if(pack && argument >= parameters.size()) {
+        argument = static_cast<std::uint32_t>(parameters.size() - 1);
+    }
+    signature.active_parameter = protocol::nullable<protocol::uinteger>(argument);
+    if(!parameters.empty()) {
+        signature.parameters = std::move(parameters);
+    }
 }
 
 class SignatureCollector final : public clang::CodeCompleteConsumer {
@@ -221,14 +238,7 @@ public:
             }
 
             signature.label = buffer.str().str();
-            auto active = current_arg;
-            if(pack && active >= parameters.size()) {
-                active = static_cast<std::uint32_t>(parameters.size() - 1);
-            }
-            signature.active_parameter = protocol::nullable<protocol::uinteger>(active);
-            if(!parameters.empty()) {
-                signature.parameters = std::move(parameters);
-            }
+            set_parameters(signature, std::move(parameters), current_arg, pack);
         }
     }
 
@@ -287,10 +297,11 @@ auto macro_call_at(CompilationUnitRef unit, std::uint32_t offset) -> std::option
         while(!token.is_eof() && token.range.begin < begin) {
             token = lexer.advance();
         }
-        MacroCall call{.macro = ref.macro, .name = token.text(text).str()};
+        auto name = token.text(text);
         if(lexer.advance().kind != clang::tok::l_paren) {
             continue;
         }
+        MacroCall call{.macro = ref.macro, .name = name.str()};
 
         std::uint32_t depth = 1;
         for(token = lexer.advance(); !token.is_eof() && depth > 0; token = lexer.advance()) {
@@ -337,18 +348,10 @@ auto macro_signature(const MacroCall& call) -> protocol::SignatureHelp {
     }
     label += ")";
 
-    auto active = call.argument;
-    if(call.macro->isVariadic() && active >= parameters.size()) {
-        active = static_cast<std::uint32_t>(parameters.size() - 1);
-    }
-
     protocol::SignatureHelp help;
     auto& signature = help.signatures.emplace_back();
     signature.label = std::move(label);
-    signature.active_parameter = protocol::nullable<protocol::uinteger>(active);
-    if(!parameters.empty()) {
-        signature.parameters = std::move(parameters);
-    }
+    set_parameters(signature, std::move(parameters), call.argument, call.macro->isVariadic());
     help.active_signature = 0;
     return help;
 }

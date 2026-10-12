@@ -180,9 +180,7 @@ auto unwritten(const clang::CXXParenListInitExpr* init)
     -> llvm::DenseMap<clang::SourceLocation, std::string> {
     llvm::DenseMap<clang::SourceLocation, std::string> designators;
     SubobjectNames names(init->getType());
-    if(!names) {
-        return designators;
-    }
+    assert(names && "parentheses initialize an aggregate");
     for(const clang::Expr* argument: init->getUserSpecifiedInitExprs()) {
         std::string designator;
         if(names.append(designator, /*brace_elided=*/false)) {

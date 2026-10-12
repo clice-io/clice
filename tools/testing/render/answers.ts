@@ -351,7 +351,6 @@ export interface CompletionItem {
     sortText: string;
 }
 
-/// A completion reply.
 export interface Completion {
     items: CompletionItem[];
     /// The server sent only some of the items that match: the editor asks

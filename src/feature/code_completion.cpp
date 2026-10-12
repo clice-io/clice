@@ -1192,8 +1192,8 @@ auto code_complete(CompilationParams& params,
 
     if(options.limit != 0 && list.items.size() > options.limit) {
         std::ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
-            const std::optional<std::string>& sort_text = item.sort_text;
-            return std::tie(sort_text, item.label);
+            return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text),
+                            item.label);
         });
         list.items.resize(options.limit);
         list.is_incomplete = true;

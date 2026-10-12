@@ -188,20 +188,20 @@ PreambleCompletionContext detect_completion_context(llvm::StringRef text, std::u
         if(keyword.text(text) != "if" && keyword.text(text) != "elif") {
             return {};
         }
-        std::optional<std::uint32_t> argument;
-        bool has_include = false;
+        std::optional<std::uint32_t> header_begin;
+        bool after_has_include = false;
         for(auto token = lexer.advance();
             !token.is_eod() && !token.is_eof() && before_cursor(token);
             token = lexer.advance()) {
-            if(has_include && token.kind == clang::tok::l_paren) {
-                argument = token.range.end;
+            if(after_has_include && token.kind == clang::tok::l_paren) {
+                header_begin = token.range.end;
             } else if(token.is_header_name()) {
-                argument.reset();
+                header_begin.reset();
             }
-            has_include = token.is_identifier() && (token.text(text) == "__has_include" ||
-                                                    token.text(text) == "__has_include_next");
+            after_has_include = token.is_identifier() && (token.text(text) == "__has_include" ||
+                                                          token.text(text) == "__has_include_next");
         }
-        return argument ? header_name(*argument) : PreambleCompletionContext{};
+        return header_begin ? header_name(*header_begin) : PreambleCompletionContext{};
     }
 
     // `[export] import` opening a logical line always means an import

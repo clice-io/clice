@@ -1087,8 +1087,8 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
     /// no copy or move constructor of the base: none is ever inherited.
     if(auto* UD = llvm::dyn_cast<clang::UsingDecl>(D)) {
         for(auto* shadow: UD->shadows()) {
-            auto* constructor =
-                llvm::dyn_cast<clang::CXXConstructorDecl>(shadow->getTargetDecl()->getAsFunction());
+            auto* constructor = llvm::dyn_cast_if_present<clang::CXXConstructorDecl>(
+                shadow->getTargetDecl()->getAsFunction());
             if(constructor && constructor->isCopyOrMoveConstructor()) {
                 continue;
             }
