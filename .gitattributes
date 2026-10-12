@@ -13,3 +13,5 @@ tests/format/document/06_crlf_line_endings/*.cpp -text
 tests/**/trace.jsonl linguist-generated=true binary
 # Generated feature docs are parsed by tools/testing/docs/site.ts marker regexes.
 docs/**/*.md text eol=lf
+# Every case run compares a documented case's card with its file byte for byte.
+docs/cards/** text eol=lf
