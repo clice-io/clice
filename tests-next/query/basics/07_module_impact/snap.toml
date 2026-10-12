@@ -6,7 +6,6 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 [test."$ clice query --method impactAnalysis --path base.h"]
-wrong = "use.cpp, which imports the module whose interface includes base.h, is missing from the affected files"
 stdout = '''
 {
   "result": {
@@ -16,7 +15,8 @@ stdout = '''
     ],
     "transitiveDependents": [
       "${WS}/mid.cpp",
-      "${WS}/main.cpp"
+      "${WS}/main.cpp",
+      "${WS}/use.cpp"
     ],
     "affectedModules": [
       "shapes"
@@ -28,12 +28,13 @@ stdout = '''
 exit = 0
 
 [test."$ clice query --method impactAnalysis --path shapes.cppm"]
-wrong = "use.cpp imports the module, yet no file is named as depending on its interface"
 stdout = '''
 {
   "result": {
     "directDependents": [],
-    "transitiveDependents": [],
+    "transitiveDependents": [
+      "${WS}/use.cpp"
+    ],
     "affectedModules": [
       "shapes"
     ]

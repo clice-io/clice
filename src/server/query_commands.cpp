@@ -414,6 +414,19 @@ Outcome<ImpactAnalysisResult> impact_analysis(Context& ctx, const Spelling& path
         }
     }
     auto readers = ws.dep_graph.find_readers(*file);
+    // An importer reads the files its modules were built from without
+    // including them.
+    if(auto it = ws.project_index.importers.find(*file); it != ws.project_index.importers.end()) {
+        llvm::SmallVector<Fid> importers(it->second.begin(), it->second.end());
+        llvm::sort(importers, [&](Fid lhs, Fid rhs) {
+            return ws.file_table.resolve(lhs) < ws.file_table.resolve(rhs);
+        });
+        for(auto importer: importers) {
+            if(!llvm::is_contained(readers, importer)) {
+                readers.push_back(importer);
+            }
+        }
+    }
     for(auto reader: readers) {
         if(seen.insert(reader).second) {
             result.transitive_dependents.push_back(ws.file_table.display(reader));
