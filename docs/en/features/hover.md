@@ -73,11 +73,11 @@ tests/hover/symbols/05_virtual_modifiers
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#436 -->
+<!-- BEGIN CAPABILITY: supported clangd#436 -->
 
 **Anonymous namespaces**
 
-The scope of a card leaves anonymous namespaces out
+The scope of a card names the anonymous namespace a name is declared in
 
 ```case
 tests/hover/symbols/06_anonymous_namespaces
@@ -85,14 +85,13 @@ tests/hover/symbols/06_anonymous_namespaces
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Deprecated symbols**
 
-A deprecated function's card does not say it is deprecated yet
+A deprecated function's card says so, with the message its deprecation gives
 
-The message of `[[deprecated]]` tells what to use instead; the card shows
-neither the deprecation nor the message.
+The message of `[[deprecated]]` usually tells what to use instead.
 
 ```case
 tests/hover/symbols/13_deprecation
@@ -267,7 +266,7 @@ tests/hover/aliases/03_c_anonymous_structs
 
 <!-- BEGIN GENERATED ITEMS: hover/deduced_types -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`auto`**
 
@@ -349,7 +348,7 @@ tests/hover/templates/02_instantiation_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#435 -->
+<!-- BEGIN CAPABILITY: partial clangd#435 -->
 
 **Deduced class arguments**
 
@@ -563,11 +562,11 @@ tests/hover/macros/04_command_line
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Macros in arguments**
 
-A macro inside another macro's arguments shows its definition, but no expansion
+A macro inside another macro's arguments shows its definition and what it expands to there
 
 ```case
 tests/hover/macros/05_nested_arguments
@@ -689,14 +688,14 @@ tests/hover/documentation/07_banner_comments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Declaration and definition**
 
-The declaration's `///` comment shows at the declaration and the definition, unless the definition is hovered first
+The declaration's `///` comment shows at the declaration and at the definition
 
-Hovered first after a change, the definition's plain `//` comment takes its
-place at both.
+The definition's plain `//` comment does not take its place, whichever of
+the two is hovered first.
 
 ```case
 tests/hover/documentation/08_declaration_and_definition
@@ -832,14 +831,11 @@ Attributes and keywords such as `const` or `virtual` have meanings of their own 
 
 <!-- BEGIN GENERATED ITEMS: hover/attributes -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
+<!-- BEGIN CAPABILITY: supported clangd#1862 -->
 
 **Attributes**
 
 Hovering an attribute shows clang's description of it, for GNU and standard spellings
-
-The description still reads as clang's reStructuredText source, its code
-examples run together.
 
 ```case
 tests/hover/attributes/01_attributes

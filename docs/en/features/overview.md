@@ -15,7 +15,7 @@ Language Server Protocol features available when using clice as an editor backen
 | Feature                                   | Status                                    |
 | ----------------------------------------- | ----------------------------------------- |
 | [Code Completion](./completion.md)        | 35 supported · 1 unsupported              |
-| [Hover](./hover.md)                       | 31 supported · 9 partial · 21 unsupported |
+| [Hover](./hover.md)                       | 37 supported · 8 partial · 16 unsupported |
 | [Signature Help](./signature-help.md)     | 8 supported · 2 partial · 8 unsupported   |
 | [Code Navigation](./navigation.md)        | 76 supported · 8 partial · 27 unsupported |
 | [Rename](./rename.md)                     | 4 supported                               |
