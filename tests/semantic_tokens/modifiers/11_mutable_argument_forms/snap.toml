@@ -17,3 +17,8 @@ modifiers = ["usedAsMutableReference", "functionScope"]
 text = "value"
 type = "variable"
 modifiers = ["functionScope"]
+
+[answers.dependent_parameter.semantic_token]
+text = "local"
+type = "variable"
+modifiers = ["functionScope"]

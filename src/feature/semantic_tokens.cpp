@@ -610,7 +610,11 @@ private:
             return;
         }
         for(const auto& binding: decls::parameter_bindings(call)) {
+            // A template's parameter may turn const in an instantiation.
             auto type = binding.forwarded->getType();
+            if(type->isDependentType()) {
+                continue;
+            }
             SymbolModifiers::Kind modifier;
             if(binding.mutable_reference()) {
                 modifier = SymbolModifiers::UsedAsMutableReference;

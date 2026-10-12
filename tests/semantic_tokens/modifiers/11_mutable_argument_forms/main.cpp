@@ -1,6 +1,7 @@
 // The modifier marks the name an argument writes: a member, the operand of
 // `&`, the argument of a constructor or a call operator; never a value
-// passed by copy.
+// passed by copy, nor one a template's parameter binds before knowing
+// whether it is const.
 
 struct Counter {
     int hits;
@@ -18,3 +19,13 @@ void run(Counter& counter) {
     counter(§(call_operator)value);
     copy(§(by_value)value);
 }
+
+template <typename T>
+struct Holder {
+    static void store(T& out);
+
+    static void run() {
+        int local = 0;
+        store(§(dependent_parameter)local);
+    }
+};
