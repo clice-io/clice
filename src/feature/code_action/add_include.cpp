@@ -48,31 +48,36 @@ struct QualifiedName {
 };
 
 /// The number of arguments of the argument list `tokens` open; nullopt
-/// when they open none or it is never closed.
+/// when they open none, it is never closed, a bracket in it is closed by
+/// another kind, or it holds a `<`: the text alone cannot tell a less-than
+/// from a template argument list, whose commas separate no arguments.
 std::optional<std::size_t> call_arguments(llvm::ArrayRef<clang::syntax::Token> tokens) {
     if(tokens.empty() || tokens.front().kind() != clang::tok::l_paren) {
         return std::nullopt;
     }
     std::size_t commas = 0;
-    std::uint32_t depth = 0;
+    llvm::SmallVector<clang::tok::TokenKind, 4> closers;
     for(const auto& token: tokens) {
         switch(token.kind()) {
-            case clang::tok::l_paren:
-            case clang::tok::l_square:
-            case clang::tok::l_brace: depth += 1; break;
+            case clang::tok::l_paren: closers.push_back(clang::tok::r_paren); break;
+            case clang::tok::l_square: closers.push_back(clang::tok::r_square); break;
+            case clang::tok::l_brace: closers.push_back(clang::tok::r_brace); break;
             case clang::tok::r_paren:
             case clang::tok::r_square:
             case clang::tok::r_brace:
-                depth -= 1;
-                if(depth == 0) {
+                if(closers.pop_back_val() != token.kind()) {
+                    return std::nullopt;
+                }
+                if(closers.empty()) {
                     return &token == &tokens[1] ? 0 : commas + 1;
                 }
                 break;
             case clang::tok::comma:
-                if(depth == 1) {
+                if(closers.size() == 1) {
                     commas += 1;
                 }
                 break;
+            case clang::tok::less: return std::nullopt;
             default: break;
         }
     }
