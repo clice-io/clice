@@ -31,8 +31,8 @@ test("damaged pch is rebuilt", async (t) => {
 });
 
 test("damage past the checks", async (t) => {
-    // PCHs carry no checksum: bytes flipped deep inside crash the compile
-    // that reads them, retried once without clang-tidy, before the pair is
+    // PCHs carry no checksum: damage deep inside crashes the compile that
+    // reads it, retried once without clang-tidy, before the pair is
     // retracted.
     const s = await t.start({ crash: { request: "compile", file: "main.cpp", input: true } });
     await recovers(t, s, "middle");

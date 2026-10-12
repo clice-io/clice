@@ -14,6 +14,7 @@ import :compile.implement;
 import :compile.tokens;
 import :semantic.decls;
 import :support.logging;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -73,6 +74,15 @@ std::unique_ptr<clang::CompilerInvocation>
     }
 
     auto [pch, bound] = params.pch;
+    // Tests stand in for a PCH damaged past clang's checks, which crashes
+    // the parse reading it, by writing CLICE_TEST_DAMAGE into it.
+    const static auto damage = llvm::sys::Process::GetEnv("CLICE_TEST_DAMAGE");
+    if(damage && !pch.empty()) {
+        if(auto file = vfs::read(pch, vfs::Read::Bytes);
+           file && (*file)->getBuffer().contains(*damage)) {
+            LLVM_BUILTIN_TRAP;
+        }
+    }
     pp_opts.ImplicitPCHInclude = std::move(pch);
     if(bound != 0) {
         pp_opts.PrecompiledPreambleBytes = {bound, false};

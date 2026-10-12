@@ -69,7 +69,7 @@ import {
     type Change,
     type MarkerAnchor,
 } from "../cases/anchors.ts";
-import { describeChange, type Disk } from "../cases/disk.ts";
+import { DAMAGE, describeChange, type Disk } from "../cases/disk.ts";
 import { StepRecord } from "./steps.ts";
 
 /// A crash or kill the test provokes in the worker running `request` on
@@ -86,7 +86,8 @@ export interface WorkerFault {
     /// request.
     tidy?: string;
     /// A crash the copy's files provoke on their own, as a damaged cache
-    /// blob does: nothing is injected, the crash is only declared.
+    /// blob does: the crash is declared, and a PCH `t.disk.corrupt` damaged
+    /// in its middle crashes the compile reading it (CLICE_TEST_DAMAGE).
     input?: true;
 }
 
@@ -1054,7 +1055,9 @@ export class Serve extends Client {
             env["CLICE_TEST_TIDY_CRASH"] = crash.tidy;
         } else if (crash?.pragma === true) {
             env["CLICE_TEST_PRAGMA_CRASH"] = "1";
-        } else if (crash !== undefined && crash.input !== true) {
+        } else if (crash?.input === true) {
+            env["CLICE_TEST_DAMAGE"] = DAMAGE;
+        } else if (crash !== undefined) {
             env["CLICE_TEST_CRASH_REQUEST"] =
                 `${crash.request} ${this.workspace.displayPath(crash.file)}`;
         }
