@@ -49,7 +49,7 @@ public: int second
 range = "int ⟦second⟧;"
 
 [configured.function.hover]
-markdown = '''
+plaintext = '''
 function answer
 
 → int
@@ -62,7 +62,7 @@ constexpr int answer(int p)
 range = "constexpr int ⟦answer⟧(int p) {"
 
 [configured.variable.hover]
-markdown = '''
+plaintext = '''
 variable value
 
 Type: int
@@ -73,7 +73,7 @@ int value = answer(1)
 range = "int ⟦value⟧ = answer(1);"
 
 [configured.field.hover]
-markdown = '''
+plaintext = '''
 field second
 
 Type: int

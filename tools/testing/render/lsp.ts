@@ -144,12 +144,18 @@ export class AnswerContext {
         if (reply === null) {
             return null;
         }
+        if (proto.MarkupContent.is(reply.contents)) {
+            return {
+                kind: reply.contents.kind,
+                text: reply.contents.value,
+                range: reply.range === undefined ? undefined : { path, range: reply.range },
+            };
+        }
+        // Marked strings, which LSP deprecates, are markdown.
         const parts = Array.isArray(reply.contents) ? reply.contents : [reply.contents];
-        const markdown = parts
-            .map((part) => (typeof part === "string" ? part : part.value))
-            .join("\n");
         return {
-            markdown,
+            kind: "markdown",
+            text: parts.map((part) => (typeof part === "string" ? part : part.value)).join("\n"),
             range: reply.range === undefined ? undefined : { path, range: reply.range },
         };
     }

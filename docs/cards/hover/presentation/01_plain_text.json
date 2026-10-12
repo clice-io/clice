@@ -121,7 +121,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "function answer\n\n→ int\nParameters:\n- int p\nComputes the answer. Tests primality of `p`.\n\nconstexpr int answer(int p)",
+              "plaintext": "function answer\n\n→ int\nParameters:\n- int p\nComputes the answer. Tests primality of `p`.\n\nconstexpr int answer(int p)",
               "range": {
                 "$place": "constexpr int ⟦answer⟧(int p) {",
                 "path": "main.cpp",
@@ -144,7 +144,7 @@
           "marker": "variable",
           "value": {
             "hover": {
-              "markdown": "variable value\n\nType: int\nValue = 42 (0x2a)\n\nint value = answer(1)",
+              "plaintext": "variable value\n\nType: int\nValue = 42 (0x2a)\n\nint value = answer(1)",
               "range": {
                 "$place": "int ⟦value⟧ = answer(1);",
                 "path": "main.cpp",
@@ -167,7 +167,7 @@
           "marker": "field",
           "value": {
             "hover": {
-              "markdown": "field second\n\nType: int\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes\n\n// In Layout\npublic: int second",
+              "plaintext": "field second\n\nType: int\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes\n\n// In Layout\npublic: int second",
               "range": {
                 "$place": "int ⟦second⟧;",
                 "path": "main.cpp",

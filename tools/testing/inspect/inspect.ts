@@ -63,6 +63,7 @@ interface RawRange {
 
 interface RawHover {
     range: RawRange | null;
+    kind: "markdown" | "plaintext";
     contents: string;
 }
 
@@ -284,7 +285,8 @@ export class Inspect extends Client {
             return null;
         }
         return {
-            markdown: raw.contents,
+            kind: raw.kind,
+            text: raw.contents,
             range: raw.range === null ? undefined : this.location(at.path, raw.range),
         };
     }

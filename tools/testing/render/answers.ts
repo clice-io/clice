@@ -94,23 +94,25 @@ export function renderHighlights(highlights: readonly Highlight[], scope: Render
 }
 
 export interface Hover {
-    markdown: string;
+    /// The card's text, of the markup kind it is written in.
+    kind: "markdown" | "plaintext";
+    text: string;
     range?: Location | undefined;
 }
 
-/// The markdown as the client receives it and the symbol's range; no card
-/// is an empty table.
+/// The text as the client receives it, under its markup kind, and the
+/// symbol's range; no card is an empty table.
 export function renderHover(hover: Hover | null, scope: RenderScope): Table {
     if (hover === null) {
         return {};
     }
-    const markdown = hover.markdown
+    const text = hover.text
         .split("\n")
         .map((line) => line.trimEnd())
         .join("\n");
     return hover.range === undefined
-        ? { markdown }
-        : { markdown, range: place(hover.range, scope) };
+        ? { [hover.kind]: text }
+        : { [hover.kind]: text, range: place(hover.range, scope) };
 }
 
 export interface Diagnostic {
@@ -239,12 +241,17 @@ export function renderInlayHints(
             at = hint.position.character;
         }
         rendered += text.slice(at);
-        const indent = text.length - text.trimStart().length;
+        // The trimmed text starts at the line's first character or at a
+        // hint shown in its indentation, whichever comes first.
+        const start = Math.min(
+            text.length - text.trimStart().length,
+            ordered[0]?.hint.position.character ?? text.length,
+        );
         out.push({
             line: new Place(rendered.trim(), {
                 path,
                 range: {
-                    start: { line, character: indent },
+                    start: { line, character: start },
                     end: { line, character: text.trimEnd().length },
                 },
             }),

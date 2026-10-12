@@ -124,6 +124,7 @@ std::optional<kota::codec::RawValue> to_raw_json(const T& value) {
 /// symbol range still in byte offsets.
 struct HoverResult {
     std::optional<LocalSourceRange> range;
+    feature::protocol::MarkupKind kind;
     std::string contents;
 };
 
@@ -315,9 +316,13 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
         return kota::codec::RawValue{};
     }
     auto document = info->present();
-    HoverResult result{info->symbol_range,
-                       options.parse_comment_as_markdown ? document.as_markdown()
-                                                         : document.as_plain_text()};
+    auto result = options.parse_comment_as_markdown
+                      ? HoverResult{info->symbol_range,
+                                    feature::protocol::MarkupKind::Markdown,
+                                    document.as_markdown()}
+                      : HoverResult{info->symbol_range,
+                                    feature::protocol::MarkupKind::PlainText,
+                                    document.as_plain_text()};
     return to_raw_json(result);
 }
 
