@@ -688,6 +688,18 @@ struct Rebuilder {
     clang::SourceLocation loc;
 };
 
+/// The function template `context` is in, through the lambdas and local
+/// classes inside it.
+const clang::FunctionDecl* enclosing_template(const clang::DeclContext* context) {
+    for(; context; context = context->getParent()) {
+        if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(context);
+           function && function->getDescribedFunctionTemplate()) {
+            return function;
+        }
+    }
+    return nullptr;
+}
+
 class CodeCompletionCollector final : public clang::CodeCompleteConsumer {
 public:
     /// Sema reports macro candidates and statement keywords only on
@@ -726,6 +738,14 @@ public:
         auto [file, offset] =
             source_manager.getDecomposedLoc(source_manager.getFileLoc(function->getLocation()));
         if(file != source_manager.getMainFileID()) {
+            return {};
+        }
+        /// A call after the completion point names the function it calls;
+        /// a template nothing calls yet goes without the second compile.
+        /// The completion buffer holds a NUL at the completion point.
+        if(auto* name = function->getIdentifier();
+           name &&
+           !source_manager.getBufferData(file).substr(this->offset + 1).contains(name->getName())) {
             return {};
         }
         auto unit = whole.unit();
@@ -855,8 +875,7 @@ public:
                 /// The code after the completion point instantiates the
                 /// template the completion is in, a generic lambda as the
                 /// argument of a call above all.
-                if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(sema.CurContext);
-                   !tag && function && function->getDescribedFunctionTemplate()) {
+                if(auto* function = enclosing_template(sema.CurContext); !tag && function) {
                     if(auto arguments = instantiated_later(sema, function); !arguments.empty()) {
                         types::TemplateResolver informed(
                             ast,
