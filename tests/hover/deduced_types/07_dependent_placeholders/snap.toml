@@ -3,7 +3,7 @@ markdown = '''
 ### variable `copy`
 
 ---
-Type: `auto`
+Type: `T`
 
 ---
 ```cpp
