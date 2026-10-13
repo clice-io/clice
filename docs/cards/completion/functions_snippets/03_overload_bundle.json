@@ -32,7 +32,7 @@
             "completion": {
               "items": [
                 {
-                  "label": "foooo(…) +3 overloads",
+                  "label": "foooo(…) +2 overloads",
                   "kind": "Function"
                 }
               ]
@@ -56,11 +56,6 @@
             "completion": {
               "items": [
                 {
-                  "label": "foooo(double d)",
-                  "kind": "Function",
-                  "detail": "double"
-                },
-                {
                   "label": "foooo(int x)",
                   "kind": "Function",
                   "detail": "int"
@@ -69,6 +64,11 @@
                   "label": "foooo(int x, int y)",
                   "kind": "Function",
                   "detail": "int"
+                },
+                {
+                  "label": "foooo(double d)",
+                  "kind": "Function",
+                  "detail": "double"
                 }
               ]
             }

@@ -37,14 +37,14 @@
                   "detail": "int"
                 },
                 {
-                  "label": "raise(int step)",
-                  "kind": "Method",
-                  "detail": "void"
-                },
-                {
                   "label": "target",
                   "kind": "Field",
                   "detail": "int"
+                },
+                {
+                  "label": "raise(int step)",
+                  "kind": "Method",
+                  "detail": "void"
                 }
               ]
             }

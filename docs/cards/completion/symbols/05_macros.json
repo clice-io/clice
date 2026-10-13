@@ -4,7 +4,7 @@
   "subtopic": "symbols",
   "title": "Macros",
   "summary": "Object-like macros complete as constants, function-like ones as functions with a parameter signature",
-  "prose": "Argument snippets follow the function setting, `code_completion.enable_function_arguments_snippet`.",
+  "prose": "Their arguments follow the functions' setting, `code_completion.arguments`.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -53,14 +53,15 @@
             "completion": {
               "items": [
                 {
-                  "label": "CLAMP(value, limit)",
-                  "kind": "Function",
-                  "insert": "CLAMP"
-                },
-                {
                   "label": "class",
                   "kind": "Keyword",
                   "insert": "class"
+                },
+                {
+                  "label": "CLAMP(value, limit)",
+                  "kind": "Function",
+                  "insert": "CLAMP(${1:value}, ${2:limit})",
+                  "snippet": true
                 }
               ]
             }
@@ -69,10 +70,10 @@
       ]
     },
     {
-      "name": "configured",
+      "name": "none",
       "config": {
         "code_completion": {
-          "enable_function_arguments_snippet": true
+          "arguments": "none"
         }
       },
       "blocks": [
@@ -98,15 +99,14 @@
             "completion": {
               "items": [
                 {
-                  "label": "CLAMP(value, limit)",
-                  "kind": "Function",
-                  "insert": "CLAMP(${1:value}, ${2:limit})",
-                  "snippet": true
-                },
-                {
                   "label": "class",
                   "kind": "Keyword",
                   "insert": "class"
+                },
+                {
+                  "label": "CLAMP(value, limit)",
+                  "kind": "Function",
+                  "insert": "CLAMP"
                 }
               ]
             }

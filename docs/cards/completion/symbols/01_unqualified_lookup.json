@@ -3,7 +3,7 @@
   "topic": "completion",
   "subtopic": "symbols",
   "title": "Fuzzy unqualified lookup",
-  "summary": "Strong prefix matches survive, while weak subsequence matches and members of namespaces not in scope do not",
+  "summary": "Strong prefix matches survive, while weak subsequence matches do not",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -39,6 +39,11 @@
                 {
                   "label": "for",
                   "kind": "Keyword"
+                },
+                {
+                  "label": "A::fooooo()",
+                  "kind": "Function",
+                  "detail": "void"
                 }
               ]
             }

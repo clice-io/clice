@@ -3,7 +3,7 @@
   "topic": "completion",
   "subtopic": "functions_snippets",
   "title": "Call parentheses",
-  "summary": "A completed call gets its parentheses with the cursor between them, unless arguments already follow the name or it is not being called",
+  "summary": "A completed call gets its parentheses, unless arguments already follow the name or it is not being called",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -53,7 +53,8 @@
                   "label": "compute(int x)",
                   "kind": "Function",
                   "detail": "int",
-                  "insert": "compute"
+                  "insert": "compute(${1:int x})",
+                  "snippet": true
                 }
               ]
             }
@@ -110,10 +111,10 @@
       ]
     },
     {
-      "name": "configured",
+      "name": "delimiters",
       "config": {
         "code_completion": {
-          "insert_paren_in_function_call": true
+          "arguments": "delimiters"
         }
       },
       "blocks": [

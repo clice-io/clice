@@ -32,14 +32,6 @@
             "completion": {
               "items": [
                 {
-                  "label": "Config",
-                  "kind": "Class"
-                },
-                {
-                  "label": "Nested",
-                  "kind": "Class"
-                },
-                {
                   "label": "instance_field",
                   "kind": "Field",
                   "detail": "int"
@@ -50,13 +42,21 @@
                   "detail": "int"
                 },
                 {
-                  "label": "operator=(…) +2 overloads",
-                  "kind": "Method"
-                },
-                {
                   "label": "shared_count",
                   "kind": "Variable",
                   "detail": "int"
+                },
+                {
+                  "label": "Config",
+                  "kind": "Class"
+                },
+                {
+                  "label": "Nested",
+                  "kind": "Class"
+                },
+                {
+                  "label": "operator=(…) +1 overload",
+                  "kind": "Method"
                 },
                 {
                   "label": "~Config()",

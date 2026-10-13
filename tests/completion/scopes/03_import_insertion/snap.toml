@@ -5,7 +5,7 @@ items = [
         kind = "Class",
         insert = "shapes::Circle",
         edits = [
-            { at = "⟦⟧export import :detail;", text = "import shapes;" },
+            { at = "⟦⟧ @-4", text = "import shapes;" },
         ],
     },
 ]
@@ -17,7 +17,7 @@ items = [
         kind = "Function",
         insert = "measures::measure_area",
         edits = [
-            { at = "⟦⟧export import :detail;", text = "import :measure;" },
+            { at = "⟦⟧ @-5", text = "import :measure;" },
         ],
     },
 ]
@@ -34,6 +34,18 @@ items = [
     },
 ]
 
+[default.fragment.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-4", text = "import shapes;" },
+        ],
+    },
+]
+
 [configured.module_unit.completion]
 items = []
 
@@ -41,4 +53,7 @@ items = []
 items = []
 
 [configured.plain_unit.completion]
+items = []
+
+[configured.fragment.completion]
 items = []

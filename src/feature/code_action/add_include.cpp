@@ -322,6 +322,10 @@ std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions
     bool declared = false;
     Lexer lexer(content, {.lang_opts = &options});
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        // The lexer ends a module declaration's line as it ends a directive.
+        if(token.is_eod()) {
+            continue;
+        }
         if(token.is_directive_hash()) {
             auto next = lexer.advance();
             while(!next.is_eod() && !next.is_eof()) {

@@ -56,7 +56,8 @@
                   "label": "draw(int x, int y) const",
                   "kind": "Method",
                   "detail": "int",
-                  "insert": "draw"
+                  "insert": "draw(${1:int x}, ${2:int y})",
+                  "snippet": true
                 }
               ]
             }

@@ -1,0 +1,99 @@
+{
+  "id": "completion/scopes/02_include_insertion",
+  "topic": "completion",
+  "subtopic": "scopes",
+  "title": "Headers not included yet",
+  "summary": "A name the project declares in a header the file does not include yet completes with the `#include` that brings it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "geometry.h",
+      "text": "#pragma once\n\nnamespace geo {\n\ndouble area(double radius);\n\n}  // namespace geo\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    return geo::area(c.radius);\n}\n\n}  // namespace app\n",
+      "markers": [
+        {
+          "name": "not_included",
+          "begin": 64,
+          "end": 64,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "shapes.cpp",
+      "text": "#include \"shapes.h\"\n",
+      "markers": []
+    },
+    {
+      "path": "shapes.h",
+      "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n};\n\n}  // namespace shapes\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "not_included",
+          "marker": "not_included",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-4",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "code_completion": {
+          "insert_includes": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "not_included",
+          "marker": "not_included",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

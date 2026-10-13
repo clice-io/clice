@@ -1,0 +1,258 @@
+{
+  "id": "completion/scopes/03_import_insertion",
+  "topic": "completion",
+  "subtopic": "scopes",
+  "title": "Modules not imported yet",
+  "summary": "A name a module of the project exports completes with the `import` that brings it, its own partitions by their partition name",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "app.cppm",
+      "text": "export module app;\nexport import :detail;\n\nexport namespace app {\n\ndouble draw() {\n    Circ c;\n    return measure(c);\n}\n\n}  // namespace app\n",
+      "markers": [
+        {
+          "name": "module_unit",
+          "begin": 91,
+          "end": 91,
+          "range": false
+        },
+        {
+          "name": "own_partition",
+          "begin": 113,
+          "end": 113,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "app_detail.cppm",
+      "text": "export module app:detail;\n\nexport namespace app::detail {\n\nint helper();\n\n}  // namespace app::detail\n",
+      "markers": []
+    },
+    {
+      "path": "app_measure.cppm",
+      "text": "export module app:measure;\n\nexport namespace app::measures {\n\ndouble measure_area(double radius);\n\n}  // namespace app::measures\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "namespace app {\n\nvoid run() {\n    Circ c;\n}\n\n}  // namespace app\n",
+      "markers": [
+        {
+          "name": "plain_unit",
+          "begin": 38,
+          "end": 38,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "shapes.cppm",
+      "text": "export module shapes;\n\nexport namespace shapes {\n\nstruct Circle {\n    double radius;\n};\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "tools.cppm",
+      "text": "module;\n#define TOOLS_VERSION 2\nexport module tools;\n\nexport namespace tools {\n\nint version() {\n    Circ c;\n    return TOOLS_VERSION;\n}\n\n}  // namespace tools\n",
+      "markers": [
+        {
+          "name": "fragment",
+          "begin": 104,
+          "end": 104,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "module_unit",
+          "marker": "module_unit",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-4",
+                        "path": "app.cppm",
+                        "range": {
+                          "start": {
+                            "line": 2,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 2,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "import shapes;\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "own_partition",
+          "marker": "own_partition",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "measures::measure_area",
+                  "kind": "Function",
+                  "insert": "measures::measure_area",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-5",
+                        "path": "app.cppm",
+                        "range": {
+                          "start": {
+                            "line": 2,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 2,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "import :measure;\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "plain_unit",
+          "marker": "plain_unit",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧namespace app {",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 0,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "import shapes;\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "fragment",
+          "marker": "fragment",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-4",
+                        "path": "tools.cppm",
+                        "range": {
+                          "start": {
+                            "line": 3,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 3,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "import shapes;\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "code_completion": {
+          "insert_imports": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "module_unit",
+          "marker": "module_unit",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "own_partition",
+          "marker": "own_partition",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "plain_unit",
+          "marker": "plain_unit",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "fragment",
+          "marker": "fragment",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
