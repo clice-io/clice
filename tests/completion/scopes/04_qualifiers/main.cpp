@@ -43,11 +43,30 @@ namespace shapes {}
 namespace sh = shapes;
 }  // namespace geometry
 
+namespace containers {
+template <class T>
+struct Vector {};
+template <>
+struct Vector<int> {};
+template <class T>
+void fill(T value);
+template <>
+void fill<int>(int value);
+}  // namespace containers
+
 extern "C++" {
 namespace linked {
 int linked_value;
 }
 }
+
+namespace app {
+namespace lib {}
+
+void run() {
+    versio§(shadowed_namespace);
+}
+}  // namespace app
 
 void use() {
     versio§(inline_namespace);
@@ -58,4 +77,6 @@ void use() {
     tool_v§(anonymous_namespace);
     shap§(nested_namespace);
     linked_v§(linkage);
+    Vect§(class_specialization);
+    fil§(function_specialization);
 }

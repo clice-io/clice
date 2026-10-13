@@ -52,8 +52,9 @@ protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
                                                 const index::Site& extent,
                                                 llvm::StringRef qualified);
 
-/// The symbol handle a prepared hierarchy item came back with, if intact.
-std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::LSPAny>& data);
+/// The symbol an item's `data` carries, if intact: a prepared hierarchy
+/// item's, or a completion item's whose `#include` the server adds.
+std::optional<index::SymbolHash> data_symbol(const std::optional<protocol::LSPAny>& data);
 
 /// Whether a worker's raw reply is the JSON null or the empty array —
 /// the only inspection ever made of a reply that is otherwise passed

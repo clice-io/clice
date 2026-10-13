@@ -2,4 +2,6 @@
 items = [
     { label = "parse_project_value(const char *text)", kind = "Function", detail = "int" },
     { label = "parse_any_value(const char *text)", kind = "Function", detail = "int" },
+    { label = "PARSE_PROJECT_LIMIT", kind = "Constant" },
+    { label = "PARSE_ANY_LIMIT", kind = "Constant" },
 ]

@@ -1164,7 +1164,7 @@ std::optional<bool> type_trait(const clang::Expr* expr,
         if(trait->getNumArgs() != 1) {
             return std::nullopt;
         }
-        /// The builtin spells the trait in camel case: `__is_object`.
+        /// The builtin is the trait's name after `__`: `__is_object`.
         name = clang::getTraitSpelling(trait->getTrait());
         name.consume_front("__");
         operand = trait->getArg(0)->getType();
@@ -1307,11 +1307,14 @@ namespace {
 /// patterns are equivalent and only `left` is constrained.
 template <typename Partial>
 bool more_specialized(clang::ASTContext& context, Partial* left, Partial* right) {
+    /// A value of the argument's own parameters matches no value the
+    /// pattern fixes.
     auto matches = [&](Partial* pattern, Partial* argument) {
         auto params = pattern->getTemplateParameters();
         Unifier unifier(context, params->getDepth(), params->size());
         return unifier.unify(pattern->getTemplateArgs().asArray(),
-                             argument->getTemplateArgs().asArray());
+                             argument->getTemplateArgs().asArray()) &&
+               !unifier.undecided();
     };
 
     bool forward = matches(right, left);

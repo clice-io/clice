@@ -1,24 +1,31 @@
 // Overloads that differ only in their ref-qualifiers, as std::optional's
 // value(): the one the object binds to decides the type.
+struct Mutable {
+    int mutable_member;
+};
+
+struct Constant {
+    int constant_member;
+};
+
+struct Moved {
+    int moved_member;
+};
+
 template <class T>
 struct Optional {
-    T& value() &;
-    const T& value() const&;
-    T&& value() &&;
-    const T&& value() const&&;
+    Mutable& value() &;
+    const Constant& value() const&;
+    Moved&& value() &&;
+    const Moved&& value() const&&;
+    T held;
 };
 
 template <class T>
-struct Wrap {
-    T inner;
-    int count;
-};
+Optional<T> make();
 
 template <class T>
-Optional<Wrap<T>> make();
-
-template <class T>
-void walk(Optional<Wrap<T>> held, const Optional<Wrap<T>> fixed) {
+void walk(Optional<T> held, const Optional<T> fixed) {
     held.value().§(lvalue);
     fixed.value().§(const_lvalue);
     make<T>().value().§(rvalue);

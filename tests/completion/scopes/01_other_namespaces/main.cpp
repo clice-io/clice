@@ -8,7 +8,9 @@ double area_scale = 1.0;
 
 namespace app {
 
-double run(double area_hint) {
+double area_total = 0.0;
+
+double run() {
     double total = are§(other_namespaces);
     return total;
 }

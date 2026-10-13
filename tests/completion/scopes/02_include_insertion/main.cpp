@@ -4,7 +4,14 @@ namespace app {
 
 double draw() {
     Circ§(not_included) c;
-    return geo::area(c.radius);
+    void (*handler)(int) = on_resi§(function_expected);
+    redra§(function_call);
+    Gri§(class_template) grid;
+    int shade = shade_d§(enumerator);
+    int count = circle_cou§(class_member);
+    vecto§(standard_name) values;
+    double scale = GEO_SC§(macro);
+    return geo::area(c.radius) * scale;
 }
 
 }  // namespace app

@@ -110,7 +110,7 @@ protocol::TypeHierarchyItem type_hierarchy_item(const index::SymbolRef& symbol,
     return hierarchy_item<protocol::TypeHierarchyItem>(symbol, site, extent, qualified);
 }
 
-std::optional<index::SymbolHash> hierarchy_symbol(const std::optional<protocol::LSPAny>& data) {
+std::optional<index::SymbolHash> data_symbol(const std::optional<protocol::LSPAny>& data) {
     if(!data) {
         return std::nullopt;
     }

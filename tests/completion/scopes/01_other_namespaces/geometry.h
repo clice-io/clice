@@ -1,7 +1,7 @@
 #pragma once
 
-namespace geo {
+namespace analytic {
 
 double area(double radius);
 
-}  // namespace geo
+}  // namespace analytic

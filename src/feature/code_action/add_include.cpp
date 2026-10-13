@@ -320,6 +320,10 @@ std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions
     std::uint32_t anchor = 0;
     bool fragment = false;
     bool declared = false;
+    // An import inside a conditional block moves the anchor past the block:
+    // the next one would be as conditional.
+    std::uint32_t depth = 0;
+    bool held = false;
     Lexer lexer(content, {.lang_opts = &options});
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         // The lexer ends a module declaration's line as it ends a directive.
@@ -327,14 +331,26 @@ std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions
             continue;
         }
         if(token.is_directive_hash()) {
-            auto next = lexer.advance();
+            auto keyword = lexer.advance();
+            auto name = keyword.text(content);
+            auto next = keyword;
             while(!next.is_eod() && !next.is_eof()) {
                 next = lexer.advance();
+            }
+            auto end = line_end(content, next.range.begin);
+            if(name == "if" || name == "ifdef" || name == "ifndef") {
+                depth += 1;
+            } else if(name == "endif" && depth > 0) {
+                depth -= 1;
+                if(depth == 0 && held) {
+                    anchor = end;
+                    held = false;
+                }
             }
             // A module unit's directives before its declaration are in its
             // global module fragment, where no import may go.
             if(!fragment && !declared) {
-                anchor = line_end(content, next.range.begin);
+                anchor = end;
             }
             continue;
         }
@@ -355,7 +371,11 @@ std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions
             next = lexer.advance();
         }
         declared |= text == "module";
-        anchor = line_end(content, next.range.end);
+        if(depth > 0) {
+            held = true;
+        } else {
+            anchor = line_end(content, next.range.end);
+        }
     }
     return anchor;
 }

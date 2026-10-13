@@ -10,5 +10,119 @@ items = [
     },
 ]
 
+[default.function_expected.completion]
+items = [
+    {
+        label = "shapes::on_resize",
+        kind = "Function",
+        insert = "shapes::on_resize",
+        edits = [
+            { at = "⟦⟧ @-5", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.function_call.completion]
+items = [
+    {
+        label = "shapes::redraw(…) +1 overload",
+        kind = "Function",
+        insert = "shapes::redraw($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-6", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.class_template.completion]
+items = [
+    {
+        label = "shapes::Grid",
+        kind = "Class",
+        insert = "shapes::Grid<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-7", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.enumerator.completion]
+items = [
+    {
+        label = "shapes::shade_dark",
+        kind = "EnumMember",
+        insert = "shapes::shade_dark",
+        edits = [
+            { at = "⟦⟧ @-8", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.class_member.completion]
+items = []
+
+[default.standard_name.completion]
+items = [
+    {
+        label = "std::vector",
+        kind = "Class",
+        insert = "std::vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-10", text = "#include <vector>" },
+        ],
+    },
+]
+
+[default.macro.completion]
+items = [
+    { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
+]
+
+[[default.module_unit.completion.items]]
+label = "shapes::Circle"
+kind = "Class"
+insert = "shapes::Circle"
+
+[[default.module_unit.completion.items.edits]]
+at = "⟦⟧export module tools;"
+text = '''
+module;
+#include "shapes.h"
+'''
+
 [configured.not_included.completion]
 items = []
+
+[configured.function_expected.completion]
+items = []
+
+[configured.function_call.completion]
+items = []
+
+[configured.class_template.completion]
+items = []
+
+[configured.enumerator.completion]
+items = []
+
+[configured.class_member.completion]
+items = []
+
+[configured.standard_name.completion]
+items = []
+
+[configured.macro.completion]
+items = [
+    { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
+]
+
+[configured.module_unit.completion]
+items = []
+
+[unbundled.macro.completion]
+items = [
+    { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
+]

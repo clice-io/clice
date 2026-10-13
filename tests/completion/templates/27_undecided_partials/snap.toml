@@ -1,0 +1,12 @@
+[answers.shared_member.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.fixed_value.completion]
+items = [
+    { label = "zero", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

@@ -1,9 +1,10 @@
 import { answers } from "@clice/tools/testing";
 
 // The qualifier leaves out the namespaces the completion point is in, inline
-// and anonymous ones, and an unscoped enumeration; a reserved name, or a
-// namespace's with one, comes only when the prefix asks for it; a class's
-// members never come unqualified.
+// and anonymous ones, and an unscoped enumeration, but starts from the global
+// scope where a closer scope takes its first name. A reserved name comes only
+// when the prefix asks for it, a reserved namespace's never; a class's members
+// never come unqualified, nor a template's specializations beside it.
 answers(async (a) => {
     for (const m of a.markers()) {
         await a.show(m.name, a.completion(m), { parts: ["insert"] });

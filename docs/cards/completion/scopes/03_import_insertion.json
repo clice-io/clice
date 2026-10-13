@@ -37,13 +37,30 @@
       "markers": []
     },
     {
+      "path": "config.h",
+      "text": "#pragma once\n",
+      "markers": []
+    },
+    {
+      "path": "gui.cppm",
+      "text": "export module gui;\n#if 0\nimport optional;\n#endif\n\nexport namespace gui {\n\nvoid show() {\n    Circ c;\n}\n\n}  // namespace gui\n",
+      "markers": [
+        {
+          "name": "conditional",
+          "begin": 96,
+          "end": 96,
+          "range": false
+        }
+      ]
+    },
+    {
       "path": "main.cpp",
-      "text": "namespace app {\n\nvoid run() {\n    Circ c;\n}\n\n}  // namespace app\n",
+      "text": "#include \"config.h\"\n\nnamespace app {\n\nvoid run() {\n    Circ c;\n}\n\n}  // namespace app\n",
       "markers": [
         {
           "name": "plain_unit",
-          "begin": 38,
-          "end": 38,
+          "begin": 59,
+          "end": 59,
           "range": false
         }
       ]
@@ -139,6 +156,40 @@
           }
         },
         {
+          "label": "conditional",
+          "marker": "conditional",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-4",
+                        "path": "gui.cppm",
+                        "range": {
+                          "start": {
+                            "line": 4,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 4,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "import shapes;\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
           "label": "plain_unit",
           "marker": "plain_unit",
           "value": {
@@ -151,15 +202,15 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧namespace app {",
+                        "$place": "⟦⟧ @-4",
                         "path": "main.cpp",
                         "range": {
                           "start": {
-                            "line": 0,
+                            "line": 1,
                             "character": 0
                           },
                           "end": {
-                            "line": 0,
+                            "line": 1,
                             "character": 0
                           }
                         }
@@ -228,6 +279,15 @@
         {
           "label": "own_partition",
           "marker": "own_partition",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "conditional",
+          "marker": "conditional",
           "value": {
             "completion": {
               "items": []

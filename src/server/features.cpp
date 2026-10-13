@@ -988,11 +988,8 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 if(name.starts_with(":")) {
                     return up;
                 }
-                auto providers = project.dep_graph.lookup_module(name);
-                llvm::StringRef interface =
-                    providers.empty()
-                        ? llvm::StringRef()
-                        : llvm::StringRef(project.file_table.resolve(providers.front()));
+                auto interface = llvm::StringRef(
+                    project.file_table.resolve(project.dep_graph.lookup_module(name).front()));
                 path::walk_ancestors(directory, "", [&](llvm::StringRef dir) {
                     up += 1;
                     return !path::under(interface, dir);
@@ -1034,10 +1031,9 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     // Items naming what the file does not include yet take the `#include`
     // of the header declaring it; one whose header is unknown goes.
     protocol::CompletionList list;
-    if(auto decoded = kota::codec::json::from_string<kota::ipc::lsp_config>(result.list.data, list);
-       !decoded) {
-        co_return std::move(result.list);
-    }
+    [[maybe_unused]] auto decoded =
+        kota::codec::json::from_string<kota::ipc::lsp_config>(result.list.data, list);
+    assert(decoded && "the worker encodes the list");
     std::string directory;
     std::vector<std::string> arguments;
     auto search =
@@ -1045,7 +1041,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     vfs::Scope scope(project.file_table.dirs);
     feature::IncludeInsertion insertion{.opens_fragment = result.include->opens_fragment};
     std::erase_if(list.items, [&](protocol::CompletionItem& item) {
-        auto symbol = to_lsp::hierarchy_symbol(item.data);
+        auto symbol = to_lsp::data_symbol(item.data);
         if(!symbol) {
             return false;
         }
@@ -1053,19 +1049,16 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
         auto candidate = llvm::find_if(candidates, [&](const feature::ScopeCandidate& each) {
             return each.symbol == *symbol;
         });
-        auto header = candidate == candidates.end()
-                          ? std::nullopt
-                          : include_for(*candidate, result.include->c, path_id, search, scope);
+        assert(candidate != candidates.end() && "the worker names a candidate it was given");
+        auto header = include_for(*candidate, result.include->c, path_id, search, scope);
         if(!header) {
             return true;
         }
-        protocol::Position at = result.include->position;
-        item.additional_text_edits = std::vector{
-            protocol::TextEdit{
-                               .range = {at, at},
-                               .new_text = insertion.text(*header),
-                               }
+        protocol::TextEdit edit{
+            .range = {result.include->position, result.include->position},
+            .new_text = insertion.text(*header),
         };
+        item.additional_text_edits = std::vector{std::move(edit)};
         return false;
     });
     co_return to_raw(list);
@@ -1092,6 +1085,10 @@ bool Features::scope_candidates(llvm::StringRef prefix,
     };
     auto found = query.completables(prefix, file, scope_candidate_limit);
     for(auto& [symbol, declared]: found.names) {
+        // A macro belongs to no namespace.
+        if(symbol.kind == SymbolKind::Macro) {
+            continue;
+        }
         feature::ScopeCandidate candidate{
             .name = symbol.name,
             .kind = kind_of(symbol.kind),
@@ -1677,7 +1674,7 @@ static std::optional<index::SymbolHash>
                 Fid path_id,
                 std::optional<index::IndexQuery::Cursor> at_range,
                 const std::optional<protocol::LSPAny>& data) {
-    if(auto hash = to_lsp::hierarchy_symbol(data); hash && query.symbol_info(*hash, path_id)) {
+    if(auto hash = to_lsp::data_symbol(data); hash && query.symbol_info(*hash, path_id)) {
         return hash;
     }
     if(at_range) {

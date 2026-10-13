@@ -36,11 +36,6 @@ Value empty_value() {
     }
 }
 
-template <typename Outcome>
-Outcome empty_answer() {
-    return empty_value<typename Outcome::value_type>();
-}
-
 }  // namespace
 
 Dispatcher::Dispatcher(Project& project,
@@ -131,7 +126,7 @@ Outcome Dispatcher::finish(const Ticket& ticket,
                  label,
                  project.file_table.resolve(session.path_id),
                  result.error().message);
-        return empty_answer<Outcome>();
+        return empty_value<typename Outcome::value_type>();
     }
     // The reply proves this kind on the DISPATCHED content answers; an edit
     // that arrived mid-flight must not clear the new content's record —

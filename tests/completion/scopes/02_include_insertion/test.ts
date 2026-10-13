@@ -13,3 +13,11 @@ answers(
     { paths, indexing: true, config: { code_completion: { insert_includes: false } } },
     items,
 );
+
+// A macro the file reaches comes once, without an `#include`, whether or not
+// items of one label are merged.
+answers(
+    "unbundled",
+    { paths, indexing: true, config: { code_completion: { bundle_overloads: false } } },
+    (a) => a.show("macro", a.completion(a.marker("macro")), { parts: ["insert", "edits"] }),
+);

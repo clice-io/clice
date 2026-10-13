@@ -4,3 +4,6 @@ items = [
     { label = "inner", kind = "Field", detail = "T" },
     { label = "template", kind = "Keyword" },
 ]
+
+[answers.differing_template.completion]
+items = []

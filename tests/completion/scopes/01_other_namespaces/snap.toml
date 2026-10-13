@@ -1,11 +1,11 @@
 [default.other_namespaces.completion]
 items = [
-    { label = "area_hint", kind = "Variable", detail = "double", insert = "area_hint" },
-    { label = "geo::area(double radius)", kind = "Function", detail = "double", insert = "geo::area(${1:double radius})", snippet = true },
+    { label = "area_total", kind = "Variable", detail = "double", insert = "area_total" },
+    { label = "analytic::area(double radius)", kind = "Function", detail = "double", insert = "analytic::area(${1:double radius})", snippet = true },
     { label = "units::area_scale", kind = "Variable", detail = "double", insert = "units::area_scale" },
 ]
 
 [configured.other_namespaces.completion]
 items = [
-    { label = "area_hint", kind = "Variable", detail = "double", insert = "area_hint" },
+    { label = "area_total", kind = "Variable", detail = "double", insert = "area_total" },
 ]

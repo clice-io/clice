@@ -10,17 +10,17 @@
   "files": [
     {
       "path": "geometry.h",
-      "text": "#pragma once\n\nnamespace geo {\n\ndouble area(double radius);\n\n}  // namespace geo\n",
+      "text": "#pragma once\n\nnamespace analytic {\n\ndouble area(double radius);\n\n}  // namespace analytic\n",
       "markers": []
     },
     {
       "path": "main.cpp",
-      "text": "#include \"geometry.h\"\n\nnamespace units {\n\ndouble area_scale = 1.0;\n\n}  // namespace units\n\nnamespace app {\n\ndouble run(double area_hint) {\n    double total = are;\n    return total;\n}\n\n}  // namespace app\n",
+      "text": "#include \"geometry.h\"\n\nnamespace units {\n\ndouble area_scale = 1.0;\n\n}  // namespace units\n\nnamespace app {\n\ndouble area_total = 0.0;\n\ndouble run() {\n    double total = are;\n    return total;\n}\n\n}  // namespace app\n",
       "markers": [
         {
           "name": "other_namespaces",
-          "begin": 161,
-          "end": 161,
+          "begin": 171,
+          "end": 171,
           "range": false
         }
       ]
@@ -37,16 +37,16 @@
             "completion": {
               "items": [
                 {
-                  "label": "area_hint",
+                  "label": "area_total",
                   "kind": "Variable",
                   "detail": "double",
-                  "insert": "area_hint"
+                  "insert": "area_total"
                 },
                 {
-                  "label": "geo::area(double radius)",
+                  "label": "analytic::area(double radius)",
                   "kind": "Function",
                   "detail": "double",
-                  "insert": "geo::area(${1:double radius})",
+                  "insert": "analytic::area(${1:double radius})",
                   "snippet": true
                 },
                 {
@@ -76,10 +76,10 @@
             "completion": {
               "items": [
                 {
-                  "label": "area_hint",
+                  "label": "area_total",
                   "kind": "Variable",
                   "detail": "double",
-                  "insert": "area_hint"
+                  "insert": "area_total"
                 }
               ]
             }

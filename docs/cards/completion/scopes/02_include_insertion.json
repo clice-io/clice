@@ -10,30 +10,89 @@
   "files": [
     {
       "path": "geometry.h",
-      "text": "#pragma once\n\nnamespace geo {\n\ndouble area(double radius);\n\n}  // namespace geo\n",
+      "text": "#pragma once\n\n#define GEO_SCALE 2\n\nnamespace geo {\n\ndouble area(double radius);\n\n}  // namespace geo\n",
       "markers": []
     },
     {
       "path": "main.cpp",
-      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    return geo::area(c.radius);\n}\n\n}  // namespace app\n",
+      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    int shade = shade_d;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
       "markers": [
         {
           "name": "not_included",
           "begin": 64,
           "end": 64,
           "range": false
+        },
+        {
+          "name": "function_expected",
+          "begin": 102,
+          "end": 102,
+          "range": false
+        },
+        {
+          "name": "function_call",
+          "begin": 113,
+          "end": 113,
+          "range": false
+        },
+        {
+          "name": "class_template",
+          "begin": 122,
+          "end": 122,
+          "range": false
+        },
+        {
+          "name": "enumerator",
+          "begin": 152,
+          "end": 152,
+          "range": false
+        },
+        {
+          "name": "class_member",
+          "begin": 180,
+          "end": 180,
+          "range": false
+        },
+        {
+          "name": "standard_name",
+          "begin": 191,
+          "end": 191,
+          "range": false
+        },
+        {
+          "name": "macro",
+          "begin": 225,
+          "end": 225,
+          "range": false
         }
       ]
     },
     {
       "path": "shapes.cpp",
-      "text": "#include \"shapes.h\"\n",
+      "text": "#include \"shapes.h\"\n#include \"standard.h\"\n\nnamespace shapes {\n\nvoid on_resize(int width) {}\n\n}  // namespace shapes\n",
       "markers": []
     },
     {
       "path": "shapes.h",
-      "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n};\n\n}  // namespace shapes\n",
+      "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n    static int circle_count;\n};\n\nvoid on_resize(int width);\nvoid redraw();\nvoid redraw(int times);\n\ntemplate <class T>\nstruct Grid {};\n\nenum Shade { shade_dark };\n\n}  // namespace shapes\n",
       "markers": []
+    },
+    {
+      "path": "standard.h",
+      "text": "#pragma once\n\nnamespace std {\n\ntemplate <class T>\nclass vector;\n\n}  // namespace std\n",
+      "markers": []
+    },
+    {
+      "path": "tools.cppm",
+      "text": "export module tools;\n\nexport namespace tools {\n\nvoid use() {\n    Circ c;\n}\n\n}  // namespace tools\n",
+      "markers": [
+        {
+          "name": "module_unit",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        }
+      ]
     }
   ],
   "tests": [
@@ -73,6 +132,237 @@
               ]
             }
           }
+        },
+        {
+          "label": "function_expected",
+          "marker": "function_expected",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::on_resize",
+                  "kind": "Function",
+                  "insert": "shapes::on_resize",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-5",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "function_call",
+          "marker": "function_call",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::redraw(…) +1 overload",
+                  "kind": "Function",
+                  "insert": "shapes::redraw($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-6",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "class_template",
+          "marker": "class_template",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Grid",
+                  "kind": "Class",
+                  "insert": "shapes::Grid<$0>",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-7",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "enumerator",
+          "marker": "enumerator",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::shade_dark",
+                  "kind": "EnumMember",
+                  "insert": "shapes::shade_dark",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-8",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "class_member",
+          "marker": "class_member",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "standard_name",
+          "marker": "standard_name",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "std::vector",
+                  "kind": "Class",
+                  "insert": "std::vector<$0>",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-10",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include <vector>\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "macro",
+          "marker": "macro",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "GEO_SCALE",
+                  "kind": "Constant",
+                  "insert": "GEO_SCALE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "module_unit",
+          "marker": "module_unit",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧export module tools;",
+                        "path": "tools.cppm",
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 0,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "module;\n#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -90,6 +380,109 @@
           "value": {
             "completion": {
               "items": []
+            }
+          }
+        },
+        {
+          "label": "function_expected",
+          "marker": "function_expected",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "function_call",
+          "marker": "function_call",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "class_template",
+          "marker": "class_template",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "enumerator",
+          "marker": "enumerator",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "class_member",
+          "marker": "class_member",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "standard_name",
+          "marker": "standard_name",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "macro",
+          "marker": "macro",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "GEO_SCALE",
+                  "kind": "Constant",
+                  "insert": "GEO_SCALE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "module_unit",
+          "marker": "module_unit",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "unbundled",
+      "config": {
+        "code_completion": {
+          "bundle_overloads": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "macro",
+          "marker": "macro",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "GEO_SCALE",
+                  "kind": "Constant",
+                  "insert": "GEO_SCALE"
+                }
+              ]
             }
           }
         }

@@ -1,3 +1,5 @@
+#include "config.h"
+
 namespace app {
 
 void run() {

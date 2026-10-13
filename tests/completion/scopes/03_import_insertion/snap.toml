@@ -22,6 +22,18 @@ items = [
     },
 ]
 
+[default.conditional.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-4", text = "import shapes;" },
+        ],
+    },
+]
+
 [default.plain_unit.completion]
 items = [
     {
@@ -29,7 +41,7 @@ items = [
         kind = "Class",
         insert = "shapes::Circle",
         edits = [
-            { at = "⟦⟧namespace app {", text = "import shapes;" },
+            { at = "⟦⟧ @-4", text = "import shapes;" },
         ],
     },
 ]
@@ -50,6 +62,9 @@ items = [
 items = []
 
 [configured.own_partition.completion]
+items = []
+
+[configured.conditional.completion]
 items = []
 
 [configured.plain_unit.completion]

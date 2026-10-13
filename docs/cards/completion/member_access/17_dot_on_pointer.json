@@ -10,12 +10,18 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Node {\n    int value;\n    Node* next;\n};\n\nint walk(Node* node) {\n    return node.;\n}\n",
+      "text": "struct Node {\n    int value;\n    Node* next;\n};\n\nint walk(Node* node) {\n    return node.;\n}\n\nstruct Handle {\n    Node* operator->() const;\n    void reset();\n};\n\nint peek(Handle handle) {\n    return handle->;\n}\n",
       "markers": [
         {
           "name": "pointer",
           "begin": 88,
           "end": 88,
+          "range": false
+        },
+        {
+          "name": "arrow_on_class",
+          "begin": 206,
+          "end": 206,
           "range": false
         }
       ]
@@ -84,6 +90,28 @@
               ]
             }
           }
+        },
+        {
+          "label": "arrow_on_class",
+          "marker": "arrow_on_class",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "value",
+                  "kind": "Field",
+                  "detail": "int",
+                  "insert": "value"
+                },
+                {
+                  "label": "next",
+                  "kind": "Field",
+                  "detail": "Node *",
+                  "insert": "next"
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -101,6 +129,28 @@
           "value": {
             "completion": {
               "items": []
+            }
+          }
+        },
+        {
+          "label": "arrow_on_class",
+          "marker": "arrow_on_class",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "value",
+                  "kind": "Field",
+                  "detail": "int",
+                  "insert": "value"
+                },
+                {
+                  "label": "next",
+                  "kind": "Field",
+                  "detail": "Node *",
+                  "insert": "next"
+                }
+              ]
             }
           }
         }

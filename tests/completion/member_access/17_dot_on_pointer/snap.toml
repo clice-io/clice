@@ -20,5 +20,17 @@ items = [
     },
 ]
 
+[default.arrow_on_class.completion]
+items = [
+    { label = "value", kind = "Field", detail = "int", insert = "value" },
+    { label = "next", kind = "Field", detail = "Node *", insert = "next" },
+]
+
 [configured.pointer.completion]
 items = []
+
+[configured.arrow_on_class.completion]
+items = [
+    { label = "value", kind = "Field", detail = "int", insert = "value" },
+    { label = "next", kind = "Field", detail = "Node *", insert = "next" },
+]

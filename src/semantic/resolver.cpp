@@ -303,8 +303,12 @@ bool mentions_parameters(clang::QualType type, const clang::TemplateParameterLis
             return !found;
         }
 
+        /// A function parameter named in a trailing return type
+        /// (`-> decltype(f(key))`) stands for its type.
         bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
-            found |= owns(expr->getDecl());
+            auto* decl = expr->getDecl();
+            found |= owns(decl) || (llvm::isa<clang::ParmVarDecl>(decl) &&
+                                    mentions_parameters(decl->getType(), params));
             return !found;
         }
 
@@ -1298,7 +1302,8 @@ public:
         auto members = lookup(range, begin);
         llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(), members.end());
         drop_by_arity(candidates, 0, /*member_call=*/true);
-        select_by_object(candidates, range, rvalue(range_init));
+        /// `begin()` is called on the variable the range initializes.
+        select_by_object(candidates, range);
         auto iterator = common_return_type(candidates, {});
         return iterator.isNull() ? iterator : deref_type(resolve_object(iterator), false);
     }
@@ -1424,12 +1429,22 @@ public:
     /// type they all return (`map::operator[]` takes a `const key_type&` or
     /// a `key_type&&`, and returns `mapped_type&` either way). Null when
     /// they disagree, or there are none.
+    ///
+    /// A template whose return type is written in the parameters only
+    /// deduction would bind tells nothing, and the others decide: beside a
+    /// map's plain `find`, the heterogeneous `find(const K&)` a defaulted
+    /// template argument disables unless the comparator opts in.
     clang::QualType
         common_return_type(llvm::ArrayRef<const clang::NamedDecl*> candidates,
                            llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments) {
         clang::QualType common;
         for(auto* candidate: candidates) {
             auto type = return_type(candidate, template_arguments);
+            if(auto* function = as_function(candidate); type.isNull() && function &&
+                                                        template_arguments.empty() &&
+                                                        function->getDescribedFunctionTemplate()) {
+                continue;
+            }
             if(type.isNull() || (!common.isNull() && !context.hasSameType(type, common))) {
                 return clang::QualType();
             }
@@ -1466,6 +1481,12 @@ public:
             for(auto& argument: template_arguments) {
                 bound.push_back(argument.getArgument());
             }
+        }
+        /// Unbound, they would be resolved through the rest of the stack:
+        /// a `decltype` of a call on them names whatever that call returns
+        /// on anything.
+        if(bound.empty() && mentions_parameters(function->getReturnType(), params)) {
+            return clang::QualType();
         }
         stack.push(FTD, params, bound);
         auto type = substitute(function->getReturnType());
@@ -1614,39 +1635,32 @@ public:
     /// `rvalue`, as overload resolution would: a method that cannot bind the
     /// object drops out (one less cv-qualified than it, `&` on an rvalue,
     /// `&&` on an lvalue), and of the rest the one adding the fewest
-    /// qualifiers binds best, an rvalue taking `const&` last. Any other set
-    /// is left whole: ranking it needs conversions.
+    /// qualifiers binds best, an rvalue taking `const&` last. An overload
+    /// with no such sibling is left alone: ranking it needs conversions.
     void select_by_object(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
                           clang::QualType object,
                           bool rvalue = false) {
         if(object.isNull() || candidates.size() < 2) {
             return;
         }
-        auto* first = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(as_function(candidates.front()));
-        if(!first) {
-            return;
-        }
-        auto differs_in_object = [&](const clang::NamedDecl* decl) {
+        auto method_of = [](const clang::NamedDecl* decl) -> const clang::CXXMethodDecl* {
             auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(as_function(decl));
-            return method && method->isImplicitObjectMemberFunction() &&
-                   !method->getDescribedFunctionTemplate() ==
-                       !first->getDescribedFunctionTemplate() &&
+            return method && method->isImplicitObjectMemberFunction() ? method : nullptr;
+        };
+        auto alike = [&](const clang::CXXMethodDecl* lhs, const clang::CXXMethodDecl* rhs) {
+            return !lhs->getDescribedFunctionTemplate() == !rhs->getDescribedFunctionTemplate() &&
                    std::ranges::equal(
-                       method->parameters(),
-                       first->parameters(),
-                       [&](const clang::ParmVarDecl* lhs, const clang::ParmVarDecl* rhs) {
-                           return context.hasSameType(lhs->getType(), rhs->getType());
+                       lhs->parameters(),
+                       rhs->parameters(),
+                       [&](const clang::ParmVarDecl* left, const clang::ParmVarDecl* right) {
+                           return context.hasSameType(left->getType(), right->getType());
                        });
         };
-        if(!std::ranges::all_of(candidates, differs_in_object)) {
-            return;
-        }
 
         auto quals = resolve_object(object).getCVRQualifiers();
         /// How well the method binds the object, lower better; -1 when it
         /// cannot.
-        auto rank = [&](const clang::NamedDecl* decl) {
-            auto* method = llvm::cast<clang::CXXMethodDecl>(as_function(decl));
+        auto rank = [&](const clang::CXXMethodDecl* method) {
             auto method_quals = method->getMethodQualifiers().getCVRQualifiers();
             auto ref = method->getRefQualifier();
             if((method_quals & quals) != quals ||
@@ -1657,16 +1671,33 @@ public:
             return std::popcount(method_quals & ~quals) * 2 +
                    (rvalue && ref == clang::RQ_LValue ? 1 : 0);
         };
-        int best = -1;
+        auto outranked = [&](const clang::NamedDecl* decl) {
+            auto* method = method_of(decl);
+            if(!method) {
+                return false;
+            }
+            auto score = rank(method);
+            bool siblings = false;
+            for(auto* other: candidates) {
+                auto* sibling = method_of(other);
+                if(!sibling || sibling == method || !alike(method, sibling)) {
+                    continue;
+                }
+                siblings = true;
+                if(auto other_score = rank(sibling);
+                   other_score >= 0 && (score < 0 || other_score < score)) {
+                    return true;
+                }
+            }
+            return siblings && score < 0;
+        };
+        llvm::SmallVector<const clang::NamedDecl*, 4> kept;
         for(auto* candidate: candidates) {
-            if(auto score = rank(candidate); score >= 0 && (best < 0 || score < best)) {
-                best = score;
+            if(!outranked(candidate)) {
+                kept.push_back(candidate);
             }
         }
-        auto removed = std::ranges::remove_if(candidates, [&](const clang::NamedDecl* decl) {
-            return best < 0 || rank(decl) != best;
-        });
-        candidates.erase(removed.begin(), removed.end());
+        candidates.assign(kept.begin(), kept.end());
     }
 
     /// A call's candidate set: the callee clang resolved itself (a call
@@ -1717,19 +1748,6 @@ public:
             });
         if(!has_pack_argument) {
             drop_by_arity(candidates, expr->getNumArgs(), member_call);
-        }
-        /// A member template beside the plain overloads is mostly the
-        /// heterogeneous form a defaulted template argument disables unless
-        /// the class opts in (`find(const K&)` of a map without a transparent
-        /// comparator); on equal arguments the plain one wins anyway.
-        auto is_template = [](const clang::NamedDecl* decl) {
-            auto* function = as_function(decl);
-            return function && function->getDescribedFunctionTemplate();
-        };
-        if(member_call && explicit_arguments(callee).empty() &&
-           !std::ranges::all_of(candidates, is_template)) {
-            auto removed = std::ranges::remove_if(candidates, is_template);
-            candidates.erase(removed.begin(), removed.end());
         }
         select_by_object(candidates, object, rvalue_object);
         return candidates;
