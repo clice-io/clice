@@ -1,5 +1,4 @@
 [answers.outline]
-wrong = "the explicit instantiation convert<int> is named convert, where class and variable ones keep their arguments"
 document_symbols = [
     {
         name = "Box",
@@ -13,7 +12,7 @@ document_symbols = [
     { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", detail = "struct" },
     { name = "Box<char>", kind = "Struct", at = "extern template struct ⟦Box⟧<char>;", detail = "struct" },
     { name = "convert", kind = "Function", at = "void ⟦convert⟧(T value) {}", detail = "template void (T)" },
-    { name = "convert", kind = "Function", at = "template void ⟦convert⟧<int>(int);", detail = "void (int)" },
+    { name = "convert<int>", kind = "Function", at = "template void ⟦convert⟧<int>(int);", detail = "void (int)" },
     { name = "zero", kind = "Variable", at = "T ⟦zero⟧ = T();", detail = "template T" },
     { name = "zero<int>", kind = "Variable", at = "template int ⟦zero⟧<int>;", detail = "int" },
 ]
@@ -33,7 +32,7 @@ document_symbols = [
     { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", range = "⟦template struct Box<int>⟧;" },
     { name = "Box<char>", kind = "Struct", at = "extern template struct ⟦Box⟧<char>;", range = "⟦extern template struct Box<char>⟧;" },
     { name = "convert", kind = "Function", at = "void ⟦convert⟧(T value) {}", range = "⟦void convert(T value) {}⟧" },
-    { name = "convert", kind = "Function", at = "template void ⟦convert⟧<int>(int);", range = "⟦template void convert<int>(int)⟧;" },
+    { name = "convert<int>", kind = "Function", at = "template void ⟦convert⟧<int>(int);", range = "⟦template void convert<int>(int)⟧;" },
     { name = "zero", kind = "Variable", at = "T ⟦zero⟧ = T();", range = "⟦T zero = T()⟧;" },
     { name = "zero<int>", kind = "Variable", at = "template int ⟦zero⟧<int>;", range = "⟦template int zero<int>⟧;" },
 ]

@@ -51,7 +51,10 @@
           "value": {
             "semantic_token": {
               "text": "helper",
-              "type": "function"
+              "type": "function",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -61,7 +64,10 @@
           "value": {
             "semantic_token": {
               "text": "Gadget",
-              "type": "struct"
+              "type": "struct",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -71,7 +77,10 @@
           "value": {
             "semantic_token": {
               "text": "helper",
-              "type": "function"
+              "type": "function",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -81,7 +90,10 @@
           "value": {
             "semantic_token": {
               "text": "Gadget",
-              "type": "struct"
+              "type": "struct",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         }

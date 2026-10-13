@@ -8,14 +8,7 @@
 - [x] Warnings raised by directives in the preamble (`#warning`, `#pragma message`, macro redefinitions)
 - [x] File URI conversion for cross-file diagnostics
 - [x] Pull diagnostics model (`textDocument/diagnostic`) for clients that declare support for it; other clients get their diagnostics pushed
-- [ ] Report all missing `#include` errors, not just the first — the parser stops on the first fatal error
-
-  ```cpp
-  #include "missing_a.h"  // error reported
-  #include "missing_b.h"  // error NOT reported (parser already stopped)
-  #include "missing_c.h"  // error NOT reported
-  ```
-
+- [x] Every missing `#include` is reported, not just the first, and the code after it is still checked
 - [ ] Show the full include chain for diagnostics originating in header files ([clangd#1392](https://github.com/clangd/clangd/issues/1392))
 
   ```

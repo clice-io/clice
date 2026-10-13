@@ -196,8 +196,9 @@ template <class T> struct D : B<T> {
 };
 )cpp");
 
-    EXPECT_TOKEN("member", SymbolKind::Method);
-    EXPECT_TOKEN("qualified", SymbolKind::Method);
+    auto class_scope = SymbolModifiers::to_mask(SymbolModifiers::ClassScope);
+    EXPECT_TOKEN("member", SymbolKind::Method, class_scope);
+    EXPECT_TOKEN("qualified", SymbolKind::Method, class_scope);
 }
 
 ZEST_CASE(UTF16LengthDiffersFromUTF8) {
@@ -402,7 +403,9 @@ int y = §(ref)⟦x⟧;
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     // An implementation unit declares the module its interface defines.
     EXPECT_TOKEN("mod", SymbolKind::Module, SymbolModifiers::to_mask(SymbolModifiers::Declaration));
-    EXPECT_TOKEN("ref", SymbolKind::Variable);
+    EXPECT_TOKEN("ref",
+                 SymbolKind::Variable,
+                 SymbolModifiers::to_mask(SymbolModifiers::GlobalScope));
 }
 
 ZEST_CASE(ModuleReexport) {

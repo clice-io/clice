@@ -1,3 +1,3 @@
 # Deprecated symbols
 
-A deprecated symbol does not carry the Deprecated tag yet
+A deprecated symbol carries the Deprecated tag, which editors strike through

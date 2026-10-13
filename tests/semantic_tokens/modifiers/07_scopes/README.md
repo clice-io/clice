@@ -4,4 +4,5 @@ issues: [clangd#352]
 
 # Scope modifiers
 
-Symbols do not carry function, class, file or global scope modifiers yet
+Every name carries where it is visible from: its function, its class, its
+file or everywhere

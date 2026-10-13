@@ -51,7 +51,8 @@
               "text": "Widget",
               "type": "struct",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -64,7 +65,8 @@
               "text": "Widget",
               "type": "function",
               "modifiers": [
-                "declaration"
+                "declaration",
+                "globalScope"
               ]
             }
           }
@@ -75,7 +77,10 @@
           "value": {
             "semantic_token": {
               "text": "Widget",
-              "type": "conflict"
+              "type": "conflict",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -85,7 +90,10 @@
           "value": {
             "semantic_token": {
               "text": "Thing",
-              "type": "conflict"
+              "type": "conflict",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         }

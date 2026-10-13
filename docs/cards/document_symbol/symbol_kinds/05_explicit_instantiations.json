@@ -4,8 +4,8 @@
   "subtopic": "symbol_kinds",
   "title": "Explicit instantiations",
   "summary": "Explicit instantiations of class, function and variable templates list without members",
-  "prose": "A function template's instantiation is named without its arguments.",
-  "status": "unsupported",
+  "prose": "",
+  "status": "partial",
   "issues": [],
   "files": [
     {
@@ -21,7 +21,6 @@
         {
           "label": "outline",
           "value": {
-            "wrong": "the explicit instantiation convert<int> is named convert, where class and variable ones keep their arguments",
             "document_symbols": [
               {
                 "name": "Box",
@@ -121,7 +120,7 @@
                 "detail": "template void (T)"
               },
               {
-                "name": "convert",
+                "name": "convert<int>",
                 "kind": "Function",
                 "at": {
                   "$place": "template void ⟦convert⟧<int>(int);",
@@ -348,7 +347,7 @@
                 }
               },
               {
-                "name": "convert",
+                "name": "convert<int>",
                 "kind": "Function",
                 "at": {
                   "$place": "template void ⟦convert⟧<int>(int);",

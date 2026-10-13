@@ -70,7 +70,8 @@
               "type": "struct",
               "modifiers": [
                 "definition",
-                "abstract"
+                "abstract",
+                "globalScope"
               ]
             }
           }
@@ -84,7 +85,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "virtual"
+                "virtual",
+                "classScope"
               ]
             }
           }
@@ -99,7 +101,8 @@
               "modifiers": [
                 "declaration",
                 "abstract",
-                "virtual"
+                "virtual",
+                "classScope"
               ]
             }
           }
@@ -112,7 +115,8 @@
               "text": "Square",
               "type": "struct",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -126,7 +130,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "virtual"
+                "virtual",
+                "classScope"
               ]
             }
           }
@@ -139,7 +144,8 @@
               "text": "area",
               "type": "method",
               "modifiers": [
-                "virtual"
+                "virtual",
+                "classScope"
               ]
             }
           }
@@ -153,7 +159,8 @@
               "type": "method",
               "modifiers": [
                 "abstract",
-                "virtual"
+                "virtual",
+                "classScope"
               ]
             }
           }

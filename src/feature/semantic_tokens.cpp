@@ -167,6 +167,40 @@ bool is_virtual(const clang::Decl* decl) {
     return false;
 }
 
+/// Where `decl` is visible from: a function, a class, its file, or
+/// everywhere; nothing for a template parameter without a meaningful
+/// context (a variable template's).
+std::optional<SymbolModifiers::Kind> scope_modifier(const clang::NamedDecl* decl) {
+    const clang::DeclContext* context = decl->getDeclContext();
+    // The class name injected into a class belongs to the class's scope.
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
+       record && record->isInjectedClassName()) {
+        context = context->getParent();
+    }
+    // A lambda's captures are its function's locals.
+    if(const auto* record = llvm::dyn_cast<clang::RecordDecl>(context);
+       record && record->isLambda() && llvm::isa<clang::FieldDecl>(decl)) {
+        return SymbolModifiers::FunctionScope;
+    }
+    for(; !context->isFileContext(); context = context->getParent()) {
+        if(context->isFunctionOrMethod()) {
+            return SymbolModifiers::FunctionScope;
+        }
+        if(context->isRecord()) {
+            return SymbolModifiers::ClassScope;
+        }
+    }
+    if(context->isTranslationUnit() && decl->isTemplateParameter()) {
+        return std::nullopt;
+    }
+    // Visible, not external, linkage: a C enumerator has no linkage yet
+    // reaches every file its enum does.
+    if(!clang::isExternallyVisible(decl->getLinkageInternal())) {
+        return SymbolModifiers::FileScope;
+    }
+    return SymbolModifiers::GlobalScope;
+}
+
 /// The classification a decl occurrence contributes: the decl's symbol kind
 /// plus modifiers derived from the decl and the occurrence role.
 Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
@@ -211,8 +245,9 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
             decl = templated_decl;
     }
 
-    // TODO: add scope-based modifiers once the local model supports them.
-
+    if(auto scope = scope_modifier(decl)) {
+        modifiers |= mask(*scope);
+    }
     if(is_const(decl)) {
         modifiers |= mask(SymbolModifiers::Readonly);
     }
@@ -287,6 +322,7 @@ private:
         Classified semantic;
         if(auto it = token_semantics.find(index); it != token_semantics.end()) {
             semantic = it->second;
+            semantic.modifiers |= usage_modifiers.lookup(index);
         }
 
         Classified result = final_classification(semantic, lexical);
@@ -560,8 +596,55 @@ private:
                         anchor_name(occurrence.location,
                                     classify_decl(occurrence.decl, occurrence.kind));
                     }
+                    // What an instantiation passes differs from one
+                    // instantiation to the next: the written code only.
+                    if(!entry.flags.in_instantiation) {
+                        mark_mutable_arguments(node);
+                    }
                     break;
                 }
+            }
+        }
+    }
+
+    /// An argument the callee may modify, through a mutable lvalue
+    /// reference or a pointer to non-const, marks the name it passes.
+    void mark_mutable_arguments(const SemanticNode& node) {
+        const auto* call = node.get<clang::Stmt>();
+        if(!llvm::isa_and_present<clang::CallExpr, clang::CXXConstructExpr>(call)) {
+            return;
+        }
+        for(const auto& binding: decls::parameter_bindings(call)) {
+            // A template's parameter may turn const in an instantiation, and
+            // a function is no object a callee could modify.
+            auto type = binding.forwarded->getType();
+            auto target =
+                type->isPointerType() ? type->getPointeeType() : type.getNonReferenceType();
+            if(type->isDependentType() || target->isFunctionType()) {
+                continue;
+            }
+            SymbolModifiers::Kind modifier;
+            if(binding.mutable_reference()) {
+                modifier = SymbolModifiers::UsedAsMutableReference;
+            } else if(type->isPointerType() && !type->getPointeeType().isConstQualified()) {
+                modifier = SymbolModifiers::UsedAsMutablePointer;
+            } else {
+                continue;
+            }
+
+            const auto* expr = binding.argument->IgnoreParenImpCasts();
+            if(const auto* unary = llvm::dyn_cast<clang::UnaryOperator>(expr);
+               unary && unary->getOpcode() == clang::UO_AddrOf) {
+                expr = unary->getSubExpr()->IgnoreParens();
+            }
+            clang::SourceLocation location;
+            if(const auto* name = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
+                location = name->getLocation();
+            } else if(const auto* member = llvm::dyn_cast<clang::MemberExpr>(expr)) {
+                location = member->getMemberLoc();
+            }
+            if(auto index = spelled_index(location)) {
+                usage_modifiers[*index] |= SymbolModifiers::to_mask(modifier);
             }
         }
     }
@@ -641,6 +724,8 @@ private:
     DirectiveContext directive_context = DirectiveContext::None;
     std::uint32_t previous_end = 0;
     llvm::DenseMap<std::uint32_t, Classified> token_semantics;
+    /// Modifiers a token's use adds to whatever names it, by spelled index.
+    llvm::DenseMap<std::uint32_t, std::uint32_t> usage_modifiers;
     llvm::ArrayRef<LexicalInfo::Comment> comments;
     std::size_t next_comment = 0;
     /// Cursor of has_logical_newline over `comments`.

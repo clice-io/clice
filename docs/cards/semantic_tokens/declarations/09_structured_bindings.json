@@ -67,7 +67,8 @@
               "text": "a",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }
@@ -80,7 +81,8 @@
               "text": "b",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }
@@ -91,7 +93,10 @@
           "value": {
             "semantic_token": {
               "text": "a",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -101,7 +106,10 @@
           "value": {
             "semantic_token": {
               "text": "b",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         }

@@ -141,7 +141,8 @@
                 },
                 "type": "function",
                 "modifiers": [
-                  "definition"
+                  "definition",
+                  "globalScope"
                 ]
               },
               {
@@ -176,7 +177,10 @@
                     }
                   }
                 },
-                "type": "function"
+                "type": "function",
+                "modifiers": [
+                  "globalScope"
+                ]
               }
             ]
           }

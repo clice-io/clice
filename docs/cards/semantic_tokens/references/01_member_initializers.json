@@ -45,7 +45,10 @@
           "value": {
             "semantic_token": {
               "text": "width",
-              "type": "field"
+              "type": "field",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         },
@@ -55,7 +58,10 @@
           "value": {
             "semantic_token": {
               "text": "w",
-              "type": "parameter"
+              "type": "parameter",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -65,7 +71,10 @@
           "value": {
             "semantic_token": {
               "text": "height",
-              "type": "field"
+              "type": "field",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         }

@@ -1,35 +1,39 @@
 [answers.demo_def.semantic_token]
 text = "demo"
 type = "namespace"
-modifiers = ["definition"]
+modifiers = ["definition", "globalScope"]
 
 [answers.inner_def.semantic_token]
 text = "inner"
 type = "namespace"
-modifiers = ["definition"]
+modifiers = ["definition", "globalScope"]
 
 [answers.more.semantic_token]
 text = "more"
 type = "namespace"
-modifiers = ["definition"]
+modifiers = ["definition", "globalScope"]
 
 [answers.alias_def.semantic_token]
 text = "alias"
 type = "namespace"
-modifiers = ["definition"]
+modifiers = ["definition", "fileScope"]
 
 [answers.demo_use.semantic_token]
 text = "demo"
 type = "namespace"
+modifiers = ["globalScope"]
 
 [answers.inner_use.semantic_token]
 text = "inner"
 type = "namespace"
+modifiers = ["globalScope"]
 
 [answers.alias_use.semantic_token]
 text = "alias"
 type = "namespace"
+modifiers = ["fileScope"]
 
 [answers.value.semantic_token]
 text = "value"
 type = "variable"
+modifiers = ["globalScope"]

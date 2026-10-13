@@ -164,7 +164,8 @@
                 },
                 "type": "variable",
                 "modifiers": [
-                  "definition"
+                  "definition",
+                  "globalScope"
                 ]
               },
               {
@@ -252,7 +253,8 @@
                 },
                 "type": "variable",
                 "modifiers": [
-                  "definition"
+                  "definition",
+                  "globalScope"
                 ]
               },
               {

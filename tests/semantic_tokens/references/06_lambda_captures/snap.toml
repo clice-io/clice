@@ -1,6 +1,7 @@
 [answers.local_use.semantic_token]
 text = "local"
 type = "variable"
+modifiers = ["functionScope"]
 
 [answers.this.semantic_token]
 text = "this"
@@ -9,15 +10,19 @@ type = "keyword"
 [answers.local_use2.semantic_token]
 text = "local"
 type = "variable"
+modifiers = ["functionScope"]
 
 [answers.field.semantic_token]
 text = "field"
 type = "field"
+modifiers = ["classScope"]
 
 [answers.local_use3.semantic_token]
 text = "local"
 type = "variable"
+modifiers = ["functionScope"]
 
 [answers.local_use4.semantic_token]
 text = "local"
 type = "variable"
+modifiers = ["functionScope"]

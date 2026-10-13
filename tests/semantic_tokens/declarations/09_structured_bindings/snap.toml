@@ -5,17 +5,19 @@ type = "none"
 [answers.a_def.semantic_token]
 text = "a"
 type = "variable"
-modifiers = ["definition"]
+modifiers = ["definition", "functionScope"]
 
 [answers.b_def.semantic_token]
 text = "b"
 type = "variable"
-modifiers = ["definition"]
+modifiers = ["definition", "functionScope"]
 
 [answers.a_use.semantic_token]
 text = "a"
 type = "variable"
+modifiers = ["functionScope"]
 
 [answers.b_use.semantic_token]
 text = "b"
 type = "variable"
+modifiers = ["functionScope"]

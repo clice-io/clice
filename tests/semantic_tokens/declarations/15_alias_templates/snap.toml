@@ -1,19 +1,19 @@
 [answers.Ptr_def.semantic_token]
 text = "Ptr"
 type = "type"
-modifiers = ["definition", "templated"]
+modifiers = ["definition", "templated", "fileScope"]
 
 [answers.BoxPtr.semantic_token]
 text = "BoxPtr"
 type = "type"
-modifiers = ["definition", "templated"]
+modifiers = ["definition", "templated", "fileScope"]
 
 [answers.Box.semantic_token]
 text = "Box"
 type = "struct"
-modifiers = ["templated"]
+modifiers = ["templated", "globalScope"]
 
 [answers.Ptr_use.semantic_token]
 text = "Ptr"
 type = "type"
-modifiers = ["templated"]
+modifiers = ["templated", "fileScope"]

@@ -1,53 +1,54 @@
 [answers.High.semantic_token]
 text = "High"
 type = "enumMember"
-modifiers = ["definition", "readonly"]
+modifiers = ["definition", "readonly", "globalScope"]
 
 [answers.limit_def.semantic_token]
 text = "limit"
 type = "variable"
-modifiers = ["definition", "readonly"]
+modifiers = ["definition", "readonly", "fileScope"]
 
 [answers.bound.semantic_token]
 text = "bound"
 type = "variable"
-modifiers = ["definition", "readonly"]
+modifiers = ["definition", "readonly", "fileScope"]
 
 [answers.read_decl.semantic_token]
 text = "read"
 type = "method"
-modifiers = ["declaration", "readonly"]
+modifiers = ["declaration", "readonly", "classScope"]
 
 [answers.write_decl.semantic_token]
 text = "write"
 type = "method"
-modifiers = ["declaration"]
+modifiers = ["declaration", "classScope"]
 
 [answers.in.semantic_token]
 text = "in"
 type = "parameter"
-modifiers = ["definition", "readonly"]
+modifiers = ["definition", "readonly", "functionScope"]
 
 [answers.pointee_const.semantic_token]
 text = "pointee_const"
 type = "parameter"
-modifiers = ["definition", "readonly"]
+modifiers = ["definition", "readonly", "functionScope"]
 
 [answers.self_const.semantic_token]
 text = "self_const"
 type = "parameter"
-modifiers = ["definition", "readonly"]
+modifiers = ["definition", "readonly", "functionScope"]
 
 [answers.read_use.semantic_token]
 text = "read"
 type = "method"
-modifiers = ["readonly"]
+modifiers = ["readonly", "classScope"]
 
 [answers.write_use.semantic_token]
 text = "write"
 type = "method"
+modifiers = ["classScope"]
 
 [answers.limit_use.semantic_token]
 text = "limit"
 type = "variable"
-modifiers = ["readonly"]
+modifiers = ["readonly", "fileScope"]

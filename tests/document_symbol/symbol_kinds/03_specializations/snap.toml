@@ -1,5 +1,4 @@
 [answers.outline]
-wrong = "the explicit instantiation zero<long> is named zero, where class and variable ones keep their arguments"
 document_symbols = [
     {
         name = "spec",
@@ -42,7 +41,7 @@ document_symbols = [
             { name = "<deduction guide for Deduced>", kind = "Function", at = "⟦Deduced⟧(T*) -> Deduced<T>;", detail = "template auto (T *) -> Deduced<T>" },
             { name = "instantiated", kind = "Variable", at = "Box<int> ⟦instantiated⟧;", detail = "Box<int>" },
             { name = "Box<char>", kind = "Struct", at = "template struct ⟦Box⟧<char>;", detail = "struct" },
-            { name = "zero", kind = "Function", at = "template long ⟦zero⟧<long>();", detail = "long ()" },
+            { name = "zero<long>", kind = "Function", at = "template long ⟦zero⟧<long>();", detail = "long ()" },
         ],
     },
 ]
@@ -92,7 +91,7 @@ document_symbols = [
             { name = "<deduction guide for Deduced>", kind = "Function", at = "⟦Deduced⟧(T*) -> Deduced<T>;", range = "⟦Deduced(T*) -> Deduced<T>⟧;" },
             { name = "instantiated", kind = "Variable", at = "Box<int> ⟦instantiated⟧;", range = "⟦Box<int> instantiated⟧;" },
             { name = "Box<char>", kind = "Struct", at = "template struct ⟦Box⟧<char>;", range = "⟦template struct Box<char>⟧;" },
-            { name = "zero", kind = "Function", at = "template long ⟦zero⟧<long>();", range = "⟦template long zero<long>()⟧;" },
+            { name = "zero<long>", kind = "Function", at = "template long ⟦zero⟧<long>();", range = "⟦template long zero<long>()⟧;" },
         ],
     },
 ]

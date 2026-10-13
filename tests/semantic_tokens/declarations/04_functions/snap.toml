@@ -1,32 +1,34 @@
 [answers.twice_decl.semantic_token]
 text = "twice"
 type = "function"
-modifiers = ["declaration"]
+modifiers = ["declaration", "globalScope"]
 
 [answers.twice_def.semantic_token]
 text = "twice"
 type = "function"
-modifiers = ["definition"]
+modifiers = ["definition", "globalScope"]
 
 [answers.start_decl.semantic_token]
 text = "start"
 type = "method"
-modifiers = ["declaration"]
+modifiers = ["declaration", "classScope"]
 
 [answers.reset_decl.semantic_token]
 text = "reset"
 type = "method"
-modifiers = ["declaration", "static"]
+modifiers = ["declaration", "static", "classScope"]
 
 [answers.start_use.semantic_token]
 text = "start"
 type = "method"
+modifiers = ["classScope"]
 
 [answers.reset_use.semantic_token]
 text = "reset"
 type = "method"
-modifiers = ["static"]
+modifiers = ["static", "classScope"]
 
 [answers.twice_use.semantic_token]
 text = "twice"
 type = "function"
+modifiers = ["globalScope"]

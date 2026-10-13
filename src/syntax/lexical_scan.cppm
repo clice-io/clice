@@ -100,6 +100,17 @@ struct LexicalInfo {
     /// of its logical line.
     std::vector<LocalSourceRange> macro_definitions;
 
+    struct PragmaMark {
+        /// From the `#` to the end of the directive's logical line.
+        LocalSourceRange range;
+
+        /// What follows `mark` on the line, unlexed as clang reads it.
+        LocalSourceRange text;
+    };
+
+    /// `#pragma mark` directives in source order.
+    std::vector<PragmaMark> pragma_marks;
+
     /// Raw string literal tokens in source order, outside directives.
     std::vector<LocalSourceRange> raw_strings;
 

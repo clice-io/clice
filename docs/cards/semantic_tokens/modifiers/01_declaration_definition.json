@@ -51,7 +51,8 @@
               "text": "measure",
               "type": "function",
               "modifiers": [
-                "declaration"
+                "declaration",
+                "globalScope"
               ]
             }
           }
@@ -64,7 +65,8 @@
               "text": "measure",
               "type": "function",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -77,7 +79,8 @@
               "text": "Sensor",
               "type": "struct",
               "modifiers": [
-                "declaration"
+                "declaration",
+                "globalScope"
               ]
             }
           }
@@ -90,7 +93,8 @@
               "text": "Sensor",
               "type": "struct",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }

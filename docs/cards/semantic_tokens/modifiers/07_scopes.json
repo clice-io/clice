@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "modifiers",
   "title": "Scope modifiers",
-  "summary": "Symbols do not carry function, class, file or global scope modifiers yet",
+  "summary": "Every name carries where it is visible from: its function, its class, its file or everywhere",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#352"
   ],
@@ -49,12 +49,12 @@
           "label": "global",
           "marker": "global",
           "value": {
-            "wrong": "should carry the globalScope modifier (clangd#352)",
             "semantic_token": {
               "text": "global_scope",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -63,12 +63,12 @@
           "label": "in_file",
           "marker": "in_file",
           "value": {
-            "wrong": "should carry the fileScope modifier (clangd#352)",
             "semantic_token": {
               "text": "file_scope",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "fileScope"
               ]
             }
           }
@@ -77,12 +77,12 @@
           "label": "in_class",
           "marker": "in_class",
           "value": {
-            "wrong": "should carry the classScope modifier (clangd#352)",
             "semantic_token": {
               "text": "class_scope",
               "type": "field",
               "modifiers": [
-                "definition"
+                "definition",
+                "classScope"
               ]
             }
           }
@@ -91,12 +91,12 @@
           "label": "in_function",
           "marker": "in_function",
           "value": {
-            "wrong": "should carry the functionScope modifier (clangd#352)",
             "semantic_token": {
               "text": "function_scope",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }

@@ -4,8 +4,8 @@
   "subtopic": "symbol_kinds",
   "title": "Specializations and deduction guides",
   "summary": "Specializations list with their template arguments and their own members, and a deduction guide with the signature it deduces",
-  "prose": "An explicit instantiation of a function template is named without its\narguments.",
-  "status": "unsupported",
+  "prose": "",
+  "status": "partial",
   "issues": [],
   "files": [
     {
@@ -21,7 +21,6 @@
         {
           "label": "outline",
           "value": {
-            "wrong": "the explicit instantiation zero<long> is named zero, where class and variable ones keep their arguments",
             "document_symbols": [
               {
                 "name": "spec",
@@ -333,7 +332,7 @@
                     "detail": "struct"
                   },
                   {
-                    "name": "zero",
+                    "name": "zero<long>",
                     "kind": "Function",
                     "at": {
                       "$place": "template long ⟦zero⟧<long>();",
@@ -880,7 +879,7 @@
                     }
                   },
                   {
-                    "name": "zero",
+                    "name": "zero<long>",
                     "kind": "Function",
                     "at": {
                       "$place": "template long ⟦zero⟧<long>();",

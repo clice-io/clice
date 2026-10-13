@@ -21,18 +21,18 @@ semantic_tokens = [
     {
         at = 'const char* ⟦label⟧ = "caf�"; int after = 1;',
         type = "variable",
-        modifiers = ["definition", "readonly"],
+        modifiers = ["definition", "readonly", "globalScope"],
     },
     { at = 'const char* label = ⟦"caf�"⟧; int after = 1;', type = "string" },
     { at = 'const char* label = "caf�"; ⟦int⟧ after = 1;', type = "primitive" },
     {
         at = 'const char* label = "caf�"; int ⟦after⟧ = 1;',
         type = "variable",
-        modifiers = ["definition"],
+        modifiers = ["definition", "globalScope"],
     },
     { at = 'const char* label = "caf�"; int after = ⟦1⟧;', type = "number" },
     { at = "⟦int⟧ use() {", type = "primitive" },
-    { at = "int ⟦use⟧() {", type = "function", modifiers = ["definition"] },
+    { at = "int ⟦use⟧() {", type = "function", modifiers = ["definition", "globalScope"] },
     { at = "⟦return⟧ after;", type = "keyword" },
-    { at = "return ⟦after⟧;", type = "variable" },
+    { at = "return ⟦after⟧;", type = "variable", modifiers = ["globalScope"] },
 ]

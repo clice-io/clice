@@ -555,6 +555,62 @@ bool binds_mutable_reference(const clang::ParmVarDecl* param, const clang::ParmV
            !underlying_pack_type(forwarded);
 }
 
+bool ParameterBinding::mutable_reference() const {
+    // A reference collapsed from `T&&` or `auto&&` is not spelled as one.
+    return binds_mutable_reference(param, forwarded) &&
+           forwarded->getType()->castAs<clang::LValueReferenceType>()->isSpelledAsLValue();
+}
+
+auto parameter_bindings(const clang::Stmt* call) -> llvm::SmallVector<ParameterBinding> {
+    const clang::FunctionDecl* callee = nullptr;
+    llvm::ArrayRef<const clang::Expr*> args;
+    if(const auto* expr = llvm::dyn_cast<clang::CallExpr>(call)) {
+        callee = expr->getDirectCallee();
+        args = {expr->getArgs(), expr->getNumArgs()};
+    } else if(const auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(call)) {
+        callee = construct->getConstructor();
+        args = {construct->getArgs(), construct->getNumArgs()};
+    }
+    if(!callee) {
+        return {};
+    }
+
+    // The object a call is made on leads the arguments of an operator call
+    // and of a call to an explicit object member function; the parameters
+    // list it unless the callee is an implicit object member.
+    const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(callee);
+    bool explicit_object = method && method->isExplicitObjectMemberFunction();
+    std::size_t skipped_params = 0;
+    if(llvm::isa<clang::CXXOperatorCallExpr>(call)) {
+        args = args.drop_front();
+        if(!method || explicit_object) {
+            skipped_params = 1;
+        }
+    } else if(explicit_object) {
+        args = args.drop_front();
+        skipped_params = 1;
+    }
+
+    llvm::SmallVector<ParameterBinding> bindings;
+    llvm::SmallVector<const clang::ParmVarDecl*> forwarded_params;
+    for(auto [offset, arg]: llvm::enumerate(args)) {
+        auto position = skipped_params + offset;
+        if(position >= callee->getNumParams()) {
+            break;
+        }
+        const auto* param = callee->getParamDecl(position);
+        const auto* forwarded = param;
+        if(underlying_pack_type(param)) {
+            if(forwarded_params.empty()) {
+                forwarded_params = resolve_forwarding_params(callee);
+            }
+            forwarded = forwarded_params[position];
+        }
+        bindings.push_back({.argument = arg, .param = param, .forwarded = forwarded});
+    }
+    return bindings;
+}
+
 auto proto_type_loc(clang::Expr* expr) -> clang::FunctionProtoTypeLoc {
     assert(expr);
     clang::TypeLoc target;

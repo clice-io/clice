@@ -1,13 +1,41 @@
 [answers.outline]
-wrong = "#pragma mark sections do not appear in the outline"
 document_symbols = [
-    { name = "setup", kind = "Function", at = "void ⟦setup⟧();", detail = "void ()" },
-    { name = "draw", kind = "Function", at = "void ⟦draw⟧();", detail = "void ()" },
+    {
+        name = "Lifecycle",
+        kind = "File",
+        at = "⟦#pragma mark - Lifecycle⟧",
+        children = [
+            { name = "setup", kind = "Function", at = "void ⟦setup⟧();", detail = "void ()" },
+        ],
+    },
+    {
+        name = "Rendering",
+        kind = "File",
+        at = "⟦#pragma mark - Rendering⟧",
+        children = [
+            { name = "draw", kind = "Function", at = "void ⟦draw⟧();", detail = "void ()" },
+        ],
+    },
 ]
 
 [answers.extents]
-wrong = "#pragma mark sections do not appear in the outline"
 document_symbols = [
-    { name = "setup", kind = "Function", at = "void ⟦setup⟧();", range = "⟦void setup()⟧;" },
-    { name = "draw", kind = "Function", at = "void ⟦draw⟧();", range = "⟦void draw()⟧;" },
+    {
+        name = "Lifecycle",
+        kind = "File",
+        at = "⟦#pragma mark - Lifecycle⟧",
+        range = "⟦#pragma mark - Lifecycle … void setup()⟧ (3 lines)",
+        children = [
+            { name = "setup", kind = "Function", at = "void ⟦setup⟧();", range = "⟦void setup()⟧;" },
+        ],
+    },
+    {
+        name = "Rendering",
+        kind = "File",
+        at = "⟦#pragma mark - Rendering⟧",
+        range = "⟦#pragma mark - Rendering … void draw()⟧ (3 lines)",
+        children = [
+            { name = "draw", kind = "Function", at = "void ⟦draw⟧();", range = "⟦void draw()⟧;" },
+        ],
+    },
 ]
