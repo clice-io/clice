@@ -1,0 +1,21 @@
+#pragma once
+
+namespace std {
+template <class First, class Second>
+struct pair {
+    First first;
+    Second second;
+};
+
+template <class Key, class Value>
+class map {
+public:
+    using key_type = Key;
+    using mapped_type = Value;
+    using value_type = pair<const Key, Value>;
+    struct iterator {};
+
+    template <class... Args>
+    pair<iterator, bool> try_emplace(const key_type& key, Args&&... args);
+};
+}  // namespace std

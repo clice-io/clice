@@ -5,3 +5,7 @@ active = 0
 [answers.ctor.signature_help]
 signatures = ["Widget(⟦int a⟧, double b)", "Widget(⟦const Widget &⟧)", "Widget(⟦Widget &&⟧)"]
 active = 0
+
+[answers.braced.signature_help]
+signatures = ["Widget{⟦int a⟧, double b}", "Widget{⟦const Widget &⟧}", "Widget{⟦Widget &&⟧}"]
+active = 0

@@ -33,3 +33,21 @@ void configure(int width, bool visible = true)
 ```
 '''
 range = "void ⟦configure⟧(int width, bool visible = true);"
+
+[answers.written_defaults.hover]
+markdown = '''
+### function `open_file`
+
+---
+→ `void`
+Parameters:
+- `int mode = 0644`
+- `int timeout = DEFAULT_TIMEOUT`
+
+---
+```cpp
+// In namespace function_signature
+void open_file(int mode = 0644, int timeout = DEFAULT_TIMEOUT)
+```
+'''
+range = "void ⟦open_file⟧(int mode = 0644, int timeout = DEFAULT_TIMEOUT);"

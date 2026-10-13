@@ -348,8 +348,10 @@ std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& para
 }
 
 std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,
-                                                        [[maybe_unused]] llvm::StringRef config) {
-    return to_raw_json(feature::signature_help(params));
+                                                        llvm::StringRef config) {
+    return to_raw_json(
+        feature::signature_help(params,
+                                *parse_feature_config<feature::SignatureHelpOptions>(config)));
 }
 
 /// Marker payload for document_highlight: the unit's own TU index stands
@@ -417,7 +419,9 @@ constexpr std::array features = {
                 .check_config = check_feature_config<feature::InlayHintsOptions>},
     FeatureSpec{.name = "selection_range", .run_at = run_selection_range},
     FeatureSpec{.name = "semantic_tokens", .run = run_semantic_tokens},
-    FeatureSpec{.name = "signature_help", .run_complete = run_signature_help},
+    FeatureSpec{.name = "signature_help",
+                .run_complete = run_signature_help,
+                .check_config = check_feature_config<feature::SignatureHelpOptions>},
 };
 
 const FeatureSpec* find_feature(llvm::StringRef name) {

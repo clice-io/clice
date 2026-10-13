@@ -995,9 +995,21 @@ void LSPClient::register_language_features() {
             auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
             if(!session)
                 return kota::outcome_error(unserved(path));
-            return holding(
-                project,
-                project->features.signature_help(session, params.position, ctx.cancellation));
+            // The popup the client shows: the user may have moved it to
+            // another overload.
+            std::string selected;
+            if(params.context && params.context->active_signature_help) {
+                auto& shown = *params.context->active_signature_help;
+                auto active = shown.active_signature.value_or(0);
+                if(active < shown.signatures.size()) {
+                    selected = shown.signatures[active].label;
+                }
+            }
+            return holding(project,
+                           project->features.signature_help(session,
+                                                            params.position,
+                                                            std::move(selected),
+                                                            ctx.cancellation));
         });
 
     peer.on_request(

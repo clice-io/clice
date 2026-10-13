@@ -7,8 +7,7 @@
   "prose": "",
   "status": "supported",
   "issues": [
-    "clangd#299",
-    "clangd#1387"
+    "clangd#299"
   ],
   "files": [
     {

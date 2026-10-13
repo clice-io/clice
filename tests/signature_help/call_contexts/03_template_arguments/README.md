@@ -1,5 +1,5 @@
 ---
-issues: [clangd#299, clangd#1387]
+issues: [clangd#299]
 ---
 
 # Template argument lists

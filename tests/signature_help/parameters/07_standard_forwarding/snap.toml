@@ -1,0 +1,52 @@
+[answers.make_unique.signature_help]
+signatures = [
+    "make_unique(⟦int width⟧, int height) -> unique_ptr<Widget>",
+    "make_unique(⟦const char *name⟧, double scale) -> unique_ptr<Widget>",
+    "make_unique(⟦const Widget &⟧) -> unique_ptr<Widget>",
+    "make_unique(⟦Widget &&⟧) -> unique_ptr<Widget>",
+]
+active = 0
+documentation = "A widget of the given size, in pixels."
+
+[answers.make_shared.signature_help]
+signatures = ["make_shared(int width, ⟦int height⟧) -> shared_ptr<Widget>"]
+active = 0
+documentation = "A widget of the given size, in pixels."
+
+[answers.by_type.signature_help]
+signatures = ["make_shared(const char *name, ⟦double scale⟧) -> shared_ptr<Widget>"]
+active = 0
+
+[answers.allocate_shared.signature_help]
+signatures = [
+    "allocate_shared(const Alloc &alloc, ⟦int width⟧, int height) -> shared_ptr<Widget>",
+    "allocate_shared(const Alloc &alloc, ⟦const char *name⟧, double scale) -> shared_ptr<Widget>",
+    "allocate_shared(const Alloc &alloc, ⟦const Widget &⟧) -> shared_ptr<Widget>",
+    "allocate_shared(const Alloc &alloc, ⟦Widget &&⟧) -> shared_ptr<Widget>",
+]
+active = 0
+documentation = "A widget of the given size, in pixels."
+
+[answers.emplace_back.signature_help]
+signatures = [
+    "emplace_back(⟦int width⟧, int height) -> reference",
+    "emplace_back(⟦const char *name⟧, double scale) -> reference",
+    "emplace_back(⟦const Widget &⟧) -> reference",
+    "emplace_back(⟦Widget &&⟧) -> reference",
+]
+active = 0
+documentation = "A widget of the given size, in pixels."
+
+[answers.aggregate.signature_help]
+signatures = ["emplace_back(int x, ⟦int y⟧) -> reference"]
+active = 0
+
+[answers.try_emplace.signature_help]
+signatures = [
+    "try_emplace(const key_type &key, ⟦int width⟧, int height) -> pair<iterator, bool>",
+    "try_emplace(const key_type &key, ⟦const char *name⟧, double scale) -> pair<iterator, bool>",
+    "try_emplace(const key_type &key, ⟦const Widget &⟧) -> pair<iterator, bool>",
+    "try_emplace(const key_type &key, ⟦Widget &&⟧) -> pair<iterator, bool>",
+]
+active = 0
+documentation = "A widget of the given size, in pixels."

@@ -1,6 +1,3 @@
 # C-style variadic functions
 
-The named parameters are listed, but the label leaves out the trailing `...`
-
-Past the named parameters no parameter is marked, and nothing in the label
-says the function takes more arguments.
+A C-style `...` shows as the last parameter, marked for every argument past the named ones

@@ -194,6 +194,11 @@ private:
 auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
     -> std::optional<std::string>;
 
+/// The default argument of `param` as the source writes it, on one line;
+/// nullopt when there is none, or it is not parsed yet.
+auto default_argument(const clang::ParmVarDecl* param, const Options& options = {})
+    -> std::optional<std::string>;
+
 /// Render a function parameter with its default value.
 auto param(const clang::ParmVarDecl* param, const Options& options = {}) -> Param;
 

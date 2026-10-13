@@ -1,0 +1,8 @@
+[answers.definition.signature_help]
+signatures = []
+
+[answers.after_call.signature_help]
+signatures = []
+
+[answers.comment.signature_help]
+signatures = []

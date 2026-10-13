@@ -1,0 +1,21 @@
+[shown.parameter.signature_help]
+signatures = ["open(const char *path, ⟦int mode⟧) -> int"]
+active = 0
+documentation = '''
+Opens a file for reading.
+@param path The file to open, relative to the working directory.
+@param mode Permission bits for a file the call creates.
+'''
+
+[shown.function.signature_help]
+signatures = ["line(int x0, int y0, ⟦int x1⟧, int y1) -> void"]
+active = 0
+documentation = "Draws a line between two points."
+
+[shown.none.signature_help]
+signatures = ["plain(⟦int value⟧) -> void"]
+active = 0
+
+[hidden.parameter.signature_help]
+signatures = ["open(const char *path, ⟦int mode⟧) -> int"]
+active = 0

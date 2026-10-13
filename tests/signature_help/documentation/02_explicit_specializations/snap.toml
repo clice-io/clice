@@ -1,0 +1,9 @@
+[answers.primary.signature_help]
+signatures = ["parse(T base, ⟦const char *text⟧) -> T"]
+active = 0
+documentation = "Parses a value written in the given base."
+
+[answers.specialization.signature_help]
+signatures = ["parse(int radix, ⟦const char *digits⟧) -> int"]
+active = 0
+documentation = "Parses an integer, its digits in the given base."

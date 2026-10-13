@@ -375,6 +375,10 @@ struct Config {
     <feature::CodeCompletionOptions> code_completion;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [signature_help] section: signature help options.")
+    <feature::SignatureHelpOptions> signature_help;
+
+    KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "File-pattern rules that adjust compilation flags "
                          "([[rules]] in clice.toml).")

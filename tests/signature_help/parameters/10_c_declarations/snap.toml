@@ -1,0 +1,3 @@
+[answers.redeclared.signature_help]
+signatures = ["area(⟦int⟧, int) -> int"]
+active = 0
