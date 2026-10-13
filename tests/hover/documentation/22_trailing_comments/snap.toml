@@ -14,7 +14,7 @@ Type: `int`
 public: int x
 ```
 '''
-range = "return p.⟦x⟧ + p.y + static_cast<int>(Color::Green);"
+range = "return p.⟦x⟧ + p.y + static_cast<int>(Color::Green) + limit;"
 
 [answers.plain.hover]
 markdown = '''
@@ -32,7 +32,7 @@ Type: `int`
 public: int y
 ```
 '''
-range = "return p.x + p.⟦y⟧ + static_cast<int>(Color::Green);"
+range = "return p.x + p.⟦y⟧ + static_cast<int>(Color::Green) + limit;"
 
 [answers.enumerator.hover]
 markdown = '''
@@ -51,4 +51,23 @@ Value = `1`
 Green
 ```
 '''
-range = "return p.x + p.y + static_cast<int>(Color::⟦Green⟧);"
+range = "return p.x + p.y + static_cast<int>(Color::⟦Green⟧) + limit;"
+
+[answers.variable.hover]
+markdown = '''
+### variable `limit`
+
+---
+
+The largest coordinate.
+
+Type: `int`
+Value = `4`
+
+---
+```cpp
+// In namespace trailing
+int limit = 4
+```
+'''
+range = "return p.x + p.y + static_cast<int>(Color::Green) + ⟦limit⟧;"

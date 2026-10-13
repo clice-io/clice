@@ -1,0 +1,173 @@
+[answers.qualified.hover]
+markdown = '''
+### function `qualified`
+
+---
+
+Draws the shape.
+
+→ `bool` — Whether it drew.
+Parameters:
+- `double scale` — How much larger.
+
+---
+```cpp
+// In namespace names::inner
+bool qualified(double scale)
+```
+'''
+range = "bool ⟦qualified⟧(double scale);"
+
+[answers.hash.hover]
+markdown = '''
+### function `hash`
+
+---
+
+Draws the shape.
+
+→ `bool` — Whether it drew.
+Parameters:
+- `double scale` — How much larger.
+
+---
+```cpp
+// In namespace names::inner
+bool hash(double scale)
+```
+'''
+range = "bool ⟦hash⟧(double scale);"
+
+[answers.template_member.hover]
+markdown = '''
+### function `template_member`
+
+---
+
+Adds an element.
+
+→ `void`
+Parameters:
+- `int value`
+
+---
+```cpp
+// In namespace names::inner
+void template_member(int value)
+```
+'''
+range = "void ⟦template_member⟧(int value);"
+
+[answers.overload.hover]
+markdown = '''
+### function `overload`
+
+---
+
+Takes a floating-point number.
+
+→ `void`
+Parameters:
+- `double value`
+
+---
+```cpp
+// In namespace names::inner
+void overload(double value)
+```
+'''
+range = "void ⟦overload⟧(double value);"
+
+[answers.no_overload.hover]
+markdown = '''
+### function `no_overload`
+
+---
+
+See `pick(long)`.
+
+→ `void`
+Parameters:
+- `long value`
+
+---
+```cpp
+// In namespace names::inner
+void no_overload(long value)
+```
+'''
+range = "void ⟦no_overload⟧(long value);"
+
+[answers.absolute.hover]
+markdown = '''
+### function `absolute`
+
+---
+
+The global helper.
+
+→ `void`
+
+---
+```cpp
+// In namespace names::inner
+void absolute()
+```
+'''
+range = "void ⟦absolute⟧();"
+
+[answers.relative.hover]
+markdown = '''
+### function `relative`
+
+---
+
+The inner helper.
+
+→ `void`
+
+---
+```cpp
+// In namespace names::inner
+void relative()
+```
+'''
+range = "void ⟦relative⟧();"
+
+[answers.nested.hover]
+markdown = '''
+### function `nested`
+
+---
+
+The other target.
+
+→ `void`
+
+---
+```cpp
+// In namespace names::inner
+void nested()
+```
+'''
+range = "void ⟦nested⟧();"
+
+[answers.details.hover]
+markdown = '''
+### function `details`
+
+---
+
+Draws twice as large.
+
+→ `bool` — Whether it drew.
+Parameters:
+- `double scale` — How much larger.
+
+---
+```cpp
+// In namespace names::inner
+bool details(double scale)
+```
+'''
+range = "bool ⟦details⟧(double scale);"

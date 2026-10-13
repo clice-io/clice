@@ -298,8 +298,73 @@ std::string code_span(llvm::StringRef text) {
     return fence + padding + text.str() + padding + fence;
 }
 
+/// The parameters of a parameter list, split at the commas outside
+/// parentheses, brackets, braces and angle brackets.
+llvm::SmallVector<llvm::StringRef> split_parameters(llvm::StringRef list) {
+    llvm::SmallVector<llvm::StringRef> parameters;
+    if(list.trim().empty() || list.trim() == "void") {
+        return parameters;
+    }
+    int depth = 0;
+    std::size_t begin = 0;
+    for(std::size_t index = 0; index < list.size(); index += 1) {
+        auto c = list[index];
+        if(llvm::StringRef("([{<").contains(c)) {
+            depth += 1;
+        } else if(llvm::StringRef(")]}>").contains(c)) {
+            depth -= 1;
+        } else if(c == ',' && depth == 0) {
+            parameters.push_back(list.slice(begin, index));
+            begin = index + 1;
+        }
+    }
+    parameters.push_back(list.substr(begin));
+    return parameters;
+}
+
+/// A parameter without its default argument, a blank kept only between
+/// two words: `const T &x = {}` is `const T&x`.
+std::string normalized_parameter(llvm::StringRef parameter) {
+    std::string result;
+    bool blank = false;
+    int depth = 0;
+    for(auto c: parameter) {
+        if(llvm::StringRef("([{<").contains(c)) {
+            depth += 1;
+        } else if(llvm::StringRef(")]}>").contains(c)) {
+            depth -= 1;
+        } else if(c == '=' && depth == 0) {
+            break;
+        }
+        if(llvm::isSpace(c)) {
+            blank = true;
+            continue;
+        }
+        if(blank && !result.empty() && identifier_char(result.back()) && identifier_char(c)) {
+            result += ' ';
+        }
+        blank = false;
+        result += c;
+    }
+    return result;
+}
+
+/// Whether `longer` is `shorter` with a parameter name after it.
+bool adds_name(llvm::StringRef longer, llvm::StringRef shorter) {
+    if(shorter.empty() || !longer.starts_with(shorter) || longer.size() == shorter.size()) {
+        return false;
+    }
+    auto name = longer.substr(shorter.size());
+    if(identifier_char(shorter.back())) {
+        if(!name.consume_front(" ")) {
+            return false;
+        }
+    }
+    return !name.empty() && llvm::all_of(name, identifier_char);
+}
+
 /// A line opening a Markdown block a paragraph cannot hold: a list item,
-/// a table row, a heading, a quote, HTML, a code fence or indented code.
+/// a table line, a heading, a quote, HTML, a code fence or indented code.
 bool opens_block(llvm::StringRef line) {
     auto indent = line.size() - line.ltrim(" ").size();
     if(indent >= 4) {
@@ -413,7 +478,7 @@ std::optional<std::pair<Command, llvm::StringRef>> gtk_section(llvm::StringRef l
 /// The comment's lines read one by one into a Documentation.
 class Parser {
 public:
-    Parser(CopiedDocLookup lookup, unsigned depth) : lookup(lookup), depth(depth) {}
+    explicit Parser(CopiedDocLookup lookup) : lookup(lookup) {}
 
     Documentation run(llvm::StringRef text) {
         llvm::SmallVector<llvm::StringRef> lines;
@@ -450,6 +515,12 @@ public:
         for(auto line: lines) {
             feed_line(line);
         }
+        // A block the comment leaves open ends with it.
+        if(!fence.empty()) {
+            push_raw(fence);
+        } else if(!block_end.empty() && !hidden) {
+            push_raw("```");
+        }
         close();
         if(elsewhere) {
             return {};
@@ -464,12 +535,6 @@ public:
     }
 
 private:
-    void feed(llvm::StringRef text) {
-        for(auto line: llvm::split(text, '\n')) {
-            feed_line(line);
-        }
-    }
-
     void feed_line(llvm::StringRef line) {
         line = line.rtrim();
         if(!fence.empty()) {
@@ -507,6 +572,7 @@ private:
 
         if(trimmed.starts_with("```") || trimmed.starts_with("~~~")) {
             close();
+            push_blank();
             fence = trimmed.take_while([&](char c) { return c == trimmed.front(); }).str();
             push_raw(line.str());
             return;
@@ -520,7 +586,10 @@ private:
                 name = trimmed.substr(1, 3);
             }
             auto rest = trimmed.substr(1 + name.size());
-            if(!name.empty() && rest.starts_with(":")) {
+            // `@TODO:` marks a line, as `TODO:` does.
+            bool marker = name.size() > 1 &&
+                          llvm::all_of(name, [](char c) { return llvm::isUpper(c) || c == '_'; });
+            if(!name.empty() && rest.starts_with(":") && !marker) {
                 if(gtk || !commands().contains(name)) {
                     close();
                     section = Kind::Param;
@@ -784,7 +853,9 @@ private:
             case Kind::Throws: {
                 auto word =
                     rest.ltrim(" \t").take_until([](char c) { return c == ' ' || c == '\t'; });
-                names.push_back(word.rtrim(":").str());
+                if(!word.rtrim(":").empty()) {
+                    names.push_back(word.rtrim(":").str());
+                }
                 return description(after_word(rest, word));
             }
             case Kind::Par: {
@@ -794,6 +865,9 @@ private:
             case Kind::Heading: {
                 auto word = next_word(rest);
                 title = after_word(rest, word).trim().str();
+                if(title.empty()) {
+                    title = word.str();
+                }
                 return {};
             }
             default: return rest;
@@ -810,23 +884,51 @@ private:
         return text;
     }
 
+    /// `@copybrief` copies the brief, `@copydetails` the rest, `@copydoc`
+    /// both; what the rest documents by name joins what this comment
+    /// documents, which keeps its own.
     void copy(Kind kind, llvm::StringRef name) {
-        auto text = depth < 4 ? lookup(name) : std::nullopt;
-        if(!text) {
+        auto copied = lookup(name);
+        if(!copied) {
             push_line("See " + code_span(name) + ".", true);
             return;
         }
         close();
-        if(kind == Kind::CopyDoc) {
-            depth += 1;
-            feed(*text);
-            close();
-            depth -= 1;
+        if(kind != Kind::CopyDetails && !copied->brief.empty()) {
+            push_blank();
+            push_line(copied->brief, true);
+            push_blank();
+        }
+        if(kind == Kind::CopyBrief) {
             return;
         }
-        auto copied = Parser(lookup, depth + 1).run(*text);
-        feed(kind == Kind::CopyBrief ? copied.brief : copied.details);
-        close();
+        if(!copied->details.empty()) {
+            push_blank();
+            for(auto line: llvm::split(copied->details, '\n')) {
+                push_raw(line.str());
+            }
+            push_blank();
+        }
+
+        for(auto& param: copied->params) {
+            if(!doc.param(param.name)) {
+                doc.params.push_back(param);
+            }
+        }
+        for(auto& param: copied->template_params) {
+            if(!doc.template_param(param.name)) {
+                doc.template_params.push_back(param);
+            }
+        }
+        if(doc.returns.empty()) {
+            doc.returns = copied->returns;
+        }
+        llvm::append_range(doc.retvals, copied->retvals);
+        llvm::append_range(doc.throws, copied->throws);
+        llvm::append_range(doc.see, copied->see);
+        if(!doc.deprecated) {
+            doc.deprecated = copied->deprecated;
+        }
     }
 
     void start_section(const Command& command) {
@@ -863,6 +965,14 @@ private:
         auto direction = std::exchange(this->direction, {});
         auto title = std::exchange(this->title, {});
         auto kind = std::exchange(section, Kind::Details);
+
+        // An entry whose name went to the next line.
+        if(names.empty() && !text.empty() &&
+           llvm::is_contained({Kind::Param, Kind::TParam, Kind::Retval, Kind::Throws}, kind)) {
+            auto name = llvm::StringRef(text).take_until(llvm::isSpace);
+            names.push_back(name.str());
+            text = description(llvm::StringRef(text).substr(name.size())).str();
+        }
 
         auto append = [](std::string& to, llvm::StringRef text) {
             if(!to.empty() && !text.empty()) {
@@ -910,17 +1020,14 @@ private:
                 push_line("- " + text, false);
                 break;
             }
-            case Kind::Par: {
+            case Kind::Par:
+            case Kind::Heading: {
                 if(!title.empty()) {
                     push_paragraph("**" + title + "**");
                 }
                 if(!text.empty()) {
                     push_paragraph(text);
                 }
-                break;
-            }
-            case Kind::Heading: {
-                push_paragraph("**" + title + "**");
                 break;
             }
             default: std::unreachable();
@@ -975,7 +1082,6 @@ private:
     }
 
     CopiedDocLookup lookup;
-    unsigned depth;
     Documentation doc;
 
     /// The comment follows GTK-Doc's or kernel-doc's conventions.
@@ -1007,7 +1113,66 @@ private:
 }  // namespace
 
 Documentation parse_documentation(llvm::StringRef text, CopiedDocLookup lookup) {
-    return Parser(lookup, 0).run(text);
+    return Parser(lookup).run(text);
+}
+
+std::optional<CopiedName> parse_copied_name(llvm::StringRef name) {
+    CopiedName copied;
+    if(auto open = name.find('('); open != llvm::StringRef::npos) {
+        auto parameters = name.substr(open + 1);
+        parameters.consume_back(")");
+        copied.parameters = parameters;
+        name = name.take_front(open);
+    }
+    name = name.trim();
+    copied.absolute = name.consume_front("::");
+    // Doxygen names a member `Class::member` or `Class#member`.
+    for(auto part: llvm::split(name, "::")) {
+        for(auto piece: llvm::split(part, '#')) {
+            if(piece.trim().empty()) {
+                return std::nullopt;
+            }
+            copied.parts.push_back(piece.trim());
+        }
+    }
+    return copied;
+}
+
+bool declares_parameters(llvm::StringRef content, std::uint32_t name_end, llvm::StringRef spelled) {
+    auto rest = content.substr(name_end).ltrim();
+    if(rest.starts_with("<")) {
+        int depth = 0;
+        auto close = llvm::find_if(rest, [&](char c) {
+            depth += c == '<' ? 1 : c == '>' ? -1 : 0;
+            return depth == 0;
+        });
+        rest = rest.substr(close - rest.begin() + 1).ltrim();
+    }
+    if(!rest.consume_front("(")) {
+        return false;
+    }
+    int depth = 0;
+    auto close = llvm::find_if(rest, [&](char c) {
+        depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+        return depth < 0;
+    });
+    if(close == rest.end()) {
+        return false;
+    }
+
+    auto declared = split_parameters(rest.take_front(close - rest.begin()));
+    auto wanted = split_parameters(spelled);
+    if(declared.size() != wanted.size()) {
+        return false;
+    }
+    for(auto [declared_parameter, wanted_parameter]: llvm::zip_equal(declared, wanted)) {
+        auto have = normalized_parameter(declared_parameter);
+        auto want = normalized_parameter(wanted_parameter);
+        if(have != want && !adds_name(have, want) && !adds_name(want, have)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace clice

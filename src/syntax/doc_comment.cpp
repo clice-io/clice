@@ -60,7 +60,7 @@ bool has_blank_line(llvm::StringRef text) {
 
 /// A line made only of the characters banners are drawn with.
 bool is_banner(llvm::StringRef line) {
-    return !line.trim().empty() && line.find_first_not_of("=-*_~/#+ \t") == llvm::StringRef::npos;
+    return !line.trim().empty() && line.find_first_not_of("=-*_/#+ \t") == llvm::StringRef::npos;
 }
 
 }  // namespace
@@ -153,6 +153,11 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
 
         text = text.drop_front(marker);
         text.consume_back("*/");
+        // A closing `**/` draws more stars than it needs.
+        auto stars = text.size() - text.rtrim('*').size();
+        if(stars > 0 && (stars == text.size() || llvm::isSpace(text[text.size() - stars - 1]))) {
+            text = text.drop_back(stars);
+        }
         llvm::SmallVector<llvm::StringRef> block;
         text.split(block, '\n');
 

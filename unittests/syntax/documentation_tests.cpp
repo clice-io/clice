@@ -11,7 +11,7 @@ namespace clice::testing {
 namespace {
 
 Documentation parse(llvm::StringRef text) {
-    return parse_documentation(text, [](llvm::StringRef) -> std::optional<std::string> {
+    return parse_documentation(text, [](llvm::StringRef) -> std::optional<Documentation> {
         return std::nullopt;
     });
 }
@@ -146,18 +146,106 @@ ZEST_CASE(NotAGtkName) {
 }
 
 ZEST_CASE(CopyDoc) {
-    auto lookup = [](llvm::StringRef name) -> std::optional<std::string> {
+    auto lookup = [](llvm::StringRef name) -> std::optional<Documentation> {
         if(name == "base_func()") {
-            return "Detailed documentation.\n@param x The x.";
+            return parse("Brief documentation.\n\nDetails.\n@param x The x.\n@return One.");
         }
         return std::nullopt;
     };
-    auto doc = parse_documentation("@copydoc base_func()", lookup);
-    ZEXPECT(doc.brief == "Detailed documentation.");
+    auto doc = parse_documentation("@copydoc base_func()\n@param y The y.", lookup);
+    ZEXPECT(doc.brief == "Brief documentation.");
+    ZEXPECT(doc.details == "Details.");
     ZEXPECT(doc.param("x")->text == "The x.");
+    ZEXPECT(doc.param("y")->text == "The y.");
+    ZEXPECT(doc.returns == "One.");
+
+    auto brief = parse_documentation("@copybrief base_func()", lookup);
+    ZEXPECT(brief.brief == "Brief documentation.");
+    ZEXPECT(brief.details.empty());
+    ZEXPECT(brief.params.empty());
+
+    auto details = parse_documentation("Own brief.\n\n@copydetails base_func()", lookup);
+    ZEXPECT(details.brief == "Own brief.");
+    ZEXPECT(details.details == "Details.");
+    ZEXPECT(details.param("x")->text == "The x.");
+    ZEXPECT(details.returns == "One.");
 
     auto missing = parse_documentation("@copydoc other", lookup);
     ZEXPECT(missing.brief == "See `other`.");
+}
+
+ZEST_CASE(CopiedNotes) {
+    auto lookup = [](llvm::StringRef) -> std::optional<Documentation> {
+        return parse("@note Copied.");
+    };
+    auto doc = parse_documentation("@copydoc other\n\nOwn text.", lookup);
+    ZEXPECT(doc.brief.empty());
+    ZEXPECT(doc.details == "**Note:** Copied.\n\nOwn text.");
+}
+
+ZEST_CASE(CopiedNames) {
+    auto plain = parse_copied_name("Widget#draw");
+    ZASSERT(plain.has_value());
+    ZEXPECT(plain->parts.size() == 2U);
+    ZEXPECT(plain->parts[1] == "draw");
+    ZEXPECT(!plain->absolute);
+    ZEXPECT(!plain->parameters.has_value());
+
+    auto overload = parse_copied_name("::ns::f(const T&, int)");
+    ZASSERT(overload.has_value());
+    ZEXPECT(overload->absolute);
+    ZEXPECT(overload->parts.size() == 2U);
+    ZEXPECT(*overload->parameters == "const T&, int");
+
+    ZEXPECT(!parse_copied_name("ns::").has_value());
+    ZEXPECT(!parse_copied_name("#f").has_value());
+}
+
+ZEST_CASE(DeclaresParameters) {
+    llvm::StringRef content = "void f(const std::string &text, int count = 0);";
+    auto end = static_cast<std::uint32_t>(content.find('('));
+    ZEXPECT(declares_parameters(content, end, "const std::string&, int"));
+    ZEXPECT(declares_parameters(content, end, "const std::string & text, int count"));
+    ZEXPECT(!declares_parameters(content, end, "const std::string&"));
+    ZEXPECT(!declares_parameters(content, end, "const std::string&, int64_t"));
+
+    llvm::StringRef none = "void g(void);";
+    ZEXPECT(declares_parameters(none, 6, ""));
+    ZEXPECT(!declares_parameters(none, 6, "int"));
+
+    llvm::StringRef templated = "void h<int>(std::map<int, char> m);";
+    ZEXPECT(declares_parameters(templated, 6, "std::map<int, char>"));
+}
+
+ZEST_CASE(UnclosedBlocks) {
+    ZEXPECT(parse("Brief.\n\n```\nrun();").details == "```\nrun();\n```");
+    ZEXPECT(parse("Brief.\n\n@code\nrun();").details == "```\nrun();\n```");
+}
+
+ZEST_CASE(SectionText) {
+    auto doc = parse("Brief.\n\n@section usage Usage\nCall it once.");
+    ZEXPECT(doc.details == "**Usage**\n\nCall it once.");
+    ZEXPECT(parse("Brief.\n\n@section usage").details == "**usage**");
+}
+
+ZEST_CASE(UppercaseMarker) {
+    auto doc = parse("Brief.\n\n@TODO: handle NaN.");
+    ZEXPECT(doc.params.empty());
+    ZEXPECT(doc.details == "@TODO: handle NaN.");
+}
+
+ZEST_CASE(NameOnNextLine) {
+    auto doc = parse("Brief.\n@throws\n    std::bad_alloc On failure.\n@tparam");
+    ZASSERT(doc.throws.size() == 1U);
+    ZEXPECT(doc.throws[0].name == "std::bad_alloc");
+    ZEXPECT(doc.throws[0].text == "On failure.");
+    ZEXPECT(doc.template_params.empty());
+}
+
+ZEST_CASE(FenceAfterCommand) {
+    auto doc = parse("Formats the value.\n@param x What.\n```\nf(1);\n```");
+    ZEXPECT(doc.brief == "Formats the value.");
+    ZEXPECT(doc.details == "```\nf(1);\n```");
 }
 
 ZEST_CASE(Elsewhere) {

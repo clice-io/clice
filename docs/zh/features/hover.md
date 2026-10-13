@@ -745,7 +745,7 @@ tests/hover/documentation/11_stray_comments
 
 **GTK-Doc 注释**
 
-GTK-Doc 的名称行不再显示，每个 `@parameter:` 条目显示在对应参数的旁边
+GTK-Doc 的名称行不显示，每个 `@parameter:` 条目显示在对应参数的旁边
 
 ```case
 tests/hover/documentation/12_gtk_doc
@@ -805,7 +805,7 @@ tests/hover/documentation/21_macro_docs
 
 **行尾注释**
 
-写在字段、枚举项或变量所在行末尾的注释是它的文档
+写在字段、枚举项或变量所在行末尾的 `///<` 注释是它的文档；其他写在那里的注释，在上方没有注释为它撰写时才是它的文档
 
 ```case
 tests/hover/documentation/22_trailing_comments

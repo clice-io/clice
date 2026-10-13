@@ -28,7 +28,7 @@
   ],
   "tests": [
     {
-      "name": "answers",
+      "name": "default",
       "blocks": [
         {
           "label": "include_path",
@@ -36,6 +36,34 @@
           "value": {
             "hover": {
               "markdown": "### `own_header.h`\n\n---\n```cpp\n${WS}/own_header.h\n```",
+              "range": {
+                "$place": "#include ⟦\"own_header.h\"⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 23
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "plain text client",
+      "blocks": [
+        {
+          "label": "include_path",
+          "marker": "include_path",
+          "value": {
+            "hover": {
+              "plaintext": "own_header.h\n\n${WS}/own_header.h",
               "range": {
                 "$place": "#include ⟦\"own_header.h\"⟧",
                 "path": "main.cpp",

@@ -109,6 +109,16 @@ ZEST_CASE(Banners) {
     ZEXPECT(text_of("/*************/") == "");
 }
 
+ZEST_CASE(ClosingFenceKept) {
+    ZEXPECT(text_of("/// Runs it.\n///\n/// ~~~\n/// run();\n/// ~~~\n") ==
+            "Runs it.\n\n~~~\nrun();\n~~~");
+}
+
+ZEST_CASE(StarredClose) {
+    ZEXPECT(text_of("/** Runs it. **/") == "Runs it.");
+    ZEXPECT(text_of("/** Returns int* */") == "Returns int*");
+}
+
 };  // ZEST_SUITE(CommentText)
 
 }  // namespace

@@ -480,7 +480,7 @@ public:
 
         if(kind.isDeclOrDef()) {
             // FIXME: why definition or declaration has invalid source range? implicit node?
-            auto source_range = decl->getSourceRange();
+            auto source_range = decls::written_range(decl);
             if(source_range.isValid()) {
                 auto [def_fid, definition_range] = unit.decompose_expansion_range(source_range);
                 // A declaration can begin in another file, e.g. when a

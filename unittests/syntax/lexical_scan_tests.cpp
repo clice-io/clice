@@ -25,29 +25,29 @@ ZEST_CASE(CommentKinds) {
 int x = 1; /* block
 comment */ int y = 2;
 )";
-    auto info = lexical_scan(content);
+    auto comments = scan_comments(content);
 
-    ZASSERT(info.comments.size() == 2U);
-    ZASSERT(info.comments[0].kind == Comment::Kind::Line);
-    ZASSERT(text(content, info.comments[0].range) == "// line comment");
-    ZASSERT(info.comments[1].kind == Comment::Kind::Block);
-    ZASSERT(text(content, info.comments[1].range).starts_with("/* block"));
-    ZASSERT(text(content, info.comments[1].range).ends_with("comment */"));
+    ZASSERT(comments.size() == 2U);
+    ZASSERT(comments[0].kind == Comment::Kind::Line);
+    ZASSERT(text(content, comments[0].range) == "// line comment");
+    ZASSERT(comments[1].kind == Comment::Kind::Block);
+    ZASSERT(text(content, comments[1].range).starts_with("/* block"));
+    ZASSERT(text(content, comments[1].range).ends_with("comment */"));
 }
 
 ZEST_CASE(CommentInString) {
     llvm::StringRef content = R"(const char* s = "// not a comment";)";
-    auto info = lexical_scan(content);
-    ZASSERT(info.comments.size() == 0U);
+    auto comments = scan_comments(content);
+    ZASSERT(comments.size() == 0U);
 }
 
 ZEST_CASE(DirectiveComments) {
     llvm::StringRef content = "#include <vector> // trailing\n/* leading */ #define X 1\n";
-    auto info = lexical_scan(content);
+    auto comments = scan_comments(content);
 
-    ZASSERT(info.comments.size() == 2U);
-    ZASSERT(info.comments[0].kind == Comment::Kind::Line);
-    ZASSERT(info.comments[1].kind == Comment::Kind::Block);
+    ZASSERT(comments.size() == 2U);
+    ZASSERT(comments[0].kind == Comment::Kind::Line);
+    ZASSERT(comments[1].kind == Comment::Kind::Block);
 }
 
 };  // ZEST_SUITE(LexicalScanComments)
@@ -137,7 +137,6 @@ int hidden = 0;
     ZASSERT(info.modules[1].kind == ModuleDeclaration::Kind::Declaration);
     ZASSERT(text(content, info.modules[1].name_parts[0]) == "app");
     ZASSERT(info.modules[2].kind == ModuleDeclaration::Kind::PrivateFragment);
-    ZASSERT(info.comments.size() == 1U);
 }
 
 ZEST_CASE(CommentInterleaved) {
@@ -148,7 +147,7 @@ ZEST_CASE(CommentInterleaved) {
     ZASSERT(info.modules[0].kind == ModuleDeclaration::Kind::GlobalFragment);
     ZASSERT(info.modules[1].kind == ModuleDeclaration::Kind::Declaration);
     ZASSERT(text(content, info.modules[1].name_parts[0]) == "foo");
-    ZASSERT(info.comments.size() == 2U);
+    ZASSERT(scan_comments(content).size() == 2U);
 }
 
 ZEST_CASE(IncompleteDeclaration) {
@@ -159,9 +158,8 @@ ZEST_CASE(IncompleteDeclaration) {
 }
 
 ZEST_CASE(EmptyContent) {
-    auto info = lexical_scan("");
-    ZASSERT(info.comments.size() == 0U);
-    ZASSERT(info.modules.size() == 0U);
+    ZASSERT(scan_comments("").size() == 0U);
+    ZASSERT(lexical_scan("").modules.size() == 0U);
 }
 
 ZEST_CASE(NegativeControls) {

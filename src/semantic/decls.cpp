@@ -29,6 +29,19 @@ bool is_templated(const clang::Decl* decl) {
     return false;
 }
 
+auto written_range(const clang::Decl* decl) -> clang::SourceRange {
+    if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
+       named && is_instantiation(named)) {
+        if(const auto* pattern = instantiated_from(named); pattern && pattern != named) {
+            return written_range(pattern);
+        }
+    }
+    if(const auto* described = decl->getDescribedTemplate()) {
+        return described->getSourceRange();
+    }
+    return decl->getSourceRange();
+}
+
 bool is_exported(const clang::Decl* decl) {
     // A concept's or alias template's parameters sit in the enclosing
     // context, the `export` block included.

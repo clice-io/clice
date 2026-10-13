@@ -1,5 +1,5 @@
 int value() {
-    return FROM_EDITOR;
+    return §(macro)FROM_EDITOR;
 }
 
 int main() {

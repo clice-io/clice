@@ -12,18 +12,24 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "/// The largest buffer, in bytes.\n#define BUFFER_LIMIT 4096\n\n/// Clamps a value to a range.\n/// @param x The value to clamp.\n/// @return The value, at least `lo` and at most `hi`.\n#define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))\n\nint limit = BUFFER_LIMIT;\nint clamped = CLAMP(5, 0, 10);\n",
+      "text": "/// The largest buffer, in bytes.\n#define BUFFER_LIMIT 4096\n\n/// Clamps a value to a range.\n/// @param x The value to clamp.\n/// @return The value, at least `lo` and at most `hi`.\n#define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))\n\n#define RETRIES 3 ///< How many times a request is tried.\n\nint limit = BUFFER_LIMIT;\nint clamped = CLAMP(5, 0, 10);\nint retries = RETRIES;\n",
       "markers": [
         {
           "name": "object_like",
-          "begin": 270,
-          "end": 270,
+          "begin": 329,
+          "end": 329,
           "range": false
         },
         {
           "name": "function_like",
-          "begin": 294,
-          "end": 294,
+          "begin": 353,
+          "end": 353,
+          "range": false
+        },
+        {
+          "name": "trailing",
+          "begin": 385,
+          "end": 385,
           "range": false
         }
       ]
@@ -44,11 +50,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 8,
+                    "line": 10,
                     "character": 12
                   },
                   "end": {
-                    "line": 8,
+                    "line": 10,
                     "character": 24
                   }
                 }
@@ -67,12 +73,35 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 9,
+                    "line": 11,
                     "character": 14
                   },
                   "end": {
-                    "line": 9,
+                    "line": 11,
                     "character": 19
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "trailing",
+          "marker": "trailing",
+          "value": {
+            "hover": {
+              "markdown": "### macro `RETRIES`\n\n---\n\nHow many times a request is tried.\n\n---\n```cpp\n#define RETRIES 3\n\n// Expands to\n3\n```",
+              "range": {
+                "$place": "int retries = ⟦RETRIES⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 12,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 12,
+                    "character": 21
                   }
                 }
               }

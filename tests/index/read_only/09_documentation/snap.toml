@@ -16,7 +16,7 @@ Returns: The product of both sides.
 int area(int width, int height)
 ```
 '''
-range = "return ⟦area⟧(2, 3) + shape.sides;"
+range = "return ⟦area⟧(2, 3) + shape.sides + LIMIT + calls;"
 
 ["index cards carry documentation".field.hover]
 markdown = '''
@@ -31,4 +31,152 @@ How many sides it has.
 int sides
 ```
 '''
-range = "return area(2, 3) + shape.⟦sides⟧;"
+range = "return area(2, 3) + shape.⟦sides⟧ + LIMIT + calls;"
+
+["index cards carry documentation".override.hover]
+markdown = '''
+### method `draw`
+
+---
+
+Draws the shape.
+
+---
+```cpp
+void draw() override
+```
+'''
+range = "square.⟦draw⟧();"
+
+["index cards carry documentation".macro.hover]
+markdown = '''
+### macro `LIMIT`
+
+---
+
+The most it takes.
+
+---
+```cpp
+#define LIMIT 4
+```
+'''
+range = "return area(2, 3) + shape.sides + ⟦LIMIT⟧ + calls;"
+
+["index cards carry documentation".variable.hover]
+markdown = '''
+### variable `calls`
+
+---
+
+How many calls so far.
+
+---
+```cpp
+extern int calls
+```
+'''
+range = "return area(2, 3) + shape.sides + LIMIT + ⟦calls⟧;"
+
+["index cards carry documentation".absolute.hover]
+markdown = '''
+### function `absolute`
+
+---
+
+The global helper.
+
+---
+```cpp
+void absolute()
+```
+'''
+range = "inner::⟦absolute⟧();"
+
+["index cards carry documentation".overload.hover]
+markdown = '''
+### function `overload`
+
+---
+
+Takes a floating-point number.
+
+---
+```cpp
+void overload(double value)
+```
+'''
+range = "inner::⟦overload⟧(1.0);"
+
+["index cards carry documentation".nested.hover]
+markdown = '''
+### function `nested`
+
+---
+
+The other target.
+
+---
+```cpp
+void nested()
+```
+'''
+range = "inner::⟦nested⟧();"
+
+["index cards carry documentation".template.hover]
+markdown = '''
+### function `copy`
+
+---
+
+Makes a copy of a value.
+
+---
+```cpp
+template <typename T, typename = decltype(T{})>
+T copy(T value)
+```
+'''
+range = "⟦copy⟧(1);"
+
+["index cards follow the options".call.hover]
+markdown = '''
+### function `area`
+
+---
+
+Computes the area of a rectangle.
+@param width The horizontal extent.
+@return The product of both sides.
+
+---
+```cpp
+int area(int width, int height)
+```
+'''
+range = "return ⟦area⟧(2, 3) + shape.sides + LIMIT + calls;"
+
+["index cards follow the options".override.hover]
+markdown = '''
+### method `draw`
+
+---
+```cpp
+void draw() override
+```
+'''
+range = "square.⟦draw⟧();"
+
+["plain text client".call.hover]
+plaintext = '''
+function area
+
+Computes the area of a rectangle.
+
+Parameters:
+- width — The horizontal extent.
+Returns: The product of both sides.
+
+int area(int width, int height)
+'''
+range = "return ⟦area⟧(2, 3) + shape.sides + LIMIT + calls;"

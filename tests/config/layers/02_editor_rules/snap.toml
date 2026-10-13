@@ -10,3 +10,17 @@ diagnostics = []
 diagnostics = [
     { at = "return ⟦FROM_EDITOR⟧;", severity = "error", message = "use of undeclared identifier 'FROM_EDITOR'", source = "clang", code = "err_undeclared_var_use" },
 ]
+
+["rules in both clients".macro.hover]
+markdown = '''
+### macro `FROM_EDITOR`
+
+---
+```cpp
+#define FROM_EDITOR 1
+
+// Expands to
+1
+```
+'''
+range = "return ⟦FROM_EDITOR⟧;"

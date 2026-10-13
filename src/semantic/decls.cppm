@@ -13,6 +13,11 @@ namespace clice::decls {
 /// specializations, we consider it as a template while clang does not.
 bool is_templated(const clang::Decl* decl);
 
+/// The source range the decl is written over: a template's from its
+/// `template` keyword, which the templated decl's own range leaves out; an
+/// instantiation's, its pattern's.
+auto written_range(const clang::Decl* decl) -> clang::SourceRange;
+
 /// Check whether the decl names an entity its module exports: declared at
 /// namespace scope by an `export` declaration, or a namespace holding one.
 /// Members of an exported class are not exported entities of their own.

@@ -9,8 +9,7 @@ import :syntax.token;
 namespace clice {
 
 /// Everything one lexical pass over a file records that neither the AST
-/// nor the preprocessor callbacks report: comments (the token buffer drops
-/// them), the three module declaration forms (clang reports imports
+/// nor the preprocessor callbacks report: the three module declaration forms (clang reports imports
 /// through PPCallbacks, but nothing covers the declarations themselves),
 /// the block structure of the conditional and region directives (the
 /// callbacks skip the branches nested in a skipped block, a `#else` behind
@@ -18,6 +17,7 @@ namespace clice {
 /// directives (a preamble PCH consumes those too) and the extents of raw
 /// string literals (the AST keeps only where a literal's tokens start).
 struct LexicalInfo {
+    /// A comment, as scan_comments finds it.
     struct Comment {
         enum class Kind : std::uint8_t {
             /// A `//` comment.
@@ -114,10 +114,8 @@ struct LexicalInfo {
     /// Raw string literal tokens in source order, outside directives.
     std::vector<LocalSourceRange> raw_strings;
 
-    // Both vectors heap-allocate so that payload pointers into them (the
+    // The vector heap-allocates so that payload pointers into it (the
     // Semantics node table stores such pointers) survive moving the info.
-    std::vector<Comment> comments;
-
     std::vector<ModuleDeclaration> modules;
 };
 
@@ -127,7 +125,7 @@ struct LexicalInfo {
 /// unit's named module) before trusting them.
 LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang_opts = nullptr);
 
-/// The comments of `content` alone, as lexical_scan records them.
+/// The comments of `content`, in source order (a token buffer drops them).
 std::vector<LexicalInfo::Comment> scan_comments(llvm::StringRef content,
                                                 const clang::LangOptions* lang_opts = nullptr);
 

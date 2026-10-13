@@ -8,6 +8,7 @@ import :compile.compilation_unit;
 import :compile.documentation;
 import :semantic.decls;
 import :syntax.doc_comment;
+import :syntax.documentation;
 
 namespace clice {
 
@@ -20,7 +21,7 @@ struct Found {
 
 /// The comment documenting this one declaration.
 Found comment_of(CompilationUnitRef unit, const clang::Decl* decl) {
-    auto range = decl->getSourceRange();
+    auto range = decls::written_range(decl);
     if(decl->isImplicit() || range.isInvalid()) {
         return {};
     }
@@ -96,21 +97,11 @@ std::string doc_comment(CompilationUnitRef unit, const clang::MacroInfo* macro) 
     return comment_text(content, run);
 }
 
-llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(const clang::NamedDecl* decl,
+llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnitRef unit,
+                                                              const clang::NamedDecl* decl,
                                                               llvm::StringRef name) {
-    // Doxygen names a member `Class::member` or `Class#member`.
-    llvm::SmallVector<llvm::StringRef> parts;
-    name = name.take_until([](char c) { return c == '('; }).trim();
-    name.consume_front("::");
-    for(auto part: llvm::split(name, "::")) {
-        for(auto piece: llvm::split(part, '#')) {
-            if(piece.trim().empty()) {
-                return {};
-            }
-            parts.push_back(piece.trim());
-        }
-    }
-    if(parts.empty()) {
+    auto copied = parse_copied_name(name);
+    if(!copied) {
         return {};
     }
 
@@ -124,11 +115,22 @@ llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(const clang::Named
         }
         return llvm::dyn_cast<clang::DeclContext>(found);
     };
+    auto declares = [&](const clang::NamedDecl* candidate) {
+        const auto* function = candidate->getAsFunction();
+        if(!function) {
+            return false;
+        }
+        auto [fid, range] =
+            unit.decompose_expansion_range(function->getNameInfo().getSourceRange());
+        return declares_parameters(unit.file_content(fid), range.end, *copied->parameters);
+    };
 
-    for(const auto* scope = decl->getDeclContext(); scope; scope = scope->getParent()) {
-        auto first = lookup(scope, parts.front());
+    const clang::DeclContext* scope =
+        copied->absolute ? context.getTranslationUnitDecl() : decl->getDeclContext();
+    for(; scope; scope = scope->getParent()) {
+        auto first = lookup(scope, copied->parts.front());
         llvm::SmallVector<const clang::NamedDecl*> found(first.begin(), first.end());
-        for(auto part: llvm::drop_begin(parts)) {
+        for(auto part: llvm::drop_begin(copied->parts)) {
             llvm::SmallVector<const clang::NamedDecl*> members;
             for(const auto* candidate: found) {
                 if(const auto* inner = scope_of(candidate)) {
@@ -138,9 +140,14 @@ llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(const clang::Named
             }
             found = std::move(members);
         }
-        if(!found.empty()) {
-            return found;
+        if(found.empty()) {
+            continue;
         }
+        if(copied->parameters && found.size() > 1) {
+            llvm::erase_if(found,
+                           [&](const clang::NamedDecl* candidate) { return !declares(candidate); });
+        }
+        return found;
     }
     return {};
 }

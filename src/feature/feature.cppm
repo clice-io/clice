@@ -580,9 +580,9 @@ auto to_protocol_hover(const HoverInfo& info,
 
 auto hover(CompilationUnitRef unit,
            std::uint32_t offset,
-           const HoverOptions& options = {},
-           const DocumentationOptions& documentation = {},
-           protocol::MarkupKind kind = protocol::MarkupKind::Markdown,
+           const HoverOptions& options,
+           const DocumentationOptions& documentation,
+           protocol::MarkupKind kind,
            PositionEncoding encoding = PositionEncoding::UTF16) -> std::optional<protocol::Hover>;
 
 auto signature_help(CompilationParams& params, const SignatureHelpOptions& options = {})

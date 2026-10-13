@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation_unit;
 import :compile.semantics;
 import :feature.code_action.action;
+import :syntax.lexical_scan;
 
 namespace clice::feature::action {
 

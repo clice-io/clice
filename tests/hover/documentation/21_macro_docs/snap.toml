@@ -38,3 +38,21 @@ Returns: The value, at least `lo` and at most `hi`.
 ```
 '''
 range = "int clamped = ⟦CLAMP⟧(5, 0, 10);"
+
+[answers.trailing.hover]
+markdown = '''
+### macro `RETRIES`
+
+---
+
+How many times a request is tried.
+
+---
+```cpp
+#define RETRIES 3
+
+// Expands to
+3
+```
+'''
+range = "int retries = ⟦RETRIES⟧;"

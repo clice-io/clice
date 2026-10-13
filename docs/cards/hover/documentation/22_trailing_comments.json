@@ -3,31 +3,37 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "Trailing comments",
-  "summary": "A comment after a field, an enumerator or a variable on its line documents it",
+  "summary": "A `///<` comment after a field, an enumerator or a variable on its line documents it; any other comment there does when no comment above documents it",
   "prose": "",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace trailing {\nstruct Point {\n    int x; ///< The horizontal coordinate.\n    int y; // The vertical coordinate.\n};\n\nenum class Color {\n    Red,   ///< The red channel.\n    Green, ///< The green channel.\n};\n\nint use() {\n    Point p{1, 2};\n    return p.x + p.y + static_cast<int>(Color::Green);\n}\n}\n",
+      "text": "namespace trailing {\nstruct Point {\n    int x; ///< The horizontal coordinate.\n    int y; // The vertical coordinate.\n};\n\nint limit = 4; ///< The largest coordinate.\n\nenum class Color {\n    Red,   ///< The red channel.\n    Green, ///< The green channel.\n};\n\nint use() {\n    Point p{1, 2};\n    return p.x + p.y + static_cast<int>(Color::Green) + limit;\n}\n}\n",
       "markers": [
         {
           "name": "marked",
-          "begin": 257,
-          "end": 257,
+          "begin": 302,
+          "end": 302,
           "range": false
         },
         {
           "name": "plain",
-          "begin": 263,
-          "end": 263,
+          "begin": 308,
+          "end": 308,
           "range": false
         },
         {
           "name": "enumerator",
-          "begin": 293,
-          "end": 293,
+          "begin": 338,
+          "end": 338,
+          "range": false
+        },
+        {
+          "name": "variable",
+          "begin": 345,
+          "end": 345,
           "range": false
         }
       ]
@@ -44,15 +50,15 @@
             "hover": {
               "markdown": "### field `x`\n\n---\n\nThe horizontal coordinate.\n\nType: `int`\n\n---\n```cpp\n// In Point\npublic: int x\n```",
               "range": {
-                "$place": "return p.⟦x⟧ + p.y + static_cast<int>(Color::Green);",
+                "$place": "return p.⟦x⟧ + p.y + static_cast<int>(Color::Green) + limit;",
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 13,
+                    "line": 15,
                     "character": 13
                   },
                   "end": {
-                    "line": 13,
+                    "line": 15,
                     "character": 14
                   }
                 }
@@ -67,15 +73,15 @@
             "hover": {
               "markdown": "### field `y`\n\n---\n\nThe vertical coordinate.\n\nType: `int`\n\n---\n```cpp\n// In Point\npublic: int y\n```",
               "range": {
-                "$place": "return p.x + p.⟦y⟧ + static_cast<int>(Color::Green);",
+                "$place": "return p.x + p.⟦y⟧ + static_cast<int>(Color::Green) + limit;",
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 13,
+                    "line": 15,
                     "character": 19
                   },
                   "end": {
-                    "line": 13,
+                    "line": 15,
                     "character": 20
                   }
                 }
@@ -90,16 +96,39 @@
             "hover": {
               "markdown": "### enumerator `Green`\n\n---\n\nThe green channel.\n\nType: `enum trailing::Color`\nValue = `1`\n\n---\n```cpp\n// In Color\nGreen\n```",
               "range": {
-                "$place": "return p.x + p.y + static_cast<int>(Color::⟦Green⟧);",
+                "$place": "return p.x + p.y + static_cast<int>(Color::⟦Green⟧) + limit;",
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 13,
+                    "line": 15,
                     "character": 47
                   },
                   "end": {
-                    "line": 13,
+                    "line": 15,
                     "character": 52
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "variable",
+          "marker": "variable",
+          "value": {
+            "hover": {
+              "markdown": "### variable `limit`\n\n---\n\nThe largest coordinate.\n\nType: `int`\nValue = `4`\n\n---\n```cpp\n// In namespace trailing\nint limit = 4\n```",
+              "range": {
+                "$place": "return p.x + p.y + static_cast<int>(Color::Green) + ⟦limit⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 56
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 61
                   }
                 }
               }

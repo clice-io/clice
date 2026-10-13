@@ -310,8 +310,8 @@ private:
 
     /// The read-only hover card for the symbol under the cursor: name and
     /// kind from the symbol tables, definition text sliced from stored
-    /// content, the comment block above the definition. No Sema products
-    /// — see feature::index_hover.
+    /// content, the documentation read from the indexed text. No Sema
+    /// products — see feature::index_hover.
     std::optional<feature::HoverInfo> index_hover_card(const Session& session,
                                                        const protocol::Position& position);
 

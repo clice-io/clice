@@ -690,10 +690,26 @@ int run_inspect(const InspectOptions& opts) {
         LOG_ERROR("--configuration selects among the workspace's rules; --flags replaces them");
         return 1;
     }
+    auto overlay = [&] {
+        if(!opts.config.has_value()) {
+            return true;
+        }
+        auto result = kota::codec::json::from_string<StrictJson>(*opts.config, project.config);
+        if(!result) {
+            LOG_ERROR("invalid --config: {}", result.error().message);
+        }
+        return result.has_value();
+    };
     if(flags.empty()) {
         auto identity = CanonicalPath(directory);
         auto root = workspace_of(identity);
-        project.config = Config::load_from_workspace(root);
+        // The overlay goes in before the rules compile, as initializationOptions do.
+        project.config = Config::load_from_workspace(root, nullptr, nullptr, /*finalized=*/false);
+        if(!overlay()) {
+            return 1;
+        }
+        project.config.finalize(root);
+        project.config.keep_own_cache_dir();
         auto requested = opts.configuration.value_or("");
         if(auto checked = check_requested_configuration(project.config, requested); !checked) {
             LOG_ERROR("{}", checked.error());
@@ -705,13 +721,8 @@ int run_inspect(const InspectOptions& opts) {
                    root,
                    resolve_configuration(project.config, requested),
                    compile_commands_above(identity, root));
-    }
-    if(opts.config.has_value()) {
-        if(auto result = kota::codec::json::from_string<StrictJson>(*opts.config, project.config);
-           !result) {
-            LOG_ERROR("invalid --config: {}", result.error().message);
-            return 1;
-        }
+    } else if(!overlay()) {
+        return 1;
     }
 
     auto name = path::filename(file.path).str();

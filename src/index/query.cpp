@@ -12,6 +12,7 @@ import :support.logging;
 import :support.text;
 import :support.timer;
 import :syntax.doc_comment;
+import :syntax.documentation;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 import :vfs.file_system;
@@ -1082,6 +1083,10 @@ std::string IndexQuery::doc_comment(SymbolHash hash, Fid anchor, bool inherit) c
     const static auto dialect = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
     auto info = symbol_info(hash, anchor);
     SymbolKind kind = info ? info->kind : SymbolKind(SymbolKind::Invalid);
+    // As the compiled unit's doc_comment: a namespace has none.
+    if(kind == SymbolKind::Namespace) {
+        return {};
+    }
     std::optional<std::string> doxygen;
     std::string fallback;
     for(auto relation_kind: {RelationKind::Declaration, RelationKind::Definition}) {
@@ -1138,45 +1143,40 @@ std::string IndexQuery::doc_comment(SymbolHash hash, Fid anchor, bool inherit) c
     return fallback;
 }
 
-std::optional<std::string> IndexQuery::copied_doc_comment(SymbolHash hash,
-                                                          Fid anchor,
-                                                          llvm::StringRef name,
-                                                          bool inherit) const {
-    // Doxygen names a member `Class::member` or `Class#member`.
-    llvm::SmallVector<llvm::StringRef> parts;
-    name = name.take_until([](char c) { return c == '('; }).trim();
-    name.consume_front("::");
-    for(auto part: llvm::split(name, "::")) {
-        for(auto piece: llvm::split(part, '#')) {
-            if(piece.trim().empty()) {
-                return std::nullopt;
-            }
-            parts.push_back(piece.trim());
-        }
+auto IndexQuery::copied_doc_targets(SymbolHash hash, Fid anchor, llvm::StringRef name) const
+    -> std::vector<Located> {
+    auto copied = parse_copied_name(name);
+    if(!copied) {
+        return {};
     }
-    if(parts.empty()) {
-        return std::nullopt;
-    }
+    auto declares = [&](const Located& candidate) {
+        auto source = serving(candidate.site.file);
+        std::unique_ptr<llvm::MemoryBuffer> storage;
+        auto text = source ? source_text(*source, storage) : std::nullopt;
+        return text && declares_parameters(*text, candidate.site.range.end, *copied->parameters);
+    };
 
     auto chain = container_chain(hash);
-    for(auto depth = chain.size() + 1; depth > 0; depth -= 1) {
+    for(auto depth = copied->absolute ? 1 : chain.size() + 1; depth > 0; depth -= 1) {
         SymbolQuery query{.mode = SymbolQuery::Mode::Exact,
                           .absolute = true,
-                          .pattern = parts.back().str()};
+                          .pattern = copied->parts.back().str()};
         for(auto& container: llvm::ArrayRef(chain).take_front(depth - 1)) {
             query.scope.push_back({.name = container.name});
         }
-        for(auto part: llvm::ArrayRef(parts).drop_back()) {
+        for(auto part: llvm::ArrayRef(copied->parts).drop_back()) {
             query.scope.push_back({.name = part.str()});
         }
-        for(auto& located: locate(query)) {
-            if(auto text = doc_comment(located.symbol.hash, located.site.file, inherit);
-               !text.empty()) {
-                return text;
-            }
+        auto found = locate(query);
+        if(found.empty()) {
+            continue;
         }
+        if(copied->parameters && found.size() > 1) {
+            std::erase_if(found, [&](const Located& candidate) { return !declares(candidate); });
+        }
+        return found;
     }
-    return std::nullopt;
+    return {};
 }
 
 std::optional<std::string> IndexQuery::serving_text(Fid file) const {

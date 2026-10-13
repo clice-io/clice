@@ -63,10 +63,10 @@ struct Documentation {
     const Param* template_param(llvm::StringRef name) const;
 };
 
-/// The comment text (comment_text) documenting what a `@copydoc`,
-/// `@copybrief` or `@copydetails` names; nullopt when the name resolves to
-/// nothing.
-using CopiedDocLookup = llvm::function_ref<std::optional<std::string>(llvm::StringRef name)>;
+/// The documentation of what a `@copydoc`, `@copybrief` or `@copydetails`
+/// names, the names in its own comment looked up from where it is
+/// declared; nullopt when the name resolves to nothing documented.
+using CopiedDocLookup = llvm::function_ref<std::optional<Documentation>(llvm::StringRef name)>;
 
 /// Read the text of a documentation comment as Doxygen does: its commands
 /// with `@` or `\`, the Markdown it allows, and GTK-Doc's and kernel-doc's
@@ -74,5 +74,27 @@ using CopiedDocLookup = llvm::function_ref<std::optional<std::string>(llvm::Stri
 /// section. An unknown command stays as written. A comment documenting a
 /// file, a page or a group documents no declaration: empty.
 Documentation parse_documentation(llvm::StringRef text, CopiedDocLookup lookup);
+
+/// A name as `@copydoc` writes it: `name`, `Class::member`,
+/// `Class#member`, `::name`, and for one overload of a function its
+/// parameter types, `f(int, const char*)`.
+struct CopiedName {
+    /// The scopes, outermost first, then the name.
+    llvm::SmallVector<llvm::StringRef, 4> parts;
+
+    /// Written with a leading `::`: a name of the global scope.
+    bool absolute = false;
+
+    /// What the parentheses after the name hold.
+    std::optional<llvm::StringRef> parameters;
+};
+
+/// nullopt when a scope or the name is empty, as in `A::` or `#f`.
+std::optional<CopiedName> parse_copied_name(llvm::StringRef name);
+
+/// Whether the function whose name ends at `name_end` in `content` declares
+/// the parameters `spelled` lists: the same types in the same order, a
+/// name only one side gives and the default arguments aside.
+bool declares_parameters(llvm::StringRef content, std::uint32_t name_end, llvm::StringRef spelled);
 
 }  // namespace clice

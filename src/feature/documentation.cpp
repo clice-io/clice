@@ -15,6 +15,9 @@ namespace clice::feature {
 
 namespace {
 
+/// How many `@copydoc`s deep documentation is followed: a cycle ends there.
+constexpr unsigned copy_depth = 4;
+
 Documentation read(std::string text, const DocumentationOptions& options, CopiedDocLookup lookup) {
     if(options.format == "plain") {
         return {.details = std::move(text), .verbatim = true};
@@ -22,8 +25,50 @@ Documentation read(std::string text, const DocumentationOptions& options, Copied
     return parse_documentation(text, lookup);
 }
 
-std::optional<std::string> nothing_copied(llvm::StringRef) {
+std::optional<Documentation> nothing_copied(llvm::StringRef) {
     return std::nullopt;
+}
+
+Documentation decl_documentation(CompilationUnitRef unit,
+                                 const clang::NamedDecl* decl,
+                                 const DocumentationOptions& options,
+                                 unsigned depth) {
+    auto copied = [&](llvm::StringRef name) -> std::optional<Documentation> {
+        if(depth == copy_depth) {
+            return std::nullopt;
+        }
+        for(const auto* target: copied_doc_targets(unit, decl, name)) {
+            if(auto doc = decl_documentation(unit, target, options, depth + 1); !doc.empty()) {
+                return doc;
+            }
+        }
+        return std::nullopt;
+    };
+    return read(doc_comment(unit, decl, options.inherit), options, copied);
+}
+
+Documentation symbol_documentation(const index::IndexQuery& query,
+                                   index::SymbolHash hash,
+                                   Fid anchor,
+                                   const DocumentationOptions& options,
+                                   unsigned depth) {
+    auto copied = [&](llvm::StringRef name) -> std::optional<Documentation> {
+        if(depth == copy_depth) {
+            return std::nullopt;
+        }
+        for(const auto& target: query.copied_doc_targets(hash, anchor, name)) {
+            if(auto doc = symbol_documentation(query,
+                                               target.symbol.hash,
+                                               target.site.file,
+                                               options,
+                                               depth + 1);
+               !doc.empty()) {
+                return doc;
+            }
+        }
+        return std::nullopt;
+    };
+    return read(query.doc_comment(hash, anchor, options.inherit), options, copied);
 }
 
 }  // namespace
@@ -31,15 +76,7 @@ std::optional<std::string> nothing_copied(llvm::StringRef) {
 auto documentation(CompilationUnitRef unit,
                    const clang::NamedDecl* decl,
                    const DocumentationOptions& options) -> Documentation {
-    auto copied = [&](llvm::StringRef name) -> std::optional<std::string> {
-        for(const auto* target: copied_doc_targets(decl, name)) {
-            if(auto text = doc_comment(unit, target, options.inherit); !text.empty()) {
-                return text;
-            }
-        }
-        return std::nullopt;
-    };
-    return read(doc_comment(unit, decl, options.inherit), options, copied);
+    return decl_documentation(unit, decl, options, 0);
 }
 
 auto documentation(CompilationUnitRef unit,
@@ -52,10 +89,7 @@ auto documentation(const index::IndexQuery& query,
                    index::SymbolHash hash,
                    Fid anchor,
                    const DocumentationOptions& options) -> Documentation {
-    auto copied = [&](llvm::StringRef name) {
-        return query.copied_doc_comment(hash, anchor, name, options.inherit);
-    };
-    return read(query.doc_comment(hash, anchor, options.inherit), options, copied);
+    return symbol_documentation(query, hash, anchor, options, 0);
 }
 
 void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text) {

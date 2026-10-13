@@ -20,10 +20,12 @@ std::string doc_comment(CompilationUnitRef unit, const clang::NamedDecl* decl, b
 /// after it on its line.
 std::string doc_comment(CompilationUnitRef unit, const clang::MacroInfo* macro);
 
-/// The declarations a `@copydoc` in the comment of `decl` may name: `name`
-/// without its parameter list, looked up from `decl`'s scope outward, a
-/// qualified name part by part.
-llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(const clang::NamedDecl* decl,
+/// The declarations a `@copydoc` in the comment of `decl` may name
+/// (parse_copied_name): looked up from `decl`'s scope outward, or in the
+/// global scope, a qualified name part by part; of several, the functions
+/// declaring the parameters it lists, when it lists them.
+llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnitRef unit,
+                                                              const clang::NamedDecl* decl,
                                                               llvm::StringRef name);
 
 }  // namespace clice

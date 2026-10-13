@@ -23,9 +23,9 @@ class TemplateResolver;
 /// traversal records, plus preprocessor and lexical entities, flattened into
 /// one tagged union (no nested discriminant like wrapping clang::DynTypedNode
 /// would introduce). Preprocessor payloads are pointers into the unit's
-/// Directive storage, which shares the unit's lifetime; lexical payloads
-/// (module declarations, comments) point into the Semantics' own LexicalInfo
-/// storage.
+/// Directive storage, which shares the unit's lifetime, comments into the
+/// unit's comments (CompilationUnitRef::comments); module declarations
+/// point into the Semantics' own LexicalInfo storage.
 class SemanticNode {
 public:
     enum class Kind : std::uint8_t {
@@ -377,7 +377,7 @@ public:
     /// The main file's comments in source order (the spelled token
     /// stream drops them). The same objects back the Comment nodes.
     llvm::ArrayRef<LexicalInfo::Comment> comments() const {
-        return lexical.comments;
+        return main_comments;
     }
 
     /// The main file's module declarations, already cross-checked
@@ -435,9 +435,13 @@ private:
     std::vector<std::uint32_t> owner_begin;
     std::vector<std::uint32_t> owner_nodes;
 
-    /// The lexically scanned entities; Module and Comment nodes point into
-    /// this storage.
+    /// The lexically scanned entities; Module nodes point into this
+    /// storage.
     LexicalInfo lexical;
+
+    /// The unit's comments of the main file (CompilationUnitRef::comments);
+    /// Comment nodes point into them.
+    llvm::ArrayRef<LexicalInfo::Comment> main_comments;
 };
 
 /// resolve_references with tree context: a dependent name that is the

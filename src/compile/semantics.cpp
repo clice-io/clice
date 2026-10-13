@@ -772,6 +772,7 @@ private:
     // imports as first-class nodes.
     void append_directives() {
         semantics.lexical = lexical_scan(unit.main_content(), &unit.lang_options());
+        semantics.main_comments = unit.comments(unit.main_file());
         filter_module_declarations();
 
         struct Entry {
@@ -827,7 +828,7 @@ private:
 
         // A comment node owns no spelled tokens (the stream drops them); it
         // participates by its payload range only.
-        for(auto& comment: semantics.lexical.comments) {
+        for(auto& comment: semantics.main_comments) {
             directives.push_back({comment.range.begin, SemanticNode(&comment), {}});
         }
 

@@ -400,13 +400,6 @@ public:
     /// method overriding another without one takes that method's.
     std::string doc_comment(SymbolHash hash, Fid anchor, bool inherit) const;
 
-    /// The text of the comment documenting what a `@copydoc` in the comment
-    /// of the symbol names: `name` without its parameter list, looked up
-    /// from the symbol's scope outward; nullopt when nothing it names has
-    /// one.
-    std::optional<std::string>
-        copied_doc_comment(SymbolHash hash, Fid anchor, llvm::StringRef name, bool inherit) const;
-
     /// The source line a site lies on, for previews; empty when the text
     /// is unavailable (see definition_text on the disk re-read).
     std::string context_line(const Site& site) const;
@@ -426,6 +419,15 @@ public:
     };
 
     std::optional<Located> resolve(SymbolHash hash, Fid anchor) const;
+
+    /// The symbols a `@copydoc` in the comment of the symbol may name
+    /// (parse_copied_name), as the compiled unit's copied_doc_targets finds
+    /// them: from the symbol's scope outward, or in the global scope; of
+    /// several, the functions declaring the parameters it lists, when it
+    /// lists them.
+    std::vector<Located> copied_doc_targets(SymbolHash hash,
+                                            Fid anchor,
+                                            llvm::StringRef name) const;
 
     /// The symbols under a cursor, each with its canonical site; one no
     /// source places is left out.

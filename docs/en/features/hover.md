@@ -811,7 +811,7 @@ tests/hover/documentation/21_macro_docs
 
 **Trailing comments**
 
-A comment after a field, an enumerator or a variable on its line documents it
+A `///<` comment after a field, an enumerator or a variable on its line documents it; any other comment there does when no comment above documents it
 
 ```case
 tests/hover/documentation/22_trailing_comments

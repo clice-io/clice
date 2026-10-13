@@ -1,4 +1,4 @@
-import { test } from "@clice/tools/testing";
+import { answers, test } from "@clice/tools/testing";
 
 const RULES = [
     ["no rules", undefined],
@@ -16,3 +16,11 @@ for (const [name, pattern] of RULES) {
         await t.show("main.cpp", s.diagnostics("main.cpp"));
     });
 }
+
+answers(
+    "rules in both clients",
+    { config: { rules: [{ patterns: ["**/*.cpp"], append: ["-DFROM_EDITOR=1"] }] } },
+    async (a) => {
+        await a.show("macro", a.hover(a.marker("macro")));
+    },
+);

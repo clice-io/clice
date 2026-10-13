@@ -188,7 +188,8 @@ bool is_html_tag(llvm::StringRef name) {
 
 /// Escape the `<` in a line of markdown that would start an HTML tag where
 /// the writer meant none: a name no HTML tag has, or one right after a
-/// name, as template arguments are written. Code spans are left alone.
+/// name, as template arguments are written. Code spans and HTML comments
+/// are left alone.
 std::string escape_stray_tags(llvm::StringRef line) {
     std::string result;
     for(std::size_t i = 0; i < line.size(); i += 1) {
@@ -201,7 +202,8 @@ std::string escape_stray_tags(llvm::StringRef line) {
             i = end - 1;
             continue;
         }
-        if(c == '<' && looks_like_tag(line.substr(i + 1))) {
+        if(c == '<' && looks_like_tag(line.substr(i + 1)) &&
+           !line.substr(i + 1).starts_with("!--")) {
             auto rest = line.substr(i + 1);
             bool closing = rest.consume_front("/");
             auto name = rest.take_while(llvm::isAlnum);
