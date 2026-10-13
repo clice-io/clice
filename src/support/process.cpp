@@ -60,7 +60,10 @@ kota::task<std::expected<std::string, std::string>> execute(std::vector<std::str
 }
 
 void release_free_memory() {
-#ifdef __GLIBC__
+    // Under ASan glibc's allocator holds nothing: malloc_trim would only
+    // initialize it, which glibc does without a lock, so two threads trimming
+    // at once corrupt it (a crash then, or an abort at thread exit).
+#if defined(__GLIBC__) && !defined(__SANITIZE_ADDRESS__)
     malloc_trim(0);
 #endif
 }
