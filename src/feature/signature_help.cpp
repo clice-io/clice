@@ -130,6 +130,31 @@ llvm::StringRef parameter_name(const clang::FunctionDecl& function, unsigned ind
     return name;
 }
 
+/// The names a documentation comment may give `function`'s parameter
+/// `index`: each one a declaration of the function, or of the one it was
+/// instantiated from, writes for it.
+llvm::SmallVector<std::string, 1> written_names(const clang::FunctionDecl& function,
+                                                unsigned index) {
+    llvm::SmallVector<std::string, 1> names;
+    auto add = [&](const clang::FunctionDecl& declaration) {
+        for(auto* redecl: declaration.redecls()) {
+            if(index >= redecl->getNumParams()) {
+                continue;
+            }
+            auto name = redecl->getParamDecl(index)->getName();
+            if(!name.empty() && !llvm::is_contained(names, name)) {
+                names.push_back(name.str());
+            }
+        }
+    };
+    add(function);
+    if(auto* pattern = pattern_of(function);
+       pattern && pattern->getNumParams() == function.getNumParams()) {
+        add(*pattern);
+    }
+    return names;
+}
+
 /// The parameters an instantiation expanded from a pack of the
 /// declaration it was instantiated from, as indices [begin, end): each
 /// is named after the pack, which names none of them. A member template
@@ -158,16 +183,17 @@ struct Signature {
     llvm::raw_svector_ostream stream{label};
     std::vector<protocol::ParameterInformation> parameters;
 
-    /// The name a documentation comment gives each parameter, empty for
-    /// one it cannot name (an expanded pack's element, `...`).
-    std::vector<std::string> names;
+    /// The names a documentation comment may give each parameter, none
+    /// for one it cannot name (an expanded pack's element).
+    std::vector<llvm::SmallVector<std::string, 1>> names;
 
     /// The last parameter takes every argument past the ones before it: a
     /// pack or a C-style `...`.
     bool pack = false;
 
-    /// Writes one parameter, named `name`, with `print`.
-    void parameter(llvm::function_ref<void(llvm::raw_ostream&)> print, llvm::StringRef name = {}) {
+    /// Writes one parameter, which a comment may name `names`, with `print`.
+    void parameter(llvm::function_ref<void(llvm::raw_ostream&)> print,
+                   llvm::SmallVector<std::string, 1> names = {}) {
         if(!parameters.empty()) {
             stream << ", ";
         }
@@ -177,7 +203,7 @@ struct Signature {
         parameters.push_back({
             .label = std::tuple<protocol::uinteger, protocol::uinteger>{begin, end},
         });
-        names.push_back(name.str());
+        this->names.push_back(std::move(names));
     }
 
     /// The finished signature, the parameter `argument` falls on active.
@@ -218,7 +244,7 @@ void print_parameter(llvm::raw_ostream& stream,
 /// parameters (Signature::names).
 struct Documented {
     const clang::NamedDecl* decl = nullptr;
-    std::vector<std::string> parameters;
+    std::vector<llvm::SmallVector<std::string, 1>> parameters;
 };
 
 class SignatureCollector final : public clang::CodeCompleteConsumer {
@@ -369,7 +395,7 @@ private:
     /// A C-style `...` takes every argument past the named parameters.
     static void variadic(Signature& signature, bool variadic) {
         if(variadic) {
-            signature.parameter([](llvm::raw_ostream& os) { os << "..."; });
+            signature.parameter([](llvm::raw_ostream& os) { os << "..."; }, {"..."});
             signature.pack = true;
         }
     }
@@ -393,7 +419,7 @@ private:
                 [&](llvm::raw_ostream& os) {
                     print_parameter(os, *function.getParamDecl(index), name, policy);
                 },
-                name);
+                expanded ? llvm::SmallVector<std::string, 1>() : written_names(function, index));
         }
     }
 
@@ -599,6 +625,10 @@ private:
         function.getDeclName().print(signature.stream, policy);
         signature.stream << "(";
         parameters(signature, function, 0, function.getNumParams() - 1);
+        // The constructor's comment names none of the function's own.
+        for(auto& names: signature.names) {
+            names.clear();
+        }
         write(signature);
         signature.stream << ") -> ";
         forwarding->result.print(signature.stream, policy);
@@ -695,7 +725,7 @@ auto macro_call_at(CompilationUnitRef unit, std::uint32_t offset) -> std::option
 /// `@param` beside it; `names` are the parameters' (Signature::names).
 void document(protocol::SignatureInformation& signature,
               const Documentation& doc,
-              llvm::ArrayRef<std::string> names) {
+              llvm::ArrayRef<llvm::SmallVector<std::string, 1>> names) {
     if(doc.empty()) {
         return;
     }
@@ -703,9 +733,12 @@ void document(protocol::SignatureInformation& signature,
     if(!signature.parameters) {
         return;
     }
-    for(auto [parameter, name]: llvm::zip_equal(*signature.parameters, names)) {
-        if(const auto* param = doc.param(name); param && !name.empty() && !param->text.empty()) {
-            parameter.documentation = param->text;
+    for(auto [parameter, written]: llvm::zip_equal(*signature.parameters, names)) {
+        for(const auto& name: written) {
+            if(const auto* param = doc.param(name); param && !param->text.empty()) {
+                parameter.documentation = param->text;
+                break;
+            }
         }
     }
 }
@@ -727,7 +760,7 @@ auto macro_signature(const MacroCall& call, const Documentation& doc) -> protoco
                     os << "...";
                 }
             },
-            param->getName());
+            {last && call.macro->isC99Varargs() ? "..." : param->getName().str()});
     }
     signature.stream << ")";
     signature.pack = call.macro->isVariadic();

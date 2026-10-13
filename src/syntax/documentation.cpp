@@ -309,7 +309,14 @@ llvm::SmallVector<llvm::StringRef> split_parameters(llvm::StringRef list) {
     std::size_t begin = 0;
     for(std::size_t index = 0; index < list.size(); index += 1) {
         auto c = list[index];
-        if(c == '"' || c == '\'') {
+        bool literal = c == '"';
+        if(c == '\'') {
+            // A `'` inside a number separates its digits.
+            auto before = list.take_front(index);
+            auto word = before.substr(before.rfind_if_not(identifier_char) + 1);
+            literal = word.empty() || word == "L" || word == "u" || word == "U" || word == "u8";
+        }
+        if(literal) {
             for(index += 1; index < list.size() && list[index] != c; index += 1) {
                 if(list[index] == '\\') {
                     index += 1;
@@ -384,7 +391,17 @@ bool adds_name(llvm::StringRef longer, llvm::StringRef shorter) {
 /// gives aside, also before an array's bounds: `int values[4]` is `int[4]`.
 bool same_parameter(llvm::StringRef have, llvm::StringRef want) {
     auto bounds = [](llvm::StringRef parameter) {
-        return parameter.substr(std::min(parameter.find('['), parameter.size()));
+        int depth = 0;
+        for(std::size_t index = 0; index < parameter.size(); index += 1) {
+            auto c = parameter[index];
+            if(c == '[' && depth == 0) {
+                return parameter.substr(index);
+            }
+            depth += llvm::StringRef("(<{").contains(c)   ? 1
+                     : llvm::StringRef(")>}").contains(c) ? -1
+                                                          : 0;
+        }
+        return llvm::StringRef();
     };
     if(bounds(have) != bounds(want)) {
         return false;

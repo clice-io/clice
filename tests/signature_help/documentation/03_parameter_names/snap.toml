@@ -1,0 +1,47 @@
+[answers.variadic.signature_help]
+signatures = ["log_message(const char *format, ⟦...⟧) -> void"]
+active = 0
+documentation = '''
+Logs a message.
+
+Parameters:
+- format — The printf format.
+- ... — The values it formats.
+'''
+parameter_documentation = "The values it formats."
+
+[answers.uglified.signature_help]
+signatures = ["open_file(⟦const char *path⟧, int flags) -> int"]
+active = 0
+documentation = '''
+Opens a file.
+
+Parameters:
+- __path — The file to open.
+- __flags — How to open it.
+'''
+parameter_documentation = "The file to open."
+
+[answers.redeclared.signature_help]
+signatures = ["copy_bytes(char *destination, ⟦const char *source⟧) -> void"]
+active = 0
+documentation = '''
+Copies bytes.
+
+Parameters:
+- to — Where they go.
+- from — Where they come from.
+'''
+parameter_documentation = "Where they come from."
+
+[answers.macro_variadic.signature_help]
+signatures = ["LOG_ALL(format, ⟦...⟧)"]
+active = 0
+documentation = '''
+Logs through the macro.
+
+Parameters:
+- format — The printf format.
+- ... — The values it formats.
+'''
+parameter_documentation = "The values it formats."

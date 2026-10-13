@@ -223,6 +223,12 @@ ZEST_CASE(DeclaresParameters) {
     llvm::StringRef literal = "void split(const char* delimiter = \",\");";
     ZEXPECT(declares_parameters(literal, 10, "const char*"));
 
+    llvm::StringRef separated = "void f(int n = 1'000, int m);";
+    ZEXPECT(declares_parameters(separated, 6, "int, int"));
+
+    llvm::StringRef nested = "void g(std::unique_ptr<char[]> buffer);";
+    ZEXPECT(declares_parameters(nested, 6, "std::unique_ptr<char[]>"));
+
     llvm::StringRef array = "void process(int values[4]);";
     ZEXPECT(declares_parameters(array, 12, "int[4]"));
     ZEXPECT(!declares_parameters(array, 12, "int[5]"));
