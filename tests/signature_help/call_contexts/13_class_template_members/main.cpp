@@ -1,3 +1,5 @@
+#include <string>
+
 template <typename T>
 struct Vector {
     T& at(int index);
@@ -27,11 +29,15 @@ struct Point {
     int y;
 };
 
-void use(Vector<Point> points, Function<bool(int, double)> callback, Row<int, double> row) {
+void use(Vector<Point> points,
+         Function<bool(int, double)> callback,
+         Row<int, double> row,
+         Vector<std::string> names) {
     points.at(§(member)0);
     points.assign(3, §(parameter)Point{});
     points.convert(§(member_template)1.0);
     callback(§(function_object)1, 2.0);
     row.fill(0, §(class_pack)1, 2.0);
     row.append(1, §(own_pack)2);
+    names.at(§(standard_alias)0);
 }

@@ -204,7 +204,7 @@ tests/signature_help/call_contexts/10_macros
 
 类模板的成员显示对象所属类实例化时使用的类型
 
-`Vector<Point>::at` 返回 `Point &` 而不是 `T &`；通过函数对象调用时，会显示声明该对象时所用函数类型的参数。成员模板自身的参数则保持其声明中的写法。
+`Vector<Point>::at` 返回 `Point &` 而不是 `T &`；通过函数对象调用时，会显示声明该对象时所用函数类型的参数。成员模板自身的参数则保持其声明中的写法。标准库类型以常用名称显示：`string` 而不是 `basic_string<char>`。
 
 ```case
 tests/signature_help/call_contexts/13_class_template_members

@@ -13,13 +13,27 @@ class initializer_list {
     const T* last;
 };
 
+template <bool Condition, class T>
+struct enable_if {};
+
+template <class T>
+struct enable_if<true, T> {
+    using type = T;
+};
+
+template <bool Condition, class T>
+using enable_if_t = typename enable_if<Condition, T>::type;
+
+template <class T, class... Args>
+inline constexpr bool is_constructible_v = __is_constructible(T, Args...);
+
 template <class T>
 class optional {
 public:
     using value_type = T;
 
     template <class... Args>
-    T& emplace(Args&&... args);
+    enable_if_t<is_constructible_v<T, Args...>, T&> emplace(Args&&... args);
 
     template <class U, class... Args>
     T& emplace(initializer_list<U> list, Args&&... args);
