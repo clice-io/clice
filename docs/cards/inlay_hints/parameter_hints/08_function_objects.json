@@ -13,7 +13,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Callback {\n    void operator()(int status, int detail) const;\n};\n\nvoid (*handler)(int status, const char* message);\n\nvoid use() {\n    Callback cb;\n    cb(1, 2);\n    cb.operator()(3, 4);\n    handler(0, \"ok\");\n    auto cmp = [](int lhs, int rhs) { return lhs < rhs; };\n    cmp(1, 2);\n}\n",
+      "text": "struct Callback {\n    void operator()(int status, int detail) const;\n};\n\nvoid (*handler)(int status, const char* message);\n\nstruct Device {\n    int (*open)(const char* path, int flags);\n};\n\nvoid use(Device* device) {\n    Callback cb;\n    cb(1, 2);\n    cb.operator()(3, 4);\n    handler(0, \"ok\");\n    device->open(\"/dev/null\", 0);\n    auto cmp = [](int lhs, int rhs) { return lhs < rhs; };\n    cmp(1, 2);\n}\n",
       "markers": []
     }
   ],
@@ -31,11 +31,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 8,
+                      "line": 12,
                       "character": 4
                     },
                     "end": {
-                      "line": 8,
+                      "line": 12,
                       "character": 13
                     }
                   }
@@ -47,11 +47,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 9,
+                      "line": 13,
                       "character": 4
                     },
                     "end": {
-                      "line": 9,
+                      "line": 13,
                       "character": 24
                     }
                   }
@@ -63,11 +63,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 10,
+                      "line": 14,
                       "character": 4
                     },
                     "end": {
-                      "line": 10,
+                      "line": 14,
                       "character": 21
                     }
                   }
@@ -75,15 +75,31 @@
               },
               {
                 "line": {
-                  "$place": "auto cmp⟨: (lambda)⟩ = [](int lhs, int rhs)⟨-> bool⟩ { return lhs < rhs; };",
+                  "$place": "device->open(⟨path:⟩\"/dev/null\", ⟨flags:⟩0);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 11,
+                      "line": 15,
                       "character": 4
                     },
                     "end": {
-                      "line": 11,
+                      "line": 15,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto cmp = [](int lhs, int rhs)⟨-> bool⟩ { return lhs < rhs; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 16,
                       "character": 58
                     }
                   }
@@ -95,11 +111,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 12,
+                      "line": 17,
                       "character": 4
                     },
                     "end": {
-                      "line": 12,
+                      "line": 17,
                       "character": 14
                     }
                   }

@@ -1,0 +1,9 @@
+[default."main.cpp"]
+inlay_hints = [
+    { line = "}⟨// namespace storage⟩" },
+    { line = "}⟨// namespace net::http::client⟩" },
+    { line = "}⟨// namespace⟩" },
+]
+
+[disabled."main.cpp"]
+inlay_hints = []

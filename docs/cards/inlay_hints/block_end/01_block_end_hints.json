@@ -3,14 +3,16 @@
   "topic": "inlay_hints",
   "subtopic": "block_end",
   "title": "Names after closing braces",
-  "summary": "After the closing brace of a block spanning lines, a hint names what the brace closes",
-  "prose": "Functions, types, namespaces and control flow get one; `if` and `while` show their condition when it is short, an `else if` chain shows as plain `// if`, and a label longer than 60 characters is dropped. A block on one line gets none.",
+  "summary": "After the closing brace of a tall block, a hint names what the brace closes",
+  "prose": "Functions, types and control flow get one, when the block is at least `inlay_hints.min_block_lines` lines tall (ten by default; two here). `if` and `while` show their condition when it is short, an `else if` chain shows as plain `// if`, and a label longer than 60 characters is cut with `…`. Clicking a name goes to the start of its block.",
   "status": "supported",
-  "issues": [],
+  "issues": [
+    "clangd#1634"
+  ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace detail {\n\nstruct Widget {\n    int width;\n    int height;\n};\n\nint area(const Widget& widget) {\n    int total = 0;\n    while (total < widget.width) {\n        total += widget.height;\n    }\n    if (total > 10) {\n        total = 10;\n    } else if (total < 0) {\n        total = 0;\n    }\n    if (widget.width > widget.height && widget.height > 0 && total != widget.width) {\n        total += 1;\n    }\n    return total;\n}\n\nint tiny() { return 0; }\n\nint a_function_whose_name_alone_is_long_enough_to_pass_sixty_chars() {\n    return 0;\n}\n\n}\n\n",
+      "text": "namespace detail {\n\nstruct Widget {\n    int width;\n    int height;\n};\n\nbool ready();\n\nint area(const Widget& widget) {\n    int total = 0;\n    while (ready()) {\n        total += 1;\n    }\n    while (total < widget.width) {\n        total += widget.height;\n    }\n    if (total > 10) {\n        total = 10;\n    } else if (total < 0) {\n        total = 0;\n    }\n    if (widget.width > widget.height && widget.height > 0 && total != widget.width) {\n        total += 1;\n    }\n    return total;\n}\n\nint tiny() { return 0; }\n\nint a_function_whose_name_alone_is_long_enough_to_pass_sixty_chars() {\n    return 0;\n}\n\n}\n\n",
       "markers": [
         {
           "name": "struct_end",
@@ -19,45 +21,51 @@
           "range": true
         },
         {
+          "name": "call_end",
+          "begin": 184,
+          "end": 186,
+          "range": true
+        },
+        {
           "name": "while_end",
-          "begin": 194,
-          "end": 196,
+          "begin": 257,
+          "end": 259,
           "range": true
         },
         {
           "name": "else_if_end",
-          "begin": 289,
-          "end": 291,
+          "begin": 352,
+          "end": 354,
           "range": true
         },
         {
           "name": "long_condition_end",
-          "begin": 401,
-          "end": 403,
+          "begin": 464,
+          "end": 466,
           "range": true
         },
         {
           "name": "function_end",
-          "begin": 421,
-          "end": 423,
+          "begin": 484,
+          "end": 486,
           "range": true
         },
         {
           "name": "one_line_end",
-          "begin": 447,
-          "end": 449,
+          "begin": 510,
+          "end": 512,
           "range": true
         },
         {
           "name": "long_name_end",
-          "begin": 535,
-          "end": 537,
+          "begin": 598,
+          "end": 600,
           "range": true
         },
         {
           "name": "namespace_end",
-          "begin": 538,
-          "end": 540,
+          "begin": 601,
+          "end": 603,
           "range": true
         }
       ]
@@ -70,7 +78,24 @@
         {
           "label": "main.cpp",
           "value": {
-            "inlay_hints": []
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// namespace detail⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 34,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 34,
+                      "character": 1
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       ]
@@ -79,7 +104,8 @@
       "name": "configured",
       "config": {
         "inlay_hints": {
-          "block_end": true
+          "block_end": true,
+          "min_block_lines": 2
         }
       },
       "blocks": [
@@ -108,6 +134,30 @@
           }
         },
         {
+          "label": "call_end",
+          "marker": "call_end",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// while ready()⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 5
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
           "label": "while_end",
           "marker": "while_end",
           "value": {
@@ -118,11 +168,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 11,
+                      "line": 16,
                       "character": 4
                     },
                     "end": {
-                      "line": 11,
+                      "line": 16,
                       "character": 5
                     }
                   }
@@ -142,11 +192,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 16,
+                      "line": 21,
                       "character": 4
                     },
                     "end": {
-                      "line": 16,
+                      "line": 21,
                       "character": 5
                     }
                   }
@@ -166,11 +216,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 19,
+                      "line": 24,
                       "character": 4
                     },
                     "end": {
-                      "line": 19,
+                      "line": 24,
                       "character": 5
                     }
                   }
@@ -190,11 +240,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 21,
+                      "line": 26,
                       "character": 0
                     },
                     "end": {
-                      "line": 21,
+                      "line": 26,
                       "character": 1
                     }
                   }
@@ -214,7 +264,24 @@
           "label": "long_name_end",
           "marker": "long_name_end",
           "value": {
-            "inlay_hints": []
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// a_function_whose_name_alone_is_long_enough_to_pass_sixty_ch…⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 32,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 32,
+                      "character": 1
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         {
@@ -228,11 +295,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 29,
+                      "line": 34,
                       "character": 0
                     },
                     "end": {
-                      "line": 29,
+                      "line": 34,
                       "character": 1
                     }
                   }

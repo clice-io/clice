@@ -1,12 +1,36 @@
-[answers.spelled]
+[default.spelled]
 inlay_hints = [
     { line = "auto boxed = Box<int>(⟨first:⟩1, ⟨second:⟩2);" },
     { line = "auto listed = Box<int>{⟨first:⟩3, ⟨second:⟩4};" },
+    { line = "auto created = new Box<int>(⟨first:⟩5, ⟨second:⟩6);" },
+    { line = "auto closure = []⟨-> int⟩ { return 7; };" },
 ]
 
-[answers.deduced]
+[default.deduced]
 inlay_hints = [
     { line = "auto plain⟨: int⟩ = compute();" },
-    { line = "auto inferred⟨: Box<int>⟩ = Box(⟨first:⟩1, ⟨second:⟩2);" },
+    { line = "auto inferred = Box⟨<int>⟩(⟨first:⟩1, ⟨second:⟩2);" },
     { line = "auto copied⟨: int⟩ = auto(plain);" },
+    { line = "auto table⟨: Table<long, int>⟩ = make_table<long>();" },
+]
+
+[configured.spelled]
+inlay_hints = [
+    { line = "auto widened⟨: long⟩ = static_cast<long>(compute());" },
+    { line = "auto braced⟨: int⟩ = int{42};" },
+    { line = "auto boxed⟨: Box<int>⟩ = Box<int>(⟨first:⟩1, ⟨second:⟩2);" },
+    { line = "auto listed⟨: Box<int>⟩ = Box<int>{⟨first:⟩3, ⟨second:⟩4};" },
+    { line = "auto grouped⟨: long⟩ = (long{5});" },
+    { line = "auto created⟨: Box<int> *⟩ = new Box<int>(⟨first:⟩5, ⟨second:⟩6);" },
+    { line = "auto owned⟨: Owner<Box<int>>⟩ = make_owner<Box<int>>();" },
+    { line = "auto made⟨: Box<int> *⟩ = create<Box<int>>();" },
+    { line = "auto closure⟨: (lambda)⟩ = []⟨-> int⟩ { return 7; };" },
+]
+
+[configured.deduced]
+inlay_hints = [
+    { line = "auto plain⟨: int⟩ = compute();" },
+    { line = "auto inferred⟨: Box<int>⟩ = Box⟨<int>⟩(⟨first:⟩1, ⟨second:⟩2);" },
+    { line = "auto copied⟨: int⟩ = auto(plain);" },
+    { line = "auto table⟨: Table<long, int>⟩ = make_table<long>();" },
 ]

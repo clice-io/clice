@@ -14,6 +14,7 @@ import :semantic.designators;
 import :semantic.display;
 import :semantic.resolver;
 import :semantic.types;
+import :syntax.lexer;
 
 namespace clice::feature {
 
@@ -196,18 +197,182 @@ bool is_simple_builtin(const clang::FunctionDecl* callee) {
     return false;
 }
 
-/// Whether an initializer writes out the type it has: `long` in
-/// `static_cast<long>(x)`, `Widget` in `Widget{1, 2}`. A type left to
-/// deduction (`Pair(1, 2.5)`, `auto(x)`) is not written out.
-bool spells_type(const clang::Expr* init) {
-    init = init->IgnoreImplicit()->IgnoreParens();
-    const clang::TypeSourceInfo* written = nullptr;
-    if(const auto* cast = dyn_cast<clang::ExplicitCastExpr>(init)) {
-        written = cast->getTypeInfoAsWritten();
-    } else if(const auto* temporary = dyn_cast<clang::CXXTemporaryObjectExpr>(init)) {
-        written = temporary->getTypeSourceInfo();
+/// Whether `c` continues a UTF-8 character rather than starting one.
+bool continues_character(char c) {
+    return (c & 0xC0) == 0x80;
+}
+
+/// The length of `text` in characters.
+std::size_t characters(llvm::StringRef text) {
+    return llvm::count_if(text, [](char c) { return !continues_character(c); });
+}
+
+/// `text` within `limit` characters, cut with `…` where it no longer fits;
+/// `0` means no limit.
+std::string truncate(llvm::StringRef text, std::size_t limit) {
+    if(limit == 0 || characters(text) <= limit) {
+        return text.str();
     }
-    return written && !written->getType()->getContainedDeducedType();
+    std::size_t kept = 0;
+    std::size_t end = 0;
+    for(; end < text.size(); end += 1) {
+        if(!continues_character(text[end])) {
+            if(kept + 1 == limit) {
+                break;
+            }
+            kept += 1;
+        }
+    }
+    return (text.take_front(end) + "…").str();
+}
+
+/// The first template argument list at the top level of a printed type,
+/// with the text around it.
+struct ArgumentList {
+    llvm::StringRef head;
+    llvm::SmallVector<llvm::StringRef, 4> arguments;
+    llvm::StringRef tail;
+};
+
+std::optional<ArgumentList> first_argument_list(llvm::StringRef text) {
+    std::optional<ArgumentList> list;
+    llvm::SmallVector<char, 8> closers;
+    std::size_t argument = 0;
+    for(std::size_t i = 0; i < text.size(); i += 1) {
+        switch(text[i]) {
+            case '<':
+                // Within parentheses or brackets, `<` and `>` compare.
+                if(!closers.empty() && closers.back() != '>') {
+                    break;
+                }
+                if(closers.empty() && !list) {
+                    list.emplace().head = text.take_front(i);
+                    argument = i + 1;
+                }
+                closers.push_back('>');
+                break;
+            case '(': closers.push_back(')'); break;
+            case '[': closers.push_back(']'); break;
+            case '>':
+                // The arrow of a trailing return type closes nothing.
+                if((i > 0 && text[i - 1] == '-') || (!closers.empty() && closers.back() != '>')) {
+                    break;
+                }
+                [[fallthrough]];
+            case ')':
+            case ']':
+                if(closers.empty() || closers.back() != text[i]) {
+                    return std::nullopt;
+                }
+                closers.pop_back();
+                if(list && closers.empty()) {
+                    list->arguments.push_back(text.slice(argument, i).trim());
+                    list->tail = text.drop_front(i + 1);
+                    return list;
+                }
+                break;
+            case ',':
+                if(list && closers.size() == 1) {
+                    list->arguments.push_back(text.slice(argument, i).trim());
+                    argument = i + 1;
+                }
+                break;
+            default: break;
+        }
+    }
+    return std::nullopt;
+}
+
+/// `text`, a printed type, within `limit` characters: each template
+/// argument keeps what of it fits, the rest of it written `…`, while the
+/// arguments after it still have room for a `…` each; a run of `…` is
+/// written once. Nullopt when not even `name<…>` fits.
+std::optional<std::string> elide(llvm::StringRef text, std::size_t limit) {
+    if(characters(text) <= limit) {
+        return text.str();
+    }
+    auto list = first_argument_list(text);
+    if(!list) {
+        return std::nullopt;
+    }
+    auto fixed = characters(list->head) + characters(list->tail) + 2;
+    if(fixed + 1 > limit) {
+        return std::nullopt;
+    }
+    auto room = limit - fixed;
+    std::string result = (list->head + "<").str();
+    std::size_t used = 0;
+    bool elided = false;
+    for(auto [index, argument]: llvm::enumerate(list->arguments)) {
+        std::size_t separator = index == 0 ? 0 : 2;
+        std::size_t reserved = index + 1 < list->arguments.size() ? 3 : 0;
+        std::optional<std::string> kept;
+        if(used + separator + reserved < room) {
+            kept = elide(argument, room - used - separator - reserved);
+        }
+        if(!kept) {
+            if(elided) {
+                continue;
+            }
+            kept = "…";
+        }
+        elided = *kept == "…";
+        if(index != 0) {
+            result += ", ";
+        }
+        result += *kept;
+        used += separator + characters(*kept);
+    }
+    result += ">";
+    result += list->tail;
+    return result;
+}
+
+/// The core of a type an initializer names: what it points or refers to,
+/// unqualified.
+clang::QualType named_core(clang::QualType type) {
+    type = type.getNonReferenceType();
+    while(type->isPointerType()) {
+        type = type->getPointeeType();
+    }
+    return type.getCanonicalType().getUnqualifiedType();
+}
+
+/// Whether a call names the type it returns among its explicit template
+/// arguments: the type itself, behind pointers and references
+/// (`any_cast<int>`, `create<Widget>`), or a specialization whose printed
+/// arguments are all among them (`make_unique<Widget>` for a
+/// `unique_ptr<Widget>`).
+bool names_result(const clang::CallExpr* call, clang::QualType type) {
+    llvm::SmallVector<clang::QualType, 2> written;
+    for(const auto& argument:
+        decls::explicit_template_arguments(call->getCallee()->IgnoreParenImpCasts())) {
+        if(argument.getArgument().getKind() == clang::TemplateArgument::Type) {
+            written.push_back(named_core(argument.getArgument().getAsType()));
+        }
+    }
+    if(written.empty()) {
+        return false;
+    }
+    auto core = named_core(type);
+    if(llvm::is_contained(written, core)) {
+        return true;
+    }
+    llvm::ArrayRef<clang::TemplateArgument> arguments;
+    if(const auto* spec = llvm::dyn_cast_if_present<clang::ClassTemplateSpecializationDecl>(
+           core->getAsRecordDecl())) {
+        arguments = spec->getTemplateArgs().asArray();
+    } else if(const auto* TST = core->getAs<clang::TemplateSpecializationType>()) {
+        arguments = TST->template_arguments();
+    }
+    while(!arguments.empty() && arguments.back().getIsDefaulted()) {
+        arguments = arguments.drop_back();
+    }
+    return !arguments.empty() &&
+           llvm::all_of(arguments, [&](const clang::TemplateArgument& argument) {
+               return argument.getKind() == clang::TemplateArgument::Type &&
+                      llvm::is_contained(written, named_core(argument.getAsType()));
+           });
 }
 
 struct Callee {
@@ -415,6 +580,10 @@ public:
 
             index += 1;
         }
+
+        if(options.endif) {
+            add_endif_hints();
+        }
     }
 
 private:
@@ -448,8 +617,6 @@ private:
     // Otherwise, the hint shouldn't be shown.
     std::optional<LocalSourceRange> compute_block_end_range(clang::SourceRange brace_range,
                                                             llvm::StringRef optional_punctuation) {
-        constexpr unsigned HintMinLineLimit = 2;
-
         auto [block_begin_fid, block_begin_offset] =
             unit.decompose_location(unit.file_location(brace_range.getBegin()));
         auto rbrace_loc = unit.file_location(brace_range.getEnd());
@@ -478,7 +645,7 @@ private:
         auto rbrace_line = src_mgr.getLineNumber(rbrace_fid, rbrace_offset);
 
         // Don't show hint on trivial blocks like `class X {};`
-        if(block_begin_line + HintMinLineLimit - 1 > rbrace_line) {
+        if(block_begin_line + options.min_block_lines - 1 > rbrace_line) {
             return std::nullopt;
         }
 
@@ -522,14 +689,25 @@ private:
         return content.ends_with("/*");
     }
 
-    bool should_hint_name(const clang::Expr* expr, llvm::StringRef name) {
+    bool should_hint_name(const clang::Expr* expr, llvm::StringRef name, bool unary) {
         if(name.empty())
             return false;
 
+        if(!options.single_letter_names && unary && name.size() == 1) {
+            return false;
+        }
+
         // If the argument expression is a single name and it matches the
         // parameter name exactly, omit the name hint.
-        if(name == display::identifier_of(expr))
+        auto spelled = display::identifier_of(expr);
+        if(name == spelled)
             return false;
+
+        // `aParam` is `param` behind a one-letter prefix.
+        if(!options.prefixed_names && name.size() > 2 && clang::isLowercase(name[0]) &&
+           clang::isUppercase(name[1]) && name.drop_front().equals_insensitive(spelled)) {
+            return false;
+        }
 
         // Exclude argument expressions preceded by a /*paramName*/.
         if(has_param_name_comment(expr, name)) {
@@ -537,6 +715,51 @@ private:
         }
 
         return true;
+    }
+
+    /// Whether an initializer already names the type it gives a variable:
+    /// `long` in `static_cast<long>(x)`, `Widget` in `Widget{1, 2}`,
+    /// `x<T>{}` and `new Widget`, a call naming it among its template
+    /// arguments, a lambda its closure type. A class template's deduced
+    /// arguments count as named where their own hint shows them.
+    bool spells_type(const clang::Expr* init, clang::QualType type) const {
+        init = init->IgnoreImplicit()->IgnoreParens();
+        const clang::TypeSourceInfo* written = nullptr;
+        if(const auto* cast = dyn_cast<clang::ExplicitCastExpr>(init)) {
+            written = cast->getTypeInfoAsWritten();
+        } else if(const auto* temporary = dyn_cast<clang::CXXTemporaryObjectExpr>(init)) {
+            written = temporary->getTypeSourceInfo();
+        } else if(const auto* unresolved = dyn_cast<clang::CXXUnresolvedConstructExpr>(init)) {
+            written = unresolved->getTypeSourceInfo();
+        } else if(const auto* allocation = dyn_cast<clang::CXXNewExpr>(init)) {
+            written = allocation->getAllocatedTypeSourceInfo();
+        } else if(const auto* call = dyn_cast<clang::CallExpr>(init)) {
+            return names_result(call, type);
+        } else {
+            return llvm::isa<clang::LambdaExpr>(init);
+        }
+        // What a template's only instantiation makes of the written type is
+        // news to the code.
+        if(written->getType()->isDependentType() && !type->isDependentType()) {
+            return false;
+        }
+        const auto* deduced = written->getType()->getContainedDeducedType();
+        const auto* template_deduced =
+            llvm::dyn_cast_if_present<clang::DeducedTemplateSpecializationType>(deduced);
+        return !deduced || (template_deduced && shows_deduced_arguments(template_deduced));
+    }
+
+    /// Whether a type left to class template argument deduction gets its
+    /// arguments hinted. An alias template's arguments are not its
+    /// target's: `Twin` of `Pair<T, T>` takes one.
+    bool shows_deduced_arguments(const clang::DeducedTemplateSpecializationType* type) const {
+        return options.deduced_template_arguments &&
+               llvm::isa_and_present<clang::ClassTemplateDecl>(
+                   type->getTemplateName().getAsTemplateDecl());
+    }
+
+    bool hints_calls() const {
+        return options.parameters || options.mutable_references || options.default_arguments;
     }
 
     using NameVec = llvm::SmallVector<llvm::StringRef, 8>;
@@ -581,7 +804,7 @@ private:
                     llvm::ArrayRef<const clang::Expr*> args) {
         assert(callee.decl || callee.loc);
 
-        if((!options.parameters && !options.default_arguments) || args.size() == 0) {
+        if(!hints_calls() || args.size() == 0) {
             return;
         }
 
@@ -636,29 +859,24 @@ private:
             }
 
             llvm::StringRef name = param_names[i];
-            const bool name_hint = should_hint_name(args[i], name) && options.parameters;
+            const bool name_hint =
+                options.parameters && should_hint_name(args[i], name, params.size() == 1);
             const bool reference_hint =
-                decls::binds_mutable_reference(params[i], forwarded_params[i]) &&
-                options.parameters;
+                options.mutable_references &&
+                decls::binds_mutable_reference(params[i], forwarded_params[i]);
 
             const bool is_default = llvm::isa<clang::CXXDefaultArgExpr>(args[i]);
             has_non_default_args |= !is_default;
             if(is_default) {
                 if(options.default_arguments) {
-                    const auto text = clang::Lexer::getSourceText(
-                        clang::CharSourceRange::getTokenRange(params[i]->getDefaultArgRange()),
-                        unit.context().getSourceManager(),
-                        unit.lang_options());
-                    // type_name_limit = 0 means unlimited, as for type hints.
-                    const bool too_long =
-                        options.type_name_limit && text.size() > options.type_name_limit;
-                    const auto abbrev = (too_long || text.contains("\n")) ? "..." : text;
+                    auto text = *display::default_argument(params[i]);
+                    const auto limit = options.max_length.default_arguments;
                     auto& element = formatted_default_args.emplace_back();
                     if(name_hint) {
                         append(element, linked(name, named_params[i]));
                         append(element, plain(": "));
                     }
-                    append(element, plain(abbrev));
+                    append(element, plain(limit && characters(text) > limit ? "…" : text));
                 }
             } else if(name_hint || reference_hint) {
                 std::vector<InlayHintPart> label;
@@ -675,22 +893,25 @@ private:
         }
 
         if(!formatted_default_args.empty()) {
+            const auto limit = options.max_length.default_arguments;
             std::vector<InlayHintPart> hint;
             std::size_t size = 0;
-            for(auto&& element: formatted_default_args) {
-                if(!hint.empty()) {
-                    append(hint, plain(", "));
-                    size += 2;
-                }
+            for(auto&& [index, element]: llvm::enumerate(formatted_default_args)) {
+                std::size_t separator = hint.empty() ? 0 : 2;
+                // While more defaults follow, `, …` must still fit after this one.
+                std::size_t rest = index + 1 < formatted_default_args.size() ? 3 : 0;
                 auto element_size = text_size(element);
-                if(options.type_name_limit && size + element_size >= options.type_name_limit) {
-                    append(hint, plain("..."));
+                if(limit && size + separator + element_size + rest > limit) {
+                    append(hint, plain(hint.empty() ? "…" : ", …"));
                     break;
+                }
+                if(separator) {
+                    append(hint, plain(", "));
                 }
                 for(auto& part: element) {
                     append(hint, std::move(part));
                 }
-                size += element_size;
+                size += separator + element_size;
             }
 
             add_inlay_hint(clang::SourceRange(rpunc_location),
@@ -702,7 +923,9 @@ private:
         }
     }
 
+    /// `// name` after the closing brace of a block, linking to `start`.
     void add_block_end_hint(clang::SourceRange brace_range,
+                            clang::SourceLocation start,
                             llvm::StringRef decl_prefix,
                             llvm::StringRef name,
                             llvm::StringRef optional_punctuation) {
@@ -716,23 +939,84 @@ private:
         }
         label += name;
 
-        constexpr unsigned HintMaxLengthLimit = 60;
-        if(label.length() > HintMaxLengthLimit) {
+        auto [fid, offset] = unit.decompose_location(unit.file_location(start));
+        add_end_hint(hint_range->end,
+                     label,
+                     options.max_length.block_end,
+                     fid == unit.main_file() ? std::optional(offset) : std::nullopt);
+    }
+
+    /// `// condition` after an `#endif`, the condition of the `#if` it
+    /// closes, matched lexically: a preamble compile reports no directive
+    /// it consumed, nor those in a skipped branch.
+    void add_endif_hints() {
+        llvm::SmallVector<LocalSourceRange> opened;
+        for(const auto& directive: unit.semantics().block_directives()) {
+            if(directive.kind == LexicalInfo::BlockDirective::Kind::If) {
+                opened.push_back(directive.range);
+            } else if(directive.kind == LexicalInfo::BlockDirective::Kind::EndIf &&
+                      !opened.empty()) {
+                add_endif_hint(opened.pop_back_val(), directive.range);
+            }
+        }
+    }
+
+    void add_endif_hint(LocalSourceRange opening, LocalSourceRange closing) {
+        auto content = unit.main_content();
+        if(content.slice(opening.begin, closing.begin).count('\n') + 1 < options.min_block_lines) {
             return;
         }
 
-        add_inlay_hint(*hint_range,
+        // Nothing may follow the `endif`, a comment included.
+        auto endif = Lexer::from_line(content, closing.begin, {.keep_comments = true});
+        endif.advance();
+        endif.advance();
+        if(!endif.advance().is_eod()) {
+            return;
+        }
+
+        auto lexer = Lexer::from_line(content, opening.begin);
+        lexer.advance();
+        std::string condition = lexer.advance().text(content) == "ifndef" ? "!" : "";
+        std::optional<std::uint32_t> previous;
+        for(auto token = lexer.advance(); !token.is_eod() && !token.is_eof();
+            token = lexer.advance()) {
+            if(previous && *previous < token.range.begin) {
+                condition += ' ';
+            }
+            condition += token.text(content);
+            previous = token.range.end;
+        }
+        if(previous) {
+            add_end_hint(endif.last().range.end,
+                         condition,
+                         options.max_length.endif,
+                         opening.begin);
+        }
+    }
+
+    void mark_block_end(const clang::Stmt* statement,
+                        const clang::Stmt* body,
+                        llvm::StringRef label,
+                        llvm::StringRef name = "") {
+        if(const auto* cs = llvm::dyn_cast_or_null<clang::CompoundStmt>(body)) {
+            add_block_end_hint(cs->getSourceRange(), statement->getBeginLoc(), label, name, "");
+        }
+    }
+
+    /// `// label` at `offset`, cut to `limit` characters, linking to `target`.
+    void add_end_hint(std::uint32_t offset,
+                      llvm::StringRef label,
+                      std::uint32_t limit,
+                      std::optional<std::uint32_t> target) {
+        add_inlay_hint(LocalSourceRange(offset, offset),
                        HintSide::Right,
                        HintCategory::BlockEnd,
                        " // ",
-                       {plain(label)},
+                       {
+                           InlayHintPart{.value = truncate(label, limit), .target = target}
+        },
                        "");
-    }
-
-    void mark_block_end(const clang::Stmt* body, llvm::StringRef label, llvm::StringRef name = "") {
-        if(const auto* cs = llvm::dyn_cast_or_null<clang::CompoundStmt>(body)) {
-            add_block_end_hint(cs->getSourceRange(), label, name, "");
-        }
     }
 
     static InlayHintPart plain(llvm::StringRef text) {
@@ -778,7 +1062,10 @@ private:
         if(part.value.empty()) {
             return;
         }
-        if(!label.empty() && !label.back().symbol && !part.symbol) {
+        auto is_plain = [](const InlayHintPart& part) {
+            return !part.symbol && !part.target;
+        };
+        if(!label.empty() && is_plain(label.back()) && is_plain(part)) {
             label.back().value += part.value;
             return;
         }
@@ -788,7 +1075,7 @@ private:
     static std::size_t text_size(llvm::ArrayRef<InlayHintPart> label) {
         std::size_t size = 0;
         for(const auto& part: label) {
-            size += part.value.size();
+            size += characters(part.value);
         }
         return size;
     }
@@ -799,9 +1086,20 @@ private:
         SpelledNames spelled;
         spelled.qualifier(display::restored_scope(type, display_options));
         spelled.walk(type);
+        // Once elision has cut a name out, a namesake of another declaration
+        // can take its place in the search: such names stay plain.
+        auto ambiguous = [&](llvm::StringRef name, const clang::NamedDecl* decl) {
+            return text.contains("…") && llvm::any_of(spelled.names, [&](const SpelledName& other) {
+                       return other.name == name &&
+                              other.decl->getCanonicalDecl() != decl->getCanonicalDecl();
+                   });
+        };
         std::vector<InlayHintPart> label;
         std::size_t cursor = 0;
         for(const auto& [name, decl]: spelled.names) {
+            if(ambiguous(name, decl)) {
+                continue;
+            }
             for(auto at = text.find(name, cursor); at != llvm::StringRef::npos;
                 at = text.find(name, at + 1)) {
                 auto end = at + name.size();
@@ -867,30 +1165,34 @@ private:
         result.push_back(std::move(hint));
     }
 
+    std::optional<std::string> fit_type(llvm::StringRef text) const {
+        auto limit = options.max_length.types;
+        return limit == 0 ? text.str() : elide(text, limit);
+    }
+
     void add_type_hint(clang::SourceRange range, clang::QualType type, llvm::StringRef prefix) {
-        if(!options.deduced_types || type.isNull())
+        if(!options.deduced_types || type.isNull()) {
             return;
-
-        auto printed = display::maybe_desugar(unit.context(), type);
-        std::string type_name = display::type(unit.context(), printed, display_options).text;
-
-        auto should_print = [&](llvm::StringRef TypeName) {
-            return options.type_name_limit == 0 || TypeName.size() < options.type_name_limit;
-        };
-
-        if(type != printed && !should_print(type_name)) {
-            // If the desugared type is too long to display, fallback to the sugared
-            // type.
-            printed = type;
-            type_name = display::type(unit.context(), type, display_options).text;
         }
-
-        if(should_print(type_name)) {
+        // The desugared type, or the sugared one when that fits instead or
+        // when only it can be shortened.
+        auto sugared = readable_types.readable(type);
+        auto printed = readable_types.readable(display::maybe_desugar(unit.context(), type));
+        auto text = display::type(unit.context(), printed, display_options).text;
+        if(auto limit = options.max_length.types;
+           limit != 0 && characters(text) > limit && sugared != printed) {
+            auto sugared_text = display::type(unit.context(), sugared, display_options).text;
+            if(characters(sugared_text) <= limit || !elide(text, limit)) {
+                printed = sugared;
+                text = std::move(sugared_text);
+            }
+        }
+        if(auto fitted = fit_type(text)) {
             add_inlay_hint(range,
                            HintSide::Right,
                            HintCategory::Type,
                            prefix,
-                           type_label(printed, type_name),
+                           type_label(printed, *fitted),
                            /*Suffix=*/"");
         }
     }
@@ -909,25 +1211,36 @@ private:
             if(it == designators.end() || has_param_name_comment(init, it->second)) {
                 continue;
             }
+            auto label = designator_label(aggregate, it->second);
+            if(label.empty()) {
+                continue;
+            }
             add_inlay_hint(init->getSourceRange(),
                            HintSide::Left,
                            HintCategory::Designator,
                            /*Prefix=*/"",
-                           designator_label(aggregate, it->second),
+                           std::move(label),
                            /*Suffix=*/"=");
         }
     }
 
     /// The pieces of a designator such as `.inner.x` or `[2].x`: each field
     /// name links to the field, looked up from the aggregate's type down.
+    /// Without field designators a path through a field shows nothing: its
+    /// indices alone would repeat over the fields.
     std::vector<InlayHintPart> designator_label(clang::QualType aggregate,
                                                 llvm::StringRef designator) {
         std::vector<InlayHintPart> label;
+        if(!options.designators && designator.contains('.')) {
+            return label;
+        }
         while(!designator.empty()) {
             if(designator.consume_front("[")) {
                 auto index = designator.take_until([](char c) { return c == ']'; });
                 designator = designator.drop_front(index.size() + 1);
-                append(label, plain(("[" + index + "]").str()));
+                if(options.array_indices) {
+                    append(label, plain(("[" + index + "]").str()));
+                }
                 // The lone member array of `std::array` stays undesignated:
                 // `[i]` then indexes the record itself.
                 const auto* array =
@@ -938,7 +1251,6 @@ private:
             designator.consume_front(".");
             auto name = designator.take_until([](char c) { return c == '.' || c == '['; });
             designator = designator.drop_front(name.size());
-            append(label, plain("."));
             const auto* record = aggregate.isNull() ? nullptr : aggregate->getAsRecordDecl();
             const clang::ValueDecl* field = nullptr;
             if(record) {
@@ -951,6 +1263,7 @@ private:
                     }
                 }
             }
+            append(label, plain("."));
             append(label, field ? linked(name, field) : plain(name));
             aggregate = field ? field->getType() : clang::QualType();
         }
@@ -1028,6 +1341,16 @@ private:
             handle_construct(expr);
         } else if(auto* expr = dyn_cast<clang::LambdaExpr>(stmt)) {
             handle_lambda(expr);
+        } else if(auto* expr = dyn_cast<clang::ExplicitCastExpr>(stmt)) {
+            add_deduced_arguments_hint(expr->getTypeInfoAsWritten(), expr->getType());
+        } else if(auto* expr = dyn_cast<clang::CXXNewExpr>(stmt)) {
+            add_deduced_arguments_hint(expr->getAllocatedTypeSourceInfo(),
+                                       expr->getAllocatedType());
+        } else if(auto* expr = dyn_cast<clang::CXXStdInitializerListExpr>(stmt)) {
+            // The elements of a std::initializer_list have no designators
+            // to write.
+            initializer_lists.insert(
+                llvm::dyn_cast<clang::InitListExpr>(expr->getSubExpr()->IgnoreImplicit()));
         } else if(auto* expr = dyn_cast<clang::InitListExpr>(stmt)) {
             handle_init_list(expr);
         } else if(auto* expr = dyn_cast<clang::CXXParenListInitExpr>(stmt)) {
@@ -1047,15 +1370,27 @@ private:
     }
 
     void handle_namespace(const clang::NamespaceDecl* decl) {
-        if(options.block_end) {
-            // For namespace, the range actually starts at the namespace keyword. But
-            // it should be fine since it's usually very short.
-            // Anonymous namespaces hint as plain "// namespace".
-            add_block_end_hint(decl->getSourceRange(),
-                               "namespace",
-                               display::identifier_of(decl),
-                               "");
+        // `namespace a::b {` declares `b` as the only member of `a`; both end
+        // at one brace, which the outermost names.
+        if(!options.namespace_end || decl->isNested()) {
+            return;
         }
+        auto nested = [](const clang::NamespaceDecl* outer) -> const clang::NamespaceDecl* {
+            auto first = outer->decls_begin();
+            const auto* inner = first == outer->decls_end()
+                                    ? nullptr
+                                    : llvm::dyn_cast<clang::NamespaceDecl>(*first);
+            return inner && inner->isNested() ? inner : nullptr;
+        };
+        std::string name = display::identifier_of(decl).str();
+        for(const auto* inner = nested(decl); inner; inner = nested(inner)) {
+            name += "::";
+            name += display::identifier_of(inner);
+        }
+        // For namespace, the range actually starts at the namespace keyword. But
+        // it should be fine since it's usually very short.
+        // Anonymous namespaces hint as plain "// namespace".
+        add_block_end_hint(decl->getSourceRange(), decl->getLocation(), "namespace", name, "");
     }
 
     void handle_tag(const clang::TagDecl* decl) {
@@ -1069,7 +1404,11 @@ private:
             };
 
             // Anonymous tags hint with the bare kind, e.g. "// struct".
-            add_block_end_hint(decl->getBraceRange(), prefix, display::identifier_of(decl), ";");
+            add_block_end_hint(decl->getBraceRange(),
+                               decl->getLocation(),
+                               prefix,
+                               display::identifier_of(decl),
+                               ";");
         }
     }
 
@@ -1086,7 +1425,11 @@ private:
             // We use `printName` here to properly print name of ctor/dtor/operator
             // overload.
             if(const clang::Stmt* body = decl->getBody()) {
-                add_block_end_hint(body->getSourceRange(), "", display::name_of(decl), "");
+                add_block_end_hint(body->getSourceRange(),
+                                   decl->getLocation(),
+                                   "",
+                                   display::name_of(decl),
+                                   "");
             }
         }
     }
@@ -1121,23 +1464,23 @@ private:
         }
 
         auto type = var->getType();
-        if(auto* auto_type = type->getContainedAutoType()) {
-            if(auto_type->isDeduced() && !type->isDependentType() &&
-               !(var->getInit() && spells_type(var->getInit()))) {
+        add_deduced_arguments_hint(var->getTypeSourceInfo(), type);
+        if(type->getContainedAutoType()) {
+            // A dependent initializer leaves `auto` to instantiation; the
+            // resolver tells the type where the template's only instantiation
+            // or a class template's members do, else as the template writes it.
+            auto deduced = !type->isDependentType() ? type
+                           : var->getInit()         ? unit.resolver().deduce(var)
+                                                    : clang::QualType();
+            if(!deduced.isNull() && types::writable(deduced) &&
+               (options.spelled_types || !var->getInit() ||
+                !spells_type(var->getInit(), deduced))) {
                 // Our current approach is to place the hint on the variable
                 // and accordingly print the full type
                 // (e.g. for `const auto& x = 42`, print `const int&`).
                 // Alternatively, we could place the hint on the `auto`
                 // (and then just print the type deduced for the `auto`).
-                add_type_hint(var->getLocation(), var->getType(), /*Prefix=*/": ");
-            } else if(type->isDependentType() && var->getInit()) {
-                // A dependent initializer leaves `auto` to instantiation;
-                // the resolver still tells the type where the template's
-                // only instantiation or a class template's members do.
-                if(auto deduced = unit.resolver().deduce(var);
-                   !deduced.isNull() && !deduced->isDependentType()) {
-                    add_type_hint(var->getLocation(), deduced, /*Prefix=*/": ");
-                }
+                add_type_hint(var->getLocation(), deduced, /*Prefix=*/": ");
             }
         }
 
@@ -1162,6 +1505,10 @@ private:
     }
 
     void handle_construct(const clang::CXXConstructExpr* expr) {
+        if(const auto* temporary = llvm::dyn_cast<clang::CXXTemporaryObjectExpr>(expr)) {
+            add_deduced_arguments_hint(temporary->getTypeSourceInfo(), expr->getType());
+        }
+
         // Weed out constructor calls that don't look like a function call with
         // an argument list, by checking the validity of getParenOrBraceRange().
         // Also weed out std::initializer_list constructors as there are no names
@@ -1176,7 +1523,7 @@ private:
     }
 
     void handle_call(const clang::CallExpr* expr) {
-        if(!options.parameters && !options.default_arguments) {
+        if(!hints_calls()) {
             return;
         }
 
@@ -1189,6 +1536,17 @@ private:
         };
 
         bool is_functor = isFunctionObjectCallExpr(expr);
+
+        // A call on an object the code cannot name is not written there:
+        // `co_yield x` calls the coroutine promise's `yield_value(x)`.
+        if(const auto* member = llvm::dyn_cast<clang::CXXMemberCallExpr>(expr)) {
+            const auto* object = member->getImplicitObjectArgument();
+            const auto* ref =
+                object ? llvm::dyn_cast<clang::DeclRefExpr>(object->IgnoreImplicit()) : nullptr;
+            if(ref && ref->getDecl()->isImplicit()) {
+                return;
+            }
+        }
 
         // Do not show parameter hints for user-defined literals or
         // operator calls except for operator(). (Among other reasons, the resulting
@@ -1228,10 +1586,8 @@ private:
         } else if(const auto* FTD =
                       dyn_cast_or_null<clang::FunctionTemplateDecl>(expr->getCalleeDecl())) {
             callee.decl = FTD->getTemplatedDecl();
-        } else if(clang::FunctionProtoTypeLoc loc =
-                      // The helper keeps its clangd signature, which speaks
-                      // mutable pointers; it only reads through them.
-                  decls::proto_type_loc(const_cast<clang::Expr*>(expr->getCallee()))) {
+        } else if(auto loc = clang::HeuristicResolver(unit.context())
+                                 .getFunctionProtoTypeLoc(expr->getCallee())) {
             callee.loc = loc;
         } else {
             return;
@@ -1272,7 +1628,7 @@ private:
             } else if(const auto* cond = S->getCond()) {
                 name = display::summarize(cond);
             }
-            mark_block_end(S->getBody(), "for", name);
+            mark_block_end(S, S->getBody(), "for", name);
         }
     }
 
@@ -1280,19 +1636,19 @@ private:
         range_inits.try_emplace(S->getLoopVariable(), S->getRangeInit());
         if(options.block_end) {
             // Decomposition loop variables have no identifier: plain "// for".
-            mark_block_end(S->getBody(), "for", display::identifier_of(S->getLoopVariable()));
+            mark_block_end(S, S->getBody(), "for", display::identifier_of(S->getLoopVariable()));
         }
     }
 
     void handle_while(const clang::WhileStmt* S) {
         if(options.block_end) {
-            mark_block_end(S->getBody(), "while", display::summarize(S->getCond()));
+            mark_block_end(S, S->getBody(), "while", display::summarize(S->getCond()));
         }
     }
 
     void handle_switch(const clang::SwitchStmt* S) {
         if(options.block_end) {
-            mark_block_end(S->getBody(), "switch", display::summarize(S->getCond()));
+            mark_block_end(S, S->getBody(), "switch", display::summarize(S->getCond()));
         }
     }
 
@@ -1312,6 +1668,7 @@ private:
                     name = display::summarize(cond);
                 }
                 add_block_end_hint({S->getThen()->getBeginLoc(), if_end->getRBracLoc()},
+                                   S->getBeginLoc(),
                                    "if",
                                    name,
                                    "");
@@ -1336,6 +1693,10 @@ private:
     }
 
     void handle_init_list(const clang::InitListExpr* expr) {
+        if(initializer_lists.contains(expr)) {
+            return;
+        }
+
         // The table records the form the enclosing AST node stores, which for
         // the outermost list is the *semantic* form. Designators attach to the
         // syntactic form — the written one, which may have subobject
@@ -1346,11 +1707,8 @@ private:
             expr = syntactic;
         }
 
-        if(!options.designators) {
-            return;
-        }
-
-        if(expr->isIdiomaticZeroInitializer(unit.lang_options())) {
+        if((!options.designators && !options.array_indices) ||
+           expr->isIdiomaticZeroInitializer(unit.lang_options())) {
             return;
         }
 
@@ -1358,7 +1716,7 @@ private:
     }
 
     void handle_paren_list_init(const clang::CXXParenListInitExpr* expr) {
-        if(options.designators) {
+        if(options.designators || options.array_indices) {
             add_designators(expr->getType(),
                             expr->getUserSpecifiedInitExprs(),
                             designators::unwritten(expr));
@@ -1369,6 +1727,76 @@ private:
         if(const auto* DT = llvm::dyn_cast<clang::DecltypeType>(TL.getType()))
             if(clang::QualType UT = DT->getUnderlyingType(); !UT->isDependentType())
                 add_type_hint(TL.getSourceRange(), UT, ": ");
+    }
+
+    /// The template arguments class template argument deduction found for
+    /// a `written` type, `<int, double>` after the `Pair` of
+    /// `Pair pair(1, 2.5)`; the written type keeps the bare template name,
+    /// `deduced` is what its owner got.
+    void add_deduced_arguments_hint(const clang::TypeSourceInfo* written, clang::QualType deduced) {
+        if(!written || deduced->isDependentType()) {
+            return;
+        }
+        auto loc = written->getTypeLoc()
+                       .getUnqualifiedLoc()
+                       .getAs<clang::DeducedTemplateSpecializationTypeLoc>();
+        if(!loc || !shows_deduced_arguments(loc.getTypePtr())) {
+            return;
+        }
+        const auto* spec = llvm::dyn_cast_if_present<clang::ClassTemplateSpecializationDecl>(
+            deduced->getAsCXXRecordDecl());
+        if(!spec) {
+            return;
+        }
+        // The arguments as the template's own name takes them: without the
+        // scope around it (`Outer<int>::`), the standard alias naming the
+        // whole (`string`), or the sugar of a deduction guide's return type
+        // (`enable_if_t<…>` for `std::array`).
+        auto& context = unit.context();
+        auto arguments = spec->getTemplateArgs().asArray();
+        // A guide may pass the defaults explicitly (`basic_string`'s traits).
+        const auto* params = spec->getSpecializedTemplate()->getTemplateParameters();
+        while(!arguments.empty() && arguments.size() <= params->size() &&
+              clang::isSubstitutedDefaultArgument(context,
+                                                  arguments.back(),
+                                                  params->getParam(arguments.size() - 1),
+                                                  arguments.drop_back(),
+                                                  params->getDepth())) {
+            arguments = arguments.drop_back();
+        }
+        auto named = readable_types.readable(context.getTemplateSpecializationType(
+            clang::ElaboratedTypeKeyword::None,
+            clang::TemplateName(spec->getSpecializedTemplate()),
+            arguments,
+            spec->getTemplateArgs().asArray(),
+            context.getCanonicalType(deduced)));
+        auto text = display::type(context, named, display_options).text;
+        auto list = first_argument_list(text);
+        if(!list) {
+            return;
+        }
+        auto fitted = fit_type(llvm::StringRef(text).drop_front(list->head.size()));
+        if(!fitted) {
+            return;
+        }
+        // Linked with the name in front, which then goes: the name of an
+        // argument can be the template's own.
+        auto label = type_label(named, (list->head + *fitted).str());
+        for(auto head = list->head.size(); head != 0;) {
+            auto& first = label.front();
+            if(first.value.size() > head) {
+                first.value.erase(0, head);
+                break;
+            }
+            head -= first.value.size();
+            label.erase(label.begin());
+        }
+        add_inlay_hint(loc.getSourceRange(),
+                       HintSide::Right,
+                       HintCategory::Type,
+                       "",
+                       std::move(label),
+                       "");
     }
 
     // FIXME: Handle RecoveryExpr to try to hint some invalid calls.
@@ -1395,6 +1823,10 @@ private:
     llvm::DenseSet<const clang::IfStmt*> else_ifs;  // not eligible for names
     /// A range-for's loop variable, visited after the loop, by its range.
     llvm::DenseMap<const clang::VarDecl*, const clang::Expr*> range_inits;
+    /// The arrays behind std::initializer_list objects, visited after them.
+    llvm::DenseSet<const clang::InitListExpr*> initializer_lists;
+
+    display::ReadableTypes readable_types{unit.context()};
 };
 
 }  // namespace
@@ -1421,7 +1853,25 @@ auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHi
         });
     raw_hints.erase(unique_begin.begin(), unique_begin.end());
 
-    return raw_hints;
+    // Editors show a few dozen characters of hints on a line: the thousands
+    // of a generated one-line table would only be sent to be dropped.
+    constexpr std::size_t line_limit = 100;
+    auto content = unit.main_content();
+    std::uint32_t scanned = 0;
+    std::size_t on_line = 0;
+    std::vector<InlayHint> hints;
+    hints.reserve(raw_hints.size());
+    for(auto& hint: raw_hints) {
+        if(content.slice(scanned, hint.offset).contains('\n')) {
+            on_line = 0;
+        }
+        scanned = hint.offset;
+        on_line += 1;
+        if(on_line <= line_limit) {
+            hints.push_back(std::move(hint));
+        }
+    }
+    return hints;
 }
 
 auto inlay_hints_to_protocol(
@@ -1439,13 +1889,14 @@ auto inlay_hints_to_protocol(
             continue;
         protocol::InlayHint out{.position = *pos};
 
-        bool linked =
-            llvm::any_of(hint.label, [](const InlayHintPart& part) { return part.symbol != 0; });
-        if(linked && locate) {
+        auto links = [](const InlayHintPart& part) {
+            return part.symbol != 0 || part.target;
+        };
+        if(locate && llvm::any_of(hint.label, links)) {
             std::vector<protocol::InlayHintLabelPart> parts;
             for(const auto& part: hint.label) {
                 parts.push_back(
-                    {.value = part.value, .location = part.symbol ? locate(part) : std::nullopt});
+                    {.value = part.value, .location = links(part) ? locate(part) : std::nullopt});
             }
             out.label = std::move(parts);
         } else {

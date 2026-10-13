@@ -7,5 +7,5 @@ inlay_hints = [
 [configured."main.cpp"]
 inlay_hints = [
     { line = 'void connect(int retries, Endpoint target = Endpoint{⟨.host=⟩"service.internal.example.com", ⟨.port=⟩8080}, bool secure = false);' },
-    { line = "connect(⟨retries:⟩3⟨, target: ..., secure: false⟩);" },
+    { line = "connect(⟨retries:⟩3⟨, target: …, secure: false⟩);" },
 ]

@@ -4,7 +4,7 @@
   "subtopic": "type_hints",
   "title": "Instantiated templates",
   "summary": "An `auto` variable inside a class template shows the type the template's only instantiation gives it",
-  "prose": "With two instantiations deducing different types there is no one type to show.",
+  "prose": "With two instantiations deducing different types it shows the type as the template writes it.",
   "status": "supported",
   "issues": [
     "clangd#2275"
@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "void take(int first, int second);\n\ntemplate <typename T>\nstruct Single {\n    void reset() {\n        take(1, 2);\n        auto copy = T();\n    }\n};\n\ntemplate struct Single<char>;\n\ntemplate <typename T>\nstruct Twice {\n    void reset() {\n        auto copy = T();\n    }\n};\n\ntemplate struct Twice<char>;\ntemplate struct Twice<int>;\n\ntemplate <typename T>\nstruct Outside {\n    void reset();\n};\n\ntemplate <typename T>\nvoid Outside<T>::reset() {\n    auto copy = T();\n}\n\ntemplate struct Outside<char>;\n",
+      "text": "void take(int first, int second);\n\ntemplate <typename T>\nstruct Single {\n    void reset() {\n        take(1, 2);\n        auto copy = T();\n    }\n};\n\ntemplate struct Single<char>;\n\ntemplate <typename T>\nstruct Twice {\n    void reset() {\n        T value{};\n        auto copy = value;\n    }\n};\n\ntemplate struct Twice<char>;\ntemplate struct Twice<int>;\n\ntemplate <typename T>\nstruct Outside {\n    void reset();\n};\n\ntemplate <typename T>\nvoid Outside<T>::reset() {\n    auto copy = T();\n}\n\ntemplate struct Outside<char>;\n",
       "markers": [
         {
           "name": "single",
@@ -22,14 +22,14 @@
         },
         {
           "name": "twice",
-          "begin": 242,
-          "end": 258,
+          "begin": 261,
+          "end": 279,
           "range": true
         },
         {
           "name": "outside",
-          "begin": 441,
-          "end": 457,
+          "begin": 462,
+          "end": 478,
           "range": true
         }
       ]
@@ -83,7 +83,24 @@
           "label": "twice",
           "marker": "twice",
           "value": {
-            "inlay_hints": []
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto copy⟨: T⟩ = value;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 26
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         {
@@ -97,11 +114,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 29,
+                      "line": 30,
                       "character": 4
                     },
                     "end": {
-                      "line": 29,
+                      "line": 30,
                       "character": 20
                     }
                   }

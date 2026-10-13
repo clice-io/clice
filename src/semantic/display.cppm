@@ -161,6 +161,33 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
 /// https://github.com/clangd/clangd/issues/1298.
 auto maybe_desugar(clang::ASTContext& context, clang::QualType type) -> clang::QualType;
 
+/// Types as a reader knows them: a deduced `auto` gives way to the type it
+/// stands for, an alias with a reserved name (`_NonArray<int>`) to what it
+/// names, and a standard class template specialization to the standard
+/// alias naming it (`string` for `basic_string<char>`), in template
+/// arguments too. libc++ marks those aliases as preferred names, which the
+/// printer honors; libstdc++ only declares them. One per request: the
+/// aliases are collected once, on first use.
+class ReadableTypes {
+public:
+    explicit ReadableTypes(clang::ASTContext& context) : context(context) {}
+
+    auto readable(clang::QualType type) -> clang::QualType;
+
+private:
+    auto readable(const clang::TemplateArgument& argument) -> clang::TemplateArgument;
+
+    bool reserved(const clang::NamedDecl* decl) const;
+
+    /// The standard aliases by the canonical type they name; two aliases
+    /// of one type name none.
+    auto standard_aliases()
+        -> const llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>&;
+
+    clang::ASTContext& context;
+    std::optional<llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>> aliases;
+};
+
 /// Evaluate an expression and render its value: enums symbolically, big
 /// or negative integers with a hex form attached. nullopt when the
 /// expression is dependent, not evaluatable, or of a type whose value is

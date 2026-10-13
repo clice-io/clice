@@ -5,9 +5,14 @@ struct Widget {
     int height;
 §(struct_end)⟦};
 ⟧
+bool ready();
+
 int area(const Widget& widget) {
     int total = 0;
-    while (total < widget.width) {
+    while (ready()) {
+        total += 1;
+    §(call_end)⟦}
+⟧    while (total < widget.width) {
         total += widget.height;
     §(while_end)⟦}
 ⟧    if (total > 10) {

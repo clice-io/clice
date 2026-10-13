@@ -1,0 +1,69 @@
+[answers."main.cpp"]
+inlay_hints = [
+    {
+        line = "#endif⟨// ENABLE_CACHE⟩",
+        hints = [
+            {
+                label = "// ENABLE_CACHE",
+                links = [
+                    { value = "ENABLE_CACHE", target = "⟦⟧#ifdef ENABLE_CACHE" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "};⟨// struct Counter⟩",
+        hints = [
+            {
+                label = "// struct Counter",
+                links = [
+                    { value = "struct Counter", target = "struct ⟦⟧Counter {" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "}⟨// while total > 0⟩",
+        hints = [
+            {
+                label = "// while total > 0",
+                links = [
+                    { value = "while total > 0", target = "⟦⟧while (total > 0) {" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "}⟨// if total < 0⟩",
+        hints = [
+            {
+                label = "// if total < 0",
+                links = [
+                    { value = "if total < 0", target = "⟦⟧if (total < 0) {" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "}⟨// count⟩",
+        hints = [
+            {
+                label = "// count",
+                links = [
+                    { value = "count", target = "int ⟦⟧count(int total) {" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "}⟨// namespace storage⟩",
+        hints = [
+            {
+                label = "// namespace storage",
+                links = [
+                    { value = "namespace storage", target = "namespace ⟦⟧storage {" },
+                ],
+            },
+        ],
+    },
+]

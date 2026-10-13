@@ -2,28 +2,60 @@
   "id": "inlay_hints/parameter_hints/16_near_matches",
   "topic": "inlay_hints",
   "subtopic": "parameter_hints",
-  "title": "Sloppy name matching",
-  "summary": "`aParam` does not yet suppress an argument spelled `param`",
-  "prose": "",
-  "status": "unsupported",
+  "title": "Prefixed parameter names",
+  "summary": "An argument named like its parameter without a one-letter prefix needs no hint",
+  "prose": "`param` passed to `aParam` and `buffer` passed to `pBuffer` count as the same name. `inlay_hints.prefixed_names` shows these hints again.",
+  "status": "supported",
   "issues": [
     "clangd#2248"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "void draw(int aParam);\n\nvoid use() {\n    int param = 3;\n    draw(param);\n}\n",
+      "text": "void draw(int aParam);\nvoid fill(char* pBuffer, int size);\n\nvoid use() {\n    int param = 3;\n    char buffer[4];\n    draw(param);\n    fill(buffer, 4);\n}\n",
       "markers": []
     }
   ],
   "tests": [
     {
-      "name": "answers",
+      "name": "default",
       "blocks": [
         {
           "label": "main.cpp",
           "value": {
-            "wrong": "an argument named param, the parameter aParam without its prefix, needs no hint (clangd#2248)",
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "fill(buffer, ⟨size:⟩4);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 20
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "inlay_hints": {
+          "prefixed_names": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
             "inlay_hints": [
               {
                 "line": {
@@ -31,12 +63,28 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 4
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 16
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "fill(⟨pBuffer:⟩buffer, ⟨size:⟩4);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 20
                     }
                   }
                 }

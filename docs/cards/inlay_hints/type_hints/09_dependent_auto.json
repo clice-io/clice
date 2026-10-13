@@ -1,0 +1,81 @@
+{
+  "id": "inlay_hints/type_hints/09_dependent_auto",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Types in templates",
+  "summary": "A variable in a template shows its type as the template would write it",
+  "prose": "A type that waits for an expression only instantiation can work out, such as `input + 1`, shows nothing, and neither does one the initializer already names. A template instantiated exactly once shows that instantiation's types instead.",
+  "status": "supported",
+  "issues": [
+    "clangd#2275"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Wrapper {};\n\ntemplate <typename T, int N>\nstruct Grid {\n    static auto make() -> Grid;\n};\n\ntemplate <typename T>\nstruct Box {\n    T value;\n\n    auto get() const {\n        return value;\n    }\n\n    void use() const {\n        auto got = get();\n    }\n};\n\ntemplate <typename T>\nvoid body(T input) {\n    auto copy = input;\n    auto grid = Grid<T, 2>::make();\n    auto wrapped = Wrapper<T>{};\n    auto derived = input + 1;\n    auto counter = 0;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto copy⟨: T⟩ = input;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 22
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto grid⟨: Grid<T, 2>⟩ = Grid<T, 2>::make();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 24,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 35
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto counter⟨: int⟩ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 21
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

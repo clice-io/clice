@@ -6,4 +6,4 @@ issues: [clangd#2275]
 
 An `auto` variable inside a class template shows the type the template's only instantiation gives it
 
-With two instantiations deducing different types there is no one type to show.
+With two instantiations deducing different types it shows the type as the template writes it.

@@ -61,18 +61,40 @@ static clang::SourceRange spelled_within_argument(clang::SourceLocation first,
     if(candidate.isInvalid() || candidate_first.first != target || candidate_last.first != target) {
         return {};
     }
-    if(prev.isValid()) {
-        auto decomposed = SM.getDecomposedLoc(SM.getExpansionRange(prev).getBegin());
-        if(decomposed.first != candidate_first.first ||
-           decomposed.second >= candidate_first.second) {
-            return {};
+    // The range must not take in `prev` or `next`. Each is followed back
+    // through the arguments its own macros were written in: a token of a
+    // macro nested in the argument (`0` in `A(B(1))` with
+    // `#define B(x) f(0, x)`) lands on that macro's call, which the range
+    // would be; a token of the enclosing macro's body lands on a call around
+    // the range, and one of another argument where that argument is written.
+    auto unwrapped = [&](clang::SourceLocation location) {
+        while(location.isMacroID()) {
+            auto [fid, offset] = SM.getDecomposedLoc(location);
+            const auto& expansion = SM.getSLocEntry(fid).getExpansion();
+            if(!expansion.isMacroArgExpansion() ||
+               SM.getFileID(expansion.getExpansionLocStart()) == target) {
+                break;
+            }
+            location = expansion.getSpellingLoc().getLocWithOffset(offset);
         }
-    }
-    if(next.isValid()) {
-        auto decomposed = SM.getDecomposedLoc(SM.getExpansionRange(next).getEnd());
-        if(decomposed.first != candidate_last.first || decomposed.second <= candidate_last.second) {
-            return {};
+        return location;
+    };
+    auto takes_in = [&](clang::SourceLocation neighbor) {
+        auto range = SM.getExpansionRange(unwrapped(neighbor)).getAsRange();
+        auto begin = SM.getDecomposedLoc(range.getBegin());
+        auto end = SM.getDecomposedLoc(range.getEnd());
+        if(begin.first != target || end.first != target) {
+            return true;
         }
+        bool overlaps =
+            begin.second <= candidate_last.second && candidate_first.second <= end.second;
+        bool around =
+            begin.second <= candidate_first.second && candidate_last.second <= end.second &&
+            (begin.second != candidate_first.second || end.second != candidate_last.second);
+        return overlaps && !around;
+    };
+    if((prev.isValid() && takes_in(prev)) || (next.isValid() && takes_in(next))) {
+        return {};
     }
     return candidate;
 }

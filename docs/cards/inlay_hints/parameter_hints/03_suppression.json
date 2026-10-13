@@ -6,9 +6,7 @@
   "summary": "Named arguments and `/*name=*/` comments suppress parameter hints",
   "prose": "An argument spelled like its parameter, or a bare member of that name, needs no hint; a qualified name or a member reached through an object is no match. A comment naming another parameter suppresses nothing.",
   "status": "supported",
-  "issues": [
-    "clangd#1877"
-  ],
+  "issues": [],
   "files": [
     {
       "path": "main.cpp",
