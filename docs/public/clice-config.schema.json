@@ -50,11 +50,25 @@
             "default": {
                 "enabled": true,
                 "parameters": true,
+                "mutable_references": true,
+                "prefixed_names": false,
+                "single_letter_names": false,
                 "deduced_types": true,
+                "spelled_types": false,
+                "deduced_template_arguments": true,
                 "designators": true,
+                "array_indices": false,
                 "block_end": false,
+                "namespace_end": true,
+                "endif": true,
                 "default_arguments": false,
-                "type_name_limit": 32
+                "min_block_lines": 10,
+                "max_length": {
+                    "types": 32,
+                    "default_arguments": 32,
+                    "block_end": 60,
+                    "endif": 60
+                }
             }
         },
         "code_completion": {
@@ -196,6 +210,40 @@
             },
             "additionalProperties": false
         },
+        "InlayHintLengths": {
+            "type": "object",
+            "properties": {
+                "types": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Maximum length in characters of a deduced type or of deduced template arguments; `0` means no limit. The template arguments that do not fit become `…`, e.g. `tuple<int, string, …>`; a type whose outermost name does not fit is not shown.",
+                    "default": 32
+                },
+                "default_arguments": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Maximum length in characters of the omitted default arguments; `0` means no limit. One too long becomes `…`, and the list is cut with `…` where it no longer fits.",
+                    "default": 32
+                },
+                "block_end": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Maximum length in characters of a block end or namespace end label, cut with `…` past it; `0` means no limit.",
+                    "default": 60
+                },
+                "endif": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295,
+                    "description": "Maximum length in characters of an `#endif` condition, cut with `…` past it; `0` means no limit.",
+                    "default": 60
+                }
+            },
+            "additionalProperties": false
+        },
         "InlayHintsOptions": {
             "type": "object",
             "properties": {
@@ -206,12 +254,37 @@
                 },
                 "parameters": {
                     "type": "boolean",
-                    "description": "Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.",
+                    "description": "Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`.",
                     "default": true
+                },
+                "mutable_references": {
+                    "type": "boolean",
+                    "description": "`&` marking an argument passed by mutable reference, e.g. `mutate(&value: v)`.",
+                    "default": true
+                },
+                "prefixed_names": {
+                    "type": "boolean",
+                    "description": "Parameter name hints for an argument named like the parameter without its one-letter prefix, e.g. `param` passed to `aParam`.",
+                    "default": false
+                },
+                "single_letter_names": {
+                    "type": "boolean",
+                    "description": "Parameter name hints for a function taking one parameter whose name is a single letter, e.g. `push_back(x: 1)`.",
+                    "default": false
                 },
                 "deduced_types": {
                     "type": "boolean",
-                    "description": "Deduced type hints for `auto` variables, structured bindings and deduced return types.",
+                    "description": "Deduced type hints for `auto` variables, structured bindings, init-captures and `auto` parameters, the type a `decltype` names, and deduced return types.",
+                    "default": true
+                },
+                "spelled_types": {
+                    "type": "boolean",
+                    "description": "Deduced type hints for a variable whose initializer already names its type, e.g. `static_cast<long>(x)`, `Widget{1, 2}` or `std::make_unique<Widget>()`.",
+                    "default": false
+                },
+                "deduced_template_arguments": {
+                    "type": "boolean",
+                    "description": "The template arguments class template argument deduction found, e.g. `<int, double>` after `pair` in `std::pair pair(1, 2.5)`.",
                     "default": true
                 },
                 "designators": {
@@ -219,22 +292,47 @@
                     "description": "Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Point{1, 2}`.",
                     "default": true
                 },
+                "array_indices": {
+                    "type": "boolean",
+                    "description": "Array index designator hints in aggregate initialization, e.g. `[0]=` and `[1]=` in `int pair[2] = {1, 2}`.",
+                    "default": false
+                },
                 "block_end": {
                     "type": "boolean",
-                    "description": "`// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).",
+                    "description": "`// name` after the closing brace of a function, type or control flow block, linking to its start.",
                     "default": false
+                },
+                "namespace_end": {
+                    "type": "boolean",
+                    "description": "`// namespace name` after the closing brace of a namespace, linking to its start.",
+                    "default": true
+                },
+                "endif": {
+                    "type": "boolean",
+                    "description": "`// condition` after an `#endif`, the condition of the `#if` it closes, linking to it.",
+                    "default": true
                 },
                 "default_arguments": {
                     "type": "boolean",
-                    "description": "Show the default arguments a call omitted, abbreviated when long.",
+                    "description": "The default arguments a call omitted.",
                     "default": false
                 },
-                "type_name_limit": {
+                "min_block_lines": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 4294967295,
-                    "description": "Byte budget for rendered hint text: over-long deduced types fall back to a sugared spelling or are dropped, over-long default arguments are abbreviated. `0` means no limit.",
-                    "default": 32
+                    "description": "The height in lines, both ends included, from which a block, namespace or conditional gets a hint at its end.",
+                    "default": 10
+                },
+                "max_length": {
+                    "$ref": "#/$defs/InlayHintLengths",
+                    "description": "The [inlay_hints.max_length] table: how long each kind of hint may grow.",
+                    "default": {
+                        "types": 32,
+                        "default_arguments": 32,
+                        "block_end": 60,
+                        "endif": 60
+                    }
                 }
             },
             "additionalProperties": false

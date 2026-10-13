@@ -25,7 +25,7 @@ tests/inlay_hints/parameter_hints/01_argument_names
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1877 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Hint suppression**
 
@@ -45,6 +45,8 @@ tests/inlay_hints/parameter_hints/03_suppression
 
 `&` flags arguments passed by non-const lvalue reference
 
+The marker has a switch of its own, `inlay_hints.mutable_references`: with parameter names turned off it stays, in front of an empty name.
+
 ```case
 tests/inlay_hints/parameter_hints/05_reference_markers
 ```
@@ -57,7 +59,7 @@ tests/inlay_hints/parameter_hints/05_reference_markers
 
 Packs forwarded through wrappers resolve to the target's parameter names
 
-A plain pass-through works without `std::forward`, a pack between fixed leading and trailing arguments resolves to the parameters it lands in, and a pack handed on to a callable object resolves to its call operator.
+A plain pass-through works without `std::forward`, a pack between fixed leading and trailing arguments resolves to the parameters it lands in, and a pack handed on to a callable object resolves to its call operator. A pack that ends up initializing a scalar has no parameter to name.
 
 ```case
 tests/inlay_hints/parameter_hints/06_forwarding
@@ -111,7 +113,7 @@ tests/inlay_hints/parameter_hints/10_dependent_calls
 
 Arguments spelled as macros hint; calls generated inside macro bodies do not
 
-An object-like macro is one written argument. A macro covering several arguments has no place to anchor a hint, and code written as a macro argument keeps its hints.
+An object-like macro is one written argument. A macro covering several arguments has no place to anchor a hint, and code written as a macro argument keeps its hints, through a macro nested in it too, whose own body stays bare.
 
 ```case
 tests/inlay_hints/parameter_hints/12_macros
@@ -119,11 +121,13 @@ tests/inlay_hints/parameter_hints/12_macros
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2248 -->
+<!-- BEGIN CAPABILITY: supported clangd#2248 -->
 
-**Sloppy name matching**
+**Prefixed parameter names**
 
-`aParam` does not yet suppress an argument spelled `param`
+An argument named like its parameter without a one-letter prefix needs no hint
+
+`param` passed to `aParam` and `buffer` passed to `pBuffer` count as the same name. `inlay_hints.prefixed_names` shows these hints again.
 
 ```case
 tests/inlay_hints/parameter_hints/16_near_matches
@@ -139,6 +143,20 @@ A constructor that `using Base::Base` brings in names its parameters as the base
 
 ```case
 tests/inlay_hints/parameter_hints/17_inherited_constructors
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Single-letter names**
+
+A function taking one parameter shows no single-letter name for it
+
+A name like the `x` of `push(int x)` says nothing the call does not; with more parameters the letters tell them apart and stay. `inlay_hints.single_letter_names` shows them all.
+
+```case
+tests/inlay_hints/parameter_hints/24_single_letter_names
 ```
 
 <!-- END CAPABILITY -->
@@ -163,13 +181,13 @@ tests/inlay_hints/type_hints/01_auto_variables
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1298 clangd#1357 -->
+<!-- BEGIN CAPABILITY: supported clangd#1298 clangd#1357 clangd#2268 -->
 
 **Type sugar length limits**
 
-Aliases keep their spelling, and an over-long type falls back to its sugared name
+Aliases keep their spelling, and an over-long type keeps what of it fits
 
-A type without a spelling short enough is dropped, and default template arguments never print. The budget is `inlay_hints.type_name_limit`; `0` lifts it.
+A type too long for the limit falls back to its sugared name, then writes the template arguments that do not fit as `…`, keeping its outermost name; default template arguments never print. The limit is `inlay_hints.max_length.types`; `0` lifts it.
 
 ```case
 tests/inlay_hints/type_hints/02_type_sugar
@@ -193,7 +211,9 @@ tests/inlay_hints/type_hints/03_structured_bindings
 
 **Lambdas**
 
-Variables, deduced return types, and init-captures all hint
+Deduced return types and init-captures hint
+
+A variable holding a lambda shows no type: its initializer says what it is.
 
 ```case
 tests/inlay_hints/type_hints/04_lambdas
@@ -229,17 +249,30 @@ tests/inlay_hints/type_hints/07_auto_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1749 -->
+<!-- BEGIN CAPABILITY: supported clangd#1749 clangd#2603 -->
 
 **Explicitly spelled initializers**
 
-A type the initializer already spells, in a cast or a functional cast, gets no hint
+A type the initializer already names gets no hint
 
-A class template whose arguments the initializer leaves to deduction is still
-hinted.
+A cast, a functional cast, a `new`, a factory naming the type as its template argument (`make_owner<Box<int>>()` for an `Owner<Box<int>>`) and a lambda all say what the variable holds. A class template whose arguments the initializer leaves to deduction shows them where it is written instead, and a factory whose result has arguments the call does not name still hints. `inlay_hints.spelled_types` shows every hint.
 
 ```case
 tests/inlay_hints/type_hints/08_explicit_initializers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2275 -->
+
+**Types in templates**
+
+A variable in a template shows its type as the template would write it
+
+A type that waits for an expression only instantiation can work out, such as `input + 1`, shows nothing, and neither does one the initializer already names. A template instantiated exactly once shows that instantiation's types instead.
+
+```case
+tests/inlay_hints/type_hints/09_dependent_auto
 ```
 
 <!-- END CAPABILITY -->
@@ -286,6 +319,20 @@ tests/inlay_hints/type_hints/13_binding_aliases
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Standard library names**
+
+Standard library types show by the names the standard gives them
+
+A specialization the library names with an alias shows that alias, `string` rather than `basic_string<char>`, unless it names it with two; the library's internal aliases, whose names are reserved, give way to what they stand for.
+
+```case
+tests/inlay_hints/type_hints/16_standard_names
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Designator Hints
@@ -294,13 +341,13 @@ Positional aggregate initialization shows the field or the index each value init
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/designator_hints -->
 
-<!-- BEGIN CAPABILITY: supported clangd#2303 -->
+<!-- BEGIN CAPABILITY: supported clangd#1277 -->
 
 **Field and index designators**
 
-Positional aggregate initialization shows `.field=` and `[index]=`
+Positional aggregate initialization shows `.field=`, and `[index]=` once enabled
 
-Array designators survive members whose size depends on a template parameter, and reserved member names are skipped rather than printed.
+Array indices are off by default, `inlay_hints.array_indices` turns them on: a table would carry one on every element. Without them a path through an array shows its fields alone; with indices but no field designators it shows nothing. Array designators survive members whose size depends on a template parameter, and reserved member names are skipped rather than printed.
 
 ```case
 tests/inlay_hints/designator_hints/01_fields_and_indices
@@ -368,16 +415,58 @@ The end of a block ten lines or taller names what it closes: a namespace and an 
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/block_end -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: supported clangd#1634 -->
 
 **Names after closing braces**
 
-After the closing brace of a block spanning lines, a hint names what the brace closes
+After the closing brace of a tall block, a hint names what the brace closes
 
-Functions, types, namespaces and control flow get one; `if` and `while` show their condition when it is short, an `else if` chain shows as plain `// if`, and a label longer than 60 characters is dropped. A block on one line gets none.
+Functions, types and control flow get one, when the block is at least `inlay_hints.min_block_lines` lines tall (ten by default; two here). `if` and `while` show their condition when it is short, an `else if` chain shows as plain `// if`, and a label longer than 60 characters is cut with `…`. Clicking a name goes to the start of its block.
 
 ```case
 tests/inlay_hints/block_end/01_block_end_hints
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#1807 -->
+
+**Block heights**
+
+Only a block ten lines or taller gets a hint at its end
+
+The height counts the lines of both braces. `inlay_hints.min_block_lines` sets it for block ends, namespace ends and `#endif` alike.
+
+```case
+tests/inlay_hints/block_end/02_block_heights
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Namespace ends**
+
+The closing brace of a tall namespace names it
+
+`namespace a::b::c` ends with one hint naming the whole path, an anonymous namespace shows as plain `// namespace`, and a brace already followed by a comment gets none. On by default.
+
+```case
+tests/inlay_hints/block_end/03_namespace_ends
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2487 -->
+
+**Conditions after `#endif`**
+
+An `#endif` closing a tall conditional shows the condition it closes
+
+`#ifdef NAME` shows `NAME`, `#ifndef NAME` shows `!NAME`, and `#if` its condition as written, cut with `…` past 60 characters, in branches the build skips too; an `#endif` already followed by a comment gets none. Clicking the condition goes to its `#if`. On by default.
+
+```case
+tests/inlay_hints/block_end/04_endif
 ```
 
 <!-- END CAPABILITY -->
@@ -432,38 +521,16 @@ The template arguments class template argument deduction found.
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/other_kinds -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2583 -->
-
-**Template argument names**
-
-An explicit template argument at a call site does not show the template parameter it binds yet
-
-```case
-tests/inlay_hints/other_kinds/01_template_arguments
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2331 -->
+<!-- BEGIN CAPABILITY: supported clangd#2331 -->
 
 **Deduced class template arguments**
 
-A class template whose arguments a constructor call deduces does not show them yet
+A class template whose arguments its initialization deduces shows them
+
+The arguments follow the template's name wherever it is written without them: a declaration, a functional cast, a `new`; they print as the template's own name takes them, whatever scope encloses it and whatever aliases or defaults a deduction guide wrote. A variable initialized by such a cast shows no type of its own while the arguments say it.
 
 ```case
 tests/inlay_hints/other_kinds/02_ctad_arguments
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2254 -->
-
-**Implicit conversions**
-
-An argument converted implicitly at a call site shows no conversion yet
-
-```case
-tests/inlay_hints/other_kinds/03_implicit_conversions
 ```
 
 <!-- END CAPABILITY -->

@@ -320,8 +320,8 @@ struct InlayHintsOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Deduced type hints for `auto` variables, structured "
-                         "bindings, init-captures, `decltype` and `auto` "
-                         "parameters, and deduced return types.")
+                         "bindings, init-captures and `auto` parameters, the type "
+                         "a `decltype` names, and deduced return types.")
     <bool> deduced_types = true;
 
     KOTATSU_ANNOTATE(defaulted = true,

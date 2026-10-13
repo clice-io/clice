@@ -13,18 +13,18 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nstruct Box {\n    Box(T first, T second);\n};\n\ntemplate <typename T>\nstruct Owner {};\n\ntemplate <typename T>\nOwner<T> make_owner();\n\ntemplate <typename T, typename U>\nstruct Table {};\n\ntemplate <typename T>\nTable<T, int> make_table();\n\nint compute();\n\nvoid use() {\n    auto widened = static_cast<long>(compute());\n    auto braced = int{42};\n    auto boxed = Box<int>(1, 2);\n    auto listed = Box<int>{3, 4};\n    auto grouped = (long{5});\n    auto created = new Box<int>(5, 6);\n    auto owned = make_owner<Box<int>>();\n    auto closure = [] { return 7; };\n    auto plain = compute();\n    auto inferred = Box(1, 2);\n    auto copied = auto(plain);\n    auto table = make_table<long>();\n}\n",
+      "text": "template <typename T>\nstruct Box {\n    Box(T first, T second);\n};\n\ntemplate <typename T>\nstruct Policy {};\n\ntemplate <typename T, typename P = Policy<T>>\nstruct Owner {};\n\ntemplate <typename T>\nOwner<T> make_owner();\n\ntemplate <typename T, typename U>\nstruct Table {};\n\ntemplate <typename T>\nTable<T, int> make_table();\n\ntemplate <typename T>\nT* create();\n\nint compute();\n\nvoid use() {\n    auto widened = static_cast<long>(compute());\n    auto braced = int{42};\n    auto boxed = Box<int>(1, 2);\n    auto listed = Box<int>{3, 4};\n    auto grouped = (long{5});\n    auto created = new Box<int>(5, 6);\n    auto owned = make_owner<Box<int>>();\n    auto made = create<Box<int>>();\n    auto closure = [] { return 7; };\n    auto plain = compute();\n    auto inferred = Box(1, 2);\n    auto copied = auto(plain);\n    auto table = make_table<long>();\n}\n",
       "markers": [
         {
           "name": "spelled",
-          "begin": 289,
-          "end": 574,
+          "begin": 390,
+          "end": 711,
           "range": true
         },
         {
           "name": "deduced",
-          "begin": 579,
-          "end": 701,
+          "begin": 716,
+          "end": 838,
           "range": true
         }
       ]
@@ -45,11 +45,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 22,
+                      "line": 28,
                       "character": 4
                     },
                     "end": {
-                      "line": 22,
+                      "line": 28,
                       "character": 32
                     }
                   }
@@ -61,11 +61,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 23,
+                      "line": 29,
                       "character": 4
                     },
                     "end": {
-                      "line": 23,
+                      "line": 29,
                       "character": 33
                     }
                   }
@@ -77,11 +77,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 25,
+                      "line": 31,
                       "character": 4
                     },
                     "end": {
-                      "line": 25,
+                      "line": 31,
                       "character": 38
                     }
                   }
@@ -93,11 +93,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 27,
+                      "line": 34,
                       "character": 4
                     },
                     "end": {
-                      "line": 27,
+                      "line": 34,
                       "character": 36
                     }
                   }
@@ -117,11 +117,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 28,
+                      "line": 35,
                       "character": 4
                     },
                     "end": {
-                      "line": 28,
+                      "line": 35,
                       "character": 27
                     }
                   }
@@ -133,11 +133,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 29,
+                      "line": 36,
                       "character": 4
                     },
                     "end": {
-                      "line": 29,
+                      "line": 36,
                       "character": 30
                     }
                   }
@@ -149,11 +149,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 30,
+                      "line": 37,
                       "character": 4
                     },
                     "end": {
-                      "line": 30,
+                      "line": 37,
                       "character": 30
                     }
                   }
@@ -165,11 +165,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 31,
+                      "line": 38,
                       "character": 4
                     },
                     "end": {
-                      "line": 31,
+                      "line": 38,
                       "character": 36
                     }
                   }
@@ -199,11 +199,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 20,
+                      "line": 26,
                       "character": 4
                     },
                     "end": {
-                      "line": 20,
+                      "line": 26,
                       "character": 48
                     }
                   }
@@ -215,11 +215,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 21,
+                      "line": 27,
                       "character": 4
                     },
                     "end": {
-                      "line": 21,
+                      "line": 27,
                       "character": 26
                     }
                   }
@@ -231,11 +231,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 22,
+                      "line": 28,
                       "character": 4
                     },
                     "end": {
-                      "line": 22,
+                      "line": 28,
                       "character": 32
                     }
                   }
@@ -247,11 +247,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 23,
+                      "line": 29,
                       "character": 4
                     },
                     "end": {
-                      "line": 23,
+                      "line": 29,
                       "character": 33
                     }
                   }
@@ -263,11 +263,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 24,
+                      "line": 30,
                       "character": 4
                     },
                     "end": {
-                      "line": 24,
+                      "line": 30,
                       "character": 29
                     }
                   }
@@ -279,11 +279,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 25,
+                      "line": 31,
                       "character": 4
                     },
                     "end": {
-                      "line": 25,
+                      "line": 31,
                       "character": 38
                     }
                   }
@@ -295,12 +295,28 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 26,
+                      "line": 32,
                       "character": 4
                     },
                     "end": {
-                      "line": 26,
+                      "line": 32,
                       "character": 40
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto made⟨: Box<int> *⟩ = create<Box<int>>();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 33,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 33,
+                      "character": 35
                     }
                   }
                 }
@@ -311,11 +327,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 27,
+                      "line": 34,
                       "character": 4
                     },
                     "end": {
-                      "line": 27,
+                      "line": 34,
                       "character": 36
                     }
                   }
@@ -335,11 +351,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 28,
+                      "line": 35,
                       "character": 4
                     },
                     "end": {
-                      "line": 28,
+                      "line": 35,
                       "character": 27
                     }
                   }
@@ -351,11 +367,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 29,
+                      "line": 36,
                       "character": 4
                     },
                     "end": {
-                      "line": 29,
+                      "line": 36,
                       "character": 30
                     }
                   }
@@ -367,11 +383,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 30,
+                      "line": 37,
                       "character": 4
                     },
                     "end": {
-                      "line": 30,
+                      "line": 37,
                       "character": 30
                     }
                   }
@@ -383,11 +399,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 31,
+                      "line": 38,
                       "character": 4
                     },
                     "end": {
-                      "line": 31,
+                      "line": 38,
                       "character": 36
                     }
                   }

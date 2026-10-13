@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nstruct Wrapper {};\n\ntemplate <typename T, int N>\nstruct Grid {\n    static auto make() -> Grid;\n};\n\ntemplate <typename T>\nvoid body(T input) {\n    auto copy = input;\n    auto grid = Grid<T, 2>::make();\n    auto wrapped = Wrapper<T>{};\n    auto derived = input + 1;\n    auto counter = 0;\n}\n",
+      "text": "template <typename T>\nstruct Wrapper {};\n\ntemplate <typename T, int N>\nstruct Grid {\n    static auto make() -> Grid;\n};\n\ntemplate <typename T>\nstruct Box {\n    T value;\n\n    auto get() const {\n        return value;\n    }\n\n    void use() const {\n        auto got = get();\n    }\n};\n\ntemplate <typename T>\nvoid body(T input) {\n    auto copy = input;\n    auto grid = Grid<T, 2>::make();\n    auto wrapped = Wrapper<T>{};\n    auto derived = input + 1;\n    auto counter = 0;\n}\n",
       "markers": []
     }
   ],
@@ -30,11 +30,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 10,
+                      "line": 23,
                       "character": 4
                     },
                     "end": {
-                      "line": 10,
+                      "line": 23,
                       "character": 22
                     }
                   }
@@ -46,11 +46,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 11,
+                      "line": 24,
                       "character": 4
                     },
                     "end": {
-                      "line": 11,
+                      "line": 24,
                       "character": 35
                     }
                   }
@@ -62,11 +62,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 14,
+                      "line": 27,
                       "character": 4
                     },
                     "end": {
-                      "line": 14,
+                      "line": 27,
                       "character": 21
                     }
                   }
