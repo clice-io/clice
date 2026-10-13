@@ -2,7 +2,7 @@
 // constructor's included; inside `Foo{args...}` no hint lands.
 struct Foo {
     Foo();
-    Foo(int x);
+    Foo(int count);
 };
 
 void consume(Foo a, int b);

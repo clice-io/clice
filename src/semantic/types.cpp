@@ -374,4 +374,26 @@ auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clan
     return type ? type->desugar() : clang::QualType();
 }
 
+auto writable(clang::QualType type) -> bool {
+    struct Finder : clang::RecursiveASTVisitor<Finder> {
+        bool VisitBuiltinType(clang::BuiltinType* type) {
+            return type->getKind() != clang::BuiltinType::Dependent;
+        }
+
+        bool VisitDecltypeType(clang::DecltypeType* type) {
+            return !type->isDependentType();
+        }
+
+        bool VisitAutoType(clang::AutoType* type) {
+            return type->isDeduced();
+        }
+
+        bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* type) {
+            return type->getDecl() && !type->getDecl()->isImplicit();
+        }
+    };
+
+    return Finder().TraverseType(type);
+}
+
 }  // namespace clice::types

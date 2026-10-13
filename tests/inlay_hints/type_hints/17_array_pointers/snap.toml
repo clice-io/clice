@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto* row⟨: int (*)[3][4]⟩ = &grid;" },
+    { line = "auto copy⟨: int (*)[3][4]⟩ = &grid;" },
+]

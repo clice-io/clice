@@ -1,0 +1,66 @@
+[answers."main.cpp"]
+inlay_hints = [
+    {
+        line = "auto label⟨: text⟩ = make_text();",
+        hints = [
+            {
+                label = ": text",
+                links = [
+                    { value = "text", target = "using ⟦text⟧ = basic_text<char>;" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "auto member⟨: int Shape::*⟩ = sides_member();",
+        hints = [
+            {
+                label = ": int Shape::*",
+                links = [
+                    { value = "Shape", target = "struct ⟦Shape⟧ {" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "auto uses⟨: Uses<Box>⟩ = make_uses();",
+        hints = [
+            {
+                label = ": Uses<Box>",
+                links = [
+                    { value = "Uses", target = "struct ⟦Uses⟧ {};" },
+                    { value = "Box", target = "struct ⟦Box⟧ {};" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "Corner corners[2] = {⟨[0].x=⟩1, ⟨[0].y=⟩2, ⟨[1].x=⟩3, ⟨[1].y=⟩4};",
+        hints = [
+            {
+                label = "[0].x=",
+                links = [
+                    { value = "x", target = "int ⟦x⟧;" },
+                ],
+            },
+            {
+                label = "[0].y=",
+                links = [
+                    { value = "y", target = "int ⟦y⟧;" },
+                ],
+            },
+            {
+                label = "[1].x=",
+                links = [
+                    { value = "x", target = "int ⟦x⟧;" },
+                ],
+            },
+            {
+                label = "[1].y=",
+                links = [
+                    { value = "y", target = "int ⟦y⟧;" },
+                ],
+            },
+        ],
+    },
+]

@@ -61,15 +61,31 @@ static clang::SourceRange spelled_within_argument(clang::SourceLocation first,
     if(candidate.isInvalid() || candidate_first.first != target || candidate_last.first != target) {
         return {};
     }
+    // `prev` and `next` unwrap the arguments their own macros were written
+    // in, so a token of a macro nested in the argument (`0` in
+    // `A(B(1))` with `#define B(x) f(0, x)`) overlaps that macro's call,
+    // which its neighbors in the macro's body expand from too.
+    auto unwrapped = [&](clang::SourceLocation location) {
+        while(location.isMacroID()) {
+            auto [fid, offset] = SM.getDecomposedLoc(location);
+            const auto& expansion = SM.getSLocEntry(fid).getExpansion();
+            if(!expansion.isMacroArgExpansion() ||
+               SM.getFileID(expansion.getExpansionLocStart()) == target) {
+                break;
+            }
+            location = expansion.getSpellingLoc().getLocWithOffset(offset);
+        }
+        return location;
+    };
     if(prev.isValid()) {
-        auto decomposed = SM.getDecomposedLoc(SM.getExpansionRange(prev).getBegin());
+        auto decomposed = SM.getDecomposedLoc(SM.getExpansionRange(unwrapped(prev)).getBegin());
         if(decomposed.first != candidate_first.first ||
            decomposed.second >= candidate_first.second) {
             return {};
         }
     }
     if(next.isValid()) {
-        auto decomposed = SM.getDecomposedLoc(SM.getExpansionRange(next).getEnd());
+        auto decomposed = SM.getDecomposedLoc(SM.getExpansionRange(unwrapped(next)).getEnd());
         if(decomposed.first != candidate_last.first || decomposed.second <= candidate_last.second) {
             return {};
         }

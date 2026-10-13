@@ -1,0 +1,79 @@
+{
+  "id": "inlay_hints/type_hints/16_standard_names",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Standard library names",
+  "summary": "Standard library types show by the names the standard gives them",
+  "prose": "A specialization the library names with an alias shows that alias, `string` rather than `basic_string<char>`, and the library's internal aliases, whose names are reserved, give way to what they stand for.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace std {\n\ntemplate <typename Char>\nstruct basic_string {};\n\ntypedef basic_string<char> string;\n\ntemplate <typename T>\nstruct vector {\n    T& front();\n};\n\ntemplate <typename T>\nusing _NonArray = T;\n\ntemplate <typename T>\nstruct shared_ptr {};\n\nshared_ptr<_NonArray<int>> share_count();\n\ntemplate <typename T>\nstruct __unique_holder {\n    using __type = shared_ptr<T>;\n};\n\ntemplate <typename T>\nusing __holder_t = typename __unique_holder<T>::__type;\n\n__holder_t<long> hold_count();\n\n}  // namespace std\n\nvoid use(std::vector<std::string>& names) {\n    auto& first = names.front();\n    auto shared = std::share_count();\n    auto held = std::hold_count();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto& first⟨: string &⟩ = names.front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 33,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 33,
+                      "character": 32
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto shared⟨: shared_ptr<int>⟩ = std::share_count();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 34,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 34,
+                      "character": 37
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto held⟨: shared_ptr<long>⟩ = std::hold_count();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 35,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 35,
+                      "character": 34
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

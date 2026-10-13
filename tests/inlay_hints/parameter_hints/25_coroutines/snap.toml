@@ -1,0 +1,4 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "co_yield next_value(⟨seed:⟩1);" },
+]

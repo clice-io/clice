@@ -91,7 +91,7 @@
               },
               {
                 "line": {
-                  "$place": "auto cmp⟨: (lambda)⟩ = [](int lhs, int rhs)⟨-> bool⟩ { return lhs < rhs; };",
+                  "$place": "auto cmp = [](int lhs, int rhs)⟨-> bool⟩ { return lhs < rhs; };",
                   "path": "main.cpp",
                   "range": {
                     "start": {

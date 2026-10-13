@@ -470,8 +470,9 @@ struct PackForwardFinder : clang::RecursiveASTVisitor<PackForwardFinder> {
     llvm::ArrayRef<const clang::ParmVarDecl*> params;
 
     bool VisitCallExpr(clang::CallExpr* call) {
+        // `std::forward` hands its argument on to the call around it.
         auto* fn = callee_of(call);
-        if(!fn) {
+        if(!fn || is_std_forward(fn)) {
             return true;
         }
         llvm::ArrayRef<const clang::Expr*> args(call->getArgs(), call->getNumArgs());
@@ -618,6 +619,26 @@ auto parameter_bindings(const clang::Stmt* call) -> llvm::SmallVector<ParameterB
         bindings.push_back({.argument = arg, .param = param, .forwarded = forwarded});
     }
     return bindings;
+}
+
+auto explicit_template_arguments(const clang::Expr* callee)
+    -> llvm::ArrayRef<clang::TemplateArgumentLoc> {
+    if(const auto* ref = llvm::dyn_cast<clang::DeclRefExpr>(callee)) {
+        return ref->template_arguments();
+    }
+    if(const auto* member = llvm::dyn_cast<clang::MemberExpr>(callee)) {
+        return member->template_arguments();
+    }
+    if(const auto* overload = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
+        return overload->template_arguments();
+    }
+    if(const auto* ref = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
+        return ref->template_arguments();
+    }
+    if(const auto* member = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
+        return member->template_arguments();
+    }
+    return {};
 }
 
 }  // namespace clice::decls

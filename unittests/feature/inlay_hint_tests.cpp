@@ -22,6 +22,15 @@ ZEST_SUITE(inlay_hint, Tester) {
 std::vector<feature::InlayHint> hints;
 llvm::DenseMap<std::uint32_t, feature::InlayHint> hints_map;
 
+/// Block and namespace end hints alone, after blocks of any height.
+const feature::InlayHintsOptions block_ends = {
+    .parameters = false,
+    .deduced_types = false,
+    .designators = false,
+    .block_end = true,
+    .min_block_lines = 2,
+};
+
 void run(llvm::StringRef code,
          const feature::InlayHintsOptions& options = {},
          std::source_location location = std::source_location::current()) {
@@ -88,7 +97,7 @@ ZEST_CASE(BlockEnd) {
                 return true;
             }§(2)
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(3);
     EXPECT_HINT("0", "// foo");
     EXPECT_HINT("1", "// bar");
@@ -136,7 +145,7 @@ ZEST_CASE(BlockEnd) {
             void Test::method4() {
             }§(6)
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(7);
     EXPECT_HINT("0", "// ~Test");
     EXPECT_HINT("1", "// method1");
@@ -156,7 +165,7 @@ ZEST_CASE(BlockEnd) {
                 void bar();
             }§(1)
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(2);
     EXPECT_HINT("0", "// namespace");
     EXPECT_HINT("1", "// namespace ns");
@@ -178,7 +187,7 @@ ZEST_CASE(BlockEnd) {
             enum class E2 {
             };§(4)
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(5);
     EXPECT_HINT("0", "// struct S");
     EXPECT_HINT("1", "// class C");
@@ -216,7 +225,7 @@ ZEST_CASE(BlockEnd) {
                 }§(6)
             }
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(8);
     EXPECT_HINT("0", "// if cond");
     EXPECT_HINT("1", "// if cond");
@@ -234,7 +243,7 @@ ZEST_CASE(BlockEnd) {
                 }§(0)
             }§(1)
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(2);
     EXPECT_HINT("0", "// if");
     EXPECT_HINT("1", "// foo");
@@ -262,7 +271,7 @@ ZEST_CASE(BlockEnd) {
                 }§(3)
             }
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(5);
     EXPECT_HINT("0", "// while true");
     EXPECT_HINT("1", "// for true");
@@ -277,13 +286,14 @@ ZEST_CASE(BlockEnd) {
                 }§(0)
             }
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(2);
     EXPECT_HINT("0", "// switch I");
 
     // Print literals
     run(R"c(
             #pragma clang diagnostic ignored "-Wliteral-conversion"
+            #pragma clang diagnostic ignored "-Wnull-conversion"
             void foo() {
                 while ("foo") {
                 }§(0)
@@ -299,15 +309,23 @@ ZEST_CASE(BlockEnd) {
 
                 while (1.5) {
                 }§(4)
+
+                while ("a\nb\ncdefghij") {
+                }§(5)
+
+                while (nullptr) {
+                }§(6)
             }
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
-    EXPECT_SIZE(6);
+        block_ends);
+    EXPECT_SIZE(8);
     EXPECT_HINT("0", "// while \"foo\"");
     EXPECT_HINT("1", "// while \"foo but...\"");
     EXPECT_HINT("2", "// while true");
     EXPECT_HINT("3", "// while 1");
     EXPECT_HINT("4", "// while 1.5");
+    EXPECT_HINT("5", R"(// while "a\0Ab\0Acde...")");
+    EXPECT_HINT("6", "// while nullptr");
 
     // Print refs
     run(R"c(
@@ -333,12 +351,12 @@ ZEST_CASE(BlockEnd) {
                 }§(3)
             }
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(7);
     EXPECT_HINT("0", "// while Var");
-    EXPECT_HINT("1", "// while func");
+    EXPECT_HINT("1", "// while func()");
     EXPECT_HINT("2", "// while Field");
-    EXPECT_HINT("3", "// while method");
+    EXPECT_HINT("3", "// while method()");
 
     // Print conversions
     run(R"c(
@@ -358,7 +376,7 @@ ZEST_CASE(BlockEnd) {
                 }§(2)
             }
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(5);
     EXPECT_HINT("0", "// while float");
     EXPECT_HINT("1", "// while S");
@@ -390,7 +408,7 @@ ZEST_CASE(BlockEnd) {
                 }§(6)
             }
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(8);
     EXPECT_HINT("0", "// while ++I");
     EXPECT_HINT("1", "// while I++");
@@ -428,7 +446,7 @@ ZEST_CASE(BlockEnd) {
 
             s2;
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(3);
     EXPECT_HINT("0", "// struct S1");
     EXPECT_HINT("1", "// struct S2");
@@ -452,7 +470,7 @@ ZEST_CASE(BlockEnd) {
             namespace ns {
             } // namespace ns
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(2);
     EXPECT_HINT("0", "// struct S1");
     EXPECT_HINT("1", "// struct S3");
@@ -469,7 +487,7 @@ ZEST_CASE(BlockEnd) {
             DECL_STRUCT(S2)
             RBRACE;
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(1);
     EXPECT_HINT("0", "// struct S1");
 
@@ -482,7 +500,7 @@ ZEST_CASE(BlockEnd) {
                 }§(0)
             }
         )c",
-        {.parameters = false, .deduced_types = false, .designators = false, .block_end = true});
+        block_ends);
     EXPECT_SIZE(2);
     EXPECT_HINT("0", "// if");
 };
@@ -498,7 +516,8 @@ ZEST_CASE(DefaultArguments) {
         )c",
         {.default_arguments = true});
     EXPECT_SIZE(4);
-    EXPECT_HINT("0", "A: 4");
+    // `foo` takes one parameter with a one-letter name.
+    EXPECT_HINT("0", "4");
     EXPECT_HINT("1", "A:");
     EXPECT_HINT("2", ", B: 1, C: foo()");
     EXPECT_HINT("3", "5");
@@ -526,7 +545,7 @@ ZEST_CASE(DefaultArguments) {
         )c",
         {.default_arguments = true});
     EXPECT_SIZE(5);
-    EXPECT_HINT("0", "a: ...");
+    EXPECT_HINT("0", "…");
     EXPECT_HINT("1", ", baz: Baz{}");
     EXPECT_HINT("2", ", baz: Baz{}");
     EXPECT_HINT("3", ", baz: Baz{}");
@@ -538,7 +557,8 @@ ZEST_CASE(DefaultArguments) {
             void configure(int first, const char* name = "this default is longer than the limit");
             void use() { configure(1§(0)); }
         )c",
-        {.default_arguments = true, .type_name_limit = 0});
+        {.default_arguments = true,
+         .max_length = feature::InlayHintLengths{.default_arguments = 0}});
     EXPECT_SIZE(2);
     EXPECT_HINT("0", R"(, name: "this default is longer than the limit")");
 

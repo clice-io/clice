@@ -2,6 +2,8 @@
 inlay_hints = [
     { line = "auto aliased⟨: Integer⟩ = make_alias();" },
     { line = "auto shortened⟨: Compact⟩ = make_compact();" },
+    { line = "auto elided⟨: extremely_long_template_name<…>⟩ = make_long();" },
+    { line = "auto mixed⟨: tuple<int, double, …>⟩ = make_mixed();" },
     { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
 ]
 
@@ -9,6 +11,7 @@ inlay_hints = [
 inlay_hints = [
     { line = "auto aliased⟨: Integer⟩ = make_alias();" },
     { line = "auto shortened⟨: Compact⟩ = make_compact();" },
-    { line = "auto dropped⟨: extremely_long_template_name<Integer, Integer, Integer>⟩ = make_long();" },
+    { line = "auto elided⟨: extremely_long_template_name<Integer, Integer, Integer>⟩ = make_long();" },
+    { line = "auto mixed⟨: tuple<int, double, extremely_long_template_name<int, char, bool>>⟩ = make_mixed();" },
     { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
 ]

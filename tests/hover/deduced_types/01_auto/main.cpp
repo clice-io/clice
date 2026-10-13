@@ -27,6 +27,7 @@ void locals() {
 }
 
 template <typename T> void pending() {
-    §(undeduced)auto value = T{};
+    §(dependent)auto value = T{};
+    §(undeduced)auto sum = value + 1;
 }
 }

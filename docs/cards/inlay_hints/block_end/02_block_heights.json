@@ -1,0 +1,54 @@
+{
+  "id": "inlay_hints/block_end/02_block_heights",
+  "topic": "inlay_hints",
+  "subtopic": "block_end",
+  "title": "Block heights",
+  "summary": "Only a block ten lines or taller gets a hint at its end",
+  "prose": "The height counts the lines of both braces. `inlay_hints.min_block_lines` sets it for block ends, namespace ends and `#endif` alike.",
+  "status": "supported",
+  "issues": [
+    "clangd#1807"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int short_block(int total) {\n    total += 1;\n    total += 1;\n    total += 1;\n    total += 1;\n    total += 1;\n    total += 1;\n    return total;\n}\n\nint tall_block(int total) {\n    total += 1;\n    total += 1;\n    total += 1;\n    total += 1;\n    total += 1;\n    total += 1;\n    total += 1;\n    return total;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "config": {
+        "inlay_hints": {
+          "block_end": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// tall_block⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 19,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

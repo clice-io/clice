@@ -2,4 +2,5 @@
 inlay_hints = [
     { line = "report(⟨value:⟩PI);" },
     { line = "ASSERT(check(⟨status:⟩42) == 0);" },
+    { line = "OUTER(⟨third:⟩INNER(⟨last:⟩3));" },
 ]

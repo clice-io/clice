@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "int plain[2] = {⟨[0]=⟩6, ⟨[1]=⟩7};" },
+    { line = "take(⟨values:⟩{4, 5});" },
+]

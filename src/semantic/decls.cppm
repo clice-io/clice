@@ -93,4 +93,9 @@ struct ParameterBinding {
 /// through no declared function and those past the last parameter.
 auto parameter_bindings(const clang::Stmt* call) -> llvm::SmallVector<ParameterBinding>;
 
+/// The template arguments a callee names explicitly, `<Widget>` in
+/// `make_unique<Widget>`, dependent or not.
+auto explicit_template_arguments(const clang::Expr* callee)
+    -> llvm::ArrayRef<clang::TemplateArgumentLoc>;
+
 }  // namespace clice::decls

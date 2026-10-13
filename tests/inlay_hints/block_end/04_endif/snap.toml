@@ -1,0 +1,9 @@
+[default."main.cpp"]
+inlay_hints = [
+    { line = "#endif⟨// ENABLE_LOGGING⟩" },
+    { line = "#endif⟨// defined(USE_THREADS) && THREAD_COUNT > 2⟩" },
+    { line = "#endif⟨// !CONFIG_H⟩" },
+]
+
+[disabled."main.cpp"]
+inlay_hints = []

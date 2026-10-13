@@ -3,17 +3,18 @@
   "topic": "inlay_hints",
   "subtopic": "type_hints",
   "title": "Type sugar length limits",
-  "summary": "Aliases keep their spelling, and an over-long type falls back to its sugared name",
-  "prose": "A type without a spelling short enough is dropped, and default template arguments never print. The budget is `inlay_hints.type_name_limit`; `0` lifts it.",
+  "summary": "Aliases keep their spelling, and an over-long type keeps what of it fits",
+  "prose": "A type too long for the limit falls back to its sugared name, then writes the template arguments that do not fit as `…`, keeping its outermost name; default template arguments never print. The limit is `inlay_hints.max_length.types`; `0` lifts it.",
   "status": "supported",
   "issues": [
     "clangd#1298",
-    "clangd#1357"
+    "clangd#1357",
+    "clangd#2268"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "using Integer = int;\n\nInteger make_alias();\n\ntemplate <typename A, typename B, typename C>\nstruct extremely_long_template_name {};\n\nusing Compact = extremely_long_template_name<int, char, bool>;\n\nCompact make_compact();\n\nextremely_long_template_name<Integer, Integer, Integer> make_long();\n\ntemplate <typename T, typename U = int>\nstruct Defaulted {};\n\nDefaulted<float> make_defaulted();\n\nvoid use() {\n    auto aliased = make_alias();\n    auto shortened = make_compact();\n    auto dropped = make_long();\n    auto defaulted = make_defaulted();\n}\n",
+      "text": "using Integer = int;\n\nInteger make_alias();\n\ntemplate <typename A, typename B, typename C>\nstruct extremely_long_template_name {};\n\nusing Compact = extremely_long_template_name<int, char, bool>;\n\nCompact make_compact();\n\nextremely_long_template_name<Integer, Integer, Integer> make_long();\n\ntemplate <typename... Ts>\nstruct tuple {};\n\ntuple<int, double, extremely_long_template_name<int, char, bool>> make_mixed();\n\ntemplate <typename T, typename U = int>\nstruct Defaulted {};\n\nDefaulted<float> make_defaulted();\n\nvoid use() {\n    auto aliased = make_alias();\n    auto shortened = make_compact();\n    auto elided = make_long();\n    auto mixed = make_mixed();\n    auto defaulted = make_defaulted();\n}\n",
       "markers": []
     }
   ],
@@ -31,11 +32,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 19,
+                      "line": 24,
                       "character": 4
                     },
                     "end": {
-                      "line": 19,
+                      "line": 24,
                       "character": 32
                     }
                   }
@@ -47,12 +48,44 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 20,
+                      "line": 25,
                       "character": 4
                     },
                     "end": {
-                      "line": 20,
+                      "line": 25,
                       "character": 36
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto elided⟨: extremely_long_template_name<…>⟩ = make_long();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 26,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 26,
+                      "character": 30
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto mixed⟨: tuple<int, double, …>⟩ = make_mixed();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 30
                     }
                   }
                 }
@@ -63,11 +96,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 22,
+                      "line": 28,
                       "character": 4
                     },
                     "end": {
-                      "line": 22,
+                      "line": 28,
                       "character": 38
                     }
                   }
@@ -82,7 +115,9 @@
       "name": "configured",
       "config": {
         "inlay_hints": {
-          "type_name_limit": 0
+          "max_length": {
+            "types": 0
+          }
         }
       },
       "blocks": [
@@ -96,11 +131,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 19,
+                      "line": 24,
                       "character": 4
                     },
                     "end": {
-                      "line": 19,
+                      "line": 24,
                       "character": 32
                     }
                   }
@@ -112,11 +147,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 20,
+                      "line": 25,
                       "character": 4
                     },
                     "end": {
-                      "line": 20,
+                      "line": 25,
                       "character": 36
                     }
                   }
@@ -124,16 +159,32 @@
               },
               {
                 "line": {
-                  "$place": "auto dropped⟨: extremely_long_template_name<Integer, Integer, Integer>⟩ = make_long();",
+                  "$place": "auto elided⟨: extremely_long_template_name<Integer, Integer, Integer>⟩ = make_long();",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 21,
+                      "line": 26,
                       "character": 4
                     },
                     "end": {
-                      "line": 21,
-                      "character": 31
+                      "line": 26,
+                      "character": 30
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto mixed⟨: tuple<int, double, extremely_long_template_name<int, char, bool>>⟩ = make_mixed();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 30
                     }
                   }
                 }
@@ -144,11 +195,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 22,
+                      "line": 28,
                       "character": 4
                     },
                     "end": {
-                      "line": 22,
+                      "line": 28,
                       "character": 38
                     }
                   }

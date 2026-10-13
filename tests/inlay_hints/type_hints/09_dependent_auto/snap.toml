@@ -1,4 +1,6 @@
 [answers."main.cpp"]
 inlay_hints = [
+    { line = "auto copy⟨: T⟩ = input;" },
+    { line = "auto grid⟨: Grid<T, 2>⟩ = Grid<T, 2>::make();" },
     { line = "auto counter⟨: int⟩ = 0;" },
 ]

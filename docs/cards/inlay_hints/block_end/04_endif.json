@@ -1,0 +1,97 @@
+{
+  "id": "inlay_hints/block_end/04_endif",
+  "topic": "inlay_hints",
+  "subtopic": "block_end",
+  "title": "Conditions after `#endif`",
+  "summary": "An `#endif` closing a tall conditional shows the condition it closes",
+  "prose": "`#ifdef NAME` shows `NAME`, `#ifndef NAME` shows `!NAME`, and `#if` its condition as written, in branches the build skips too; an `#endif` already followed by a comment gets none. Clicking the condition goes to its `#if`. On by default.",
+  "status": "supported",
+  "issues": [
+    "clangd#2487"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#ifndef CONFIG_H\n#define CONFIG_H\n\n#ifdef ENABLE_LOGGING\nint feature_1();\nint feature_2();\nint feature_3();\nint feature_4();\nint feature_5();\nint feature_6();\nint feature_7();\nint feature_8();\n#endif\n\n#if defined(USE_THREADS) && THREAD_COUNT > 2\nint feature_1();\nint feature_2();\nint feature_3();\nint feature_4();\nint feature_5();\nint feature_6();\nint feature_7();\nint feature_8();\n#else\nint single_thread();\n#endif\n\n#ifdef ENABLE_TRACING\nint feature_1();\nint feature_2();\nint feature_3();\nint feature_4();\nint feature_5();\nint feature_6();\nint feature_7();\nint feature_8();\n#endif  // ENABLE_TRACING\n\n#if VERSION > 2\nint short_conditional();\n#endif\n\n#endif\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "#endif⟨// ENABLE_LOGGING⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 6
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "#endif⟨// defined(USE_THREADS) && THREAD_COUNT > 2⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 25,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 25,
+                      "character": 6
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "#endif⟨// !CONFIG_H⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 42,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 42,
+                      "character": 6
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "disabled",
+      "config": {
+        "inlay_hints": {
+          "endif": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": []
+          }
+        }
+      ]
+    }
+  ]
+}

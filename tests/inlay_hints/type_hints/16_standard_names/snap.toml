@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto& first⟨: string &⟩ = names.front();" },
+    { line = "auto shared⟨: shared_ptr<int>⟩ = std::share_count();" },
+    { line = "auto held⟨: shared_ptr<long>⟩ = std::hold_count();" },
+]

@@ -5,7 +5,7 @@
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
-clice renders inline annotations for the information the code leaves implicit: parameter names at call sites, deduced types, and the field names behind positional aggregate initialization. Hint categories can be toggled individually through the `[inlay_hints]` configuration section; the sections below describe the categories that are on by default.
+clice renders inline annotations for the information the code leaves implicit: parameter names at call sites, deduced types, the field names behind positional aggregate initialization, and what a closing brace or an `#endif` closes. Every kind of hint has its own switch in the `[inlay_hints]` configuration section; each section below says which are off by default.
 
 ## Parameter Hints
 
@@ -364,7 +364,7 @@ tests/inlay_hints/designator_hints/07_parenthesized_init
 
 ## Block End Hints
 
-Off by default (`inlay_hints.block_end`). After the closing brace of a block spanning lines, a hint names what the brace closes.
+The end of a block ten lines or taller names what it closes: a namespace and an `#endif` by default, functions, types and control flow once `inlay_hints.block_end` turns them on.
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/block_end -->
 
@@ -384,11 +384,9 @@ tests/inlay_hints/block_end/01_block_end_hints
 
 <!-- END GENERATED ITEMS -->
 
-A related idea, `#endif` hints showing the matching condition ([clangd#2487](https://github.com/clangd/clangd/issues/2487)), is not implemented.
-
 ## Default Argument Hints
 
-Off by default (`inlay_hints.default_arguments`). Call sites that rely on default arguments show what was omitted, abbreviated past the type-name limit.
+Off by default (`inlay_hints.default_arguments`). Call sites that rely on default arguments show what was omitted, abbreviated past `inlay_hints.max_length.default_arguments`.
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/default_arguments -->
 
@@ -408,7 +406,7 @@ tests/inlay_hints/default_arguments/01_omitted_arguments
 
 ## Clickable Hints
 
-The names in a hint are links to the declarations of what they name.
+The names in a hint are links to the declarations of what they name, and the name after a closing brace or an `#endif` to where its block starts.
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/links -->
 
@@ -430,7 +428,7 @@ tests/inlay_hints/links/02_type_links
 
 ## Other Hint Kinds
 
-Other things the code leaves implicit, which get no hint yet.
+The template arguments class template argument deduction found.
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/other_kinds -->
 
@@ -474,7 +472,7 @@ tests/inlay_hints/other_kinds/03_implicit_conversions
 
 ## Configuration
 
-The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializationOptions`) controls every category: `enabled`, `parameters`, `deduced_types`, `designators`, `block_end`, `default_arguments`, and `type_name_limit`. See the [configuration guide](../guide/configuration.md#inlay-hints) for details. Configuration changes take effect after a server restart — a recompile is never involved.
+The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializationOptions`) holds a switch for every kind of hint, the height from which a block's end gets a hint, and the length limits under `[inlay_hints.max_length]`. See the [configuration guide](../guide/configuration.md#inlay-hints) for details. Configuration changes take effect after a server restart — a recompile is never involved.
 
 ## Interactive Behavior
 
@@ -486,5 +484,3 @@ The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializatio
 ## Other Known Gaps
 
 - [ ] Abbreviated type hints with expandable label parts via `InlayHintLabelPart` ([clangd#2269](https://github.com/clangd/clangd/issues/2269))
-- [ ] Scope-aware type shortening — print `Bar` instead of `foo::Bar` inside `namespace foo` ([clangd#2270](https://github.com/clangd/clangd/issues/2270))
-- [ ] Parameter hints lost when a coroutine returns a template type ([clangd#2437](https://github.com/clangd/clangd/issues/2437))

@@ -1,3 +1,14 @@
+[answers.dependent_keyword.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+T
+```
+'''
+range = "⟦auto⟧ copy = value;"
+
 [answers.dependent_auto.hover]
 markdown = '''
 ### variable `copy`

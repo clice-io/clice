@@ -1,10 +1,11 @@
 // A local `auto` whose initializer depends on a function template's
 // parameter hints the type the template's only instantiation gives it,
 // references collapsed as there, or the type a class template's member
-// declares; a template instantiated
-// with several types hints nothing, and neither does a parameter's default,
-// the only instantiation of a template the initializer calls, or a template
-// candidate a call passes over for another overload.
+// declares. Otherwise it hints the type as the template writes it: a
+// parameter's default, the only instantiation of a template the
+// initializer calls, and a template candidate a call passes over for
+// another overload never stand in; a generic lambda's invented parameter
+// has no name to write.
 struct Point {
     int x;
     int y;

@@ -1,9 +1,9 @@
 [answers."main.cpp"]
 inlay_hints = [
-    { line = "int twice(auto x⟨: int⟩) {" },
-    { line = "int result = twice(⟨x:⟩21);" },
-    { line = "int a = measure(⟨x:⟩1);" },
-    { line = "int b = measure(⟨x:⟩2.0);" },
+    { line = "int twice(auto value⟨: int⟩) {" },
+    { line = "int result = twice(⟨value:⟩21);" },
+    { line = "int a = measure(⟨value:⟩1);" },
+    { line = "int b = measure(⟨value:⟩2.0);" },
     { line = "int spread(auto first⟨: void *⟩, auto... rest, auto last) {" },
     { line = "int c = spread<void*, char, float>(⟨first:⟩nullptr, 'x', 2.0f, ⟨last:⟩3);" },
     { line = "auto var⟨: int⟩ = 42;" },

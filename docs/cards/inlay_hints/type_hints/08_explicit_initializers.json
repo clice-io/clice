@@ -3,27 +3,28 @@
   "topic": "inlay_hints",
   "subtopic": "type_hints",
   "title": "Explicitly spelled initializers",
-  "summary": "A type the initializer already spells, in a cast or a functional cast, gets no hint",
-  "prose": "A class template whose arguments the initializer leaves to deduction is still\nhinted.",
+  "summary": "A type the initializer already names gets no hint",
+  "prose": "A cast, a functional cast, a `new`, a factory naming the type as its template argument (`make_owner<Box<int>>()` for an `Owner<Box<int>>`) and a lambda all say what the variable holds. A class template whose arguments the initializer leaves to deduction shows them where it is written instead, and a factory whose result has arguments the call does not name still hints. `inlay_hints.spelled_types` shows every hint.",
   "status": "supported",
   "issues": [
-    "clangd#1749"
+    "clangd#1749",
+    "clangd#2603"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nstruct Box {\n    Box(T first, T second);\n};\n\nint compute();\n\nvoid use() {\n    auto widened = static_cast<long>(compute());\n    auto braced = int{42};\n    auto boxed = Box<int>(1, 2);\n    auto listed = Box<int>{3, 4};\n    auto grouped = (long{5});\n    auto plain = compute();\n    auto inferred = Box(1, 2);\n    auto copied = auto(plain);\n}\n",
+      "text": "template <typename T>\nstruct Box {\n    Box(T first, T second);\n};\n\ntemplate <typename T>\nstruct Owner {};\n\ntemplate <typename T>\nOwner<T> make_owner();\n\ntemplate <typename T, typename U>\nstruct Table {};\n\ntemplate <typename T>\nTable<T, int> make_table();\n\nint compute();\n\nvoid use() {\n    auto widened = static_cast<long>(compute());\n    auto braced = int{42};\n    auto boxed = Box<int>(1, 2);\n    auto listed = Box<int>{3, 4};\n    auto grouped = (long{5});\n    auto created = new Box<int>(5, 6);\n    auto owned = make_owner<Box<int>>();\n    auto closure = [] { return 7; };\n    auto plain = compute();\n    auto inferred = Box(1, 2);\n    auto copied = auto(plain);\n    auto table = make_table<long>();\n}\n",
       "markers": [
         {
           "name": "spelled",
-          "begin": 100,
-          "end": 268,
+          "begin": 289,
+          "end": 574,
           "range": true
         },
         {
           "name": "deduced",
-          "begin": 273,
-          "end": 358,
+          "begin": 579,
+          "end": 701,
           "range": true
         }
       ]
@@ -31,7 +32,7 @@
   ],
   "tests": [
     {
-      "name": "answers",
+      "name": "default",
       "blocks": [
         {
           "label": "spelled",
@@ -44,11 +45,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 10,
+                      "line": 22,
                       "character": 4
                     },
                     "end": {
-                      "line": 10,
+                      "line": 22,
                       "character": 32
                     }
                   }
@@ -60,12 +61,44 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 11,
+                      "line": 23,
                       "character": 4
                     },
                     "end": {
-                      "line": 11,
+                      "line": 23,
                       "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto created = new Box<int>(⟨first:⟩5, ⟨second:⟩6);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 25,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 25,
+                      "character": 38
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto closure = []⟨-> int⟩ { return 7; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 36
                     }
                   }
                 }
@@ -84,11 +117,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 13,
+                      "line": 28,
                       "character": 4
                     },
                     "end": {
-                      "line": 13,
+                      "line": 28,
                       "character": 27
                     }
                   }
@@ -96,15 +129,15 @@
               },
               {
                 "line": {
-                  "$place": "auto inferred⟨: Box<int>⟩ = Box(⟨first:⟩1, ⟨second:⟩2);",
+                  "$place": "auto inferred = Box⟨<int>⟩(⟨first:⟩1, ⟨second:⟩2);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 14,
+                      "line": 29,
                       "character": 4
                     },
                     "end": {
-                      "line": 14,
+                      "line": 29,
                       "character": 30
                     }
                   }
@@ -116,12 +149,246 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 15,
+                      "line": 30,
                       "character": 4
                     },
                     "end": {
-                      "line": 15,
+                      "line": 30,
                       "character": 30
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto table⟨: Table<long, int>⟩ = make_table<long>();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 36
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "inlay_hints": {
+          "spelled_types": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "spelled",
+          "marker": "spelled",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto widened⟨: long⟩ = static_cast<long>(compute());",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 48
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto braced⟨: int⟩ = int{42};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 26
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto boxed⟨: Box<int>⟩ = Box<int>(⟨first:⟩1, ⟨second:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 32
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto listed⟨: Box<int>⟩ = Box<int>{⟨first:⟩3, ⟨second:⟩4};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 23,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto grouped⟨: long⟩ = (long{5});",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 24,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 29
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto created⟨: Box<int> *⟩ = new Box<int>(⟨first:⟩5, ⟨second:⟩6);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 25,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 25,
+                      "character": 38
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto owned⟨: Owner<Box<int>>⟩ = make_owner<Box<int>>();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 26,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 26,
+                      "character": 40
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto closure⟨: (lambda)⟩ = []⟨-> int⟩ { return 7; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 36
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "deduced",
+          "marker": "deduced",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto plain⟨: int⟩ = compute();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 27
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto inferred⟨: Box<int>⟩ = Box⟨<int>⟩(⟨first:⟩1, ⟨second:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 29,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 29,
+                      "character": 30
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto copied⟨: int⟩ = auto(plain);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 30,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 30,
+                      "character": 30
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto table⟨: Table<long, int>⟩ = make_table<long>();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 31,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 31,
+                      "character": 36
                     }
                   }
                 }

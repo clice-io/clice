@@ -1,9 +1,16 @@
 [default."main.cpp"]
-inlay_hints = []
+inlay_hints = [
+    { line = "}⟨// namespace detail⟩" },
+]
 
 [configured.struct_end]
 inlay_hints = [
     { line = "};⟨// struct Widget⟩" },
+]
+
+[configured.call_end]
+inlay_hints = [
+    { line = "}⟨// while ready()⟩" },
 ]
 
 [configured.while_end]
@@ -30,7 +37,9 @@ inlay_hints = [
 inlay_hints = []
 
 [configured.long_name_end]
-inlay_hints = []
+inlay_hints = [
+    { line = "}⟨// a_function_whose_name_alone_is_long_enough_to_pass_sixty_ch…⟩" },
+]
 
 [configured.namespace_end]
 inlay_hints = [

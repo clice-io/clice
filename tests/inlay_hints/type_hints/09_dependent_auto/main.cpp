@@ -1,8 +1,16 @@
-// Deduction inside an uninstantiated template body stays silent.
+template <typename T>
+struct Wrapper {};
+
+template <typename T, int N>
+struct Grid {
+    static auto make() -> Grid;
+};
+
 template <typename T>
 void body(T input) {
-    // No hint: the deduced type depends on T.
+    auto copy = input;
+    auto grid = Grid<T, 2>::make();
+    auto wrapped = Wrapper<T>{};
     auto derived = input + 1;
-    // A dependence-free initializer still hints normally.
     auto counter = 0;
 }

@@ -22,7 +22,9 @@ inlay_hints = [
 ]
 
 [answers.defaulted]
-inlay_hints = []
+inlay_hints = [
+    { line = "auto kept⟨: T⟩ = value;" },
+]
 
 [answers.explicit_arguments]
 inlay_hints = [
@@ -30,4 +32,6 @@ inlay_hints = [
 ]
 
 [answers.passed_over]
-inlay_hints = []
+inlay_hints = [
+    { line = "auto kept⟨: T⟩ = value;" },
+]

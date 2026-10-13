@@ -6,3 +6,5 @@ struct Pair {
 };
 
 Pair pair(1, 2.5);
+auto copy = Pair(3, 'c');
+auto* heap = new Pair(4, 5);

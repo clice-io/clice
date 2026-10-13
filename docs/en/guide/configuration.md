@@ -270,7 +270,7 @@ Maximum number of members the definition of a hovered class or enum lists: data 
 
 ## `[inlay_hints]`
 
-The `[inlay_hints]` section controls which inlay hint categories the server produces. A client-side refresh then requests hints with the updated values; no recompile is involved.
+The `[inlay_hints]` section controls which inlay hints the server produces and how long they may grow. Changes take effect after a server restart; no recompile is involved.
 
 <!-- BEGIN GENERATED CONFIG: inlay_hints -->
 

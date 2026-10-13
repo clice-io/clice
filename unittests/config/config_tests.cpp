@@ -162,12 +162,15 @@ ZEST_CASE(ParseInlayHints) {
 [inlay_hints]
 block_end = true
 parameters = false
-type_name_limit = 64
+
+[inlay_hints.max_length]
+types = 64
 )");
     ZEXPECT(result);
     ZEXPECT(result->inlay_hints.block_end.value == true);
     ZEXPECT(result->inlay_hints.parameters.value == false);
-    ZEXPECT(result->inlay_hints.type_name_limit.value == 64u);
+    ZEXPECT(result->inlay_hints.max_length.types.value == 64u);
+    ZEXPECT(result->inlay_hints.max_length.block_end.value == 60u);
     ZEXPECT(result->inlay_hints.designators.value == true);
 }
 
@@ -262,7 +265,7 @@ ZEST_CASE(BornValidDefaults) {
     ZEXPECT(config.inlay_hints.designators.value == true);
     ZEXPECT(config.inlay_hints.block_end.value == false);
     ZEXPECT(config.inlay_hints.default_arguments.value == false);
-    ZEXPECT(config.inlay_hints.type_name_limit.value == 32u);
+    ZEXPECT(config.inlay_hints.max_length.types.value == 32u);
     ZEXPECT(config.code_completion.enable_keyword_snippet.value == false);
     ZEXPECT(config.code_completion.enable_function_arguments_snippet.value == false);
     ZEXPECT(config.code_completion.enable_template_arguments_snippet.value == false);

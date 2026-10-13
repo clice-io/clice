@@ -180,7 +180,8 @@ struct RawLocation {
 
 struct RawInlayHintPart {
     std::string value;
-    /// Where the piece links, for one naming a symbol the index places.
+    /// Where the piece links, for one naming a symbol the index places or
+    /// a target in the main file.
     std::optional<RawLocation> location;
 };
 
@@ -244,6 +245,12 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
             raw.label.push_back({.value = std::move(part.value)});
             if(part.symbol) {
                 raw.label.back().location = place(part.symbol);
+            } else if(part.target) {
+                auto position = unit.positions().position(*part.target, PositionEncoding::UTF16);
+                raw.label.back().location = RawLocation{
+                    .path = unit.file_path(unit.main_file()).str(),
+                    .range = {*position, *position},
+                };
             }
         }
         out.push_back(std::move(raw));

@@ -403,7 +403,11 @@ auto summarize(const clang::Expr* expr) -> std::string {
         }
 
         std::string VisitCallExpr(const CallExpr* E) {
-            return Visit(E->getCallee());
+            std::string Result = Visit(E->getCallee());
+            if(!Result.empty()) {
+                Result += E->getNumArgs() == 0 ? "()" : "(...)";
+            }
+            return Result;
         }
 
         std::string VisitCXXDependentScopeMemberExpr(const CXXDependentScopeMemberExpr* E) {
@@ -440,6 +444,10 @@ auto summarize(const clang::Expr* expr) -> std::string {
         }
 
         // Literals are just printed
+        std::string VisitCXXNullPtrLiteralExpr(const CXXNullPtrLiteralExpr* E) {
+            return "nullptr";
+        }
+
         std::string VisitCXXBoolLiteralExpr(const CXXBoolLiteralExpr* E) {
             return E->getValue() ? "true" : "false";
         }
@@ -461,12 +469,14 @@ auto summarize(const clang::Expr* expr) -> std::string {
             std::string Result = "\"";
             if(E->containsNonAscii()) {
                 Result += "...";
-            } else if(E->getLength() > 10) {
-                Result += E->getString().take_front(7);
-                Result += "...";
             } else {
                 llvm::raw_string_ostream OS(Result);
-                llvm::printEscapedString(E->getString(), OS);
+                if(E->getLength() > 10) {
+                    llvm::printEscapedString(E->getString().take_front(7), OS);
+                    Result += "...";
+                } else {
+                    llvm::printEscapedString(E->getString(), OS);
+                }
             }
             Result.push_back('"');
             return Result;

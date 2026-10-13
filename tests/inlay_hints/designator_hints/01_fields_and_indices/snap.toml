@@ -1,4 +1,9 @@
-[answers."main.cpp"]
+[default."main.cpp"]
+inlay_hints = [
+    { line = "Point p{⟨.x=⟩1, ⟨.y=⟩2 + 2};" },
+]
+
+[configured."main.cpp"]
 inlay_hints = [
     { line = "Point p{⟨.x=⟩1, ⟨.y=⟩2 + 2};" },
     { line = "int coordinates[2] = {⟨[0]=⟩7, ⟨[1]=⟩8};" },

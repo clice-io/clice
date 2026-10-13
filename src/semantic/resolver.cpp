@@ -1243,7 +1243,8 @@ public:
            ULE && ULE->requiresADL()) {
             return clang::QualType();
         }
-        return common_return_type(call_candidates(call), explicit_arguments(callee));
+        return common_return_type(call_candidates(call),
+                                  decls::explicit_template_arguments(callee));
     }
 
     /// What calling one of `candidates` returns, before resolution: the
@@ -1296,20 +1297,6 @@ public:
         stack.push(FTD, params, bound);
         auto type = substitute(function->getReturnType());
         return mentions_parameters(type, params) ? clang::QualType() : type;
-    }
-
-    static llvm::ArrayRef<clang::TemplateArgumentLoc>
-        explicit_arguments(const clang::Expr* callee) {
-        if(auto* OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
-            return OE->template_arguments();
-        }
-        if(auto* DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
-            return DSDRE->template_arguments();
-        }
-        if(auto* DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
-            return DSME->template_arguments();
-        }
-        return {};
     }
 
     /// The declaration a name or member expression refers to; the frames

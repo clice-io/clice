@@ -19,6 +19,11 @@
   "tests": [
     {
       "name": "answers",
+      "config": {
+        "inlay_hints": {
+          "array_indices": true
+        }
+      },
       "blocks": [
         {
           "label": "main.cpp",
