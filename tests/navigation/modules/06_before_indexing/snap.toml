@@ -1,5 +1,8 @@
-[test."before the index"]
+["importer not indexed"."before the index"]
 definition = ["math.cppm │ int ⟦add⟧(int left, int right) {"]
 
-[test."after the index"]
+["importer not indexed"."after the index"]
+definition = ["math.cppm │ int ⟦add⟧(int left, int right) {"]
+
+["importer indexed first".definition]
 definition = ["math.cppm │ int ⟦add⟧(int left, int right) {"]

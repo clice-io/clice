@@ -505,10 +505,14 @@ Features::RawResult Features::definition(Ticket ticket,
     // worker leg covers — include directives, which have no symbol
     // occurrence — the manifest edges answer instead, under the same
     // content gate as the links projection: manifest lines are meaningless
-    // against a buffer the index never described.
+    // against a buffer the index never described. A symbol the shard names
+    // and no index places still waits for the compile: a module's
+    // declaration before the module's unit is indexed is in the compile's
+    // own index alone.
     auto serving = query.serving(path_id);
     if(session->serving == ServingMode::IndexOnly || ASTFamily::compile_barred(*session) ||
-       (serving && serving->kind == index::IndexSource::Kind::Shard)) {
+       (serving && serving->kind == index::IndexSource::Kind::Shard &&
+        !cursor_at(path_id, position))) {
         if(!query.shard_matching(session->path_id, session->text)) {
             co_return serde_raw{"[]"};
         }
@@ -530,7 +534,7 @@ Features::RawResult Features::definition(Ticket ticket,
         co_return to_raw(directive_definition(*link));
     }
 
-    // The dispatch compiled a dirty buffer: retry against the refreshed
+    // The dispatch compiled the buffer: retry against the refreshed
     // projection, but only when the compile actually completed — a failed
     // compile leaves the projection non-current and the caches stale.
     if(ast.projections.current(path_id)) {
