@@ -1,9 +1,9 @@
 ---
 name: release
-description: Operate the three-tier release process — instant builds, nightlies, stable releases — plus crash-log symbolization. Read before touching anything release-related. Hard rule — tags and manual releases need explicit maintainer approval first.
+description: Read before any release work — instant builds, nightlies, stable tags, publishing, release workflows — or symbolizing a user's crash log.
 ---
 
-Operate the three-tier release process: instant builds, nightlies, and stable releases.
+# Releases
 
 ## Versioning
 
@@ -40,7 +40,8 @@ to a GitHub pre-release plus the Marketplace and Open VSX pre-release
 channels, and
 prunes odd-minor pre-releases older than 30 days. Promotion fails loudly
 if no packaged green run exists. A failed nightly just means no nightly
-that day — fix main and rerun via dispatch.
+that day — fix main and rerun via dispatch, with the maintainer's
+approval like any release trigger.
 
 The vsix packaging matrix runs in parallel, but release upload and
 registry publishing happen in one serial job (`publish-release`) with
@@ -59,6 +60,8 @@ hash), not the release tag — the tag is applied after the build. Match crash
 logs to releases by the commit hash; the release notes state the hash.
 
 ## Tier 3 — Stable release (manual, even minor)
+
+Every step that tags or publishes needs the maintainer's explicit approval first.
 
 1. Freeze: stop merging features; the last nightlies of the freeze are the RCs.
 2. When a nightly is judged good, tag its commit: `git tag v0.2.0 <commit> && git push origin v0.2.0`.
