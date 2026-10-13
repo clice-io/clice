@@ -1,3 +1,18 @@
+[answers.before_redeclaration.hover]
+markdown = '''
+### function `reset`
+
+---
+→ `void`
+
+---
+```cpp
+// In namespace deprecation_forms
+void reset()
+```
+'''
+range = "void reset_early() { ⟦reset⟧(); }"
+
 [answers.type.hover]
 markdown = '''
 ### struct `LegacyConfig`

@@ -1224,7 +1224,7 @@ void print_decomposition(const clang::DecompositionDecl& decl,
     std::string bindings = "[";
     llvm::raw_string_ostream names(bindings);
     llvm::interleaveComma(decl.bindings(), names, [&](const clang::BindingDecl* binding) {
-        names << binding->getName();
+        names << (binding->isParameterPack() ? "..." : "") << binding->getName();
     });
     bindings += ']';
     decl.getTypeSourceInfo()->getType().print(os, policy, bindings);

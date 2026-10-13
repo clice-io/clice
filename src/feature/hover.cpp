@@ -318,7 +318,7 @@ auto decl_hover(const clang::NamedDecl* decl,
     }
 
     info.kind = card_kind(templated(decl));
-    if(std::string message; templated(decl)->getMostRecentDecl()->isDeprecated(&message)) {
+    if(std::string message; templated(decl)->isDeprecated(&message)) {
         info.deprecation = std::move(message);
     }
 

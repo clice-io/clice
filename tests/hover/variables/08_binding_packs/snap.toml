@@ -1,0 +1,14 @@
+[answers.head.hover]
+markdown = '''
+### variable `head`
+
+---
+Type: `<dependent type>`
+
+---
+```cpp
+// In count
+auto [head, ... tail] = value
+```
+'''
+range = "auto [⟦head⟧, ...tail] = value;"
