@@ -23,6 +23,7 @@ struct Point {
 };
 
 struct Grid {
+    Grid(int rows);
     Grid(int rows, int columns);
 };
 
@@ -39,4 +40,5 @@ void build() {
     points.emplace_back(1, 2, §(too_many)3);
     std::optional<Grid> grid;
     grid.emplace(§(initializer_list)2, 3);
+    grid.emplace(2, §(dependent_return)3);
 }

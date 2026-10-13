@@ -564,9 +564,13 @@ private:
                 type->isLValueReferenceType() ? clang::VK_LValue : clang::VK_XValue));
         }
 
+        // A member's return type may depend on the arguments, as the
+        // enable_if of optional's emplace does, so each constructor listed
+        // shows the declared one; a factory's depends on the class alone.
         forwarding = Forwarding{
             .function = &function,
-            .result = candidate.getReturnType(),
+            .result = llvm::isa<clang::CXXMethodDecl>(function) ? function.getReturnType()
+                                                                : candidate.getReturnType(),
             .argument = current_arg,
         };
 
