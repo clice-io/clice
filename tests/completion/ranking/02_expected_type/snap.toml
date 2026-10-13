@@ -1,0 +1,19 @@
+[answers.enumeration.completion]
+items = [
+    { label = "green", kind = "EnumMember", detail = "Color" },
+    { label = "green_level", kind = "Variable", detail = "int" },
+    { label = "green_ratio", kind = "Variable", detail = "double" },
+]
+
+[answers.arithmetic.completion]
+items = [
+    { label = "green_ratio", kind = "Variable", detail = "double" },
+    { label = "green_level", kind = "Variable", detail = "int" },
+    { label = "green", kind = "EnumMember", detail = "Color" },
+]
+
+[answers.member.completion]
+items = [
+    { label = "tone", kind = "Field", detail = "Color" },
+    { label = "tone_index", kind = "Field", detail = "int" },
+]

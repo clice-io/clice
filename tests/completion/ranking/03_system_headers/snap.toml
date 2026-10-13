@@ -1,0 +1,5 @@
+[answers.pos.completion]
+items = [
+    { label = "parse_project_value(const char *text)", kind = "Function", detail = "int" },
+    { label = "parse_vendor_value(const char *text)", kind = "Function", detail = "int" },
+]

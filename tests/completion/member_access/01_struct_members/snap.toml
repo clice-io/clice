@@ -1,6 +1,6 @@
 [answers.member.completion]
 items = [
-    { label = "raise(int step)", kind = "Method", detail = "void" },
     { label = "current", kind = "Field", detail = "int" },
     { label = "target", kind = "Field", detail = "int" },
+    { label = "raise(int step)", kind = "Method", detail = "void" },
 ]

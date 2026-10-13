@@ -1,0 +1,18 @@
+[[answers.function.completion.items]]
+label = "read_count"
+kind = "Variable"
+detail = "int"
+
+[[answers.function.completion.items]]
+label = "read_sensor(int channel)"
+kind = "Function"
+detail = "int"
+documentation = '''
+Reads the sensor once.  
+Returns the reading in \*\*millivolts\*\*.
+'''
+
+[answers.instantiated_member.completion]
+items = [
+    { label = "last_value", kind = "Field", detail = "int", documentation = "The last value the probe took." },
+]

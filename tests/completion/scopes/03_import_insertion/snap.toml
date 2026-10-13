@@ -1,0 +1,44 @@
+[default.module_unit.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧export import :detail;", text = "import shapes;" },
+        ],
+    },
+]
+
+[default.own_partition.completion]
+items = [
+    {
+        label = "measures::measure_area",
+        kind = "Function",
+        insert = "measures::measure_area",
+        edits = [
+            { at = "⟦⟧export import :detail;", text = "import :measure;" },
+        ],
+    },
+]
+
+[default.plain_unit.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧namespace app {", text = "import shapes;" },
+        ],
+    },
+]
+
+[configured.module_unit.completion]
+items = []
+
+[configured.own_partition.completion]
+items = []
+
+[configured.plain_unit.completion]
+items = []

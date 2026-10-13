@@ -1556,6 +1556,26 @@ public:
             add(item);
         };
 
+        /// Whether `decl` is, or a call of it returns, the type the context
+        /// expects.
+        auto expected = [&, preferred = context.getPreferredType()](const clang::NamedDecl* decl) {
+            if(preferred.isNull()) {
+                return false;
+            }
+            clang::QualType type;
+            if(auto* value = llvm::dyn_cast<clang::ValueDecl>(decl)) {
+                type = value->getType();
+            } else if(auto* function = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl)) {
+                type = function->getTemplatedDecl()->getType();
+            }
+            if(auto* function = type.isNull() ? nullptr : type->getAs<clang::FunctionType>()) {
+                type = function->getReturnType();
+            }
+            return !type.isNull() &&
+                   sema.getASTContext().hasSameUnqualifiedType(type.getNonReferenceType(),
+                                                               preferred.getNonReferenceType());
+        };
+
         llvm::DenseSet<const clang::Decl*> offered;
         /// `relevance` scales what the context makes of the candidate.
         auto add_declaration = [&](clang::CodeCompletionResult& candidate, float relevance) {
@@ -1587,11 +1607,14 @@ public:
             // Clang offers a namespace last, among the qualifiers; but one is
             // typed to name what it declares, like any other declaration.
             bool space = llvm::isa<clang::NamespaceDecl, clang::NamespaceAliasDecl>(declaration);
-            item.relevance = relevance * priority_weight(
-                                             space ? std::min(candidate.Priority,
-                                                              static_cast<unsigned>(
-                                                                  clang::CCP_Declaration))
-                                                   : candidate.Priority);
+            auto priority = space ? std::min(candidate.Priority,
+                                             static_cast<unsigned>(clang::CCP_Declaration))
+                                  : candidate.Priority;
+            // Clang weighs every name by the type expected but a member's.
+            if(member_access && expected(declaration)) {
+                priority /= clang::CCF_ExactTypeMatch;
+            }
+            item.relevance = relevance * priority_weight(priority);
             if(unqualified && source_manager.isInSystemHeader(declaration->getLocation())) {
                 item.relevance *= 0.5F;
             }
@@ -1818,8 +1841,8 @@ public:
                 return qualifier;
             };
 
-            /// What a namespace scope offers: no namespace, nor a name a
-            /// using-declaration brings in from another one.
+            /// What a namespace scope offers: not a name a using-declaration
+            /// brings in from another one.
             auto offerable = llvm::IsaPred<clang::FunctionDecl,
                                            clang::FunctionTemplateDecl,
                                            clang::VarDecl,
@@ -1829,37 +1852,32 @@ public:
                                            clang::ClassTemplateDecl,
                                            clang::TypeAliasTemplateDecl,
                                            clang::ConceptDecl,
-                                           clang::EnumConstantDecl>;
+                                           clang::EnumConstantDecl,
+                                           clang::NamespaceDecl,
+                                           clang::NamespaceAliasDecl>;
             /// The names this compile parsed in `scope` and in the namespaces
             /// in it, but those a reserved name keeps internal. A preamble's
             /// come from the index instead (ScopeCandidate): reading them all
             /// back from it would cost each completion more than the compile.
-            llvm::SmallPtrSet<const clang::Decl*, 16> visited;
             auto scan = [&](this auto& self, clang::DeclContext* scope) -> void {
                 for(auto* decl: scope->noload_decls()) {
                     if(decl->isFromASTFile()) {
                         continue;
                     }
-                    if(llvm::isa<clang::LinkageSpecDecl, clang::ExportDecl>(decl)) {
-                        self(llvm::cast<clang::DeclContext>(decl));
-                        continue;
-                    }
                     auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
                     auto* identifier = named ? named->getIdentifier() : nullptr;
-                    if(!identifier) {
-                        continue;
-                    }
-                    auto name = identifier->getName();
-                    bool reserved = name.starts_with("_");
-                    if(auto* space = llvm::dyn_cast<clang::NamespaceDecl>(named)) {
-                        if((!reserved || space->isInline()) && visited.insert(space).second) {
+                    bool reserved = identifier && identifier->getName().starts_with("_");
+                    if(auto* space = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
+                        if(!reserved || space->isInline()) {
                             self(space);
                         }
-                        continue;
+                    } else if(auto* context = llvm::dyn_cast<clang::DeclContext>(decl);
+                              context && context->isTransparentContext()) {
+                        self(context);
                     }
-                    if((reserved && !prefix_starts_with_underscore) || !offerable(named) ||
-                       offered.contains(named->getCanonicalDecl()) || !sema.isVisible(named) ||
-                       !matcher.match(name)) {
+                    if(!identifier || (reserved && !prefix_starts_with_underscore) ||
+                       !offerable(named) || offered.contains(named->getCanonicalDecl()) ||
+                       !sema.isVisible(named) || !matcher.match(identifier->getName())) {
                         continue;
                     }
                     if(auto qualifier = qualifier_of(named)) {
@@ -1887,6 +1905,11 @@ public:
                 return found;
             };
             for(const auto& candidate: scope_candidates) {
+                if(llvm::any_of(candidate.scope, [](llvm::StringRef segment) {
+                       return segment.starts_with("_");
+                   })) {
+                    continue;
+                }
                 clang::DeclContext* scope = ast.getTranslationUnitDecl();
                 for(const auto& segment: candidate.scope) {
                     auto found = visible(scope, segment);
@@ -1916,7 +1939,11 @@ public:
                     }
                 }
 
-                // The file does not reach it: an import or an include will.
+                // The file does not reach it: an import or an include will,
+                // but none brings a whole namespace.
+                if(candidate.kind == protocol::CompletionItemKind::Module) {
+                    continue;
+                }
                 bool imported = !candidate.module.empty();
                 if(imported ? !options.insert_imports : !options.insert_includes) {
                     continue;

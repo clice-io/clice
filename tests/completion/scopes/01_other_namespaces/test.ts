@@ -1,10 +1,10 @@
-import { answers } from "@clice/tools/testing";
+import { answers, type AnswersContext } from "@clice/tools/testing";
 
-answers(
-    { paths: { server: "the names of other namespaces come from the server's index" }, indexing: true },
-    async (a) => {
-        for (const m of a.markers()) {
-            await a.show(m.name, a.completion(m), { parts: ["insert", "edits"] });
-        }
-    },
-);
+async function items(a: AnswersContext): Promise<void> {
+    for (const m of a.markers()) {
+        await a.show(m.name, a.completion(m), { parts: ["insert"] });
+    }
+}
+
+answers("default", items);
+answers("configured", { config: { code_completion: { all_scopes: false } } }, items);

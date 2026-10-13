@@ -1,0 +1,14 @@
+[default.not_included.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-4", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[configured.not_included.completion]
+items = []
