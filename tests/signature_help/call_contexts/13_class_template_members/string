@@ -1,0 +1,8 @@
+#pragma once
+
+namespace std {
+template <class Char>
+struct basic_string {};
+
+using string = basic_string<char>;
+}  // namespace std

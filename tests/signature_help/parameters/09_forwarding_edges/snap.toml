@@ -24,10 +24,11 @@ active = 0
 signatures = []
 
 [answers.initializer_list.signature_help]
+signatures = ["emplace(⟦initializer_list<U> list⟧, Args &&...args) -> Grid &"]
+active = 0
+
+[answers.dependent_return.signature_help]
 signatures = [
-    "emplace(⟦int rows⟧, int columns) -> Grid &",
-    "emplace(⟦const Grid &⟧) -> Grid &",
-    "emplace(⟦Grid &&⟧) -> Grid &",
-    "emplace(⟦initializer_list<U> list⟧, Args &&...args) -> Grid &",
+    "emplace(int rows, ⟦int columns⟧) -> enable_if_t<is_constructible_v<Grid, Args...>, Grid &>",
 ]
 active = 0
