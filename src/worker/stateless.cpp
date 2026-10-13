@@ -610,9 +610,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},
         &handle_include_tree);
     const kota::codec::RawValue cancelled_query{"null"};
-    serve<worker::CompletionParams>(peer,
-                                    worker::CompletionResult{.list = cancelled_query},
-                                    &handle_completion);
+    serve<worker::CompletionParams>(peer, worker::CompletionResult{}, &handle_completion);
     serve<worker::SignatureHelpParams>(peer, cancelled_query, &handle_signature_help);
     serve<worker::FormatParams>(
         peer,

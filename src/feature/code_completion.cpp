@@ -679,11 +679,41 @@ struct Rebuilder {
                                                   clang::ArraySizeModifier::Normal,
                                                   0);
             }
+        } else if(const auto* function = llvm::dyn_cast<clang::FunctionProtoType>(bare)) {
+            auto returned = type(function->getReturnType());
+            llvm::SmallVector<clang::QualType, 4> parameters;
+            for(auto parameter: function->getParamTypes()) {
+                parameters.push_back(type(parameter));
+            }
+            if(!returned.isNull() && llvm::none_of(parameters, &clang::QualType::isNull)) {
+                clang::FunctionProtoType::ExtProtoInfo info;
+                info.Variadic = function->isVariadic();
+                info.TypeQuals = function->getMethodQuals();
+                info.RefQualifier = function->getRefQualifier();
+                result = ast.getFunctionType(returned, parameters, info);
+            }
         } else if(auto* tag = bare->getAsTagDecl()) {
             result = tag_type(tag);
         }
         return result.isNull() ? result
                                : ast.getQualifiedType(result, canonical.getLocalQualifiers());
+    }
+
+    /// The class here a type of the other compile names: the class a
+    /// specialization of it is formed of when it is concrete, the pattern
+    /// of a class template for a dependent one.
+    clang::TagDecl* tag(const clang::TagDecl* from) {
+        if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(from)) {
+            if(auto* pattern = record->getDescribedClassTemplate()) {
+                auto* primary = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(find(pattern));
+                return primary ? primary->getTemplatedDecl() : nullptr;
+            }
+            if(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record)) {
+                return nullptr;
+            }
+        }
+        auto type = tag_type(from);
+        return type.isNull() ? nullptr : type->getAsTagDecl();
     }
 
     std::optional<clang::TemplateArgument> argument(const clang::TemplateArgument& from) {
@@ -943,6 +973,51 @@ public:
         return arguments;
     }
 
+    /// The class `var`, the variable of a range-based `for`, holds, as the
+    /// whole buffer tells: in the completion's own parse the statement is
+    /// not finished, and its range is nowhere else. Null when the loop's
+    /// element does not resolve there or names no class found here.
+    clang::TagDecl* loop_class(clang::Sema& sema, const clang::VarDecl* var) {
+        auto& source_manager = sema.getSourceManager();
+        auto [file, offset] = source_manager.getDecomposedLoc(var->getLocation());
+        if(file != source_manager.getMainFileID()) {
+            return nullptr;
+        }
+        auto unit = whole.unit();
+        if(!unit.completed()) {
+            return nullptr;
+        }
+        struct Finder : clang::RecursiveASTVisitor<Finder> {
+            const clang::SourceManager& source_manager;
+            std::uint32_t offset;
+            clang::VarDecl* found = nullptr;
+
+            bool VisitVarDecl(clang::VarDecl* var) {
+                auto [file, at] = source_manager.getDecomposedLoc(var->getLocation());
+                if(var->isCXXForRangeDecl() && file == source_manager.getMainFileID() &&
+                   at == offset) {
+                    found = var;
+                }
+                return !found;
+            }
+        } finder{.source_manager = unit.context().getSourceManager(), .offset = offset};
+        for(auto* decl: unit.top_level_decls()) {
+            if(!finder.TraverseDecl(decl)) {
+                break;
+            }
+        }
+        if(!finder.found) {
+            return nullptr;
+        }
+        types::TemplateResolver resolver(unit.context());
+        auto type = resolver.deduce(finder.found);
+        auto* tag = type.isNull() ? nullptr : resolver.resolve_tag(type.getNonReferenceType());
+        if(!tag) {
+            return nullptr;
+        }
+        return Rebuilder(sema, sema.getPreprocessor().getCodeCompletionLoc()).tag(tag);
+    }
+
     /// Sema resolves a dependent member base or scope with its own
     /// heuristics, which stop at the primary template and a single typedef.
     /// When pseudo-instantiation reaches a class Sema did not, run the
@@ -1017,6 +1092,14 @@ public:
                         tag = object.isNull() ? nullptr : informed.resolve_tag(object);
                     }
                 }
+                if(auto* name = llvm::dyn_cast<clang::DeclRefExpr>(base->IgnoreParenImpCasts());
+                   !tag && !arrow && name) {
+                    if(auto* var = llvm::dyn_cast<clang::VarDecl>(name->getDecl());
+                       var && var->isCXXForRangeDecl()) {
+                        tag = loop_class(sema, var);
+                        object = tag ? ast.getCanonicalTagType(tag) : clang::QualType();
+                    }
+                }
             } else if(!reported->isDependentType()) {
                 return false;
             } else {
@@ -1069,7 +1152,16 @@ public:
             if(NNS.getKind() != clang::NestedNameSpecifier::Kind::Type || !NNS.isDependent()) {
                 return false;
             }
-            auto* tag = resolver.resolve_tag(clang::QualType(NNS.getAsType(), 0));
+            auto scope_type = clang::QualType(NNS.getAsType(), 0);
+            auto* tag = resolver.resolve_tag(scope_type);
+            if(auto* function = enclosing_template(sema.CurContext); !tag && function) {
+                if(auto arguments = instantiated_later(sema, function); !arguments.empty()) {
+                    types::TemplateResolver informed(
+                        ast,
+                        {.assumed = function, .assumed_arguments = std::move(arguments)});
+                    tag = informed.resolve_tag(scope_type);
+                }
+            }
             auto* entered = llvm::dyn_cast_or_null<clang::TagDecl>(
                 sema.computeDeclContext(**spec, /*EnteringContext=*/true));
             if(!tag || same(tag, entered)) {
@@ -1332,6 +1424,9 @@ public:
         bool member_access =
             context.getKind() == clang::CodeCompletionContext::CCC_DotMemberAccess ||
             context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess;
+        // What the system headers declare ranks after the rest where it
+        // competes with it: not among the members of a class or a scope.
+        bool unqualified = unqualified_name(context);
         types::TemplateResolver resolver(sema.getASTContext());
         auto* naming = unchecked_naming_class(sema, context);
         // In `{ .` the fields rank in declaration order, the order C++
@@ -1368,6 +1463,12 @@ public:
             // A hidden declaration is not what its name means here.
             if(!declaration || candidate.Hidden ||
                candidate.Availability == CXAvailability_NotAccessible) {
+                return true;
+            }
+            // The members `.` reaches on an object with an `operator->`
+            // are not what its `->` asks for.
+            if(!candidate.FixIts.empty() &&
+               context.getKind() == clang::CodeCompletionContext::CCC_ArrowMemberAccess) {
                 return true;
             }
             // Clang gives a deduction guide no name to type.
@@ -1491,7 +1592,7 @@ public:
                                                               static_cast<unsigned>(
                                                                   clang::CCP_Declaration))
                                                    : candidate.Priority);
-            if(source_manager.isInSystemHeader(declaration->getLocation())) {
+            if(unqualified && source_manager.isInSystemHeader(declaration->getLocation())) {
                 item.relevance *= 0.5F;
             }
             if(item.deprecated) {
@@ -1626,7 +1727,8 @@ public:
                         .macro = true,
                         .relevance = priority_weight(candidate.Priority),
                     };
-                    if(info && source_manager.isInSystemHeader(info->getDefinitionLoc())) {
+                    if(unqualified && info &&
+                       source_manager.isInSystemHeader(info->getDefinitionLoc())) {
                         item.relevance *= 0.5F;
                     }
                     if(auto* ccs =

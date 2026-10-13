@@ -78,8 +78,7 @@ struct CodeCompletionOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "After `.` on a pointer, list the members `->` reaches and "
-                         "turn the `.` into `->` when one is chosen; likewise `->` "
-                         "on an object becomes `.`.")
+                         "turn the `.` into `->` when one is chosen.")
     <bool> dot_to_arrow = true;
 
     KOTATSU_ANNOTATE(defaulted = true,

@@ -273,7 +273,7 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
         }
     }
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-       var && var->getInit() && type->getContainedAutoType()) {
+       var && (var->getInit() || var->isCXXForRangeDecl()) && type->getContainedAutoType()) {
         auto deduced = unit.resolver().deduce(var);
         return deduced.isNull() ? type : deduced;
     }

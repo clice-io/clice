@@ -609,8 +609,11 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
             /// parameters (`trait<1, B>` must not swallow `trait<1L, Y>`).
             if(argument.getKind() == clang::TemplateArgument::Expression) {
                 auto expr = argument.getAsExpr();
-                if(!expr->isValueDependent() &&
-                   context.hasSameType(pattern.getIntegralType(), expr->getType())) {
+                if(expr->isValueDependent()) {
+                    undecided_values = true;
+                    return true;
+                }
+                if(context.hasSameType(pattern.getIntegralType(), expr->getType())) {
                     if(auto value = expr->getIntegerConstantExpr(context)) {
                         return llvm::APSInt::isSameValue(pattern.getAsIntegral(), *value);
                     }
@@ -1012,6 +1015,110 @@ bool same_expression(clang::ASTContext& context,
     return false;
 }
 
+/// The category a type's shape puts it in, for the traits it decides.
+enum class Category : std::uint8_t {
+    /// A template parameter or a dependent name: it may become anything.
+    Unknown,
+    Void,
+    NullPointer,
+    Integral,
+    Floating,
+    Enum,
+    Class,
+    Union,
+    Pointer,
+    MemberPointer,
+    LValueReference,
+    RValueReference,
+    Array,
+    Function,
+};
+
+Category category_of(clang::QualType type) {
+    const auto* canonical = type.getCanonicalType().getTypePtr();
+    switch(canonical->getTypeClass()) {
+        case clang::Type::Builtin: {
+            if(canonical->isDependentType()) {
+                return Category::Unknown;
+            }
+            if(canonical->isVoidType()) {
+                return Category::Void;
+            }
+            if(canonical->isNullPtrType()) {
+                return Category::NullPointer;
+            }
+            if(canonical->isIntegerType()) {
+                return Category::Integral;
+            }
+            return canonical->isFloatingType() ? Category::Floating : Category::Unknown;
+        }
+        case clang::Type::Pointer: return Category::Pointer;
+        case clang::Type::MemberPointer: return Category::MemberPointer;
+        case clang::Type::LValueReference: return Category::LValueReference;
+        case clang::Type::RValueReference: return Category::RValueReference;
+        case clang::Type::ConstantArray:
+        case clang::Type::IncompleteArray:
+        case clang::Type::DependentSizedArray: return Category::Array;
+        case clang::Type::FunctionProto:
+        case clang::Type::FunctionNoProto: return Category::Function;
+        case clang::Type::Enum: return Category::Enum;
+        case clang::Type::Record:
+        case clang::Type::InjectedClassName: {
+            auto* record = canonical->getAsRecordDecl();
+            return record && record->isUnion() ? Category::Union : Category::Class;
+        }
+        case clang::Type::TemplateSpecialization: {
+            auto* specialization = llvm::cast<clang::TemplateSpecializationType>(canonical);
+            auto* pattern = llvm::dyn_cast_or_null<clang::ClassTemplateDecl>(
+                specialization->getTemplateName().getAsTemplateDecl());
+            if(!pattern) {
+                return Category::Unknown;
+            }
+            return pattern->getTemplatedDecl()->isUnion() ? Category::Union : Category::Class;
+        }
+        default: return Category::Unknown;
+    }
+}
+
+/// What the standard type-category trait `name` (`is_object`, without
+/// `_v`) says of a type of `category`; none for another trait or an unknown
+/// category.
+std::optional<bool> category_trait(llvm::StringRef name, Category category) {
+    if(category == Category::Unknown) {
+        return std::nullopt;
+    }
+    bool arithmetic = category == Category::Integral || category == Category::Floating;
+    bool fundamental =
+        arithmetic || category == Category::Void || category == Category::NullPointer;
+    bool reference =
+        category == Category::LValueReference || category == Category::RValueReference;
+    return llvm::StringSwitch<std::optional<bool>>(name)
+        .Case("is_void", category == Category::Void)
+        .Case("is_null_pointer", category == Category::NullPointer)
+        .Case("is_integral", category == Category::Integral)
+        .Case("is_floating_point", category == Category::Floating)
+        .Case("is_array", category == Category::Array)
+        .Case("is_enum", category == Category::Enum)
+        .Case("is_union", category == Category::Union)
+        .Case("is_class", category == Category::Class)
+        .Case("is_function", category == Category::Function)
+        .Case("is_pointer", category == Category::Pointer)
+        .Case("is_lvalue_reference", category == Category::LValueReference)
+        .Case("is_rvalue_reference", category == Category::RValueReference)
+        .Case("is_member_pointer", category == Category::MemberPointer)
+        .Case("is_reference", reference)
+        .Case("is_arithmetic", arithmetic)
+        .Case("is_fundamental", fundamental)
+        .Case("is_compound", !fundamental)
+        .Case("is_object",
+              !reference && category != Category::Void && category != Category::Function)
+        .Case("is_scalar",
+              arithmetic || category == Category::Enum || category == Category::Pointer ||
+                  category == Category::MemberPointer || category == Category::NullPointer)
+        .Default(std::nullopt);
+}
+
+
 /// Whether a constraint is satisfied. Its top-level `&&` and `||`
 /// (through parentheses) join separately checked atomic constraints, so a
 /// satisfied disjunct decides a disjunction and an unsatisfied conjunct a
@@ -1039,6 +1146,63 @@ std::optional<bool>
 }
 
 }  // namespace
+
+std::optional<bool> type_trait(const clang::Expr* expr,
+                               llvm::function_ref<clang::QualType(clang::QualType)> bound) {
+    expr = expr->IgnoreParenImpCasts();
+    auto standard = [](const clang::Decl* decl) {
+        return decl && decl->getDeclContext()->isStdNamespace();
+    };
+    auto single_type = [](llvm::ArrayRef<clang::TemplateArgumentLoc> arguments) {
+        return arguments.size() == 1 &&
+                       arguments.front().getArgument().getKind() == clang::TemplateArgument::Type
+                   ? arguments.front().getArgument().getAsType()
+                   : clang::QualType();
+    };
+
+    llvm::StringRef name;
+    clang::QualType operand;
+    if(auto* trait = llvm::dyn_cast<clang::TypeTraitExpr>(expr)) {
+        if(trait->getNumArgs() != 1) {
+            return std::nullopt;
+        }
+        /// The builtin spells the trait in camel case: `__is_object`.
+        name = clang::getTraitSpelling(trait->getTrait());
+        name.consume_front("__");
+        operand = trait->getArg(0)->getType();
+    } else if(auto* lookup = llvm::dyn_cast<clang::UnresolvedLookupExpr>(expr)) {
+        if(lookup->getNumDecls() == 0 || !standard(*lookup->decls_begin())) {
+            return std::nullopt;
+        }
+        name = lookup->getName().getAsIdentifierInfo()
+                   ? lookup->getName().getAsIdentifierInfo()->getName()
+                   : llvm::StringRef();
+        if(!name.consume_back("_v")) {
+            return std::nullopt;
+        }
+        operand = single_type(lookup->template_arguments());
+    } else if(auto* member = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr)) {
+        auto qualifier = member->getQualifier();
+        if(member->getDeclName().getAsString() != "value" ||
+           qualifier.getKind() != clang::NestedNameSpecifier::Kind::Type) {
+            return std::nullopt;
+        }
+        auto* specialization = qualifier.getAsType()->getAs<clang::TemplateSpecializationType>();
+        auto* trait = specialization ? specialization->getTemplateName().getAsTemplateDecl()
+                                     : nullptr;
+        if(!standard(trait) || specialization->template_arguments().size() != 1 ||
+           specialization->template_arguments().front().getKind() !=
+               clang::TemplateArgument::Type) {
+            return std::nullopt;
+        }
+        name = trait->getName();
+        operand = specialization->template_arguments().front().getAsType();
+    }
+    if(operand.isNull()) {
+        return std::nullopt;
+    }
+    return category_trait(name, category_of(bound(operand)));
+}
 
 std::optional<llvm::APSInt> convert_integral(clang::ASTContext& context,
                                              const llvm::APSInt& value,
@@ -1087,7 +1251,20 @@ Deduction deduce_arguments(clang::ASTContext& context,
         return Deduction::Failed;
     }
 
+    /// A parameter of the list as what it deduced to.
+    auto bound = [&](clang::QualType type) {
+        auto* parameter = type.getCanonicalType()->getAs<clang::TemplateTypeParmType>();
+        if(!parameter || parameter->getDepth() != params->getDepth() ||
+           parameter->getIndex() >= deduced.size() ||
+           deduced[parameter->getIndex()].getKind() != clang::TemplateArgument::Type) {
+            return type;
+        }
+        return deduced[parameter->getIndex()].getAsType();
+    };
     auto value_of = [&](const clang::Expr* expr) -> std::optional<llvm::APSInt> {
+        if(auto trait = type_trait(expr, bound)) {
+            return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
+        }
         auto NTTP = referenced_nttp(expr);
         if(!NTTP || NTTP->getDepth() != params->getDepth() || NTTP->getIndex() >= deduced.size()) {
             return std::nullopt;
@@ -1095,7 +1272,7 @@ Deduction deduce_arguments(clang::ASTContext& context,
         return constant_value(context, deduced[NTTP->getIndex()]);
     };
 
-    auto deduction = Deduction::Matched;
+    auto deduction = unifier.undecided() ? Deduction::Unverified : Deduction::Matched;
     for(auto& check: unifier.deferred()) {
         auto expected = evaluate_integral(context, check.pattern, value_of);
         auto actual = constant_value(context, check.argument);

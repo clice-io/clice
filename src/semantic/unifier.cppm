@@ -49,6 +49,12 @@ public:
         return deferred_checks;
     }
 
+    /// Whether a value pattern met an argument whose value is not known
+    /// yet: the match then holds or not once it is.
+    bool undecided() const {
+        return undecided_values;
+    }
+
 private:
     bool unify(const clang::TemplateArgument& pattern, const clang::TemplateArgument& argument);
 
@@ -76,6 +82,7 @@ private:
     unsigned depth;
     llvm::SmallVector<clang::TemplateArgument, 4> bindings;
     llvm::SmallVector<Deferred, 1> deferred_checks;
+    bool undecided_values = false;
 
     /// Element-wise matching state for a structured pack expansion pattern:
     /// while `expanding`, pack parameters accumulate one element per matched
@@ -174,6 +181,14 @@ std::optional<llvm::APSInt>
     evaluate_integral(clang::ASTContext& context,
                       const clang::Expr* expr,
                       llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of);
+
+/// What a standard type-category trait `expr` spells — `std::is_object_v<T>`,
+/// `std::is_object<T>::value` or `__is_object(T)` — says of its operand,
+/// `bound` giving the operand under the caller's bindings; none when it is
+/// no such trait, or the operand's shape leaves it open (a template
+/// parameter may become any type).
+std::optional<bool> type_trait(const clang::Expr* expr,
+                               llvm::function_ref<clang::QualType(clang::QualType)> bound);
 
 /// If `expr` is a (possibly parenthesized/casted) reference to a non-type
 /// template parameter, return its declaration.

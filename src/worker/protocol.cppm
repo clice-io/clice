@@ -311,7 +311,7 @@ struct CompletionParams {
 /// `#include` goes that the items marked with their symbol need
 /// (feature::Completion).
 struct CompletionResult {
-    kota::codec::RawValue list;
+    kota::codec::RawValue list{"null"};
     std::optional<feature::IncludePlace> include;
 };
 
