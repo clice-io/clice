@@ -25,10 +25,10 @@ std::optional<std::uint32_t> token_index_at(const Semantics& semantics, std::uin
     return std::nullopt;
 }
 
-/// The fastest of three semantic tree builds over `uses` nested macro
-/// invocations shaped like gtest's EXPECT_EQ, each the first build of a
-/// fresh unit; nullopt when the source does not compile cleanly.
-std::optional<std::chrono::nanoseconds> nested_macro_build_time(std::uint32_t uses) {
+/// The stream searches of a semantic tree build over `uses` nested macro
+/// invocations shaped like gtest's EXPECT_EQ; nullopt when the source does
+/// not compile cleanly.
+std::optional<std::uint32_t> nested_macro_searches(std::uint32_t uses) {
     std::string source = R"cpp(
 namespace testing {
 struct AssertionResult {
@@ -73,18 +73,14 @@ void test() {
     }
     source += "}\n";
 
-    auto fastest = std::chrono::nanoseconds::max();
-    for(int run = 0; run < 3; run += 1) {
-        clear();
-        add_main("main.cpp", source);
-        if(!compile() || !unit->diagnostics().empty()) {
-            return std::nullopt;
-        }
-        auto start = std::chrono::steady_clock::now();
-        unit->semantics();
-        fastest = std::min(fastest, std::chrono::steady_clock::now() - start);
+    clear();
+    add_main("main.cpp", source);
+    if(!compile() || !unit->diagnostics().empty()) {
+        return std::nullopt;
     }
-    return fastest;
+    auto before = unit->expanded_token_searches();
+    unit->semantics();
+    return unit->expanded_token_searches() - before;
 }
 
 ZEST_CASE(ModuleNodes) {
@@ -172,12 +168,12 @@ ZEST_CASE(NoModuleNoNodes) {
 ZEST_CASE(NestedMacroScaling) {
     // Every node looks its range up among the expanded tokens. Binary
     // searched with isBeforeInTranslationUnit, the first build over cold
-    // SourceManager caches goes quadratic (over 20x for 4x the uses); a
-    // linear build takes about 4x.
-    auto small = nested_macro_build_time(400);
-    auto large = nested_macro_build_time(1600);
+    // SourceManager caches goes quadratic; the location index leaves no
+    // search that grows with the uses.
+    auto small = nested_macro_searches(100);
+    auto large = nested_macro_searches(400);
     ZASSERT((small.has_value() && large.has_value()));
-    ZASSERT(*large < *small * 12);
+    ZEXPECT(*large == *small);
 }
 
 };  // ZEST_SUITE(SemanticsTable)

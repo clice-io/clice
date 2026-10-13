@@ -340,6 +340,10 @@ auto CompilationUnitRef::expanded_tokens(clang::SourceRange range) -> TokenRange
     return token_map(self).expanded(range);
 }
 
+auto CompilationUnitRef::expanded_token_searches() -> std::uint32_t {
+    return token_map(self).searches();
+}
+
 auto CompilationUnitRef::expansions_overlapping(TokenRange spelled)
     -> llvm::ArrayRef<MacroExpansion> {
     return token_map(self).expansions_overlapping(spelled);

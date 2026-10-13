@@ -68,6 +68,13 @@ public:
     /// The expanded tokens of the closed token range `range`.
     llvm::ArrayRef<clang::syntax::Token> expanded(clang::SourceRange range) const;
 
+    /// How many expanded(range) lookups missed the location index and
+    /// searched the stream, each search a binary one by
+    /// isBeforeInTranslationUnit.
+    std::uint32_t searches() const {
+        return search_count;
+    }
+
     /// The main file's top-level macro expansions whose invocation shares a
     /// token with `spelled`, a range of spelled().
     llvm::ArrayRef<MacroExpansion>
@@ -144,6 +151,8 @@ private:
 
     /// Expanded tokens by location, for the AST's token ranges.
     llvm::DenseMap<clang::SourceLocation, std::uint32_t> expanded_index;
+
+    mutable std::uint32_t search_count = 0;
 
     /// The first and last spelled token of each top-level invocation, in
     /// source order: the end of the last one bounds the next.

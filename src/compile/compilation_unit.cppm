@@ -248,6 +248,10 @@ public:
     /// token range `range`.
     auto expanded_tokens(clang::SourceRange range) -> TokenRange;
 
+    /// How many expanded_tokens(range) lookups searched the stream (see
+    /// TokenMap::searches).
+    auto expanded_token_searches() -> std::uint32_t;
+
     /// The main file's top-level macro expansions sharing a token with
     /// `spelled`, a range of spelled_tokens().
     auto expansions_overlapping(TokenRange spelled) -> llvm::ArrayRef<MacroExpansion>;

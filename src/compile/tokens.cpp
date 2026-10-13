@@ -416,6 +416,7 @@ llvm::ArrayRef<clang::syntax::Token> TokenMap::expanded(clang::SourceRange range
             .slice(begin->second, end->second + 1 - begin->second);
     }
     // The rest, a split `>>` for one, binary-search the stream.
+    search_count += 1;
     llvm::ArrayRef<clang::syntax::Token> stream = expanded_tokens;
     const auto* first = llvm::partition_point(stream, [&](const clang::syntax::Token& token) {
         return SM.isBeforeInTranslationUnit(token.location(), range.getBegin());
