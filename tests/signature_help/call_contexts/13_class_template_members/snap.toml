@@ -21,3 +21,7 @@ active = 0
 [answers.own_pack.signature_help]
 signatures = ["append(int first, ⟦Extra ...rest⟧) -> void"]
 active = 0
+
+[answers.standard_alias.signature_help]
+signatures = ["at(⟦int index⟧) -> string &"]
+active = 0

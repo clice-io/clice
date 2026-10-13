@@ -4,51 +4,62 @@
   "subtopic": "call_contexts",
   "title": "Class template members",
   "summary": "A member of a class template shows the types the object's class is instantiated with",
-  "prose": "`Vector<Point>::at` returns `Point &`, not `T &`, and a call through a\nfunction object shows the parameters of the function type it was declared\nwith. A member template's own parameters stay as it declares them.",
+  "prose": "`Vector<Point>::at` returns `Point &`, not `T &`, and a call through a\nfunction object shows the parameters of the function type it was declared\nwith. A member template's own parameters stay as it declares them. A standard\nlibrary type shows under its usual name: `string`, not `basic_string<char>`.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nstruct Vector {\n    T& at(int index);\n    void assign(int count, const T& value);\n    template <typename U>\n    U convert(U fallback) const;\n};\n\ntemplate <typename... Columns>\nstruct Row {\n    template <typename Tag>\n    void fill(Tag tag, Columns... values);\n    template <typename... Extra>\n    void append(int first, Extra... rest);\n};\n\ntemplate <typename Signature>\nstruct Function;\n\ntemplate <typename Result, typename... Args>\nstruct Function<Result(Args...)> {\n    Result operator()(Args... args) const;\n};\n\nstruct Point {\n    int x;\n    int y;\n};\n\nvoid use(Vector<Point> points, Function<bool(int, double)> callback, Row<int, double> row) {\n    points.at(0);\n    points.assign(3, Point{});\n    points.convert(1.0);\n    callback(1, 2.0);\n    row.fill(0, 1, 2.0);\n    row.append(1, 2);\n}\n",
+      "text": "#include <string>\n\ntemplate <typename T>\nstruct Vector {\n    T& at(int index);\n    void assign(int count, const T& value);\n    template <typename U>\n    U convert(U fallback) const;\n};\n\ntemplate <typename... Columns>\nstruct Row {\n    template <typename Tag>\n    void fill(Tag tag, Columns... values);\n    template <typename... Extra>\n    void append(int first, Extra... rest);\n};\n\ntemplate <typename Signature>\nstruct Function;\n\ntemplate <typename Result, typename... Args>\nstruct Function<Result(Args...)> {\n    Result operator()(Args... args) const;\n};\n\nstruct Point {\n    int x;\n    int y;\n};\n\nvoid use(Vector<Point> points,\n         Function<bool(int, double)> callback,\n         Row<int, double> row,\n         Vector<std::string> names) {\n    points.at(0);\n    points.assign(3, Point{});\n    points.convert(1.0);\n    callback(1, 2.0);\n    row.fill(0, 1, 2.0);\n    row.append(1, 2);\n    names.at(0);\n}\n",
       "markers": [
         {
           "name": "member",
-          "begin": 685,
-          "end": 685,
-          "range": false
-        },
-        {
-          "name": "parameter",
-          "begin": 710,
-          "end": 710,
-          "range": false
-        },
-        {
-          "name": "member_template",
-          "begin": 739,
-          "end": 739,
-          "range": false
-        },
-        {
-          "name": "function_object",
           "begin": 758,
           "end": 758,
           "range": false
         },
         {
-          "name": "class_pack",
+          "name": "parameter",
           "begin": 783,
           "end": 783,
           "range": false
         },
         {
+          "name": "member_template",
+          "begin": 812,
+          "end": 812,
+          "range": false
+        },
+        {
+          "name": "function_object",
+          "begin": 831,
+          "end": 831,
+          "range": false
+        },
+        {
+          "name": "class_pack",
+          "begin": 856,
+          "end": 856,
+          "range": false
+        },
+        {
           "name": "own_pack",
-          "begin": 810,
-          "end": 810,
+          "begin": 883,
+          "end": 883,
+          "range": false
+        },
+        {
+          "name": "standard_alias",
+          "begin": 900,
+          "end": 900,
           "range": false
         }
       ]
+    },
+    {
+      "path": "string",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class Char>\nstruct basic_string {};\n\nusing string = basic_string<char>;\n}  // namespace std\n",
+      "markers": []
     }
   ],
   "tests": [
@@ -122,6 +133,18 @@
             "signature_help": {
               "signatures": [
                 "append(int first, ⟦Extra ...rest⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "standard_alias",
+          "marker": "standard_alias",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "at(⟦int index⟧) -> string &"
               ],
               "active": 0
             }
