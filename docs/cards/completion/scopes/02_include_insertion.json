@@ -109,12 +109,12 @@
     },
     {
       "path": "palette.h",
-      "text": "#pragma once\n\nenum Color { color_red, color_green };\n",
+      "text": "#pragma once\n\nenum Color { color_red, color_green };\n\nstruct Swatch {\n    int hue;\n};\n",
       "markers": []
     },
     {
       "path": "plain.c",
-      "text": "void run(void) {\n    Circ;\n    int color = color_r;\n}\n",
+      "text": "void run(void) {\n    Circ;\n    int color = color_r;\n    Swat *swatch;\n}\n",
       "markers": [
         {
           "name": "c_file",
@@ -126,6 +126,12 @@
           "name": "c_enumerator",
           "begin": 50,
           "end": 50,
+          "range": false
+        },
+        {
+          "name": "c_tag",
+          "begin": 60,
+          "end": 60,
           "range": false
         }
       ]
@@ -634,6 +640,15 @@
           }
         },
         {
+          "label": "c_tag",
+          "marker": "c_tag",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
           "label": "module_unit",
           "marker": "module_unit",
           "value": {
@@ -836,6 +851,15 @@
         {
           "label": "c_enumerator",
           "marker": "c_enumerator",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "c_tag",
+          "marker": "c_tag",
           "value": {
             "completion": {
               "items": []

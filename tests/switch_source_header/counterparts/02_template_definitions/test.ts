@@ -13,7 +13,9 @@ test("indexed", async (t) => {
 });
 
 test("opened first", async (t) => {
-    const s = await t.start();
+    const s = await t.spawn();
+    s.open("main.cpp", { pull: false });
+    await s.initialize();
     expect(await s.errors("main.cpp")).toEqual([]);
     await s.indexed();
     await t.show("matrix.h", s.counterparts("matrix.h"));

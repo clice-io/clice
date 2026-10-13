@@ -2003,15 +2003,17 @@ public:
             };
             auto& language = sema.getLangOpts();
             for(const auto& candidate: scope_candidates) {
-                // C names no namespace, and an enumerator without its
-                // enumeration; a file compiled without named modules imports
+                // C names no namespace, an enumerator without its
+                // enumeration, and a struct, union or enumeration only after
+                // its keyword; a file compiled without named modules imports
                 // nothing.
+                using Kind = protocol::CompletionItemKind;
                 llvm::ArrayRef<std::string> segments = candidate.scope;
-                if(!language.CPlusPlus &&
-                   candidate.kind == protocol::CompletionItemKind::EnumMember) {
+                if(!language.CPlusPlus && candidate.kind == Kind::EnumMember) {
                     segments = segments.drop_back();
                 }
-                if((!language.CPlusPlus && !segments.empty()) ||
+                if((!language.CPlusPlus && (!segments.empty() || candidate.kind == Kind::Class ||
+                                            candidate.kind == Kind::Enum)) ||
                    (!language.CPlusPlusModules && !candidate.module.empty()) ||
                    llvm::any_of(segments,
                                 [](llvm::StringRef segment) { return segment.starts_with("_"); })) {
@@ -2050,7 +2052,6 @@ public:
 
                 // The file does not reach it: an import or an include will,
                 // but none brings a whole namespace.
-                using Kind = protocol::CompletionItemKind;
                 if(candidate.kind == Kind::Module ||
                    (types_only && candidate.kind != Kind::Class && candidate.kind != Kind::Enum &&
                     candidate.kind != Kind::TypeParameter)) {

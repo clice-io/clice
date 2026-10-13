@@ -167,6 +167,9 @@ items = [
     },
 ]
 
+[default.c_tag.completion]
+items = []
+
 [[default.module_unit.completion.items]]
 label = "shapes::Circle"
 kind = "Class"
@@ -236,6 +239,9 @@ items = [
 items = []
 
 [configured.c_enumerator.completion]
+items = []
+
+[configured.c_tag.completion]
 items = []
 
 [configured.module_unit.completion]
