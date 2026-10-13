@@ -1113,10 +1113,9 @@ public:
                     type = PET->getPattern();
                 }
                 auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-                type =
-                    var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
-                        ? deduce_auto(var)
-                        : substitute(type);
+                type = var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
+                           ? deduce_auto(var)
+                           : substitute(type);
                 if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value); !field) {
                     object_quals = 0;
                 } else if(field->isMutable()) {
@@ -1234,8 +1233,8 @@ public:
         /// Clang cannot tell what a dependent call or subscript yields, nor
         /// what a cast to a dependent reference type collapses to
         /// (`static_cast<T&&>` with `T = int&`); the type says.
-        bool opaque =
-            evaluated && llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(init->IgnoreParens());
+        bool opaque = evaluated &&
+                      llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(init->IgnoreParens());
         return bind_auto(declared,
                          source,
                          source->isLValueReferenceType() || (!opaque && init->isLValue()));
@@ -1263,12 +1262,13 @@ public:
     /// when a completion parses the loop. The frames of the lookups stay
     /// for the caller to truncate.
     clang::QualType loop_element(const clang::VarDecl* var) {
-        auto* function = llvm::dyn_cast_or_null<clang::FunctionDecl>(
-            var->getParentFunctionOrMethod());
+        auto* function =
+            llvm::dyn_cast_or_null<clang::FunctionDecl>(var->getParentFunctionOrMethod());
         auto* body = function ? function->getBody() : nullptr;
         if(!body) {
             return clang::QualType();
         }
+
         struct Finder : clang::RecursiveASTVisitor<Finder> {
             const clang::VarDecl* var;
             const clang::CXXForRangeStmt* found = nullptr;
@@ -1280,6 +1280,7 @@ public:
                 return !found;
             }
         } finder{.var = var};
+
         finder.TraverseStmt(body);
         if(!finder.found || !finder.found->getRangeInit()) {
             return clang::QualType();
@@ -1362,7 +1363,7 @@ public:
 
     /// The operand `expr` dereferences, a `*` a dependent operand left
     /// unresolved; null for any other expression.
-    static const clang::Expr* dereferenced(const clang::Expr* expr) {
+    const static clang::Expr* dereferenced(const clang::Expr* expr) {
         if(auto* unary = llvm::dyn_cast<clang::UnaryOperator>(expr);
            unary && unary->getOpcode() == clang::UO_Deref) {
             return unary->getSubExpr();
@@ -1694,11 +1695,13 @@ public:
             candidates.append(OE->decls_begin(), OE->decls_end());
             if(auto UME = llvm::dyn_cast<clang::UnresolvedMemberExpr>(OE)) {
                 object = member_object(UME->getBaseType(), UME->isArrow());
-                rvalue_object = !UME->isArrow() && !UME->isImplicitAccess() && rvalue(UME->getBase());
+                rvalue_object =
+                    !UME->isArrow() && !UME->isImplicitAccess() && rvalue(UME->getBase());
             }
         } else if(auto DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
             object = member_object(DSME);
-            rvalue_object = !DSME->isArrow() && !DSME->isImplicitAccess() && rvalue(DSME->getBase());
+            rvalue_object =
+                !DSME->isArrow() && !DSME->isImplicitAccess() && rvalue(DSME->getBase());
             auto members = lookup_member(object, DSME->getMember());
             candidates.append(members.begin(), members.end());
         } else if(auto DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
@@ -1798,14 +1801,16 @@ private:
                 auto* RT = llvm::cast<clang::RecordType>(T);
                 auto qualifier = RT->getQualifier();
                 if(!qualifier) {
-                    auto* parent = llvm::dyn_cast<clang::CXXRecordDecl>(RT->getDecl()->getDeclContext());
+                    auto* parent =
+                        llvm::dyn_cast<clang::CXXRecordDecl>(RT->getDecl()->getDeclContext());
                     if(!parent || !parent->isDependentContext()) {
                         break;
                     }
-                    auto enclosing = parent->getDescribedClassTemplate() ||
-                                             llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(parent)
-                                         ? parent->getCanonicalTemplateSpecializationType(context)
-                                         : context.getCanonicalTagType(parent);
+                    auto enclosing =
+                        parent->getDescribedClassTemplate() ||
+                                llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(parent)
+                            ? parent->getCanonicalTemplateSpecializationType(context)
+                            : context.getCanonicalTagType(parent);
                     qualifier = clang::NestedNameSpecifier(enclosing.getTypePtr());
                 }
                 if(auto rewritten = rewrite_specifier(qualifier, policy); rewritten != qualifier) {
@@ -1821,10 +1826,11 @@ private:
             /// Base::name` would.
             case clang::Type::UnresolvedUsing: {
                 auto* decl = llvm::cast<clang::UnresolvedUsingType>(T)->getDecl();
-                result = rewrite(context.getDependentNameType(clang::ElaboratedTypeKeyword::Typename,
-                                                              decl->getQualifier(),
-                                                              decl->getIdentifier()),
-                                 policy);
+                result =
+                    rewrite(context.getDependentNameType(clang::ElaboratedTypeKeyword::Typename,
+                                                         decl->getQualifier(),
+                                                         decl->getIdentifier()),
+                            policy);
                 break;
             }
 
@@ -2298,7 +2304,8 @@ private:
                 return context.getRValueReferenceType(value);
             case Kind::RemoveReference: return value;
             case Kind::RemoveCVRef: return value.getUnqualifiedType();
-            case Kind::RemoveCV: return without(clang::Qualifiers::Const | clang::Qualifiers::Volatile);
+            case Kind::RemoveCV:
+                return without(clang::Qualifiers::Const | clang::Qualifiers::Volatile);
             case Kind::RemoveConst: return without(clang::Qualifiers::Const);
             case Kind::RemoveVolatile: return without(clang::Qualifiers::Volatile);
             case Kind::RemoveRestrict: return without(clang::Qualifiers::Restrict);

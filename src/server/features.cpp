@@ -990,8 +990,9 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 }
                 auto providers = project.dep_graph.lookup_module(name);
                 llvm::StringRef interface =
-                    providers.empty() ? llvm::StringRef()
-                                      : llvm::StringRef(project.file_table.resolve(providers.front()));
+                    providers.empty()
+                        ? llvm::StringRef()
+                        : llvm::StringRef(project.file_table.resolve(providers.front()));
                 path::walk_ancestors(directory, "", [&](llvm::StringRef dir) {
                     up += 1;
                     return !path::under(interface, dir);
@@ -1022,9 +1023,10 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
        prefix && project.config.code_completion.all_scopes) {
         exhausted = scope_candidates(*prefix, path_id, candidates);
     }
-    auto result = co_await dispatcher
-                      .completion(ticket, position, client, candidates, !exhausted, std::move(token))
-                      .or_fail();
+    auto result =
+        co_await dispatcher
+            .completion(ticket, position, client, candidates, !exhausted, std::move(token))
+            .or_fail();
     if(!result.include) {
         co_return std::move(result.list);
     }
@@ -1032,15 +1034,14 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
     // Items naming what the file does not include yet take the `#include`
     // of the header declaring it; one whose header is unknown goes.
     protocol::CompletionList list;
-    if(auto decoded =
-           kota::codec::json::from_string<kota::ipc::lsp_config>(result.list.data, list);
+    if(auto decoded = kota::codec::json::from_string<kota::ipc::lsp_config>(result.list.data, list);
        !decoded) {
         co_return std::move(result.list);
     }
     std::string directory;
     std::vector<std::string> arguments;
-    auto search = project.cdb.search_config(
-        contexts.resolve_command(path_id, directory, arguments).ref);
+    auto search =
+        project.cdb.search_config(contexts.resolve_command(path_id, directory, arguments).ref);
     vfs::Scope scope(project.file_table.dirs);
     feature::IncludeInsertion insertion{.opens_fragment = result.include->opens_fragment};
     std::erase_if(list.items, [&](protocol::CompletionItem& item) {
@@ -1059,10 +1060,12 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
             return true;
         }
         protocol::Position at = result.include->position;
-        item.additional_text_edits = std::vector{protocol::TextEdit{
-            .range = {at, at},
-            .new_text = insertion.text(*header),
-        }};
+        item.additional_text_edits = std::vector{
+            protocol::TextEdit{
+                               .range = {at, at},
+                               .new_text = insertion.text(*header),
+                               }
+        };
         return false;
     });
     co_return to_raw(list);

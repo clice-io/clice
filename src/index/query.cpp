@@ -1318,8 +1318,9 @@ std::vector<IndexQuery::Located> IndexQuery::search(const SymbolQuery& query,
     return results;
 }
 
-IndexQuery::Completables
-    IndexQuery::completables(llvm::StringRef prefix, Fid file, std::size_t limit) const {
+IndexQuery::Completables IndexQuery::completables(llvm::StringRef prefix,
+                                                  Fid file,
+                                                  std::size_t limit) const {
     SymbolQuery query;
     query.pattern = prefix.str();
     // Members outnumber the names of namespaces: the ranking is fetched
@@ -1331,21 +1332,20 @@ IndexQuery::Completables
     }
     if(auto preamble = preamble_blob(file)) {
         NameRanker ranker(query);
-        preamble->iterate_symbols([&](SymbolHash hash,
-                                      const SymbolIdentity& identity,
-                                      llvm::ArrayRef<std::uint32_t>) {
-            if(!has_flag(identity.flags, SymbolFlags::Completable) ||
-               identity.scope != SymbolScope::External || !is_searchable_kind(identity.kind) ||
-               !seen.insert(hash).second) {
+        preamble->iterate_symbols(
+            [&](SymbolHash hash, const SymbolIdentity& identity, llvm::ArrayRef<std::uint32_t>) {
+                if(!has_flag(identity.flags, SymbolFlags::Completable) ||
+                   identity.scope != SymbolScope::External || !is_searchable_kind(identity.kind) ||
+                   !seen.insert(hash).second) {
+                    return true;
+                }
+                auto quality = symbol_quality(identity.name, identity.kind, identity.flags, 0);
+                if(auto rank = ranker.rank(identity.name, identity.args, quality)) {
+                    ranked.hits.push_back(
+                        {.rank = *rank, .symbol = SymbolRef::from(hash, identity), .anchor = {}});
+                }
                 return true;
-            }
-            auto quality = symbol_quality(identity.name, identity.kind, identity.flags, 0);
-            if(auto rank = ranker.rank(identity.name, identity.args, quality)) {
-                ranked.hits.push_back(
-                    {.rank = *rank, .symbol = SymbolRef::from(hash, identity), .anchor = {}});
-            }
-            return true;
-        });
+            });
         std::ranges::sort(ranked.hits, [](const Ranked& lhs, const Ranked& rhs) {
             return ranks_after(rhs.rank,
                                rhs.symbol.name,

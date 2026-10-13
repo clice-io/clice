@@ -316,11 +316,11 @@ kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
 template <typename Params>
 kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
     Dispatcher::interactive(std::uint8_t evidence,
-                                              llvm::StringRef label,
-                                              const Ticket& ticket,
-                                              protocol::Position position,
-                                              Params wp,
-                                              kota::cancellation_token token) {
+                            llvm::StringRef label,
+                            const Ticket& ticket,
+                            protocol::Position position,
+                            Params wp,
+                            kota::cancellation_token token) {
     using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;

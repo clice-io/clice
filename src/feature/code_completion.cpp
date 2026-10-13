@@ -987,6 +987,7 @@ public:
         if(!unit.completed()) {
             return nullptr;
         }
+
         struct Finder : clang::RecursiveASTVisitor<Finder> {
             const clang::SourceManager& source_manager;
             std::uint32_t offset;
@@ -1001,6 +1002,7 @@ public:
                 return !found;
             }
         } finder{.source_manager = unit.context().getSourceManager(), .offset = offset};
+
         for(auto* decl: unit.top_level_decls()) {
             if(!finder.TraverseDecl(decl)) {
                 break;
@@ -1296,8 +1298,8 @@ public:
                 item.data = protocol::LSPAny(std::format("{}", candidate.include));
                 includes_pending = true;
             }
-            if(auto comment = candidate.documented ? display::comment(candidate.documented)
-                                                   : std::string();
+            if(auto comment =
+                   candidate.documented ? display::comment(candidate.documented) : std::string();
                !comment.empty()) {
                 protocol::MarkupContent documentation;
                 if(client.markdown) {
@@ -1408,15 +1410,15 @@ public:
         bool named_module = module && module->isNamedModule();
         bool exports = !named_module || module->isInterfaceOrPartition();
         auto completion_loc = sema.getPreprocessor().getCodeCompletionLoc();
-        bool imports = !named_module ||
-                       llvm::none_of(sema.getASTContext().getTranslationUnitDecl()->noload_decls(),
-                                     [&](const clang::Decl* decl) {
-                                         return !decl->isImplicit() && decl->isInNamedModule() &&
-                                                !llvm::isa<clang::ImportDecl>(decl) &&
-                                                source_manager.isBeforeInTranslationUnit(
-                                                    decl->getLocation(),
-                                                    completion_loc);
-                                     });
+        bool imports =
+            !named_module ||
+            llvm::none_of(sema.getASTContext().getTranslationUnitDecl()->noload_decls(),
+                          [&](const clang::Decl* decl) {
+                              return !decl->isImplicit() && decl->isInNamedModule() &&
+                                     !llvm::isa<clang::ImportDecl>(decl) &&
+                                     source_manager.isBeforeInTranslationUnit(decl->getLocation(),
+                                                                              completion_loc);
+                          });
         auto allowed_keyword = [&](llvm::StringRef keyword) {
             return (keyword != "import" || imports) && (keyword != "export" || exports);
         };
@@ -1607,9 +1609,9 @@ public:
             // Clang offers a namespace last, among the qualifiers; but one is
             // typed to name what it declares, like any other declaration.
             bool space = llvm::isa<clang::NamespaceDecl, clang::NamespaceAliasDecl>(declaration);
-            auto priority = space ? std::min(candidate.Priority,
-                                             static_cast<unsigned>(clang::CCP_Declaration))
-                                  : candidate.Priority;
+            auto priority =
+                space ? std::min(candidate.Priority, static_cast<unsigned>(clang::CCP_Declaration))
+                      : candidate.Priority;
             // Clang weighs every name by the type expected but a member's.
             if(member_access && expected(declaration)) {
                 priority /= clang::CCF_ExactTypeMatch;
@@ -1905,16 +1907,16 @@ public:
                 return found;
             };
             for(const auto& candidate: scope_candidates) {
-                if(llvm::any_of(candidate.scope, [](llvm::StringRef segment) {
-                       return segment.starts_with("_");
-                   })) {
+                if(llvm::any_of(candidate.scope,
+                                [](llvm::StringRef segment) { return segment.starts_with("_"); })) {
                     continue;
                 }
                 clang::DeclContext* scope = ast.getTranslationUnitDecl();
                 for(const auto& segment: candidate.scope) {
                     auto found = visible(scope, segment);
                     auto space = llvm::find_if(found, llvm::IsaPred<clang::NamespaceDecl>);
-                    scope = space == found.end() ? nullptr : llvm::cast<clang::NamespaceDecl>(*space);
+                    scope =
+                        space == found.end() ? nullptr : llvm::cast<clang::NamespaceDecl>(*space);
                     if(!scope) {
                         break;
                     }
@@ -1993,7 +1995,10 @@ public:
                     }
                 }
                 if(imported) {
-                    item.edits.push_back({.range = {import_at, import_at}, .text = std::move(import)});
+                    item.edits.push_back({
+                        .range = {import_at, import_at},
+                        .text = std::move(import)
+                    });
                 } else {
                     item.include = candidate.symbol;
                 }
@@ -2020,7 +2025,8 @@ public:
         for(auto& entry: overloads) {
             if(entry.count > 1) {
                 protocol::CompletionItemLabelDetails details;
-                details.detail = std::format("(…) +{} overload{}", entry.count - 1, entry.count > 2 ? "s" : "");
+                details.detail =
+                    std::format("(…) +{} overload{}", entry.count - 1, entry.count > 2 ? "s" : "");
                 entry.item.label_details = std::move(details);
                 if(!entry.bundled_insert.empty()) {
                     std::visit([&](auto& edit) { edit.new_text = std::move(entry.bundled_insert); },

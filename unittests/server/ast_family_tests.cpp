@@ -864,7 +864,8 @@ ZEST_CASE(CrashedCompileBarsBuilds) {
     bool done = false;
     auto body = [&]() -> kota::task<> {
         // With no worker at all, only the bar can answer without an error.
-        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {}, {}, false);
+        auto result =
+            co_await stack.dispatcher.completion(Ticket::take(session), {}, {}, {}, false);
         ZASSERT(result);
         ZEXPECT(result.value().list.data == "null");
         done = true;
@@ -1005,7 +1006,8 @@ ZEST_CASE(PCHCrashStopsBuild) {
         opts.stateful_count = 0;
         ZASSERT(stack.pool.start(opts));
 
-        auto result = co_await stack.dispatcher.completion(Ticket::take(session), {}, {}, {}, false);
+        auto result =
+            co_await stack.dispatcher.completion(Ticket::take(session), {}, {}, {}, false);
         ZASSERT(result);
         ZEXPECT(result.value().list.data == "null");
         auto notes = session->quarantine->notes();

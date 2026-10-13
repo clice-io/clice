@@ -1090,8 +1090,7 @@ std::optional<bool> category_trait(llvm::StringRef name, Category category) {
     bool arithmetic = category == Category::Integral || category == Category::Floating;
     bool fundamental =
         arithmetic || category == Category::Void || category == Category::NullPointer;
-    bool reference =
-        category == Category::LValueReference || category == Category::RValueReference;
+    bool reference = category == Category::LValueReference || category == Category::RValueReference;
     return llvm::StringSwitch<std::optional<bool>>(name)
         .Case("is_void", category == Category::Void)
         .Case("is_null_pointer", category == Category::NullPointer)
@@ -1117,7 +1116,6 @@ std::optional<bool> category_trait(llvm::StringRef name, Category category) {
                   category == Category::MemberPointer || category == Category::NullPointer)
         .Default(std::nullopt);
 }
-
 
 /// Whether a constraint is satisfied. Its top-level `&&` and `||`
 /// (through parentheses) join separately checked atomic constraints, so a
@@ -1188,8 +1186,8 @@ std::optional<bool> type_trait(const clang::Expr* expr,
             return std::nullopt;
         }
         auto* specialization = qualifier.getAsType()->getAs<clang::TemplateSpecializationType>();
-        auto* trait = specialization ? specialization->getTemplateName().getAsTemplateDecl()
-                                     : nullptr;
+        auto* trait =
+            specialization ? specialization->getTemplateName().getAsTemplateDecl() : nullptr;
         if(!standard(trait) || specialization->template_arguments().size() != 1 ||
            specialization->template_arguments().front().getKind() !=
                clang::TemplateArgument::Type) {

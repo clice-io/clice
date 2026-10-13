@@ -132,8 +132,9 @@ std::optional<std::string> Features::include_for(const feature::ScopeCandidate& 
     for(const auto& segment: candidate.scope) {
         qualifier += segment + "::";
     }
-    if(auto symbol =
-           stdlib::Symbol::named(qualifier, candidate.name, c ? stdlib::Lang::C : stdlib::Lang::CXX)) {
+    if(auto symbol = stdlib::Symbol::named(qualifier,
+                                           candidate.name,
+                                           c ? stdlib::Lang::C : stdlib::Lang::CXX)) {
         if(auto header = symbol->header()) {
             return header->name().str();
         }
@@ -157,7 +158,8 @@ std::optional<std::string> Features::include_for(const feature::ScopeCandidate& 
         if(header == file || is_context_header_path(project.file_table.resolve(header))) {
             continue;
         }
-        auto spelling = include_spelling(project.file_table.resolve(header), search, includer, scope);
+        auto spelling =
+            include_spelling(project.file_table.resolve(header), search, includer, scope);
         if(spelling && !internal_header(*spelling)) {
             return spelling;
         }
