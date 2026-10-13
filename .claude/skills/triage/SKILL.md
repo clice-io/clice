@@ -96,8 +96,9 @@ whose state changed since the snapshot, that gained `triaged` meanwhile,
 a closed one without `--include-closed`, and one that needs manual
 resolution (several maintainer kinds, `os:wsl` beside a native os label).
 While `needs-triage` is present the model's kind replaces the template's;
-once it is gone the existing kind is the maintainer's and wins, and the
-model's kind, `status:` labels and title are dropped. A closed issue loses
+once it is gone the existing kind is the maintainer's, and when the model
+proposes another kind, the maintainer's wins and the model's kind,
+`status:` labels and title are dropped. A closed issue loses
 every `status:` label. Beyond that apply only adds labels — removals stay
 manual via `suggest_remove` — and stamps `triaged` in a separate final
 call, so a failed edit leaves the issue visible to the next snapshot.

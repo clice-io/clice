@@ -62,5 +62,5 @@ A sustained loop, not a single check — a PR typically needs 5-6 rounds of chec
 
 ## Done
 
-- CI fully green and zero unresolved review threads → report to the maintainer that the PR is ready to merge: a one-paragraph summary of what review found and how it was addressed, plus every design decision taken while resolving threads (chosen vs. alternative), so the maintainer can accept or overturn them in one pass. Then stop.
+- CI fully green, zero unresolved review threads, and every finding bots posted in review bodies handled → report to the maintainer that the PR is ready to merge: a one-paragraph summary of what review found and how it was addressed, plus every design decision taken while resolving threads (chosen vs. alternative), so the maintainer can accept or overturn them in one pass. Then stop.
 - The default bar stays high: elegant code, edge cases considered. "Merge now, clean up in a dedicated refactor PR later" is a real move in this project, but that trade-off is the maintainer's call, made case by case — never the agent's default.
