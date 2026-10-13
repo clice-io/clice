@@ -142,6 +142,13 @@ auto documentation(const index::IndexQuery& query,
                    Fid anchor,
                    const DocumentationOptions& options) -> Documentation;
 
+/// The names a documentation comment may give `function`'s parameter
+/// `index`: each one a declaration of the function, or of the template it
+/// was instantiated from, writes for it — a definition may rename what the
+/// documented declaration names.
+auto parameter_names(const clang::FunctionDecl& function, unsigned index)
+    -> llvm::SmallVector<std::string, 1>;
+
 /// Write after an entry — a parameter, a return value, an exception — what
 /// a documentation says of it: its direction, then its text.
 void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text);

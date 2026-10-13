@@ -344,8 +344,25 @@ auto parameter_documentation(CompilationUnitRef unit,
         return std::nullopt;
     }
     auto owner_documentation = documentation(unit, owner, options);
-    const auto* param = function_parameter ? owner_documentation.param(decl->getName())
-                                           : owner_documentation.template_param(decl->getName());
+    const Documentation::Param* param = nullptr;
+    if(!function_parameter) {
+        param = owner_documentation.template_param(decl->getName());
+    } else {
+        // A parameter of a function pointer's type is no parameter of the
+        // function around it.
+        const auto* parm = llvm::cast<clang::ParmVarDecl>(decl);
+        const auto* function = llvm::dyn_cast<clang::FunctionDecl>(owner);
+        auto index = parm->getFunctionScopeIndex();
+        auto names =
+            function && index < function->getNumParams() && function->getParamDecl(index) == parm
+                ? parameter_names(*function, index)
+                : llvm::SmallVector<std::string, 1>{parm->getName().str()};
+        for(const auto& name: names) {
+            if((param = owner_documentation.param(name))) {
+                break;
+            }
+        }
+    }
     if(!param) {
         return std::nullopt;
     }

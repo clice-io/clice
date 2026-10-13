@@ -96,8 +96,9 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// module, keywords and punctuation that call or name a declaration carry
 /// an occurrence of it (`override`, `final` and `new` with an Implied
 /// relation), and a smart pointer's pointee is a type definition of what
-/// holds it).
-constexpr inline std::uint32_t index_format_version = 31;
+/// holds it); v32: a template's declaration extent starts at its
+/// `template` keyword).
+constexpr inline std::uint32_t index_format_version = 32;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

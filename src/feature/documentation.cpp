@@ -100,6 +100,28 @@ auto documentation(const index::IndexQuery& query,
     return symbol_documentation(query, hash, anchor, options, 0);
 }
 
+auto parameter_names(const clang::FunctionDecl& function, unsigned index)
+    -> llvm::SmallVector<std::string, 1> {
+    llvm::SmallVector<std::string, 1> names;
+    auto add = [&](const clang::FunctionDecl& declaration) {
+        for(const auto* redecl: declaration.redecls()) {
+            if(index >= redecl->getNumParams()) {
+                continue;
+            }
+            auto name = redecl->getParamDecl(index)->getName();
+            if(!name.empty() && !llvm::is_contained(names, name)) {
+                names.push_back(name.str());
+            }
+        }
+    };
+    add(function);
+    if(const auto* pattern = function.getTemplateInstantiationPattern();
+       pattern && pattern->getNumParams() == function.getNumParams()) {
+        add(*pattern);
+    }
+    return names;
+}
+
 void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text) {
     if(!direction.empty()) {
         entry.append_text(" (" + direction.str() + ")");

@@ -130,31 +130,6 @@ llvm::StringRef parameter_name(const clang::FunctionDecl& function, unsigned ind
     return name;
 }
 
-/// The names a documentation comment may give `function`'s parameter
-/// `index`: each one a declaration of the function, or of the one it was
-/// instantiated from, writes for it.
-llvm::SmallVector<std::string, 1> written_names(const clang::FunctionDecl& function,
-                                                unsigned index) {
-    llvm::SmallVector<std::string, 1> names;
-    auto add = [&](const clang::FunctionDecl& declaration) {
-        for(auto* redecl: declaration.redecls()) {
-            if(index >= redecl->getNumParams()) {
-                continue;
-            }
-            auto name = redecl->getParamDecl(index)->getName();
-            if(!name.empty() && !llvm::is_contained(names, name)) {
-                names.push_back(name.str());
-            }
-        }
-    };
-    add(function);
-    if(auto* pattern = pattern_of(function);
-       pattern && pattern->getNumParams() == function.getNumParams()) {
-        add(*pattern);
-    }
-    return names;
-}
-
 /// The parameters an instantiation expanded from a pack of the
 /// declaration it was instantiated from, as indices [begin, end): each
 /// is named after the pack, which names none of them. A member template
@@ -419,7 +394,7 @@ private:
                 [&](llvm::raw_ostream& os) {
                     print_parameter(os, *function.getParamDecl(index), name, policy);
                 },
-                expanded ? llvm::SmallVector<std::string, 1>() : written_names(function, index));
+                expanded ? llvm::SmallVector<std::string, 1>() : parameter_names(function, index));
         }
     }
 

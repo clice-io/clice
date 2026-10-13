@@ -58,6 +58,22 @@ bool has_blank_line(llvm::StringRef text) {
     return false;
 }
 
+/// Whether code between a comment and a declaration ends what the comment
+/// is about: a statement, a block, a directive or a label such as
+/// `public:` (`::` is no label).
+bool separates(llvm::StringRef gap) {
+    if(gap.find_first_of(";{}#") != llvm::StringRef::npos) {
+        return true;
+    }
+    for(std::size_t index = gap.find(':'); index != llvm::StringRef::npos;
+        index = gap.find(':', index + 2)) {
+        if(!gap.substr(index).starts_with("::")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// A line made only of the characters banners are drawn with.
 bool is_banner(llvm::StringRef line) {
     return !line.trim().empty() && line.find_first_not_of("=-*_/#+ \t") == llvm::StringRef::npos;
@@ -117,8 +133,8 @@ llvm::ArrayRef<LexicalInfo::Comment>
     auto text = text_of(content, nearest);
     auto gap = content.slice(nearest.range.end, range.begin);
     bool doc = is_doc_comment(text);
-    if(marked_trailing(text) || follows_code(content, nearest) ||
-       gap.find_first_of(";{}#") != llvm::StringRef::npos || (!doc && has_blank_line(gap))) {
+    if(marked_trailing(text) || follows_code(content, nearest) || separates(gap) ||
+       (!doc && has_blank_line(gap))) {
         return trailing;
     }
 

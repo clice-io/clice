@@ -1132,7 +1132,8 @@ std::string IndexQuery::doc_comment(SymbolHash hash, Fid anchor, bool inherit) c
         }
     }
 
-    if(inherit && fallback.empty() && kind == SymbolKind::Method) {
+    if(inherit && fallback.empty() &&
+       (kind == SymbolKind::Method || kind == SymbolKind::Operator)) {
         for(auto& overridden: targets(hash, anchor, RelationKind::Interface)) {
             if(auto text = doc_comment(overridden.symbol, overridden.anchor, inherit);
                !text.empty()) {

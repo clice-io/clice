@@ -43,6 +43,8 @@ ZEST_CASE(SomethingBetween) {
     ZEXPECT(documenting("/// First.\nint a;\nint b;\n", "int b") == "");
     ZEXPECT(documenting("/// Doc.\n#define X\nint b;\n", "int b") == "");
     ZEXPECT(documenting("/// Doc.\n[[nodiscard]] int f();\n", "int f()") == "Doc.");
+    ZEXPECT(documenting("// Public API\npublic:\n    int f();\n", "int f()") == "");
+    ZEXPECT(documenting("/// Doc.\n[[gnu::cold]] int f();\n", "int f()") == "Doc.");
 }
 
 ZEST_CASE(Trailing) {
