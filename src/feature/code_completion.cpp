@@ -1770,11 +1770,11 @@ public:
             }
         }
 
-        // The names of other namespaces the index found for the prefix:
-        // those the file reaches as Sema would offer them, with the
-        // qualifier they need; the others with the `import` or the
-        // `#include` they need.
-        if(!scope_candidates.empty() && !resolving && unqualified_name(context)) {
+        // The names of other namespaces the prefix matches, with the
+        // qualifier they need, or with the `import` or the `#include` the
+        // file needs to reach them.
+        if(options.all_scopes && !prefix.spelling.empty() && !resolving &&
+           unqualified_name(context)) {
             auto& ast = sema.getASTContext();
             // The namespaces around the completion point, outermost first: a
             // qualifier leaves them out.
@@ -1817,6 +1817,61 @@ public:
                 }
                 return qualifier;
             };
+
+            /// What a namespace scope offers: no namespace, nor a name a
+            /// using-declaration brings in from another one.
+            auto offerable = llvm::IsaPred<clang::FunctionDecl,
+                                           clang::FunctionTemplateDecl,
+                                           clang::VarDecl,
+                                           clang::VarTemplateDecl,
+                                           clang::TagDecl,
+                                           clang::TypedefNameDecl,
+                                           clang::ClassTemplateDecl,
+                                           clang::TypeAliasTemplateDecl,
+                                           clang::ConceptDecl,
+                                           clang::EnumConstantDecl>;
+            /// The names this compile parsed in `scope` and in the namespaces
+            /// in it, but those a reserved name keeps internal. A preamble's
+            /// come from the index instead (ScopeCandidate): reading them all
+            /// back from it would cost each completion more than the compile.
+            llvm::SmallPtrSet<const clang::Decl*, 16> visited;
+            auto scan = [&](this auto& self, clang::DeclContext* scope) -> void {
+                for(auto* decl: scope->noload_decls()) {
+                    if(decl->isFromASTFile()) {
+                        continue;
+                    }
+                    if(llvm::isa<clang::LinkageSpecDecl, clang::ExportDecl>(decl)) {
+                        self(llvm::cast<clang::DeclContext>(decl));
+                        continue;
+                    }
+                    auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
+                    auto* identifier = named ? named->getIdentifier() : nullptr;
+                    if(!identifier) {
+                        continue;
+                    }
+                    auto name = identifier->getName();
+                    bool reserved = name.starts_with("_");
+                    if(auto* space = llvm::dyn_cast<clang::NamespaceDecl>(named)) {
+                        if((!reserved || space->isInline()) && visited.insert(space).second) {
+                            self(space);
+                        }
+                        continue;
+                    }
+                    if((reserved && !prefix_starts_with_underscore) || !offerable(named) ||
+                       offered.contains(named->getCanonicalDecl()) || !sema.isVisible(named) ||
+                       !matcher.match(name)) {
+                        continue;
+                    }
+                    if(auto qualifier = qualifier_of(named)) {
+                        clang::CodeCompletionResult result(named,
+                                                           clang::CCP_Declaration,
+                                                           *qualifier,
+                                                           /*QualifierIsInformative=*/false);
+                        add_declaration(result, 0.5F);
+                    }
+                }
+            };
+            scan(ast.getTranslationUnitDecl());
 
             auto import_at = action::import_insertion(content, sema.getLangOpts());
             llvm::StringRef own = module ? module->getPrimaryModuleInterfaceName() : "";
