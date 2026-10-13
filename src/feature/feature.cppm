@@ -652,6 +652,7 @@ struct ScopeCandidate {
 
     protocol::CompletionItemKind kind = protocol::CompletionItemKind::Text;
     bool is_template = false;
+    bool deprecated = false;
 
     /// The module exporting it, `name` or `name:partition`, when a module
     /// unit declares it.

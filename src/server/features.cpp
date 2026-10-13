@@ -1106,6 +1106,7 @@ bool Features::scope_candidates(llvm::StringRef prefix,
             .name = symbol.name,
             .kind = kind_of(symbol.kind),
             .is_template = index::has_flag(symbol.flags, index::SymbolFlags::Template),
+            .deprecated = index::has_flag(symbol.flags, index::SymbolFlags::Deprecated),
             .symbol = symbol.hash,
         };
         // An enumerator keeps its enumeration in the qualifier: the index

@@ -152,6 +152,29 @@ items = [
     { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
 ]
 
+[default.deprecated.completion]
+items = [
+    {
+        label = "shapes::repaint_all",
+        kind = "Function",
+        insert = "shapes::repaint_all($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-17", text = '#include "shapes.h"' },
+        ],
+    },
+    {
+        label = "shapes::repaint",
+        kind = "Function",
+        deprecated = true,
+        insert = "shapes::repaint($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-17", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
 [default.c_file.completion]
 items = []
 
@@ -234,6 +257,9 @@ items = []
 items = [
     { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
 ]
+
+[configured.deprecated.completion]
+items = []
 
 [configured.c_file.completion]
 items = []

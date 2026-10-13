@@ -1391,6 +1391,9 @@ public:
                 return;
             }
             auto score = *match * candidate.relevance;
+            if(candidate.deprecated) {
+                score *= 0.5F;
+            }
 
             int priority = dedup_priority(candidate.kind, candidate.macro);
 
@@ -1668,9 +1671,6 @@ public:
             }
             item.relevance = relevance * priority_weight(priority);
             if(unqualified && source_manager.isInSystemHeader(declaration->getLocation())) {
-                item.relevance *= 0.5F;
-            }
-            if(item.deprecated) {
                 item.relevance *= 0.5F;
             }
             if(member_access && static_member(declaration)) {
@@ -2089,6 +2089,7 @@ public:
                     .label = qualifier + candidate.name,
                     .kind = candidate.kind,
                     .filter = candidate.name,
+                    .deprecated = candidate.deprecated,
                     .relevance = 0.25F * priority_weight(clang::CCP_Declaration),
                 };
                 bool function = candidate.kind == protocol::CompletionItemKind::Function;

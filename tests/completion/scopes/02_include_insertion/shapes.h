@@ -14,6 +14,9 @@ int circle_total = 0;
 void redraw();
 void redraw(int times);
 
+[[deprecated("use redraw")]] void repaint();
+void repaint_all();
+
 template <class T>
 struct Grid {};
 

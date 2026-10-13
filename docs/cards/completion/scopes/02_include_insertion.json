@@ -20,7 +20,7 @@
     },
     {
       "path": "main.cpp",
-      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    using Shape = circ;\n    on_rese;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
+      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    using Shape = circ;\n    on_rese;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    repai;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
       "markers": [
         {
           "name": "not_included",
@@ -99,6 +99,12 @@
           "begin": 323,
           "end": 323,
           "range": false
+        },
+        {
+          "name": "deprecated",
+          "begin": 334,
+          "end": 334,
+          "range": false
         }
       ]
     },
@@ -143,7 +149,7 @@
     },
     {
       "path": "shapes.h",
-      "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n    static int circle_count;\n};\n\nvoid on_resize(int width);\nvoid on_reset();\n\nint circle_total = 0;\nvoid redraw();\nvoid redraw(int times);\n\ntemplate <class T>\nstruct Grid {};\n\ntemplate <class T>\nusing Row = Grid<T>;\n\ntemplate <class T>\nconstexpr int grid_size = 4;\n\nenum Shade { shade_dark };\n\nenum class Tone { tone_bright };\n\n}  // namespace shapes\n",
+      "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n    static int circle_count;\n};\n\nvoid on_resize(int width);\nvoid on_reset();\n\nint circle_total = 0;\nvoid redraw();\nvoid redraw(int times);\n\n[[deprecated(\"use redraw\")]] void repaint();\nvoid repaint_all();\n\ntemplate <class T>\nstruct Grid {};\n\ntemplate <class T>\nusing Row = Grid<T>;\n\ntemplate <class T>\nconstexpr int grid_size = 4;\n\nenum Shade { shade_dark };\n\nenum class Tone { tone_bright };\n\n}  // namespace shapes\n",
       "markers": []
     },
     {
@@ -597,6 +603,67 @@
           }
         },
         {
+          "label": "deprecated",
+          "marker": "deprecated",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::repaint_all",
+                  "kind": "Function",
+                  "insert": "shapes::repaint_all($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-17",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                },
+                {
+                  "label": "shapes::repaint",
+                  "kind": "Function",
+                  "deprecated": true,
+                  "insert": "shapes::repaint($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-17",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
           "label": "c_file",
           "marker": "c_file",
           "value": {
@@ -836,6 +903,15 @@
                   "insert": "GEO_SCALE"
                 }
               ]
+            }
+          }
+        },
+        {
+          "label": "deprecated",
+          "marker": "deprecated",
+          "value": {
+            "completion": {
+              "items": []
             }
           }
         },
