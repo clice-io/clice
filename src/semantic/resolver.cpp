@@ -649,14 +649,20 @@ public:
 
         if(auto* record = type->getAsCXXRecordDecl()) {
             /// A member class reached through a dependent name
-            /// (`Host<T>::Nested`) resolves to the bare member of the
-            /// pattern; looking it up again through its qualifier leaves the
-            /// enclosing specialization's bindings on the stack, so what its
-            /// members are written in (`T`) stays bound.
-            if(auto* DNT = written->getAs<clang::DependentNameType>();
-               DNT && record->isDependentContext()) {
+            /// (`Host<T>::Nested`), or rewritten with its enclosing class as
+            /// its qualifier, is the bare member of the pattern; looking it
+            /// up again through its qualifier leaves the enclosing
+            /// specialization's bindings on the stack, so what its members
+            /// are written in (`T`) stays bound.
+            clang::NestedNameSpecifier qualifier = std::nullopt;
+            if(auto* DNT = written->getAs<clang::DependentNameType>()) {
+                qualifier = DNT->getQualifier();
+            } else if(auto* RT = type->getAs<clang::RecordType>()) {
+                qualifier = RT->getQualifier();
+            }
+            if(qualifier && record->isDependentContext()) {
                 auto frames = stack.size();
-                auto* member = preferred(lookup(DNT->getQualifier(), DNT->getIdentifier()));
+                auto* member = preferred(lookup(qualifier, record->getDeclName()));
                 if(member && member->getCanonicalDecl() == record->getCanonicalDecl()) {
                     auto members = lookup_in_record(record, name);
                     if(members.empty()) {
@@ -1780,6 +1786,33 @@ private:
                 auto ICT = llvm::cast<clang::InjectedClassNameType>(T);
                 result = rewrite(ICT->getDecl()->getCanonicalTemplateSpecializationType(context),
                                  policy);
+                break;
+            }
+
+            /// A member class of a template is written in the template's
+            /// parameters through the class enclosing it: the type takes that
+            /// class, rewritten, as its qualifier, through which lookup binds
+            /// the parameters again.
+            case clang::Type::Record: {
+                auto* RT = llvm::cast<clang::RecordType>(T);
+                auto qualifier = RT->getQualifier();
+                if(!qualifier) {
+                    auto* parent = llvm::dyn_cast<clang::CXXRecordDecl>(RT->getDecl()->getDeclContext());
+                    if(!parent || !parent->isDependentContext()) {
+                        break;
+                    }
+                    auto enclosing = parent->getDescribedClassTemplate() ||
+                                             llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(parent)
+                                         ? parent->getCanonicalTemplateSpecializationType(context)
+                                         : context.getCanonicalTagType(parent);
+                    qualifier = clang::NestedNameSpecifier(enclosing.getTypePtr());
+                }
+                if(auto rewritten = rewrite_specifier(qualifier, policy); rewritten != qualifier) {
+                    result = context.getTagType(RT->getKeyword(),
+                                                rewritten,
+                                                RT->getDecl(),
+                                                /*OwnsTag=*/false);
+                }
                 break;
             }
 
