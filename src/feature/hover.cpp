@@ -285,7 +285,8 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
 /// the variable's resolved type with the declarator's pointers, references
 /// and qualifiers taken off.
 auto resolved_auto(const clang::VarDecl* var, CompilationUnitRef unit) -> clang::QualType {
-    auto resolved = var->getInit() ? unit.resolver().deduce(var) : clang::QualType();
+    auto resolved = var->getInit() || var->isCXXForRangeDecl() ? unit.resolver().deduce(var)
+                                                               : clang::QualType();
     if(resolved.isNull() || !types::writable(resolved)) {
         return {};
     }

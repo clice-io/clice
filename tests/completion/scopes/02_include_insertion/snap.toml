@@ -155,6 +155,18 @@ items = [
 [default.c_file.completion]
 items = []
 
+[default.c_enumerator.completion]
+items = [
+    {
+        label = "color_red",
+        kind = "EnumMember",
+        insert = "color_red",
+        edits = [
+            { at = "⟦⟧void run(void) {", text = '#include "palette.h"' },
+        ],
+    },
+]
+
 [[default.module_unit.completion.items]]
 label = "shapes::Circle"
 kind = "Class"
@@ -221,6 +233,9 @@ items = [
 ]
 
 [configured.c_file.completion]
+items = []
+
+[configured.c_enumerator.completion]
 items = []
 
 [configured.module_unit.completion]

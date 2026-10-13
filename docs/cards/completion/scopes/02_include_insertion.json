@@ -103,13 +103,29 @@
       ]
     },
     {
+      "path": "palette.c",
+      "text": "#include \"palette.h\"\n\nint first_color(void) {\n    return color_red;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "palette.h",
+      "text": "#pragma once\n\nenum Color { color_red, color_green };\n",
+      "markers": []
+    },
+    {
       "path": "plain.c",
-      "text": "void run(void) {\n    Circ;\n}\n",
+      "text": "void run(void) {\n    Circ;\n    int color = color_r;\n}\n",
       "markers": [
         {
           "name": "c_file",
           "begin": 25,
           "end": 25,
+          "range": false
+        },
+        {
+          "name": "c_enumerator",
+          "begin": 50,
+          "end": 50,
           "range": false
         }
       ]
@@ -584,6 +600,40 @@
           }
         },
         {
+          "label": "c_enumerator",
+          "marker": "c_enumerator",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "color_red",
+                  "kind": "EnumMember",
+                  "insert": "color_red",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧void run(void) {",
+                        "path": "plain.c",
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 0,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"palette.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
           "label": "module_unit",
           "marker": "module_unit",
           "value": {
@@ -777,6 +827,15 @@
         {
           "label": "c_file",
           "marker": "c_file",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "c_enumerator",
+          "marker": "c_enumerator",
           "value": {
             "completion": {
               "items": []

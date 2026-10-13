@@ -2003,16 +2003,22 @@ public:
             };
             auto& language = sema.getLangOpts();
             for(const auto& candidate: scope_candidates) {
-                // C names no namespace, and a file compiled without named
-                // modules imports none.
-                if((!language.CPlusPlus && !candidate.scope.empty()) ||
+                // C names no namespace, and an enumerator without its
+                // enumeration; a file compiled without named modules imports
+                // nothing.
+                llvm::ArrayRef<std::string> segments = candidate.scope;
+                if(!language.CPlusPlus &&
+                   candidate.kind == protocol::CompletionItemKind::EnumMember) {
+                    segments = segments.drop_back();
+                }
+                if((!language.CPlusPlus && !segments.empty()) ||
                    (!language.CPlusPlusModules && !candidate.module.empty()) ||
-                   llvm::any_of(candidate.scope,
+                   llvm::any_of(segments,
                                 [](llvm::StringRef segment) { return segment.starts_with("_"); })) {
                     continue;
                 }
                 clang::DeclContext* scope = ast.getTranslationUnitDecl();
-                for(const auto& segment: candidate.scope) {
+                for(const auto& segment: segments) {
                     auto found = visible(scope, segment);
                     auto space =
                         llvm::find_if(found, llvm::IsaPred<clang::NamespaceDecl, clang::EnumDecl>);
@@ -2066,16 +2072,16 @@ public:
                     }
                 }
                 std::size_t shared = 0;
-                while(shared < candidate.scope.size() && shared < around.size() &&
-                      candidate.scope[shared] == around[shared]->getName()) {
+                while(shared < segments.size() && shared < around.size() &&
+                      segments[shared] == around[shared]->getName()) {
                     shared += 1;
                 }
                 std::string qualifier;
-                if(shared < candidate.scope.size() && shadowed(candidate.scope[shared], shared)) {
+                if(shared < segments.size() && shadowed(segments[shared], shared)) {
                     qualifier = "::";
                     shared = 0;
                 }
-                for(const auto& segment: llvm::drop_begin(candidate.scope, shared)) {
+                for(const auto& segment: llvm::drop_begin(segments, shared)) {
                     qualifier += segment + "::";
                 }
                 Candidate item{
