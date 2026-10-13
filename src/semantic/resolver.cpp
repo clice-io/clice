@@ -94,8 +94,14 @@ llvm::SmallVector<OnlyInstantiation> only_instantiations(const clang::VarDecl* v
     /// templates were met up to it.
     llvm::SmallVector<std::pair<llvm::ArrayRef<clang::TemplateParameterList*>, unsigned>> outside;
 
+    /// A friend defined inside a class belongs to the enclosing namespace
+    /// but sees the class's parameters.
+    auto scope = [](const clang::Decl* decl) {
+        return decl->getFriendObjectKind() != clang::Decl::FOK_None ? decl->getLexicalDeclContext()
+                                                                    : decl->getDeclContext();
+    };
     for(const clang::Decl* decl = var; decl && !llvm::isa<clang::TranslationUnitDecl>(decl);
-        decl = llvm::dyn_cast<clang::Decl>(decl->getDeclContext())) {
+        decl = llvm::dyn_cast<clang::Decl>(scope(decl))) {
         auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
         if(auto* owner = record ? record->getDescribedClassTemplate() : nullptr) {
             // The helper keeps its clangd signature, which speaks mutable

@@ -532,7 +532,7 @@ tests/navigation/deduced_types/05_parameters_and_returns
 
 在模板内部，若 `auto` 的初始化器依赖于模板参数，则会跳转到该初始化器解析出的类型
 
-模板只实例化一次时，模板参数（包括类模板的模板参数）代表其实参；以多种类型实例化时，模板参数代表它自身。
+模板参数无论属于函数模板还是类模板，在模板只实例化一次时都代表其实参；以多种类型实例化时则代表它自身。
 
 ```case
 tests/navigation/deduced_types/06_dependent_auto

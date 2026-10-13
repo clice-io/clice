@@ -89,3 +89,13 @@ void Twice<T>::reset() {
 
 template struct Twice<char>;
 template struct Twice<int>;
+
+// A friend defined inside the class sees its parameters.
+template <typename T>
+struct Befriended {
+    friend void reset(Befriended) {
+        §(friend)⟦auto copy = T();⟧
+    }
+};
+
+template struct Befriended<char>;
