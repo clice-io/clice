@@ -79,10 +79,12 @@ bool dominated(const clang::FunctionDecl* method, const clang::FunctionDecl* bet
 }
 
 /// The declaration a candidate shows as: a function template's
-/// specialization as the template declares it, a member of a class
-/// template's specialization as the class instantiates it.
+/// specialization as the template declares it, unless written as one of
+/// its own; a member of a class template's specialization as the class
+/// instantiates it.
 const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
-    if(auto* primary = function->getPrimaryTemplate()) {
+    if(auto* primary = function->getPrimaryTemplate();
+       primary && function->getTemplateSpecializationKind() != clang::TSK_ExplicitSpecialization) {
         return primary->getTemplatedDecl();
     }
     return function;
