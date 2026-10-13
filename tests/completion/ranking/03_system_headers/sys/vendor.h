@@ -1,3 +1,3 @@
 #pragma once
 
-int parse_vendor_value(const char* text);
+int parse_any_value(const char* text);

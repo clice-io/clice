@@ -1,0 +1,13 @@
+[answers.range.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.array.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]

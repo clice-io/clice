@@ -1,0 +1,20 @@
+[answers.lvalue.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.const_lvalue.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.rvalue.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]

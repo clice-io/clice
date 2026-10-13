@@ -4,5 +4,5 @@ items = [
     { label = "total_local", kind = "Variable", detail = "int" },
     { label = "total_amount", kind = "Field", detail = "int" },
     { label = "total_count()", kind = "Function", detail = "int" },
-    { label = "TOTAL_LIMIT", kind = "Constant" },
+    { label = "TOTAL_BUDGET", kind = "Constant" },
 ]

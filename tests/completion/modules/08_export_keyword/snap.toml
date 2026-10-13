@@ -1,0 +1,7 @@
+[interface.interface.completion]
+items = [
+    { label = "export", kind = "Keyword" },
+]
+
+[implementation.implementation.completion]
+items = []

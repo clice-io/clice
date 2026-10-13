@@ -1,4 +1,4 @@
-#define TOTAL_LIMIT 100
+#define TOTAL_BUDGET 100
 
 int total_count();
 

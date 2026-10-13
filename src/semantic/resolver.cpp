@@ -1410,9 +1410,10 @@ public:
     clang::QualType call_type(const clang::CallExpr* call) {
         auto* callee = call->getCallee()->IgnoreParenImpCasts();
         /// Argument-dependent lookup adds candidates only instantiation
-        /// sees; the ordinary set proves nothing about the callee.
+        /// sees; the ordinary set proves nothing about the callee. Without
+        /// arguments it adds none.
         if(auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(callee);
-           ULE && ULE->requiresADL()) {
+           ULE && ULE->requiresADL() && call->getNumArgs() > 0) {
             return clang::QualType();
         }
         return common_return_type(call_candidates(call), explicit_arguments(callee));
@@ -1813,6 +1814,17 @@ private:
                                                 RT->getDecl(),
                                                 /*OwnsTag=*/false);
                 }
+                break;
+            }
+
+            /// `using typename Base::name;` names what `typename
+            /// Base::name` would.
+            case clang::Type::UnresolvedUsing: {
+                auto* decl = llvm::cast<clang::UnresolvedUsingType>(T)->getDecl();
+                result = rewrite(context.getDependentNameType(clang::ElaboratedTypeKeyword::Typename,
+                                                              decl->getQualifier(),
+                                                              decl->getIdentifier()),
+                                 policy);
                 break;
             }
 
