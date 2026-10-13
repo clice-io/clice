@@ -894,23 +894,25 @@ private:
         }
 
         if(!formatted_default_args.empty()) {
+            const auto limit = options.max_length.default_arguments;
             std::vector<InlayHintPart> hint;
             std::size_t size = 0;
-            for(auto&& element: formatted_default_args) {
-                if(!hint.empty()) {
-                    append(hint, plain(", "));
-                    size += 2;
-                }
+            for(auto&& [index, element]: llvm::enumerate(formatted_default_args)) {
+                std::size_t separator = hint.empty() ? 0 : 2;
+                // While more defaults follow, `, …` must still fit after this one.
+                std::size_t rest = index + 1 < formatted_default_args.size() ? 3 : 0;
                 auto element_size = text_size(element);
-                if(auto limit = options.max_length.default_arguments;
-                   limit && size + element_size >= limit) {
-                    append(hint, plain("…"));
+                if(limit && size + separator + element_size + rest > limit) {
+                    append(hint, plain(hint.empty() ? "…" : ", …"));
                     break;
+                }
+                if(separator) {
+                    append(hint, plain(", "));
                 }
                 for(auto& part: element) {
                     append(hint, std::move(part));
                 }
-                size += element_size;
+                size += separator + element_size;
             }
 
             add_inlay_hint(clang::SourceRange(rpunc_location),
@@ -1841,7 +1843,25 @@ auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHi
         });
     raw_hints.erase(unique_begin.begin(), unique_begin.end());
 
-    return raw_hints;
+    // Editors show a few dozen characters of hints on a line: the thousands
+    // of a generated one-line table would only be sent to be dropped.
+    constexpr std::size_t line_limit = 100;
+    auto content = unit.main_content();
+    std::uint32_t scanned = 0;
+    std::size_t on_line = 0;
+    std::vector<InlayHint> hints;
+    hints.reserve(raw_hints.size());
+    for(auto& hint: raw_hints) {
+        if(content.slice(scanned, hint.offset).contains('\n')) {
+            on_line = 0;
+        }
+        scanned = hint.offset;
+        on_line += 1;
+        if(on_line <= line_limit) {
+            hints.push_back(std::move(hint));
+        }
+    }
+    return hints;
 }
 
 auto inlay_hints_to_protocol(

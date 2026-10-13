@@ -546,6 +546,7 @@ The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializatio
 - Requests are range-scoped: hints outside the requested range are discarded.
 - Parameter hints anchor to the left of their argument; type and designator hints anchor to their declaration side with LSP padding flags instead of embedded spaces.
 - Identical duplicate hints (e.g. from template instantiations) collapse into one.
+- A line carries at most 100 hints; the rest of a longer one, such as a generated table written on one line, are not sent.
 - Type names, parameter names and designated fields in a hint are links: clicking one goes to the definition of what it names, and hovering it shows that symbol's card. A link points at a declaration of the symbol when one exists, so that go-to-definition from it reaches the definition. The links come with the hints; clients without LSP 3.17 inlay hint support receive plain text.
 
 ## Other Known Gaps

@@ -4,8 +4,8 @@ module;
 /// Primary inlay-hint coverage lives in the cases
 /// (tests/inlay_hints/), which pin both the inspect and the server
 /// path. This file drives the feature layer directly: block-end and
-/// default-argument hints, off by default, through InlayHintsOptions, and
-/// requests over a range.
+/// default-argument hints, off by default, through InlayHintsOptions,
+/// requests over a range, and the limit of hints on one line.
 
 module clice;
 
@@ -568,6 +568,33 @@ ZEST_CASE(DefaultArguments) {
     EXPECT_SIZE(2);
     EXPECT_HINT("0", R"(, name: "this default is longer than the limit")");
 
+    // The limit holds the separators and the trailing `…`, and a label of
+    // exactly the limit fits.
+    run(R"c(
+            void place(int at, int first = 1, int second = 2);
+            void use() { place(0§(0)); }
+        )c",
+        {.default_arguments = true,
+         .max_length = feature::InlayHintLengths{.default_arguments = 19}});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", ", first: 1, second: 2");
+    run(R"c(
+            void place(int at, int first = 1, int second = 2);
+            void use() { place(0§(0)); }
+        )c",
+        {.default_arguments = true,
+         .max_length = feature::InlayHintLengths{.default_arguments = 11}});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", ", first: 1, …");
+    run(R"c(
+            void place(int at, int first = 1, int second = 2);
+            void use() { place(0§(0)); }
+        )c",
+        {.default_arguments = true,
+         .max_length = feature::InlayHintLengths{.default_arguments = 10}});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", ", …");
+
     // Default-argument hints survive with parameter hints disabled; the
     // parameter name drops out with them.
     run(R"c(
@@ -605,6 +632,21 @@ ZEST_CASE(FreestandingBuiltins) {
             }
         )c");
     EXPECT_SIZE(0);
+};
+
+ZEST_CASE(HintsPerLine) {
+    std::string values;
+    for(int i = 0; i < 150; i += 1) {
+        values += "1, ";
+    }
+    run(std::format(R"c(
+            struct Point {{ int x; int y; }};
+            Point points[] = {{{}}};
+            Point corner = {{§(0)1, 2}};
+        )c",
+                    values));
+    EXPECT_SIZE(102);
+    EXPECT_HINT("0", ".x=");
 };
 
 ZEST_CASE(RangeEndExcluded) {
