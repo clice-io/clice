@@ -1,0 +1,9 @@
+{
+  // plain.c is C: the names of C++ namespaces are none of its business.
+  "units": {
+    "main.cpp": [],
+    "shapes.cpp": [],
+    "tools.cppm": [],
+    "plain.c": ["-std=c17"]
+  }
+}

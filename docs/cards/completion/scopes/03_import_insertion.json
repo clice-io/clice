@@ -54,6 +54,18 @@
       ]
     },
     {
+      "path": "legacy.cpp",
+      "text": "void draw() {\n    Circ c;\n}\n",
+      "markers": [
+        {
+          "name": "without_modules",
+          "begin": 22,
+          "end": 22,
+          "range": false
+        }
+      ]
+    },
+    {
       "path": "main.cpp",
       "text": "#include \"config.h\"\n\nnamespace app {\n\nvoid run() {\n    Circ c;\n}\n\n}  // namespace app\n",
       "markers": [
@@ -190,6 +202,15 @@
           }
         },
         {
+          "label": "without_modules",
+          "marker": "without_modules",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
           "label": "plain_unit",
           "marker": "plain_unit",
           "value": {
@@ -288,6 +309,15 @@
         {
           "label": "conditional",
           "marker": "conditional",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "without_modules",
+          "marker": "without_modules",
           "value": {
             "completion": {
               "items": []

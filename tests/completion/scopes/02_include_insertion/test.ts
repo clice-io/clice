@@ -21,3 +21,11 @@ answers(
     { paths, indexing: true, config: { code_completion: { bundle_overloads: false } } },
     (a) => a.show("macro", a.completion(a.marker("macro")), { parts: ["insert", "edits"] }),
 );
+
+// A limited list is cut after the names without a header go: the one name
+// the limit keeps is one that can be inserted.
+answers("limited", { paths, indexing: true, config: { code_completion: { limit: 1 } } }, (a) =>
+    a.show("function_call", a.completion(a.marker("function_call")), {
+        parts: ["insert", "edits"],
+    }),
+);

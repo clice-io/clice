@@ -314,6 +314,20 @@ clang::QualType call_result(const clang::NamedDecl* decl) {
     return {};
 }
 
+/// Whether a value of type `from` can initialize one of type `to`, as far as
+/// telling a call from its callee goes: the same type, or both arithmetic,
+/// or both pointers to objects.
+bool initializes(const clang::ASTContext& ast, clang::QualType from, clang::QualType to) {
+    from = from.getNonReferenceType();
+    to = to.getNonReferenceType();
+    auto object_pointer = [](clang::QualType type) {
+        return type->isPointerType() && !type->getPointeeType()->isFunctionType();
+    };
+    return ast.hasSameUnqualifiedType(from, to) ||
+           (from->isArithmeticType() && to->isArithmeticType()) ||
+           (object_pointer(from) && object_pointer(to));
+}
+
 /// Whether the context expects a function itself rather than the result of
 /// calling it: a function pointer or reference, a member pointer.
 bool expects_function(clang::QualType preferred) {
@@ -683,10 +697,13 @@ struct Rebuilder {
                 parameters.push_back(type(parameter));
             }
             if(!returned.isNull() && llvm::none_of(parameters, &clang::QualType::isNull)) {
-                clang::FunctionProtoType::ExtProtoInfo info;
-                info.Variadic = function->isVariadic();
-                info.TypeQuals = function->getMethodQuals();
-                info.RefQualifier = function->getRefQualifier();
+                // The exception specification's expressions and types live in
+                // the other compile; of it, the type keeps whether it throws.
+                auto info = function->getExtProtoInfo();
+                info.ExceptionSpec = {};
+                if(function->isNothrow()) {
+                    info.ExceptionSpec.Type = clang::EST_BasicNoexcept;
+                }
                 result = ast.getFunctionType(returned, parameters, info);
             }
         } else if(auto* tag = bare->getAsTagDecl()) {
@@ -1401,21 +1418,22 @@ public:
         };
 
         // In a module unit, imports precede every other declaration of its
-        // purview, and only an interface exports. Clang's keywords know
-        // neither.
+        // purview, and only an interface exports; elsewhere `export` only
+        // begins one, before any declaration. Clang's keywords know neither.
         auto* module = sema.getCurrentModule();
         bool named_module = module && module->isNamedModule();
-        bool exports = !named_module || module->isModuleInterfaceUnit();
         auto completion_loc = sema.getPreprocessor().getCodeCompletionLoc();
-        bool imports =
-            !named_module ||
-            llvm::none_of(sema.getASTContext().getTranslationUnitDecl()->noload_decls(),
-                          [&](const clang::Decl* decl) {
-                              return !decl->isImplicit() && decl->isInNamedModule() &&
-                                     !llvm::isa<clang::ImportDecl>(decl) &&
-                                     source_manager.isBeforeInTranslationUnit(decl->getLocation(),
-                                                                              completion_loc);
-                          });
+        auto declared = llvm::any_of(
+            sema.getASTContext().getTranslationUnitDecl()->noload_decls(),
+            [&](const clang::Decl* decl) {
+                return !decl->isImplicit() && !llvm::isa<clang::ImportDecl>(decl) &&
+                       (named_module ? decl->isInNamedModule()
+                                     : source_manager.isWrittenInMainFile(decl->getLocation())) &&
+                       source_manager.isBeforeInTranslationUnit(decl->getLocation(),
+                                                                completion_loc);
+            });
+        bool imports = !named_module || !declared;
+        bool exports = named_module ? module->isModuleInterfaceUnit() : !declared;
         auto allowed_keyword = [&](llvm::StringRef keyword) {
             return (keyword != "import" || imports) && (keyword != "export" || exports);
         };
@@ -1675,9 +1693,7 @@ public:
                             ccs,
                             preferred.isNull() ||
                                 (!result.isNull() && !preferred->isDependentType() &&
-                                 sema.getASTContext().hasSameUnqualifiedType(
-                                     preferred.getNonReferenceType(),
-                                     result.getNonReferenceType())));
+                                 initializes(sema.getASTContext(), result, preferred)));
             } else if(argument_style != Arguments::None && client.snippets && !arguments_follow &&
                       !context.isUsingDeclaration() &&
                       llvm::isa<clang::ClassTemplateDecl,
@@ -1940,8 +1956,13 @@ public:
                 }
                 return found;
             };
+            auto& language = sema.getLangOpts();
             for(const auto& candidate: scope_candidates) {
-                if(llvm::any_of(candidate.scope,
+                // C names no namespace, and a file compiled without named
+                // modules imports none.
+                if((!language.CPlusPlus && !candidate.scope.empty()) ||
+                   (!language.CPlusPlusModules && !candidate.module.empty()) ||
+                   llvm::any_of(candidate.scope,
                                 [](llvm::StringRef segment) { return segment.starts_with("_"); })) {
                     continue;
                 }
@@ -2026,8 +2047,7 @@ public:
                         item.snippet = client.snippets;
                         item.bundled_insert = item.insert;
                         item.bundled_snippet = item.snippet;
-                    } else if(candidate.is_template && client.snippets &&
-                              candidate.kind == protocol::CompletionItemKind::Class) {
+                    } else if(candidate.is_template && client.snippets && !function) {
                         item.insert = escape_snippet(item.label) + "<$0>";
                         item.snippet = true;
                     }
@@ -2145,7 +2165,8 @@ auto code_complete(CompilationParams& params,
                                                  whole);
     auto unit = complete(params, consumer);
 
-    Completion completion{.list = completion_list(std::move(items), options.limit)};
+    Completion completion{
+        .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
     if(includes) {
         // Clang's copy of the buffer carries a NUL at the completion point.
         auto buffer = unit.main_content();

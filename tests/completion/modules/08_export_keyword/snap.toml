@@ -3,6 +3,9 @@ items = [
     { label = "export", kind = "Keyword" },
 ]
 
+[interface.ordinary_unit.completion]
+items = []
+
 [implementation.implementation.completion]
 items = []
 

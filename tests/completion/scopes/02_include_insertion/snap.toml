@@ -46,6 +46,41 @@ items = [
             { at = "⟦⟧ @-7", text = '#include "shapes.h"' },
         ],
     },
+    {
+        label = "shapes::grid_size",
+        kind = "Variable",
+        insert = "shapes::grid_size<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-7", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.alias_template.completion]
+items = [
+    {
+        label = "shapes::Row",
+        kind = "TypeParameter",
+        insert = "shapes::Row<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-8", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.variable_template.completion]
+items = [
+    {
+        label = "shapes::grid_size",
+        kind = "Variable",
+        insert = "shapes::grid_size<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-9", text = '#include "shapes.h"' },
+        ],
+    },
 ]
 
 [default.enumerator.completion]
@@ -55,7 +90,7 @@ items = [
         kind = "EnumMember",
         insert = "shapes::shade_dark",
         edits = [
-            { at = "⟦⟧ @-8", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-10", text = '#include "shapes.h"' },
         ],
     },
 ]
@@ -71,7 +106,7 @@ items = [
         insert = "std::vector<$0>",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-10", text = "#include <vector>" },
+            { at = "⟦⟧ @-12", text = "#include <vector>" },
         ],
     },
 ]
@@ -80,6 +115,9 @@ items = [
 items = [
     { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
 ]
+
+[default.c_file.completion]
+items = []
 
 [[default.module_unit.completion.items]]
 label = "shapes::Circle"
@@ -105,6 +143,12 @@ items = []
 [configured.class_template.completion]
 items = []
 
+[configured.alias_template.completion]
+items = []
+
+[configured.variable_template.completion]
+items = []
+
 [configured.enumerator.completion]
 items = []
 
@@ -119,10 +163,26 @@ items = [
     { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
 ]
 
+[configured.c_file.completion]
+items = []
+
 [configured.module_unit.completion]
 items = []
 
 [unbundled.macro.completion]
 items = [
     { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
+]
+
+[limited.function_call.completion]
+items = [
+    {
+        label = "shapes::redraw(…) +1 overload",
+        kind = "Function",
+        insert = "shapes::redraw($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-6", text = '#include "shapes.h"' },
+        ],
+    },
 ]

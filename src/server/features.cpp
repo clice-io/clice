@@ -1061,7 +1061,10 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
         item.additional_text_edits = std::vector{std::move(edit)};
         return false;
     });
-    co_return to_raw(list);
+    auto limited =
+        feature::completion_list(std::move(list.items), project.config.code_completion.limit);
+    limited.is_incomplete = limited.is_incomplete || list.is_incomplete;
+    co_return to_raw(limited);
 }
 
 bool Features::scope_candidates(llvm::StringRef prefix,

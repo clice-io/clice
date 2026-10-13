@@ -582,7 +582,8 @@ struct IncludePlace {
 /// A completion's reply before the server finishes it: an item whose
 /// `data` holds a symbol (ScopeCandidate::symbol) names what the file does
 /// not include yet, and is whole once it adds the `#include` of the header
-/// declaring it, at `include`.
+/// declaring it, at `include`. With such items the list is not cut to
+/// `code_completion.limit` yet: one whose header is unknown goes first.
 struct Completion {
     protocol::CompletionList list;
     std::optional<IncludePlace> include;

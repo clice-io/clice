@@ -1,3 +1,9 @@
+[answers.noexcept_function_type.completion]
+items = [
+    { label = "guarded_calls", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
 [answers.scope.completion]
 items = [
     { label = "retries", kind = "Variable", detail = "int" },
