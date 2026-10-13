@@ -187,7 +187,7 @@ tests/inlay_hints/type_hints/01_auto_variables
 
 别名会保留原有写法，过长的类型则保留能放下的部分
 
-超出长度上限的类型会先改用带语法糖的名称，再把放不下的模板实参写成 `…`，但保留最外层的名称；默认模板实参始终不显示。长度上限由 `inlay_hints.max_length.types` 设置；设为 `0` 即可取消限制。
+超出长度上限的类型会先改用带语法糖的名称，再把放不下的模板实参写成 `…`，但保留最外层的名称；连最外层名称都放不下的类型不显示提示。默认模板实参始终不显示。长度上限由 `inlay_hints.max_length.types` 设置；设为 `0` 即可取消限制。
 
 ```case
 tests/inlay_hints/type_hints/02_type_sugar
@@ -295,7 +295,7 @@ tests/inlay_hints/type_hints/10_scopes
 
 类模板中的 `auto` 变量会显示该模板唯一实例化所给出的类型
 
-当两个实例化推导出不同类型时，就没有一个统一的类型可供显示。
+当两个实例化推导出不同类型时，按模板本身的写法显示类型。
 
 ```case
 tests/inlay_hints/type_hints/12_instantiated_templates
@@ -345,7 +345,7 @@ tests/inlay_hints/type_hints/16_standard_names
 
 按位置进行聚合初始化时显示 `.field=`，启用后还会显示 `[index]=`
 
-数组索引默认关闭，可通过 `inlay_hints.array_indices` 开启：否则数据表中的每个元素都会带上一个索引。关闭数组索引时，穿过数组的指派符路径只显示其中的字段；开启数组索引但关闭字段指派符时，这类路径不显示提示。即使成员的大小依赖于模板参数，数组指派符仍能正常显示；保留成员名则会被跳过，不予显示。
+数组索引默认关闭，可通过 `inlay_hints.array_indices` 开启：开启后，数据表中的每个元素都会带上一个索引。关闭数组索引时，穿过数组的指派符路径只显示其中的字段；开启数组索引但关闭字段指派符时，这类路径不显示提示。即使成员的大小依赖于模板参数，数组指派符仍能正常显示；保留成员名则会被跳过，不予显示。
 
 ```case
 tests/inlay_hints/designator_hints/01_fields_and_indices

@@ -187,7 +187,7 @@ tests/inlay_hints/type_hints/01_auto_variables
 
 Aliases keep their spelling, and an over-long type keeps what of it fits
 
-A type too long for the limit falls back to its sugared name, then writes the template arguments that do not fit as `…`, keeping its outermost name; default template arguments never print. The limit is `inlay_hints.max_length.types`; `0` lifts it.
+A type too long for the limit falls back to its sugared name, then writes the template arguments that do not fit as `…`, keeping its outermost name; a type whose outermost name does not fit shows nothing. Default template arguments never print. The limit is `inlay_hints.max_length.types`; `0` lifts it.
 
 ```case
 tests/inlay_hints/type_hints/02_type_sugar
@@ -295,7 +295,7 @@ tests/inlay_hints/type_hints/10_scopes
 
 An `auto` variable inside a class template shows the type the template's only instantiation gives it
 
-With two instantiations deducing different types there is no one type to show.
+With two instantiations deducing different types it shows the type as the template writes it.
 
 ```case
 tests/inlay_hints/type_hints/12_instantiated_templates
