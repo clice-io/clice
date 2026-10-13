@@ -1,5 +1,10 @@
-[answers."main.cpp"]
-wrong = "an argument named param, the parameter aParam without its prefix, needs no hint (clangd#2248)"
+[default."main.cpp"]
+inlay_hints = [
+    { line = "fill(buffer, ⟨size:⟩4);" },
+]
+
+[configured."main.cpp"]
 inlay_hints = [
     { line = "draw(⟨aParam:⟩param);" },
+    { line = "fill(⟨pBuffer:⟩buffer, ⟨size:⟩4);" },
 ]

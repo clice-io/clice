@@ -3,27 +3,171 @@
   "topic": "inlay_hints",
   "subtopic": "other_kinds",
   "title": "Deduced class template arguments",
-  "summary": "A class template whose arguments a constructor call deduces does not show them yet",
-  "prose": "",
-  "status": "unsupported",
+  "summary": "A class template whose arguments its initialization deduces shows them",
+  "prose": "The arguments follow the template's name wherever it is written without them: a declaration, a functional cast, a `new`; they print as the template's own name takes them, whatever scope encloses it and whatever aliases or defaults a deduction guide wrote. A variable initialized by such a cast shows no type of its own while the arguments say it.",
+  "status": "supported",
   "issues": [
     "clangd#2331"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename A, typename B>\nstruct Pair {\n    A first;\n    B second;\n    Pair(A a, B b);\n};\n\nPair pair(1, 2.5);\n",
+      "text": "template <typename A, typename B>\nstruct Pair {\n    A first;\n    B second;\n    Pair(A a, B b);\n};\n\nPair pair(1, 2.5);\nauto copy = Pair(3, 'c');\nauto* heap = new Pair(4, 5);\n\ntemplate <typename T>\nusing same = T;\n\ntemplate <typename T>\nstruct Holder {\n    Holder(T value);\n};\n\ntemplate <typename T>\nHolder(T) -> Holder<same<T>>;\n\nauto held = Holder(6);\n\ntemplate <typename T>\nusing Twin = Pair<T, T>;\n\nTwin twin(7, 8);\nauto twins = Twin(9, 10);\n\ntemplate <typename T>\nstruct Outer {\n    template <typename U>\n    struct Inner {\n        Inner(U item);\n    };\n};\n\nOuter<int>::Inner inner(1.5);\n\ntemplate <typename T>\nstruct Traits {};\n\ntemplate <typename T, typename Tr = Traits<T>>\nstruct Text {\n    Text(const T* source);\n};\n\ntemplate <typename T>\nText(const T*) -> Text<T, Traits<T>>;\n\nText text(\"abc\");\n",
       "markers": []
     }
   ],
   "tests": [
     {
-      "name": "answers",
+      "name": "default",
       "blocks": [
         {
           "label": "main.cpp",
           "value": {
-            "wrong": "should show the deduced template arguments, <int, double> after pair (clangd#2331)",
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "Pair⟨<int, double>⟩ pair(⟨a:⟩1, ⟨b:⟩2.5);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 18
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto copy = Pair⟨<int, char>⟩(⟨a:⟩3, ⟨b:⟩'c');",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto* heap = new Pair⟨<int, int>⟩(⟨a:⟩4, ⟨b:⟩5);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 28
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto held = Holder⟨<int>⟩(⟨value:⟩6);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 22
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "Twin twin(⟨a:⟩7, ⟨b:⟩8);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 16
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto twins⟨: Pair<int, int>⟩ = Twin(⟨a:⟩9, ⟨b:⟩10);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "Outer<int>::Inner⟨<double>⟩ inner(⟨item:⟩1.5);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 38,
+                      "character": 29
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "Text⟨<char>⟩ text(⟨source:⟩\"abc\");",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 51,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 51,
+                      "character": 17
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "disabled",
+      "config": {
+        "inlay_hints": {
+          "deduced_template_arguments": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
             "inlay_hints": [
               {
                 "line": {
@@ -37,6 +181,118 @@
                     "end": {
                       "line": 7,
                       "character": 18
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto copy⟨: Pair<int, char>⟩ = Pair(⟨a:⟩3, ⟨b:⟩'c');",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto* heap⟨: Pair<int, int> *⟩ = new Pair(⟨a:⟩4, ⟨b:⟩5);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 28
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto held⟨: Holder<same<int>>⟩ = Holder(⟨value:⟩6);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 22,
+                      "character": 22
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "Twin twin(⟨a:⟩7, ⟨b:⟩8);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 16
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto twins⟨: Pair<int, int>⟩ = Twin(⟨a:⟩9, ⟨b:⟩10);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "Outer<int>::Inner inner(⟨item:⟩1.5);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 38,
+                      "character": 29
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "Text text(⟨source:⟩\"abc\");",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 51,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 51,
+                      "character": 17
                     }
                   }
                 }

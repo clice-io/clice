@@ -13,7 +13,8 @@ template struct Single<char>;
 template <typename T>
 struct Twice {
     void reset() {
-        §(twice)⟦auto copy = T();⟧
+        T value{};
+        §(twice)⟦auto copy = value;⟧
     }
 };
 

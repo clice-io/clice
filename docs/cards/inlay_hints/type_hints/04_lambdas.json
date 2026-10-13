@@ -3,8 +3,8 @@
   "topic": "inlay_hints",
   "subtopic": "type_hints",
   "title": "Lambdas",
-  "summary": "Variables, deduced return types, and init-captures all hint",
-  "prose": "",
+  "summary": "Deduced return types and init-captures hint",
+  "prose": "A variable holding a lambda shows no type: its initializer says what it is.",
   "status": "supported",
   "issues": [
     "clangd#1163"
@@ -26,7 +26,7 @@
             "inlay_hints": [
               {
                 "line": {
-                  "$place": "auto callback⟨: (lambda)⟩ = [captured⟨: int⟩ = compute()](int x)⟨-> int⟩ {",
+                  "$place": "auto callback = [captured⟨: int⟩ = compute()](int x)⟨-> int⟩ {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -42,7 +42,7 @@
               },
               {
                 "line": {
-                  "$place": "auto bare⟨: (lambda)⟩ = []⟨-> double⟩ {",
+                  "$place": "auto bare = []⟨-> double⟩ {",
                   "path": "main.cpp",
                   "range": {
                     "start": {

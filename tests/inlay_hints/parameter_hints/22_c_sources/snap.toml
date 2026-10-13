@@ -2,4 +2,5 @@
 inlay_hints = [
     { line = "struct point p = {⟨.x=⟩1, ⟨.y=⟩2};" },
     { line = "draw(⟨width:⟩10, ⟨height:⟩20);" },
+    { line = "ops->read(buffer, ⟨size:⟩64);" },
 ]

@@ -1,0 +1,95 @@
+{
+  "id": "inlay_hints/block_end/03_namespace_ends",
+  "topic": "inlay_hints",
+  "subtopic": "block_end",
+  "title": "Namespace ends",
+  "summary": "The closing brace of a tall namespace names it",
+  "prose": "`namespace a::b::c` ends with one hint naming the whole path, an anonymous namespace shows as plain `// namespace`, and a brace already followed by a comment gets none. On by default.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace storage {\n\nint value_1();\nint value_2();\nint value_3();\nint value_4();\nint value_5();\nint value_6();\nint value_7();\nint value_8();\n\n}\n\nnamespace net::http::client {\n\nint value_1();\nint value_2();\nint value_3();\nint value_4();\nint value_5();\nint value_6();\nint value_7();\nint value_8();\n\n}\n\nnamespace commented {\n\nint value_1();\nint value_2();\nint value_3();\nint value_4();\nint value_5();\nint value_6();\nint value_7();\nint value_8();\n\n}  // namespace commented\n\nnamespace small {\nint value();\n}\n\nnamespace {\n\nint value_1();\nint value_2();\nint value_3();\nint value_4();\nint value_5();\nint value_6();\nint value_7();\nint value_8();\n\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "}⟨// namespace storage⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 1
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "}⟨// namespace net::http::client⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 24,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 24,
+                      "character": 1
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "}⟨// namespace⟩",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 54,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 54,
+                      "character": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "disabled",
+      "config": {
+        "inlay_hints": {
+          "namespace_end": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": []
+          }
+        }
+      ]
+    }
+  ]
+}

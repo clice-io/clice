@@ -1,0 +1,8 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "#endif⟨// defined(ENABLE_…⟩" },
+    { line = "}⟨// while total…⟩" },
+    { line = 'configure(⟨retries:⟩total⟨, name: "primary", …⟩);' },
+    { line = "}⟨// count⟩" },
+    { line = "}⟨// namespace s…⟩" },
+]

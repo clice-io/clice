@@ -269,7 +269,9 @@ tests/hover/aliases/03_c_anonymous_structs
 
 **`auto`**
 
-将光标悬停在 `auto` 上会显示其代表的类型；若在模板中尚未推导出类型，则会显示相应提示
+将光标悬停在 `auto` 上会显示其代表的类型，在模板中则按模板本身的写法显示
+
+只有实例化才能算出的类型，例如 `value + 1` 的类型，暂不推导。
 
 ```case
 tests/hover/deduced_types/01_auto

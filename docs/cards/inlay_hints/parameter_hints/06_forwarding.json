@@ -4,7 +4,7 @@
   "subtopic": "parameter_hints",
   "title": "Forwarding resolution",
   "summary": "Packs forwarded through wrappers resolve to the target's parameter names",
-  "prose": "A plain pass-through works without `std::forward`, a pack between fixed leading and trailing arguments resolves to the parameters it lands in, and a pack handed on to a callable object resolves to its call operator.",
+  "prose": "A plain pass-through works without `std::forward`, a pack between fixed leading and trailing arguments resolves to the parameters it lands in, and a pack handed on to a callable object resolves to its call operator. A pack that ends up initializing a scalar has no parameter to name.",
   "status": "supported",
   "issues": [
     "clangd#2324"
@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace std {\n\ntemplate <typename T>\nstruct remove_reference {\n    using type = T;\n};\n\ntemplate <typename T>\nconstexpr T&& forward(typename remove_reference<T>::type& t) noexcept;\n\n}  // namespace std\n\nvoid target(int first, int second);\n\ntemplate <typename... Args>\nvoid wrap(Args&&... args) {\n    target(std::forward<Args>(args)...);\n}\n\nvoid sink(int a, int b, int c);\n\ntemplate <typename... Ts>\nvoid call_with(Ts... ts) {\n    sink(ts...);\n}\n\nint accumulate(int, int b, double);\n\ntemplate <typename... Args>\nint head_tail(int a, Args&&... args) {\n    return accumulate(1, std::forward<Args>(args)..., 1.0);\n}\n\ntemplate <typename... Args>\nint chain(Args&&... args) {\n    return head_tail(std::forward<Args>(args)...);\n}\n\nvoid use() {\n    wrap(1, 2);\n    call_with(1, 2, 3);\n    chain(32, 42);\n}\n\ntemplate <typename F, typename... Args>\nvoid invoke_with(F f, Args... args) {\n    f(args...);\n}\n\nvoid use_callable() {\n    invoke_with([](int width, int height) {}, 3, 4);\n}\n",
+      "text": "namespace std {\n\ntemplate <typename T>\nstruct remove_reference {\n    using type = T;\n};\n\ntemplate <typename T>\nconstexpr T&& forward(typename remove_reference<T>::type& value) noexcept;\n\n}  // namespace std\n\nvoid target(int first, int second);\n\ntemplate <typename... Args>\nvoid wrap(Args&&... args) {\n    target(std::forward<Args>(args)...);\n}\n\nvoid sink(int a, int b, int c);\n\ntemplate <typename... Ts>\nvoid call_with(Ts... ts) {\n    sink(ts...);\n}\n\nint accumulate(int, int b, double);\n\ntemplate <typename... Args>\nint head_tail(int a, Args&&... args) {\n    return accumulate(1, std::forward<Args>(args)..., 1.0);\n}\n\ntemplate <typename... Args>\nint chain(Args&&... args) {\n    return head_tail(std::forward<Args>(args)...);\n}\n\ntemplate <typename T, typename... Args>\nT* create(Args&&... args) {\n    return new T(std::forward<Args>(args)...);\n}\n\nvoid use() {\n    wrap(1, 2);\n    call_with(1, 2, 3);\n    chain(32, 42);\n    create<int>(5);\n}\n\ntemplate <typename F, typename... Args>\nvoid invoke_with(F f, Args... args) {\n    f(args...);\n}\n\nvoid use_callable() {\n    invoke_with([](int width, int height) {}, 3, 4);\n}\n",
       "markers": []
     }
   ],
@@ -30,11 +30,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 39,
+                      "line": 44,
                       "character": 4
                     },
                     "end": {
-                      "line": 39,
+                      "line": 44,
                       "character": 15
                     }
                   }
@@ -46,11 +46,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 40,
+                      "line": 45,
                       "character": 4
                     },
                     "end": {
-                      "line": 40,
+                      "line": 45,
                       "character": 23
                     }
                   }
@@ -62,11 +62,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 41,
+                      "line": 46,
                       "character": 4
                     },
                     "end": {
-                      "line": 41,
+                      "line": 46,
                       "character": 18
                     }
                   }
@@ -78,11 +78,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 50,
+                      "line": 56,
                       "character": 4
                     },
                     "end": {
-                      "line": 50,
+                      "line": 56,
                       "character": 52
                     }
                   }

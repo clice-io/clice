@@ -296,6 +296,35 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
     return unit.resolver().resolve(type);
 }
 
+/// What the `auto` of a variable a dependent initializer leaves undeduced
+/// stands for, as far as the resolver reaches it and code could write it:
+/// the variable's resolved type with the declarator's pointers, references
+/// and qualifiers taken off.
+auto resolved_auto(const clang::VarDecl* var, CompilationUnitRef unit) -> clang::QualType {
+    auto resolved = var->getInit() ? unit.resolver().deduce(var) : clang::QualType();
+    if(resolved.isNull() || !types::writable(resolved)) {
+        return {};
+    }
+    auto declared = var->getType();
+    while(!llvm::isa<clang::AutoType>(declared.getTypePtr())) {
+        // `auto&&` bound to an lvalue stands for the lvalue reference.
+        if(declared->isRValueReferenceType() && resolved->isLValueReferenceType()) {
+            return resolved;
+        }
+        if(!llvm::isa<clang::PointerType, clang::ReferenceType>(declared.getTypePtr())) {
+            return {};
+        }
+        declared = declared->getPointeeType();
+        resolved = resolved->getPointeeType();
+        if(resolved.isNull()) {
+            return {};
+        }
+    }
+    return unit.context().getQualifiedType(resolved.getLocalUnqualifiedType(),
+                                           resolved.getLocalQualifiers() -
+                                               declared.getLocalQualifiers());
+}
+
 /// The entity a template declares, the declaration itself otherwise: it
 /// holds the kind and the attributes.
 auto templated(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
@@ -1727,8 +1756,14 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         } else if(token.kind() == clang::tok::kw_auto || token.kind() == clang::tok::kw_decltype) {
             auto tree = SelectionTree::create_right(unit, token_range(token));
             if(const auto* node = tree.common_ancestor()) {
-                if(auto deduced = types::deduced_type(node->data, node->owning_decl());
-                   !deduced.isNull()) {
+                auto deduced = types::deduced_type(node->data, node->owning_decl());
+                if(const auto* var = llvm::dyn_cast_if_present<clang::VarDecl>(node->owning_decl());
+                   var && !deduced.isNull() && deduced->isUndeducedAutoType()) {
+                    if(auto resolved = resolved_auto(var, unit); !resolved.isNull()) {
+                        deduced = resolved;
+                    }
+                }
+                if(!deduced.isNull()) {
                     info = deduced_type_hover(deduced, token, context, display_options);
                     highlight_range = token_range(token);
                     break;

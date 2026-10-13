@@ -1,0 +1,96 @@
+{
+  "id": "inlay_hints/parameter_hints/24_single_letter_names",
+  "topic": "inlay_hints",
+  "subtopic": "parameter_hints",
+  "title": "Single-letter names",
+  "summary": "A function taking one parameter shows no single-letter name for it",
+  "prose": "A name like the `x` of `push(int x)` says nothing the call does not; with more parameters the letters tell them apart and stay. `inlay_hints.single_letter_names` shows them all.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Stack {\n    void push(int x);\n};\n\nint clamp(int v, int lo, int hi);\n\nvoid use(Stack& stack) {\n    stack.push(1);\n    clamp(5, 0, 10);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "clamp(⟨v:⟩5, ⟨lo:⟩0, ⟨hi:⟩10);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 20
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "inlay_hints": {
+          "single_letter_names": true
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "stack.push(⟨x:⟩1);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 18
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "clamp(⟨v:⟩5, ⟨lo:⟩0, ⟨hi:⟩10);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 20
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

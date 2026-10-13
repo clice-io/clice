@@ -93,10 +93,9 @@ struct ParameterBinding {
 /// through no declared function and those past the last parameter.
 auto parameter_bindings(const clang::Stmt* call) -> llvm::SmallVector<ParameterBinding>;
 
-/// Given a callee expression, if the call is through a function pointer,
-/// try to find the declaration of the corresponding function pointer
-/// type, so that we can recover argument names from it.
-/// FIXME: This function is mostly duplicated in SemaCodeComplete.cpp; unify.
-auto proto_type_loc(clang::Expr* expr) -> clang::FunctionProtoTypeLoc;
+/// The template arguments a callee names explicitly, `<Widget>` in
+/// `make_unique<Widget>`, dependent or not.
+auto explicit_template_arguments(const clang::Expr* callee)
+    -> llvm::ArrayRef<clang::TemplateArgumentLoc>;
 
 }  // namespace clice::decls
