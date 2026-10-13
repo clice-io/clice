@@ -1,9 +1,9 @@
 module;
 
 #include "modules/prelude.h"
-/// Parts of this file (only_instantiation, proto_type_loc) are ported from
-/// clangd's AST.cpp and InlayHints.cpp (llvmorg-21.1.8), and
-/// resolve_forwarding_params follows clangd's resolveForwardingParameters;
+/// Parts of this file (only_instantiation) are ported from clangd's AST.cpp
+/// (llvmorg-21.1.8), and resolve_forwarding_params follows clangd's
+/// resolveForwardingParameters;
 /// LLVM project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
@@ -618,51 +618,6 @@ auto parameter_bindings(const clang::Stmt* call) -> llvm::SmallVector<ParameterB
         bindings.push_back({.argument = arg, .param = param, .forwarded = forwarded});
     }
     return bindings;
-}
-
-auto proto_type_loc(clang::Expr* expr) -> clang::FunctionProtoTypeLoc {
-    assert(expr);
-    clang::TypeLoc target;
-    clang::Expr* naked_fn = expr->IgnoreParenCasts();
-
-    if(const auto* T = naked_fn->getType().getTypePtr()->getAs<clang::TypedefType>()) {
-        target = T->getDecl()->getTypeSourceInfo()->getTypeLoc();
-    } else if(const auto* DR = llvm::dyn_cast<clang::DeclRefExpr>(naked_fn)) {
-        const auto* D = DR->getDecl();
-        if(const auto* const VD = llvm::dyn_cast<clang::VarDecl>(D)) {
-            target = VD->getTypeSourceInfo()->getTypeLoc();
-        }
-    }
-
-    if(!target) {
-        return {};
-    }
-
-    // Unwrap types that may be wrapping the function type
-    while(true) {
-        if(auto p = target.getAs<clang::PointerTypeLoc>()) {
-            target = p.getPointeeLoc();
-            continue;
-        }
-
-        if(auto a = target.getAs<clang::AttributedTypeLoc>()) {
-            target = a.getModifiedLoc();
-            continue;
-        }
-
-        if(auto p = target.getAs<clang::ParenTypeLoc>()) {
-            target = p.getInnerLoc();
-            continue;
-        }
-
-        break;
-    }
-
-    if(auto f = target.getAs<clang::FunctionProtoTypeLoc>()) {
-        return f;
-    }
-
-    return {};
 }
 
 }  // namespace clice::decls

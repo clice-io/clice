@@ -1228,10 +1228,8 @@ private:
         } else if(const auto* FTD =
                       dyn_cast_or_null<clang::FunctionTemplateDecl>(expr->getCalleeDecl())) {
             callee.decl = FTD->getTemplatedDecl();
-        } else if(clang::FunctionProtoTypeLoc loc =
-                      // The helper keeps its clangd signature, which speaks
-                      // mutable pointers; it only reads through them.
-                  decls::proto_type_loc(const_cast<clang::Expr*>(expr->getCallee()))) {
+        } else if(auto loc = clang::HeuristicResolver(unit.context())
+                                 .getFunctionProtoTypeLoc(expr->getCallee())) {
             callee.loc = loc;
         } else {
             return;
