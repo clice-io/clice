@@ -1,0 +1,85 @@
+{
+  "id": "hover/documentation/21_macro_docs",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Macro documentation",
+  "summary": "A macro's documentation comment shows in its card",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#782"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "/// The largest buffer, in bytes.\n#define BUFFER_LIMIT 4096\n\n/// Clamps a value to a range.\n/// @param x The value to clamp.\n/// @return The value, at least `lo` and at most `hi`.\n#define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))\n\nint limit = BUFFER_LIMIT;\nint clamped = CLAMP(5, 0, 10);\n",
+      "markers": [
+        {
+          "name": "object_like",
+          "begin": 270,
+          "end": 270,
+          "range": false
+        },
+        {
+          "name": "function_like",
+          "begin": 294,
+          "end": 294,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "object_like",
+          "marker": "object_like",
+          "value": {
+            "hover": {
+              "markdown": "### macro `BUFFER_LIMIT`\n\n---\n\nThe largest buffer, in bytes.\n\n---\n```cpp\n#define BUFFER_LIMIT 4096\n\n// Expands to\n4096\n```",
+              "range": {
+                "$place": "int limit = ⟦BUFFER_LIMIT⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 12
+                  },
+                  "end": {
+                    "line": 8,
+                    "character": 24
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "function_like",
+          "marker": "function_like",
+          "value": {
+            "hover": {
+              "markdown": "### macro `CLAMP`\n\n---\n\nClamps a value to a range.\n\nParameters:\n- `x` — The value to clamp.\n\nReturns: The value, at least `lo` and at most `hi`.\n\n---\n```cpp\n#define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))\n\n// Expands to\n( ( 5 ) < ( 0 ) ? ( 0 ) : ( 5 ) > ( 10 ) ? ( 10 ) : ( 5 ) )\n```",
+              "range": {
+                "$place": "int clamped = ⟦CLAMP⟧(5, 0, 10);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 9,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 19
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

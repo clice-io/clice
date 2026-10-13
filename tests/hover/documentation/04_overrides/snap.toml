@@ -1,7 +1,22 @@
-[answers.override]
-wrong = "the override shows no description, where Base::draw's documentation applies (clangd#2504)"
+[inherited.override.hover]
+markdown = '''
+### method `draw`
 
-[answers.override.hover]
+---
+
+Renders the widget.
+
+→ `void`
+
+---
+```cpp
+// In Circle
+public: void draw() override
+```
+'''
+range = "void ⟦draw⟧() override;"
+
+["not inherited".override.hover]
 markdown = '''
 ### method `draw`
 

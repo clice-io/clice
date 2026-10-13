@@ -146,7 +146,7 @@ std::string dump(const HoverInfo& info) {
         add("local_scope", info.local_scope);
     }
     if(!info.documentation.empty()) {
-        add("documentation", info.documentation);
+        add("documentation", feature::present(info.documentation).as_markdown());
     }
     if(!info.definition.empty()) {
         add("definition", info.definition);
@@ -210,7 +210,12 @@ void run(llvm::StringRef code) {
     auto points = nameless_points();
     ZASSERT(points.size() == 1U);
     auto offset = points[0];
-    result = feature::hover(*unit, offset, {}, PositionEncoding::UTF8);
+    result = feature::hover(*unit,
+                            offset,
+                            {},
+                            {},
+                            protocol::MarkupKind::Markdown,
+                            PositionEncoding::UTF8);
 }
 
 void compile_only(llvm::StringRef code) {
@@ -602,7 +607,7 @@ ZEST_CASE(spaceship_doc_no_crash) {
     )cpp");
 
     ZASSERT(info);
-    ZEXPECT(info->documentation == "");
+    ZEXPECT(info->documentation.empty());
 }
 
 ZEST_CASE(invalid_default_args) {
@@ -732,51 +737,18 @@ ZEST_CASE(setter_heuristic_no_crash) {
     ZASSERT(info);
 }
 
-ZEST_CASE(parse_documentation) {
-    struct {
-        llvm::StringRef documentation;
-        llvm::StringRef markdown;
-        llvm::StringRef plain_text;
-    } cases[] = {
-        // Leading/trailing whitespace strips; plain newlines join, and so
-        // does markdown's own hard-break spelling (trailing spaces).
-        {" \n foo\nbar",                   "foo bar",                 "foo bar"                       },
-        {"foo\nbar \n  ",                  "foo bar",                 "foo bar"                       },
-        {"foo  \nbar",                     "foo bar",                 "foo bar"                       },
-        {"foo    \nbar",                   "foo bar",                 "foo bar"                       },
-        {"foo\nbar",                       "foo bar",                 "foo bar"                       },
-        // Blank lines, indentation, sentence ends and list stars break.
-        {"foo\n\n\nbar",                   "foo  \nbar",              "foo\nbar"                      },
-        {"foo\n\n\n\tbar",                 "foo  \nbar",              "foo\nbar"                      },
-        {"foo\n\n\n bar",                  "foo  \nbar",              "foo\nbar"                      },
-        {"foo.\nbar",                      "foo.  \nbar",             "foo.\nbar"                     },
-        {"foo. \nbar",                     "foo.  \nbar",             "foo.\nbar"                     },
-        {"foo\n*bar",                      "foo  \n\\*bar",           "foo\n*bar"                     },
-        // Inline code spans survive; stray backticks escape in markdown and
-        // multiline spans collapse onto one line.
-        {"Tests primality of `p`.",        "Tests primality of `p`.", "Tests primality of `p`."       },
-        {"'`' should not occur in `Code`",
-         "'\\`' should not occur in `Code`",                          "'`' should not occur in `Code`"},
-        {"`not\nparsed`",                  "\\`not parsed\\`",        "`not parsed`"                  },
-    };
-
-    for(const auto& c: cases) {
-        markup::Document output;
-        feature::parse_documentation(c.documentation, output);
-        ZEXPECT(output.as_markdown() == c.markdown);
-        ZEXPECT(output.as_plain_text() == c.plain_text);
-    }
-}
-
 ZEST_CASE(plaintext_content) {
     add_main("main.cpp", R"cpp(
 int §foo = 1;
 )cpp");
     ZASSERT(compile());
 
-    feature::HoverOptions options;
-    options.parse_comment_as_markdown = false;
-    result = feature::hover(*unit, nameless_points()[0], options, PositionEncoding::UTF8);
+    result = feature::hover(*unit,
+                            nameless_points()[0],
+                            {},
+                            {},
+                            protocol::MarkupKind::PlainText,
+                            PositionEncoding::UTF8);
 
     ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
@@ -820,7 +792,12 @@ int x = 0;
     ZEXPECT(info->symbol_range->begin == arg.begin);
     ZEXPECT(info->symbol_range->end == arg.end);
 
-    result = feature::hover(*unit, arg.begin + 1, {}, PositionEncoding::UTF8);
+    result = feature::hover(*unit,
+                            arg.begin + 1,
+                            {},
+                            {},
+                            protocol::MarkupKind::Markdown,
+                            PositionEncoding::UTF8);
     ZASSERT(result);
     auto* content = std::get_if<protocol::MarkupContent>(&result->contents);
     ZASSERT(content != nullptr);

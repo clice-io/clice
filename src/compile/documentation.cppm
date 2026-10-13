@@ -1,0 +1,29 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice:compile.documentation;
+
+import :compile.compilation_unit;
+
+namespace clice {
+
+/// The text (comment_text) of the comment documenting `decl`: of its
+/// declarations, the first a Doxygen comment documents, else the first any
+/// comment documents (documenting_comments); a template's instantiation and
+/// its members read the template's. A namespace, a parameter and what the
+/// compiler declares implicitly have none. With `inherit`, a method
+/// overriding another without one takes that method's.
+std::string doc_comment(CompilationUnitRef unit, const clang::NamedDecl* decl, bool inherit);
+
+/// The text of the comment documenting a macro: above its `#define`, or
+/// after it on its line.
+std::string doc_comment(CompilationUnitRef unit, const clang::MacroInfo* macro);
+
+/// The declarations a `@copydoc` in the comment of `decl` may name: `name`
+/// without its parameter list, looked up from `decl`'s scope outward, a
+/// qualified name part by part.
+llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(const clang::NamedDecl* decl,
+                                                              llvm::StringRef name);
+
+}  // namespace clice

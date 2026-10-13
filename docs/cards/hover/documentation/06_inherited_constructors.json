@@ -32,7 +32,7 @@
           "marker": "inherited_ctor",
           "value": {
             "hover": {
-              "markdown": "### method `Base`\n\n---\nParameters:\n- `int value`\n\nConstructs from a value.\n\n---\n```cpp\n// In Base\npublic: Base(int value)\n```",
+              "markdown": "### method `Base`\n\n---\n\nConstructs from a value.\n\nParameters:\n- `int value`\n\n---\n```cpp\n// In Base\npublic: Base(int value)\n```",
               "range": {
                 "$place": "using Base::⟦Base⟧;",
                 "path": "main.cpp",

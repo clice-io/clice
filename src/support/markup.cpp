@@ -174,6 +174,80 @@ std::string render_text(llvm::StringRef input, bool starts_line) {
     return result;
 }
 
+/// The HTML tags a documentation comment may mean, as Doxygen reads them.
+bool is_html_tag(llvm::StringRef name) {
+    const static llvm::StringSet<> tags = {
+        "a",      "b",       "blockquote", "br",      "caption", "center", "code",  "dd",
+        "del",    "details", "div",        "dl",      "dt",      "em",     "h1",    "h2",
+        "h3",     "h4",      "h5",         "h6",      "hr",      "i",      "img",   "ins",
+        "kbd",    "li",      "ol",         "p",       "pre",     "s",      "small", "span",
+        "strike", "strong",  "sub",        "summary", "sup",     "table",  "tbody", "td",
+        "th",     "thead",   "tr",         "tt",      "u",       "ul",     "var"};
+    return tags.contains(name.lower());
+}
+
+/// Escape the `<` in a line of markdown that would start an HTML tag where
+/// the writer meant none: a name no HTML tag has, or one right after a
+/// name, as template arguments are written. Code spans are left alone.
+std::string escape_stray_tags(llvm::StringRef line) {
+    std::string result;
+    for(std::size_t i = 0; i < line.size(); i += 1) {
+        char c = line[i];
+        if(c == '`') {
+            auto run = line.substr(i).take_while([](char c) { return c == '`'; });
+            auto close = line.find(run, i + run.size());
+            auto end = close == llvm::StringRef::npos ? i + run.size() : close + run.size();
+            result += line.slice(i, end);
+            i = end - 1;
+            continue;
+        }
+        if(c == '<' && looks_like_tag(line.substr(i + 1))) {
+            auto rest = line.substr(i + 1);
+            bool closing = rest.consume_front("/");
+            auto name = rest.take_while(llvm::isAlnum);
+            bool after_name =
+                !closing && i > 0 &&
+                (llvm::isAlnum(line[i - 1]) || line[i - 1] == '_' || line[i - 1] == ':');
+            if(after_name || !is_html_tag(name)) {
+                result += '\\';
+            }
+        }
+        result += c;
+    }
+    return result;
+}
+
+/// escape_stray_tags over a markdown text, code blocks left alone.
+std::string escape_markdown(llvm::StringRef text) {
+    std::string result;
+    std::string fence;
+    bool previous_blank = true;
+    bool in_indented_code = false;
+    for(auto line: llvm::split(text, '\n')) {
+        if(!result.empty()) {
+            result += '\n';
+        }
+        auto trimmed = line.ltrim();
+        if(!fence.empty()) {
+            if(trimmed.starts_with(fence)) {
+                fence.clear();
+            }
+            result += line;
+            continue;
+        }
+        if(trimmed.starts_with("```") || trimmed.starts_with("~~~")) {
+            fence = trimmed.take_while([&](char c) { return c == trimmed.front(); }).str();
+            result += line;
+            continue;
+        }
+        auto indent = line.size() - line.ltrim(" ").size();
+        in_indented_code = !trimmed.empty() && indent >= 4 && (previous_blank || in_indented_code);
+        previous_blank = trimmed.empty();
+        result += in_indented_code ? line.str() : escape_stray_tags(line);
+    }
+    return result;
+}
+
 /// Renders \p input as an inline block of code in markdown. The returned value
 /// is surrounded by backticks and the inner contents are properly escaped.
 std::string render_inline_block(llvm::StringRef input) {
@@ -321,6 +395,53 @@ private:
     std::string language;
 };
 
+class MarkdownBlock : public Block {
+public:
+    explicit MarkdownBlock(std::string text) : text(std::move(text)) {}
+
+    void render_markdown(llvm::raw_ostream& os) const override {
+        os << '\n' << escape_markdown(text) << "\n\n";
+    }
+
+    void render_plain_text(llvm::raw_ostream& os) const override {
+        os << '\n' << text << "\n\n";
+    }
+
+    std::unique_ptr<Block> clone() const override {
+        return std::make_unique<MarkdownBlock>(*this);
+    }
+
+private:
+    std::string text;
+};
+
+class Lines : public Block {
+public:
+    explicit Lines(std::string text) : text(std::move(text)) {}
+
+    void render_markdown(llvm::raw_ostream& os) const override {
+        os << '\n';
+        for(auto line: llvm::split(text, '\n')) {
+            line = line.trim();
+            // A blank line breaks the paragraph; two trailing spaces break
+            // the line.
+            os << (line.empty() ? "" : render_text(line, true) + "  ") << '\n';
+        }
+        os << '\n';
+    }
+
+    void render_plain_text(llvm::raw_ostream& os) const override {
+        os << '\n' << text << "\n\n";
+    }
+
+    std::unique_ptr<Block> clone() const override {
+        return std::make_unique<Lines>(*this);
+    }
+
+private:
+    std::string text;
+};
+
 /// Inserts two spaces after each `\n` to indent each line. First line is not
 /// indented.
 std::string indent_lines(llvm::StringRef input) {
@@ -394,6 +515,7 @@ void Paragraph::render_markdown(llvm::raw_ostream& os) const {
         switch(chunk.kind) {
             case Chunk::PlainText: os << render_text(chunk.contents, !has_chunks); break;
             case Chunk::InlineCode: os << render_inline_block(chunk.contents); break;
+            case Chunk::Markdown: os << escape_markdown(chunk.contents); break;
         }
 
         has_chunks = true;
@@ -443,6 +565,18 @@ Paragraph& Paragraph::append_text(llvm::StringRef text) {
     Chunk& chunk = chunks.emplace_back();
     chunk.contents = std::move(norm);
     chunk.kind = Chunk::PlainText;
+    chunk.space_before = llvm::isSpace(text.front());
+    chunk.space_after = llvm::isSpace(text.back());
+    return *this;
+}
+
+Paragraph& Paragraph::append_markdown(llvm::StringRef text) {
+    if(text.trim().empty()) {
+        return *this;
+    }
+    Chunk& chunk = chunks.emplace_back();
+    chunk.contents = text.trim().str();
+    chunk.kind = Chunk::Markdown;
     chunk.space_before = llvm::isSpace(text.front());
     chunk.space_after = llvm::isSpace(text.back());
     return *this;
@@ -526,6 +660,14 @@ Paragraph& Document::add_heading(std::size_t level) {
     assert(level > 0);
     children.emplace_back(std::make_unique<Heading>(level));
     return *static_cast<Paragraph*>(children.back().get());
+}
+
+void Document::add_markdown(std::string text) {
+    children.push_back(std::make_unique<MarkdownBlock>(std::move(text)));
+}
+
+void Document::add_lines(std::string text) {
+    children.push_back(std::make_unique<Lines>(std::move(text)));
 }
 
 BulletList& Document::add_bullet_list() {

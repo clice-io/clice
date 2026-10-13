@@ -31,6 +31,7 @@ stdout = '''
     "name": "helper",
     "kind": "Function",
     "symbol": "#cc85f8008b8ef85d path:\"${WS}/my dir/util.h\"",
+    "documentation": null,
     "definition": {
       "file": "${WS}/my dir/util.h",
       "startLine": 2,

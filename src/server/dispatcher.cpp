@@ -144,7 +144,8 @@ Outcome Dispatcher::finish(const Ticket& ticket,
 Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
                                         const Ticket& ticket,
                                         std::optional<protocol::Position> position,
-                                        kota::cancellation_token token) {
+                                        kota::cancellation_token token,
+                                        protocol::MarkupKind markup) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
@@ -174,6 +175,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     wp.kind = kind;
     wp.path = path;
     wp.config = project.config;
+    wp.markup = markup;
 
     if(position) {
         wp.offset = session.positions().offset_clamped(*position, PositionEncoding::UTF16);

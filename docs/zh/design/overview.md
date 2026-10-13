@@ -21,7 +21,7 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 供其他所有模块共享的通用工具和基础设施。
 
 - `FuzzyMatcher`：用于代码补全和符号搜索的 Token 感知模糊匹配。
-- Markup / Doxygen：文档注释的解析与格式化。
+- Markup：卡片或查询答案渲染所用的 Markdown 或纯文本。
 - 日志、文件系统抽象、字符串工具等。
 
 ### `src/vfs/` — 文件标识与版本
@@ -61,6 +61,7 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 - 依赖扫描：封装 Clang 的 `DependencyDirectivesScanner`，快速提取 include 和模块依赖
 - `IncludeResolver`：根据搜索路径配置将 include 路径解析为实际文件
 - Preamble 合成：构建前缀/后缀文件，使头文件能够在其宿主文件的预处理器状态下编译
+- 文档注释：在文件文本中找出为声明撰写的注释，编译单元和索引的找法相同；再按 Doxygen 和 Markdown 的规则读取其中的命令、参数、返回值和 `@copydoc`，得到统一的结构化形式，供各个功能渲染
 
 详见 [依赖扫描](dependency-scanning.md)。
 

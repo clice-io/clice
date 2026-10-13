@@ -1,0 +1,82 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query --method readSymbol --symbol area"]
+stdout = '''
+{
+  "result": {
+    "name": "area",
+    "kind": "Function",
+    "file": "${WS}/geometry.cpp",
+    "startLine": 4,
+    "endLine": 6,
+    "documentation": "Computes the area of a rectangle.\n\nParameters:  \n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\nReturns: The product of both sides.",
+    "text": "int area(int width, int height) {\n    return width * height;\n}",
+    "symbol": "#7b938a3382a6f65a"
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol surface"]
+stdout = '''
+{
+  "result": {
+    "name": "surface",
+    "kind": "Function",
+    "symbol": "#a2ee286bd8d3dc88",
+    "documentation": "Computes the area of a rectangle.\n\nParameters:  \n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\nReturns: The product of both sides.",
+    "definition": {
+      "file": "${WS}/geometry.cpp",
+      "startLine": 8,
+      "endLine": 10,
+      "text": "int surface(int width, int height) {\n    return area(width, height);\n}"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method readSymbol --symbol Square::draw"]
+stdout = '''
+{
+  "result": {
+    "name": "draw",
+    "kind": "Method",
+    "file": "${WS}/geometry.cpp",
+    "startLine": 14,
+    "endLine": 14,
+    "documentation": "Draws the shape.",
+    "text": "void Square::draw() {}",
+    "symbol": "#e3c8e20a05689894"
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query --method definition --symbol Shape::sides"]
+stdout = '''
+{
+  "result": {
+    "name": "sides",
+    "kind": "Field",
+    "symbol": "#17762968bcc5b2cf",
+    "documentation": "How many sides it has.",
+    "definition": {
+      "file": "${WS}/include/geometry.h",
+      "startLine": 16,
+      "endLine": 16,
+      "text": "int sides"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0

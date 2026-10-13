@@ -3,6 +3,7 @@ markdown = '''
 ### struct `Point`
 
 ---
+
 A point on the plane.
 
 ---
@@ -20,12 +21,13 @@ markdown = '''
 ### function `add`
 
 ---
+
+Adds two numbers together.
+
 → `int`
 Parameters:
 - `int a`
 - `int b`
-
-Adds two numbers together.
 
 ---
 ```cpp

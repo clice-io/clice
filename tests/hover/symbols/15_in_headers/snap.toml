@@ -3,6 +3,7 @@ markdown = '''
 ### struct `Square`
 
 ---
+
 A square with integer sides.
 
 ---

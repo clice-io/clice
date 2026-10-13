@@ -10,6 +10,7 @@ import :compile.directive;
 import :compile.tokens;
 import :semantic.resolver;
 import :semantic.symbol;
+import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.preamble_synthesis;
 import :syntax.token;
@@ -153,6 +154,9 @@ public:
 
     /// The main file's positions.
     auto positions() -> PositionMap;
+
+    /// A file's comments, lexed on first use and cached.
+    auto comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment>;
 
     /// Check if a file is a builtin file.
     bool is_builtin_file(clang::FileID fid);

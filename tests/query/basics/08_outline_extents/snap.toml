@@ -108,6 +108,7 @@ stdout = '''
     "file": "${WS}/main.cpp",
     "startLine": 8,
     "endLine": 11,
+    "documentation": null,
     "text": "int twice(int value) {\n    int doubled = value * 2;\n    return doubled;\n}",
     "symbol": "#54d7b1312102e8e6"
   },

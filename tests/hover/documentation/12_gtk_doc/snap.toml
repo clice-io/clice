@@ -1,18 +1,14 @@
-[answers.documented]
-wrong = "GTK-Doc's name line, @widget and its annotations show as written (clangd#2662)"
-
 [answers.documented.hover]
 markdown = '''
 ### function `gtk_widget_show`
 
 ---
+
+Flags a widget to be displayed.
+
 → `void`
 Parameters:
-- `GtkWidget * widget (aka struct _GtkWidget *)`
-
-gtk_widget_show:
-@widget: (transfer none): a #GtkWidget
-Flags a widget to be displayed.
+- `GtkWidget * widget (aka struct _GtkWidget *)` — a `GtkWidget`
 
 ---
 ```cpp

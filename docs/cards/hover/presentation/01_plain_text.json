@@ -4,7 +4,7 @@
   "subtopic": "presentation",
   "title": "Plain text cards",
   "summary": "Cards are markdown, or plain text for editors that cannot show markdown",
-  "prose": "",
+  "prose": "An editor says which it can show when it starts, and the card follows.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -42,7 +42,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "### function `answer`\n\n---\n→ `int`\nParameters:\n- `int p`\n\nComputes the answer. Tests primality of `p`.\n\n---\n```cpp\nconstexpr int answer(int p)\n```",
+              "markdown": "### function `answer`\n\n---\n\nComputes the answer. Tests primality of `p`.\n\n→ `int`\nParameters:\n- `int p`\n\n---\n```cpp\nconstexpr int answer(int p)\n```",
               "range": {
                 "$place": "constexpr int ⟦answer⟧(int p) {",
                 "path": "main.cpp",
@@ -109,19 +109,14 @@
       ]
     },
     {
-      "name": "configured",
-      "config": {
-        "hover": {
-          "parse_comment_as_markdown": false
-        }
-      },
+      "name": "plain text client",
       "blocks": [
         {
           "label": "function",
           "marker": "function",
           "value": {
             "hover": {
-              "plaintext": "function answer\n\n→ int\nParameters:\n- int p\nComputes the answer. Tests primality of `p`.\n\nconstexpr int answer(int p)",
+              "plaintext": "function answer\n\nComputes the answer. Tests primality of `p`.\n\n→ int\nParameters:\n- int p\n\nconstexpr int answer(int p)",
               "range": {
                 "$place": "constexpr int ⟦answer⟧(int p) {",
                 "path": "main.cpp",

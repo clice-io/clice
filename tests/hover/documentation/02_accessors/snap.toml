@@ -3,8 +3,10 @@ markdown = '''
 ### method `getReading`
 
 ---
-→ `long`
+
 Trivial accessor for `reading`.
+
+→ `long`
 
 ---
 ```cpp
@@ -19,11 +21,12 @@ markdown = '''
 ### method `setReading`
 
 ---
+
+Trivial setter for `reading`.
+
 → `void`
 Parameters:
 - `long next`
-
-Trivial setter for `reading`.
 
 ---
 ```cpp

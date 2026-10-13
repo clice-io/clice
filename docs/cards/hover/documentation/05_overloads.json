@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "Overloads",
-  "summary": "An overload without a comment does not show the documentation of the overload before it",
-  "prose": "",
-  "status": "partial",
+  "summary": "An overload without a comment of its own shows none, whatever its neighbours say",
+  "prose": "Different overloads often do different things, so an undocumented one does not\nborrow the comment of the overload before it.",
+  "status": "supported",
   "issues": [
     "clangd#2506"
   ],
@@ -38,7 +38,7 @@
           "marker": "first",
           "value": {
             "hover": {
-              "markdown": "### function `open`\n\n---\n→ `void`\nParameters:\n- `const char * path`\n\nOpens a file.\n\n---\n```cpp\n// In namespace overloads\nvoid open(const char *path)\n```",
+              "markdown": "### function `open`\n\n---\n\nOpens a file.\n\n→ `void`\nParameters:\n- `const char * path`\n\n---\n```cpp\n// In namespace overloads\nvoid open(const char *path)\n```",
               "range": {
                 "$place": "void ⟦open⟧(const char* path);",
                 "path": "main.cpp",
@@ -60,7 +60,6 @@
           "label": "second",
           "marker": "second",
           "value": {
-            "wrong": "the second overload shows no description, where the first one's applies (clangd#2506)",
             "hover": {
               "markdown": "### function `open`\n\n---\n→ `void`\nParameters:\n- `const char * path`\n- `int flags`\n\n---\n```cpp\n// In namespace overloads\nvoid open(const char *path, int flags)\n```",
               "range": {

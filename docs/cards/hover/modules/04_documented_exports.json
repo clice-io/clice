@@ -41,7 +41,7 @@
           "marker": "type",
           "value": {
             "hover": {
-              "markdown": "### struct `Point`\n\n---\nA point on the plane.\n\n---\n```cpp\nexport struct Point {\n  int x;\n  int y;\n}\n```",
+              "markdown": "### struct `Point`\n\n---\n\nA point on the plane.\n\n---\n```cpp\nexport struct Point {\n  int x;\n  int y;\n}\n```",
               "range": {
                 "$place": "⟦Point⟧ origin{0, 0};",
                 "path": "main.cpp",
@@ -64,7 +64,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "### function `add`\n\n---\n→ `int`\nParameters:\n- `int a`\n- `int b`\n\nAdds two numbers together.\n\n---\n```cpp\nexport int add(int a, int b)\n```",
+              "markdown": "### function `add`\n\n---\n\nAdds two numbers together.\n\n→ `int`\nParameters:\n- `int a`\n- `int b`\n\n---\n```cpp\nexport int add(int a, int b)\n```",
               "range": {
                 "$place": "return ⟦add⟧(origin.x, 1);",
                 "path": "main.cpp",

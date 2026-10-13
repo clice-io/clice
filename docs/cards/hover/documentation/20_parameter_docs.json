@@ -1,0 +1,141 @@
+{
+  "id": "hover/documentation/20_parameter_docs",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Parameter documentation",
+  "summary": "A parameter's card shows what its function's `@param` or its template's `@tparam` says of it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace params {\n/// Scales a value.\n/// @tparam T The arithmetic type.\n/// @param value The value to scale.\n/// @param factor How much to scale by.\ntemplate <typename T>\nT scale(T value, T factor) {\n    return value * factor;\n}\n\nstruct Box {\n    /// Resizes the box.\n    /// @param[in] width The new width.\n    void resize(int width);\n};\n\nvoid Box::resize(int width) {}\n}\n",
+      "markers": [
+        {
+          "name": "template_param",
+          "begin": 173,
+          "end": 173,
+          "range": false
+        },
+        {
+          "name": "declared",
+          "begin": 183,
+          "end": 183,
+          "range": false
+        },
+        {
+          "name": "used",
+          "begin": 224,
+          "end": 224,
+          "range": false
+        },
+        {
+          "name": "out_of_line",
+          "begin": 363,
+          "end": 363,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "template_param",
+          "marker": "template_param",
+          "value": {
+            "hover": {
+              "markdown": "### type `T`\n\n---\n\nThe arithmetic type.\n\nType: `typename`\n\n---\n```cpp\n// In scale\ntypename T\n```",
+              "range": {
+                "$place": "⟦T⟧ scale(T value, T factor) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "declared",
+          "marker": "declared",
+          "value": {
+            "hover": {
+              "markdown": "### parameter `value`\n\n---\n\nThe value to scale.\n\nType: `T`\n\n---\n```cpp\n// In scale\nT value\n```",
+              "range": {
+                "$place": "T scale(T ⟦value⟧, T factor) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 10
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "used",
+          "marker": "used",
+          "value": {
+            "hover": {
+              "markdown": "### parameter `factor`\n\n---\n\nHow much to scale by.\n\nType: `T`\n\n---\n```cpp\n// In scale\nT factor\n```",
+              "range": {
+                "$place": "return value * ⟦factor⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 19
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 25
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "out_of_line",
+          "marker": "out_of_line",
+          "value": {
+            "hover": {
+              "markdown": "### parameter `width`\n\n---\n\nThe new width.\n\nType: `int`\n\n---\n```cpp\n// In Box::resize\nint width\n```",
+              "range": {
+                "$place": "void Box::resize(int ⟦width⟧) {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 16,
+                    "character": 21
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 26
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

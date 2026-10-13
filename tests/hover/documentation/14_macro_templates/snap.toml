@@ -1,11 +1,11 @@
-[answers.macro_template]
-wrong = "the documentation is missing when the template keyword comes from a macro (clangd#1226)"
-
 [answers.macro_template.hover]
 markdown = '''
 ### function `run`
 
 ---
+
+A documented template function.
+
 → `void`
 Parameters:
 - `T value`

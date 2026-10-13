@@ -3,8 +3,10 @@ markdown = '''
 ### function `base_func`
 
 ---
-→ `void`
+
 Detailed documentation.
+
+→ `void`
 
 ---
 ```cpp
@@ -14,16 +16,15 @@ void base_func()
 '''
 range = "void ⟦base_func⟧();"
 
-[answers.wrapper]
-wrong = "the @copydoc tag shows as written instead of base_func's documentation (clangd#1320)"
-
 [answers.wrapper.hover]
 markdown = '''
 ### function `wrapper`
 
 ---
+
+Detailed documentation.
+
 → `void`
-@copydoc base_func()
 
 ---
 ```cpp

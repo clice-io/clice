@@ -11,6 +11,9 @@ import :index.search_index;
 import :support.logging;
 import :support.text;
 import :support.timer;
+import :syntax.doc_comment;
+import :syntax.lexer;
+import :syntax.lexical_scan;
 import :vfs.file_system;
 
 namespace clice::index {
@@ -1069,11 +1072,111 @@ std::optional<IndexQuery::DeclaredText> IndexQuery::declared_text(SymbolHash has
                           found = DeclaredText{
                               .extent = *extent,
                               .text = std::string(text->substr(range.begin, range.length())),
-                              .comment = preceding_comment(*text, range.begin),
                           };
                           return false;
                       });
     return found;
+}
+
+std::string IndexQuery::doc_comment(SymbolHash hash, Fid anchor, bool inherit) const {
+    const static auto dialect = raw_dialect(clang::Language::CXX, clang::LangStandard::lang_cxx26);
+    auto info = symbol_info(hash, anchor);
+    SymbolKind kind = info ? info->kind : SymbolKind(SymbolKind::Invalid);
+    std::optional<std::string> doxygen;
+    std::string fallback;
+    for(auto relation_kind: {RelationKind::Declaration, RelationKind::Definition}) {
+        for_each_relation(
+            hash,
+            anchor,
+            relation_kind,
+            Order::LiveFirst,
+            {},
+            [&](const IndexSource& source, const Relation& relation) {
+                auto extent = relation.definition_range();
+                std::unique_ptr<llvm::MemoryBuffer> storage;
+                auto text = extent.begin < extent.end ? source_text(source, storage) : std::nullopt;
+                if(!text || extent.end > text->size()) {
+                    return true;
+                }
+                // The lexer reads past the end of what it lexes.
+                std::string content(*text);
+                auto decl = kind == SymbolKind::Macro
+                                ? documented_macro(content, extent)
+                                : DocumentedDecl{.range = extent,
+                                                 .trailing = kind == SymbolKind::Field ||
+                                                             kind == SymbolKind::EnumMember ||
+                                                             kind == SymbolKind::Variable};
+                auto comments = scan_comments(content, &dialect);
+                auto run = documenting_comments(content, comments, decl);
+                if(run.empty()) {
+                    return true;
+                }
+                auto first =
+                    llvm::StringRef(content).slice(run.front().range.begin, run.front().range.end);
+                if(is_doc_comment(first)) {
+                    doxygen = comment_text(content, run);
+                    return false;
+                }
+                if(fallback.empty()) {
+                    fallback = comment_text(content, run);
+                }
+                return true;
+            });
+        if(doxygen) {
+            return std::move(*doxygen);
+        }
+    }
+
+    if(inherit && fallback.empty() && kind == SymbolKind::Method) {
+        for(auto& overridden: targets(hash, anchor, RelationKind::Interface)) {
+            if(auto text = doc_comment(overridden.symbol, overridden.anchor, inherit);
+               !text.empty()) {
+                return text;
+            }
+        }
+    }
+    return fallback;
+}
+
+std::optional<std::string> IndexQuery::copied_doc_comment(SymbolHash hash,
+                                                          Fid anchor,
+                                                          llvm::StringRef name,
+                                                          bool inherit) const {
+    // Doxygen names a member `Class::member` or `Class#member`.
+    llvm::SmallVector<llvm::StringRef> parts;
+    name = name.take_until([](char c) { return c == '('; }).trim();
+    name.consume_front("::");
+    for(auto part: llvm::split(name, "::")) {
+        for(auto piece: llvm::split(part, '#')) {
+            if(piece.trim().empty()) {
+                return std::nullopt;
+            }
+            parts.push_back(piece.trim());
+        }
+    }
+    if(parts.empty()) {
+        return std::nullopt;
+    }
+
+    auto chain = container_chain(hash);
+    for(auto depth = chain.size() + 1; depth > 0; depth -= 1) {
+        SymbolQuery query{.mode = SymbolQuery::Mode::Exact,
+                          .absolute = true,
+                          .pattern = parts.back().str()};
+        for(auto& container: llvm::ArrayRef(chain).take_front(depth - 1)) {
+            query.scope.push_back({.name = container.name});
+        }
+        for(auto part: llvm::ArrayRef(parts).drop_back()) {
+            query.scope.push_back({.name = part.str()});
+        }
+        for(auto& located: locate(query)) {
+            if(auto text = doc_comment(located.symbol.hash, located.site.file, inherit);
+               !text.empty()) {
+                return text;
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<std::string> IndexQuery::serving_text(Fid file) const {
@@ -1484,77 +1587,6 @@ std::vector<IncludeEdge> IndexQuery::include_edges(Fid file) const {
         }
     }
     return edges;
-}
-
-auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string {
-    if(offset > content.size()) {
-        return {};
-    }
-
-    // Walk to the start of the line containing `offset`, then collect the
-    // contiguous run of comment-looking lines directly above it.
-    auto begin = line_begin(content, offset);
-    llvm::SmallVector<llvm::StringRef, 8> lines;
-    // Between a closing */ and its opener the scan is inside a block
-    // comment: interior lines need no marker of their own (`/*` above bare
-    // text above `*/`). `block_start` remembers where the block began in
-    // `lines` so one whose opener never shows up can be dropped.
-    bool in_block = false;
-    std::size_t block_start = 0;
-    while(begin > 0) {
-        auto prev_begin = line_begin(content, begin - 1);
-        auto line = content.substr(prev_begin, begin - prev_begin).rtrim("\r\n").trim();
-        if(in_block) {
-            // An opener sharing its line with code marks a comment trailing
-            // that code, not documentation of the decl below.
-            if(line.contains("/*") && !line.starts_with("/*")) {
-                break;
-            }
-            lines.push_back(line);
-            if(line.starts_with("/*")) {
-                in_block = false;
-            }
-        } else {
-            // A trailing */ only marks a comment line when the opener is on
-            // an earlier line: `int a; /* note */` closes a comment it
-            // opened itself, and everything before the marker is code.
-            bool closes_block = line.ends_with("*/") && !line.contains("/*");
-            bool comment_like = line.starts_with("//") || line.starts_with("/*") ||
-                                line.starts_with("*") || closes_block;
-            if(!comment_like || line.empty()) {
-                break;
-            }
-            if(closes_block) {
-                in_block = true;
-                block_start = lines.size();
-            }
-            lines.push_back(line);
-        }
-        begin = prev_begin;
-    }
-    if(in_block) {
-        lines.truncate(block_start);
-    }
-
-    std::string result;
-    for(auto& line: llvm::reverse(lines)) {
-        auto text = line;
-        for(llvm::StringRef marker: {"///<", "///", "//!", "//", "/**", "/*", "*/"}) {
-            if(text.starts_with(marker)) {
-                text = text.drop_front(marker.size());
-                break;
-            }
-        }
-        if(text.starts_with("*")) {
-            text = text.drop_front(1);
-        }
-        text = text.rtrim("*/").trim();
-        if(!result.empty()) {
-            result += '\n';
-        }
-        result += text.str();
-    }
-    return llvm::StringRef(result).trim().str();
 }
 
 }  // namespace clice::index

@@ -9,7 +9,7 @@
 ## Questions
 
 - `symbolSearch --symbol <locator> [--limit <n>]` lists the symbols a [locator](#locators) matches, best first, with their kind, file, line, container and `symbol`.
-- `definition`, `readSymbol`, `references [--include-declaration]`, `callGraph [--direction callers|callees|both]` and `typeHierarchy [--direction supertypes|subtypes|both]` answer about the one symbol `--symbol <locator>` names. A locator several symbols match lists them as `candidates`; a name none spells exactly lists the closest matches the same way.
+- `definition`, `readSymbol`, `references [--include-declaration]`, `callGraph [--direction callers|callees|both]` and `typeHierarchy [--direction supertypes|subtypes|both]` answer about the one symbol `--symbol <locator>` names. A locator several symbols match lists them as `candidates`; a name none spells exactly lists the closest matches the same way. `definition` and `readSymbol` also give the symbol's `documentation`: its documentation comment as markdown, read as the editor's hover reads it — `@param`, `@return` and `@copydoc` resolved, an undocumented override showing what it overrides.
 - `documentSymbols --path <file>` is the file's outline.
 - `compileCommand --path <file>` is the command the editor would compile the file with, and where it came from: the file's own database entry, a host source for a header, a rule's default command, a command borrowed from a nearby unit — for a provisional member (`provisional`) or a file outside the build (`inferred`) — or the fallback. The command is the one the compiler resolves it to, with its target and system include directories; when asking the compiler failed, `toolchainError` says why and the command stays the unresolved driver command.
 - `projectFiles [--filter all|source|header|module]` lists the build's files; `fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` follow the include graph, and `impactAnalysis --path <file>` the include graph and the files that import a module the file is part of.
@@ -100,6 +100,18 @@ List the project's files, what a file includes and what includes it, what a chan
 
 ```case
 tests/query/basics/04_file_questions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Documentation**
+
+A symbol's documentation comment comes with its definition, read the way the editor shows it
+
+```case
+tests/query/basics/10_documentation
 ```
 
 <!-- END CAPABILITY -->

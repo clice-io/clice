@@ -14,8 +14,6 @@ Parameters:
 - `int a`
 - `int b`
 
-tidy poison
-
 ---
 ```cpp
 double ratio(int a, int b)

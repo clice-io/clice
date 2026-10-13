@@ -138,11 +138,6 @@ std::unique_ptr<clang::CompilerInvocation>
     deps_opts.ModuleDependencyOutputDir.clear();
 
     auto& lang_opts = invocation->getLangOpts();
-    lang_opts.CommentOpts.ParseAllComments = true;
-    // A PCH carries the comments of every header it holds, and the first
-    // lookup reads them all back: a system library's comments added about
-    // 40 ms to a release build's first hover, a project's own add nothing.
-    lang_opts.RetainCommentsFromSystemHeaders = false;
 
     // MSVC targets defer template bodies by default so SDK headers written
     // for MSVC's lookup rules still parse, but a deferred body has no AST and

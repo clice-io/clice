@@ -61,7 +61,7 @@
         {
           "label": "$ clice query --method definition --symbol \"a::rows path:a.cpp\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Variable\",\n    \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\",\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int rows = 1\"\n    }\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Variable\",\n    \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\",\n    \"documentation\": null,\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int rows = 1\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
@@ -75,14 +75,14 @@
         {
           "label": "$ clice query --method definition --symbol \"#62144b44c2d7e570 path:${WS}/a.cpp\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Variable\",\n    \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\",\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int rows = 1\"\n    }\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Variable\",\n    \"symbol\": \"#62144b44c2d7e570 path:${WS}/a.cpp\",\n    \"documentation\": null,\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int rows = 1\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
           "label": "$ clice query --method definition --symbol \"#c779df7ea50d8026 path:${WS}/a.cpp\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Parameter\",\n    \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\",\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 2,\n      \"endLine\": 2,\n      \"text\": \"int rows\"\n    }\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"rows\",\n    \"kind\": \"Parameter\",\n    \"symbol\": \"#c779df7ea50d8026 path:${WS}/a.cpp\",\n    \"documentation\": null,\n    \"definition\": {\n      \"file\": \"${WS}/a.cpp\",\n      \"startLine\": 2,\n      \"endLine\": 2,\n      \"text\": \"int rows\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         }

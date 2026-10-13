@@ -7,6 +7,7 @@ module clice;
 import :compile.implement;
 import :compile.tokens;
 import :semantic.display;
+import :syntax.lexical_scan;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -172,6 +173,14 @@ auto CompilationUnitRef::positions(clang::FileID fid) -> PositionMap {
 
 auto CompilationUnitRef::positions() -> PositionMap {
     return positions(main_file());
+}
+
+auto CompilationUnitRef::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment> {
+    auto [it, inserted] = self->comments.try_emplace(fid);
+    if(inserted) {
+        it->second = scan_comments(file_content(fid), &lang_options());
+    }
+    return it->second;
 }
 
 bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {

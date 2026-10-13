@@ -10,6 +10,7 @@ import :compile.diagnostic;
 import :compile.identity;
 import :compile.semantics;
 import :compile.tokens;
+import :syntax.lexical_scan;
 
 namespace clice::tidy {
 
@@ -124,6 +125,9 @@ struct CompilationUnitRef::Self {
 
     /// Each file's line tables, built together on first use.
     llvm::DenseMap<clang::FileID, LineTables> line_tables;
+
+    /// Each file's comments, lexed on first use.
+    llvm::DenseMap<clang::FileID, std::vector<LexicalInfo::Comment>> comments;
 
     llvm::BumpPtrAllocator path_storage;
 

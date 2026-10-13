@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "Doxygen commands",
-  "summary": "`@brief`, `@param` and `@return` show as written, not as parts of the card yet",
-  "prose": "A parameter's description could sit beside that parameter in the card, and\nthe return description beside the return type; today the whole comment shows\nas text, commands included.",
-  "status": "unsupported",
+  "summary": "`@brief` heads the card, and each `@param` and `@return` shows beside what it describes",
+  "prose": "",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -35,9 +35,8 @@
           "label": "function",
           "marker": "function",
           "value": {
-            "wrong": "@brief, @param and @return show as written instead of beside the return type and each parameter",
             "hover": {
-              "markdown": "### function `area`\n\n---\n→ `int`\nParameters:\n- `int width`\n- `int height`\n\n@brief Computes the area of a rectangle.\n@param width The horizontal extent.\n@param height The vertical extent.\n@return The product of both sides.\n\n---\n```cpp\nint area(int width, int height)\n```",
+              "markdown": "### function `area`\n\n---\n\nComputes the area of a rectangle.\n\n→ `int` — The product of both sides.\nParameters:\n- `int width` — The horizontal extent.\n- `int height` — The vertical extent.\n\n---\n```cpp\nint area(int width, int height)\n```",
               "range": {
                 "$place": "int ⟦area⟧(int width, int height);",
                 "path": "main.cpp",
@@ -59,9 +58,8 @@
           "label": "call",
           "marker": "call",
           "value": {
-            "wrong": "@brief, @param and @return show as written instead of beside the return type and each parameter",
             "hover": {
-              "markdown": "### function `area`\n\n---\n→ `int`\nParameters:\n- `int width`\n- `int height`\n\n@brief Computes the area of a rectangle.\n@param width The horizontal extent.\n@param height The vertical extent.\n@return The product of both sides.\n\n---\n```cpp\nint area(int width, int height)\n```",
+              "markdown": "### function `area`\n\n---\n\nComputes the area of a rectangle.\n\n→ `int` — The product of both sides.\nParameters:\n- `int width` — The horizontal extent.\n- `int height` — The vertical extent.\n\n---\n```cpp\nint area(int width, int height)\n```",
               "range": {
                 "$place": "int total = ⟦area⟧(3, 4);",
                 "path": "main.cpp",

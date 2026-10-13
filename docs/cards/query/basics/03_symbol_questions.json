@@ -40,21 +40,21 @@
         {
           "label": "$ clice query --method definition --symbol \"#5c1bf8ca24c752f7\"",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"add\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#5c1bf8ca24c752f7\",\n    \"definition\": {\n      \"file\": \"${WS}/main.cpp\",\n      \"startLine\": 2,\n      \"endLine\": 2,\n      \"text\": \"int add(int a, int b) { return a + b; }\"\n    }\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"add\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#5c1bf8ca24c752f7\",\n    \"documentation\": null,\n    \"definition\": {\n      \"file\": \"${WS}/main.cpp\",\n      \"startLine\": 2,\n      \"endLine\": 2,\n      \"text\": \"int add(int a, int b) { return a + b; }\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
           "label": "$ clice query --method definition --symbol main.cpp:4",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"compute\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#81df9416985c4402\",\n    \"definition\": {\n      \"file\": \"${WS}/main.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int compute() { return add(1, 2); }\"\n    }\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"compute\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#81df9416985c4402\",\n    \"documentation\": null,\n    \"definition\": {\n      \"file\": \"${WS}/main.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int compute() { return add(1, 2); }\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
           "label": "$ clice query --method readSymbol --symbol compute",
           "value": {
-            "stdout": "{\n  \"result\": {\n    \"name\": \"compute\",\n    \"kind\": \"Function\",\n    \"file\": \"${WS}/main.cpp\",\n    \"startLine\": 4,\n    \"endLine\": 4,\n    \"text\": \"int compute() { return add(1, 2); }\",\n    \"symbol\": \"#81df9416985c4402\"\n  },\n  \"stale\": []\n}",
+            "stdout": "{\n  \"result\": {\n    \"name\": \"compute\",\n    \"kind\": \"Function\",\n    \"file\": \"${WS}/main.cpp\",\n    \"startLine\": 4,\n    \"endLine\": 4,\n    \"documentation\": null,\n    \"text\": \"int compute() { return add(1, 2); }\",\n    \"symbol\": \"#81df9416985c4402\"\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },

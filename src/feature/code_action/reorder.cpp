@@ -127,21 +127,21 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     // lines of its own, separated from what follows by nothing but
     // whitespace holding a single line break. A comment trailing the
     // previous definition's line belongs to that line.
-    if(const auto* comments = unit.context().Comments.getCommentsInFile(main)) {
-        auto it = comments->lower_bound(begin);
-        while(it != comments->begin()) {
-            --it;
-            auto comment_begin = it->first;
-            auto comment_end = unit.file_offset(it->second->getEndLoc()) +
-                               unit.token_length(it->second->getEndLoc());
-            auto line = line_begin(content, comment_begin);
-            auto gap = content.substr(comment_end, begin - comment_end);
-            if(comment_end > begin || !gap.trim().empty() || gap.count('\n') != 1 ||
-               !content.substr(line, comment_begin - line).trim().empty()) {
-                break;
-            }
-            begin = comment_begin;
+    auto comments = unit.comments(main);
+    auto it =
+        std::ranges::lower_bound(comments, begin, {}, [](const LexicalInfo::Comment& comment) {
+            return comment.range.begin;
+        });
+    while(it != comments.begin()) {
+        --it;
+        auto [comment_begin, comment_end] = it->range;
+        auto line = line_begin(content, comment_begin);
+        auto gap = content.substr(comment_end, begin - comment_end);
+        if(comment_end > begin || !gap.trim().empty() || gap.count('\n') != 1 ||
+           !content.substr(line, comment_begin - line).trim().empty()) {
+            break;
         }
+        begin = comment_begin;
     }
     auto line = line_begin(content, begin);
     if(content.substr(line, begin - line).trim().empty()) {

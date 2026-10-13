@@ -1,0 +1,87 @@
+{
+  "id": "hover/documentation/23_plain_format",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "Comments as written",
+  "summary": "The plain format shows a comment as written, its commands and markup included",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "/// @brief Computes the area.\n/// Sides are *positive*.\nint area(int width, int height);\n",
+      "markers": [
+        {
+          "name": "function",
+          "begin": 60,
+          "end": 60,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "doxygen",
+      "blocks": [
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "markdown": "### function `area`\n\n---\n\nComputes the area. Sides are *positive*.\n\n→ `int`\nParameters:\n- `int width`\n- `int height`\n\n---\n```cpp\nint area(int width, int height)\n```",
+              "range": {
+                "$place": "int ⟦area⟧(int width, int height);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "plain",
+      "config": {
+        "documentation": {
+          "format": "plain"
+        }
+      },
+      "blocks": [
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "markdown": "### function `area`\n\n---\n→ `int`\nParameters:\n- `int width`\n- `int height`\n\n@brief Computes the area.\nSides are \\*positive\\*.\n\n---\n```cpp\nint area(int width, int height)\n```",
+              "range": {
+                "$place": "int ⟦area⟧(int width, int height);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

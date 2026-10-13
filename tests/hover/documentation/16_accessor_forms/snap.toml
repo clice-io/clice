@@ -3,8 +3,10 @@ markdown = '''
 ### method `getLevel`
 
 ---
-→ `double`
+
 Trivial accessor for `level`.
+
+→ `double`
 
 ---
 ```cpp
@@ -19,11 +21,12 @@ markdown = '''
 ### method `setAngle`
 
 ---
+
+Trivial setter for `angle`.
+
 → `void`
 Parameters:
 - `double value`
-
-Trivial setter for `angle`.
 
 ---
 ```cpp
@@ -38,11 +41,12 @@ markdown = '''
 ### method `setWidth`
 
 ---
+
+Trivial setter for `width`.
+
 → `Builder &`
 Parameters:
 - `double value`
-
-Trivial setter for `width`.
 
 ---
 ```cpp
@@ -57,11 +61,12 @@ markdown = '''
 ### method `setOffset`
 
 ---
+
+Trivial setter for `offset`.
+
 → `void`
 Parameters:
 - `double value`
-
-Trivial setter for `offset`.
 
 ---
 ```cpp

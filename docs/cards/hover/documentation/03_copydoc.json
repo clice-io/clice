@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "@copydoc",
-  "summary": "A `@copydoc` command shows as written instead of the documentation it names",
+  "summary": "A `@copydoc` command shows the documentation of what it names",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [
     "clangd#1320"
   ],
@@ -38,7 +38,7 @@
           "marker": "base",
           "value": {
             "hover": {
-              "markdown": "### function `base_func`\n\n---\n→ `void`\nDetailed documentation.\n\n---\n```cpp\n// In namespace copydoc\nvoid base_func()\n```",
+              "markdown": "### function `base_func`\n\n---\n\nDetailed documentation.\n\n→ `void`\n\n---\n```cpp\n// In namespace copydoc\nvoid base_func()\n```",
               "range": {
                 "$place": "void ⟦base_func⟧();",
                 "path": "main.cpp",
@@ -60,9 +60,8 @@
           "label": "wrapper",
           "marker": "wrapper",
           "value": {
-            "wrong": "the @copydoc tag shows as written instead of base_func's documentation (clangd#1320)",
             "hover": {
-              "markdown": "### function `wrapper`\n\n---\n→ `void`\n@copydoc base_func()\n\n---\n```cpp\n// In namespace copydoc\nvoid wrapper()\n```",
+              "markdown": "### function `wrapper`\n\n---\n\nDetailed documentation.\n\n→ `void`\n\n---\n```cpp\n// In namespace copydoc\nvoid wrapper()\n```",
               "range": {
                 "$place": "void ⟦wrapper⟧();",
                 "path": "main.cpp",

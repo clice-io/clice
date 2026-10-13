@@ -45,6 +45,10 @@ public:
     /// \p preserve indicates the code span must be apparent even in plaintext.
     Paragraph& append_code(llvm::StringRef code, bool preserve = false);
 
+    /// Append text written in markdown, kept as it is (see
+    /// Document::add_markdown).
+    Paragraph& append_markdown(llvm::StringRef text);
+
     /// Ensure there is space between the surrounding chunks.
     /// Has no effect at the beginning or end of a paragraph.
     Paragraph& append_space();
@@ -54,6 +58,7 @@ private:
         enum Kind : uint8_t {
             PlainText,
             InlineCode,
+            Markdown,
         } kind = PlainText;
 
         /// Preserve chunk markers in plaintext.
@@ -124,6 +129,14 @@ public:
     Paragraph& add_heading(std::size_t level);
 
     BulletList& add_bullet_list();
+
+    /// Adds text written in markdown, kept as it is: in markdown with only
+    /// the `<` escaped that would start an HTML tag where none is meant
+    /// (`vector<int>`), in plain text verbatim.
+    void add_markdown(std::string text);
+
+    /// Adds text to show as written, line by line.
+    void add_lines(std::string text);
 
     /// Doesn't contain any trailing newlines.
     /// We try to make the markdown human-readable, e.g. avoid extra escaping.

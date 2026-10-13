@@ -3,8 +3,10 @@ markdown = '''
 ### method `getLevel`
 
 ---
-→ `T`
+
 Trivial accessor for `level`.
+
+→ `T`
 
 ---
 ```cpp
@@ -19,11 +21,12 @@ markdown = '''
 ### method `setLevel`
 
 ---
+
+Trivial setter for `level`.
+
 → `void`
 Parameters:
 - `T value`
-
-Trivial setter for `level`.
 
 ---
 ```cpp

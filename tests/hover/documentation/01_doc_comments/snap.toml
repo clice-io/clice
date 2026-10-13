@@ -3,12 +3,13 @@ markdown = '''
 ### function `join`
 
 ---
+
+Joins two counters.
+
 → `long`
 Parameters:
 - `long left`
 - `long right`
-
-Joins two counters.
 
 ---
 ```cpp
@@ -23,6 +24,7 @@ markdown = '''
 ### struct `Store`
 
 ---
+
 Stores an ordinary value.
 
 ---
@@ -38,6 +40,7 @@ markdown = '''
 ### struct `Store<T *>`
 
 ---
+
 Stores an indirect value.
 
 ---
@@ -53,6 +56,7 @@ markdown = '''
 ### struct `Store<long>`
 
 ---
+
 Stores an ordinary value.
 
 ---
@@ -68,6 +72,7 @@ markdown = '''
 ### struct `Store<long *>`
 
 ---
+
 Stores an indirect value.
 
 ---

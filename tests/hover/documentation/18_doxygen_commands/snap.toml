@@ -1,20 +1,15 @@
-[answers.function]
-wrong = "@brief, @param and @return show as written instead of beside the return type and each parameter"
-
 [answers.function.hover]
 markdown = '''
 ### function `area`
 
 ---
-→ `int`
-Parameters:
-- `int width`
-- `int height`
 
-@brief Computes the area of a rectangle.
-@param width The horizontal extent.
-@param height The vertical extent.
-@return The product of both sides.
+Computes the area of a rectangle.
+
+→ `int` — The product of both sides.
+Parameters:
+- `int width` — The horizontal extent.
+- `int height` — The vertical extent.
 
 ---
 ```cpp
@@ -23,23 +18,18 @@ int area(int width, int height)
 '''
 range = "int ⟦area⟧(int width, int height);"
 
-[answers.call]
-wrong = "@brief, @param and @return show as written instead of beside the return type and each parameter"
-
 [answers.call.hover]
 markdown = '''
 ### function `area`
 
 ---
-→ `int`
-Parameters:
-- `int width`
-- `int height`
 
-@brief Computes the area of a rectangle.
-@param width The horizontal extent.
-@param height The vertical extent.
-@return The product of both sides.
+Computes the area of a rectangle.
+
+→ `int` — The product of both sides.
+Parameters:
+- `int width` — The horizontal extent.
+- `int height` — The vertical extent.
 
 ---
 ```cpp

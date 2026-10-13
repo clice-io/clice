@@ -1,13 +1,13 @@
-[answers.table]
-wrong = "the table's rows run together on one line (clangd#2057)"
-
 [answers.table.hover]
 markdown = '''
 ### function `table_fn`
 
 ---
 → `void`
-| Column A | Column B | |----------|----------| | 1 | 2 |
+
+| Column A | Column B |
+|----------|----------|
+| 1        | 2        |
 
 ---
 ```cpp

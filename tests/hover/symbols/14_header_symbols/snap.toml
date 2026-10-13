@@ -3,6 +3,7 @@ markdown = '''
 ### struct `Point`
 
 ---
+
 A point in the plane.
 
 ---
@@ -21,11 +22,12 @@ markdown = '''
 ### function `norm`
 
 ---
+
+Distance from the origin, in taxicab steps.
+
 → `int`
 Parameters:
 - `Point p`
-
-Distance from the origin, in taxicab steps.
 
 ---
 ```cpp

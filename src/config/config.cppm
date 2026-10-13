@@ -362,6 +362,11 @@ struct Config {
                      description = "The [diagnostics] section: diagnostic options.")
     <feature::DiagnosticsOptions> diagnostics;
 
+    KOTATSU_ANNOTATE(
+        defaulted = true,
+        description = "The [documentation] section: how documentation comments are read.")
+    <feature::DocumentationOptions> documentation;
+
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [hover] section: hover rendering options.")
     <feature::HoverOptions> hover;

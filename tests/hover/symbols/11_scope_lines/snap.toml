@@ -81,8 +81,10 @@ markdown = '''
 ### function `render`
 
 ---
-→ `void`
+
 Describes a free function.
+
+→ `void`
 
 ---
 ```cpp
@@ -96,8 +98,10 @@ markdown = '''
 ### function `flush`
 
 ---
-→ `void`
+
 Describes a namespaced function.
+
+→ `void`
 
 ---
 ```cpp

@@ -21,7 +21,7 @@ clice is a brand-new C++ language server, redesigned from the architecture level
 General-purpose utilities and infrastructure shared by all other modules.
 
 - `FuzzyMatcher`: Token-aware fuzzy matching for code completion and symbol search
-- Markup / Doxygen: Parsing and formatting of documentation comments
+- Markup: The markdown or plain text a card or a query answer is rendered in
 - Logging, filesystem abstractions, string utilities, etc.
 
 ### `src/vfs/` — File Identity and Versions
@@ -61,6 +61,7 @@ Syntax-level processing that does not require a full AST. Runs before compilatio
 - Dependency scanning: Wraps Clang's `DependencyDirectivesScanner` to quickly extract include and module dependencies
 - `IncludeResolver`: Resolves include paths to actual files based on search path configuration
 - Preamble synthesis: Builds the prefix/suffix files that let a header compile under its host's preprocessor state
+- Documentation comments: Finds the comment documenting a declaration in a file's text, the same way for a compiled unit and for the index, and reads it as Doxygen and Markdown — commands, parameters, return values, `@copydoc` — into one structured form every feature renders from
 
 See [Dependency Scanning](dependency-scanning.md).
 

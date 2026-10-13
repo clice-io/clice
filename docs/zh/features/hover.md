@@ -597,7 +597,7 @@ tests/hover/directives/01_include_paths
 
 ## 文档
 
-无论在符号的哪个位置悬停，卡片都会显示其声明上的文档注释。
+无论在符号的哪个位置悬停，卡片都会显示其声明上的文档注释。注释按 Doxygen 的方式读取——包括其中的命令，以及注释所用的 Markdown——`clice query` 也以同样的方式读取。
 
 <!-- BEGIN GENERATED ITEMS: hover/documentation -->
 
@@ -627,11 +627,11 @@ tests/hover/documentation/02_accessors
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1320 -->
+<!-- BEGIN CAPABILITY: supported clangd#1320 -->
 
 **@copydoc**
 
-`@copydoc` 命令按原样显示，不会显示它所引用的文档
+`@copydoc` 命令显示它所引用的文档
 
 ```case
 tests/hover/documentation/03_copydoc
@@ -639,11 +639,11 @@ tests/hover/documentation/03_copydoc
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2504 -->
+<!-- BEGIN CAPABILITY: supported clangd#2504 -->
 
 **重写**
 
-重写函数没有自己的注释时，不会显示被重写函数的文档
+重写函数没有自己的注释时，显示被重写函数的文档
 
 ```case
 tests/hover/documentation/04_overrides
@@ -651,11 +651,13 @@ tests/hover/documentation/04_overrides
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2506 -->
+<!-- BEGIN CAPABILITY: supported clangd#2506 -->
 
 **重载**
 
-没有注释的重载不会显示前一个重载的文档
+没有自己注释的重载不显示文档，无论相邻的重载写了什么
+
+不同的重载往往做不同的事，所以没有注释的重载不会借用前一个重载的注释。
 
 ```case
 tests/hover/documentation/05_overloads
@@ -675,11 +677,11 @@ tests/hover/documentation/06_inherited_constructors
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#974 -->
+<!-- BEGIN CAPABILITY: supported clangd#974 -->
 
 **横幅注释**
 
-声明上方的分节横幅注释会显示为该声明的文档，即使两者之间有空行
+与声明之间隔着空行的分节横幅注释不是该声明的文档
 
 ```case
 tests/hover/documentation/07_banner_comments
@@ -701,11 +703,11 @@ tests/hover/documentation/08_declaration_and_definition
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2057 -->
+<!-- BEGIN CAPABILITY: supported clangd#2057 -->
 
 **Markdown 表格**
 
-注释中的表格会挤在同一行显示
+注释中的表格显示为表格
 
 ```case
 tests/hover/documentation/09_markdown_tables
@@ -713,11 +715,11 @@ tests/hover/documentation/09_markdown_tables
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1040 -->
+<!-- BEGIN CAPABILITY: supported clangd#1040 -->
 
 **缩进块**
 
-注释中的缩进块会丢失缩进和前面的空行
+注释中的缩进块会保留缩进和前面的空行
 
 ```case
 tests/hover/documentation/10_indented_blocks
@@ -725,11 +727,13 @@ tests/hover/documentation/10_indented_blocks
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2148 -->
+<!-- BEGIN CAPABILITY: supported clangd#2148 -->
 
 **游离注释**
 
-与声明之间隔着空行的注释会显示为该声明的文档，且没有选项可以关闭这一行为
+与声明之间隔着空行的普通注释不是该声明的文档
+
+`///` 或 `/** */` 注释即使隔着空行，也是下方声明的文档，与 Doxygen 的读法一致。
 
 ```case
 tests/hover/documentation/11_stray_comments
@@ -737,11 +741,11 @@ tests/hover/documentation/11_stray_comments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2662 -->
+<!-- BEGIN CAPABILITY: supported clangd#2662 -->
 
 **GTK-Doc 注释**
 
-GTK-Doc 的名称行、参数条目和标注均按原样显示
+GTK-Doc 的名称行不再显示，每个 `@parameter:` 条目显示在对应参数的旁边
 
 ```case
 tests/hover/documentation/12_gtk_doc
@@ -749,11 +753,11 @@ tests/hover/documentation/12_gtk_doc
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2669 -->
+<!-- BEGIN CAPABILITY: supported clangd#2669 -->
 
 **公式**
 
-Doxygen 公式显示为源码
+Doxygen 公式显示为代码，不带 `@f$` 标记
 
 ```case
 tests/hover/documentation/13_latex_formulas
@@ -761,16 +765,74 @@ tests/hover/documentation/13_latex_formulas
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Doxygen 命令**
 
-`@brief`、`@param` 和 `@return` 按原样显示，尚未整合到卡片的相应部分
-
-参数说明可以显示在卡片中对应参数的旁边，返回值说明也可以显示在返回类型的旁边；目前整段注释都以文本形式显示，包括其中的命令。
+`@brief` 位于卡片开头，每个 `@param` 和 `@return` 显示在它所描述的内容旁边
 
 ```case
 tests/hover/documentation/18_doxygen_commands
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**参数文档**
+
+参数的卡片会显示所属函数的 `@param` 或所属模板的 `@tparam` 对它的说明
+
+```case
+tests/hover/documentation/20_parameter_docs
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#782 -->
+
+**宏文档**
+
+宏的文档注释会显示在它的卡片中
+
+```case
+tests/hover/documentation/21_macro_docs
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**行尾注释**
+
+写在字段、枚举项或变量所在行末尾的注释是它的文档
+
+```case
+tests/hover/documentation/22_trailing_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**按原样显示的注释**
+
+plain 格式按原样显示注释，包括其中的命令和标记
+
+```case
+tests/hover/documentation/23_plain_format
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**系统头文件**
+
+系统头文件中的声明同样会显示其文档注释
+
+```case
+tests/hover/documentation/25_system_headers
 ```
 
 <!-- END CAPABILITY -->
@@ -884,6 +946,8 @@ tests/hover/no_card/01_meaningless_tokens
 **纯文本卡片**
 
 卡片使用 Markdown 格式；对于无法显示 Markdown 的编辑器，则使用纯文本
+
+编辑器在启动时会告知自己能显示哪种格式，卡片随之采用相应的格式。
 
 ```case
 tests/hover/presentation/01_plain_text

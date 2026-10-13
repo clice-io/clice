@@ -1,5 +1,3 @@
-// A template whose template keyword comes from a macro loses its documentation.
-
 int anchor = 0;
 
 #define TEMPLATE template

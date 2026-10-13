@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "Overrides",
-  "summary": "An override without a comment of its own does not show the documentation of what it overrides",
+  "summary": "An override without a comment of its own shows the documentation of the method it overrides",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#2504"
   ],
@@ -25,13 +25,45 @@
   ],
   "tests": [
     {
-      "name": "answers",
+      "name": "inherited",
       "blocks": [
         {
           "label": "override",
           "marker": "override",
           "value": {
-            "wrong": "the override shows no description, where Base::draw's documentation applies (clangd#2504)",
+            "hover": {
+              "markdown": "### method `draw`\n\n---\n\nRenders the widget.\n\n→ `void`\n\n---\n```cpp\n// In Circle\npublic: void draw() override\n```",
+              "range": {
+                "$place": "void ⟦draw⟧() override;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 6,
+                    "character": 9
+                  },
+                  "end": {
+                    "line": 6,
+                    "character": 13
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "not inherited",
+      "config": {
+        "documentation": {
+          "inherit": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "override",
+          "marker": "override",
+          "value": {
             "hover": {
               "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Circle\npublic: void draw() override\n```",
               "range": {

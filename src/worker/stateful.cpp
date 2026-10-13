@@ -470,7 +470,11 @@ void StatefulWorker::register_handlers() {
             switch(params.kind) {
                 case K::Hover:
                     return with_ast(kind, params, [&](DocumentEntry& doc) {
-                        auto result = feature::hover(doc.unit, params.offset, params.config.hover);
+                        auto result = feature::hover(doc.unit,
+                                                     params.offset,
+                                                     params.config.hover,
+                                                     params.config.documentation,
+                                                     params.markup);
                         return result ? to_raw(*result) : kota::codec::RawValue{"null"};
                     });
                 case K::SemanticTokens:

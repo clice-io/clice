@@ -9,7 +9,7 @@
 ## 支持的问题
 
 - `symbolSearch --symbol <locator> [--limit <n>]` 列出[定位串](#locators)（locator）匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 `symbol`。
-- `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 针对 `--symbol <locator>` 指明的那一个符号作答。定位串匹配到多个符号时，会把它们作为 `candidates` 列出；没有符号与该名称完全一致时，同样会列出最接近的匹配。
+- `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 针对 `--symbol <locator>` 指明的那一个符号作答。定位串匹配到多个符号时，会把它们作为 `candidates` 列出；没有符号与该名称完全一致时，同样会列出最接近的匹配。`definition` 和 `readSymbol` 还会给出符号的 `documentation`：以 markdown 形式给出它的文档注释，读法与编辑器的悬停一致——解析 `@param`、`@return` 和 `@copydoc`，没有注释的重写函数显示它所重写函数的文档。
 - `documentSymbols --path <file>` 给出该文件的大纲。
 - `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、从邻近翻译单元借来的命令（借给临时成员时为 `provisional`，借给构建之外的文件时为 `inferred`），或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
 - `projectFiles [--filter all|source|header|module]` 列出构建涉及的文件；`fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` 沿包含关系图查询，`impactAnalysis --path <file>` 则沿包含关系图以及导入该文件所属模块的文件查询。
@@ -100,6 +100,18 @@ tests/query/basics/03_symbol_questions
 
 ```case
 tests/query/basics/04_file_questions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**文档**
+
+符号的文档注释随它的定义一起给出，读法与编辑器显示的一致
+
+```case
+tests/query/basics/10_documentation
 ```
 
 <!-- END CAPABILITY -->

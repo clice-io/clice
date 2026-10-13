@@ -3,6 +3,7 @@ markdown = '''
 ### type `auto`
 
 ---
+
 Holds one payload.
 
 ---
@@ -17,6 +18,7 @@ markdown = '''
 ### class `Packet<long>`
 
 ---
+
 Holds one payload.
 
 ---
@@ -32,8 +34,10 @@ markdown = '''
 ### function `send`
 
 ---
-→ `void`
+
 Sends one payload.
+
+→ `void`
 
 ---
 ```cpp
@@ -48,6 +52,7 @@ markdown = '''
 ### type `auto`
 
 ---
+
 Holds one payload.
 
 ---
@@ -62,8 +67,10 @@ markdown = '''
 ### variable `counter<template_docs::Packet<long>>`
 
 ---
-Type: `template_docs::Packet<long>`
+
 Counts payloads.
+
+Type: `template_docs::Packet<long>`
 
 ---
 ```cpp
@@ -78,8 +85,10 @@ markdown = '''
 ### variable `counter<int>`
 
 ---
-Type: `int`
+
 Counts payloads.
+
+Type: `int`
 
 ---
 ```cpp
@@ -94,8 +103,10 @@ markdown = '''
 ### class `Storage<int>`
 
 ---
-Size: 1 byte, alignment 1 byte
+
 Integer storage.
+
+Size: 1 byte, alignment 1 byte
 
 ---
 ```cpp
@@ -110,6 +121,7 @@ markdown = '''
 ### class `Storage<int>`
 
 ---
+
 Integer storage.
 
 ---
@@ -125,6 +137,7 @@ markdown = '''
 ### class `Channel<long *>`
 
 ---
+
 Pointer channel.
 
 ---
@@ -140,8 +153,10 @@ markdown = '''
 ### variable `cache<long *>`
 
 ---
-Type: `long`
+
 Pointer cache slot.
+
+Type: `long`
 
 ---
 ```cpp

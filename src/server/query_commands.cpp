@@ -9,6 +9,8 @@ import :feature.feature;
 import :index.serialization;
 import :project.build;
 import :server.query_commands;
+import :support.markup;
+import :syntax.documentation;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -81,6 +83,19 @@ std::string symbol_of(const index::IndexQuery::Located& located) {
     bool external = located.symbol.scope == index::SymbolScope::External;
     return index::symbol_locator(located.symbol.hash,
                                  external ? llvm::StringRef() : located.site.path);
+}
+
+/// What the symbol's documentation comment says, as markdown.
+std::optional<std::string> documentation_of(Context& ctx,
+                                            const index::IndexQuery::Located& located) {
+    auto documentation = feature::documentation(ctx.query,
+                                                located.symbol.hash,
+                                                located.site.file,
+                                                ctx.project.config.documentation);
+    if(documentation.empty()) {
+        return std::nullopt;
+    }
+    return feature::present(documentation).as_markdown();
 }
 
 template <typename Entry>
@@ -484,6 +499,7 @@ Outcome<ReadSymbolResult> read_symbol(Context& ctx, index::SymbolQuery locator) 
         .file = std::string(definition->extent.path),
         .start_line = lines.start,
         .end_line = lines.end,
+        .documentation = documentation_of(ctx, *resolved),
         .text = std::move(definition->text),
         .symbol = symbol_of(*resolved),
     };
@@ -533,6 +549,7 @@ Outcome<DefinitionResult> definition(Context& ctx, index::SymbolQuery locator) {
         .name = resolved->symbol.display_name(),
         .kind = kind_name(resolved->symbol.kind),
         .symbol = symbol_of(*resolved),
+        .documentation = documentation_of(ctx, *resolved),
     };
     if(auto definition = ctx.query.definition_text(resolved->symbol.hash, resolved->site.file)) {
         auto lines = lines_of(definition->extent);

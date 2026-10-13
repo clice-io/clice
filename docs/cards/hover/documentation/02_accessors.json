@@ -36,7 +36,7 @@
           "marker": "getter",
           "value": {
             "hover": {
-              "markdown": "### method `getReading`\n\n---\n→ `long`\nTrivial accessor for `reading`.\n\n---\n```cpp\n// In Meter\npublic: long getReading()\n```",
+              "markdown": "### method `getReading`\n\n---\n\nTrivial accessor for `reading`.\n\n→ `long`\n\n---\n```cpp\n// In Meter\npublic: long getReading()\n```",
               "range": {
                 "$place": "long ⟦getReading⟧() { return reading; }",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "setter",
           "value": {
             "hover": {
-              "markdown": "### method `setReading`\n\n---\n→ `void`\nParameters:\n- `long next`\n\nTrivial setter for `reading`.\n\n---\n```cpp\n// In Meter\npublic: void setReading(long next)\n```",
+              "markdown": "### method `setReading`\n\n---\n\nTrivial setter for `reading`.\n\n→ `void`\nParameters:\n- `long next`\n\n---\n```cpp\n// In Meter\npublic: void setReading(long next)\n```",
               "range": {
                 "$place": "void ⟦setReading⟧(long next) { reading = next; }",
                 "path": "main.cpp",

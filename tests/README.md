@@ -206,7 +206,7 @@ declared fails the test, and so does a declared one that never happened.
 | `errors: ["…"]`            | the error-level log lines the test provokes; any other fails                                      |
 | `paths: { server: "…" }`   | (answers) one client alone, where the other cannot answer; `inspect` likewise                     |
 | `paths: { separate: "…" }` | (answers) both clients pinned apart where they answer differently on purpose; agreeing then fails |
-| `config: { … }`            | (answers) options in clice.toml's shape: the server takes all, inspect each feature's table       |
+| `config: { … }`            | (answers) options in clice.toml's shape, taken by both clients                                    |
 | `indexing: true`           | (answers) the server indexes first                                                                |
 
 **Recorded sessions.** A `trace.jsonl` is what a real editor sent a server,

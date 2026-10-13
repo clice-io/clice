@@ -127,4 +127,8 @@ struct LexicalInfo {
 /// unit's named module) before trusting them.
 LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang_opts = nullptr);
 
+/// The comments of `content` alone, as lexical_scan records them.
+std::vector<LexicalInfo::Comment> scan_comments(llvm::StringRef content,
+                                                const clang::LangOptions* lang_opts = nullptr);
+
 }  // namespace clice

@@ -12,14 +12,17 @@ import :semantic.display;
 import :semantic.symbol;
 import :support.anomaly;
 import :support.markup;
+import :syntax.documentation;
 import :syntax.position;
+import :vfs.ids;
 import :vfs.path;
 
 namespace clice::index {
 
+class IndexQuery;
 class Shard;
 
-}
+}  // namespace clice::index
 
 namespace clice::feature {
 
@@ -101,14 +104,55 @@ struct CompletionClient {
     bool insert_replace = false;
 };
 
-/// Corresponds to the `[hover]` section in clice.toml.
-struct HoverOptions {
+/// Corresponds to the `[documentation]` section in clice.toml.
+struct DocumentationOptions {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     choices = {"doxygen", "plain"},
+                     description =
+                         "How documentation comments are read, wherever they "
+                         "show (hover, `clice query`): \"doxygen\" reads "
+                         "Doxygen's commands (`@brief`, `@param`, `@return`, "
+                         "...) and the Markdown Doxygen allows, along with the "
+                         "GTK-Doc and kernel-doc conventions; \"plain\" shows a "
+                         "comment as written.")
+    <std::string> format = "doxygen";
+
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Render the hover card as markdown; `false` produces "
-                         "plain text for clients that cannot display it.")
-    <bool> parse_comment_as_markdown = true;
+                         "An overriding method without a documentation comment "
+                         "shows the one of the method it overrides.")
+    <bool> inherit = true;
+};
 
+/// The documentation of a declaration: its comment (doc_comment) read as
+/// `options` say.
+auto documentation(CompilationUnitRef unit,
+                   const clang::NamedDecl* decl,
+                   const DocumentationOptions& options) -> Documentation;
+
+/// The same of a macro.
+auto documentation(CompilationUnitRef unit,
+                   const clang::MacroInfo* macro,
+                   const DocumentationOptions& options) -> Documentation;
+
+/// The same of an indexed symbol, from the comments in the text the index
+/// read (IndexQuery::doc_comment).
+auto documentation(const index::IndexQuery& query,
+                   index::SymbolHash hash,
+                   Fid anchor,
+                   const DocumentationOptions& options) -> Documentation;
+
+/// Write after an entry — a parameter, a return value, an exception — what
+/// a documentation says of it: its direction, then its text.
+void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text);
+
+/// A documentation on its own, for a reader without the declaration at
+/// hand: its brief, its parameters, what it returns and throws, then its
+/// details.
+auto present(const Documentation& documentation) -> markup::Document;
+
+/// Corresponds to the `[hover]` section in clice.toml.
+struct HoverOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Show the desugared form of a type, e.g. "
@@ -187,16 +231,12 @@ struct HoverInfo {
 
     SymbolKind kind = SymbolKind::Invalid;
 
-    std::string documentation;
+    /// What the symbol's documentation comment says, or what clice says of
+    /// a trivial accessor or `__func__`.
+    Documentation documentation;
 
-    enum class DocumentationSyntax : std::uint8_t {
-        /// A comment from the source.
-        Comment,
-        /// Clang's documentation of an attribute.
-        ReStructuredText,
-    };
-
-    DocumentationSyntax documentation_syntax = DocumentationSyntax::Comment;
+    /// The manual's entry of an attribute, in reStructuredText.
+    std::string attribute_documentation;
 
     /// Set for a deprecated symbol: the message its deprecation gives,
     /// empty when it gives none.
@@ -247,9 +287,6 @@ struct HoverInfo {
     /// Produce a user-readable information.
     markup::Document present() const;
 };
-
-/// Try to infer structure of a documentation comment (e.g. line breaks).
-void parse_documentation(llvm::StringRef input, markup::Document& output);
 
 /// Corresponds to the `[inlay_hints]` section in clice.toml.
 struct InlayHintsOptions {
@@ -529,19 +566,23 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 
 /// Get the hover information for the symbol at the given offset in the
 /// main file of the unit.
-auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options = {})
-    -> std::optional<HoverInfo>;
+auto hover_info(CompilationUnitRef unit,
+                std::uint32_t offset,
+                const HoverOptions& options = {},
+                const DocumentationOptions& documentation = {}) -> std::optional<HoverInfo>;
 
-/// Render structured hover information with the configured markup format and
-/// convert its byte range through the caller's current line map.
+/// Render structured hover information as `kind` and convert its byte range
+/// through the caller's current line map.
 auto to_protocol_hover(const HoverInfo& info,
-                       const HoverOptions& options,
+                       protocol::MarkupKind kind,
                        const PositionMap& map,
                        PositionEncoding encoding) -> protocol::Hover;
 
 auto hover(CompilationUnitRef unit,
            std::uint32_t offset,
            const HoverOptions& options = {},
+           const DocumentationOptions& documentation = {},
+           protocol::MarkupKind kind = protocol::MarkupKind::Markdown,
            PositionEncoding encoding = PositionEncoding::UTF16) -> std::optional<protocol::Hover>;
 
 auto signature_help(CompilationParams& params, const SignatureHelpOptions& options = {})
@@ -778,6 +819,6 @@ auto index_document_links(llvm::StringRef content,
 /// no qualified scope (the index stores unqualified names).
 auto index_hover(const index::SymbolRef& info,
                  llvm::StringRef definition_text,
-                 llvm::StringRef comment) -> HoverInfo;
+                 Documentation documentation) -> HoverInfo;
 
 }  // namespace clice::feature

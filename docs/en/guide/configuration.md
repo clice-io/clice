@@ -230,21 +230,39 @@ Run clang-tidy on open files and offer its fixes, with the checks the nearest `.
 
 <!-- END GENERATED CONFIG -->
 
+## `[documentation]`
+
+The `[documentation]` section controls how clice reads documentation comments.
+
+<!-- BEGIN GENERATED CONFIG: documentation -->
+
+<div class="config-option">
+
+| Option   | Type     | Default     |
+| -------- | -------- | ----------- |
+| `format` | `string` | `"doxygen"` |
+
+How documentation comments are read, wherever they show (hover, `clice query`): "doxygen" reads Doxygen's commands (`@brief`, `@param`, `@return`, ...) and the Markdown Doxygen allows, along with the GTK-Doc and kernel-doc conventions; "plain" shows a comment as written.
+
+</div>
+
+<div class="config-option">
+
+| Option    | Type   | Default |
+| --------- | ------ | ------- |
+| `inherit` | `bool` | `true`  |
+
+An overriding method without a documentation comment shows the one of the method it overrides.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[hover]`
 
 The `[hover]` section controls how hover cards render.
 
 <!-- BEGIN GENERATED CONFIG: hover -->
-
-<div class="config-option">
-
-| Option                      | Type   | Default |
-| --------------------------- | ------ | ------- |
-| `parse_comment_as_markdown` | `bool` | `true`  |
-
-Render the hover card as markdown; `false` produces plain text for clients that cannot display it.
-
-</div>
 
 <div class="config-option">
 

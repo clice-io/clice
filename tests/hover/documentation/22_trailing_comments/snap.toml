@@ -1,0 +1,54 @@
+[answers.marked.hover]
+markdown = '''
+### field `x`
+
+---
+
+The horizontal coordinate.
+
+Type: `int`
+
+---
+```cpp
+// In Point
+public: int x
+```
+'''
+range = "return p.⟦x⟧ + p.y + static_cast<int>(Color::Green);"
+
+[answers.plain.hover]
+markdown = '''
+### field `y`
+
+---
+
+The vertical coordinate.
+
+Type: `int`
+
+---
+```cpp
+// In Point
+public: int y
+```
+'''
+range = "return p.x + p.⟦y⟧ + static_cast<int>(Color::Green);"
+
+[answers.enumerator.hover]
+markdown = '''
+### enumerator `Green`
+
+---
+
+The green channel.
+
+Type: `enum trailing::Color`
+Value = `1`
+
+---
+```cpp
+// In Color
+Green
+```
+'''
+range = "return p.x + p.y + static_cast<int>(Color::⟦Green⟧);"

@@ -1,0 +1,34 @@
+["index cards carry documentation".call.hover]
+markdown = '''
+### function `area`
+
+---
+
+Computes the area of a rectangle.
+
+Parameters:
+- `width` — The horizontal extent.
+
+Returns: The product of both sides.
+
+---
+```cpp
+int area(int width, int height)
+```
+'''
+range = "return ⟦area⟧(2, 3) + shape.sides;"
+
+["index cards carry documentation".field.hover]
+markdown = '''
+### field `sides`
+
+---
+
+How many sides it has.
+
+---
+```cpp
+int sides
+```
+'''
+range = "return area(2, 3) + shape.⟦sides⟧;"

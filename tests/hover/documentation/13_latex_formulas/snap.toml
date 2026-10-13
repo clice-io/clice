@@ -1,16 +1,14 @@
-[answers.documented]
-wrong = "the formula shows as its source, @f$ markers included (clangd#2669)"
-
 [answers.documented.hover]
 markdown = '''
 ### function `circle_area`
 
 ---
+
+The area of a circle is `A = \pi r^2`.
+
 → `double`
 Parameters:
 - `double r`
-
-The area of a circle is @f$ A = \\pi r^2 @f$.
 
 ---
 ```cpp

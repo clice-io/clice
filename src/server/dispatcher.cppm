@@ -54,10 +54,12 @@ public:
     /// declaration instead of computing a result nobody will read. The
     /// shared compile a query waits on is deliberately NOT cancelled: it
     /// serves every waiter, not this request.
+    /// `markup`: what a hover card renders as.
     RawResult query(worker::QueryKind kind,
                     const Ticket& ticket,
                     std::optional<protocol::Position> position = {},
-                    kota::cancellation_token token = {});
+                    kota::cancellation_token token = {},
+                    protocol::MarkupKind markup = protocol::MarkupKind::Markdown);
 
     /// The inlay hints of the open file's AST within `range` of the buffer
     /// the ticket was taken on.

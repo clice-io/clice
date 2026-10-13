@@ -1,17 +1,13 @@
 ["the handshake replays".hover.hover]
-markdown = '''
-### function `add`
+plaintext = '''
+function add
 
----
-→ `int`
+→ int
 Parameters:
-- `int a`
-- `int b`
+- int a
+- int b
 
----
-```cpp
 int add(int a, int b)
-```
 '''
 range = "int ⟦add⟧(int a, int b) { return a + b; }"
 
@@ -23,19 +19,15 @@ message = "Server already initialized"
 pushes = [[]]
 
 ["an edit drops the replay".hover.hover]
-markdown = '''
-### function `add`
+plaintext = '''
+function add
 
----
-→ `int`
+→ int
 Parameters:
-- `int a`
-- `int b`
+- int a
+- int b
 
----
-```cpp
 int add(int a, int b)
-```
 '''
 range = "int ⟦add⟧(int a, int b) { return a + b; }"
 

@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "Stray comments",
-  "summary": "A note separated from a declaration by a blank line shows as its documentation, and no option turns that off",
-  "prose": "",
-  "status": "unsupported",
+  "summary": "A plain comment a blank line separates from a declaration is not its documentation",
+  "prose": "A `///` or `/** */` comment documents the declaration below it even across\na blank line, as Doxygen reads it.",
+  "status": "supported",
   "issues": [
     "clangd#2148"
   ],
@@ -31,9 +31,8 @@
           "label": "misattributed_note",
           "marker": "misattributed_note",
           "value": {
-            "wrong": "a stray note separated by a blank line shows as the variable's documentation (clangd#2148)",
             "hover": {
-              "markdown": "### variable `counter`\n\n---\nType: `int`\nTODO: tidy this file up.\n\n---\n```cpp\n// In namespace suppression\nint counter\n```",
+              "markdown": "### variable `counter`\n\n---\nType: `int`\n\n---\n```cpp\n// In namespace suppression\nint counter\n```",
               "range": {
                 "$place": "int ⟦counter⟧;",
                 "path": "main.cpp",

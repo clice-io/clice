@@ -272,16 +272,17 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
         return module_hover_card(*cursor, *info);
     }
     std::string definition;
-    std::string comment;
     auto text = query.definition_text(symbol, cursor->site.file);
     if(!text) {
         text = query.declaration_text(symbol, cursor->site.file);
     }
     if(text) {
         definition = std::move(text->text);
-        comment = std::move(text->comment);
     }
-    auto hover = feature::index_hover(*info, definition, comment);
+    auto hover = feature::index_hover(
+        *info,
+        definition,
+        feature::documentation(query, symbol, cursor->site.file, project.config.documentation));
     hover.symbol_range = cursor->site.range;
     return hover;
 }
@@ -318,7 +319,8 @@ std::vector<protocol::Location> Features::directive_definition(const index::Docu
 }
 
 std::optional<protocol::Hover> Features::directive_hover(const Session& session,
-                                                         const index::DocumentLink& link) {
+                                                         const index::DocumentLink& link,
+                                                         protocol::MarkupKind markup) {
     if(link.range.end > session.text.size()) {
         return std::nullopt;
     }
@@ -335,10 +337,8 @@ std::optional<protocol::Hover> Features::directive_hover(const Session& session,
     info.definition = shown(project.file_table, link.target);
     info.symbol_range = link.range;
 
-    auto hover = feature::to_protocol_hover(info,
-                                            project.config.hover,
-                                            session.positions(),
-                                            PositionEncoding::UTF16);
+    auto hover =
+        feature::to_protocol_hover(info, markup, session.positions(), PositionEncoding::UTF16);
     if(!hover.range) {
         return std::nullopt;
     }
@@ -558,6 +558,7 @@ Features::RawResult Features::definition(Ticket ticket,
 
 Features::RawResult Features::hover(Ticket ticket,
                                     const protocol::Position& position,
+                                    protocol::MarkupKind markup,
                                     kota::cancellation_token token) {
     auto& session = ticket.session;
     if(!session) {
@@ -567,7 +568,7 @@ Features::RawResult Features::hover(Ticket ticket,
 
     auto index_card = [&](const feature::HoverInfo& info) {
         return to_raw(feature::to_protocol_hover(info,
-                                                 project.config.hover,
+                                                 markup,
                                                  session->positions(),
                                                  PositionEncoding::UTF16));
     };
@@ -613,13 +614,16 @@ Features::RawResult Features::hover(Ticket ticket,
     if(argument && argument->begin <= *offset) {
         auto links = co_await directive_links(ticket, token).or_fail();
         if(auto* link = link_at(links, *offset)) {
-            auto hover = directive_hover(*session, *link);
+            auto hover = directive_hover(*session, *link, markup);
             co_return hover ? to_raw(*hover) : serde_raw{"null"};
         }
     }
 
-    auto raw =
-        co_await dispatcher.query(worker::QueryKind::Hover, ticket, position, std::move(token));
+    auto raw = co_await dispatcher.query(worker::QueryKind::Hover,
+                                         ticket,
+                                         position,
+                                         std::move(token),
+                                         markup);
     if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.projections.current(path_id)) {
         // The preamble region is the one place a null from the AST is not
         // authoritative — it is compiled into the PCH and invisible to

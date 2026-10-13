@@ -1,0 +1,71 @@
+[answers.template_param.hover]
+markdown = '''
+### type `T`
+
+---
+
+The arithmetic type.
+
+Type: `typename`
+
+---
+```cpp
+// In scale
+typename T
+```
+'''
+range = "⟦T⟧ scale(T value, T factor) {"
+
+[answers.declared.hover]
+markdown = '''
+### parameter `value`
+
+---
+
+The value to scale.
+
+Type: `T`
+
+---
+```cpp
+// In scale
+T value
+```
+'''
+range = "T scale(T ⟦value⟧, T factor) {"
+
+[answers.used.hover]
+markdown = '''
+### parameter `factor`
+
+---
+
+How much to scale by.
+
+Type: `T`
+
+---
+```cpp
+// In scale
+T factor
+```
+'''
+range = "return value * ⟦factor⟧;"
+
+[answers.out_of_line.hover]
+markdown = '''
+### parameter `width`
+
+---
+
+The new width.
+
+Type: `int`
+
+---
+```cpp
+// In Box::resize
+int width
+```
+'''
+range = "void Box::resize(int ⟦width⟧) {}"

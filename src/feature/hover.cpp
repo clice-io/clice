@@ -16,6 +16,7 @@ import :semantic.display;
 import :semantic.resolver;
 import :semantic.symbol;
 import :semantic.types;
+import :syntax.documentation;
 
 namespace clice::feature {
 
@@ -36,22 +37,6 @@ auto underlying_function(const clang::Decl* decl) -> const clang::FunctionDecl* 
 
     /// Non-lambda functions.
     return decl->getAsFunction();
-}
-
-/// Returns the decl that should be used for querying comments: the written
-/// pattern an instantiation came from, the decl itself otherwise.
-auto decl_for_comment(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
-    /// Chase the pattern to a fixed point: a comparison operator instantiated
-    /// from a spaceship operator that is itself a template instantiation
-    /// needs two hops. Termination rests on clang's instantiation graph
-    /// being acyclic — every hop moves strictly toward a written pattern.
-    while(const auto* pattern = decls::instantiated_from(decl)) {
-        if(pattern == decl) {
-            break;
-        }
-        decl = pattern;
-    }
-    return decl;
 }
 
 /// Default argument might exist but be unavailable, in the case of unparsed
@@ -315,9 +300,33 @@ auto card_kind(const clang::NamedDecl* decl) -> SymbolKind {
     return SymbolKind::from(decl);
 }
 
+/// The documentation of a parameter: what the comment of its function says
+/// of it, or of its template for a template parameter.
+auto parameter_documentation(CompilationUnitRef unit,
+                             const clang::NamedDecl* decl,
+                             const DocumentationOptions& options) -> std::optional<Documentation> {
+    bool function_parameter = llvm::isa<clang::ParmVarDecl>(decl);
+    if(!function_parameter && !decl->isTemplateParameter()) {
+        return std::nullopt;
+    }
+    const auto* owner =
+        llvm::dyn_cast<clang::NamedDecl>(clang::Decl::castFromDeclContext(decl->getDeclContext()));
+    if(!owner) {
+        return std::nullopt;
+    }
+    auto owner_documentation = documentation(unit, owner, options);
+    const auto* param = function_parameter ? owner_documentation.param(decl->getName())
+                                           : owner_documentation.template_param(decl->getName());
+    if(!param) {
+        return std::nullopt;
+    }
+    return Documentation{.brief = param->text};
+}
+
 /// Generate a hover info given the declaration.
 auto decl_hover(const clang::NamedDecl* decl,
                 const display::Options& options,
+                const DocumentationOptions& documentation_options,
                 CompilationUnitRef unit) -> HoverInfo {
     HoverInfo info;
     auto& context = decl->getASTContext();
@@ -336,10 +345,13 @@ auto decl_hover(const clang::NamedDecl* decl,
     }
 
     info.name = display::name_of(decl);
-    const auto* comment_decl = decl_for_comment(decl);
-    info.documentation = display::comment(comment_decl);
+    if(auto documented = parameter_documentation(unit, decl, documentation_options)) {
+        info.documentation = std::move(*documented);
+    } else {
+        info.documentation = documentation(unit, decl, documentation_options);
+    }
     if(info.documentation.empty()) {
-        info.documentation = synthesize_documentation(decl);
+        info.documentation.brief = synthesize_documentation(decl);
     }
 
     info.kind = card_kind(templated(decl));
@@ -417,7 +429,7 @@ auto predefined_expr_hover(const clang::PredefinedExpr& expr,
     HoverInfo info;
     info.name = expr.getIdentKindName();
     info.kind = SymbolKind::Variable;
-    info.documentation = "Name of the current function (predefined variable)";
+    info.documentation.brief = "Name of the current function (predefined variable)";
     if(const clang::StringLiteral* name = expr.getFunctionName()) {
         info.value.emplace();
         llvm::raw_string_ostream os(*info.value);
@@ -466,8 +478,9 @@ auto this_expr_hover(const clang::CXXThisExpr* expr,
 /// Generate a hover info given the deduced type.
 auto deduced_type_hover(clang::QualType type,
                         const clang::syntax::Token& token,
-                        clang::ASTContext& context,
-                        const display::Options& options) -> HoverInfo {
+                        CompilationUnitRef unit,
+                        const display::Options& options,
+                        const DocumentationOptions& documentation_options) -> HoverInfo {
     HoverInfo info;
     /// FIXME: distinguish decltype(auto) vs decltype(expr).
     info.name = clang::tok::getTokenName(token.kind());
@@ -476,11 +489,10 @@ auto deduced_type_hover(clang::QualType type,
     if(type->isUndeducedAutoType()) {
         info.definition = "/* not deduced */";
     } else {
-        info.definition = type_as_definition(display::type(context, type, options));
+        info.definition = type_as_definition(display::type(unit.context(), type, options));
 
         if(const auto* decl = type->getAsTagDecl()) {
-            const auto* comment_decl = decl_for_comment(decl);
-            info.documentation = display::comment(comment_decl);
+            info.documentation = documentation(unit, decl, documentation_options);
         }
     }
 
@@ -715,8 +727,7 @@ auto attr_hover(const clang::Attr* attr, clang::ASTContext& context) -> std::opt
         attr->printPretty(os, context.getPrintingPolicy());
     }
 
-    info.documentation = clang::Attr::getDocumentation(attr->getKind()).str();
-    info.documentation_syntax = HoverInfo::DocumentationSyntax::ReStructuredText;
+    info.attribute_documentation = clang::Attr::getDocumentation(attr->getKind()).str();
     return info;
 }
 
@@ -871,7 +882,9 @@ auto expansion_preview(CompilationUnitRef unit, clang::SourceLocation name) -> s
 /// A macro name at the cursor, rendered from the preprocessor record —
 /// macro semantics never reach the AST. The card shows the `#define` text,
 /// plus a preview of the expanded tokens at expansion sites.
-auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional<HoverInfo> {
+auto macro_hover(CompilationUnitRef unit,
+                 std::uint32_t offset,
+                 const DocumentationOptions& documentation_options) -> std::optional<HoverInfo> {
     auto directives_it = unit.directives().find(unit.main_file());
     if(directives_it == unit.directives().end()) {
         return std::nullopt;
@@ -901,6 +914,7 @@ auto macro_hover(CompilationUnitRef unit, std::uint32_t offset) -> std::optional
         auto def_text =
             unit.file_content(def_fid).substr(def_range.begin, def_range.end - def_range.begin);
         info.definition = "#define " + def_text.str();
+        info.documentation = documentation(unit, macro.macro, documentation_options);
 
         if(macro.kind == MacroRef::Kind::Ref) {
             /// A conditional reference (#ifdef) expands nothing: no expanded
@@ -1169,97 +1183,6 @@ auto symbol_kind_string(SymbolKind kind) -> llvm::StringRef {
     std::unreachable();
 }
 
-/// If the backtick at the offset starts a probable quoted range, return the
-/// range (including the quotes).
-auto backtick_quote_range(llvm::StringRef line, unsigned offset) -> std::optional<llvm::StringRef> {
-    assert(line[offset] == '`');
-
-    /// The open-quote is usually preceded by whitespace.
-    llvm::StringRef prefix = line.substr(0, offset);
-    constexpr llvm::StringLiteral before_start_chars = " \t(=";
-    if(!prefix.empty() && !before_start_chars.contains(prefix.back())) {
-        return std::nullopt;
-    }
-
-    /// The quoted string must be nonempty and usually has no leading/trailing
-    /// whitespace.
-    auto next = line.find('`', offset + 1);
-    if(next == llvm::StringRef::npos) {
-        return std::nullopt;
-    }
-
-    llvm::StringRef contents = line.slice(offset + 1, next);
-    if(contents.empty() || clang::isWhitespace(contents.front()) ||
-       clang::isWhitespace(contents.back())) {
-        return std::nullopt;
-    }
-
-    /// The close-quote is usually followed by whitespace or punctuation.
-    llvm::StringRef suffix = line.substr(next + 1);
-    constexpr llvm::StringLiteral after_end_chars = " \t)=.,;:";
-    if(!suffix.empty() && !after_end_chars.contains(suffix.front())) {
-        return std::nullopt;
-    }
-
-    return line.slice(offset, next + 1);
-}
-
-void parse_documentation_line(llvm::StringRef line, markup::Paragraph& out) {
-    /// Probably this is appendText(line), but scan for something interesting.
-    for(unsigned i = 0; i < line.size(); ++i) {
-        switch(line[i]) {
-            case '`': {
-                if(auto range = backtick_quote_range(line, i)) {
-                    out.append_text(line.substr(0, i));
-                    out.append_code(range->trim('`'), /*preserve=*/true);
-                    return parse_documentation_line(line.substr(i + range->size()), out);
-                }
-                break;
-            }
-        }
-    }
-    out.append_text(line).append_space();
-}
-
-bool is_paragraph_break(llvm::StringRef rest) {
-    return rest.ltrim(" \t").starts_with("\n");
-}
-
-bool punctuation_indicates_line_break(llvm::StringRef line) {
-    constexpr llvm::StringLiteral punctuation = R"txt(.:,;!?)txt";
-
-    line = line.rtrim();
-    return !line.empty() && punctuation.contains(line.back());
-}
-
-bool is_hard_line_break_indicator(llvm::StringRef rest) {
-    /// '-'/'*' md list, '@'/'\' documentation command, '>' md blockquote,
-    /// '#' headings, '`' code blocks.
-    constexpr llvm::StringLiteral line_break_indicators = R"txt(-*@\>#`)txt";
-
-    rest = rest.ltrim(" \t");
-    if(rest.empty()) {
-        return false;
-    }
-
-    if(line_break_indicators.contains(rest.front())) {
-        return true;
-    }
-
-    if(llvm::isDigit(rest.front())) {
-        llvm::StringRef after_digit = rest.drop_while(llvm::isDigit);
-        if(after_digit.starts_with(".") || after_digit.starts_with(")")) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool is_hard_line_break_after(llvm::StringRef line, llvm::StringRef rest) {
-    /// Should we also consider whether the line is short?
-    return punctuation_indicates_line_break(line) || is_hard_line_break_indicator(rest);
-}
-
 /// Plain reStructuredText with its inline markup taken out: backslash
 /// escapes, *emphasis*, **strong** and the trailing underscore of a
 /// reference_.
@@ -1482,22 +1405,18 @@ void reformat_definition(HoverInfo& info) {
 }  // namespace
 
 auto to_protocol_hover(const HoverInfo& info,
-                       const HoverOptions& options,
+                       protocol::MarkupKind kind,
                        const PositionMap& map,
                        PositionEncoding encoding) -> protocol::Hover {
     auto document = info.present();
 
-    protocol::MarkupContent content;
-    if(options.parse_comment_as_markdown) {
-        content.kind = protocol::MarkupKind::Markdown;
-        content.value = document.as_markdown();
-    } else {
-        content.kind = protocol::MarkupKind::PlainText;
-        content.value = document.as_plain_text();
-    }
-
     protocol::Hover result{
-        .contents = std::move(content),
+        .contents =
+            protocol::MarkupContent{
+                                    .kind = kind,
+                                    .value = kind == protocol::MarkupKind::Markdown ? document.as_markdown()
+                                                                : document.as_plain_text(),
+                                    },
     };
 
     if(info.symbol_range) {
@@ -1505,37 +1424,6 @@ auto to_protocol_hover(const HoverInfo& info,
     }
 
     return result;
-}
-
-void parse_documentation(llvm::StringRef input, markup::Document& output) {
-    std::vector<llvm::StringRef> paragraph_lines;
-    auto flush_paragraph = [&] {
-        if(paragraph_lines.empty()) {
-            return;
-        }
-
-        auto& paragraph = output.add_paragraph();
-        for(llvm::StringRef line: paragraph_lines) {
-            parse_documentation_line(line, paragraph);
-        }
-        paragraph_lines.clear();
-    };
-
-    llvm::StringRef line, rest;
-    for(std::tie(line, rest) = input.split('\n'); !(line.empty() && rest.empty());
-        std::tie(line, rest) = rest.split('\n')) {
-        /// After a linebreak remove spaces to avoid 4 space markdown code
-        /// blocks. FIXME: make flush_paragraph handle this.
-        line = line.ltrim();
-        if(!line.empty()) {
-            paragraph_lines.push_back(line);
-        }
-
-        if(is_paragraph_break(rest) || is_hard_line_break_after(line, rest)) {
-            flush_paragraph();
-        }
-    }
-    flush_paragraph();
 }
 
 markup::Document HoverInfo::present() const {
@@ -1563,12 +1451,29 @@ markup::Document HoverInfo::present() const {
     /// Put a linebreak after header to increase readability.
     output.add_ruler();
 
-    if(deprecation) {
+    const auto& doc = documentation;
+    if(deprecation || doc.deprecated) {
         auto& paragraph = output.add_paragraph().append_text("Deprecated");
-        if(!deprecation->empty()) {
+        if(deprecation && !deprecation->empty()) {
             paragraph.append_text(": " + *deprecation);
+        } else if(doc.deprecated && !doc.deprecated->empty()) {
+            paragraph.append_text(": ").append_markdown(*doc.deprecated);
         }
     }
+
+    if(!doc.brief.empty()) {
+        output.add_markdown(doc.brief);
+    }
+
+    auto list_retvals = [&] {
+        if(doc.retvals.empty()) {
+            return;
+        }
+        auto& list = output.add_bullet_list();
+        for(const auto& retval: doc.retvals) {
+            describe(list.add_item().add_paragraph().append_code(retval.name), {}, retval.text);
+        }
+    };
 
     /// Print types on their own lines to reduce chances of getting line-wrapped
     /// by the editor, as they might be long.
@@ -1578,15 +1483,50 @@ markup::Document HoverInfo::present() const {
         /// Parameters:
         /// - `bool param1`
         /// - `int param2 = 5`
-        output.add_paragraph().append_text("→ ").append_code(llvm::to_string(*return_type));
+        auto& paragraph =
+            output.add_paragraph().append_text("→ ").append_code(llvm::to_string(*return_type));
+        describe(paragraph, {}, doc.returns);
+        list_retvals();
     }
 
-    if(parameters && !parameters->empty()) {
-        output.add_paragraph().append_text("Parameters: ");
-        markup::BulletList& list = output.add_bullet_list();
-        for(const auto& param: *parameters) {
-            list.add_item().add_paragraph().append_code(llvm::to_string(param));
+    /// The parameters of the signature, each with what the comment says of
+    /// it, then those only the comment names.
+    auto list_parameters = [&](llvm::StringRef title,
+                               const std::optional<std::vector<display::Param>>& signature,
+                               llvm::ArrayRef<Documentation::Param> documented) {
+        output.add_paragraph().append_text(title);
+        auto& list = output.add_bullet_list();
+        llvm::SmallVector<bool> shown(documented.size());
+        for(const auto& param: signature.value_or(std::vector<display::Param>{})) {
+            auto& entry = list.add_item().add_paragraph().append_code(llvm::to_string(param));
+            auto it = llvm::find_if(documented, [&](const Documentation::Param& documented) {
+                return param.name && documented.name == *param.name;
+            });
+            if(it != documented.end()) {
+                shown[it - documented.begin()] = true;
+                describe(entry, it->direction, it->text);
+            }
         }
+        for(auto [index, param]: llvm::enumerate(documented)) {
+            if(!shown[index]) {
+                describe(list.add_item().add_paragraph().append_code(param.name),
+                         param.direction,
+                         param.text);
+            }
+        }
+    };
+    if((parameters && !parameters->empty()) || !doc.params.empty()) {
+        list_parameters("Parameters: ", parameters, doc.params);
+    }
+    if(!doc.template_params.empty()) {
+        list_parameters("Template parameters: ", template_parameters, doc.template_params);
+    }
+
+    if(!return_type) {
+        if(!doc.returns.empty()) {
+            output.add_paragraph().append_text("Returns: ").append_markdown(doc.returns);
+        }
+        list_retvals();
     }
 
     /// Don't print the type after parameters or return type as this will just
@@ -1640,12 +1580,28 @@ markup::Document HoverInfo::present() const {
         output.add_paragraph().append_text(buffer);
     }
 
-    if(!documentation.empty()) {
-        if(documentation_syntax == DocumentationSyntax::ReStructuredText) {
-            parse_rst(documentation, output);
-        } else {
-            parse_documentation(documentation, output);
+    if(!doc.throws.empty()) {
+        output.add_paragraph().append_text("Throws: ");
+        auto& list = output.add_bullet_list();
+        for(const auto& thrown: doc.throws) {
+            describe(list.add_item().add_paragraph().append_code(thrown.name), {}, thrown.text);
         }
+    }
+
+    if(!doc.details.empty()) {
+        if(doc.verbatim) {
+            output.add_lines(doc.details);
+        } else {
+            output.add_markdown(doc.details);
+        }
+    }
+
+    if(!doc.see.empty()) {
+        output.add_paragraph().append_text("See also: ").append_markdown(llvm::join(doc.see, ", "));
+    }
+
+    if(!attribute_documentation.empty()) {
+        parse_rst(attribute_documentation, output);
     }
 
     if(!definition.empty()) {
@@ -1677,14 +1633,16 @@ markup::Document HoverInfo::present() const {
     return output;
 }
 
-auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOptions& options)
-    -> std::optional<HoverInfo> {
+auto hover_info(CompilationUnitRef unit,
+                std::uint32_t offset,
+                const HoverOptions& options,
+                const DocumentationOptions& documentation) -> std::optional<HoverInfo> {
     /// The hover is over an include or embed directive.
     if(auto info = file_directive_hover(unit, offset)) {
         return info;
     }
 
-    if(auto info = macro_hover(unit, offset)) {
+    if(auto info = macro_hover(unit, offset, documentation)) {
         return info;
     }
 
@@ -1729,7 +1687,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
             if(const auto* node = tree.common_ancestor()) {
                 if(auto deduced = types::deduced_type(node->data, node->owning_decl());
                    !deduced.isNull()) {
-                    info = deduced_type_hover(deduced, token, context, display_options);
+                    info = deduced_type_hover(deduced, token, unit, display_options, documentation);
                     highlight_range = token_range(token);
                     break;
                 }
@@ -1750,7 +1708,7 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
         if(const SelectionTree::Node* node = tree.common_ancestor()) {
             auto targets = decls_at(unit, tokens);
             if(const auto* decl = pick_decl_to_use(targets)) {
-                info = decl_hover(decl, display_options, unit);
+                info = decl_hover(decl, display_options, documentation, unit);
 
                 /// Layout info only shown when hovering on the field/class
                 /// itself.
@@ -1787,13 +1745,15 @@ auto hover_info(CompilationUnitRef unit, std::uint32_t offset, const HoverOption
 auto hover(CompilationUnitRef unit,
            std::uint32_t offset,
            const HoverOptions& options,
+           const DocumentationOptions& documentation,
+           protocol::MarkupKind kind,
            PositionEncoding encoding) -> std::optional<protocol::Hover> {
-    auto info = hover_info(unit, offset, options);
+    auto info = hover_info(unit, offset, options, documentation);
     if(!info) {
         return std::nullopt;
     }
 
-    return to_protocol_hover(*info, options, unit.positions(), encoding);
+    return to_protocol_hover(*info, kind, unit.positions(), encoding);
 }
 
 }  // namespace clice::feature

@@ -1,0 +1,204 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :syntax.doc_comment;
+import :syntax.lexical_scan;
+
+namespace clice {
+
+namespace {
+
+using Comment = LexicalInfo::Comment;
+
+llvm::StringRef text_of(llvm::StringRef content, const Comment& comment) {
+    return content.slice(comment.range.begin, comment.range.end);
+}
+
+std::uint32_t line_begin(llvm::StringRef content, std::uint32_t offset) {
+    auto newline = content.substr(0, offset).rfind('\n');
+    return newline == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(newline + 1);
+}
+
+/// Whether the comment says it documents what precedes it: `///<`,
+/// `//!<`, `/**<` or `/*!<`.
+bool marked_trailing(llvm::StringRef text) {
+    return is_doc_comment(text) && text.size() > 3 && text[3] == '<';
+}
+
+bool follows_code(llvm::StringRef content, const Comment& comment) {
+    auto begin = line_begin(content, comment.range.begin);
+    return !content.slice(begin, comment.range.begin).trim().empty();
+}
+
+std::uint32_t column_of(llvm::StringRef content, const Comment& comment) {
+    return comment.range.begin - line_begin(content, comment.range.begin);
+}
+
+/// Whether only blanks and at most one line break separate the comments.
+bool adjacent(llvm::StringRef content, const Comment& first, const Comment& second) {
+    auto gap = content.slice(first.range.end, second.range.begin);
+    return gap.trim().empty() && gap.count('\n') <= 1;
+}
+
+bool has_blank_line(llvm::StringRef text) {
+    std::size_t newlines = 0;
+    for(char c: text) {
+        if(c == '\n') {
+            newlines += 1;
+            if(newlines == 2) {
+                return true;
+            }
+        } else if(!llvm::isSpace(c)) {
+            newlines = 0;
+        }
+    }
+    return false;
+}
+
+/// A line made only of the characters banners are drawn with.
+bool is_banner(llvm::StringRef line) {
+    return !line.trim().empty() && line.find_first_not_of("=-*_~/#+ \t") == llvm::StringRef::npos;
+}
+
+}  // namespace
+
+DocumentedDecl documented_macro(llvm::StringRef content, LocalSourceRange definition) {
+    if(auto hash = content.substr(0, definition.begin).rfind('#'); hash != llvm::StringRef::npos) {
+        definition.begin = static_cast<std::uint32_t>(hash);
+    }
+    return {.range = definition, .trailing = true};
+}
+
+bool is_doc_comment(llvm::StringRef text) {
+    if(text.starts_with("//")) {
+        return (text.starts_with("///") && !text.starts_with("////")) || text.starts_with("//!");
+    }
+    return (text.starts_with("/**") && !text.starts_with("/**/") && !text.starts_with("/***")) ||
+           text.starts_with("/*!");
+}
+
+llvm::ArrayRef<LexicalInfo::Comment>
+    documenting_comments(llvm::StringRef content,
+                         llvm::ArrayRef<LexicalInfo::Comment> comments,
+                         DocumentedDecl decl) {
+    auto begin_of = [](const Comment& comment) {
+        return comment.range.begin;
+    };
+    auto& range = decl.range;
+
+    llvm::ArrayRef<Comment> trailing;
+    auto after = static_cast<std::size_t>(
+        std::ranges::lower_bound(comments, range.end, {}, begin_of) - comments.begin());
+    if(decl.trailing && after < comments.size() &&
+       content.slice(range.end, comments[after].range.begin).find_first_not_of(" \t;,") ==
+           llvm::StringRef::npos) {
+        auto column = column_of(content, comments[after]);
+        auto end = after + 1;
+        while(end < comments.size() && adjacent(content, comments[end - 1], comments[end]) &&
+              !follows_code(content, comments[end]) &&
+              column_of(content, comments[end]) == column) {
+            end += 1;
+        }
+        trailing = comments.slice(after, end - after);
+        if(marked_trailing(text_of(content, comments[after]))) {
+            return trailing;
+        }
+    }
+
+    auto at = static_cast<std::size_t>(
+        std::ranges::lower_bound(comments, range.begin, {}, begin_of) - comments.begin());
+    if(at == 0) {
+        return trailing;
+    }
+    auto& nearest = comments[at - 1];
+    auto text = text_of(content, nearest);
+    auto gap = content.slice(nearest.range.end, range.begin);
+    bool doc = is_doc_comment(text);
+    if(marked_trailing(text) || follows_code(content, nearest) ||
+       gap.find_first_of(";{}#") != llvm::StringRef::npos || (!doc && has_blank_line(gap))) {
+        return trailing;
+    }
+
+    auto first = at - 1;
+    while(first > 0) {
+        auto& previous = comments[first - 1];
+        auto previous_text = text_of(content, previous);
+        if(is_doc_comment(previous_text) != doc || marked_trailing(previous_text) ||
+           follows_code(content, previous) || !adjacent(content, previous, comments[first])) {
+            break;
+        }
+        first -= 1;
+    }
+    return comments.slice(first, at - first);
+}
+
+std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> comments) {
+    llvm::SmallVector<llvm::StringRef> lines;
+    for(auto& comment: comments) {
+        auto text = text_of(content, comment);
+        auto marker = is_doc_comment(text) ? 3 : 2;
+        if(marked_trailing(text)) {
+            marker += 1;
+        }
+
+        if(comment.kind == Comment::Kind::Line) {
+            for(auto line: llvm::split(text.drop_front(marker), '\n')) {
+                lines.push_back(line.rtrim());
+            }
+            continue;
+        }
+
+        text = text.drop_front(marker);
+        text.consume_back("*/");
+        llvm::SmallVector<llvm::StringRef> block;
+        text.split(block, '\n');
+
+        // Javadoc decorates every line after the first with a leading `*`.
+        bool decorated = block.size() > 1 && llvm::all_of(llvm::drop_begin(block), [](auto line) {
+                             line = line.trim();
+                             return line.empty() || line.starts_with("*");
+                         });
+        for(auto [index, line]: llvm::enumerate(block)) {
+            if(index > 0 && decorated) {
+                line = line.ltrim();
+                line.consume_front("*");
+            }
+            lines.push_back(line.rtrim());
+        }
+    }
+
+    auto blank_or_banner = [](llvm::StringRef line) {
+        return line.empty() || is_banner(line);
+    };
+    llvm::ArrayRef<llvm::StringRef> kept = lines;
+    while(!kept.empty() && blank_or_banner(kept.front())) {
+        kept = kept.drop_front();
+    }
+    while(!kept.empty() && blank_or_banner(kept.back())) {
+        kept = kept.drop_back();
+    }
+
+    std::size_t indent = std::numeric_limits<std::size_t>::max();
+    for(auto line: kept) {
+        if(!line.empty()) {
+            indent = std::min(indent, line.size() - line.ltrim(" \t").size());
+        }
+    }
+
+    std::string result;
+    for(auto line: kept) {
+        if(!result.empty()) {
+            result += '\n';
+        }
+        result += line.drop_front(std::min(indent, line.size()));
+    }
+    if(!llvm::json::isUTF8(result)) {
+        result = llvm::json::fixUTF8(result);
+    }
+    return result;
+}
+
+}  // namespace clice

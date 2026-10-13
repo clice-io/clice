@@ -9,8 +9,12 @@ import :syntax.lexical_scan;
 
 namespace clice {
 
+static LexicalInfo::Comment comment_of(llvm::StringRef content, const Token& token) {
+    using Kind = LexicalInfo::Comment::Kind;
+    return {token.text(content).starts_with("//") ? Kind::Line : Kind::Block, token.range};
+}
+
 LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang_opts) {
-    using Comment = LexicalInfo::Comment;
     using ModuleDeclaration = LexicalInfo::ModuleDeclaration;
     using BlockDirective = LexicalInfo::BlockDirective;
 
@@ -18,9 +22,7 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
     Lexer lexer(content, {.keep_comments = true, .lang_opts = lang_opts});
 
     auto record_comment = [&](const Token& token) {
-        auto kind =
-            token.text(content).starts_with("//") ? Comment::Kind::Line : Comment::Kind::Block;
-        info.comments.push_back({kind, token.range});
+        info.comments.push_back(comment_of(content, token));
     };
 
     // A comment-transparent pull interface: module declaration grammar must
@@ -198,6 +200,18 @@ LexicalInfo lexical_scan(llvm::StringRef content, const clang::LangOptions* lang
     }
 
     return info;
+}
+
+std::vector<LexicalInfo::Comment> scan_comments(llvm::StringRef content,
+                                                const clang::LangOptions* lang_opts) {
+    std::vector<LexicalInfo::Comment> comments;
+    Lexer lexer(content, {.keep_comments = true, .lang_opts = lang_opts});
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(token.kind == clang::tok::comment) {
+            comments.push_back(comment_of(content, token));
+        }
+    }
+    return comments;
 }
 
 }  // namespace clice

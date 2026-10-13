@@ -1,0 +1,59 @@
+{
+  "id": "hover/documentation/25_system_headers",
+  "topic": "hover",
+  "subtopic": "documentation",
+  "title": "System headers",
+  "summary": "A declaration in a system header shows its documentation comment too",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include <library.h>\n\nvoid shutdown() {\n    release_all();\n}\n",
+      "markers": [
+        {
+          "name": "system",
+          "begin": 51,
+          "end": 51,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "system/library.h",
+      "text": "#pragma once\n\n/// Releases every buffer the library holds.\nvoid release_all();\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "system",
+          "marker": "system",
+          "value": {
+            "hover": {
+              "markdown": "### function `release_all`\n\n---\n\nReleases every buffer the library holds.\n\n→ `void`\n\n---\n```cpp\nvoid release_all()\n```",
+              "range": {
+                "$place": "⟦release_all⟧();",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 15
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

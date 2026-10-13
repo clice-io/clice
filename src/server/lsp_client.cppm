@@ -119,6 +119,10 @@ private:
     /// What the client takes from a completion item.
     feature::CompletionClient completion_client;
 
+    /// The markup the client shows hover cards in: markdown when its
+    /// textDocument.hover.contentFormat lists it.
+    kota::ipc::protocol::MarkupKind hover_markup = kota::ipc::protocol::MarkupKind::PlainText;
+
     /// Whether the client applies versioned document changes (the
     /// workspace/workspaceEdit.documentChanges capability): code action
     /// edits then carry the buffer version they were computed for, and

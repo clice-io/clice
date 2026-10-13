@@ -1,15 +1,15 @@
-[answers.indented]
-wrong = "the indented block loses its indentation and the blank line before it (clangd#1040)"
-
 [answers.indented.hover]
 markdown = '''
 ### function `run`
 
 ---
-→ `void`
+
 Summary line.
-step_one();
-step_two();
+
+→ `void`
+
+    step_one();
+    step_two();
 
 ---
 ```cpp

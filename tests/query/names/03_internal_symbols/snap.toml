@@ -143,6 +143,7 @@ stdout = '''
     "name": "helper",
     "kind": "Function",
     "symbol": "#9cbf31b6d292b357 path:${WS}/util.h",
+    "documentation": null,
     "definition": {
       "file": "${WS}/util.h",
       "startLine": 2,
@@ -162,6 +163,7 @@ stdout = '''
     "name": "helper",
     "kind": "Function",
     "symbol": "#9cbf31b6d292b357 path:${WS}/util.h",
+    "documentation": null,
     "definition": {
       "file": "${WS}/util.h",
       "startLine": 2,
@@ -181,6 +183,7 @@ stdout = '''
     "name": "helper",
     "kind": "Function",
     "symbol": "#9cbf31b6d292b357 path:${WS}/util.h",
+    "documentation": null,
     "definition": {
       "file": "${WS}/util.h",
       "startLine": 2,

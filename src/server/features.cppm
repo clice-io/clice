@@ -116,6 +116,7 @@ public:
     /// worker sends (see Dispatcher::query).
     RawResult hover(Ticket ticket,
                     const protocol::Position& position,
+                    protocol::MarkupKind markup,
                     kota::cancellation_token token = {});
     RawResult semantic_tokens(Ticket ticket, kota::cancellation_token token = {});
     RawResult inlay_hints(Ticket ticket,
@@ -339,7 +340,8 @@ private:
     /// target the way the user knows the file.
     std::vector<protocol::Location> directive_definition(const index::DocumentLink& link);
     std::optional<protocol::Hover> directive_hover(const Session& session,
-                                                   const index::DocumentLink& link);
+                                                   const index::DocumentLink& link,
+                                                   protocol::MarkupKind markup);
 
     /// A project asked about a symbol, and the symbol as that project
     /// names it: an id hashing its file (a macro, a file-local name) takes

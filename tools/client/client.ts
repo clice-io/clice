@@ -121,8 +121,9 @@ export interface InitializeOptions {
     /// A benchmark switches them off to run the server's real defaults,
     /// which stay spelled in one place: the C++ config initializers.
     testDefaults?: boolean | undefined;
-    /// Client capabilities to advertise; empty by default so servers see
-    /// the most conservative client unless a test opts in.
+    /// Client capabilities to advertise; by default versioned edits,
+    /// prepared renames and markdown hover cards alone, so servers see a
+    /// conservative client unless a test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
     /// The workspace folders to announce, workspace-relative; the
     /// workspace root alone when omitted, no root at all (neither folders
@@ -444,7 +445,10 @@ export class CliceClient {
             // action replies then carry the buffer version they apply to.
             capabilities: options.capabilities ?? {
                 workspace: { workspaceEdit: { documentChanges: true } },
-                textDocument: { rename: { prepareSupport: true } },
+                textDocument: {
+                    hover: { contentFormat: ["markdown", "plaintext"] },
+                    rename: { prepareSupport: true },
+                },
             },
             rootUri: options.folders?.length === 0 ? null : wsUri,
             initializationOptions,

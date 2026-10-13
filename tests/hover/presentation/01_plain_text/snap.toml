@@ -3,11 +3,12 @@ markdown = '''
 ### function `answer`
 
 ---
+
+Computes the answer. Tests primality of `p`.
+
 → `int`
 Parameters:
 - `int p`
-
-Computes the answer. Tests primality of `p`.
 
 ---
 ```cpp
@@ -48,20 +49,21 @@ public: int second
 '''
 range = "int ⟦second⟧;"
 
-[configured.function.hover]
+["plain text client".function.hover]
 plaintext = '''
 function answer
+
+Computes the answer. Tests primality of `p`.
 
 → int
 Parameters:
 - int p
-Computes the answer. Tests primality of `p`.
 
 constexpr int answer(int p)
 '''
 range = "constexpr int ⟦answer⟧(int p) {"
 
-[configured.variable.hover]
+["plain text client".variable.hover]
 plaintext = '''
 variable value
 
@@ -72,7 +74,7 @@ int value = answer(1)
 '''
 range = "int ⟦value⟧ = answer(1);"
 
-[configured.field.hover]
+["plain text client".field.hover]
 plaintext = '''
 field second
 

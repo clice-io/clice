@@ -3,11 +3,12 @@ markdown = '''
 ### function `open`
 
 ---
+
+Opens a file.
+
 → `void`
 Parameters:
 - `const char * path`
-
-Opens a file.
 
 ---
 ```cpp
@@ -16,9 +17,6 @@ void open(const char *path)
 ```
 '''
 range = "void ⟦open⟧(const char* path);"
-
-[answers.second]
-wrong = "the second overload shows no description, where the first one's applies (clangd#2506)"
 
 [answers.second.hover]
 markdown = '''

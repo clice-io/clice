@@ -399,6 +399,34 @@ ZEST_CASE(BulletListRender) {
     ZASSERT(l.as_plain_text() == expected_plain_text);
 }
 
+ZEST_CASE(MarkdownKept) {
+    Document d;
+    d.add_markdown("| a | b |\n|---|---|\n\n    code();\n\n*kept*");
+    ZASSERT(d.as_markdown() == "| a | b |\n|---|---|\n\n    code();\n\n*kept*");
+    ZASSERT(d.as_plain_text() == "| a | b |\n|---|---|\n\n    code();\n\n*kept*");
+}
+
+ZEST_CASE(MarkdownStrayTags) {
+    Document d;
+    d.add_markdown("std::vector<int>, <b>bold</b>, a < b, <T>, `<int>`\n```\n<int>\n```");
+    ZASSERT(d.as_markdown() ==
+            "std::vector\\<int>, <b>bold</b>, a < b, \\<T>, `<int>`\n```\n<int>\n```");
+}
+
+ZEST_CASE(MarkdownChunk) {
+    Paragraph p;
+    p.append_code("int x").append_text(" — ").append_markdown("The *x* of `Point<int>`.");
+    ZASSERT(p.as_markdown() == "`int x` — The *x* of `Point<int>`.");
+    ZASSERT(p.as_plain_text() == "int x — The *x* of `Point<int>`.");
+}
+
+ZEST_CASE(Lines) {
+    Document d;
+    d.add_lines("@brief *Raw*.\n  indented\n\nafter");
+    ZASSERT(d.as_markdown() == "@brief \\*Raw\\*.  \nindented  \n\nafter");
+    ZASSERT(d.as_plain_text() == "@brief *Raw*.\n  indented\n\nafter");
+}
+
 };  // ZEST_SUITE(Markup)
 
 }  // namespace

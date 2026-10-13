@@ -377,23 +377,35 @@ public:
     /// definitions.
     std::vector<Site> implementation(SymbolHash hash, Fid anchor) const;
 
-    /// A symbol's definition as text: the extent's site, the text it
-    /// spans and the comment block above it, sliced from the first source
-    /// that holds the definition in first-hit order (an open buffer's
-    /// text, its preamble region, an overlay's stored text or the disk
-    /// re-read for pure-ASCII blobs — verified against the index's content
-    /// hash, so a moved-on file degrades to no text rather than mismatched
-    /// text).
+    /// A symbol's definition as text: the extent's site and the text it
+    /// spans, sliced from the first source that holds the definition in
+    /// first-hit order (an open buffer's text, its preamble region, an
+    /// overlay's stored text or the disk re-read for pure-ASCII blobs —
+    /// verified against the index's content hash, so a moved-on file
+    /// degrades to no text rather than mismatched text).
     struct DeclaredText {
         Site extent;
         std::string text;
-        std::string comment;
     };
 
     std::optional<DeclaredText> definition_text(SymbolHash hash, Fid anchor) const;
 
     /// The same of a declaration.
     std::optional<DeclaredText> declaration_text(SymbolHash hash, Fid anchor) const;
+
+    /// The text (comment_text) of the comment documenting the symbol, read
+    /// as the compiled unit's doc_comment reads it: of its declarations,
+    /// then its definitions, in first-hit order, the first a Doxygen comment
+    /// documents, else the first any comment documents. With `inherit`, a
+    /// method overriding another without one takes that method's.
+    std::string doc_comment(SymbolHash hash, Fid anchor, bool inherit) const;
+
+    /// The text of the comment documenting what a `@copydoc` in the comment
+    /// of the symbol names: `name` without its parameter list, looked up
+    /// from the symbol's scope outward; nullopt when nothing it names has
+    /// one.
+    std::optional<std::string>
+        copied_doc_comment(SymbolHash hash, Fid anchor, llvm::StringRef name, bool inherit) const;
 
     /// The source line a site lies on, for previews; empty when the text
     /// is unavailable (see definition_text on the disk re-read).
@@ -599,11 +611,5 @@ private:
     const FreshnessGate* gate;
     const LiveSources* live;
 };
-
-/// The comment block immediately preceding the line containing `offset`:
-/// contiguous //- or /*-style lines directly above it, comment markers
-/// stripped. Empty when a blank line or code intervenes. An approximation
-/// of clang's comment attachment, pinned as such by the index/read_only cases.
-auto preceding_comment(llvm::StringRef content, std::uint32_t offset) -> std::string;
 
 }  // namespace clice::index

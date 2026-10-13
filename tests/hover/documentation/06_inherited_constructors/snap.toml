@@ -3,10 +3,11 @@ markdown = '''
 ### method `Base`
 
 ---
-Parameters:
-- `int value`
 
 Constructs from a value.
+
+Parameters:
+- `int value`
 
 ---
 ```cpp

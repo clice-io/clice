@@ -1,4 +1,4 @@
-import { answers } from "@clice/tools/testing";
+import { answers, test } from "@clice/tools/testing";
 
 answers("default", async (a) => {
     for (const m of a.markers()) {
@@ -6,8 +6,13 @@ answers("default", async (a) => {
     }
 });
 
-answers("configured", { config: { hover: { parse_comment_as_markdown: false } } }, async (a) => {
-    for (const m of a.markers()) {
-        await a.show(m.name, a.hover(m));
+test("plain text client", async (t) => {
+    const s = await t.start({
+        capabilities: { textDocument: { hover: { contentFormat: ["plaintext"] } } },
+    });
+    s.open("main.cpp");
+    await s.sync();
+    for (const name of ["function", "variable", "field"]) {
+        await t.show(name, s.hover(t.marker(name)));
     }
 });

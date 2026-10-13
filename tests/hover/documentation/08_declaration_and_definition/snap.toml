@@ -3,11 +3,12 @@ markdown = '''
 ### function `process`
 
 ---
+
+Public API documentation.
+
 → `void`
 Parameters:
 - `int x`
-
-Public API documentation.
 
 ---
 ```cpp
@@ -22,11 +23,12 @@ markdown = '''
 ### function `process`
 
 ---
+
+Public API documentation.
+
 → `void`
 Parameters:
 - `int x`
-
-Public API documentation.
 
 ---
 ```cpp
@@ -41,11 +43,12 @@ markdown = '''
 ### function `process`
 
 ---
+
+Public API documentation.
+
 → `void`
 Parameters:
 - `int x`
-
-Public API documentation.
 
 ---
 ```cpp
@@ -60,11 +63,12 @@ markdown = '''
 ### function `process`
 
 ---
+
+Public API documentation.
+
 → `void`
 Parameters:
 - `int x`
-
-Public API documentation.
 
 ---
 ```cpp

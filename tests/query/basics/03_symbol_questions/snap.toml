@@ -32,6 +32,7 @@ stdout = '''
     "name": "add",
     "kind": "Function",
     "symbol": "#5c1bf8ca24c752f7",
+    "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
       "startLine": 2,
@@ -51,6 +52,7 @@ stdout = '''
     "name": "compute",
     "kind": "Function",
     "symbol": "#81df9416985c4402",
+    "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
       "startLine": 4,
@@ -72,6 +74,7 @@ stdout = '''
     "file": "${WS}/main.cpp",
     "startLine": 4,
     "endLine": 4,
+    "documentation": null,
     "text": "int compute() { return add(1, 2); }",
     "symbol": "#81df9416985c4402"
   },

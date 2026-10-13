@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "Indented blocks",
-  "summary": "An indented block in a comment loses its indentation and the blank line before it",
+  "summary": "An indented block in a comment keeps its indentation and the blank line before it",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#1040"
   ],
@@ -31,9 +31,8 @@
           "label": "indented",
           "marker": "indented",
           "value": {
-            "wrong": "the indented block loses its indentation and the blank line before it (clangd#1040)",
             "hover": {
-              "markdown": "### function `run`\n\n---\n→ `void`\nSummary line.\nstep_one();\nstep_two();\n\n---\n```cpp\n// In namespace indented\nvoid run()\n```",
+              "markdown": "### function `run`\n\n---\n\nSummary line.\n\n→ `void`\n\n    step_one();\n    step_two();\n\n---\n```cpp\n// In namespace indented\nvoid run()\n```",
               "range": {
                 "$place": "void ⟦run⟧();",
                 "path": "main.cpp",

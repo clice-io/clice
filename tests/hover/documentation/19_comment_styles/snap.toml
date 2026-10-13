@@ -3,9 +3,10 @@ markdown = '''
 ### function `block`
 
 ---
+
+Block comment documentation. Second line.
+
 → `int`
-Block comment documentation.
-Second line.
 
 ---
 ```cpp
@@ -19,8 +20,10 @@ markdown = '''
 ### function `qt`
 
 ---
-→ `int`
+
 Qt-style documentation.
+
+→ `int`
 
 ---
 ```cpp

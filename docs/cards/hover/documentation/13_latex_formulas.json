@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "Formulas",
-  "summary": "A Doxygen formula shows as its source",
+  "summary": "A Doxygen formula shows as code, without its `@f$` markers",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#2669"
   ],
@@ -31,9 +31,8 @@
           "label": "documented",
           "marker": "documented",
           "value": {
-            "wrong": "the formula shows as its source, @f$ markers included (clangd#2669)",
             "hover": {
-              "markdown": "### function `circle_area`\n\n---\n→ `double`\nParameters:\n- `double r`\n\nThe area of a circle is @f$ A = \\\\pi r^2 @f$.\n\n---\n```cpp\ndouble circle_area(double r)\n```",
+              "markdown": "### function `circle_area`\n\n---\n\nThe area of a circle is `A = \\pi r^2`.\n\n→ `double`\nParameters:\n- `double r`\n\n---\n```cpp\ndouble circle_area(double r)\n```",
               "range": {
                 "$place": "double ⟦circle_area⟧(double r);",
                 "path": "main.cpp",

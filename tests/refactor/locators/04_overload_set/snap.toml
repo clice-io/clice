@@ -92,6 +92,7 @@ stdout = '''
     "name": "scale",
     "kind": "Function",
     "symbol": "#e4d8e937e2717771",
+    "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
       "startLine": 2,
@@ -178,6 +179,7 @@ stdout = '''
     "name": "scale",
     "kind": "Function",
     "symbol": "#7443d398c6f2a263",
+    "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
       "startLine": 1,
@@ -197,6 +199,7 @@ stdout = '''
     "name": "scale",
     "kind": "Function",
     "symbol": "#e4d8e937e2717771",
+    "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
       "startLine": 2,

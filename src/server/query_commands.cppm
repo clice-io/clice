@@ -102,6 +102,8 @@ struct ReadSymbolResult {
     std::string file;
     int start_line = 0;
     int end_line = 0;
+    /// What its documentation comment says, as markdown; null without one.
+    std::optional<std::string> documentation;
     std::string text;
     std::string symbol;
 };
@@ -129,6 +131,8 @@ struct DefinitionResult {
     std::string name;
     std::string kind;
     std::string symbol;
+    /// What its documentation comment says, as markdown; null without one.
+    std::optional<std::string> documentation;
     std::optional<LocationEntry> definition;
 };
 

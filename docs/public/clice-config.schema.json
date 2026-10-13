@@ -35,11 +35,18 @@
                 "clang_tidy": true
             }
         },
+        "documentation": {
+            "$ref": "#/$defs/DocumentationOptions",
+            "description": "The [documentation] section: how documentation comments are read.",
+            "default": {
+                "format": "doxygen",
+                "inherit": true
+            }
+        },
         "hover": {
             "$ref": "#/$defs/HoverOptions",
             "description": "The [hover] section: hover rendering options.",
             "default": {
-                "parse_comment_as_markdown": true,
                 "show_aka": true,
                 "max_members": 20
             }
@@ -173,14 +180,29 @@
             },
             "additionalProperties": false
         },
+        "DocumentationOptions": {
+            "type": "object",
+            "properties": {
+                "format": {
+                    "type": "string",
+                    "enum": [
+                        "doxygen",
+                        "plain"
+                    ],
+                    "description": "How documentation comments are read, wherever they show (hover, `clice query`): \"doxygen\" reads Doxygen's commands (`@brief`, `@param`, `@return`, ...) and the Markdown Doxygen allows, along with the GTK-Doc and kernel-doc conventions; \"plain\" shows a comment as written.",
+                    "default": "doxygen"
+                },
+                "inherit": {
+                    "type": "boolean",
+                    "description": "An overriding method without a documentation comment shows the one of the method it overrides.",
+                    "default": true
+                }
+            },
+            "additionalProperties": false
+        },
         "HoverOptions": {
             "type": "object",
             "properties": {
-                "parse_comment_as_markdown": {
-                    "type": "boolean",
-                    "description": "Render the hover card as markdown; `false` produces plain text for clients that cannot display it.",
-                    "default": true
-                },
                 "show_aka": {
                     "type": "boolean",
                     "description": "Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.",

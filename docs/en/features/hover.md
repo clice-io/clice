@@ -600,7 +600,7 @@ tests/hover/directives/01_include_paths
 
 ## Documentation
 
-A declaration's documentation comment shows in its card, wherever the symbol is hovered.
+A declaration's documentation comment shows in its card, wherever the symbol is hovered. The comment is read the way Doxygen reads it — its commands, and the Markdown it is written in — and `clice query` reads it the same way.
 
 <!-- BEGIN GENERATED ITEMS: hover/documentation -->
 
@@ -630,11 +630,11 @@ tests/hover/documentation/02_accessors
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#1320 -->
+<!-- BEGIN CAPABILITY: supported clangd#1320 -->
 
 **@copydoc**
 
-A `@copydoc` command shows as written instead of the documentation it names
+A `@copydoc` command shows the documentation of what it names
 
 ```case
 tests/hover/documentation/03_copydoc
@@ -642,11 +642,11 @@ tests/hover/documentation/03_copydoc
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2504 -->
+<!-- BEGIN CAPABILITY: supported clangd#2504 -->
 
 **Overrides**
 
-An override without a comment of its own does not show the documentation of what it overrides
+An override without a comment of its own shows the documentation of the method it overrides
 
 ```case
 tests/hover/documentation/04_overrides
@@ -654,11 +654,14 @@ tests/hover/documentation/04_overrides
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2506 -->
+<!-- BEGIN CAPABILITY: supported clangd#2506 -->
 
 **Overloads**
 
-An overload without a comment does not show the documentation of the overload before it
+An overload without a comment of its own shows none, whatever its neighbours say
+
+Different overloads often do different things, so an undocumented one does not
+borrow the comment of the overload before it.
 
 ```case
 tests/hover/documentation/05_overloads
@@ -678,11 +681,11 @@ tests/hover/documentation/06_inherited_constructors
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#974 -->
+<!-- BEGIN CAPABILITY: supported clangd#974 -->
 
 **Banner comments**
 
-A section banner above a declaration shows as its documentation, even with a blank line between
+A section banner a blank line separates from a declaration is not its documentation
 
 ```case
 tests/hover/documentation/07_banner_comments
@@ -705,11 +708,11 @@ tests/hover/documentation/08_declaration_and_definition
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2057 -->
+<!-- BEGIN CAPABILITY: supported clangd#2057 -->
 
 **Markdown tables**
 
-A table in a comment runs together on one line
+A table in a comment shows as a table
 
 ```case
 tests/hover/documentation/09_markdown_tables
@@ -717,11 +720,11 @@ tests/hover/documentation/09_markdown_tables
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1040 -->
+<!-- BEGIN CAPABILITY: supported clangd#1040 -->
 
 **Indented blocks**
 
-An indented block in a comment loses its indentation and the blank line before it
+An indented block in a comment keeps its indentation and the blank line before it
 
 ```case
 tests/hover/documentation/10_indented_blocks
@@ -729,11 +732,14 @@ tests/hover/documentation/10_indented_blocks
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2148 -->
+<!-- BEGIN CAPABILITY: supported clangd#2148 -->
 
 **Stray comments**
 
-A note separated from a declaration by a blank line shows as its documentation, and no option turns that off
+A plain comment a blank line separates from a declaration is not its documentation
+
+A `///` or `/** */` comment documents the declaration below it even across
+a blank line, as Doxygen reads it.
 
 ```case
 tests/hover/documentation/11_stray_comments
@@ -741,11 +747,11 @@ tests/hover/documentation/11_stray_comments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2662 -->
+<!-- BEGIN CAPABILITY: supported clangd#2662 -->
 
 **GTK-Doc comments**
 
-GTK-Doc's name line, parameter entries and annotations show as written
+GTK-Doc's name line goes, and each `@parameter:` entry shows beside its parameter
 
 ```case
 tests/hover/documentation/12_gtk_doc
@@ -753,11 +759,11 @@ tests/hover/documentation/12_gtk_doc
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2669 -->
+<!-- BEGIN CAPABILITY: supported clangd#2669 -->
 
 **Formulas**
 
-A Doxygen formula shows as its source
+A Doxygen formula shows as code, without its `@f$` markers
 
 ```case
 tests/hover/documentation/13_latex_formulas
@@ -765,18 +771,74 @@ tests/hover/documentation/13_latex_formulas
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Doxygen commands**
 
-`@brief`, `@param` and `@return` show as written, not as parts of the card yet
-
-A parameter's description could sit beside that parameter in the card, and
-the return description beside the return type; today the whole comment shows
-as text, commands included.
+`@brief` heads the card, and each `@param` and `@return` shows beside what it describes
 
 ```case
 tests/hover/documentation/18_doxygen_commands
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Parameter documentation**
+
+A parameter's card shows what its function's `@param` or its template's `@tparam` says of it
+
+```case
+tests/hover/documentation/20_parameter_docs
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#782 -->
+
+**Macro documentation**
+
+A macro's documentation comment shows in its card
+
+```case
+tests/hover/documentation/21_macro_docs
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Trailing comments**
+
+A comment after a field, an enumerator or a variable on its line documents it
+
+```case
+tests/hover/documentation/22_trailing_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Comments as written**
+
+The plain format shows a comment as written, its commands and markup included
+
+```case
+tests/hover/documentation/23_plain_format
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**System headers**
+
+A declaration in a system header shows its documentation comment too
+
+```case
+tests/hover/documentation/25_system_headers
 ```
 
 <!-- END CAPABILITY -->
@@ -890,6 +952,8 @@ A card is markdown, or plain text for an editor that cannot show markdown.
 **Plain text cards**
 
 Cards are markdown, or plain text for editors that cannot show markdown
+
+An editor says which it can show when it starts, and the card follows.
 
 ```case
 tests/hover/presentation/01_plain_text

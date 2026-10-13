@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "documentation",
   "title": "GTK-Doc comments",
-  "summary": "GTK-Doc's name line, parameter entries and annotations show as written",
+  "summary": "GTK-Doc's name line goes, and each `@parameter:` entry shows beside its parameter",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#2662"
   ],
@@ -31,9 +31,8 @@
           "label": "documented",
           "marker": "documented",
           "value": {
-            "wrong": "GTK-Doc's name line, @widget and its annotations show as written (clangd#2662)",
             "hover": {
-              "markdown": "### function `gtk_widget_show`\n\n---\n→ `void`\nParameters:\n- `GtkWidget * widget (aka struct _GtkWidget *)`\n\ngtk_widget_show:\n@widget: (transfer none): a #GtkWidget\nFlags a widget to be displayed.\n\n---\n```cpp\nvoid gtk_widget_show(GtkWidget *widget)\n```",
+              "markdown": "### function `gtk_widget_show`\n\n---\n\nFlags a widget to be displayed.\n\n→ `void`\nParameters:\n- `GtkWidget * widget (aka struct _GtkWidget *)` — a `GtkWidget`\n\n---\n```cpp\nvoid gtk_widget_show(GtkWidget *widget)\n```",
               "range": {
                 "$place": "void ⟦gtk_widget_show⟧(GtkWidget *widget);",
                 "path": "main.cpp",

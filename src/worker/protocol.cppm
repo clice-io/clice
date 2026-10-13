@@ -127,6 +127,9 @@ struct QueryParams {
     std::string path;
     uint32_t offset = 0;  ///< Byte offset for position-sensitive queries (Hover).
 
+    /// What a hover card renders as: the markup the client shows it in.
+    feature::protocol::MarkupKind markup = feature::protocol::MarkupKind::Markdown;
+
     /// The workspace config, carried whole on every request — the worker
     /// holds no config state and a config change simply shows up on the
     /// next request. Features read their own section; no per-feature

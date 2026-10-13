@@ -230,21 +230,39 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 
 <!-- END GENERATED CONFIG -->
 
+## `[documentation]`
+
+`[documentation]` 节控制 clice 读取文档注释的方式。
+
+<!-- BEGIN GENERATED CONFIG: documentation -->
+
+<div class="config-option">
+
+| 选项     | 类型     | 默认值      |
+| -------- | -------- | ----------- |
+| `format` | `string` | `"doxygen"` |
+
+文档注释的读取方式，凡是显示文档注释的地方（悬停、`clice query`）都按它读取："doxygen" 读取 Doxygen 的命令（`@brief`、`@param`、`@return` 等）以及 Doxygen 允许的 Markdown，同时识别 GTK-Doc 和 kernel-doc 的写法；"plain" 按原样显示注释。
+
+</div>
+
+<div class="config-option">
+
+| 选项      | 类型   | 默认值 |
+| --------- | ------ | ------ |
+| `inherit` | `bool` | `true` |
+
+重写函数没有自己的文档注释时，显示被重写函数的文档注释。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[hover]`
 
 `[hover]` 节控制悬停卡片的渲染方式。
 
 <!-- BEGIN GENERATED CONFIG: hover -->
-
-<div class="config-option">
-
-| 选项                        | 类型   | 默认值 |
-| --------------------------- | ------ | ------ |
-| `parse_comment_as_markdown` | `bool` | `true` |
-
-将悬停卡片渲染为 Markdown；`false` 时输出纯文本，供无法显示 Markdown 的客户端使用。
-
-</div>
 
 <div class="config-option">
 

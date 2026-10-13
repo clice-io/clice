@@ -7,6 +7,7 @@ module clice;
 import :feature.feature;
 import :feature.lexical_classify;
 import :index.shard;
+import :syntax.documentation;
 import :syntax.lexer;
 
 namespace clice::feature {
@@ -640,11 +641,11 @@ auto index_document_links(llvm::StringRef content,
 
 auto index_hover(const index::SymbolRef& info,
                  llvm::StringRef definition_text,
-                 llvm::StringRef comment) -> HoverInfo {
+                 Documentation documentation) -> HoverInfo {
     HoverInfo hover;
     hover.name = info.display_name();
     hover.kind = info.kind;
-    hover.documentation = comment.str();
+    hover.documentation = std::move(documentation);
     /// The index keeps that a symbol is deprecated, not the message.
     if(index::has_flag(info.flags, index::SymbolFlags::Deprecated)) {
         hover.deprecation.emplace();

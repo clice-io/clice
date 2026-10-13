@@ -12,6 +12,7 @@ stdout = '''
     "name": "Animal",
     "kind": "Struct",
     "symbol": "#a1654fc0dd5efb6c",
+    "documentation": null,
     "definition": {
       "file": "${WS}/a.h",
       "startLine": 3,

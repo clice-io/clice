@@ -91,6 +91,7 @@ stdout = '''
     "name": "rows",
     "kind": "Variable",
     "symbol": "#62144b44c2d7e570 path:${WS}/a.cpp",
+    "documentation": null,
     "definition": {
       "file": "${WS}/a.cpp",
       "startLine": 4,
@@ -137,6 +138,7 @@ stdout = '''
     "name": "rows",
     "kind": "Variable",
     "symbol": "#62144b44c2d7e570 path:${WS}/a.cpp",
+    "documentation": null,
     "definition": {
       "file": "${WS}/a.cpp",
       "startLine": 4,
@@ -156,6 +158,7 @@ stdout = '''
     "name": "rows",
     "kind": "Parameter",
     "symbol": "#c779df7ea50d8026 path:${WS}/a.cpp",
+    "documentation": null,
     "definition": {
       "file": "${WS}/a.cpp",
       "startLine": 2,

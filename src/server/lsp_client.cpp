@@ -350,6 +350,14 @@ void LSPClient::register_lifecycle() {
                       params.capabilities.text_document->inlay_hint.has_value();
 
         if(params.capabilities.text_document.has_value() &&
+           params.capabilities.text_document->hover.has_value() &&
+           params.capabilities.text_document->hover->content_format.has_value() &&
+           llvm::is_contained(*params.capabilities.text_document->hover->content_format,
+                              protocol::MarkupKind::Markdown)) {
+            hover_markup = protocol::MarkupKind::Markdown;
+        }
+
+        if(params.capabilities.text_document.has_value() &&
            params.capabilities.text_document->folding_range.has_value()) {
             line_folding_only = params.capabilities.text_document->folding_range->line_folding_only;
         }
@@ -740,9 +748,11 @@ void LSPClient::register_language_features() {
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
             return kota::outcome_error(unserved(path));
-        return holding(
-            project,
-            project->features.hover(Ticket::take(session), params.position, ctx.cancellation));
+        return holding(project,
+                       project->features.hover(Ticket::take(session),
+                                               params.position,
+                                               hover_markup,
+                                               ctx.cancellation));
     });
 
     peer.on_request([this](RequestContext& ctx,
