@@ -2,15 +2,14 @@ import { test } from "@clice/tools/testing";
 
 // F12 right after opening a file, before the background index has read the
 // module interface the name comes from: the interface's index is held back
-// so the request lands before it, as it does when a user is quick. The
-// importer's own index is held back too: the request reaches its compile.
+// so the request lands before it, as it does when a user is quick. A rule
+// keeps the importer out of the index, which could otherwise index it
+// before it opens: the request reaches its compile.
 test("importer not indexed", async (t) => {
-    const s = await t.start();
+    const s = await t.start({ config: { rules: [{ patterns: ["main.cpp"], index: false }] } });
     const held = await s.park("index", "math.cppm", { at: "reply" });
-    const importer = await s.park("index", "main.cpp", { at: "reply" });
     s.open("main.cpp");
     await t.show("before the index", s.definition(t.marker("use")));
-    await importer.release();
     await held.release();
     await s.indexed();
     await t.show("after the index", s.definition(t.marker("use")));
