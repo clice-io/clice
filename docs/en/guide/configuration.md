@@ -354,41 +354,11 @@ The `[code_completion]` section controls completion item assembly.
 
 <div class="config-option">
 
-| Option                   | Type   | Default |
-| ------------------------ | ------ | ------- |
-| `enable_keyword_snippet` | `bool` | `false` |
+| Option      | Type     | Default          |
+| ----------- | -------- | ---------------- |
+| `arguments` | `string` | `"placeholders"` |
 
-Complete statements such as `if` and `for` as snippets with placeholders for their parts; otherwise only the keyword is inserted. Ignored for clients without snippet support.
-
-</div>
-
-<div class="config-option">
-
-| Option                              | Type   | Default |
-| ----------------------------------- | ------ | ------- |
-| `enable_function_arguments_snippet` | `bool` | `false` |
-
-Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet. Ignored for clients without snippet support.
-
-</div>
-
-<div class="config-option">
-
-| Option                              | Type   | Default |
-| ----------------------------------- | ------ | ------- |
-| `enable_template_arguments_snippet` | `bool` | `false` |
-
-Insert template arguments as a snippet when completing a class, alias or variable template. Ignored for clients without snippet support.
-
-</div>
-
-<div class="config-option">
-
-| Option                          | Type   | Default |
-| ------------------------------- | ------ | ------- |
-| `insert_paren_in_function_call` | `bool` | `false` |
-
-Insert parentheses when completing a function call, unless the name is already followed by one; with snippet support the cursor lands between them.
+What completing a call or a template inserts after the name: "placeholders" its parentheses or angle brackets with a placeholder per parameter, "delimiters" the empty parentheses or brackets with the cursor between them, "none" the name alone. It applies to functions, function-like macros, variables holding a lambda and class, alias and variable templates; an overload set listed as one item takes the delimiters. Nothing is added where the arguments are written already or the name is not called, as when taking a function's address. Clients without snippet support get the parentheses of a call alone.
 
 </div>
 
@@ -399,6 +369,56 @@ Insert parentheses when completing a function call, unless the name is already f
 | `bundle_overloads` | `bool` | `true`  |
 
 Collapse an overload set into a single completion item.
+
+</div>
+
+<div class="config-option">
+
+| Option               | Type   | Default |
+| -------------------- | ------ | ------- |
+| `statement_snippets` | `bool` | `false` |
+
+Complete statements such as `if` and `for` as snippets with placeholders for their parts; otherwise only the keyword is inserted. Ignored for clients without snippet support.
+
+</div>
+
+<div class="config-option">
+
+| Option         | Type   | Default |
+| -------------- | ------ | ------- |
+| `dot_to_arrow` | `bool` | `true`  |
+
+After `.` on a pointer, list the members `->` reaches and turn the `.` into `->` when one is chosen.
+
+</div>
+
+<div class="config-option">
+
+| Option       | Type   | Default |
+| ------------ | ------ | ------- |
+| `all_scopes` | `bool` | `true`  |
+
+Where a name is completed unqualified, also offer the project's names of other namespaces, inserting the qualifier they need; one in several namespaces is offered once per namespace. Names the file reaches already are offered as they are; for the others see `insert_includes` and `insert_imports`. Needs the index for names the file does not reach.
+
+</div>
+
+<div class="config-option">
+
+| Option            | Type   | Default |
+| ----------------- | ------ | ------- |
+| `insert_includes` | `bool` | `true`  |
+
+With `all_scopes`, also offer names declared in headers the file does not include yet, adding the `#include` of the header that declares them.
+
+</div>
+
+<div class="config-option">
+
+| Option           | Type   | Default |
+| ---------------- | ------ | ------- |
+| `insert_imports` | `bool` | `true`  |
+
+With `all_scopes`, also offer names exported by modules the file does not import yet, adding the `import`.
 
 </div>
 

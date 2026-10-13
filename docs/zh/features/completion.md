@@ -1,5 +1,12 @@
 # 代码补全
 
+为正在输入的内容提供候选项：名称、成员、调用、头文件和模块。
+
+<!-- The cards in the sections below are generated from the documented cases
+     in tests/completion/. Do not edit the regions between the
+     GENERATED markers by hand — edit the cases' README.md and run
+     `pixi run update-feature-docs`. -->
+
 ## 符号
 
 输入时会补全当前作用域内的名称，使用 `ns::` 等限定符则会列出对应作用域中声明的内容。
@@ -10,7 +17,7 @@
 
 **模糊非限定查找**
 
-保留匹配度高的前缀匹配项，排除匹配度低的子序列匹配项及作用域外的命名空间成员
+保留匹配度高的前缀匹配项，排除匹配度低的子序列匹配项
 
 ```case
 tests/completion/symbols/01_unqualified_lookup
@@ -36,7 +43,7 @@ tests/completion/symbols/02_class_templates
 
 对象式宏以常量形式补全，函数式宏以带参数签名的函数形式补全
 
-实参代码片段受函数设置 `code_completion.enable_function_arguments_snippet` 控制。
+其实参的插入方式与函数相同，由 `code_completion.arguments` 控制。
 
 ```case
 tests/completion/symbols/05_macros
@@ -80,36 +87,67 @@ tests/completion/symbols/11_required_qualifier
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**文档**
+
+补全项显示其所指实体的文档注释；模板实例化中的成员显示模板为它编写的注释
+
+```case
+tests/completion/symbols/13_documentation
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-- [ ] 实参依赖查找（ADL）候选项
-- [ ] C++ 属性补全
+## 其他命名空间
 
-  ```cpp
-  [[^]]  // suggest: nodiscard, deprecated, maybe_unused, likely, ...
-  ```
+其他命名空间中声明的名称同样会补全，并带上访问它所需的限定符；若当前文件尚未包含或导入声明它的头文件或模块，补全时还会加上所需的 `#include` 或 `import`。
 
-- [ ] 跨作用域补全，包含类和结构体作用域内的符号（内部类型、静态方法）
+<!-- BEGIN GENERATED ITEMS: completion/scopes -->
 
-  ```cpp
-  struct Outer { struct Inner {}; static int count; };
-  Inn^  // suggest Outer::Inner from a different scope
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-- [ ] 插入限定符时考虑命名空间别名（优先使用最短的有效限定符）
+**其他命名空间中的名称**
 
-  ```cpp
-  namespace fs = std::filesystem;
-  fs::ex^  // insert "fs::exists", not "std::filesystem::exists"
-  ```
+其他命名空间中声明的名称会带上访问它所需的限定符补全，排在作用域内的名称之后
 
-- [ ] 根据语言过滤候选项（混合语言项目中的 C 文件不显示 C++ 符号）
-- [ ] 函数实参注释补全（`/*param=*/` 风格的参数提示）
-- [ ] 语义分析不可用时，回退到基于标识符的补全
+```case
+tests/completion/scopes/01_other_namespaces
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**尚未包含的头文件**
+
+项目中的名称若声明在当前文件尚未包含的头文件里，补全时会一并插入引入它的 `#include`
+
+```case
+tests/completion/scopes/02_include_insertion
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**尚未导入的模块**
+
+项目中某个模块导出的名称，补全时会一并插入引入它的 `import`；当前模块自身的分区则以分区名导入
+
+```case
+tests/completion/scopes/03_import_insertion
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 ## 成员访问
 
-由 `.`、`->`、`::` 或 quickSuggestions 触发。通过无状态工作进程转发给 Clang 的 `CodeCompleteConsumer`。
+在 `.`、`->` 或 `::` 之后，会补全对象或作用域的成员。
 
 <!-- BEGIN GENERATED ITEMS: completion/member_access -->
 
@@ -187,59 +225,23 @@ tests/completion/member_access/10_out_of_line_definitions
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**指针后的点号**
+
+在指针后输入 `.` 时，会补全通过 `->` 可访问的成员，并把 `.` 改为 `->`
+
+```case
+tests/completion/member_access/17_dot_on_pointer
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
-
-- [x] `->`——指针成员访问（带有 Clang 修正）
-- [x] `::`——命名空间或类作用域中的成员
-- [ ] 点转箭头：在指针后输入 `.` 时，触发 `->` 成员补全并自动替换（[clangd#1349](https://github.com/clangd/clangd/issues/1349)）
-
-  ```cpp
-  std::unique_ptr<Foo> ptr;
-  ptr.^  // suggest Foo's members, insert as ptr->bar()
-  ```
-
-- [ ] 在成员补全结果中同时显示首个参数与对象类型匹配的自由函数（free functions）
-
-  ```cpp
-  std::vector<int> v;
-  v.^  // also suggest std::sort(v, ...), std::find(v, ...) etc.
-  ```
-
-- [ ] 在成员建议中包含 `operator[]`、`operator->`、`operator()`
-- [ ] 优先显示通过所输入运算符直接访问的成员（输入 `.` 时优先显示 `.` 可访问的成员，输入 `->` 时优先显示 `->` 可访问的成员）
-
-## 指定初始化器（designated initializers）
-
-- [ ] 按声明顺序排列补全项（C++20 指定初始化器的要求）（[clangd#965](https://github.com/clangd/clangd/issues/965)）
-
-  ```cpp
-  struct Cfg { int width; int height; bool fullscreen; };
-  Cfg c = { .^  // suggest: .width, .height, .fullscreen (in this order)
-  ```
-
-- [ ] 过滤掉已使用的指示符
-
-  ```cpp
-  Cfg c = { .width = 800, .^  // only suggest .height, .fullscreen
-  ```
-
-- [ ] 复合字面量中的指定初始化器（`(struct T){ .field = }`）
-- [ ] 匿名结构体或联合体的成员指示符
-
-  ```cpp
-  struct S { union { int i; float f; }; };
-  S s = { .^  // suggest .i, .f
-  ```
-
-- [ ] “填充所有成员”代码片段
-
-  ```cpp
-  Cfg c = { ^  // first item: .width = ${1}, .height = ${2}, .fullscreen = ${3}
-  ```
 
 ## 函数与代码片段
 
-以下所有选项均位于 `[code_completion]` 配置节中。
+函数会补全为调用形式，括号内插入什么由 `code_completion.arguments` 决定。以下所有选项均位于 `[code_completion]` 配置节中。
 
 <!-- BEGIN GENERATED ITEMS: completion/functions_snippets -->
 
@@ -247,7 +249,9 @@ tests/completion/member_access/10_out_of_line_definitions
 
 **参数占位符代码片段**
 
-函数调用补全会为每个实参插入可用 Tab 键依次跳转的占位符；无参函数的补全则仍为纯文本
+函数调用补全会为每个实参插入可用 Tab 键依次跳转的占位符；无参函数则插入空括号
+
+设为 `delimiters` 时，调用会插入括号并将光标置于括号内；设为 `none` 时，只插入名称。
 
 ```case
 tests/completion/functions_snippets/01_snippet_arguments
@@ -285,7 +289,7 @@ tests/completion/functions_snippets/03_overload_bundle
 
 **调用括号**
 
-补全时会为调用添加括号，并将光标置于括号内，除非名称后已有实参，或该名称并非用于调用
+补全时会为调用添加括号，除非名称后已有实参，或该名称并非用于调用
 
 ```case
 tests/completion/functions_snippets/06_call_parentheses
@@ -318,43 +322,6 @@ tests/completion/functions_snippets/08_statement_snippets
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
-
-- [ ] 根据上下文调整代码片段：在函数指针上下文中仅插入名称，不插入调用语法
-
-  ```cpp
-  void (*fp)(int) = my_fun^;  // insert "my_func", not "my_func(${1:int x})"
-  ```
-
-- [ ] 从签名和代码片段中移除 C++23 显式对象参数
-
-  ```cpp
-  struct S { void f(this S& self, int x); };
-  S s;
-  s.f(^  // show signature "(int x)", not "(this S& self, int x)"
-  ```
-
-- [ ] 在签名中显示参数默认值（[clangd#100](https://github.com/clangd/clangd/issues/100)）
-
-  ```cpp
-  void open(std::string path, int mode = 0644);
-  open(^  // detail shows "(string path, int mode = 0644)"
-  ```
-
-- [ ] 将 Lambda 类型解析为实际签名
-
-  ```cpp
-  auto cmp = [](int a, int b) -> bool { return a < b; };
-  cmp^  // show "(int a, int b) -> bool", not "<lambda>"
-  ```
-
-- [ ] 解析转发函数的参数（[clangd#447](https://github.com/clangd/clangd/issues/447)）
-
-  ```cpp
-  struct Widget { Widget(int w, int h); };
-  auto p = std::make_unique<Widget>(^  // show "(int w, int h)"
-  ```
-
-- [ ] 没有占位符时设置 `InsertTextFormat::PlainText`
 
 ## 模板与概念
 
@@ -434,14 +401,6 @@ tests/completion/templates/15_concept_requirements
 
 <!-- END GENERATED ITEMS -->
 
-- [ ] 在类模板体内，不为注入类名（injected class name）生成模板参数代码片段
-  ```cpp
-  template<typename T>
-  struct Vec {
-      Vec^  // suggest "Vec", not "Vec<${1:T}>" — injected class name
-  };
-  ```
-
 ## 重写与类外定义
 
 在派生类中，基类的虚函数会补全为完整声明。
@@ -464,37 +423,9 @@ tests/completion/overrides/01_override_declaration
 
 <!-- END GENERATED ITEMS -->
 
-- [ ] 遍历完整的继承层次结构以查找重写候选项（[clangd#226](https://github.com/clangd/clangd/issues/226)、[clangd#2374](https://github.com/clangd/clangd/issues/2374)）
-
-  ```cpp
-  struct A { virtual void f(); };
-  struct B : A { };
-  struct C : B {
-      ^  // suggest: void f() override (from A, through B)
-  };
-  ```
-
-- [ ] 类外定义补全
-
-  ```cpp
-  // in .cpp file
-  void MyClass::^  // suggest all member functions with full signature + body snippet
-  ```
-
-- [ ] 在定义上下文中的 `::` 后补全构造函数
-- [ ] 不显示类模板构造函数和析构函数的冗余模板参数
-
-  ```cpp
-  template<typename T>
-  struct Vec { Vec(); ~Vec(); };
-
-  template<typename T>
-  Vec<T>::^  // suggest "Vec()" and "~Vec()", not "Vec<T>()" or "~Vec<T>()"
-  ```
-
 ## 包含路径
 
-由 `<`、`"`、`/` 字符触发。在构建 AST 之前处理（在 Preamble 层面处理，无需编译）。引号内的补全先搜索包含方文件自身所在的目录，再搜索已配置的包含目录。只有看起来像头文件的文件才会成为候选：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件。
+在 `#include` 之后会补全头文件名：引号形式先搜索包含方文件自身所在的目录，再搜索包含目录，系统目录排在最后。只有看起来像头文件的文件才会成为候选：任何目录下带头文件扩展名的文件，以及系统目录等存放此类头文件的位置中不带扩展名的文件。
 
 <!-- BEGIN GENERATED ITEMS: completion/include_path_completion -->
 
@@ -548,63 +479,23 @@ tests/completion/include_path_completion/04_sibling_headers
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**距离最近的头文件优先**
+
+头文件名先列出包含方文件所在目录中的头文件，再按顺序列出项目各包含目录中的头文件，系统目录排在最后
+
+```case
+tests/completion/include_path_completion/09_header_order
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
-
-**触发上下文**
-
-- [ ] `#include_next` — 必须识别出指令是 `#include_next` 而非 `#include`，并调整搜索起点，从提供当前文件的目录*之后*的目录开始搜索
-
-  ```cpp
-  // in <bits/stl_vector.h>, provided by /usr/include/c++/14/
-  #include_next <^>  // search starts AFTER /usr/include/c++/14/, skipping it
-  ```
-
-- [ ] `__has_include()` / `__has_embed()` — 在这些结构内部触发包含路径补全
-
-  ```cpp
-  #if __has_include(<^>)  // suggest headers, same as #include <
-  ```
-
-- [ ] `#embed` 指令补全
-  ```cpp
-  #embed <^>  // suggest embeddable resource files
-  ```
-
-**候选项与排序**
-
-- [x] 遍历编译数据库中的编译器搜索路径
-- [x] 文件和目录均可作为候选项；目录通过标签末尾的 `/` 区分
-- [ ] 过滤掉已包含的头文件
-
-  ```cpp
-  #include <vector>
-  #include <^>  // should not suggest "vector" again
-  ```
-
-- [ ] 降低私有或内部头文件的优先级，即普通用户不应直接包含的路径：
-  - 单个 `_` 前缀：较低优先级（例如 `_ctype.h`）
-  - 双 `__` 前缀：更低优先级（编译器内置的内部头文件，如 `__config`、`__bit_reference`）
-  - 路径中包含 `detail`、`internal`、`impl`、`bits` 等关键词（第三方库的私有头文件，如 `boost/detail/`、`bits/stdc++.h`）
-
-  ```cpp
-  #include <^>        // __config, _ctype.h, bits/stdc++.h rank near bottom
-  #include <boost/^>  // boost/detail/ ranks lower than boost/asio/
-  ```
-
-- [ ] 按路径距离排序：在项目目录树中，离当前文件越近的头文件排名越靠前
-
-**插入行为**
-
-- [ ] 目录补全不应插入末尾的 `/`，应由用户输入，以再次触发下一级目录的补全（目前 `/` 已包含在插入文本中，导致编辑器无法自动触发下一轮补全）（[clangd#395](https://github.com/clangd/clangd/issues/395)）
-  ```cpp
-  #include <sys^>  // accept "sys" → inserts "sys", user types "/" → next completion fires
-  ```
 
 ## 模块导入
 
-通过分析文本上下文检测。在构建 AST 之前处理（在 Preamble 层面处理，无需编译）。
-
-当光标位于 `import` 或 `export import` 之后时触发。
+在 `import` 或 `export import` 之后会补全模块名：先列出当前单元所属模块自身的分区，再列出接口单元离当前文件最近的模块。
 
 <!-- BEGIN GENERATED ITEMS: completion/modules -->
 
@@ -648,62 +539,23 @@ tests/completion/modules/04_interface_partitions
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**距离最近的模块优先**
+
+模块名补全会优先列出接口单元离当前文件最近的模块
+
+```case
+tests/completion/modules/09_nearest_modules
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-- [x] 以空格字符触发（[#460](https://github.com/clice-io/clice/pull/460)）
+## 过滤
 
-  两层门控避免每敲一个空格都触发：服务器把 ` `（空格）注册为触发字符，
-  而由空格触发的请求只在导入上下文（`import `、`export import `）中继续处理；
-  其余空格立即返回空结果。这与 TypeScript/Haxe 语言扩展采用的模式相同
-  （[vscode#67714](https://github.com/microsoft/vscode/issues/67714)）。
-
-- [ ] 按点分层补全
-
-  ```cpp
-  import std.^  // suggest io, compat, etc.
-  ```
-
-  注意：模块名称中的点是一种命名约定，并不表示语言层面的层级关系，但由点触发的补全仍能改善用户体验。
-
-- [ ] 补全符号时自动插入 `import` 语句（类似于自动包含头文件）
-
-  ```cpp
-  std::vector^  // on accept, also insert "import std;" at the top
-  ```
-
-## 模块声明
-
-在模块声明上下文（`module` / `export module`）中进行补全。
-
-- [ ] 在 `module` / `export module` 后补全模块名称
-
-  ```cpp
-  module my^  // suggest existing module names (useful when writing implementation units)
-  ```
-
-- [ ] 在 `:` 后补全分区名称
-
-  ```cpp
-  export module mylib:^  // suggest existing partition names of mylib
-  module mylib:^  // same, for partition implementation unit
-  ```
-
-- [ ] `module :private;` 补全（私有模块片段）
-
-  ```cpp
-  module :^  // suggest "private"
-  ```
-
-- [ ] 在主接口单元中补全用于重新导出的 `export import :partition`
-
-  ```cpp
-  // in primary interface unit of mylib
-  export import :^  // suggest mylib's interface partitions that need re-exporting
-  ```
-
-## 过滤与排序
-
-根据输入内容与候选项中各单词开头的匹配情况筛选候选项，匹配度最高的排在最前面。
+根据输入内容与候选项中各单词开头的匹配情况筛选候选项。
 
 <!-- BEGIN GENERATED ITEMS: completion/filtering -->
 
@@ -773,96 +625,37 @@ tests/completion/filtering/06_inside_a_word
 
 <!-- END GENERATED ITEMS -->
 
-- [x] 过滤掉错误恢复上下文的结果（`CCC_Recovery`）
-- [ ] 结果数量上限（`CodeCompletionOptions.limit`）
-- [ ] 综合使用频率和最近使用时间加权／提高最近使用项的排名
-- [ ] 将数字与字母之间的边界视为单词分界（[clangd#1236](https://github.com/clangd/clangd/issues/1236)）
+## 排序
 
-  ```cpp
-  i32^  // should match int32_t (digit-letter boundary: "32" → "t")
-  ```
+在过滤后剩下的候选项中，离代码最近的名称排在前面，代码所期望类型的名称也排在前面。
 
-- [ ] 按作用域划分相关性层级：局部符号 > 成员 > 命名空间作用域符号 > 跨作用域符号
-- [ ] 根据上下文中的类型提升排序优先级（预期类型为枚举时，建议匹配的枚举成员）（[clangd#462](https://github.com/clangd/clangd/issues/462)）
+<!-- BEGIN GENERATED ITEMS: completion/ranking -->
 
-  ```cpp
-  enum Color { Red, Green, Blue };
-  void paint(Color c);
-  paint(^  // boost Red, Green, Blue to top
-  ```
+<!-- BEGIN CAPABILITY: supported -->
 
-- [ ] 过滤 switch 语句中已使用的枚举值
+**距离最近的名称优先**
 
-  ```cpp
-  switch (color) {
-      case Red: break;
-      case ^  // suggest Green, Blue only — Red already used
-  ```
+在前缀匹配的名称中，局部符号排在最前，其次是类的成员，然后是文件中的名称，宏排在最后
 
-- [ ] 在 C++ 模式下将 `nullptr` 排在 `NULL` 之前
-- [ ] 根据命名信号提升排序优先级
+```case
+tests/completion/ranking/01_closest_first
+```
 
-  ```cpp
-  auto foo = get^;  // boost getFoo() over getBar()
-  ```
+<!-- END CAPABILITY -->
 
-- [ ] 将引用次数和文件邻近程度作为排序信号
-- [ ] 基于机器学习的排序模型
+<!-- BEGIN CAPABILITY: supported -->
 
-## 自动插入包含指令
+**期望类型优先**
 
-尚未实现。补全符号时不会插入 `#include` 指令。
+代码所期望类型的名称，排在前缀同样匹配的其他名称之前
 
-- [ ] 接受补全项时，为未解析的符号插入 `#include`
+```case
+tests/completion/ranking/02_expected_type
+```
 
-  ```cpp
-  std::vec^  // on accept "vector", also insert #include <vector> at top of file
-  ```
+<!-- END CAPABILITY -->
 
-- [ ] 检查包含关系图中的传递关系，避免重复包含
-
-  ```cpp
-  // <algorithm> already includes <iterator> transitively
-  std::back_inserter^  // do NOT insert #include <iterator> again
-  ```
-
-- [ ] 感知上下文：对于前置声明或仅通过指针／引用使用的情况，不插入包含指令（[clangd#639](https://github.com/clangd/clangd/issues/639)）
-
-  ```cpp
-  class Foo;
-  Foo*^  // no include needed — forward declaration suffices for pointer
-  ```
-
-- [ ] 在 C 文件中插入 C 头文件，在 C++ 文件中插入 C++ 头文件
-
-  ```c
-  // in a .c file
-  size_^  // insert #include <stddef.h>, not #include <cstddef>
-  ```
-
-- [ ] 可配置的行为：`always` / `iwyu-only` / `never`
-- [ ] 优先使用相对于项目的路径，而非绝对路径
-- [ ] 遵循 IWYU 编译指示和头文件映射
-- [ ] 为 C++20 模块符号自动插入 `import`
-
-## 文档
-
-尚未实现。补全项不包含文档。
-
-- [ ] 从声明和定义中提取文档注释
-
-  ```cpp
-  /// @brief Opens a file at the given path.
-  /// @param path The file system path.
-  void open(std::string path);
-
-  op^  // completion popup shows the @brief doc
-  ```
-
-- [ ] 无论定义位于何处（头文件、源文件或索引），都能提供文档
-- [ ] 将模板模式（template pattern）的文档传递给实例化结果
-- [ ] 集成标准库文档
-- [ ] 将宏定义用作文档（[clangd#1485](https://github.com/clangd/clangd/issues/1485)）
+<!-- END GENERATED ITEMS -->
 
 ## 触发字符
 
@@ -877,10 +670,3 @@ tests/completion/filtering/06_inside_a_word
 | `"`  | `#include "`   | 包含路径补全                        |
 | `/`  | 路径分隔符     | 继续补全包含路径                    |
 | ` `  | `import` 之后  | 模块名补全（受扩展限制）            |
-
-## 协议
-
-- [ ] `completionItem/resolve`，用于延迟加载文档和详细信息
-- [ ] `CompletionList.isIncomplete` 标志，用于增量筛选
-- [ ] `commitCharacters`，用于在按下特定按键时自动接受补全项
-- [ ] `filterText` / `sortText`，用于在客户端重新筛选

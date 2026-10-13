@@ -17,7 +17,7 @@ Names in scope complete as you type, and a qualifier such as `ns::` lists what t
 
 **Fuzzy unqualified lookup**
 
-Strong prefix matches survive, while weak subsequence matches and members of namespaces not in scope do not
+Strong prefix matches survive, while weak subsequence matches do not
 
 ```case
 tests/completion/symbols/01_unqualified_lookup
@@ -43,7 +43,7 @@ tests/completion/symbols/02_class_templates
 
 Object-like macros complete as constants, function-like ones as functions with a parameter signature
 
-Argument snippets follow the function setting, `code_completion.enable_function_arguments_snippet`.
+Their arguments follow the functions' setting, `code_completion.arguments`.
 
 ```case
 tests/completion/symbols/05_macros
@@ -87,6 +87,18 @@ tests/completion/symbols/11_required_qualifier
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Documentation**
+
+An item shows the documentation comment of what it names, a member of a template's instantiation the one its template wrote
+
+```case
+tests/completion/symbols/13_documentation
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Other Namespaces
@@ -94,6 +106,43 @@ tests/completion/symbols/11_required_qualifier
 A name another namespace declares completes too, with the qualifier that reaches it; one the file does not include or import yet brings the `#include` or the `import` it needs.
 
 <!-- BEGIN GENERATED ITEMS: completion/scopes -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Names of other namespaces**
+
+A name another namespace declares completes with the qualifier that reaches it, after the names in scope
+
+```case
+tests/completion/scopes/01_other_namespaces
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Headers not included yet**
+
+A name the project declares in a header the file does not include yet completes with the `#include` that brings it
+
+```case
+tests/completion/scopes/02_include_insertion
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Modules not imported yet**
+
+A name a module of the project exports completes with the `import` that brings it, its own partitions by their partition name
+
+```case
+tests/completion/scopes/03_import_insertion
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Member Access
@@ -176,6 +225,18 @@ tests/completion/member_access/10_out_of_line_definitions
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Dot on a pointer**
+
+After `.` on a pointer, the members `->` reaches complete and turn the `.` into `->`
+
+```case
+tests/completion/member_access/17_dot_on_pointer
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Functions and Snippets
@@ -188,7 +249,9 @@ A function completes as a call, with what `code_completion.arguments` asks for b
 
 **Parameter placeholder snippets**
 
-Calls insert tab-stop placeholders per argument; a no-argument function stays plain text
+Calls insert tab-stop placeholders per argument; a no-argument function gets its empty parentheses
+
+With `delimiters`, a call gets its parentheses with the cursor between them; with `none`, the name alone.
 
 ```case
 tests/completion/functions_snippets/01_snippet_arguments
@@ -226,7 +289,7 @@ tests/completion/functions_snippets/03_overload_bundle
 
 **Call parentheses**
 
-A completed call gets its parentheses with the cursor between them, unless arguments already follow the name or it is not being called
+A completed call gets its parentheses, unless arguments already follow the name or it is not being called
 
 ```case
 tests/completion/functions_snippets/06_call_parentheses
@@ -417,6 +480,18 @@ tests/completion/include_path_completion/04_sibling_headers
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Nearest headers first**
+
+Header names list the includer's directory first, then the project's include directories in order, the system's last
+
+```case
+tests/completion/include_path_completion/09_header_order
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Module Import
@@ -461,6 +536,18 @@ An interface cannot export an internal partition, and names it imports from one 
 
 ```case
 tests/completion/modules/04_interface_partitions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Nearest modules first**
+
+Module names list the modules whose interface lies nearest the file first
+
+```case
+tests/completion/modules/09_nearest_modules
 ```
 
 <!-- END CAPABILITY -->
@@ -544,6 +631,31 @@ tests/completion/filtering/06_inside_a_word
 Among the candidates left, the names closest to the code come first, and those of the type the code expects.
 
 <!-- BEGIN GENERATED ITEMS: completion/ranking -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Closest names first**
+
+Among the names a prefix matches, locals come first, then the class's members, then the file's names, macros last
+
+```case
+tests/completion/ranking/01_closest_first
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Expected type first**
+
+A name of the type the code expects ranks above the others its prefix matches
+
+```case
+tests/completion/ranking/02_expected_type
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Trigger Characters
