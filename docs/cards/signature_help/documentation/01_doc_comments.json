@@ -1,0 +1,103 @@
+{
+  "id": "signature_help/documentation/01_doc_comments",
+  "topic": "signature_help",
+  "subtopic": "documentation",
+  "title": "Documentation comments",
+  "summary": "The called function's documentation comment shows with its signature",
+  "prose": "With `documentation = false` in the `[signature_help]` section the popup\nshows the signatures alone.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "/// Opens a file for reading.\n///\n/// @param path The file to open, relative to the working directory.\n/// @param mode Permission bits for a file\n///             the call creates.\nint open(const char* path, int mode);\n\n/** Draws a line between two points. */\nvoid line(int x0, int y0, int x1, int y1);\n\nvoid plain(int value);\n\nint main() {\n    open(\"data.txt\", 0644);\n    line(0, 0, 10, 10);\n    plain(1);\n}\n",
+      "markers": [
+        {
+          "name": "parameter",
+          "begin": 361,
+          "end": 361,
+          "range": false
+        },
+        {
+          "name": "function",
+          "begin": 383,
+          "end": 383,
+          "range": false
+        },
+        {
+          "name": "none",
+          "begin": 402,
+          "end": 402,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "shown",
+      "blocks": [
+        {
+          "label": "parameter",
+          "marker": "parameter",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "open(const char *path, ⟦int mode⟧) -> int"
+              ],
+              "active": 0,
+              "documentation": "Opens a file for reading.\n@param path The file to open, relative to the working directory.\n@param mode Permission bits for a file the call creates."
+            }
+          }
+        },
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "line(int x0, int y0, ⟦int x1⟧, int y1) -> void"
+              ],
+              "active": 0,
+              "documentation": "Draws a line between two points."
+            }
+          }
+        },
+        {
+          "label": "none",
+          "marker": "none",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "plain(⟦int value⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "hidden",
+      "config": {
+        "signature_help": {
+          "documentation": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "parameter",
+          "marker": "parameter",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "open(const char *path, ⟦int mode⟧) -> int"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

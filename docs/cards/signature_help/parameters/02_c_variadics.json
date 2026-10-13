@@ -3,25 +3,31 @@
   "topic": "signature_help",
   "subtopic": "parameters",
   "title": "C-style variadic functions",
-  "summary": "The named parameters are listed, but the label leaves out the trailing `...`",
-  "prose": "Past the named parameters no parameter is marked, and nothing in the label\nsays the function takes more arguments.",
-  "status": "unsupported",
+  "summary": "A C-style `...` shows as the last parameter, marked for every argument past the named ones",
+  "prose": "",
+  "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "void record(int code, ...);\n\nint main() {\n    record(0);\n    record(0, 1);\n}\n",
+      "text": "void record(int code, ...);\nvoid (*logger)(const char* format, ...);\n\nint main() {\n    record(0);\n    record(0, 1);\n    logger(\"%d\", 1);\n}\n",
       "markers": [
         {
           "name": "pos",
-          "begin": 53,
-          "end": 53,
+          "begin": 94,
+          "end": 94,
           "range": false
         },
         {
           "name": "extra",
-          "begin": 71,
-          "end": 71,
+          "begin": 112,
+          "end": 112,
+          "range": false
+        },
+        {
+          "name": "pointer",
+          "begin": 133,
+          "end": 133,
           "range": false
         }
       ]
@@ -35,10 +41,9 @@
           "label": "pos",
           "marker": "pos",
           "value": {
-            "wrong": "the label leaves out the ..., so record reads as taking one argument",
             "signature_help": {
               "signatures": [
-                "record(⟦int code⟧) -> void"
+                "record(⟦int code⟧, ...) -> void"
               ],
               "active": 0
             }
@@ -48,10 +53,21 @@
           "label": "extra",
           "marker": "extra",
           "value": {
-            "wrong": "past the named parameter nothing is marked, and the label leaves out the ...",
             "signature_help": {
               "signatures": [
-                "record(int code) -> void"
+                "record(int code, ⟦...⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "pointer",
+          "marker": "pointer",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "(const char *format, ⟦...⟧) -> void"
               ],
               "active": 0
             }

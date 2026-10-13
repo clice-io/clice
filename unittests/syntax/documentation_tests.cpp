@@ -215,6 +215,17 @@ ZEST_CASE(DeclaresParameters) {
 
     llvm::StringRef templated = "void h<int>(std::map<int, char> m);";
     ZEXPECT(declares_parameters(templated, 6, "std::map<int, char>"));
+
+    llvm::StringRef longer = "void f(long long value);";
+    ZEXPECT(declares_parameters(longer, 6, "long long"));
+    ZEXPECT(!declares_parameters(longer, 6, "long"));
+
+    llvm::StringRef literal = "void split(const char* delimiter = \",\");";
+    ZEXPECT(declares_parameters(literal, 10, "const char*"));
+
+    llvm::StringRef array = "void process(int values[4]);";
+    ZEXPECT(declares_parameters(array, 12, "int[4]"));
+    ZEXPECT(!declares_parameters(array, 12, "int[5]"));
 }
 
 ZEST_CASE(UnclosedBlocks) {
@@ -232,6 +243,9 @@ ZEST_CASE(UppercaseMarker) {
     auto doc = parse("Brief.\n\n@TODO: handle NaN.");
     ZEXPECT(doc.params.empty());
     ZEXPECT(doc.details == "@TODO: handle NaN.");
+
+    auto gtk = parse("fetch:\n@URL: The target address.\n\nFetches it.");
+    ZEXPECT(gtk.param("URL")->text == "The target address.");
 }
 
 ZEST_CASE(NameOnNextLine) {

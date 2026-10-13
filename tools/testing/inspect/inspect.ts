@@ -27,6 +27,7 @@ import type {
     Refused,
     Renameable,
     Renamed,
+    Popup,
     Signatures,
     Token,
     WorkspaceSymbol,
@@ -94,7 +95,10 @@ interface RawSignatureHelp {
     signatures?:
         | {
               label: string;
-              parameters?: { label: string | [number, number] }[] | null;
+              documentation?: string | null;
+              parameters?:
+                  | { label: string | [number, number]; documentation?: string | null }[]
+                  | null;
               active_parameter?: number | null;
           }[]
         | null;
@@ -331,7 +335,10 @@ export class Inspect extends Client {
         };
     }
 
-    protected async fetchSignatureHelp(at: Anchor): Promise<Signatures> {
+    protected async fetchSignatureHelp(at: Anchor, popup: Popup | undefined): Promise<Signatures> {
+        if (popup !== undefined) {
+            return this.cannot("signature help asked again with its popup shown", at);
+        }
         const raw = (await this.atPoint("signature_help", at)) as RawSignatureHelp | null;
         if (raw === null) {
             return signatures(null);
@@ -339,8 +346,14 @@ export class Inspect extends Client {
         return signatures({
             signatures: (raw.signatures ?? []).map((signature) => ({
                 label: signature.label,
+                ...(signature.documentation == null
+                    ? {}
+                    : { documentation: signature.documentation }),
                 parameters: (signature.parameters ?? []).map((parameter) => ({
                     label: parameter.label,
+                    ...(parameter.documentation == null
+                        ? {}
+                        : { documentation: parameter.documentation }),
                 })),
                 ...(signature.active_parameter == null
                     ? {}

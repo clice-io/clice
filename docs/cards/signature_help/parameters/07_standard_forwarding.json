@@ -1,0 +1,185 @@
+{
+  "id": "signature_help/parameters/07_standard_forwarding",
+  "topic": "signature_help",
+  "subtopic": "parameters",
+  "title": "Standard forwarding functions",
+  "summary": "`make_unique`, `make_shared` and the containers' `emplace` functions show the constructors of what they build",
+  "prose": "The constructors that can take the arguments written so far are listed, the\nbest match first, each with its parameters after the function's own ones,\nsuch as the key of a map's `try_emplace`. An aggregate lists its fields.",
+  "status": "supported",
+  "issues": [
+    "clangd#638"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include <map>\n#include <memory>\n#include <vector>\n\nstruct Widget {\n    /// A widget of the given size, in pixels.\n    Widget(int width, int height);\n    Widget(const char* name, double scale);\n};\n\nstruct Arena {};\n\nstruct Point {\n    int x;\n    int y;\n};\n\nvoid build() {\n    auto widget = std::make_unique<Widget>(800, 600);\n    auto shared = std::make_shared<Widget>(800, 600);\n    auto named = std::make_shared<Widget>(\"main\", 2.0);\n    auto pooled = std::allocate_shared<Widget>(Arena{}, 800, 600);\n    std::vector<Widget> widgets;\n    widgets.emplace_back(800, 600);\n    std::vector<Point> points;\n    points.emplace_back(1, 2);\n    std::map<int, Widget> by_id;\n    by_id.try_emplace(1, \"main\", 1.0);\n}\n",
+      "markers": [
+        {
+          "name": "make_unique",
+          "begin": 315,
+          "end": 315,
+          "range": false
+        },
+        {
+          "name": "make_shared",
+          "begin": 374,
+          "end": 374,
+          "range": false
+        },
+        {
+          "name": "by_type",
+          "begin": 430,
+          "end": 430,
+          "range": false
+        },
+        {
+          "name": "allocate_shared",
+          "begin": 492,
+          "end": 492,
+          "range": false
+        },
+        {
+          "name": "emplace_back",
+          "begin": 561,
+          "end": 561,
+          "range": false
+        },
+        {
+          "name": "aggregate",
+          "begin": 630,
+          "end": 630,
+          "range": false
+        },
+        {
+          "name": "try_emplace",
+          "begin": 692,
+          "end": 692,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "map",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class First, class Second>\nstruct pair {\n    First first;\n    Second second;\n};\n\ntemplate <class Key, class Value>\nclass map {\npublic:\n    using key_type = Key;\n    using mapped_type = Value;\n    using value_type = pair<const Key, Value>;\n    struct iterator {};\n\n    template <class... Args>\n    pair<iterator, bool> try_emplace(const key_type& key, Args&&... args);\n};\n}  // namespace std\n",
+      "markers": []
+    },
+    {
+      "path": "memory",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class T>\nstruct default_delete {};\n\ntemplate <class T, class D = default_delete<T>>\nstruct unique_ptr {};\n\nnamespace __detail {\ntemplate <class T>\nusing __unique_ptr_t = unique_ptr<T>;\n}  // namespace __detail\n\ntemplate <class T, class... Args>\n__detail::__unique_ptr_t<T> make_unique(Args&&... args);\n\ntemplate <class T>\nstruct shared_ptr {};\n\ntemplate <class T, class... Args>\nshared_ptr<T> make_shared(Args&&... args);\n\ntemplate <class T, class Alloc, class... Args>\nshared_ptr<T> allocate_shared(const Alloc& alloc, Args&&... args);\n}  // namespace std\n",
+      "markers": []
+    },
+    {
+      "path": "vector",
+      "text": "#pragma once\n\nnamespace std {\ntemplate <class T>\nstruct allocator {};\n\ntemplate <class T, class Alloc = allocator<T>>\nclass vector {\npublic:\n    using value_type = T;\n    using reference = T&;\n\n    template <class... Args>\n    reference emplace_back(Args&&... args);\n};\n}  // namespace std\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "make_unique",
+          "marker": "make_unique",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "make_unique(⟦int width⟧, int height) -> unique_ptr<Widget>",
+                "make_unique(⟦const char *name⟧, double scale) -> unique_ptr<Widget>",
+                "make_unique(⟦const Widget &⟧) -> unique_ptr<Widget>",
+                "make_unique(⟦Widget &&⟧) -> unique_ptr<Widget>"
+              ],
+              "active": 0,
+              "documentation": "A widget of the given size, in pixels."
+            }
+          }
+        },
+        {
+          "label": "make_shared",
+          "marker": "make_shared",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "make_shared(int width, ⟦int height⟧) -> shared_ptr<Widget>"
+              ],
+              "active": 0,
+              "documentation": "A widget of the given size, in pixels."
+            }
+          }
+        },
+        {
+          "label": "by_type",
+          "marker": "by_type",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "make_shared(const char *name, ⟦double scale⟧) -> shared_ptr<Widget>"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "allocate_shared",
+          "marker": "allocate_shared",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "allocate_shared(const Alloc &alloc, ⟦int width⟧, int height) -> shared_ptr<Widget>",
+                "allocate_shared(const Alloc &alloc, ⟦const char *name⟧, double scale) -> shared_ptr<Widget>",
+                "allocate_shared(const Alloc &alloc, ⟦const Widget &⟧) -> shared_ptr<Widget>",
+                "allocate_shared(const Alloc &alloc, ⟦Widget &&⟧) -> shared_ptr<Widget>"
+              ],
+              "active": 0,
+              "documentation": "A widget of the given size, in pixels."
+            }
+          }
+        },
+        {
+          "label": "emplace_back",
+          "marker": "emplace_back",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "emplace_back(⟦int width⟧, int height) -> reference",
+                "emplace_back(⟦const char *name⟧, double scale) -> reference",
+                "emplace_back(⟦const Widget &⟧) -> reference",
+                "emplace_back(⟦Widget &&⟧) -> reference"
+              ],
+              "active": 0,
+              "documentation": "A widget of the given size, in pixels."
+            }
+          }
+        },
+        {
+          "label": "aggregate",
+          "marker": "aggregate",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "emplace_back(int x, ⟦int y⟧) -> reference"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "try_emplace",
+          "marker": "try_emplace",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "try_emplace(const key_type &key, ⟦int width⟧, int height) -> pair<iterator, bool>",
+                "try_emplace(const key_type &key, ⟦const char *name⟧, double scale) -> pair<iterator, bool>",
+                "try_emplace(const key_type &key, ⟦const Widget &⟧) -> pair<iterator, bool>",
+                "try_emplace(const key_type &key, ⟦Widget &&⟧) -> pair<iterator, bool>"
+              ],
+              "active": 0,
+              "documentation": "A widget of the given size, in pixels."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

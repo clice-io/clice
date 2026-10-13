@@ -394,7 +394,16 @@ export function signatures(reply: proto.SignatureHelp | null): Signatures {
                     span = { begin: parameter.label[0], end: parameter.label[1] };
                 }
             }
-            return { label: signature.label, active: span };
+            const text = (value: string | proto.MarkupContent | undefined) =>
+                typeof value === "object" ? value.value : value;
+            const documentation = text(signature.documentation);
+            const parameterDocumentation = text(parameter?.documentation);
+            return {
+                label: signature.label,
+                active: span,
+                ...(documentation === undefined ? {} : { documentation }),
+                ...(parameterDocumentation === undefined ? {} : { parameterDocumentation }),
+            };
         }),
     };
 }

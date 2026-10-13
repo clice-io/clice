@@ -242,7 +242,7 @@ The `[documentation]` section controls how clice reads documentation comments.
 | -------- | -------- | ----------- |
 | `format` | `string` | `"doxygen"` |
 
-How documentation comments are read, wherever they show (hover, `clice query`): "doxygen" reads Doxygen's commands (`@brief`, `@param`, `@return`, ...) and the Markdown Doxygen allows, along with the GTK-Doc and kernel-doc conventions; "plain" shows a comment as written.
+How documentation comments are read, wherever they show (hover, signature help, `clice query`): "doxygen" reads Doxygen's commands (`@brief`, `@param`, `@return`, ...) and the Markdown Doxygen allows, along with the GTK-Doc and kernel-doc conventions; "plain" shows a comment as written.
 
 </div>
 
@@ -427,6 +427,24 @@ Collapse an overload set into a single completion item.
 | `limit` | `uint32` | `0`     |
 
 Maximum number of completion items, the best ranked; `0` means no limit. A list cut short is marked incomplete, so the editor asks again as you type.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[signature_help]`
+
+The `[signature_help]` section controls what the signature help popup shows.
+
+<!-- BEGIN GENERATED CONFIG: signature_help -->
+
+<div class="config-option">
+
+| Option          | Type   | Default |
+| --------------- | ------ | ------- |
+| `documentation` | `bool` | `true`  |
+
+Show the called function's documentation comment.
 
 </div>
 

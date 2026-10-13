@@ -313,8 +313,9 @@ std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& para
 }
 
 std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,
-                                                        [[maybe_unused]] const Config& config) {
-    return to_raw_json(feature::signature_help(params));
+                                                        const Config& config) {
+    return to_raw_json(
+        feature::signature_help(params, config.signature_help, config.documentation));
 }
 
 /// Marker payload for document_highlight: the unit's own TU index stands

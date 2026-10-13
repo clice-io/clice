@@ -1,0 +1,70 @@
+{
+  "id": "signature_help/overload_signatures/07_kept_selection",
+  "topic": "signature_help",
+  "subtopic": "overload_signatures",
+  "title": "Picked overload",
+  "summary": "The overload the user moved the popup to stays shown while typing in the call",
+  "prose": "Asked again while the call is being typed, signature help keeps the overload\nthe editor shows active as long as it is still listed, instead of jumping back\nto the one that fits the arguments best.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "void draw(int x, int y);\nvoid draw(double x, double y);\nvoid draw(int x, int y, int z);\n\nint main() {\n    draw(1, 2);\n}\n",
+      "markers": [
+        {
+          "name": "second",
+          "begin": 114,
+          "end": 114,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "asked",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "draw(int x, ⟦int y⟧, int z) -> void",
+                "draw(int x, ⟦int y⟧) -> void",
+                "draw(double x, ⟦double y⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "picked",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "draw(int x, ⟦int y⟧, int z) -> void",
+                "draw(int x, ⟦int y⟧) -> void",
+                "draw(double x, ⟦double y⟧) -> void"
+              ],
+              "active": 2
+            }
+          }
+        },
+        {
+          "label": "not listed",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "draw(int x, ⟦int y⟧, int z) -> void",
+                "draw(int x, ⟦int y⟧) -> void",
+                "draw(double x, ⟦double y⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -3,21 +3,33 @@
   "topic": "signature_help",
   "subtopic": "parameters",
   "title": "Explicit object parameters",
-  "summary": "A C++23 `this` parameter shows in the label and takes the first argument's mark",
-  "prose": "The object a member is called on is not an argument, yet the label lists\n`this Shape &self` and marks it while the cursor is on the argument for `dx`.",
-  "status": "unsupported",
+  "summary": "A C++23 `this` parameter stays out of the label: the object a member is called on is no argument",
+  "prose": "",
+  "status": "supported",
   "issues": [
     "clangd#2284"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Shape {\n    void move(this Shape& self, int dx, int dy);\n};\n\nvoid slide(Shape shape) {\n    shape.move(1, 2);\n}\n",
+      "text": "struct Shape {\n    void move(this Shape& self, int dx, int dy);\n};\n\nvoid slide(Shape shape) {\n    shape.move(1, 2);\n    shape.move(1, 2);\n    auto scale = [](this auto self, double factor) { return factor; };\n    scale(2.0);\n}\n",
       "markers": [
         {
           "name": "first",
           "begin": 109,
           "end": 109,
+          "range": false
+        },
+        {
+          "name": "second",
+          "begin": 134,
+          "end": 134,
+          "range": false
+        },
+        {
+          "name": "lambda",
+          "begin": 219,
+          "end": 219,
           "range": false
         }
       ]
@@ -31,10 +43,33 @@
           "label": "first",
           "marker": "first",
           "value": {
-            "wrong": "the object parameter is listed and marked, while the cursor is on the argument for dx (clangd#2284)",
             "signature_help": {
               "signatures": [
-                "move(⟦this Shape &self⟧, int dx, int dy) -> void"
+                "move(⟦int dx⟧, int dy) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "second",
+          "marker": "second",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "move(int dx, ⟦int dy⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "lambda",
+          "marker": "lambda",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "scale(⟦double factor⟧) -> auto"
               ],
               "active": 0
             }

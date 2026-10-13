@@ -19,5 +19,9 @@ signatures = ["Widget(⟦int width⟧, int height)", "Widget(⟦const Widget &�
 active = 0
 
 [answers.call_operator.signature_help]
-signatures = ["operator()(int row, ⟦int column⟧) -> int"]
+signatures = ["grid(int row, ⟦int column⟧) -> int"]
+active = 0
+
+[answers.destructor.signature_help]
+signatures = ["~Widget()"]
 active = 0

@@ -76,6 +76,13 @@
                 "limit": 0
             }
         },
+        "signature_help": {
+            "$ref": "#/$defs/SignatureHelpOptions",
+            "description": "The [signature_help] section: signature help options.",
+            "default": {
+                "documentation": true
+            }
+        },
         "rules": {
             "type": "array",
             "items": {
@@ -189,7 +196,7 @@
                         "doxygen",
                         "plain"
                     ],
-                    "description": "How documentation comments are read, wherever they show (hover, `clice query`): \"doxygen\" reads Doxygen's commands (`@brief`, `@param`, `@return`, ...) and the Markdown Doxygen allows, along with the GTK-Doc and kernel-doc conventions; \"plain\" shows a comment as written.",
+                    "description": "How documentation comments are read, wherever they show (hover, signature help, `clice query`): \"doxygen\" reads Doxygen's commands (`@brief`, `@param`, `@return`, ...) and the Markdown Doxygen allows, along with the GTK-Doc and kernel-doc conventions; \"plain\" shows a comment as written.",
                     "default": "doxygen"
                 },
                 "inherit": {
@@ -295,6 +302,17 @@
                     "maximum": 4294967295,
                     "description": "Maximum number of completion items, the best ranked; `0` means no limit. A list cut short is marked incomplete, so the editor asks again as you type.",
                     "default": 0
+                }
+            },
+            "additionalProperties": false
+        },
+        "SignatureHelpOptions": {
+            "type": "object",
+            "properties": {
+                "documentation": {
+                    "type": "boolean",
+                    "description": "Show the called function's documentation comment.",
+                    "default": true
                 }
             },
             "additionalProperties": false

@@ -299,7 +299,7 @@ std::string code_span(llvm::StringRef text) {
 }
 
 /// The parameters of a parameter list, split at the commas outside
-/// parentheses, brackets, braces and angle brackets.
+/// parentheses, brackets, braces, angle brackets and literals.
 llvm::SmallVector<llvm::StringRef> split_parameters(llvm::StringRef list) {
     llvm::SmallVector<llvm::StringRef> parameters;
     if(list.trim().empty() || list.trim() == "void") {
@@ -309,7 +309,13 @@ llvm::SmallVector<llvm::StringRef> split_parameters(llvm::StringRef list) {
     std::size_t begin = 0;
     for(std::size_t index = 0; index < list.size(); index += 1) {
         auto c = list[index];
-        if(llvm::StringRef("([{<").contains(c)) {
+        if(c == '"' || c == '\'') {
+            for(index += 1; index < list.size() && list[index] != c; index += 1) {
+                if(list[index] == '\\') {
+                    index += 1;
+                }
+            }
+        } else if(llvm::StringRef("([{<").contains(c)) {
             depth += 1;
         } else if(llvm::StringRef(")]}>").contains(c)) {
             depth -= 1;
@@ -360,7 +366,32 @@ bool adds_name(llvm::StringRef longer, llvm::StringRef shorter) {
             return false;
         }
     }
-    return !name.empty() && llvm::all_of(name, identifier_char);
+    // `long long` is no `long` named `long`.
+    const static llvm::StringSet<> type_words = {"char",
+                                                 "short",
+                                                 "int",
+                                                 "long",
+                                                 "signed",
+                                                 "unsigned",
+                                                 "float",
+                                                 "double",
+                                                 "const",
+                                                 "volatile"};
+    return !name.empty() && llvm::all_of(name, identifier_char) && !type_words.contains(name);
+}
+
+/// Whether two normalized parameters are one, a name only one of them
+/// gives aside, also before an array's bounds: `int values[4]` is `int[4]`.
+bool same_parameter(llvm::StringRef have, llvm::StringRef want) {
+    auto bounds = [](llvm::StringRef parameter) {
+        return parameter.substr(std::min(parameter.find('['), parameter.size()));
+    };
+    if(bounds(have) != bounds(want)) {
+        return false;
+    }
+    have = have.drop_back(bounds(have).size());
+    want = want.drop_back(bounds(want).size());
+    return have == want || adds_name(have, want) || adds_name(want, have);
 }
 
 /// A line opening a Markdown block a paragraph cannot hold: a list item,
@@ -586,8 +617,8 @@ private:
                 name = trimmed.substr(1, 3);
             }
             auto rest = trimmed.substr(1 + name.size());
-            // `@TODO:` marks a line, as `TODO:` does.
-            bool marker = name.size() > 1 &&
+            // `@TODO:` marks a line, as `TODO:` does, outside GTK-Doc.
+            bool marker = !gtk && name.size() > 1 &&
                           llvm::all_of(name, [](char c) { return llvm::isUpper(c) || c == '_'; });
             if(!name.empty() && rest.starts_with(":") && !marker) {
                 if(gtk || !commands().contains(name)) {
@@ -1166,9 +1197,8 @@ bool declares_parameters(llvm::StringRef content, std::uint32_t name_end, llvm::
         return false;
     }
     for(auto [declared_parameter, wanted_parameter]: llvm::zip_equal(declared, wanted)) {
-        auto have = normalized_parameter(declared_parameter);
-        auto want = normalized_parameter(wanted_parameter);
-        if(have != want && !adds_name(have, want) && !adds_name(want, have)) {
+        if(!same_parameter(normalized_parameter(declared_parameter),
+                           normalized_parameter(wanted_parameter))) {
             return false;
         }
     }

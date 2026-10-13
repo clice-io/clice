@@ -110,11 +110,11 @@ struct DocumentationOptions {
                      choices = {"doxygen", "plain"},
                      description =
                          "How documentation comments are read, wherever they "
-                         "show (hover, `clice query`): \"doxygen\" reads "
-                         "Doxygen's commands (`@brief`, `@param`, `@return`, "
-                         "...) and the Markdown Doxygen allows, along with the "
-                         "GTK-Doc and kernel-doc conventions; \"plain\" shows a "
-                         "comment as written.")
+                         "show (hover, signature help, `clice query`): "
+                         "\"doxygen\" reads Doxygen's commands (`@brief`, "
+                         "`@param`, `@return`, ...) and the Markdown Doxygen "
+                         "allows, along with the GTK-Doc and kernel-doc "
+                         "conventions; \"plain\" shows a comment as written.")
     <std::string> format = "doxygen";
 
     KOTATSU_ANNOTATE(defaulted = true,
@@ -334,7 +334,12 @@ struct InlayHintsOptions {
     <std::uint32_t> type_name_limit = 32;
 };
 
-struct SignatureHelpOptions {};
+/// Corresponds to the `[signature_help]` section in clice.toml.
+struct SignatureHelpOptions {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Show the called function's documentation comment.")
+    <bool> documentation = true;
+};
 
 struct SemanticToken {
     LocalSourceRange range;
@@ -585,8 +590,12 @@ auto hover(CompilationUnitRef unit,
            protocol::MarkupKind kind,
            PositionEncoding encoding = PositionEncoding::UTF16) -> std::optional<protocol::Hover>;
 
-auto signature_help(CompilationParams& params, const SignatureHelpOptions& options = {})
-    -> protocol::SignatureHelp;
+/// `selected` is the label of the signature the client shows active: it
+/// stays active while it is listed.
+auto signature_help(CompilationParams& params,
+                    const SignatureHelpOptions& options,
+                    const DocumentationOptions& documentation,
+                    llvm::StringRef selected = {}) -> protocol::SignatureHelp;
 
 /// The edits formatting `content`, or its `range`, with the clang-format
 /// style of `file`: the nearest `.clang-format` above it, else LLVM's. Why

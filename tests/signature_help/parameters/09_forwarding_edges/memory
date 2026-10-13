@@ -1,0 +1,37 @@
+#pragma once
+
+namespace std {
+template <class T>
+struct unique_ptr {};
+
+template <class T, class... Args>
+unique_ptr<T> make_unique(Args&&... args);
+
+template <class T>
+class initializer_list {
+    const T* first;
+    const T* last;
+};
+
+template <class T>
+class optional {
+public:
+    using value_type = T;
+
+    template <class... Args>
+    T& emplace(Args&&... args);
+
+    template <class U, class... Args>
+    T& emplace(initializer_list<U> list, Args&&... args);
+};
+
+template <class T>
+class vector {
+public:
+    using value_type = T;
+    using reference = T&;
+
+    template <class... Args>
+    reference emplace_back(Args&&... args);
+};
+}  // namespace std

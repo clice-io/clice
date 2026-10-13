@@ -1,0 +1,16 @@
+#pragma once
+
+namespace std {
+template <class T>
+struct allocator {};
+
+template <class T, class Alloc = allocator<T>>
+class vector {
+public:
+    using value_type = T;
+    using reference = T&;
+
+    template <class... Args>
+    reference emplace_back(Args&&... args);
+};
+}  // namespace std

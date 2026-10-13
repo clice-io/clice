@@ -413,12 +413,13 @@ Dispatcher::RawResult Dispatcher::completion(const Ticket& ticket,
 
 Dispatcher::RawResult Dispatcher::signature_help(const Ticket& ticket,
                                                  const protocol::Position& position,
+                                                 std::string selected,
                                                  kota::cancellation_token token) {
     return interactive(evidence_kind(EvidenceKind::SignatureHelp),
                        "SignatureHelp",
                        ticket,
                        position,
-                       worker::SignatureHelpParams{},
+                       worker::SignatureHelpParams{.selected = std::move(selected)},
                        std::move(token));
 }
 

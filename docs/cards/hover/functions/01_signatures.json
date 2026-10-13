@@ -10,18 +10,24 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace function_signature {\n\nint add(int lhs, int rhs);\n\nvoid configure(int width, bool visible = true);\n\n}\n",
+      "text": "#define DEFAULT_TIMEOUT 30\n\nnamespace function_signature {\n\nint add(int lhs, int rhs);\n\nvoid configure(int width, bool visible = true);\n\nvoid open_file(int mode = 0644, int timeout = DEFAULT_TIMEOUT);\n\n}\n",
       "markers": [
         {
           "name": "params",
-          "begin": 36,
-          "end": 36,
+          "begin": 64,
+          "end": 64,
           "range": false
         },
         {
           "name": "defaults",
-          "begin": 65,
-          "end": 65,
+          "begin": 93,
+          "end": 93,
+          "range": false
+        },
+        {
+          "name": "written_defaults",
+          "begin": 142,
+          "end": 142,
           "range": false
         }
       ]
@@ -42,11 +48,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 2,
+                    "line": 4,
                     "character": 4
                   },
                   "end": {
-                    "line": 2,
+                    "line": 4,
                     "character": 7
                   }
                 }
@@ -65,11 +71,34 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 4,
+                    "line": 6,
                     "character": 5
                   },
                   "end": {
-                    "line": 4,
+                    "line": 6,
+                    "character": 14
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "written_defaults",
+          "marker": "written_defaults",
+          "value": {
+            "hover": {
+              "markdown": "### function `open_file`\n\n---\n→ `void`\nParameters:\n- `int mode = 0644`\n- `int timeout = DEFAULT_TIMEOUT`\n\n---\n```cpp\n// In namespace function_signature\nvoid open_file(int mode = 0644, int timeout = DEFAULT_TIMEOUT)\n```",
+              "range": {
+                "$place": "void ⟦open_file⟧(int mode = 0644, int timeout = DEFAULT_TIMEOUT);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 8,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 8,
                     "character": 14
                   }
                 }
