@@ -865,19 +865,14 @@ private:
             has_non_default_args |= !is_default;
             if(is_default) {
                 if(options.default_arguments) {
-                    const auto text = clang::Lexer::getSourceText(
-                        clang::CharSourceRange::getTokenRange(params[i]->getDefaultArgRange()),
-                        unit.context().getSourceManager(),
-                        unit.lang_options());
+                    auto text = *display::default_argument(params[i]);
                     const auto limit = options.max_length.default_arguments;
-                    const bool too_long = limit && characters(text) > limit;
-                    const auto abbrev = (too_long || text.contains("\n")) ? "…" : text;
                     auto& element = formatted_default_args.emplace_back();
                     if(name_hint) {
                         append(element, linked(name, named_params[i]));
                         append(element, plain(": "));
                     }
-                    append(element, plain(abbrev));
+                    append(element, plain(limit && characters(text) > limit ? "…" : text));
                 }
             } else if(name_hint || reference_hint) {
                 std::vector<InlayHintPart> label;

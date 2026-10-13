@@ -531,7 +531,7 @@ ZEST_CASE(DefaultArguments) {
     // Packs and constructor calls
     run(R"c(
             struct Baz {
-                Baz(float a = 3 //
+                Baz(float a = 3
                             + 2);
             };
             struct Foo {
@@ -551,11 +551,21 @@ ZEST_CASE(DefaultArguments) {
         )c",
         {.default_arguments = true});
     EXPECT_SIZE(5);
-    EXPECT_HINT("0", "…");
+    EXPECT_HINT("0", "3 + 2");
     EXPECT_HINT("1", ", baz: Baz{}");
     EXPECT_HINT("2", ", baz: Baz{}");
     EXPECT_HINT("3", ", baz: Baz{}");
     EXPECT_HINT("4", ", baz: Baz{}");
+
+    // A default written in a macro's body
+    run(R"c(
+            #define DECLARE(name) void name(int first, int second = 4 + 1)
+            DECLARE(declared);
+            void use() { declared(1§(0)); }
+        )c",
+        {.default_arguments = true});
+    EXPECT_SIZE(2);
+    EXPECT_HINT("0", ", second: 4 + 1");
 
     // A limit of 0 means unlimited: a default longer than the usual limit
     // still prints in full.
