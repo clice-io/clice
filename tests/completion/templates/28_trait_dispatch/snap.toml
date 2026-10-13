@@ -1,0 +1,12 @@
+[answers.iterator.completion]
+items = [
+    { label = "first", kind = "Field", detail = "K" },
+    { label = "second", kind = "Field", detail = "V" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.member.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

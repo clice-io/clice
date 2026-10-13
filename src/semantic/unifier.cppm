@@ -23,8 +23,14 @@ class Unifier {
 public:
     using TemplateArguments = llvm::ArrayRef<clang::TemplateArgument>;
 
-    explicit Unifier(clang::ASTContext& context, unsigned depth, unsigned size) :
-        context(context), depth(depth), bindings(size) {}
+    /// `open` are value arguments that may hold any value — defaults that
+    /// do not fold: a value pattern meeting one is undecided. Any other
+    /// argument whose value is not known matches no value a pattern fixes.
+    explicit Unifier(clang::ASTContext& context,
+                     unsigned depth,
+                     unsigned size,
+                     llvm::ArrayRef<const clang::Expr*> open = {}) :
+        context(context), depth(depth), bindings(size), open(open) {}
 
     /// Unify `patterns` (a partial specialization's argument pattern or a
     /// primary template's injected arguments) against `arguments`. On success,
@@ -49,8 +55,8 @@ public:
         return deferred_checks;
     }
 
-    /// Whether a value pattern met an argument whose value is not known
-    /// yet: the match then holds or not once it is.
+    /// Whether a value pattern met an open argument: the match then holds
+    /// or not once its value is known.
     bool undecided() const {
         return undecided_values;
     }
@@ -81,6 +87,7 @@ private:
     clang::ASTContext& context;
     unsigned depth;
     llvm::SmallVector<clang::TemplateArgument, 4> bindings;
+    llvm::ArrayRef<const clang::Expr*> open;
     llvm::SmallVector<Deferred, 1> deferred_checks;
     bool undecided_values = false;
 
@@ -122,7 +129,8 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            clang::TemplateParameterList* params,
                            llvm::ArrayRef<clang::TemplateArgument> patterns,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
-                           llvm::SmallVectorImpl<clang::TemplateArgument>& deduced);
+                           llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
+                           llvm::ArrayRef<const clang::Expr*> open = {});
 
 /// The outcome of select_partial: a winner, or why there is none. Real
 /// instantiation diagnoses an ambiguity (no partial dominates every other

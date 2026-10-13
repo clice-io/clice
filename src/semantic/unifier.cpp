@@ -610,8 +610,8 @@ bool Unifier::unify(const clang::TemplateArgument& pattern,
             if(argument.getKind() == clang::TemplateArgument::Expression) {
                 auto expr = argument.getAsExpr();
                 if(expr->isValueDependent()) {
-                    undecided_values = true;
-                    return true;
+                    undecided_values = llvm::is_contained(open, expr);
+                    return undecided_values;
                 }
                 if(context.hasSameType(pattern.getIntegralType(), expr->getType())) {
                     if(auto value = expr->getIntegerConstantExpr(context)) {
@@ -1145,29 +1145,68 @@ std::optional<bool>
 
 }  // namespace
 
+/// Whether `lhs` and `rhs` are one type; none when the parameters they are
+/// written in leave it open.
+static std::optional<bool> same_type(clang::QualType lhs, clang::QualType rhs) {
+    lhs = lhs.getCanonicalType();
+    rhs = rhs.getCanonicalType();
+    if(lhs == rhs) {
+        return true;
+    }
+    if(!lhs->isDependentType() && !rhs->isDependentType()) {
+        return false;
+    }
+    /// A parameter is never a type written in itself: `K` and
+    /// `pair<const K, V>`, as a map's key and value type.
+    auto within = [](clang::QualType parameter, clang::QualType type) {
+        struct Finder : clang::RecursiveASTVisitor<Finder> {
+            clang::QualType parameter;
+            bool found = false;
+
+            bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* type) {
+                found |= clang::QualType(type, 0).getCanonicalType() == parameter;
+                return !found;
+            }
+        };
+        if(!parameter->getAs<clang::TemplateTypeParmType>()) {
+            return false;
+        }
+        Finder finder;
+        finder.parameter = parameter;
+        finder.TraverseType(type);
+        return finder.found;
+    };
+    if(within(lhs, rhs) || within(rhs, lhs)) {
+        return false;
+    }
+    return std::nullopt;
+}
+
 std::optional<bool> type_trait(const clang::Expr* expr,
                                llvm::function_ref<clang::QualType(clang::QualType)> bound) {
     expr = expr->IgnoreParenImpCasts();
     auto standard = [](const clang::Decl* decl) {
         return decl && decl->getDeclContext()->isStdNamespace();
     };
-    auto single_type = [](llvm::ArrayRef<clang::TemplateArgumentLoc> arguments) {
-        return arguments.size() == 1 &&
-                       arguments.front().getArgument().getKind() == clang::TemplateArgument::Type
-                   ? arguments.front().getArgument().getAsType()
-                   : clang::QualType();
-    };
 
     llvm::StringRef name;
-    clang::QualType operand;
-    if(auto* trait = llvm::dyn_cast<clang::TypeTraitExpr>(expr)) {
-        if(trait->getNumArgs() != 1) {
-            return std::nullopt;
+    llvm::SmallVector<clang::QualType, 2> operands;
+    auto types = [&](llvm::ArrayRef<clang::TemplateArgument> arguments) {
+        for(const auto& argument: arguments) {
+            if(argument.getKind() != clang::TemplateArgument::Type) {
+                operands.clear();
+                return;
+            }
+            operands.push_back(argument.getAsType());
         }
+    };
+    if(auto* trait = llvm::dyn_cast<clang::TypeTraitExpr>(expr)) {
         /// The builtin is the trait's name after `__`: `__is_object`.
         name = clang::getTraitSpelling(trait->getTrait());
         name.consume_front("__");
-        operand = trait->getArg(0)->getType();
+        for(auto* argument: trait->getArgs()) {
+            operands.push_back(argument->getType());
+        }
     } else if(auto* lookup = llvm::dyn_cast<clang::UnresolvedLookupExpr>(expr)) {
         if(lookup->getNumDecls() == 0 || !standard(*lookup->decls_begin())) {
             return std::nullopt;
@@ -1178,7 +1217,11 @@ std::optional<bool> type_trait(const clang::Expr* expr,
         if(!name.consume_back("_v")) {
             return std::nullopt;
         }
-        operand = single_type(lookup->template_arguments());
+        llvm::SmallVector<clang::TemplateArgument, 2> arguments;
+        for(const auto& argument: lookup->template_arguments()) {
+            arguments.push_back(argument.getArgument());
+        }
+        types(arguments);
     } else if(auto* member = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(expr)) {
         auto qualifier = member->getQualifier();
         if(member->getDeclName().getAsString() != "value" ||
@@ -1188,18 +1231,20 @@ std::optional<bool> type_trait(const clang::Expr* expr,
         auto* specialization = qualifier.getAsType()->getAs<clang::TemplateSpecializationType>();
         auto* trait =
             specialization ? specialization->getTemplateName().getAsTemplateDecl() : nullptr;
-        if(!standard(trait) || specialization->template_arguments().size() != 1 ||
-           specialization->template_arguments().front().getKind() !=
-               clang::TemplateArgument::Type) {
+        if(!standard(trait)) {
             return std::nullopt;
         }
         name = trait->getName();
-        operand = specialization->template_arguments().front().getAsType();
+        types(specialization->template_arguments());
     }
-    if(operand.isNull()) {
+    if(name == "is_same" && operands.size() == 2) {
+        return same_type(bound(operands[0]), bound(operands[1]));
+    }
+
+    if(operands.size() != 1) {
         return std::nullopt;
     }
-    return category_trait(name, category_of(bound(operand)));
+    return category_trait(name, category_of(bound(operands.front())));
 }
 
 std::optional<llvm::APSInt> convert_integral(clang::ASTContext& context,
@@ -1228,8 +1273,9 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            clang::TemplateParameterList* params,
                            llvm::ArrayRef<clang::TemplateArgument> patterns,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
-                           llvm::SmallVectorImpl<clang::TemplateArgument>& deduced) {
-    Unifier unifier(context, params->getDepth(), params->size());
+                           llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
+                           llvm::ArrayRef<const clang::Expr*> open) {
+    Unifier unifier(context, params->getDepth(), params->size(), open);
     if(!unifier.unify(patterns, arguments)) {
         return Deduction::Failed;
     }

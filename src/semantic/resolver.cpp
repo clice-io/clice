@@ -493,6 +493,9 @@ public:
                 /// A value that does not fold stays the expression: the
                 /// patterns it would choose between are then all possible
                 /// (see lookup_through_any).
+                if(!value) {
+                    open_defaults.insert(expr);
+                }
                 out.emplace_back(value ? clang::TemplateArgument(context, *value, NTTPD->getType())
                                        : argument);
                 continue;
@@ -583,7 +586,12 @@ public:
         }
 
         llvm::SmallVector<clang::TemplateArgument, 4> deduced;
-        auto deduction = deduce_arguments(context, list, patterns, arguments, deduced);
+        auto deduction = deduce_arguments(context,
+                                          list,
+                                          patterns,
+                                          arguments,
+                                          deduced,
+                                          open_defaults.getArrayRef());
         if(deduction == Deduction::Failed) {
             return deduction;
         }
@@ -1030,8 +1038,15 @@ public:
 
     /// The value of a name the folding cannot see through.
     std::optional<llvm::APSInt> value_of(const clang::Expr* expr) {
-        if(auto trait =
-               type_trait(expr, [&](clang::QualType operand) { return substitute(operand); })) {
+        /// An alias's value parameter keeps the argument it stands for.
+        if(auto* substituted = llvm::dyn_cast<clang::SubstNonTypeTemplateParmExpr>(expr)) {
+            return evaluate(substituted->getReplacement());
+        }
+        /// A trait's operands are named through the class's own members
+        /// (`is_same_v<key_type, value_type>`).
+        if(auto trait = type_trait(expr, [&](clang::QualType operand) {
+               return resolve(substitute(operand));
+           })) {
             return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
         }
         if(auto NTTP = referenced_nttp(expr)) {
@@ -2626,6 +2641,21 @@ private:
                             continue;
                         }
                     }
+                    /// A value computed from the parameters (`is_set`, a
+                    /// static member of the class) folds while the frames
+                    /// binding them are here; a later lookup no longer has
+                    /// them.
+                    if(auto* expr = argument.getAsExpr();
+                       expr->isValueDependent() && !expr->isTypeDependent()) {
+                        auto type = expr->getType().getUnqualifiedType();
+                        auto value = evaluate(expr);
+                        if(auto folded =
+                               value ? convert_integral(context, *value, type) : std::nullopt) {
+                            out.emplace_back(context, *folded, type);
+                            changed = true;
+                            continue;
+                        }
+                    }
                     out.push_back(argument);
                     break;
                 }
@@ -3267,6 +3297,9 @@ private:
     llvm::SmallPtrSet<const void*, 8> active_resolutions;
     llvm::DenseSet<std::pair<const void*, void*>> active_ctd_lookups;
     llvm::SmallPtrSet<const clang::VarDecl*, 4> deducing;
+    /// The defaults of value parameters that did not fold, which may hold
+    /// any value (Unifier).
+    llvm::SmallSetVector<const clang::Expr*, 4> open_defaults;
     unsigned depth = 0;
     unsigned steps = 0;
     unsigned probing = 0;
