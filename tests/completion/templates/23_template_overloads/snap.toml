@@ -7,3 +7,6 @@ items = [
 
 [answers.differing_template.completion]
 items = []
+
+[answers.parameter_template.completion]
+items = []

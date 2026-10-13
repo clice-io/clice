@@ -4089,6 +4089,22 @@ ZEST_CASE(StandardMapIterator) {
     )code");
 }
 
+ZEST_CASE(AbominableAddPointer) {
+    /// A function type with qualifiers of its own has no pointer.
+    run(R"code(
+        template <typename X, typename F>
+        struct wrap {
+            using type = F;
+        };
+
+        template <typename X>
+        struct test {
+            using input = __add_pointer(typename wrap<X, int() const>::type);
+            using expect = int() const;
+        };
+    )code");
+}
+
 ZEST_CASE(DependentTemplateHead) {
     /// A template template argument that is itself a dependent name (libc++
     /// binds `_Alloc::template rebind` this way): the rebuilt head must be a

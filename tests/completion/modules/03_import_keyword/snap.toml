@@ -6,6 +6,9 @@ items = [
 [keyword.after_declaration.completion]
 items = []
 
+[keyword.global_fragment.completion]
+items = []
+
 ["module names".declared.completion]
 items = [
     { label = "app_value()", kind = "Function", detail = "int" },

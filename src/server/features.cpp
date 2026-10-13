@@ -1108,12 +1108,15 @@ bool Features::scope_candidates(llvm::StringRef prefix,
             .is_template = index::has_flag(symbol.flags, index::SymbolFlags::Template),
             .symbol = symbol.hash,
         };
+        // An enumerator keeps its enumeration in the qualifier: the index
+        // does not tell a scoped one, which needs it, and an unscoped one
+        // takes it as well.
         auto chain = query.container_chain(symbol.hash);
-        // An unscoped enumerator is named in its enumeration's scope.
-        if(!chain.empty() && chain.back().kind == SymbolKind::Enum) {
-            chain.pop_back();
+        auto namespaces = llvm::ArrayRef(chain);
+        if(!namespaces.empty() && namespaces.back().kind == SymbolKind::Enum) {
+            namespaces = namespaces.drop_back();
         }
-        if(llvm::any_of(chain, [](const index::SymbolRef& container) {
+        if(llvm::any_of(namespaces, [](const index::SymbolRef& container) {
                return container.kind != SymbolKind::Namespace;
            })) {
             continue;

@@ -29,4 +29,6 @@ void walk(Optional<T> held, const Optional<T> fixed) {
     held.value().§(lvalue);
     fixed.value().§(const_lvalue);
     make<T>().value().§(rvalue);
+    static_cast<Optional<T>&&>(held).value().§(cast_to_rvalue);
+    Optional<T>{}.value().§(temporary);
 }

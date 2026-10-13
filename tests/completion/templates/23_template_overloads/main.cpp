@@ -1,7 +1,7 @@
 // A member call whose overloads include a member template, as std::map's
-// find() and its heterogeneous lookup: a template whose return type only
-// deduction would tell leaves the type to the others; one that returns
-// another type leaves the call untyped.
+// find() and its heterogeneous lookup: a template returning the `decltype`
+// of what deduction would tell leaves the type to the others; one returning
+// another type, or its parameter, leaves the call untyped.
 template <class K, class V>
 struct Pair {
     K first;
@@ -52,9 +52,13 @@ struct Picker {
     Left pick(int index);
     template <class U>
     Right pick(U value);
+    Left choose(int index);
+    template <class U>
+    U choose(U value);
 };
 
 template <class T>
 void choose(Picker<T> picker) {
     picker.pick("x").§(differing_template);
+    picker.choose(Right()).§(parameter_template);
 }

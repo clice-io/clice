@@ -22,4 +22,6 @@ constexpr int grid_size = 4;
 
 enum Shade { shade_dark };
 
+enum class Tone { tone_bright };
+
 }  // namespace shapes

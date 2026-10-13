@@ -10,6 +10,7 @@ double draw() {
     Ro§(alias_template) row;
     int size = grid_si§(variable_template);
     int shade = shade_d§(enumerator);
+    auto tone = tone_br§(scoped_enumerator);
     int count = circle_cou§(class_member);
     vecto§(standard_name) values;
     double scale = GEO_SC§(macro);

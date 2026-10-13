@@ -12,6 +12,7 @@ import :semantic.resolver;
 import :support.fuzzy_matcher;
 import :support.markup;
 import :syntax.completion;
+import :syntax.lexer;
 
 namespace clice::feature {
 
@@ -360,6 +361,37 @@ bool unqualified_name(clang::CodeCompletionContext& context) {
         }
         default: return false;
     }
+}
+
+/// Whether `offset` of `content` lies in a global module fragment: after a
+/// leading `module;`, before the module declaration.
+bool in_global_fragment(llvm::StringRef content,
+                        std::uint32_t offset,
+                        const clang::LangOptions& options) {
+    Lexer lexer(content, {.lang_opts = &options});
+    bool fragment = false;
+    for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= offset;
+        token = lexer.advance()) {
+        if(token.is_eod()) {
+            continue;
+        }
+        if(token.is_directive_hash()) {
+            while(!token.is_eod() && !token.is_eof()) {
+                token = lexer.advance();
+            }
+            continue;
+        }
+        auto text = token.text(content);
+        if(text == "export") {
+            token = lexer.advance();
+            text = token.text(content);
+        }
+        if(text != "module" || lexer.advance().kind != clang::tok::semi) {
+            return false;
+        }
+        fragment = true;
+    }
+    return fragment;
 }
 
 /// What a member access reaches without an object: a static member.
@@ -1418,8 +1450,9 @@ public:
         };
 
         // In a module unit, imports precede every other declaration of its
-        // purview, and only an interface exports; elsewhere `export` only
-        // begins one, before any declaration. Clang's keywords know neither.
+        // purview, none in its global module fragment, and only an interface
+        // exports; elsewhere `export` only begins one, before any
+        // declaration. Clang's keywords know neither.
         auto* module = sema.getCurrentModule();
         bool named_module = module && module->isNamedModule();
         auto completion_loc = sema.getPreprocessor().getCodeCompletionLoc();
@@ -1432,7 +1465,9 @@ public:
                        source_manager.isBeforeInTranslationUnit(decl->getLocation(),
                                                                 completion_loc);
             });
-        bool imports = !named_module || !declared;
+        bool imports = named_module
+                           ? !declared
+                           : !in_global_fragment(content, prefix.typed.begin, sema.getLangOpts());
         bool exports = named_module ? module->isModuleInterfaceUnit() : !declared;
         auto allowed_keyword = [&](llvm::StringRef keyword) {
             return (keyword != "import" || imports) && (keyword != "export" || exports);
@@ -1969,9 +2004,9 @@ public:
                 clang::DeclContext* scope = ast.getTranslationUnitDecl();
                 for(const auto& segment: candidate.scope) {
                     auto found = visible(scope, segment);
-                    auto space = llvm::find_if(found, llvm::IsaPred<clang::NamespaceDecl>);
-                    scope =
-                        space == found.end() ? nullptr : llvm::cast<clang::NamespaceDecl>(*space);
+                    auto space =
+                        llvm::find_if(found, llvm::IsaPred<clang::NamespaceDecl, clang::EnumDecl>);
+                    scope = space == found.end() ? nullptr : llvm::cast<clang::DeclContext>(*space);
                     if(!scope) {
                         break;
                     }

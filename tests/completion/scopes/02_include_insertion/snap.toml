@@ -86,14 +86,17 @@ items = [
 [default.enumerator.completion]
 items = [
     {
-        label = "shapes::shade_dark",
+        label = "shapes::Shade::shade_dark",
         kind = "EnumMember",
-        insert = "shapes::shade_dark",
+        insert = "shapes::Shade::shade_dark",
         edits = [
             { at = "⟦⟧ @-10", text = '#include "shapes.h"' },
         ],
     },
 ]
+
+[default.scoped_enumerator.completion]
+items = []
 
 [default.class_member.completion]
 items = []
@@ -106,7 +109,7 @@ items = [
         insert = "std::vector<$0>",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-12", text = "#include <vector>" },
+            { at = "⟦⟧ @-13", text = "#include <vector>" },
         ],
     },
 ]
@@ -150,6 +153,9 @@ items = []
 items = []
 
 [configured.enumerator.completion]
+items = []
+
+[configured.scoped_enumerator.completion]
 items = []
 
 [configured.class_member.completion]

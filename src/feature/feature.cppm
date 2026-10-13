@@ -646,7 +646,8 @@ bool in_includer_context(const protocol::Diagnostic& diagnostic);
 struct ScopeCandidate {
     std::string name;
 
-    /// The namespaces around it, outermost first, inline ones left out.
+    /// The namespaces around it, outermost first, inline ones left out;
+    /// an enumerator's enumeration last.
     std::vector<std::string> scope;
 
     protocol::CompletionItemKind kind = protocol::CompletionItemKind::Text;

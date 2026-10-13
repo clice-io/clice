@@ -1423,7 +1423,7 @@ public:
             auto type = type_of(base);
             return !type.isNull() && !type->isLValueReferenceType();
         }
-        return !base->isTypeDependent() && !base->isLValue();
+        return !base->isLValue();
     }
 
     /// The type a call returns, before resolution; the frames it pushes
@@ -1446,19 +1446,22 @@ public:
     /// a `key_type&&`, and returns `mapped_type&` either way). Null when
     /// they disagree, or there are none.
     ///
-    /// A template whose return type is written in the parameters only
+    /// A template returning the `decltype` of a call on the parameters only
     /// deduction would bind tells nothing, and the others decide: beside a
-    /// map's plain `find`, the heterogeneous `find(const K&)` a defaulted
-    /// template argument disables unless the comparator opts in.
+    /// map's plain `find`, the heterogeneous `find(const K&) ->
+    /// decltype(...)` a defaulted template argument disables unless the
+    /// comparator opts in. One returning a parameter itself may be the one
+    /// chosen, and leaves the call untyped.
     clang::QualType
         common_return_type(llvm::ArrayRef<const clang::NamedDecl*> candidates,
                            llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments) {
         clang::QualType common;
         for(auto* candidate: candidates) {
             auto type = return_type(candidate, template_arguments);
-            if(auto* function = as_function(candidate); type.isNull() && function &&
-                                                        template_arguments.empty() &&
-                                                        function->getDescribedFunctionTemplate()) {
+            if(auto* function = as_function(candidate);
+               type.isNull() && function && template_arguments.empty() &&
+               function->getDescribedFunctionTemplate() &&
+               function->getReturnType()->getAs<clang::DecltypeType>()) {
                 continue;
             }
             if(type.isNull() || (!common.isNull() && !context.hasSameType(type, common))) {
@@ -2313,12 +2316,18 @@ private:
             quals.removeCVRQualifiers(removed);
             return context.getQualifiedType(base.getUnqualifiedType(), quals);
         };
+        /// A function type with qualifiers of its own (`int() const`) has
+        /// no pointer nor reference; void has no reference.
+        auto* function = base->getAs<clang::FunctionProtoType>();
+        bool referenceable = !function || (function->getMethodQuals().empty() &&
+                                           function->getRefQualifier() == clang::RQ_None);
         switch(kind) {
-            case Kind::AddPointer: return context.getPointerType(value);
+            case Kind::AddPointer: return referenceable ? context.getPointerType(value) : base;
             case Kind::AddLvalueReference:
-                return base->isVoidType() ? base : context.getLValueReferenceType(value);
+                return base->isVoidType() || !referenceable ? base
+                                                            : context.getLValueReferenceType(value);
             case Kind::AddRvalueReference:
-                if(base->isVoidType() || base->isLValueReferenceType()) {
+                if(base->isVoidType() || !referenceable || base->isLValueReferenceType()) {
                     return base;
                 }
                 return context.getRValueReferenceType(value);
