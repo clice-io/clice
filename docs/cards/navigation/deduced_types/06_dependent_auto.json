@@ -4,13 +4,13 @@
   "subtopic": "deduced_types",
   "title": "`auto` in templates",
   "summary": "Inside a template, an `auto` whose initializer depends on a template parameter reaches the type the initializer resolves to",
-  "prose": "A template parameter stands for its argument when the template is\ninstantiated once, and for itself when it is instantiated with several\ntypes.",
+  "prose": "A template parameter, a class template's included, stands for its argument\nwhen the template is instantiated once, and for itself when it is\ninstantiated with several types.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nstruct Node {\n    T value;\n    Node* advance();\n};\n\ntemplate <typename T>\nvoid walk(Node<T>& node) {\n    auto next = node.advance();\n    auto value = node.value;\n}\n\ntemplate <typename T>\nvoid visit(Node<T>& node) {\n    auto value = node.value;\n}\n\nstruct Widget {};\n\nstruct Gadget {};\n\nvoid drive(Node<Widget>& widget, Node<Gadget>& gadget) {\n    walk(widget);\n    visit(widget);\n    visit(gadget);\n}\n",
+      "text": "template <typename T>\nstruct Node {\n    T value;\n    Node* advance();\n};\n\ntemplate <typename T>\nvoid walk(Node<T>& node) {\n    auto next = node.advance();\n    auto value = node.value;\n}\n\ntemplate <typename T>\nvoid visit(Node<T>& node) {\n    auto value = node.value;\n}\n\nstruct Widget {};\n\nstruct Gadget {};\n\nvoid drive(Node<Widget>& widget, Node<Gadget>& gadget) {\n    walk(widget);\n    visit(widget);\n    visit(gadget);\n}\n\ntemplate <typename T>\nstruct Holder {\n    void reset() {\n        auto copy = T();\n    }\n};\n\ntemplate struct Holder<Gadget>;\n",
       "markers": [
         {
           "name": "dependent_call",
@@ -28,6 +28,12 @@
           "name": "several_instantiations",
           "begin": 243,
           "end": 243,
+          "range": false
+        },
+        {
+          "name": "class_template",
+          "begin": 490,
+          "end": 490,
           "range": false
         }
       ]
@@ -97,6 +103,28 @@
                   "end": {
                     "line": 12,
                     "character": 20
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "class_template",
+          "marker": "class_template",
+          "value": {
+            "definition": [
+              {
+                "$place": "struct ⟦Gadget⟧ {};",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 19,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 19,
+                    "character": 13
                   }
                 }
               }

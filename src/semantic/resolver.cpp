@@ -1029,6 +1029,13 @@ public:
     /// reference. `decltype(auto)` takes the initializer's type as is.
     /// Null when the initializer does not resolve or the declarator wraps
     /// `auto` in anything but pointers and references.
+    /// Bind the parameters of `specialization`'s template to its arguments
+    /// for the rest of this query.
+    void assume(const clang::ClassTemplateSpecializationDecl* specialization) {
+        auto* CTD = specialization->getSpecializedTemplate();
+        stack.push(CTD, CTD->getTemplateParameters(), specialization->getTemplateArgs().asArray());
+    }
+
     clang::QualType deduce_auto(const clang::VarDecl* var) {
         /// The initializer can name the variable again through another
         /// specialization (`Depth<N>::value` initialized from
@@ -2928,7 +2935,28 @@ clang::TagDecl* TemplateResolver::resolve_tag(clang::QualType type) {
 }
 
 clang::QualType TemplateResolver::deduce(const clang::VarDecl* var) {
-    PseudoInstantiator instantiator(context, resolved, options);
+    /// A variable inside class templates the unit instantiates once deduces
+    /// as in those instantiations. Their parameters are bound for this query
+    /// alone, so what it resolves under them stays out of the unit's cache.
+    llvm::SmallVector<const clang::ClassTemplateSpecializationDecl*, 1> enclosing;
+    for(auto* scope = var->getDeclContext(); options.only_instantiation && scope;
+        scope = scope->getParent()) {
+        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(scope);
+        if(!record || !record->getDescribedClassTemplate()) {
+            continue;
+        }
+        // The helper keeps its clangd signature, which speaks mutable
+        // pointers; it only reads through them.
+        if(auto* only = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(
+               decls::only_instantiation(const_cast<clang::CXXRecordDecl*>(record)))) {
+            enclosing.push_back(only);
+        }
+    }
+    llvm::DenseMap<const void*, clang::QualType> scoped;
+    PseudoInstantiator instantiator(context, enclosing.empty() ? resolved : scoped, options);
+    for(auto* specialization: enclosing) {
+        instantiator.assume(specialization);
+    }
     auto type = instantiator.deduce_auto(var);
     return type.isNull() ? type : instantiator.resolve(type);
 }

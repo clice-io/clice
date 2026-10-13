@@ -285,6 +285,12 @@ clang::NamedDecl* only_instantiation_impl(TemplateDeclTy* TD) {
                !Spec->isReferenced())
                 continue;
         }
+        // A class template specialization the code only names, through a
+        // pointer to it, is not instantiated.
+        if constexpr(std::is_same_v<TemplateDeclTy, clang::ClassTemplateDecl>) {
+            if(Spec->getTemplateSpecializationKind() == clang::TSK_Undeclared)
+                continue;
+        }
         if(Only != nullptr)
             return nullptr;
         Only = Spec;

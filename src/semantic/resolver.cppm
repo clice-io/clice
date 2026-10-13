@@ -60,7 +60,9 @@ public:
     clang::QualType arrow_pointee(clang::QualType type);
 
     /// What an `auto` variable a dependent initializer left undeduced
-    /// deduces to, resolved. Null when the initializer does not resolve.
+    /// deduces to, resolved; with `only_instantiation`, inside a class
+    /// template the unit instantiates once, as in that instantiation. Null
+    /// when the initializer does not resolve.
     clang::QualType deduce(const clang::VarDecl* var);
 
     using lookup_result = clang::DeclContext::lookup_result;

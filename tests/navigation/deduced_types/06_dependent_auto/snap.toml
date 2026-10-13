@@ -6,3 +6,6 @@ definition = ["struct ⟦Widget⟧ {};"]
 
 [answers.several_instantiations]
 definition = ["template <typename ⟦T⟧> @-2"]
+
+[answers.class_template]
+definition = ["struct ⟦Gadget⟧ {};"]

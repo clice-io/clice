@@ -24,3 +24,12 @@ void drive(Node<Widget>& widget, Node<Gadget>& gadget) {
     visit(widget);
     visit(gadget);
 }
+
+template <typename T>
+struct Holder {
+    void reset() {
+        au§(class_template)to copy = T();
+    }
+};
+
+template struct Holder<Gadget>;

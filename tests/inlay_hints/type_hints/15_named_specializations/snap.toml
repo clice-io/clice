@@ -1,0 +1,4 @@
+[answers.only]
+inlay_hints = [
+    { line = "auto copy⟨: char⟩ = T();" },
+]

@@ -2123,6 +2123,38 @@ ZEST_CASE(InvalidBindingKeepsFile) {
     });
 }
 
+ZEST_CASE(ClassParametersStayUnbound) {
+    add_main("main.cpp", R"(
+        struct Widget {};
+
+        template <typename T>
+        struct Holder {
+            void reset() {
+                §(local)⟦auto copy = T()⟧;
+            }
+        };
+
+        template struct Holder<Widget>;
+    )");
+    ZASSERT(compile());
+
+    // The only instantiation binds the class's parameter in an open file's
+    // index, where `auto` stands for Widget; a stored index leaves it
+    // unbound, as every unit shares it, and `auto` stands for `T`.
+    decode_index(index::build_tu_index(*unit, {.only_instantiation = true}));
+    ZEXPECT(spelled_in("local") == std::vector<Spelled>{
+                                       {"auto", SymbolKind::Struct,   {RelationKind::Deduced}   },
+                                       {"copy", SymbolKind::Variable, {RelationKind::Definition}},
+                                       {"T",    SymbolKind::Type,     {RelationKind::Reference} },
+    });
+    decode_index(index::build_tu_index(*unit));
+    ZEXPECT(spelled_in("local") == std::vector<Spelled>{
+                                       {"auto", SymbolKind::Type,     {RelationKind::Deduced}   },
+                                       {"copy", SymbolKind::Variable, {RelationKind::Definition}},
+                                       {"T",    SymbolKind::Type,     {RelationKind::Reference} },
+    });
+}
+
 ZEST_CASE(MacroNameFirstToken) {
     build_index(R"(
         #define §(macro)⟦NAME⟧ Widget
