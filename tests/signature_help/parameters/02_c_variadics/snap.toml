@@ -1,13 +1,7 @@
-[answers.pos]
-wrong = "the label leaves out the ..., so record reads as taking one argument"
-
 [answers.pos.signature_help]
-signatures = ["record(⟦int code⟧) -> void"]
+signatures = ["record(⟦int code⟧, ...) -> void"]
 active = 0
 
-[answers.extra]
-wrong = "past the named parameter nothing is marked, and the label leaves out the ..."
-
 [answers.extra.signature_help]
-signatures = ["record(int code) -> void"]
+signatures = ["record(int code, ⟦...⟧) -> void"]
 active = 0

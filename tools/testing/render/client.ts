@@ -81,7 +81,10 @@ export abstract class Client {
         at: Anchor,
         trigger: string | undefined,
     ): Promise<Completion>;
-    protected abstract fetchSignatureHelp(at: Anchor): Promise<Signatures>;
+    protected abstract fetchSignatureHelp(
+        at: Anchor,
+        selected: string | undefined,
+    ): Promise<Signatures>;
     protected abstract fetchHighlights(at: Anchor): Promise<Highlight[]>;
     protected abstract fetchSelectionRange(at: Anchor): Promise<Range[]>;
     /// The code actions over `selection` of `file`.
@@ -145,8 +148,10 @@ export abstract class Client {
         );
     }
 
-    signatureHelp(at: Anchor): Promise<Signatures> {
-        return shown(this.fetchSignatureHelp(at), "signature_help", renderSignatures);
+    /// The signature help at `at`; with `selected`, asked while the client
+    /// shows the signature so labeled active.
+    signatureHelp(at: Anchor, selected?: string): Promise<Signatures> {
+        return shown(this.fetchSignatureHelp(at, selected), "signature_help", renderSignatures);
     }
 
     highlights(at: Anchor): Promise<Highlight[]> {

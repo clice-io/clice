@@ -94,6 +94,7 @@ interface RawSignatureHelp {
     signatures?:
         | {
               label: string;
+              documentation?: string | null;
               parameters?: { label: string | [number, number] }[] | null;
               active_parameter?: number | null;
           }[]
@@ -156,6 +157,7 @@ const SECTIONS: Record<string, string> = {
     code_completion: "code_completion",
     hover: "hover",
     inlay_hint: "inlay_hints",
+    signature_help: "signature_help",
 };
 
 /// Twin of SymbolModifiers::Kind (src/semantic/symbol.cppm), in bit order:
@@ -338,7 +340,13 @@ export class Inspect extends Client {
         };
     }
 
-    protected async fetchSignatureHelp(at: Anchor): Promise<Signatures> {
+    protected async fetchSignatureHelp(
+        at: Anchor,
+        selected: string | undefined,
+    ): Promise<Signatures> {
+        if (selected !== undefined) {
+            return this.cannot("signature help asked again with a signature selected", at);
+        }
         const raw = (await this.atPoint("signature_help", at)) as RawSignatureHelp | null;
         if (raw === null) {
             return signatures(null);
@@ -346,6 +354,9 @@ export class Inspect extends Client {
         return signatures({
             signatures: (raw.signatures ?? []).map((signature) => ({
                 label: signature.label,
+                ...(signature.documentation == null
+                    ? {}
+                    : { documentation: signature.documentation }),
                 parameters: (signature.parameters ?? []).map((parameter) => ({
                     label: parameter.label,
                 })),

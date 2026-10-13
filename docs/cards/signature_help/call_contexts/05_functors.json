@@ -3,19 +3,25 @@
   "topic": "signature_help",
   "subtopic": "call_contexts",
   "title": "Functor calls",
-  "summary": "Calling an object shows its `operator()` overloads",
-  "prose": "",
+  "summary": "Calling an object shows its `operator()` overloads under the object's name",
+  "prose": "An object the call does not name, such as one a function returns, shows\n`operator()` with its qualifiers.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Adder {\n    int operator()(int a, int b);\n};\n\nint main() {\n    Adder add;\n    add(1, 2);\n}\n",
+      "text": "struct Adder {\n    int operator()(int a, int b) const;\n};\n\nAdder make_adder();\n\nint main() {\n    Adder add;\n    add(1, 2);\n    make_adder()(1, 2);\n}\n",
       "markers": [
         {
           "name": "pos",
-          "begin": 89,
-          "end": 89,
+          "begin": 116,
+          "end": 116,
+          "range": false
+        },
+        {
+          "name": "unnamed",
+          "begin": 140,
+          "end": 140,
           "range": false
         }
       ]
@@ -31,7 +37,19 @@
           "value": {
             "signature_help": {
               "signatures": [
-                "operator()(⟦int a⟧, int b) -> int"
+                "add(⟦int a⟧, int b) -> int"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "unnamed",
+          "marker": "unnamed",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "operator()(⟦int a⟧, int b) const -> int"
               ],
               "active": 0
             }

@@ -863,11 +863,24 @@ export class CliceClient {
         });
     }
 
-    signatureHelpAt(uri: string, line: number, character: number) {
-        return this.sendRequest(
-            proto.SignatureHelpRequest.type,
-            this.textDocumentPosition(uri, line, character),
-        );
+    /// With `selected`, asked again while the popup shows that signature
+    /// active, as typing in the call asks.
+    signatureHelpAt(uri: string, line: number, character: number, selected?: string) {
+        const context =
+            selected === undefined
+                ? undefined
+                : {
+                      triggerKind: proto.SignatureHelpTriggerKind.ContentChange,
+                      isRetrigger: true,
+                      activeSignatureHelp: {
+                          signatures: [{ label: selected }],
+                          activeSignature: 0,
+                      },
+                  };
+        return this.sendRequest(proto.SignatureHelpRequest.type, {
+            ...this.textDocumentPosition(uri, line, character),
+            ...(context === undefined ? {} : { context }),
+        });
     }
 
     documentSymbols(uri: string) {

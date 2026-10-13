@@ -482,7 +482,7 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
     cp.completion = {params.file, params.offset};
     cp.stop = stop;
 
-    auto help = feature::signature_help(cp);
+    auto help = feature::signature_help(cp, params.config.signature_help, params.selected);
     LOG_DEBUG("SignatureHelp done: {}ms", timer.ms());
 
     return to_raw(help);

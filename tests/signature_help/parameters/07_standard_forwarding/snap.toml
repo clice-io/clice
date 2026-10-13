@@ -1,0 +1,34 @@
+[answers.make_unique.signature_help]
+signatures = [
+    "make_unique(⟦int width⟧, int height) -> unique_ptr<Widget>",
+    "make_unique(⟦const char *name⟧) -> unique_ptr<Widget>",
+    "make_unique(⟦const Widget &⟧) -> unique_ptr<Widget>",
+    "make_unique(⟦Widget &&⟧) -> unique_ptr<Widget>",
+]
+active = 0
+
+[answers.make_shared.signature_help]
+signatures = ["make_shared(int width, ⟦int height⟧) -> shared_ptr<Widget>"]
+active = 0
+
+[answers.emplace_back.signature_help]
+signatures = [
+    "emplace_back(⟦int width⟧, int height) -> reference",
+    "emplace_back(⟦const char *name⟧) -> reference",
+    "emplace_back(⟦const Widget &⟧) -> reference",
+    "emplace_back(⟦Widget &&⟧) -> reference",
+]
+active = 0
+
+[answers.aggregate.signature_help]
+signatures = ["emplace_back(int x, ⟦int y⟧) -> reference"]
+active = 0
+
+[answers.try_emplace.signature_help]
+signatures = [
+    "try_emplace(const key_type &key, ⟦int width⟧, int height) -> pair<iterator, bool>",
+    "try_emplace(const key_type &key, ⟦const char *name⟧) -> pair<iterator, bool>",
+    "try_emplace(const key_type &key, ⟦const Widget &⟧) -> pair<iterator, bool>",
+    "try_emplace(const key_type &key, ⟦Widget &&⟧) -> pair<iterator, bool>",
+]
+active = 0

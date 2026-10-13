@@ -1000,14 +1000,16 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
 
 Features::RawResult Features::signature_help(std::shared_ptr<Session> session,
                                              const protocol::Position& position,
+                                             std::string selected,
                                              kota::cancellation_token token) {
     ast.escalate(*session);
     return kota::co_invoke([this,
                             ticket = Ticket::take(std::move(session)),
                             pause = pump.scoped_pause(),
                             &position,
+                            selected = std::move(selected),
                             token = std::move(token)]() -> RawResult {
-        co_return co_await dispatcher.signature_help(ticket, position, token);
+        co_return co_await dispatcher.signature_help(ticket, position, selected, token);
     });
 }
 

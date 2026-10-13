@@ -47,21 +47,6 @@ tests/signature_help/overload_signatures/04_const_overloads
 
 <!-- END GENERATED ITEMS -->
 
-- [x] Template instantiation pattern resolution (shows template pattern, not instantiation)
-
-- [ ] Prefer user-supplied constructors over compiler-generated ones ([clangd#1259](https://github.com/clangd/clangd/issues/1259))
-
-- [ ] Filter dependent overload candidates by arity ([clangd#2342](https://github.com/clangd/clangd/issues/2342))
-
-  ```cpp
-  template<typename T>
-  void process(T& obj) {
-      obj.foo(1, 2);  // if T has foo(int) and foo(int,int), only show foo(int,int) as viable
-  }
-  ```
-
-- [ ] Better heuristic resolution of dependent overloads ([clangd#1083](https://github.com/clangd/clangd/issues/1083))
-
 ## Call Contexts
 
 Signature help follows the call around the cursor, whatever is being called: a constructor, a function pointer, an object with `operator()`, a template.
@@ -274,35 +259,13 @@ tests/signature_help/parameters/06_forwarding
 
 <!-- END GENERATED ITEMS -->
 
-- [ ] Prettify standard library parameter names ([clangd#736](https://github.com/clangd/clangd/issues/736))
-
-  ```
-  // current:  push_back(const value_type& __x)
-  // expected: push_back(const value_type& value)
-  ```
-
-- [ ] Preserve enum class scope in parameter types ([clangd#2475](https://github.com/clangd/clangd/issues/2475))
-
-  ```cpp
-  enum class Color { Red, Green, Blue };
-  void paint(Color c);
-  paint(^  // show "(Color c)", not "(c)" with scope stripped
-  ```
-
 ## Documentation
 
-- [ ] Documentation for the active parameter (from `@param` doc comments)
+The called function's documentation comment shows with its signatures, as plain text.
 
-  ```cpp
-  /// @param path The file system path.
-  /// @param mode POSIX file permission bits.
-  void open(std::string path, int mode);
-  open("file", ^  // show documentation for mode parameter
-  ```
+<!-- BEGIN GENERATED ITEMS: signature_help/documentation -->
 
-- [ ] Respect `documentationFormat` capability ([clangd#945](https://github.com/clangd/clangd/issues/945))
-- [ ] Propagate documentation through inherited constructors ([clangd#1936](https://github.com/clangd/clangd/issues/1936))
-- [ ] Overload set count indicator
+<!-- END GENERATED ITEMS -->
 
 ## Trigger Characters
 
@@ -318,9 +281,4 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 | `>`       | Template close     | Update context           |
 | `,`       | Argument separator | Update active parameter  |
 
-- [ ] Avoid false triggers — don't fire inside comments, string literals, or when defining a function ([clangd#51](https://github.com/clangd/clangd/issues/51), [clangd#289](https://github.com/clangd/clangd/issues/289))
-
-  ```cpp
-  void foo(int x, int y) {  // should NOT trigger signature help
-  //       ^^^^^^^^^^^^^ this is a definition, not a call
-  ```
+A parameter list being declared, a call already closed and a comment show nothing.

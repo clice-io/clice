@@ -18,5 +18,5 @@ signatures = ["size() const -> int"]
 active = 0
 
 [answers.class_template.signature_help]
-signatures = ["at(⟦int index⟧) -> T &", "at(⟦U index⟧, bool checked) -> U"]
+signatures = ["at(⟦int index⟧) -> int &", "at(⟦U index⟧, bool checked) -> U"]
 active = 0

@@ -1,0 +1,23 @@
+#pragma once
+
+namespace std {
+template <class T>
+struct default_delete {};
+
+template <class T, class D = default_delete<T>>
+struct unique_ptr {};
+
+namespace __detail {
+template <class T>
+using __unique_ptr_t = unique_ptr<T>;
+}  // namespace __detail
+
+template <class T, class... Args>
+__detail::__unique_ptr_t<T> make_unique(Args&&... args);
+
+template <class T>
+struct shared_ptr {};
+
+template <class T, class... Args>
+shared_ptr<T> make_shared(Args&&... args);
+}  // namespace std

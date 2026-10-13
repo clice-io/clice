@@ -1,0 +1,15 @@
+[answers.member.signature_help]
+signatures = ["at(⟦int index⟧) -> Point &"]
+active = 0
+
+[answers.parameter.signature_help]
+signatures = ["assign(int count, ⟦const Point &value⟧) -> void"]
+active = 0
+
+[answers.member_template.signature_help]
+signatures = ["convert(⟦U fallback⟧) const -> U"]
+active = 0
+
+[answers.function_object.signature_help]
+signatures = ["callback(⟦int⟧, double) -> bool"]
+active = 0

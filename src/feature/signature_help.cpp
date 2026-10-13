@@ -8,6 +8,8 @@ import :compile.compilation;
 import :compile.compilation_unit;
 import :compile.directive;
 import :feature.feature;
+import :semantic.display;
+import :support.markup;
 import :syntax.lexer;
 
 namespace clice::feature {
@@ -30,9 +32,9 @@ std::optional<clang::Token> token_before(clang::Sema& sema, clang::SourceLocatio
                                            /*IncludeComments=*/false);
 }
 
-/// The name a call of a lambda goes by: the identifier written before its
-/// opening parenthesis (`square` in `square(`), empty when another
-/// expression is called (`make()(`).
+/// The name a call through an object goes by: the identifier written
+/// before its opening parenthesis (`square` in `square(`), empty when
+/// another expression is called (`make()(`).
 std::string callee_name(clang::Sema& sema, clang::SourceLocation open_paren) {
     auto token = token_before(sema, open_paren);
     if(!token || !token->is(clang::tok::raw_identifier)) {
@@ -76,25 +78,128 @@ bool dominated(const clang::FunctionDecl* method, const clang::FunctionDecl* bet
     });
 }
 
-/// Gives `signature` its parameters, the one `argument` falls on active:
-/// past the last one, a trailing pack takes every further argument.
-void set_parameters(protocol::SignatureInformation& signature,
-                    std::vector<protocol::ParameterInformation> parameters,
-                    std::uint32_t argument,
-                    bool pack) {
-    if(pack && argument >= parameters.size()) {
-        argument = static_cast<std::uint32_t>(parameters.size() - 1);
+/// The declaration a candidate shows as: a function template's
+/// specialization as the template declares it, a member of a class
+/// template's specialization as the class instantiates it.
+const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
+    if(auto* primary = function->getPrimaryTemplate()) {
+        return primary->getTemplatedDecl();
     }
-    signature.active_parameter = protocol::nullable<protocol::uinteger>(argument);
-    if(!parameters.empty()) {
-        signature.parameters = std::move(parameters);
+    return function;
+}
+
+/// The name of `function`'s parameter `index`. A declaration that leaves
+/// it out borrows it from another declaration of the function, or of the
+/// one it was instantiated from.
+llvm::StringRef parameter_name(const clang::FunctionDecl& function, unsigned index) {
+    auto named = [index](const clang::FunctionDecl& declaration) -> llvm::StringRef {
+        for(auto* redecl: declaration.redecls()) {
+            // A C declaration without a prototype has no parameters.
+            if(index >= redecl->getNumParams()) {
+                continue;
+            }
+            if(auto* identifier = redecl->getParamDecl(index)->getIdentifier()) {
+                return identifier->deuglifiedName();
+            }
+        }
+        return {};
+    };
+    auto name = named(function);
+    if(auto* pattern = function.getTemplateInstantiationPattern();
+       name.empty() && pattern && pattern->getNumParams() == function.getNumParams()) {
+        name = named(*pattern);
+    }
+    return name;
+}
+
+/// The parameters an instantiation expanded from a pack of the
+/// declaration it was instantiated from, as indices [begin, end): each
+/// is named after the pack, which names none of them. A member template
+/// of a class template's specialization keeps its own pack.
+std::pair<unsigned, unsigned> expanded_pack(const clang::FunctionDecl& function) {
+    auto* pattern = function.getTemplateInstantiationPattern();
+    if(!pattern) {
+        return {};
+    }
+    auto params = pattern->parameters();
+    auto pack = llvm::find_if(params, [](auto* param) { return param->isParameterPack(); });
+    if(pack == params.end()) {
+        return {};
+    }
+    unsigned begin = pack - params.begin();
+    if(begin < function.getNumParams() && function.getParamDecl(begin)->isParameterPack()) {
+        return {};
+    }
+    return {begin, begin + function.getNumParams() + 1 - params.size()};
+}
+
+/// One signature as it is built: its label and the range of each
+/// parameter in it.
+struct Signature {
+    llvm::SmallString<128> label;
+    llvm::raw_svector_ostream stream{label};
+    std::vector<protocol::ParameterInformation> parameters;
+
+    /// The last parameter takes every argument past the ones before it: a
+    /// pack or a C-style `...`.
+    bool pack = false;
+
+    /// Writes one parameter with `print`.
+    void parameter(llvm::function_ref<void(llvm::raw_ostream&)> print) {
+        if(!parameters.empty()) {
+            stream << ", ";
+        }
+        auto begin = lsp::encoded_length(label.str(), PositionEncoding::UTF16);
+        print(stream);
+        auto end = lsp::encoded_length(label.str(), PositionEncoding::UTF16);
+        parameters.push_back({
+            .label = std::tuple<protocol::uinteger, protocol::uinteger>{begin, end},
+        });
+    }
+
+    /// The finished signature, the parameter `argument` falls on active.
+    protocol::SignatureInformation finish(std::uint32_t argument, std::string documentation) && {
+        if(pack && argument >= parameters.size()) {
+            argument = static_cast<std::uint32_t>(parameters.size() - 1);
+        }
+        protocol::SignatureInformation signature{.label = label.str().str()};
+        if(!documentation.empty()) {
+            signature.documentation = std::move(documentation);
+        }
+        if(!parameters.empty()) {
+            signature.parameters = std::move(parameters);
+        }
+        signature.active_parameter = protocol::nullable<protocol::uinteger>(argument);
+        return signature;
+    }
+};
+
+/// A function parameter as its declaration writes it, under `name`.
+void print_parameter(llvm::raw_ostream& stream,
+                     const clang::ParmVarDecl& param,
+                     llvm::StringRef name,
+                     const clang::PrintingPolicy& policy) {
+    // The type as written: an array parameter does not decay. Implicit
+    // special members write none.
+    auto type = param.getTypeSourceInfo() ? param.getTypeSourceInfo()->getType() : param.getType();
+    std::string declarator;
+    if(auto* expansion = type->getAs<clang::PackExpansionType>()) {
+        type = expansion->getPattern();
+        declarator = "...";
+    }
+    declarator += name;
+    type.print(stream, policy, declarator);
+    if(auto value = display::default_argument(&param)) {
+        stream << " = " << *value;
     }
 }
 
 class SignatureCollector final : public clang::CodeCompleteConsumer {
 public:
-    SignatureCollector(protocol::SignatureHelp& help, clang::CodeCompleteOptions complete_options) :
-        clang::CodeCompleteConsumer(complete_options), help(help),
+    SignatureCollector(protocol::SignatureHelp& help,
+                       clang::CodeCompleteOptions complete_options,
+                       const SignatureHelpOptions& options) :
+        clang::CodeCompleteConsumer(complete_options), help(help), options(options),
         info(std::make_shared<clang::GlobalCodeCompletionAllocator>()) {}
 
     void ProcessOverloadCandidates(clang::Sema& sema,
@@ -102,13 +207,11 @@ public:
                                    OverloadCandidate* candidates,
                                    std::uint32_t candidate_count,
                                    clang::SourceLocation open_paren,
-                                   bool) final {
+                                   bool braced) final {
         help.signatures.reserve(candidate_count);
         help.active_signature = 0;
 
-        auto range = llvm::make_range(candidates, candidates + candidate_count);
-
-        auto policy = sema.getPrintingPolicy();
+        policy = sema.getPrintingPolicy();
         policy.AnonymousTagNameStyle =
             std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
         policy.SuppressStrongLifetime = true;
@@ -119,7 +222,7 @@ public:
 
         bool ranked = object_written(sema, open_paren);
         llvm::SmallVector<const clang::FunctionDecl*> listed;
-        for(auto& candidate: range) {
+        for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
             if(auto* function = candidate.getFunction()) {
                 if(ranked && llvm::any_of(listed, [&](auto* better) {
                        return dominated(function, better);
@@ -127,79 +230,24 @@ public:
                     continue;
                 }
                 listed.push_back(function);
-                if(auto* pattern = function->getTemplateInstantiationPattern()) {
-                    candidate = OverloadCandidate(pattern);
+                if(!forwarded(sema, *function, current_arg)) {
+                    call(sema, *function, current_arg, open_paren, braced);
                 }
+                continue;
             }
 
-            llvm::SmallString<128> buffer;
-            llvm::raw_svector_ostream stream(buffer);
-
-            auto& signature = help.signatures.emplace_back();
-            std::vector<protocol::ParameterInformation> parameters;
-            /// The last parameter is a pack, which takes every argument
-            /// past the ones before it.
-            bool pack = false;
-
-            auto add_parameter = [&](auto&& param) {
-                if(!parameters.empty()) {
-                    stream << ", ";
-                }
-
-                protocol::ParameterInformation parameter;
-                auto begin = lsp::encoded_length(buffer.str(), PositionEncoding::UTF16);
-                param.print(stream, policy);
-                auto end = lsp::encoded_length(buffer.str(), PositionEncoding::UTF16);
-                parameter.label = std::tuple<protocol::uinteger, protocol::uinteger>{begin, end};
-                parameters.push_back(std::move(parameter));
-            };
-
+            Signature signature;
+            auto& stream = signature.stream;
             switch(candidate.getKind()) {
-                case clang::CodeCompleteConsumer::OverloadCandidate::CK_Function:
-                case clang::CodeCompleteConsumer::OverloadCandidate::CK_FunctionTemplate: {
-                    auto* function = candidate.getFunction();
-                    auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(function);
-                    bool lambda = method && method->getParent()->isLambda();
-                    if(lambda) {
-                        stream << callee_name(sema, open_paren);
-                    } else {
-                        function->getDeclName().print(stream, policy);
-                    }
-                    stream << "(";
-                    for(auto* parameter: function->parameters()) {
-                        add_parameter(*parameter);
-                    }
-                    stream << ")";
-                    pack = !function->parameters().empty() &&
-                           function->parameters().back()->isParameterPack();
-
-                    // A lambda's call operator is const unless the lambda
-                    // is mutable, which is no part of calling it.
-                    if(method && !lambda) {
-                        if(auto qualifiers = method->getMethodQualifiers(); !qualifiers.empty()) {
-                            stream << " " << qualifiers.getAsString(policy);
-                        }
-                        if(method->getRefQualifier() == clang::RQ_LValue) {
-                            stream << " &";
-                        } else if(method->getRefQualifier() == clang::RQ_RValue) {
-                            stream << " &&";
-                        }
-                    }
-
-                    if(!llvm::isa<clang::CXXConstructorDecl, clang::CXXDestructorDecl>(function)) {
-                        stream << " -> ";
-                        function->getReturnType().print(stream, policy);
-                    }
-                    break;
-                }
-
                 case clang::CodeCompleteConsumer::OverloadCandidate::CK_FunctionType: {
                     auto type = candidate.getFunctionType();
                     stream << "(";
                     if(auto* proto = llvm::dyn_cast<clang::FunctionProtoType>(type)) {
                         for(auto param_type: proto->param_types()) {
-                            add_parameter(param_type);
+                            signature.parameter(
+                                [&](llvm::raw_ostream& os) { param_type.print(os, policy); });
                         }
+                        variadic(signature, proto->isVariadic());
                     }
                     stream << ") -> ";
                     type->getReturnType().print(stream, policy);
@@ -209,9 +257,14 @@ public:
                 case clang::CodeCompleteConsumer::OverloadCandidate::CK_FunctionProtoTypeLoc: {
                     auto location = candidate.getFunctionProtoTypeLoc();
                     stream << "(";
-                    for(auto param: location.getParams()) {
-                        add_parameter(*param);
+                    for(auto* param: location.getParams()) {
+                        auto* identifier = param->getIdentifier();
+                        auto name = identifier ? identifier->deuglifiedName() : "";
+                        signature.parameter([&](llvm::raw_ostream& os) {
+                            print_parameter(os, *param, name, policy);
+                        });
                     }
+                    variadic(signature, location.getTypePtr()->isVariadic());
                     stream << ") -> ";
                     location.getTypePtr()->getReturnType().print(stream, policy);
                     break;
@@ -223,11 +276,13 @@ public:
                     stream << "<";
                     auto* template_parameters = declaration->getTemplateParameters();
                     for(auto* parameter: *template_parameters) {
-                        add_parameter(*parameter);
+                        signature.parameter(
+                            [&](llvm::raw_ostream& os) { parameter->print(os, policy); });
                     }
                     stream << ">";
-                    pack = template_parameters->size() > 0 &&
-                           template_parameters->asArray().back()->isTemplateParameterPack();
+                    signature.pack =
+                        template_parameters->size() > 0 &&
+                        template_parameters->asArray().back()->isTemplateParameterPack();
 
                     if(auto* cls = llvm::dyn_cast<clang::ClassTemplateDecl>(declaration)) {
                         stream << " -> " << cls->getTemplatedDecl()->getKindName();
@@ -250,26 +305,15 @@ public:
                 }
 
                 case clang::CodeCompleteConsumer::OverloadCandidate::CK_Aggregate: {
-                    auto* cls = candidate.getAggregate();
-                    cls->getDeclName().print(stream, policy);
-                    stream << "{";
-
-                    if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(cls)) {
-                        for(const auto& base: record->bases()) {
-                            add_parameter(base.getType());
-                        }
-                    }
-
-                    for(auto* field: cls->fields()) {
-                        add_parameter(*field);
-                    }
-                    stream << "}";
+                    aggregate(signature, *candidate.getAggregate());
                     break;
                 }
-            }
 
-            signature.label = buffer.str().str();
-            set_parameters(signature, std::move(parameters), current_arg, pack);
+                case clang::CodeCompleteConsumer::OverloadCandidate::CK_Function:
+                case clang::CodeCompleteConsumer::OverloadCandidate::CK_FunctionTemplate:
+                    std::unreachable();
+            }
+            help.signatures.push_back(std::move(signature).finish(current_arg, {}));
         }
     }
 
@@ -282,7 +326,227 @@ public:
     }
 
 private:
+    /// A C-style `...` takes every argument past the named parameters.
+    static void variadic(Signature& signature, bool variadic) {
+        if(variadic) {
+            signature.parameter([](llvm::raw_ostream& os) { os << "..."; });
+            signature.pack = true;
+        }
+    }
+
+    /// The documentation comment of `decl`, as plain text.
+    std::string documentation(const clang::NamedDecl& decl) {
+        if(!options.documentation) {
+            return {};
+        }
+        auto comment = display::comment(&decl);
+        if(comment.empty()) {
+            return {};
+        }
+        markup::Document document;
+        parse_documentation(comment, document);
+        return document.as_plain_text();
+    }
+
+    /// Writes the parameters of `function` in [first, last).
+    void parameters(Signature& signature,
+                    const clang::FunctionDecl& function,
+                    unsigned first,
+                    unsigned last) {
+        auto [pack_begin, pack_end] = expanded_pack(function);
+        for(unsigned index = first; index < last; index += 1) {
+            bool expanded = index >= pack_begin && index < pack_end;
+            auto name = expanded ? "" : parameter_name(function, index);
+            signature.parameter([&](llvm::raw_ostream& os) {
+                print_parameter(os, *function.getParamDecl(index), name, policy);
+            });
+        }
+    }
+
+    /// Writes the parameters a call of `function` passes arguments to: the
+    /// object parameter of a C++23 explicit object member function is left
+    /// out, the object a call is made on being no argument.
+    void arguments(Signature& signature, const clang::FunctionDecl& function) {
+        unsigned first = function.hasCXXExplicitFunctionObjectParameter() ? 1 : 0;
+        parameters(signature, function, first, function.getNumParams());
+        signature.pack =
+            function.getNumParams() > first && function.parameters().back()->isParameterPack();
+        variadic(signature, function.isVariadic());
+    }
+
+    /// The signature of a call `candidate` answers.
+    void call(clang::Sema& sema,
+              const clang::FunctionDecl& candidate,
+              std::uint32_t current_arg,
+              clang::SourceLocation open_paren,
+              bool braced) {
+        auto& function = *shown(&candidate);
+        Signature signature;
+        auto& stream = signature.stream;
+
+        auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function);
+        bool lambda = method && method->getParent()->isLambda();
+        // A call through an object reads as a call of a function named as
+        // the object.
+        std::string name;
+        if(method && method->getOverloadedOperator() == clang::OO_Call) {
+            name = callee_name(sema, open_paren);
+        }
+        if(!name.empty()) {
+            stream << name;
+        } else if(!lambda) {
+            function.getDeclName().print(stream, policy);
+        }
+        stream << (braced ? "{" : "(");
+        arguments(signature, function);
+        stream << (braced ? "}" : ")");
+
+        // The qualifiers of a call operator are the object's business, which a
+        // call named as the object leaves out; a lambda's is const unless the
+        // lambda is mutable, which is no part of calling it.
+        if(method && name.empty() && !lambda) {
+            if(auto qualifiers = method->getMethodQualifiers(); !qualifiers.empty()) {
+                stream << " " << qualifiers.getAsString(policy);
+            }
+            if(method->getRefQualifier() == clang::RQ_LValue) {
+                stream << " &";
+            } else if(method->getRefQualifier() == clang::RQ_RValue) {
+                stream << " &&";
+            }
+        }
+
+        if(!llvm::isa<clang::CXXConstructorDecl>(function)) {
+            stream << " -> ";
+            function.getReturnType().print(stream, policy);
+        }
+        help.signatures.push_back(
+            std::move(signature).finish(current_arg, documentation(function)));
+    }
+
+    /// Writes the bases and the fields of `record`, as aggregate
+    /// initialization takes them.
+    void fields(Signature& signature, const clang::RecordDecl& record) {
+        if(auto* cxx_record = llvm::dyn_cast<clang::CXXRecordDecl>(&record)) {
+            for(const auto& base: cxx_record->bases()) {
+                signature.parameter(
+                    [&](llvm::raw_ostream& os) { base.getType().print(os, policy); });
+            }
+        }
+        for(auto* field: record.fields()) {
+            signature.parameter([&](llvm::raw_ostream& os) { field->print(os, policy); });
+        }
+    }
+
+    void aggregate(Signature& signature, const clang::RecordDecl& record) {
+        record.getDeclName().print(signature.stream, policy);
+        signature.stream << "{";
+        fields(signature, record);
+        signature.stream << "}";
+    }
+
+    /// The class a standard library function forwards its trailing pack to
+    /// the constructor of: `make_unique<Widget>(`, a container's
+    /// `emplace_back(`. Null for any other function.
+    static clang::CXXRecordDecl* forwarding_target(clang::Sema& sema,
+                                                   const clang::FunctionDecl& function) {
+        auto* name = function.getIdentifier();
+        auto params = shown(&function)->parameters();
+        if(!name || params.empty() || !params.back()->isParameterPack()) {
+            return nullptr;
+        }
+
+        clang::QualType target;
+        if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function)) {
+            if(!method->getParent()->isInStdNamespace() ||
+               (!name->getName().starts_with("emplace") && name->getName() != "try_emplace")) {
+                return nullptr;
+            }
+            // A map's try_emplace builds the mapped value, every other
+            // emplace an element.
+            auto& member = sema.getASTContext().Idents.get(
+                name->getName() == "try_emplace" ? "mapped_type" : "value_type");
+            auto* alias = method->getParent()->lookup(&member).find_first<clang::TypedefNameDecl>();
+            if(!alias) {
+                return nullptr;
+            }
+            target = alias->getUnderlyingType();
+        } else {
+            if(!function.isInStdNamespace() ||
+               !llvm::is_contained({"make_unique", "make_shared", "allocate_shared"},
+                                   name->getName())) {
+                return nullptr;
+            }
+            // The call names the class in its first template argument.
+            auto* arguments = function.getTemplateSpecializationArgs();
+            if(!arguments) {
+                return nullptr;
+            }
+            target = arguments->get(0).getAsType();
+        }
+
+        auto* record = target->getAsCXXRecordDecl();
+        if(!record || !sema.isCompleteType(function.getLocation(), target)) {
+            return nullptr;
+        }
+        return record;
+    }
+
+    /// Answers a standard library function that forwards its arguments to
+    /// a constructor with each constructor's parameters after its own ones
+    /// before the pack; false for any other function.
+    bool forwarded(clang::Sema& sema,
+                   const clang::FunctionDecl& candidate,
+                   std::uint32_t current_arg) {
+        auto* record = forwarding_target(sema, candidate);
+        if(!record) {
+            return false;
+        }
+        auto& function = *shown(&candidate);
+        unsigned prefix = function.getNumParams() - 1;
+        // The constructor's arguments written before the cursor.
+        unsigned typed = current_arg > prefix ? current_arg - prefix : 0;
+        // The standard library writes make_unique's return type through
+        // its own aliases; a member's is a member type of the container.
+        auto result = llvm::isa<clang::CXXMethodDecl>(function)
+                          ? function.getReturnType()
+                          : candidate.getReturnType().getCanonicalType();
+
+        auto add = [&](const clang::NamedDecl& documented, auto&& write) {
+            Signature signature;
+            function.getDeclName().print(signature.stream, policy);
+            signature.stream << "(";
+            parameters(signature, function, 0, prefix);
+            write(signature);
+            signature.stream << ") -> ";
+            result.print(signature.stream, policy);
+            help.signatures.push_back(
+                std::move(signature).finish(current_arg, documentation(documented)));
+        };
+
+        // An aggregate with nothing to initialize is its default constructor.
+        if(record->isAggregate() && sema.getLangOpts().CPlusPlus20 &&
+           (record->getNumBases() > 0 || !record->field_empty())) {
+            add(*record, [&](Signature& signature) { fields(signature, *record); });
+        }
+        for(auto* found: sema.LookupConstructors(record)) {
+            if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(found)) {
+                found = shadow->getTargetDecl();
+            }
+            auto* constructor = shown(found->getAsFunction());
+            auto params = constructor->parameters();
+            bool takes_more = params.size() > typed || constructor->isVariadic() ||
+                              (!params.empty() && params.back()->isParameterPack());
+            if(constructor->isDeleted() || (typed > 0 && !takes_more)) {
+                continue;
+            }
+            add(*constructor, [&](Signature& signature) { arguments(signature, *constructor); });
+        }
+        return true;
+    }
+
     protocol::SignatureHelp& help;
+    const SignatureHelpOptions& options;
+    clang::PrintingPolicy policy{clang::LangOptions()};
     clang::CodeCompletionTUInfo info;
 };
 
@@ -355,42 +619,36 @@ auto macro_call_at(CompilationUnitRef unit, std::uint32_t offset) -> std::option
 }
 
 auto macro_signature(const MacroCall& call) -> protocol::SignatureHelp {
-    std::string label = call.name + "(";
-    std::vector<protocol::ParameterInformation> parameters;
+    Signature signature;
+    signature.stream << call.name << "(";
     auto params = call.macro->params();
     for(auto* param: params) {
-        if(!parameters.empty()) {
-            label += ", ";
-        }
-        auto begin = lsp::encoded_length(label, PositionEncoding::UTF16);
         bool last = param == params.back();
-        if(last && call.macro->isC99Varargs()) {
-            label += "...";
-        } else {
-            label += param->getName();
-            if(last && call.macro->isGNUVarargs()) {
-                label += "...";
+        signature.parameter([&](llvm::raw_ostream& os) {
+            if(last && call.macro->isC99Varargs()) {
+                os << "...";
+                return;
             }
-        }
-        auto end = lsp::encoded_length(label, PositionEncoding::UTF16);
-        parameters.push_back({
-            .label = std::tuple<protocol::uinteger, protocol::uinteger>{begin, end},
+            os << param->getName();
+            if(last && call.macro->isGNUVarargs()) {
+                os << "...";
+            }
         });
     }
-    label += ")";
+    signature.stream << ")";
+    signature.pack = call.macro->isVariadic();
 
     protocol::SignatureHelp help;
-    auto& signature = help.signatures.emplace_back();
-    signature.label = std::move(label);
-    set_parameters(signature, std::move(parameters), call.argument, call.macro->isVariadic());
+    help.signatures.push_back(std::move(signature).finish(call.argument, {}));
     help.active_signature = 0;
     return help;
 }
 
 }  // namespace
 
-auto signature_help(CompilationParams& params, const SignatureHelpOptions&)
-    -> protocol::SignatureHelp {
+auto signature_help(CompilationParams& params,
+                    const SignatureHelpOptions& options,
+                    llvm::StringRef selected) -> protocol::SignatureHelp {
     protocol::SignatureHelp help;
 
     clang::CodeCompleteOptions complete_options;
@@ -403,7 +661,7 @@ auto signature_help(CompilationParams& params, const SignatureHelpOptions&)
     complete_options.IncludeFixIts = false;
 
     auto offset = std::get<1>(params.completion);
-    auto* consumer = new SignatureCollector(help, complete_options);
+    auto* consumer = new SignatureCollector(help, complete_options, options);
     auto unit = complete(params, consumer);
     if(!unit.completed()) {
         return help;
@@ -414,6 +672,14 @@ auto signature_help(CompilationParams& params, const SignatureHelpOptions&)
     // is not where the cursor is.
     if(auto call = macro_call_at(unit, offset); call && (call->direct || help.signatures.empty())) {
         return macro_signature(*call);
+    }
+
+    // The overload the client shows stays active while it is listed: the
+    // user may have picked it over the one Sema ranks first.
+    auto kept = llvm::find_if(help.signatures,
+                              [&](const auto& signature) { return signature.label == selected; });
+    if(kept != help.signatures.end()) {
+        help.active_signature = kept - help.signatures.begin();
     }
     return help;
 }

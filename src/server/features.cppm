@@ -157,8 +157,10 @@ public:
 
     /// Signature help, dispatched as a stateless build. Pauses background
     /// indexing for the request's span.
+    /// `selected` is the label of the signature the client shows active.
     RawResult signature_help(std::shared_ptr<Session> session,
                              const protocol::Position& position,
+                             std::string selected,
                              kota::cancellation_token token = {});
 
     /// Whole-document formatting, or a range's, on a stateless worker.
