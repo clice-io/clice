@@ -1,11 +1,9 @@
-[answers.declaration]
-wrong = "the card does not say the function is deprecated, nor what to use instead"
-
 [answers.declaration.hover]
 markdown = '''
 ### function `open_v1`
 
 ---
+Deprecated: use open_v2
 → `void`
 
 ---
@@ -15,14 +13,12 @@ void open_v1()
 '''
 range = '[[deprecated("use open_v2")]] void ⟦open_v1⟧();'
 
-[answers.call]
-wrong = "the card does not say the function is deprecated, nor what to use instead"
-
 [answers.call.hover]
 markdown = '''
 ### function `open_v1`
 
 ---
+Deprecated: use open_v2
 → `void`
 
 ---

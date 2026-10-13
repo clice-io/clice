@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "macros",
   "title": "Macros in arguments",
-  "summary": "A macro inside another macro's arguments shows its definition, but no expansion",
+  "summary": "A macro inside another macro's arguments shows its definition and what it expands to there",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -29,9 +29,8 @@
           "label": "nested_arg",
           "marker": "nested_arg",
           "value": {
-            "wrong": "a macro inside another macro's arguments shows no expansion, 99 here",
             "hover": {
-              "markdown": "### macro `INNER_VAL`\n\n---\n```cpp\n#define INNER_VAL 99\n```",
+              "markdown": "### macro `INNER_VAL`\n\n---\n```cpp\n#define INNER_VAL 99\n\n// Expands to\n99\n```",
               "range": {
                 "$place": "int nested = ECHO(⟦INNER_VAL⟧);",
                 "path": "main.cpp",

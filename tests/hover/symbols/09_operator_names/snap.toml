@@ -22,12 +22,9 @@ public: ~Vec()
 '''
 range = "~⟦Vec⟧();"
 
-[answers.eq_keyword]
-wrong = "the heading names no kind for an operator function"
-
 [answers.eq_keyword.hover]
 markdown = '''
-### `operator==`
+### method `operator==`
 
 ---
 → `bool`
@@ -42,12 +39,9 @@ public: bool operator==(const Vec &other) const
 '''
 range = "bool ⟦operator⟧==(const Vec& other) const;"
 
-[answers.eq_symbol]
-wrong = "the heading names no kind for an operator function"
-
 [answers.eq_symbol.hover]
 markdown = '''
-### `operator==`
+### method `operator==`
 
 ---
 → `bool`

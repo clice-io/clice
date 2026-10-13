@@ -90,15 +90,12 @@ decltype(intermediate) copy = source
 '''
 range = "decltype(intermediate) ⟦copy⟧ = source; @+0"
 
-[answers.var_const_decltype]
-wrong = "copy is a const long: the card drops the const written before decltype"
-
 [answers.var_const_decltype.hover]
 markdown = '''
 ### variable `copy`
 
 ---
-Type: `long`
+Type: `const long`
 
 ---
 ```cpp

@@ -1,15 +1,9 @@
-[answers.lambda_ptr_ptr]
-wrong = "outer is a pointer to a pointer to the lambda: the card shows no type and reads as the lambda itself"
-
 [answers.lambda_ptr_ptr.hover]
 markdown = '''
 ### variable `outer`
 
 ---
-→ `bool`
-Parameters:
-- `long value`
-- `bool ready`
+Type: `(lambda) **`
 
 ---
 ```cpp

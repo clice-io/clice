@@ -1,17 +1,17 @@
-[answers.binding]
-wrong = "a structured binding's card shows neither its scope nor its declaration, unlike other variables"
-
 [answers.binding.hover]
 markdown = '''
 ### variable `first`
 
 ---
 Type: `int`
+
+---
+```cpp
+// In bindings
+auto [first, second] = make()
+```
 '''
 range = "auto [⟦first⟧, second] = make();"
-
-[answers.binding_use]
-wrong = "a structured binding's card shows neither its scope nor its declaration, unlike other variables"
 
 [answers.binding_use.hover]
 markdown = '''
@@ -19,6 +19,12 @@ markdown = '''
 
 ---
 Type: `int`
+
+---
+```cpp
+// In bindings
+auto [first, second] = make()
+```
 '''
 range = "(void)⟦first⟧;"
 
@@ -36,6 +42,36 @@ auto &item
 ```
 '''
 range = "for (auto& ⟦item⟧ : items) {"
+
+[answers.thread_local_binding.hover]
+markdown = '''
+### variable `shared`
+
+---
+Type: `int`
+
+---
+```cpp
+// In bindings
+static thread_local auto [shared, unused] = make()
+```
+'''
+range = "static thread_local auto [⟦shared⟧, unused] = make();"
+
+[answers.range_binding.hover]
+markdown = '''
+### variable `key`
+
+---
+Type: `int`
+
+---
+```cpp
+// In bindings
+auto [key, value]
+```
+'''
+range = "for (auto [⟦key⟧, value] : pairs) {"
 
 [answers.capture.hover]
 markdown = '''

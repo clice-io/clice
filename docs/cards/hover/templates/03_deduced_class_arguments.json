@@ -5,7 +5,7 @@
   "title": "Deduced class arguments",
   "summary": "A variable whose class template arguments are deduced shows them, while the class name beside it shows the template alone",
   "prose": "",
-  "status": "unsupported",
+  "status": "partial",
   "issues": [
     "clangd#435"
   ],
@@ -61,9 +61,8 @@
           "label": "ctad_var",
           "marker": "ctad_var",
           "value": {
-            "wrong": "the aka repeats the same type, only qualified with its namespace",
             "hover": {
-              "markdown": "### variable `picked`\n\n---\nType: `Box<int> (aka ctad_arguments::Box<int>)`\n\n---\n```cpp\n// In namespace ctad_arguments\nBox picked(42)\n```",
+              "markdown": "### variable `picked`\n\n---\nType: `Box<int>`\n\n---\n```cpp\n// In namespace ctad_arguments\nBox picked(42)\n```",
               "range": {
                 "$place": "Box ⟦picked⟧(42);",
                 "path": "main.cpp",

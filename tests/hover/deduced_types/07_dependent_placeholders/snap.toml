@@ -1,0 +1,29 @@
+[answers.dependent_auto.hover]
+markdown = '''
+### variable `copy`
+
+---
+Type: `auto`
+
+---
+```cpp
+// In make
+auto copy = value
+```
+'''
+range = "auto ⟦copy⟧ = value;"
+
+[answers.dependent_class_arguments.hover]
+markdown = '''
+### variable `wrapper`
+
+---
+Type: `Wrapper`
+
+---
+```cpp
+// In make
+Wrapper wrapper { value }
+```
+'''
+range = "Wrapper ⟦wrapper⟧{value};"

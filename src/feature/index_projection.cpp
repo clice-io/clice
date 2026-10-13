@@ -645,6 +645,10 @@ auto index_hover(const index::SymbolRef& info,
     hover.name = info.display_name();
     hover.kind = info.kind;
     hover.documentation = comment.str();
+    /// The index keeps that a symbol is deprecated, not the message.
+    if(index::has_flag(info.flags, index::SymbolFlags::Deprecated)) {
+        hover.deprecation.emplace();
+    }
     if(definition_text.empty()) {
         return hover;
     }

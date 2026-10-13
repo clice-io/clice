@@ -234,12 +234,9 @@ public: element_type data[Size]
 '''
 range = "element_type ⟦data⟧[Size];"
 
-[answers.template_template_arg]
-wrong = "the heading names no kind for a class template"
-
 [answers.template_template_arg.hover]
 markdown = '''
-### `Allocator`
+### struct `Allocator`
 
 ---
 ```cpp

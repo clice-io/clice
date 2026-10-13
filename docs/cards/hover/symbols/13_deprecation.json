@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "symbols",
   "title": "Deprecated symbols",
-  "summary": "A deprecated function's card does not say it is deprecated yet",
-  "prose": "The message of `[[deprecated]]` tells what to use instead; the card shows\nneither the deprecation nor the message.",
-  "status": "unsupported",
+  "summary": "A deprecated function's card says so, with the message its deprecation gives",
+  "prose": "The message of `[[deprecated]]` usually tells what to use instead.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -35,9 +35,8 @@
           "label": "declaration",
           "marker": "declaration",
           "value": {
-            "wrong": "the card does not say the function is deprecated, nor what to use instead",
             "hover": {
-              "markdown": "### function `open_v1`\n\n---\n→ `void`\n\n---\n```cpp\nvoid open_v1()\n```",
+              "markdown": "### function `open_v1`\n\n---\nDeprecated: use open_v2\n→ `void`\n\n---\n```cpp\nvoid open_v1()\n```",
               "range": {
                 "$place": "[[deprecated(\"use open_v2\")]] void ⟦open_v1⟧();",
                 "path": "main.cpp",
@@ -59,9 +58,8 @@
           "label": "call",
           "marker": "call",
           "value": {
-            "wrong": "the card does not say the function is deprecated, nor what to use instead",
             "hover": {
-              "markdown": "### function `open_v1`\n\n---\n→ `void`\n\n---\n```cpp\nvoid open_v1()\n```",
+              "markdown": "### function `open_v1`\n\n---\nDeprecated: use open_v2\n→ `void`\n\n---\n```cpp\nvoid open_v1()\n```",
               "range": {
                 "$place": "⟦open_v1⟧();",
                 "path": "main.cpp",

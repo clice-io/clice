@@ -73,11 +73,11 @@ tests/hover/symbols/05_virtual_modifiers
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#436 -->
+<!-- BEGIN CAPABILITY: supported clangd#436 -->
 
 **匿名命名空间**
 
-卡片中的作用域省略匿名命名空间
+卡片中的作用域会标出名称声明所在的匿名命名空间
 
 ```case
 tests/hover/symbols/06_anonymous_namespaces
@@ -85,13 +85,13 @@ tests/hover/symbols/06_anonymous_namespaces
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **已弃用的符号**
 
-已弃用函数的卡片目前尚未标明该函数已弃用
+已弃用函数的卡片会标明该函数已弃用，并附上弃用时给出的消息
 
-`[[deprecated]]` 的消息说明应改用什么；卡片既不显示弃用状态，也不显示该消息。
+`[[deprecated]]` 的消息通常会说明应改用什么。
 
 ```case
 tests/hover/symbols/13_deprecation
@@ -265,7 +265,7 @@ tests/hover/aliases/03_c_anonymous_structs
 
 <!-- BEGIN GENERATED ITEMS: hover/deduced_types -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **`auto`**
 
@@ -347,7 +347,7 @@ tests/hover/templates/02_instantiation_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#435 -->
+<!-- BEGIN CAPABILITY: partial clangd#435 -->
 
 **推导出的类模板实参**
 
@@ -561,11 +561,11 @@ tests/hover/macros/04_command_line
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **实参中的宏**
 
-位于另一个宏的实参中的宏会显示其定义，但不显示展开结果
+位于另一个宏的实参中的宏会显示其定义，以及它在该处的展开结果
 
 ```case
 tests/hover/macros/05_nested_arguments
@@ -687,13 +687,13 @@ tests/hover/documentation/07_banner_comments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **声明与定义**
 
-声明的 `///` 注释会在声明和定义处显示，除非先在定义上悬停
+声明的 `///` 注释会在声明处和定义处显示
 
-修改后，如果先在定义上悬停，定义的普通 `//` 注释就会取而代之，在两处显示。
+无论先在两处中的哪一处悬停，定义的普通 `//` 注释都不会取而代之。
 
 ```case
 tests/hover/documentation/08_declaration_and_definition
@@ -827,13 +827,11 @@ tests/hover/modules/04_documented_exports
 
 <!-- BEGIN GENERATED ITEMS: hover/attributes -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
+<!-- BEGIN CAPABILITY: supported clangd#1862 -->
 
 **属性**
 
 在属性上悬停会显示 clang 对该属性的说明，GNU 写法和标准写法均适用
-
-说明仍以 clang 的 reStructuredText 源码形式显示，其中的代码示例挤在一起。
 
 ```case
 tests/hover/attributes/01_attributes

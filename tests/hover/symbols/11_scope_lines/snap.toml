@@ -61,9 +61,6 @@ static long long bytes = -36637162602497
 '''
 range = "metrics::⟦bytes⟧++;"
 
-[answers.anon_ns_var]
-wrong = "the scope line leaves out the anonymous namespace (clangd#436)"
-
 [answers.anon_ns_var.hover]
 markdown = '''
 ### variable `generation`
@@ -73,7 +70,7 @@ Type: `int`
 
 ---
 ```cpp
-// In namespace service
+// In namespace service::(anonymous)
 int generation
 ```
 '''

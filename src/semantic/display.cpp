@@ -126,25 +126,6 @@ std::string template_args(const clang::NamedDecl& decl) {
 
 namespace {
 
-/// The qualified name of the decl, skipping unwritten scopes like inline
-/// and anonymous namespaces.
-std::string qualified_name(const clang::NamedDecl& decl) {
-    std::string name;
-    llvm::raw_string_ostream os(name);
-    clang::PrintingPolicy policy(decl.getASTContext().getLangOpts());
-    /// Note that inline namespaces are treated as transparent scopes. This
-    /// reflects the way they're most commonly used for lookup.
-    policy.SuppressUnwrittenScope = true;
-    /// (unnamed struct), not (unnamed struct at /path/to/foo.cc:42:1).
-    /// In the language server, context is usually available and paths are
-    /// mostly noise.
-    policy.AnonymousTagNameStyle =
-        std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
-    decl.printQualifiedName(os, policy);
-    assert(!llvm::StringRef(name).starts_with("::"));
-    return name;
-}
-
 bool looks_like_doc_comment(llvm::StringRef comment) {
     /// We don't report comments that only contain "special" chars.
     /// This avoids reporting various delimiters, like:
@@ -573,7 +554,10 @@ auto comment(const clang::NamedDecl* decl) -> std::string {
     }
 
     const clang::ASTContext& context = decl->getASTContext();
-    const clang::RawComment* comment = clang::getCompletionComment(context, decl);
+    /// Clang caches the comment it finds for the whole redeclaration chain:
+    /// asked from any other declaration, the one asked first would decide
+    /// for all.
+    const clang::RawComment* comment = context.getRawCommentForAnyRedecl(decl->getCanonicalDecl());
     if(!comment) {
         return "";
     }
@@ -624,28 +608,16 @@ auto local_scope(const clang::Decl* decl) -> std::string {
 
 auto namespace_scope(const clang::Decl* decl) -> std::string {
     assert(decl);
-    const clang::DeclContext* context = decl->getDeclContext();
-
-    if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(context)) {
-        return namespace_scope(tag);
-    }
-
-    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(context)) {
-        return namespace_scope(function);
-    }
-
-    if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
-        /// Skip inline/anon namespaces.
-        if(ns->isInline() || ns->isAnonymousNamespace()) {
-            return namespace_scope(ns);
+    llvm::SmallVector<llvm::StringRef> names;
+    for(const auto* context = decl->getDeclContext(); context; context = context->getParent()) {
+        /// Inline namespaces are transparent scopes: lookup, and most uses,
+        /// see through them. An anonymous one gives its names internal
+        /// linkage, which the reader needs to know.
+        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context); ns && !ns->isInline()) {
+            names.push_back(ns->isAnonymousNamespace() ? "(anonymous)" : ns->getName());
         }
     }
-
-    if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(context)) {
-        return qualified_name(*named);
-    }
-
-    return "";
+    return llvm::join(llvm::reverse(names), "::");
 }
 
 auto restored_scope(clang::QualType type, const Options& options) -> clang::NestedNameSpecifier {
@@ -679,7 +651,9 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
         /// FIXME: This doesn't handle composite types that contain a decltype in
         /// them. We should rather have a printing policy for that.
         while(!type.isNull() && type->isDecltypeType()) {
-            type = type->castAs<clang::DecltypeType>()->getUnderlyingType();
+            type =
+                context.getQualifiedType(type->castAs<clang::DecltypeType>()->getUnderlyingType(),
+                                         type.getLocalQualifiers());
         }
     }
 
@@ -694,7 +668,10 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
        policy.SuppressTagKeyword) {
         if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr());
            tag && tag->isCanonicalUnqualified()) {
-            os << tag->getDecl()->getKindName() << " ";
+            /// A closure type's name, `(lambda)`, already says what it is.
+            if(const auto* record = tag->getAsCXXRecordDecl(); !record || !record->isLambda()) {
+                os << tag->getDecl()->getKindName() << " ";
+            }
         }
     }
 
@@ -704,7 +681,20 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
     type.print(os, policy);
 
     if(!type.isNull() && options.show_aka) {
-        if(auto desugared = desugar(context, type)) {
+        /// A placeholder prints as the type deduced for it, and only that
+        /// type's own sugar is worth an aka: desugaring the placeholder would
+        /// spell a class template argument deduction's result again, only
+        /// qualified.
+        auto sugared = type;
+        while(const auto* deduced = llvm::dyn_cast<clang::DeducedType>(sugared.getTypePtr())) {
+            /// A placeholder deduced as dependent has no type yet.
+            if(deduced->getDeducedType().isNull()) {
+                break;
+            }
+            sugared =
+                context.getQualifiedType(deduced->getDeducedType(), sugared.getLocalQualifiers());
+        }
+        if(auto desugared = desugar(context, sugared)) {
             result.aka = desugared->getAsString(policy);
         }
     }
@@ -1220,6 +1210,42 @@ struct MemberPrinter {
     }
 };
 
+/// Clang prints a structured binding declaration without its bindings.
+void print_decomposition(const clang::DecompositionDecl& decl,
+                         const clang::PrintingPolicy& policy,
+                         llvm::raw_ostream& os) {
+    if(decl.getStorageClass() != clang::SC_None) {
+        os << clang::VarDecl::getStorageClassSpecifierString(decl.getStorageClass()) << ' ';
+    }
+    if(decl.getTSCSpec() == clang::TSCS_thread_local) {
+        os << "thread_local ";
+    }
+
+    std::string bindings = "[";
+    llvm::raw_string_ostream names(bindings);
+    llvm::interleaveComma(decl.bindings(), names, [&](const clang::BindingDecl* binding) {
+        names << (binding->isParameterPack() ? "..." : "") << binding->getName();
+    });
+    bindings += ']';
+    decl.getTypeSourceInfo()->getType().print(os, policy, bindings);
+
+    /// A range-for's bindings are initialized from the range's iterator.
+    const clang::Expr* init = decl.getInit();
+    if(!init || policy.SuppressInitializers || decl.isCXXForRangeDecl()) {
+        return;
+    }
+    bool call = decl.getInitStyle() == clang::VarDecl::CallInit;
+    if(decl.getInitStyle() == clang::VarDecl::CInit) {
+        os << " = ";
+    } else if(call) {
+        os << '(';
+    }
+    init->printPretty(os, nullptr, policy);
+    if(call) {
+        os << ')';
+    }
+}
+
 }  // namespace
 
 auto definition(const clang::Decl* decl,
@@ -1237,7 +1263,9 @@ auto definition(const clang::Decl* decl,
     const auto* class_template = llvm::dyn_cast<clang::ClassTemplateDecl>(decl);
     const auto* tag =
         llvm::dyn_cast<clang::TagDecl>(class_template ? class_template->getTemplatedDecl() : decl);
-    if(!tag || !tag->getDefinition()) {
+    if(const auto* decomposition = llvm::dyn_cast<clang::DecompositionDecl>(decl)) {
+        print_decomposition(*decomposition, policy, os);
+    } else if(!tag || !tag->getDefinition()) {
         decl->print(os, policy);
     } else {
         /// The head comes from the definition too: only a definition prints

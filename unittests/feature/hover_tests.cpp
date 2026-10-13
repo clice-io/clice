@@ -483,7 +483,7 @@ ZEST_CASE(structured_no_crash) {
              hi.name = "x";
              hi.kind = SymbolKind::Variable;
              hi.namespace_scope = "";
-             hi.definition = "";
+             hi.definition = "auto [x] = 1";
              hi.type = "NULL TYPE";
              // Bindings are in theory public members of an anonymous struct.
              hi.access_specifier = "public";

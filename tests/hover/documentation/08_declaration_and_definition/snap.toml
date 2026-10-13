@@ -36,9 +36,6 @@ void process(int x)
 '''
 range = "void ⟦process⟧(int x) { (void)x; }"
 
-["definition first".at_def]
-wrong = "hovered first, the definition's plain comment replaces the declaration's documentation"
-
 ["definition first".at_def.hover]
 markdown = '''
 ### function `process`
@@ -48,7 +45,7 @@ markdown = '''
 Parameters:
 - `int x`
 
-Internal implementation note.
+Public API documentation.
 
 ---
 ```cpp
@@ -57,9 +54,6 @@ void process(int x)
 ```
 '''
 range = "void ⟦process⟧(int x) { (void)x; }"
-
-["definition first".at_decl]
-wrong = "after the definition was hovered, its plain comment replaces the declaration's documentation here too"
 
 ["definition first".at_decl.hover]
 markdown = '''
@@ -70,7 +64,7 @@ markdown = '''
 Parameters:
 - `int x`
 
-Internal implementation note.
+Public API documentation.
 
 ---
 ```cpp
