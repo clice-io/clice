@@ -414,6 +414,24 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 
 <!-- END GENERATED CONFIG -->
 
+## `[signature_help]`
+
+`[signature_help]` 节控制签名帮助弹窗显示的内容。
+
+<!-- BEGIN GENERATED CONFIG: signature_help -->
+
+<div class="config-option">
+
+| 选项            | 类型   | 默认值 |
+| --------------- | ------ | ------ |
+| `documentation` | `bool` | `true` |
+
+显示被调用函数的文档注释。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[[rules]]`
 
 规则通过模式指定文件，并说明这些文件从哪里获取编译命令，以及如何修改这些命令。匹配某个文件的每条规则都会生效，按声明顺序应用：声明在前的规则的数据库在该文件的候选中排在前面，第一条带 `default_command` 的匹配规则为没有条目的文件提供命令，`append` 与 `remove` 逐条累加，靠后的 `remove` 会抵消靠前的 `append`，而任何匹配规则上的 `index = false` 都会把文件排除在索引之外。带 `configuration` 标签的规则只在相应配置生效期间适用；不同的标签构成配置菜单。

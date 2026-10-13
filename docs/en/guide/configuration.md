@@ -420,6 +420,16 @@ The `[signature_help]` section controls what the signature help popup shows.
 
 <!-- BEGIN GENERATED CONFIG: signature_help -->
 
+<div class="config-option">
+
+| Option          | Type   | Default |
+| --------------- | ------ | ------- |
+| `documentation` | `bool` | `true`  |
+
+Show the called function's documentation comment.
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## `[[rules]]`
