@@ -1,3 +1,7 @@
+[answers.dependent.signature_help]
+signatures = ["emplace_back(⟦Args &&...args⟧) -> reference"]
+active = 0
+
 [answers.inherited]
 wrong = "the inherited Base(int, int) is missing: only the implicit copy and move constructors show (clangd#1363)"
 
@@ -10,6 +14,10 @@ active = 0
 
 [answers.public_only.signature_help]
 signatures = ["make_unique(⟦int port⟧) -> unique_ptr<Socket>"]
+active = 0
+
+[answers.explicit_pack.signature_help]
+signatures = ["make_unique(⟦Args &&...args⟧) -> unique_ptr<T>"]
 active = 0
 
 [answers.too_many.signature_help]

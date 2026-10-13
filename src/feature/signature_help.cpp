@@ -531,6 +531,31 @@ private:
             return false;
         }
         auto& function = *shown(&candidate);
+        unsigned prefix = function.getNumParams() - 1;
+
+        // The specialization Sema deduced from the arguments written so far
+        // holds their types in its pack: an expression of each stands in for
+        // its argument. Sema deduces from none past a dependent one, and
+        // pack arguments the call writes explicitly come on top: the pack
+        // then holds no type for some argument, or one for an argument not
+        // written yet.
+        auto template_arguments = candidate.getTemplateSpecializationArgs()->asArray();
+        auto pack = llvm::find_if(template_arguments, [](const auto& argument) {
+            return argument.getKind() == clang::TemplateArgument::Pack;
+        });
+        if(pack->pack_size() != (current_arg > prefix ? current_arg - prefix : 0)) {
+            return false;
+        }
+        auto& context = sema.getASTContext();
+        llvm::SmallVector<clang::Expr*> typed;
+        for(const auto& element: pack->pack_elements()) {
+            auto type = element.getAsType();
+            typed.push_back(new (context) clang::OpaqueValueExpr(
+                open_paren,
+                type.getNonReferenceType(),
+                type->isLValueReferenceType() ? clang::VK_LValue : clang::VK_XValue));
+        }
+
         // The standard library writes make_unique's return type through
         // its own aliases; a member's is a member type of the container.
         auto result = llvm::isa<clang::CXXMethodDecl>(function)
@@ -541,23 +566,6 @@ private:
             .result = result,
             .argument = current_arg,
         };
-
-        // The specialization Sema deduced from the arguments written so far
-        // holds their types in its pack: an expression of each stands in for
-        // its argument.
-        auto& context = sema.getASTContext();
-        auto template_arguments = candidate.getTemplateSpecializationArgs()->asArray();
-        auto pack = llvm::find_if(template_arguments, [](const auto& argument) {
-            return argument.getKind() == clang::TemplateArgument::Pack;
-        });
-        llvm::SmallVector<clang::Expr*> typed;
-        for(const auto& element: pack->pack_elements()) {
-            auto type = element.getAsType();
-            typed.push_back(new (context) clang::OpaqueValueExpr(
-                open_paren,
-                type.getNonReferenceType(),
-                type->isLValueReferenceType() ? clang::VK_LValue : clang::VK_XValue));
-        }
 
         // Parentheses initialize an aggregate too since C++20, which Sema's
         // constructor help leaves to braces.

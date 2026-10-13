@@ -26,9 +26,15 @@ struct Grid {
     Grid(int rows, int columns);
 };
 
+template <typename T>
+void fill(std::vector<Grid>& grids, T rows) {
+    grids.emplace_back(rows, §(dependent)1);
+}
+
 void build() {
     auto derived = std::make_unique<Derived>(§(inherited)1, 2);
     auto socket = std::make_unique<Socket>(§(public_only)80);
+    auto listening = std::make_unique<Socket, int>(§(explicit_pack)80);
     std::vector<Point> points;
     points.emplace_back(1, 2, §(too_many)3);
     std::optional<Grid> grid;
