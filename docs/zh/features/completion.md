@@ -413,7 +413,7 @@ tests/completion/templates/15_concept_requirements
 
 在派生类中，基类的虚函数会补全为完整的重写声明，包含返回类型和 `override`
 
-在重写函数内部，函数名会补全为名称本身，而非对基类版本的调用。
+在重写函数内部，函数名会补全为调用，而不会再补全出一个声明。
 
 ```case
 tests/completion/overrides/01_override_declaration
@@ -483,7 +483,7 @@ tests/completion/include_path_completion/04_sibling_headers
 
 **距离最近的头文件优先**
 
-头文件名先列出包含方文件所在目录中的头文件，再按顺序列出项目各包含目录中的头文件，系统目录排在最后
+头文件名先列出包含方文件所在目录中的头文件，再列出引号包含目录中的头文件，然后按顺序列出其他包含目录中的头文件，系统目录排在最后
 
 ```case
 tests/completion/include_path_completion/09_header_order
@@ -575,7 +575,7 @@ tests/completion/filtering/01_underscore_filter
 
 **弃用标记**
 
-带有 `[[deprecated]]` 的候选项会标记为已弃用，与之对应的不带该属性的候选项则不会
+带有 `[[deprecated]]` 的候选项会标记为已弃用，并排在与之对应的不带该属性的候选项之后
 
 ```case
 tests/completion/filtering/02_deprecated_tag

@@ -414,7 +414,7 @@ Inside a derived class, the virtual functions of its bases complete as whole dec
 
 Inside a derived class, a base class's virtual function completes as a whole override declaration, return type and `override` included
 
-Inside the override, the name completes as itself, not as a call of the base version.
+Inside the override, the name completes as a call, not as another declaration.
 
 ```case
 tests/completion/overrides/01_override_declaration
@@ -484,7 +484,7 @@ tests/completion/include_path_completion/04_sibling_headers
 
 **Nearest headers first**
 
-Header names list the includer's directory first, then the project's include directories in order, the system's last
+Header names list the includer's directory first, then the quoted include directories, the others in order, the system's last
 
 ```case
 tests/completion/include_path_completion/09_header_order
@@ -576,7 +576,7 @@ tests/completion/filtering/01_underscore_filter
 
 **Deprecated tagging**
 
-A `[[deprecated]]` candidate is marked deprecated, its plain sibling is not
+A `[[deprecated]]` candidate is marked deprecated and ranks after its plain sibling
 
 ```case
 tests/completion/filtering/02_deprecated_tag

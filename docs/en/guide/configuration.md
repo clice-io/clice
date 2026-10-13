@@ -398,7 +398,7 @@ After `.` on a pointer, list the members `->` reaches and turn the `.` into `->`
 | ------------ | ------ | ------- |
 | `all_scopes` | `bool` | `true`  |
 
-Where a name is completed unqualified, also offer the project's names of other namespaces, inserting the qualifier they need; one in several namespaces is offered once per namespace. Names the file reaches already are offered as they are; for the others see `insert_includes` and `insert_imports`. Needs the index for names the file does not reach.
+Where an unqualified name is being typed, also offer the project's names of other namespaces it matches, inserting the qualifier they need; one in several namespaces is offered once per namespace. Names the file reaches already are offered as they are; for the others see `insert_includes` and `insert_imports`. Needs the index for names the file does not reach.
 
 </div>
 
