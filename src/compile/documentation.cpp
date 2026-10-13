@@ -26,6 +26,12 @@ Found comment_of(CompilationUnitRef unit, const clang::Decl* decl) {
         return {};
     }
     auto [fid, extent] = unit.decompose_expansion_range(range);
+    // The specialization Sema matches an explicit specialization with takes
+    // the explicit one's name but keeps the template's extent.
+    auto [name_fid, name] = unit.decompose_expansion_range(decl->getLocation());
+    if(name_fid != fid || name.begin < extent.begin || name.begin > extent.end) {
+        return {};
+    }
     auto content = unit.file_content(fid);
     auto run = documenting_comments(
         content,

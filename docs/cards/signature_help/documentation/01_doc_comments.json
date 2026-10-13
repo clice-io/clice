@@ -3,7 +3,7 @@
   "topic": "signature_help",
   "subtopic": "documentation",
   "title": "Documentation comments",
-  "summary": "The called function's documentation comment shows with its signature",
+  "summary": "The called function's documentation comment shows with its signature, and the `@param` text of the parameter being written with that parameter",
   "prose": "With `documentation = false` in the `[signature_help]` section the popup\nshows the signatures alone.",
   "status": "supported",
   "issues": [],
@@ -46,7 +46,8 @@
                 "open(const char *path, ⟦int mode⟧) -> int"
               ],
               "active": 0,
-              "documentation": "Opens a file for reading.\n@param path The file to open, relative to the working directory.\n@param mode Permission bits for a file the call creates."
+              "documentation": "Opens a file for reading.\n\nParameters:\n- path — The file to open, relative to the working directory.\n- mode — Permission bits for a file the call creates.",
+              "parameter_documentation": "Permission bits for a file the call creates."
             }
           }
         },

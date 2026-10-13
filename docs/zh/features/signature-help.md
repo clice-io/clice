@@ -300,7 +300,7 @@ tests/signature_help/parameters/07_standard_forwarding
 
 ## 文档
 
-被调用函数的文档注释与其签名一同显示，格式为纯文本。
+被调用函数的文档注释与其签名一同显示，格式为纯文本，读法与悬停相同；每个参数带有它的 `@param` 文本，编辑器会为正在填写的参数显示它。
 
 <!-- BEGIN GENERATED ITEMS: signature_help/documentation -->
 
@@ -308,7 +308,7 @@ tests/signature_help/parameters/07_standard_forwarding
 
 **文档注释**
 
-被调用函数的文档注释与其签名一同显示
+被调用函数的文档注释与其签名一同显示，正在填写的参数旁显示它的 `@param` 文本
 
 在 `[signature_help]` 节中设置 `documentation = false` 后，弹窗只显示签名。
 
