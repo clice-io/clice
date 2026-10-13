@@ -133,9 +133,13 @@ kota::task<std::optional<Features::Stop>> Features::nav_gate(const Ticket& ticke
     }
     // Same posture as every AST-backed request: the session's file index
     // is produced by the very compile awaited here, so once this finishes
-    // the index describes the buffer. A failed compile yields null rather
-    // than a lookup against a buffer with no finished index; a superseded
-    // one tells the client to re-pull.
+    // the index describes the buffer.
+    co_return co_await await_compile(ticket);
+}
+
+kota::task<std::optional<Features::Stop>> Features::await_compile(const Ticket& ticket) {
+    // A failed compile yields null rather than a lookup against a buffer
+    // with no finished index; a superseded one tells the client to re-pull.
     bool compiled = co_await ast.ensure_compiled(ticket.session);
     if(!ticket.fresh()) {
         co_return Stop{content_modified()};
@@ -505,14 +509,11 @@ Features::RawResult Features::definition(Ticket ticket,
     // worker leg covers — include directives, which have no symbol
     // occurrence — the manifest edges answer instead, under the same
     // content gate as the links projection: manifest lines are meaningless
-    // against a buffer the index never described. A symbol the shard names
-    // and no index places still waits for the compile: a module's
-    // declaration before the module's unit is indexed is in the compile's
-    // own index alone.
+    // against a buffer the index never described.
     auto serving = query.serving(path_id);
+    bool shard_served = serving && serving->kind == index::IndexSource::Kind::Shard;
     if(session->serving == ServingMode::IndexOnly || ASTFamily::compile_barred(*session) ||
-       (serving && serving->kind == index::IndexSource::Kind::Shard &&
-        !cursor_at(path_id, position))) {
+       (shard_served && !cursor_at(path_id, position))) {
         if(!query.shard_matching(session->path_id, session->text)) {
             co_return serde_raw{"[]"};
         }
@@ -527,6 +528,16 @@ Features::RawResult Features::definition(Ticket ticket,
         co_return serde_raw{"[]"};
     }
 
+    // A symbol the shard names and no index places waits for the compile:
+    // a module's declaration before the module's unit is indexed is in the
+    // compile's own index alone. Awaited here, as the links dispatch skips
+    // the compile while a crash bars link queries.
+    if(shard_served) {
+        if(auto stop = co_await await_compile(ticket)) {
+            co_return co_await stop_reply(std::move(*stop));
+        }
+    }
+
     // A dispatch error is final: a ContentModified in particular must not
     // be replaced by an index answer computed on the newer buffer.
     auto links = co_await directive_links(ticket, std::move(token)).or_fail();
@@ -534,7 +545,7 @@ Features::RawResult Features::definition(Ticket ticket,
         co_return to_raw(directive_definition(*link));
     }
 
-    // The dispatch compiled the buffer: retry against the refreshed
+    // The buffer compiled since the first lookup: retry against the refreshed
     // projection, but only when the compile actually completed — a failed
     // compile leaves the projection non-current and the caches stale.
     if(ast.projections.current(path_id)) {

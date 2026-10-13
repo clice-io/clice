@@ -292,6 +292,10 @@ private:
     /// or the request was superseded.
     kota::task<std::optional<Stop>> nav_gate(const Ticket& ticket);
 
+    /// Await the session's compile; a Stop when it failed or the request
+    /// was superseded.
+    kota::task<std::optional<Stop>> await_compile(const Ticket& ticket);
+
     /// The symbol under a position of the file's serving source, if any.
     std::optional<index::IndexQuery::Cursor> cursor_at(Fid path_id,
                                                        const protocol::Position& position) const;
