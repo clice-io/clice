@@ -197,22 +197,26 @@ bool is_simple_builtin(const clang::FunctionDecl* callee) {
     return false;
 }
 
-/// The width of `text` in characters.
-std::size_t columns(llvm::StringRef text) {
-    return llvm::count_if(text, [](char c) { return (c & 0xC0) != 0x80; });
+/// Whether `c` continues a UTF-8 character rather than starting one.
+bool continues_character(char c) {
+    return (c & 0xC0) == 0x80;
+}
+
+/// The length of `text` in characters.
+std::size_t characters(llvm::StringRef text) {
+    return llvm::count_if(text, [](char c) { return !continues_character(c); });
 }
 
 /// `text` within `limit` characters, cut with `…` where it no longer fits;
 /// `0` means no limit.
 std::string truncate(llvm::StringRef text, std::size_t limit) {
-    if(limit == 0 || columns(text) <= limit) {
+    if(limit == 0 || characters(text) <= limit) {
         return text.str();
     }
     std::size_t kept = 0;
     std::size_t end = 0;
     for(; end < text.size(); end += 1) {
-        // Count where a character starts, not its continuation bytes.
-        if((text[end] & 0xC0) != 0x80) {
+        if(!continues_character(text[end])) {
             if(kept + 1 == limit) {
                 break;
             }
@@ -246,6 +250,11 @@ std::optional<ArgumentList> first_argument_list(llvm::StringRef text) {
             case '(': closers.push_back(')'); break;
             case '[': closers.push_back(']'); break;
             case '>':
+                // The arrow of a trailing return type closes nothing.
+                if(i > 0 && text[i - 1] == '-') {
+                    break;
+                }
+                [[fallthrough]];
             case ')':
             case ']':
                 if(closers.empty() || closers.back() != text[i]) {
@@ -275,14 +284,14 @@ std::optional<ArgumentList> first_argument_list(llvm::StringRef text) {
 /// arguments after it still have room for a `…` each; a run of `…` is
 /// written once. Nullopt when not even `name<…>` fits.
 std::optional<std::string> elide(llvm::StringRef text, std::size_t limit) {
-    if(columns(text) <= limit) {
+    if(characters(text) <= limit) {
         return text.str();
     }
     auto list = first_argument_list(text);
     if(!list) {
         return std::nullopt;
     }
-    auto fixed = columns(list->head) + columns(list->tail) + 2;
+    auto fixed = characters(list->head) + characters(list->tail) + 2;
     if(fixed + 1 > limit) {
         return std::nullopt;
     }
@@ -308,7 +317,7 @@ std::optional<std::string> elide(llvm::StringRef text, std::size_t limit) {
             result += ", ";
         }
         result += *kept;
-        used += separator + columns(*kept);
+        used += separator + characters(*kept);
     }
     result += ">";
     result += list->tail;
@@ -851,7 +860,7 @@ private:
                         unit.context().getSourceManager(),
                         unit.lang_options());
                     const auto limit = options.max_length.default_arguments;
-                    const bool too_long = limit && columns(text) > limit;
+                    const bool too_long = limit && characters(text) > limit;
                     const auto abbrev = (too_long || text.contains("\n")) ? "…" : text;
                     auto& element = formatted_default_args.emplace_back();
                     if(name_hint) {
@@ -1055,7 +1064,7 @@ private:
     static std::size_t text_size(llvm::ArrayRef<InlayHintPart> label) {
         std::size_t size = 0;
         for(const auto& part: label) {
-            size += columns(part.value);
+            size += characters(part.value);
         }
         return size;
     }
@@ -1134,135 +1143,6 @@ private:
         result.push_back(std::move(hint));
     }
 
-    bool reserved(const clang::NamedDecl* decl) {
-        return decl && clang::isReservedInAllContexts(decl->isReserved(unit.lang_options()));
-    }
-
-    /// The standard library's own aliases of its class template
-    /// specializations, `string` for `basic_string<char>`, by canonical
-    /// type: libc++ marks them as preferred names, libstdc++ only declares
-    /// them. Two aliases of one type name none.
-    const llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>& standard_aliases() {
-        if(standard_aliases_storage) {
-            return *standard_aliases_storage;
-        }
-        auto& aliases = standard_aliases_storage.emplace();
-        auto& context = unit.context();
-        llvm::SmallVector<const clang::NamespaceDecl*> namespaces;
-        for(auto* found: context.getTranslationUnitDecl()->lookup(&context.Idents.get("std"))) {
-            if(auto* std = llvm::dyn_cast<clang::NamespaceDecl>(found)) {
-                llvm::append_range(namespaces, std->redecls());
-            }
-        }
-        while(!namespaces.empty()) {
-            for(auto* decl: namespaces.pop_back_val()->decls()) {
-                if(auto* inner = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
-                    if(inner->isInline() || !reserved(inner)) {
-                        namespaces.push_back(inner);
-                    }
-                    continue;
-                }
-                auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(decl);
-                if(!alias || reserved(alias) ||
-                   !llvm::isa<clang::TemplateSpecializationType>(alias->getUnderlyingType())) {
-                    continue;
-                }
-                auto canonical = context.getCanonicalType(alias->getUnderlyingType());
-                if(!llvm::isa<clang::RecordType>(canonical)) {
-                    continue;
-                }
-                auto [it, inserted] = aliases.try_emplace(canonical.getTypePtr(), alias);
-                if(!inserted && it->second &&
-                   it->second->getCanonicalDecl() != alias->getCanonicalDecl()) {
-                    it->second = nullptr;
-                }
-            }
-        }
-        return aliases;
-    }
-
-    /// `type` as a reader knows it: a deduced `auto` gives way to the type it
-    /// stands for, an alias with a reserved name (`_NonArray<int>`) to what
-    /// it names, a standard class template specialization to the standard
-    /// alias naming it (`string`), in template arguments too.
-    clang::QualType readable(clang::QualType type) {
-        auto& context = unit.context();
-        auto qualified = [&](clang::QualType inner) {
-            return context.getQualifiedType(inner, type.getLocalQualifiers());
-        };
-        const auto* T = type.getTypePtr();
-        if(const auto* deduced = llvm::dyn_cast<clang::AutoType>(T);
-           deduced && deduced->isDeduced()) {
-            return qualified(readable(deduced->getDeducedType()));
-        }
-        if(const auto* subst = llvm::dyn_cast<clang::SubstTemplateTypeParmType>(T)) {
-            return qualified(readable(subst->getReplacementType()));
-        }
-        if(const auto* alias = llvm::dyn_cast<clang::TypedefType>(T);
-           alias && reserved(alias->getDecl())) {
-            return qualified(readable(alias->desugar()));
-        }
-        if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(T)) {
-            return qualified(context.getPointerType(readable(pointer->getPointeeType())));
-        }
-        if(const auto* reference = llvm::dyn_cast<clang::LValueReferenceType>(T)) {
-            return qualified(context.getLValueReferenceType(readable(reference->getPointeeType())));
-        }
-        if(const auto* reference = llvm::dyn_cast<clang::RValueReferenceType>(T)) {
-            return qualified(context.getRValueReferenceType(readable(reference->getPointeeType())));
-        }
-
-        clang::TemplateName name;
-        llvm::ArrayRef<clang::TemplateArgument> arguments;
-        if(const auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(T)) {
-            if(TST->isTypeAlias() && reserved(TST->getTemplateName().getAsTemplateDecl())) {
-                return qualified(readable(TST->getAliasedType()));
-            }
-            name = TST->getTemplateName();
-            arguments = TST->template_arguments();
-        } else if(const auto* record = llvm::dyn_cast<clang::RecordType>(T)) {
-            if(auto it = standard_aliases().find(context.getCanonicalType(type).getTypePtr());
-               it != standard_aliases().end() && it->second) {
-                return qualified(context.getTypedefType(clang::ElaboratedTypeKeyword::None,
-                                                        /*Qualifier=*/std::nullopt,
-                                                        it->second));
-            }
-            const auto* spec =
-                llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record->getDecl());
-            if(!spec) {
-                return type;
-            }
-            name = clang::TemplateName(spec->getSpecializedTemplate());
-            arguments = spec->getTemplateArgs().asArray();
-        } else {
-            return type;
-        }
-
-        llvm::SmallVector<clang::TemplateArgument, 4> rewritten;
-        bool changed = false;
-        for(const auto& argument: arguments) {
-            if(argument.getKind() == clang::TemplateArgument::Type) {
-                auto readable_argument = readable(argument.getAsType());
-                changed |= readable_argument != argument.getAsType();
-                rewritten.emplace_back(readable_argument, false, argument.getIsDefaulted());
-            } else {
-                rewritten.push_back(argument);
-            }
-        }
-        if(!changed) {
-            return type;
-        }
-        llvm::SmallVector<clang::TemplateArgument, 4> canonical;
-        for(const auto& argument: arguments) {
-            canonical.push_back(context.getCanonicalTemplateArgument(argument));
-        }
-        return qualified(context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
-                                                               name,
-                                                               rewritten,
-                                                               canonical,
-                                                               context.getCanonicalType(type)));
-    }
-
     std::optional<std::string> fit_type(llvm::StringRef text) const {
         auto limit = options.max_length.types;
         return limit == 0 ? text.str() : elide(text, limit);
@@ -1272,15 +1152,18 @@ private:
         if(!options.deduced_types || type.isNull()) {
             return;
         }
-        // The desugared type, else the type as written when that is
-        // shorter, shortened if need be.
-        auto sugared = readable(type);
-        auto printed = readable(display::maybe_desugar(unit.context(), type));
+        // The desugared type, or the sugared one when that fits instead or
+        // when only it can be shortened.
+        auto sugared = readable_types.readable(type);
+        auto printed = readable_types.readable(display::maybe_desugar(unit.context(), type));
         auto text = display::type(unit.context(), printed, display_options).text;
         if(auto limit = options.max_length.types;
-           limit != 0 && columns(text) > limit && sugared != printed) {
-            printed = sugared;
-            text = display::type(unit.context(), printed, display_options).text;
+           limit != 0 && characters(text) > limit && sugared != printed) {
+            auto sugared_text = display::type(unit.context(), sugared, display_options).text;
+            if(characters(sugared_text) <= limit || !elide(text, limit)) {
+                printed = sugared;
+                text = std::move(sugared_text);
+            }
         }
         if(auto fitted = fit_type(text)) {
             add_inlay_hint(range,
@@ -1321,10 +1204,14 @@ private:
 
     /// The pieces of a designator such as `.inner.x` or `[2].x`: each field
     /// name links to the field, looked up from the aggregate's type down.
-    /// Fields and indices show as their switches say.
+    /// Without field designators a path through a field shows nothing: its
+    /// indices alone would repeat over the fields.
     std::vector<InlayHintPart> designator_label(clang::QualType aggregate,
                                                 llvm::StringRef designator) {
         std::vector<InlayHintPart> label;
+        if(!options.designators && designator.contains('.')) {
+            return label;
+        }
         while(!designator.empty()) {
             if(designator.consume_front("[")) {
                 auto index = designator.take_until([](char c) { return c == ']'; });
@@ -1354,10 +1241,8 @@ private:
                     }
                 }
             }
-            if(options.designators) {
-                append(label, plain("."));
-                append(label, field ? linked(name, field) : plain(name));
-            }
+            append(label, plain("."));
+            append(label, field ? linked(name, field) : plain(name));
             aggregate = field ? field->getType() : clang::QualType();
         }
         return label;
@@ -1833,25 +1718,66 @@ private:
         auto loc = written->getTypeLoc()
                        .getUnqualifiedLoc()
                        .getAs<clang::DeducedTemplateSpecializationTypeLoc>();
-        if(!loc) {
+        // An alias template's arguments are not its target's: `Same` of
+        // `Pair<T, T>` takes one.
+        if(!loc || !llvm::isa_and_present<clang::ClassTemplateDecl>(
+                       loc.getTypePtr()->getTemplateName().getAsTemplateDecl())) {
             return;
         }
-        // A deduction guide's return type is sugar nobody wrote here
+        const auto* spec = llvm::dyn_cast_if_present<clang::ClassTemplateSpecializationDecl>(
+            deduced->getAsCXXRecordDecl());
+        if(!spec) {
+            return;
+        }
+        // The arguments as the template's own name takes them: without the
+        // scope around it (`Outer<int>::`), the standard alias naming the
+        // whole (`string`), or the sugar of a deduction guide's return type
         // (`enable_if_t<…>` for `std::array`).
-        deduced = readable(deduced.getCanonicalType().getUnqualifiedType());
-        auto text = display::type(unit.context(), deduced, display_options).text;
+        auto& context = unit.context();
+        auto arguments = spec->getTemplateArgs().asArray();
+        // A guide may pass the defaults explicitly (`basic_string`'s traits).
+        const auto* params = spec->getSpecializedTemplate()->getTemplateParameters();
+        while(!arguments.empty() && arguments.size() <= params->size() &&
+              clang::isSubstitutedDefaultArgument(context,
+                                                  arguments.back(),
+                                                  params->getParam(arguments.size() - 1),
+                                                  arguments.drop_back(),
+                                                  params->getDepth())) {
+            arguments = arguments.drop_back();
+        }
+        auto named = readable_types.readable(context.getTemplateSpecializationType(
+            clang::ElaboratedTypeKeyword::None,
+            clang::TemplateName(spec->getSpecializedTemplate()),
+            arguments,
+            spec->getTemplateArgs().asArray(),
+            context.getCanonicalType(deduced)));
+        auto text = display::type(context, named, display_options).text;
         auto list = first_argument_list(text);
         if(!list) {
             return;
         }
-        if(auto fitted = fit_type(llvm::StringRef(text).drop_front(list->head.size()))) {
-            add_inlay_hint(loc.getSourceRange(),
-                           HintSide::Right,
-                           HintCategory::Type,
-                           "",
-                           type_label(deduced, *fitted),
-                           "");
+        auto fitted = fit_type(llvm::StringRef(text).drop_front(list->head.size()));
+        if(!fitted) {
+            return;
         }
+        // Linked with the name in front, which then goes: the name of an
+        // argument can be the template's own.
+        auto label = type_label(named, (list->head + *fitted).str());
+        for(auto head = list->head.size(); head != 0;) {
+            auto& first = label.front();
+            if(first.value.size() > head) {
+                first.value.erase(0, head);
+                break;
+            }
+            head -= first.value.size();
+            label.erase(label.begin());
+        }
+        add_inlay_hint(loc.getSourceRange(),
+                       HintSide::Right,
+                       HintCategory::Type,
+                       "",
+                       std::move(label),
+                       "");
     }
 
     // FIXME: Handle RecoveryExpr to try to hint some invalid calls.
@@ -1881,8 +1807,7 @@ private:
     /// The arrays behind std::initializer_list objects, visited after them.
     llvm::DenseSet<const clang::InitListExpr*> initializer_lists;
 
-    std::optional<llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>>
-        standard_aliases_storage;
+    display::ReadableTypes readable_types{unit.context()};
 };
 
 }  // namespace

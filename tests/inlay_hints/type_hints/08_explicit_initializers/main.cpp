@@ -4,6 +4,9 @@ struct Box {
 };
 
 template <typename T>
+struct Policy {};
+
+template <typename T, typename P = Policy<T>>
 struct Owner {};
 
 template <typename T>
@@ -15,6 +18,9 @@ struct Table {};
 template <typename T>
 Table<T, int> make_table();
 
+template <typename T>
+T* create();
+
 int compute();
 
 void use() {
@@ -25,6 +31,7 @@ void use() {
     auto grouped = (long{5});
     auto created = new Box<int>(5, 6);
     auto owned = make_owner<Box<int>>();
+    auto made = create<Box<int>>();
     auto closure = [] { return 7; };⟧
     §(deduced)⟦auto plain = compute();
     auto inferred = Box(1, 2);

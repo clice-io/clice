@@ -1,6 +1,13 @@
-import { answers } from "@clice/tools/testing";
+import { answers, type AnswersContext } from "@clice/tools/testing";
 
-answers("default", (a) => a.show("main.cpp", a.inlayHints("main.cpp")));
-answers("configured", { config: { inlay_hints: { array_indices: true } } }, (a) =>
-    a.show("main.cpp", a.inlayHints("main.cpp")),
+function hints(a: AnswersContext): Promise<void> {
+    return a.show("main.cpp", a.inlayHints("main.cpp"));
+}
+
+answers("default", hints);
+answers("configured", { config: { inlay_hints: { array_indices: true } } }, hints);
+answers(
+    "indices only",
+    { config: { inlay_hints: { designators: false, array_indices: true } } },
+    hints,
 );

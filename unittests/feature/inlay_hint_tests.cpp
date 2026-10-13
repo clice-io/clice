@@ -22,7 +22,8 @@ ZEST_SUITE(inlay_hint, Tester) {
 std::vector<feature::InlayHint> hints;
 llvm::DenseMap<std::uint32_t, feature::InlayHint> hints_map;
 
-/// Block and namespace end hints alone, after blocks of any height.
+/// Block and namespace end hints without the hints on calls, types and
+/// initializers, after blocks of any height.
 const feature::InlayHintsOptions block_ends = {
     .parameters = false,
     .deduced_types = false,
@@ -332,6 +333,7 @@ ZEST_CASE(BlockEnd) {
             namespace ns {
                 int Var;
                 int func();
+                int check(int);
                 struct S {
                     int Field;
                     int method() const;
@@ -349,14 +351,18 @@ ZEST_CASE(BlockEnd) {
 
                 while (ns::S{}.method()) {
                 }§(3)
+
+                while (ns::check(1)) {
+                }§(4)
             }
         )c",
         block_ends);
-    EXPECT_SIZE(7);
+    EXPECT_SIZE(8);
     EXPECT_HINT("0", "// while Var");
     EXPECT_HINT("1", "// while func()");
     EXPECT_HINT("2", "// while Field");
     EXPECT_HINT("3", "// while method()");
+    EXPECT_HINT("4", "// while check(...)");
 
     // Print conversions
     run(R"c(
@@ -551,8 +557,8 @@ ZEST_CASE(DefaultArguments) {
     EXPECT_HINT("3", ", baz: Baz{}");
     EXPECT_HINT("4", ", baz: Baz{}");
 
-    // type_name_limit = 0 means unlimited: a default longer than the
-    // usual limit still prints in full.
+    // A limit of 0 means unlimited: a default longer than the usual limit
+    // still prints in full.
     run(R"c(
             void configure(int first, const char* name = "this default is longer than the limit");
             void use() { configure(1§(0)); }

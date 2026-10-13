@@ -385,7 +385,7 @@ auto writable(clang::QualType type) -> bool {
         }
 
         bool VisitAutoType(clang::AutoType* type) {
-            return type->isDeduced();
+            return type->getDeducedKind() == clang::DeducedKind::Deduced;
         }
 
         bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* type) {

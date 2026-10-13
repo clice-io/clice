@@ -1,7 +1,9 @@
 [default."main.cpp"]
 inlay_hints = [
+    { line = "#endif⟨// LOG_TO_FILE⟩" },
     { line = "#endif⟨// ENABLE_LOGGING⟩" },
     { line = "#endif⟨// defined(USE_THREADS) && THREAD_COUNT > 2⟩" },
+    { line = "#endif⟨// defined(ENABLE_COMPRESSION) && defined(ENABLE_ENCRYPTION) &…⟩" },
     { line = "#endif⟨// !CONFIG_H⟩" },
 ]
 

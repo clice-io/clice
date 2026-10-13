@@ -307,6 +307,10 @@ auto resolved_auto(const clang::VarDecl* var, CompilationUnitRef unit) -> clang:
     }
     auto declared = var->getType();
     while(!llvm::isa<clang::AutoType>(declared.getTypePtr())) {
+        // `auto&&` bound to an lvalue stands for the lvalue reference.
+        if(declared->isRValueReferenceType() && resolved->isLValueReferenceType()) {
+            return resolved;
+        }
         if(!llvm::isa<clang::PointerType, clang::ReferenceType>(declared.getTypePtr())) {
             return {};
         }

@@ -24,6 +24,39 @@ auto copy = value
 '''
 range = "auto ⟦copy⟧ = value;"
 
+[answers.reference_keyword.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+T
+```
+'''
+range = "const ⟦auto⟧& reference = value;"
+
+[answers.pointer_keyword.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+T
+```
+'''
+range = "⟦auto⟧* pointer = source;"
+
+[answers.forwarding_keyword.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+T &
+```
+'''
+range = "⟦auto⟧&& forwarded = value;"
+
 [answers.dependent_class_arguments.hover]
 markdown = '''
 ### variable `wrapper`

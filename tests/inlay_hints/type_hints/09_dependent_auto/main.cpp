@@ -7,6 +7,19 @@ struct Grid {
 };
 
 template <typename T>
+struct Box {
+    T value;
+
+    auto get() const {
+        return value;
+    }
+
+    void use() const {
+        auto got = get();
+    }
+};
+
+template <typename T>
 void body(T input) {
     auto copy = input;
     auto grid = Grid<T, 2>::make();

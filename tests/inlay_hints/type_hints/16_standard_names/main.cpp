@@ -1,9 +1,13 @@
 namespace std {
 
+inline namespace __1 {
+
 template <typename Char>
 struct basic_string {};
 
 typedef basic_string<char> string;
+
+}  // namespace __1
 
 template <typename T>
 struct vector {
@@ -28,10 +32,23 @@ using __holder_t = typename __unique_holder<T>::__type;
 
 __holder_t<long> hold_count();
 
+template <typename... Ts>
+struct tuple {
+    tuple(Ts... values);
+};
+
+template <typename State>
+struct fpos {};
+
+typedef fpos<int> streampos;
+typedef fpos<int> wstreampos;
+
 }  // namespace std
 
-void use(std::vector<std::string>& names) {
+void use(std::vector<std::string>& names, std::vector<std::fpos<int>>& positions) {
     auto& first = names.front();
     auto shared = std::share_count();
     auto held = std::hold_count();
+    auto& position = positions.front();
+    std::tuple both(names.front(), 1);
 }

@@ -1,6 +1,23 @@
 [answers."main.cpp"]
 inlay_hints = [
     {
+        line = "a::Crate⟨<b::Crate>⟩ crate(⟨item:⟩b::Crate{});",
+        hints = [
+            {
+                label = "<b::Crate>",
+                links = [
+                    { value = "Crate", target = "struct ⟦Crate⟧ {};" },
+                ],
+            },
+            {
+                label = "item:",
+                links = [
+                    { value = "item", target = "Crate(T ⟦item⟧);" },
+                ],
+            },
+        ],
+    },
+    {
         line = "auto label⟨: text⟩ = make_text();",
         hints = [
             {

@@ -4,6 +4,8 @@ inlay_hints = [
     { line = "auto shortened⟨: Compact⟩ = make_compact();" },
     { line = "auto elided⟨: extremely_long_template_name<…>⟩ = make_long();" },
     { line = "auto mixed⟨: tuple<int, double, …>⟩ = make_mixed();" },
+    { line = "auto nested⟨: tuple<int, Pair<long, …>>⟩ = make_nested();" },
+    { line = "auto callback⟨: function<…>⟩ = make_callback();" },
     { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
 ]
 
@@ -13,5 +15,8 @@ inlay_hints = [
     { line = "auto shortened⟨: Compact⟩ = make_compact();" },
     { line = "auto elided⟨: extremely_long_template_name<Integer, Integer, Integer>⟩ = make_long();" },
     { line = "auto mixed⟨: tuple<int, double, extremely_long_template_name<int, char, bool>>⟩ = make_mixed();" },
+    { line = "auto nested⟨: tuple<int, Pair<long, extremely_long_template_name<int, char, bool>>>⟩ = make_nested();" },
+    { line = "auto dropped⟨: an_extraordinarily_long_class_name<int>⟩ = make_far();" },
+    { line = "auto callback⟨: function<auto (const char *) -> bool>⟩ = make_callback();" },
     { line = "auto defaulted⟨: Defaulted<float>⟩ = make_defaulted();" },
 ]

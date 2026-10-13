@@ -1336,4 +1336,135 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Param& param) {
     return os;
 }
 
+bool ReadableTypes::reserved(const clang::NamedDecl* decl) const {
+    return decl && clang::isReservedInAllContexts(decl->isReserved(context.getLangOpts()));
+}
+
+auto ReadableTypes::standard_aliases()
+    -> const llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>& {
+    if(aliases) {
+        return *aliases;
+    }
+    auto& collected = aliases.emplace();
+    llvm::SmallVector<const clang::NamespaceDecl*> namespaces;
+    for(auto* found: context.getTranslationUnitDecl()->lookup(&context.Idents.get("std"))) {
+        if(auto* std = llvm::dyn_cast<clang::NamespaceDecl>(found)) {
+            llvm::append_range(namespaces, std->redecls());
+        }
+    }
+    while(!namespaces.empty()) {
+        for(auto* decl: namespaces.pop_back_val()->decls()) {
+            if(auto* inner = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
+                if(inner->isInline() || !reserved(inner)) {
+                    namespaces.push_back(inner);
+                }
+                continue;
+            }
+            auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(decl);
+            if(!alias || reserved(alias) ||
+               !llvm::isa<clang::TemplateSpecializationType>(alias->getUnderlyingType())) {
+                continue;
+            }
+            auto canonical = context.getCanonicalType(alias->getUnderlyingType());
+            if(!llvm::isa<clang::RecordType>(canonical)) {
+                continue;
+            }
+            auto [it, inserted] = collected.try_emplace(canonical.getTypePtr(), alias);
+            if(!inserted && it->second &&
+               it->second->getCanonicalDecl() != alias->getCanonicalDecl()) {
+                it->second = nullptr;
+            }
+        }
+    }
+    return collected;
+}
+
+auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
+    auto qualified = [&](clang::QualType inner) {
+        return context.getQualifiedType(inner, type.getLocalQualifiers());
+    };
+    const auto* T = type.getTypePtr();
+    if(const auto* deduced = llvm::dyn_cast<clang::AutoType>(T);
+       deduced && deduced->getDeducedKind() == clang::DeducedKind::Deduced) {
+        return qualified(readable(deduced->getDeducedType()));
+    }
+    if(const auto* subst = llvm::dyn_cast<clang::SubstTemplateTypeParmType>(T)) {
+        return qualified(readable(subst->getReplacementType()));
+    }
+    if(const auto* alias = llvm::dyn_cast<clang::TypedefType>(T);
+       alias && reserved(alias->getDecl())) {
+        return qualified(readable(alias->desugar()));
+    }
+    if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(T)) {
+        return qualified(context.getPointerType(readable(pointer->getPointeeType())));
+    }
+    if(const auto* reference = llvm::dyn_cast<clang::LValueReferenceType>(T)) {
+        return qualified(context.getLValueReferenceType(readable(reference->getPointeeType())));
+    }
+    if(const auto* reference = llvm::dyn_cast<clang::RValueReferenceType>(T)) {
+        return qualified(context.getRValueReferenceType(readable(reference->getPointeeType())));
+    }
+
+    clang::TemplateName name;
+    llvm::ArrayRef<clang::TemplateArgument> arguments;
+    if(const auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(T)) {
+        if(TST->isTypeAlias() && reserved(TST->getTemplateName().getAsTemplateDecl())) {
+            return qualified(readable(TST->getAliasedType()));
+        }
+        name = TST->getTemplateName();
+        arguments = TST->template_arguments();
+    } else if(const auto* record = llvm::dyn_cast<clang::RecordType>(T)) {
+        if(auto it = standard_aliases().find(context.getCanonicalType(type).getTypePtr());
+           it != standard_aliases().end() && it->second) {
+            return qualified(context.getTypedefType(clang::ElaboratedTypeKeyword::None,
+                                                    /*Qualifier=*/std::nullopt,
+                                                    it->second));
+        }
+        const auto* spec =
+            llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record->getDecl());
+        if(!spec) {
+            return type;
+        }
+        name = clang::TemplateName(spec->getSpecializedTemplate());
+        arguments = spec->getTemplateArgs().asArray();
+    } else {
+        return type;
+    }
+
+    llvm::SmallVector<clang::TemplateArgument, 4> rewritten;
+    bool changed = false;
+    for(const auto& argument: arguments) {
+        rewritten.push_back(readable(argument));
+        changed |= !rewritten.back().structurallyEquals(argument);
+    }
+    if(!changed) {
+        return type;
+    }
+    llvm::SmallVector<clang::TemplateArgument, 4> canonical;
+    for(const auto& argument: arguments) {
+        canonical.push_back(context.getCanonicalTemplateArgument(argument));
+    }
+    return qualified(context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                           name,
+                                                           rewritten,
+                                                           canonical,
+                                                           context.getCanonicalType(type)));
+}
+
+auto ReadableTypes::readable(const clang::TemplateArgument& argument) -> clang::TemplateArgument {
+    if(argument.getKind() == clang::TemplateArgument::Type) {
+        return clang::TemplateArgument(readable(argument.getAsType()),
+                                       /*isNullPtr=*/false,
+                                       argument.getIsDefaulted());
+    }
+    if(argument.getKind() == clang::TemplateArgument::Pack) {
+        llvm::SmallVector<clang::TemplateArgument, 4> elements;
+        for(const auto& element: argument.pack_elements()) {
+            elements.push_back(readable(element));
+        }
+        return clang::TemplateArgument::CreatePackCopy(context, elements);
+    }
+    return argument;
+}
+
 }  // namespace clice::display

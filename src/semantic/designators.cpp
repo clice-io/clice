@@ -15,9 +15,9 @@ namespace clice::designators {
 
 namespace {
 
-/// Whether `name` is reserved, like `_Foo` or `__elems`.
-bool is_reserved(llvm::StringRef name) {
-    return name.size() >= 2 && name[0] == '_' && (clang::isUppercase(name[1]) || name[1] == '_');
+/// Whether a field's name is reserved, like `_Foo` or `__elems`.
+bool is_reserved(const clang::FieldDecl* field) {
+    return clang::isReservedInAllContexts(field->isReserved(field->getASTContext().getLangOpts()));
 }
 
 /// The designator names of an aggregate's direct subobjects, in order:
@@ -84,10 +84,10 @@ public:
             name = identifier->getName();
         }
         if(brace_elided &&
-           (field->isAnonymousStructOrUnion() || (one_field && is_reserved(name)))) {
+           (field->isAnonymousStructOrUnion() || (one_field && is_reserved(*field)))) {
             return true;
         }
-        if(name.empty() || is_reserved(name)) {
+        if(name.empty() || is_reserved(*field)) {
             return false;
         }
         out += '.';

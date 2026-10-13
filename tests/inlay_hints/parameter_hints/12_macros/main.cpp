@@ -11,6 +11,7 @@ void outer_call(int first, int second, int third);
 int inner_call(int left, int right, int last);
 #define OUTER(arg) outer_call(0, 0, arg)
 #define INNER(arg) inner_call(0, 0, arg)
+#define SWAPPED(second, first) plot(first, second)
 
 void use() {
     report(PI);
@@ -18,4 +19,5 @@ void use() {
     plot(PAIR);
     ASSERT(check(42) == 0);
     OUTER(INNER(3));
+    SWAPPED(4.0, 5.0);
 }

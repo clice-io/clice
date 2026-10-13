@@ -255,24 +255,32 @@ void parse_documentation(llvm::StringRef input, markup::Document& output);
 struct InlayHintLengths {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Deduced types and deduced template arguments: template "
-                         "arguments that do not fit become `…`, innermost and "
-                         "last first, e.g. `tuple<int, string, …>`; a type whose "
-                         "outermost name does not fit is not shown.")
+                         "Maximum length in characters of a deduced type or of "
+                         "deduced template arguments; `0` means no limit. The "
+                         "template arguments that do not fit become `…`, e.g. "
+                         "`tuple<int, string, …>`; a type whose outermost name "
+                         "does not fit is not shown.")
     <std::uint32_t> types = 32;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Omitted default arguments: one too long becomes `…`, and "
-                         "the list is cut with `…` where it no longer fits.")
+                         "Maximum length in characters of the omitted default "
+                         "arguments; `0` means no limit. One too long becomes "
+                         "`…`, and the list is cut with `…` where it no longer "
+                         "fits.")
     <std::uint32_t> default_arguments = 32;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Block end labels, cut with `…` where they no longer fit.")
+                     description =
+                         "Maximum length in characters of a block end or "
+                         "namespace end label, cut with `…` past it; `0` means "
+                         "no limit.")
     <std::uint32_t> block_end = 60;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "`#endif` conditions, cut with `…` where they no longer fit.")
+                     description =
+                         "Maximum length in characters of an `#endif` condition, "
+                         "cut with `…` past it; `0` means no limit.")
     <std::uint32_t> endif = 60;
 };
 
@@ -371,7 +379,9 @@ struct InlayHintsOptions {
     <std::uint32_t> min_block_lines = 10;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Maximum hint lengths in columns; `0` means no limit.")
+                     description =
+                         "The [inlay_hints.max_length] table: how long each kind "
+                         "of hint may grow.")
     <InlayHintLengths> max_length;
 };
 

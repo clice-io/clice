@@ -1,6 +1,7 @@
 // Type names link inside every form a printed type takes: an alias a class
 // prefers to be named by, a member pointer, a template template argument,
-// and a designator through an array index.
+// deduced class template arguments, and a designator through an array
+// index.
 template <typename Char>
 struct basic_text;
 
@@ -24,6 +25,19 @@ template <typename T>
 struct Box {};
 
 Uses<Box> make_uses();
+
+namespace a {
+template <typename T>
+struct Crate {
+    Crate(T item);
+};
+}  // namespace a
+
+namespace b {
+struct Crate {};
+}  // namespace b
+
+a::Crate crate(b::Crate{});
 
 struct Corner {
     int x;

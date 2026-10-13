@@ -154,6 +154,16 @@ function renderRoot(root: StructSchema): string {
     return parts.join("\n\n");
 }
 
+/// The options of `struct`, in declaration order; a table nested in it
+/// lists its own under dotted keys (`max_length.types`).
+function renderFields(root: StructSchema, struct: StructSchema, prefix: string): string[] {
+    return Object.entries(struct.properties ?? {}).flatMap(([name, field]) =>
+        field.$ref !== undefined
+            ? renderFields(root, resolveRef(root, field), `${prefix}${name}.`)
+            : [renderField(`${prefix}${name}`, field).join("\n")],
+    );
+}
+
 /// A section region's body: every option of the section's struct, in
 /// declaration order.
 function renderSection(root: StructSchema, section: string): string {
@@ -163,10 +173,7 @@ function renderSection(root: StructSchema, section: string): string {
     }
     const isArray = top.type === "array";
     const struct = resolveRef(root, isArray ? (top.items ?? {}) : top);
-    const properties = struct.properties ?? {};
-    return Object.entries(properties)
-        .map(([name, field]) => renderField(name, field).join("\n"))
-        .join("\n\n");
+    return renderFields(root, struct, "").join("\n\n");
 }
 
 function rewriteDoc(docText: string, root: StructSchema, problems: string[]): string {

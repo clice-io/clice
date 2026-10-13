@@ -23,6 +23,7 @@ inlay_hints = [
     { line = "auto grouped⟨: long⟩ = (long{5});" },
     { line = "auto created⟨: Box<int> *⟩ = new Box<int>(⟨first:⟩5, ⟨second:⟩6);" },
     { line = "auto owned⟨: Owner<Box<int>>⟩ = make_owner<Box<int>>();" },
+    { line = "auto made⟨: Box<int> *⟩ = create<Box<int>>();" },
     { line = "auto closure⟨: (lambda)⟩ = []⟨-> int⟩ { return 7; };" },
 ]
 

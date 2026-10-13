@@ -12,12 +12,34 @@ inlay_hints = [
         ],
     },
     {
+        line = "};⟨// struct Counter⟩",
+        hints = [
+            {
+                label = "// struct Counter",
+                links = [
+                    { value = "struct Counter", target = "struct ⟦⟧Counter {" },
+                ],
+            },
+        ],
+    },
+    {
         line = "}⟨// while total > 0⟩",
         hints = [
             {
                 label = "// while total > 0",
                 links = [
                     { value = "while total > 0", target = "⟦⟧while (total > 0) {" },
+                ],
+            },
+        ],
+    },
+    {
+        line = "}⟨// if total < 0⟩",
+        hints = [
+            {
+                label = "// if total < 0",
+                links = [
+                    { value = "if total < 0", target = "⟦⟧if (total < 0) {" },
                 ],
             },
         ],
