@@ -5,7 +5,8 @@
 // parameter's default, the only instantiation of a template the
 // initializer calls, and a template candidate a call passes over for
 // another overload never stand in; a generic lambda's invented parameter
-// has no name to write.
+// has no name to write. A type too long to show whole keeps the arguments
+// that fit, a comparison among them.
 struct Point {
     int x;
     int y;
@@ -92,3 +93,17 @@ void place(T* value);
 void put(Point* point) {
     place(point);
 }
+
+template <bool Ready, typename T>
+struct Gate {};
+
+struct AnExtraordinarilyLongPayloadName {};
+
+template <int N>
+struct Guarded {
+    Gate<(N > 0), AnExtraordinarilyLongPayloadName> gate;
+
+    void copy() {
+        §(compared)⟦auto kept = gate;⟧
+    }
+};

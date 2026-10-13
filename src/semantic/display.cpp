@@ -405,7 +405,9 @@ auto summarize(const clang::Expr* expr) -> std::string {
         std::string VisitCallExpr(const CallExpr* E) {
             std::string Result = Visit(E->getCallee());
             if(!Result.empty()) {
-                Result += E->getNumArgs() == 0 ? "()" : "(...)";
+                bool written =
+                    E->getNumArgs() != 0 && !llvm::isa<clang::CXXDefaultArgExpr>(E->getArg(0));
+                Result += written ? "(...)" : "()";
             }
             return Result;
         }

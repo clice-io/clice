@@ -241,6 +241,10 @@ std::optional<ArgumentList> first_argument_list(llvm::StringRef text) {
     for(std::size_t i = 0; i < text.size(); i += 1) {
         switch(text[i]) {
             case '<':
+                // Within parentheses or brackets, `<` and `>` compare.
+                if(!closers.empty() && closers.back() != '>') {
+                    break;
+                }
                 if(closers.empty() && !list) {
                     list.emplace().head = text.take_front(i);
                     argument = i + 1;
@@ -251,7 +255,7 @@ std::optional<ArgumentList> first_argument_list(llvm::StringRef text) {
             case '[': closers.push_back(']'); break;
             case '>':
                 // The arrow of a trailing return type closes nothing.
-                if(i > 0 && text[i - 1] == '-') {
+                if((i > 0 && text[i - 1] == '-') || (!closers.empty() && closers.back() != '>')) {
                     break;
                 }
                 [[fallthrough]];
@@ -1082,9 +1086,20 @@ private:
         SpelledNames spelled;
         spelled.qualifier(display::restored_scope(type, display_options));
         spelled.walk(type);
+        // Once elision has cut a name out, a namesake of another declaration
+        // can take its place in the search: such names stay plain.
+        auto ambiguous = [&](llvm::StringRef name, const clang::NamedDecl* decl) {
+            return text.contains("…") && llvm::any_of(spelled.names, [&](const SpelledName& other) {
+                       return other.name == name &&
+                              other.decl->getCanonicalDecl() != decl->getCanonicalDecl();
+                   });
+        };
         std::vector<InlayHintPart> label;
         std::size_t cursor = 0;
         for(const auto& [name, decl]: spelled.names) {
+            if(ambiguous(name, decl)) {
+                continue;
+            }
             for(auto at = text.find(name, cursor); at != llvm::StringRef::npos;
                 at = text.find(name, at + 1)) {
                 auto end = at + name.size();

@@ -52,6 +52,17 @@ inlay_hints = [
         ],
     },
     {
+        line = "auto duo⟨: Duo<…, b::Crate>⟩ = make_duo();",
+        hints = [
+            {
+                label = ": Duo<…, b::Crate>",
+                links = [
+                    { value = "Duo", target = "struct ⟦Duo⟧ {};" },
+                ],
+            },
+        ],
+    },
+    {
         line = "Corner corners[2] = {⟨[0].x=⟩1, ⟨[0].y=⟩2, ⟨[1].x=⟩3, ⟨[1].y=⟩4};",
         hints = [
             {

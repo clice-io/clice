@@ -35,3 +35,8 @@ inlay_hints = [
 inlay_hints = [
     { line = "auto kept⟨: T⟩ = value;" },
 ]
+
+[answers.compared]
+inlay_hints = [
+    { line = "auto kept⟨: Gate<(N > 0), …>⟩ = gate;" },
+]

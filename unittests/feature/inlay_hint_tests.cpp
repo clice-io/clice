@@ -334,6 +334,7 @@ ZEST_CASE(BlockEnd) {
                 int Var;
                 int func();
                 int check(int);
+                int ready(int mode = 0);
                 struct S {
                     int Field;
                     int method() const;
@@ -354,15 +355,19 @@ ZEST_CASE(BlockEnd) {
 
                 while (ns::check(1)) {
                 }§(4)
+
+                while (ns::ready()) {
+                }§(5)
             }
         )c",
         block_ends);
-    EXPECT_SIZE(8);
+    EXPECT_SIZE(9);
     EXPECT_HINT("0", "// while Var");
     EXPECT_HINT("1", "// while func()");
     EXPECT_HINT("2", "// while Field");
     EXPECT_HINT("3", "// while method()");
     EXPECT_HINT("4", "// while check(...)");
+    EXPECT_HINT("5", "// while ready()");
 
     // Print conversions
     run(R"c(
