@@ -9,3 +9,7 @@ type_definition = []
 [answers.method]
 definition = ["int ⟦norm⟧() const;"]
 type_definition = []
+
+[answers.smart_pointer]
+definition = ["auto peek = [](auto ⟦handle⟧) { return handle->x; };"]
+type_definition = ["struct ⟦Point⟧ {", "struct ⟦Ptr⟧ {"]

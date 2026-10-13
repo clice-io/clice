@@ -526,7 +526,7 @@ public:
             return;
         }
         add_pair_relation(decl, RelationKind::TypeDefinition, target, decl->getLocation());
-        auto type = types::unwrap(value_type(decl));
+        auto type = types::unwrap(resolver.resolve(value_type(decl)));
         if(!llvm::isa<clang::CXXRecordDecl>(target) || type->isDependentType()) {
             return;
         }
