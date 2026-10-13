@@ -191,26 +191,6 @@ struct Signature {
     }
 };
 
-/// A function parameter as its declaration writes it, under `name`.
-void print_parameter(llvm::raw_ostream& stream,
-                     const clang::ParmVarDecl& param,
-                     llvm::StringRef name,
-                     const clang::PrintingPolicy& policy) {
-    // The type as written: an array parameter does not decay. Implicit
-    // special members write none.
-    auto type = param.getTypeSourceInfo() ? param.getTypeSourceInfo()->getType() : param.getType();
-    std::string declarator;
-    if(auto* expansion = type->getAs<clang::PackExpansionType>()) {
-        type = expansion->getPattern();
-        declarator = "...";
-    }
-    declarator += name;
-    type.print(stream, policy, declarator);
-    if(auto value = display::default_argument(&param)) {
-        stream << " = " << *value;
-    }
-}
-
 class SignatureCollector final : public clang::CodeCompleteConsumer {
 public:
     SignatureCollector(protocol::SignatureHelp& help,
@@ -241,6 +221,7 @@ public:
         help.signatures.reserve(candidate_count);
         help.active_signature = 0;
 
+        readable.emplace(sema.getASTContext());
         policy = sema.getPrintingPolicy();
         policy.AnonymousTagNameStyle =
             std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
@@ -275,12 +256,12 @@ public:
                     if(auto* proto = llvm::dyn_cast<clang::FunctionProtoType>(type)) {
                         for(auto param_type: proto->param_types()) {
                             signature.parameter(
-                                [&](llvm::raw_ostream& os) { param_type.print(os, policy); });
+                                [&](llvm::raw_ostream& os) { print(os, param_type); });
                         }
                         variadic(signature, proto->isVariadic());
                     }
                     stream << ") -> ";
-                    type->getReturnType().print(stream, policy);
+                    print(stream, type->getReturnType());
                     break;
                 }
 
@@ -291,12 +272,12 @@ public:
                         auto* identifier = param->getIdentifier();
                         auto name = identifier ? identifier->deuglifiedName() : "";
                         signature.parameter([&](llvm::raw_ostream& os) {
-                            print_parameter(os, *param, name, policy);
+                            print_parameter(os, *param, name);
                         });
                     }
                     variadic(signature, location.getTypePtr()->isVariadic());
                     stream << ") -> ";
-                    location.getTypePtr()->getReturnType().print(stream, policy);
+                    print(stream, location.getTypePtr()->getReturnType());
                     break;
                 }
 
@@ -356,6 +337,31 @@ public:
     }
 
 private:
+    /// Prints `type` as a reader knows it, around `declarator`.
+    void print(llvm::raw_ostream& stream, clang::QualType type, const llvm::Twine& declarator = "") {
+        readable->readable(type).print(stream, policy, declarator);
+    }
+
+    /// A function parameter as its declaration writes it, under `name`.
+    void print_parameter(llvm::raw_ostream& stream,
+                         const clang::ParmVarDecl& param,
+                         llvm::StringRef name) {
+        // The type as written: an array parameter does not decay. Implicit
+        // special members write none.
+        auto type =
+            param.getTypeSourceInfo() ? param.getTypeSourceInfo()->getType() : param.getType();
+        std::string declarator;
+        if(auto* expansion = type->getAs<clang::PackExpansionType>()) {
+            type = expansion->getPattern();
+            declarator = "...";
+        }
+        declarator += name;
+        print(stream, type, declarator);
+        if(auto value = display::default_argument(&param)) {
+            stream << " = " << *value;
+        }
+    }
+
     /// A C-style `...` takes every argument past the named parameters.
     static void variadic(Signature& signature, bool variadic) {
         if(variadic) {
@@ -388,7 +394,7 @@ private:
             bool expanded = index >= pack_begin && index < pack_end;
             auto name = expanded ? "" : parameter_name(function, index);
             signature.parameter([&](llvm::raw_ostream& os) {
-                print_parameter(os, *function.getParamDecl(index), name, policy);
+                print_parameter(os, *function.getParamDecl(index), name);
             });
         }
     }
@@ -447,7 +453,7 @@ private:
 
         if(!llvm::isa<clang::CXXConstructorDecl, clang::CXXDestructorDecl>(function)) {
             stream << " -> ";
-            function.getReturnType().print(stream, policy);
+            print(stream, function.getReturnType());
         }
         help.signatures.push_back(
             std::move(signature).finish(current_arg, documentation(function)));
@@ -459,7 +465,7 @@ private:
         if(auto* cxx_record = llvm::dyn_cast<clang::CXXRecordDecl>(&record)) {
             for(const auto& base: cxx_record->bases()) {
                 signature.parameter(
-                    [&](llvm::raw_ostream& os) { base.getType().print(os, policy); });
+                    [&](llvm::raw_ostream& os) { print(os, base.getType()); });
             }
         }
         for(auto* field: record.fields()) {
@@ -558,14 +564,9 @@ private:
                 type->isLValueReferenceType() ? clang::VK_LValue : clang::VK_XValue));
         }
 
-        // The standard library writes make_unique's return type through
-        // its own aliases; a member's is a member type of the container.
-        auto result = llvm::isa<clang::CXXMethodDecl>(function)
-                          ? function.getReturnType()
-                          : candidate.getReturnType().getCanonicalType();
         forwarding = Forwarding{
             .function = &function,
-            .result = result,
+            .result = candidate.getReturnType(),
             .argument = current_arg,
         };
 
@@ -598,7 +599,7 @@ private:
         parameters(signature, function, 0, function.getNumParams() - 1);
         write(signature);
         signature.stream << ") -> ";
-        forwarding->result.print(signature.stream, policy);
+        print(signature.stream, forwarding->result);
         help.signatures.push_back(
             std::move(signature).finish(forwarding->argument, documentation(documented)));
     }
@@ -616,6 +617,7 @@ private:
     protocol::SignatureHelp& help;
     const SignatureHelpOptions& options;
     clang::PrintingPolicy policy{clang::LangOptions()};
+    std::optional<display::ReadableTypes> readable;
     clang::CodeCompletionTUInfo info;
 };
 
