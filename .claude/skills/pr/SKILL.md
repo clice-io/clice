@@ -5,7 +5,7 @@ description: Read before committing, opening a PR, or checking on an open one �
 
 # PR Pipeline
 
-Branch (CLAUDE.md) → code → commit → pre-push checks → self-review and fixes → open → watch CI and threads until settled → report ready. Merging needs the maintainer's explicit authorization for this PR.
+Branch (CLAUDE.md) → code → commit → self-review and fixes → pre-push checks → push and open → watch CI and threads until settled → report ready. Merging needs the maintainer's explicit authorization for this PR.
 
 ## Commits and titles
 
@@ -40,7 +40,7 @@ Commit all work first (`git status` clean): the reviewers read `git diff origin/
    Each prompt names its dimension, the diff command and the rule files to read, and ends with the same fixed text: _Report only defects that lead to a concrete failure scenario — the input or state, and the wrong result it produces — each with file:line. Nothing outside this diff's scope. No refactoring, restructuring or style-preference suggestions. No findings is a valid answer._
 
 2. **codex, in addition — only when it is logged in and has quota.** Run the codex skill's review command in the background beside the Opus reviewers. If `codex login status` fails or the run stops on a usage limit, skip it without mention.
-3. Every finding is a hypothesis: confirm it with a probe that fails on the defect before fixing it. Fix everything confirmed, then open.
+3. Every finding is a hypothesis: confirm it with a probe that fails on the defect before fixing it. Fix everything confirmed and commit; the pre-push checks then run on the fixed tree.
 
 ## Opening
 

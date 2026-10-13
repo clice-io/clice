@@ -1,6 +1,6 @@
 ---
 name: upgrade-llvm
-description: Read before upgrading xclang/LLVM (arg = the xclang version, e.g. 23.1.2.1), touching MODULE.bazel, .bazelrc, BUILD.bazel or bazel/, or regenerating modules/ after a library bump.
+description: Read before upgrading xclang/LLVM (arg = the xclang version, e.g. 23.1.2.1), touching MODULE.bazel, .bazelrc, BUILD.bazel or bazel/, or regenerating modules/ — after a library bump, or when clice needs a header or macro it does not export.
 ---
 
 Upgrade LLVM to a new version. Accepts the xclang version as argument (e.g., `23.1.2.1`: LLVM 23.1.2, xclang's first build of it).
@@ -9,7 +9,7 @@ The compiler clice builds with and the LLVM/Clang libraries it links both come f
 
 **Read `toolchain-changelog.md` in this directory before touching `MODULE.bazel`, `.bazelrc`, `BUILD.bazel` or `bazel/`**: it records the platform pitfalls that still apply (symptom, cause, fix, how to check). Every new one is added there in the same shape; a toolchain change without an entry is not finished.
 
-The work runs on two boxes (the agent-box skill), leased once and kept for the whole upgrade: a Linux one, which also cross-builds arm64 Linux and both Windows targets as CI does, and a macOS one, which builds its own and x64 macOS.
+The work happens on a branch `chore/upgrade-llvm-<major>`, created from fresh `origin/main` (CLAUDE.md) before Step 2, and runs on two boxes (the agent-box skill), leased once and kept for the whole upgrade: a Linux one, which also cross-builds arm64 Linux and both Windows targets as CI does, and a macOS one, which builds its own and x64 macOS.
 
 ## Step 1: The xclang Release
 
@@ -30,7 +30,7 @@ pixi run build RelWithDebInfo
 rm -rf ~/clice-bin && cp -RL build/RelWithDebInfo/bin ~/clice-bin
 ```
 
-The new headers need not build the old `modules/` (a name it exports may be gone upstream), and regenerating only reads them. But the clice must carry this tree's own `clice modularize`: one built from an older tree writes another shape (thousands of extra lines of enum wrappers). main's CI build artifact (`build-<triple>-RelWithDebInfo`) serves as well; a box that skips the build then needs `pixi run install-tests` before Step 4, or `npx bazel` gets a 404.
+The new headers need not build the old `modules/` (a name it exports may be gone upstream), and regenerating only reads them. But the clice must carry this tree's own `clice modularize`: one built from an older tree writes another shape (thousands of extra lines of enum wrappers). main's CI build artifact (`build-<triple>-RelWithDebInfo`, kept 3 days) serves as well: unpacked into `~/clice-bin`, it needs `chmod +x ~/clice-bin/bin/*` (artifacts drop the executable bit), and a box that skips the build needs `pixi run install-tests` before Step 4, or `npx bazel` gets a 404.
 
 ## Step 3: Pin It
 
@@ -123,7 +123,7 @@ The maintainer decides whether all changes are acceptable or if adjustments are 
 
 ## Step 8: The PR
 
-From the branch `chore/upgrade-llvm-<major>` (created from fresh `origin/main` at the start, CLAUDE.md), the pr skill takes over; the title is `chore: upgrade LLVM to <X.Y.Z>`.
+The pr skill takes over; the title is `chore: upgrade LLVM to <X.Y.Z>`.
 
 ## Notes
 

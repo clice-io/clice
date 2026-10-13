@@ -31,10 +31,10 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
    under `docs/cards/`) and prints what changed: review every block like
    code. What clice gets wrong stays in the output, with
    `wrong = "<reason>"` on the block.
-4. Gates: `pixi run npm run check` at the repo root (strict tsc + ESLint,
-   zero tolerance); for a documented case `pixi run check-feature-docs`
-   too. Page regions and translations are synced once, at the end of the
-   branch (the docs skill's "Syncing docs at the end of a branch").
+4. Gate: `pixi run npm run check` at the repo root (strict tsc + ESLint,
+   zero tolerance). Page regions and translations are synced, and
+   `check-feature-docs` run, once at the end of the branch (the docs skill's
+   "Syncing docs at the end of a branch").
 
 ## Hard rules
 

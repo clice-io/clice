@@ -40,13 +40,15 @@ workarounds for them do not belong in clice's Bazel files.
   `--num-threads=1` in `xclang_debug_symbols`' `gsymutil_args`
   (`bazel/defs.bzl`). Check: build `//:gsym` twice without the disk cache
   and compare.
-- **Fewer Windows unit tests than Linux ones, or `clice --help` aborting with
-  "The <name> subcommand is not registered".** lld's `--gc-sections` drops a
-  COMDAT nothing references, initializer and all, and an archive member
-  nothing references is never linked. zest's registrations are ordinary
-  variables since kotatsu 0.1.0.226, the driver's too, and the `driver`
-  library is `alwayslink`, so both programs link with `gc_sections` on every
-  OS. Check: the Windows legs' unit test count equals Linux's;
+- **Fewer Windows unit tests than the last green main run's Windows legs, or
+  `clice --help` aborting with "The <name> subcommand is not registered".**
+  lld's `--gc-sections` drops a COMDAT nothing references, initializer and
+  all, and an archive member nothing references is never linked. zest's
+  registrations are ordinary variables since kotatsu 0.1.0.226, the
+  driver's too, and the `driver` library is `alwayslink`, so both programs
+  link with `gc_sections` on every OS. Check: the Windows legs'
+  `N tests from M test suites` line matches the last green main run's
+  (Linux runs more: some tests are compiled out on Windows);
   `clice --help` lists every subcommand.
 - **Windows: the version is `0.1.0`.** `--workspace_status_command=<script>.sh`
   runs through `cmd.exe`, which hands a `.sh` to its file association and
@@ -150,8 +152,7 @@ workarounds for them do not belong in clice's Bazel files.
 - **A clang assertion aborts a Debug run** (`Qualifier must be dependent`,
   say) where RelWithDebInfo passes. Only the ASan libclang has assertions on:
   the abort is a clice bug the release build swallows. Fix clice; never turn
-  the assertions off. When it shows on one CI leg only, that leg's Tester
-  compiles against other library headers (write-tests, "Known pitfalls").
+  the assertions off.
 - **lldb says `member access into incomplete type 'clang::TypedefNameDecl'`
   in a clice frame.** `-fno-standalone-debug` (the default) emits a class's
   definition next to its vtable, inside the libclang archives, which carry

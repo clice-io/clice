@@ -6,11 +6,12 @@ description: Read before running the codex CLI (GPT-6 astra) — the additional 
 # Codex Delegation
 
 `codex` is an installed CLI agent backed by GPT-6 astra. Its value is
-independence: it did not write what it reviews. It is always optional — an
-additional reviewer beside the Opus reviewers of the pr skill, a second
-opinion on a plan, a debugger, an implementer of a well-scoped task. Use it
-only when it is logged in (`codex login status`) and has quota; when either
-fails, carry on without it and without comment.
+independence: it did not write what it reviews. It is optional — an additional
+reviewer beside the Opus reviewers of the pr skill, a second opinion on a
+plan, a debugger, an implementer of a well-scoped task. Use it only when it
+is logged in (`codex login status`) and has quota; when either fails, carry
+on without it and without comment. The one exception is the triage skill,
+which stops instead: its classification never leaves codex's sandbox.
 
 ## Invocation
 
@@ -57,12 +58,14 @@ carries the same fixed constraints as the Opus reviewers:
 ```bash
 codex exec -m gpt-6-astra -c model_reasoning_effort=xhigh \
   --dangerously-bypass-approvals-and-sandbox -o /tmp/codex-review-<topic>.md \
-  "Read .claude/CLAUDE.md and .claude/skills/cpp-style/SKILL.md and apply
-their rules. Review the changes in 'git diff origin/main...HEAD' for
-correctness, rule violations and test coverage. Report only defects that
-lead to a concrete failure scenario, each with file:line and the scenario.
-Nothing outside this diff's scope; no refactoring or style-preference
-suggestions." < /dev/null
+  "Read .claude/CLAUDE.md, .claude/skills/cpp-style/SKILL.md and, when
+test code changed, .claude/skills/write-tests/SKILL.md, and apply their
+rules. Review the changes in 'git diff origin/main...HEAD' for correctness,
+rule violations and test coverage. Report only defects that lead to a
+concrete failure scenario — the input or state, and the wrong result it
+produces — each with file:line. Nothing outside this diff's scope. No
+refactoring, restructuring or style-preference suggestions. No findings is
+a valid answer." < /dev/null
 ```
 
 `codex exec review --base origin/main` cannot take a prompt (`--base` and the
@@ -121,9 +124,9 @@ only a fresh session recovers). Rules:
   — two full runs at once on one machine slow both. Either codex runs them
   and you don't, or codex analyzes and you verify.
 - **Keep codex's raw output out of the main context.** Progress checks on a
-  background run (log tail, new commits, report landed?) and the review of a
-  codex-authored diff go through an Opus subagent that returns a digest or
-  ranked findings; the main session spot-checks and decides.
+  background run (log tail, new commits, report landed?) go through an Opus
+  subagent that returns a digest; a codex-authored diff gets the pr skill's
+  Opus reviewers. The main session spot-checks and decides.
 
 ## Recipes
 
