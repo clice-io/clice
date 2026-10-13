@@ -1,40 +1,40 @@
 [answers.quoted.completion]
 items = [
-    { label = "snap_bare", kind = "File", insert = 'snap_bare"', replace = '#include "⟦snap"⟧' },
     { label = "snap_five.inc", kind = "File", insert = 'snap_five.inc"', replace = '#include "⟦snap"⟧' },
     { label = "snap_four.hxx", kind = "File", insert = 'snap_four.hxx"', replace = '#include "⟦snap"⟧' },
     { label = "snap_one.h", kind = "File", insert = 'snap_one.h"', replace = '#include "⟦snap"⟧' },
     { label = "snap_sub/", kind = "File", insert = "snap_sub/", replace = '#include "⟦snap⟧"' },
-    { label = "snap_system", kind = "File", insert = 'snap_system"', replace = '#include "⟦snap"⟧' },
-    { label = "snap_system.h", kind = "File", insert = 'snap_system.h"', replace = '#include "⟦snap"⟧' },
     { label = "snap_three.hh", kind = "File", insert = 'snap_three.hh"', replace = '#include "⟦snap"⟧' },
     { label = "snap_two.hpp", kind = "File", insert = 'snap_two.hpp"', replace = '#include "⟦snap"⟧' },
+    { label = "snap_bare", kind = "File", insert = 'snap_bare"', replace = '#include "⟦snap"⟧' },
+    { label = "snap_system", kind = "File", insert = 'snap_system"', replace = '#include "⟦snap"⟧' },
+    { label = "snap_system.h", kind = "File", insert = 'snap_system.h"', replace = '#include "⟦snap"⟧' },
 ]
 
 [answers.angled.completion]
 items = [
-    { label = "snap_bare", kind = "File", insert = "snap_bare>", replace = "#include <⟦snap>⟧" },
     { label = "snap_five.inc", kind = "File", insert = "snap_five.inc>", replace = "#include <⟦snap>⟧" },
     { label = "snap_four.hxx", kind = "File", insert = "snap_four.hxx>", replace = "#include <⟦snap>⟧" },
     { label = "snap_one.h", kind = "File", insert = "snap_one.h>", replace = "#include <⟦snap>⟧" },
     { label = "snap_sub/", kind = "File", insert = "snap_sub/", replace = "#include <⟦snap⟧>" },
-    { label = "snap_system", kind = "File", insert = "snap_system>", replace = "#include <⟦snap>⟧" },
-    { label = "snap_system.h", kind = "File", insert = "snap_system.h>", replace = "#include <⟦snap>⟧" },
     { label = "snap_three.hh", kind = "File", insert = "snap_three.hh>", replace = "#include <⟦snap>⟧" },
     { label = "snap_two.hpp", kind = "File", insert = "snap_two.hpp>", replace = "#include <⟦snap>⟧" },
+    { label = "snap_bare", kind = "File", insert = "snap_bare>", replace = "#include <⟦snap>⟧" },
+    { label = "snap_system", kind = "File", insert = "snap_system>", replace = "#include <⟦snap>⟧" },
+    { label = "snap_system.h", kind = "File", insert = "snap_system.h>", replace = "#include <⟦snap>⟧" },
 ]
 
 [answers.code.completion]
 items = [
     { label = "alignof", kind = "Keyword", insert = "alignof", replace = "int value = ⟦⟧;" },
-    { label = "auto", kind = "Keyword", insert = "auto", replace = "int value = ⟦⟧;" },
-    { label = "bool", kind = "Keyword", insert = "bool", replace = "int value = ⟦⟧;" },
-    { label = "char", kind = "Keyword", insert = "char", replace = "int value = ⟦⟧;" },
-    { label = "char16_t", kind = "Keyword", insert = "char16_t", replace = "int value = ⟦⟧;" },
-    { label = "char32_t", kind = "Keyword", insert = "char32_t", replace = "int value = ⟦⟧;" },
-    { label = "char8_t", kind = "Keyword", insert = "char8_t", replace = "int value = ⟦⟧;" },
-    { label = "class", kind = "Keyword", insert = "class", replace = "int value = ⟦⟧;" },
     { label = "co_await", kind = "Keyword", insert = "co_await", replace = "int value = ⟦⟧;" },
     { label = "co_yield", kind = "Keyword", insert = "co_yield", replace = "int value = ⟦⟧;" },
+    { label = "const_cast", kind = "Keyword", insert = "const_cast", replace = "int value = ⟦⟧;" },
+    { label = "decltype", kind = "Keyword", insert = "decltype", replace = "int value = ⟦⟧;" },
+    { label = "delete", kind = "Keyword", insert = "delete", replace = "int value = ⟦⟧;" },
+    { label = "dynamic_cast", kind = "Keyword", insert = "dynamic_cast", replace = "int value = ⟦⟧;" },
+    { label = "false", kind = "Keyword", insert = "false", replace = "int value = ⟦⟧;" },
+    { label = "new", kind = "Keyword", insert = "new", replace = "int value = ⟦⟧;" },
+    { label = "noexcept", kind = "Keyword", insert = "noexcept", replace = "int value = ⟦⟧;" },
 ]
 more = 32

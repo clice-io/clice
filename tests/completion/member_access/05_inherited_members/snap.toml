@@ -1,6 +1,6 @@
 [answers.pos.completion]
 items = [
-    { label = "base_field", kind = "Field", detail = "int" },
-    { label = "base_method()", kind = "Method", detail = "int" },
     { label = "derived_field", kind = "Field", detail = "int" },
+    { label = "base_method()", kind = "Method", detail = "int" },
+    { label = "base_field", kind = "Field", detail = "int" },
 ]

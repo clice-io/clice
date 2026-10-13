@@ -1,15 +1,15 @@
 [answers.nested.completion]
 items = [
-    { label = "Vec", kind = "Class" },
     { label = "capacity", kind = "Variable", detail = "int" },
     { label = "size() const", kind = "Method", detail = "int" },
+    { label = "Vec", kind = "Class" },
     { label = "value_type", kind = "TypeParameter" },
 ]
 
 [answers.partial.completion]
 items = [
-    { label = "Traits", kind = "Class" },
     { label = "pointer_only", kind = "Variable", detail = "int" },
+    { label = "Traits", kind = "Class" },
 ]
 
 [answers.enumeration.completion]

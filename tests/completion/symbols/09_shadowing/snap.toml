@@ -6,4 +6,5 @@ items = [
 [answers.function.completion]
 items = [
     { label = "maximum", kind = "Variable", detail = "int" },
+    { label = "ns::maximum(int a, int b)", kind = "Function", detail = "int" },
 ]

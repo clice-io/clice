@@ -18,7 +18,7 @@ markdown = '''
 ### variable `point`
 
 ---
-Type: `auto`
+Type: `Point`
 
 ---
 ```cpp

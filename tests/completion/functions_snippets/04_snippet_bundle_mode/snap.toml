@@ -1,9 +1,9 @@
 [default.pos.completion]
 items = [
-    { label = "foooo(…) +2 overloads", kind = "Function", insert = "foooo" },
+    { label = "foooo(…) +1 overload", kind = "Function", insert = "foooo($0)", snippet = true },
 ]
 
-[configured.pos.completion]
+[none.pos.completion]
 items = [
-    { label = "foooo(…) +2 overloads", kind = "Function", insert = "foooo" },
+    { label = "foooo(…) +1 overload", kind = "Function", insert = "foooo" },
 ]

@@ -4,6 +4,6 @@ items = [
     { label = "audit()", kind = "Method", detail = "void" },
     { label = "balance()", kind = "Method", detail = "int" },
     { label = "deposit(int cents)", kind = "Method", detail = "void" },
-    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "operator=(…) +1 overload", kind = "Method" },
     { label = "~Account()", kind = "Method", detail = "void" },
 ]

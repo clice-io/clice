@@ -1,38 +1,53 @@
 [default.free_function.completion]
 items = [
-    { label = "Foo", kind = "Class", insert = "Foo" },
-    { label = "foooo(int x, float y)", kind = "Function", detail = "int", insert = "foooo" },
     { label = "for", kind = "Keyword", insert = "for" },
+    { label = "Foo", kind = "Class", insert = "Foo" },
+    { label = "foooo(int x, float y)", kind = "Function", detail = "int", insert = "foooo(${1:int x}, ${2:float y})", snippet = true },
 ]
 
 [default.no_arguments.completion]
 items = [
     { label = "noexcept", kind = "Keyword", insert = "noexcept" },
-    { label = "nothing_to_fill()", kind = "Function", detail = "void", insert = "nothing_to_fill" },
+    { label = "nothing_to_fill()", kind = "Function", detail = "void", insert = "nothing_to_fill()" },
 ]
 
 [default.method.completion]
 items = [
-    { label = "bazzzz(int a, int b)", kind = "Method", detail = "int", insert = "bazzzz" },
+    { label = "bazzzz(int a, int b)", kind = "Method", detail = "int", insert = "bazzzz(${1:int a}, ${2:int b})", snippet = true },
 ]
 
-[configured.free_function.completion]
+[delimiters.free_function.completion]
 items = [
-    { label = "Foo", kind = "Class", insert = "Foo" },
-    { label = "Foo()", kind = "Constructor", insert = "Foo" },
-    { label = "Foo(Foo &&)", kind = "Constructor", insert = "Foo(${1:Foo &&})", snippet = true },
-    { label = "Foo(const Foo &)", kind = "Constructor", insert = "Foo(${1:const Foo &})", snippet = true },
-    { label = "foooo(int x, float y)", kind = "Function", detail = "int", insert = "foooo(${1:int x}, ${2:float y})", snippet = true },
     { label = "for", kind = "Keyword", insert = "for" },
+    { label = "Foo", kind = "Class", insert = "Foo" },
+    { label = "foooo(int x, float y)", kind = "Function", detail = "int", insert = "foooo($0)", snippet = true },
 ]
 
-[configured.no_arguments.completion]
+[delimiters.no_arguments.completion]
+items = [
+    { label = "noexcept", kind = "Keyword", insert = "noexcept" },
+    { label = "nothing_to_fill()", kind = "Function", detail = "void", insert = "nothing_to_fill()" },
+]
+
+[delimiters.method.completion]
+items = [
+    { label = "bazzzz(int a, int b)", kind = "Method", detail = "int", insert = "bazzzz($0)", snippet = true },
+]
+
+[none.free_function.completion]
+items = [
+    { label = "for", kind = "Keyword", insert = "for" },
+    { label = "Foo", kind = "Class", insert = "Foo" },
+    { label = "foooo(int x, float y)", kind = "Function", detail = "int", insert = "foooo" },
+]
+
+[none.no_arguments.completion]
 items = [
     { label = "noexcept", kind = "Keyword", insert = "noexcept" },
     { label = "nothing_to_fill()", kind = "Function", detail = "void", insert = "nothing_to_fill" },
 ]
 
-[configured.method.completion]
+[none.method.completion]
 items = [
-    { label = "bazzzz(int a, int b)", kind = "Method", detail = "int", insert = "bazzzz(${1:int a}, ${2:int b})", snippet = true },
+    { label = "bazzzz(int a, int b)", kind = "Method", detail = "int", insert = "bazzzz" },
 ]

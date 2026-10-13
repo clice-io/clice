@@ -1,7 +1,7 @@
 [answers.plain.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.pointer.completion]
