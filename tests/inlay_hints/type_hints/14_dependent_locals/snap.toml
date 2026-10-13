@@ -3,6 +3,11 @@ inlay_hints = [
     { line = "auto kept⟨: Point⟩ = value;" },
 ]
 
+[answers.collapsed]
+inlay_hints = [
+    { line = "auto&& kept⟨: Point &⟩ = static_cast<T&&>(value);" },
+]
+
 [answers.lambda]
 inlay_hints = [
     { line = "auto width⟨: int⟩ = point.x;" },

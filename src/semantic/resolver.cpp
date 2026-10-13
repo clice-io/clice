@@ -91,41 +91,29 @@ llvm::SmallVector<OnlyInstantiation> only_instantiations(const clang::VarDecl* v
     /// none or several.
     llvm::SmallVector<OnlyInstantiation> enclosing;
     /// The lists of a declaration outside its class, and how many enclosing
-    /// templates were met below it.
-    llvm::SmallVector<std::pair<llvm::SmallVector<clang::TemplateParameterList*, 2>, unsigned>>
-        outside;
+    /// templates were met up to it.
+    llvm::SmallVector<std::pair<llvm::ArrayRef<clang::TemplateParameterList*>, unsigned>> outside;
 
     for(const clang::Decl* decl = var; decl && !llvm::isa<clang::TranslationUnitDecl>(decl);
         decl = llvm::dyn_cast<clang::Decl>(decl->getDeclContext())) {
-        llvm::SmallVector<clang::TemplateParameterList*, 2> lists;
-        auto collect = [&](const auto* declaration) {
-            /// `template <>` heads an explicit specialization of a level,
-            /// which is no template to pair with.
-            for(auto* list: declaration->getTemplateParameterLists()) {
-                if(list->size() > 0) {
-                    lists.push_back(list);
-                }
-            }
-        };
+        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
+        if(auto* owner = record ? record->getDescribedClassTemplate() : nullptr) {
+            // The helper keeps its clangd signature, which speaks mutable
+            // pointers; it only reads through them.
+            auto* instantiation = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(
+                decls::only_instantiation(const_cast<clang::CXXRecordDecl*>(record)));
+            enclosing.push_back({owner, owner->getTemplateParameters(), instantiation});
+        }
+        /// A member class template's own list is not among its outer ones.
+        llvm::ArrayRef<clang::TemplateParameterList*> lists;
         if(auto* declarator = llvm::dyn_cast<clang::DeclaratorDecl>(decl)) {
-            collect(declarator);
+            lists = declarator->getTemplateParameterLists();
         } else if(auto* tag = llvm::dyn_cast<clang::TagDecl>(decl)) {
-            collect(tag);
+            lists = tag->getTemplateParameterLists();
         }
         if(!lists.empty()) {
-            outside.emplace_back(std::move(lists), enclosing.size());
+            outside.emplace_back(lists, enclosing.size());
         }
-
-        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
-        auto* owner = record ? record->getDescribedClassTemplate() : nullptr;
-        if(!owner) {
-            continue;
-        }
-        // The helper keeps its clangd signature, which speaks mutable
-        // pointers; it only reads through them.
-        auto* instantiation = llvm::dyn_cast_or_null<clang::ClassTemplateSpecializationDecl>(
-            decls::only_instantiation(const_cast<clang::CXXRecordDecl*>(record)));
-        enclosing.push_back({owner, owner->getTemplateParameters(), instantiation});
     }
 
     llvm::SmallVector<OnlyInstantiation> bound;
@@ -1164,12 +1152,12 @@ public:
 
         auto argument = source.getNonReferenceType();
         if(auto* RRT = declared->getAs<clang::RValueReferenceType>()) {
-            /// Clang cannot tell what a dependent call or subscript yields;
-            /// the type it returns says.
-            bool lvalue = evaluated && llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(
-                                           init->IgnoreParens())
-                              ? source->isLValueReferenceType()
-                              : init->isLValue();
+            /// Clang cannot tell what a dependent call or subscript yields,
+            /// nor what a cast to a dependent reference type collapses to
+            /// (`static_cast<T&&>` with `T = int&`); the type says.
+            bool opaque = evaluated && llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(
+                                           init->IgnoreParens());
+            bool lvalue = source->isLValueReferenceType() || (!opaque && init->isLValue());
             auto pointee = RRT->getPointeeType();
             if(lvalue && llvm::isa<clang::AutoType>(pointee) && !pointee.hasLocalQualifiers()) {
                 return context.getLValueReferenceType(argument);

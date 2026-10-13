@@ -27,3 +27,18 @@ auto point
 ```
 '''
 range = "for (auto ⟦point⟧ : points) {"
+
+[answers.member.hover]
+markdown = '''
+### variable `copy`
+
+---
+Type: `struct Point`
+
+---
+```cpp
+// In Holder<T>::reset
+auto copy = T()
+```
+'''
+range = "auto ⟦copy⟧ = T();"

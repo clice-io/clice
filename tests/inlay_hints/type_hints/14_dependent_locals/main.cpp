@@ -1,6 +1,7 @@
 // A local `auto` whose initializer depends on a function template's
-// parameter hints the type the template's only instantiation gives it, or
-// the type a class template's member declares; a template instantiated
+// parameter hints the type the template's only instantiation gives it,
+// references collapsed as there, or the type a class template's member
+// declares; a template instantiated
 // with several types hints nothing, and neither does a parameter's default,
 // the only instantiation of a template the initializer calls, or a template
 // candidate a call passes over for another overload.
@@ -16,6 +17,15 @@ int copy(T value) {
 }
 
 int copied = copy(Point{});
+
+template <typename T>
+void forward(T&& value) {
+    §(collapsed)⟦auto&& kept = static_cast<T&&>(value);⟧
+}
+
+void pass(Point point) {
+    forward(point);
+}
 
 auto measure = [](const auto& point) {
     §(lambda)⟦auto width = point.x;⟧

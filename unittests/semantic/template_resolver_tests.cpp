@@ -5014,6 +5014,54 @@ ZEST_CASE(StandardScan) {
     ZEXPECT(scanner.visited > 0);
 }
 
+ZEST_CASE(ScopedBindingStaysLocal) {
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Holder {
+            template <typename U>
+            struct Inner {
+                using type = T;
+            };
+
+            template <typename U>
+            void reset() {
+                auto first = typename Inner<U>::type();
+                using input = typename Inner<U>::type;
+            }
+        };
+
+        template struct Holder<int>;
+    )code");
+    ZASSERT(compile());
+
+    struct VariableFinder : clang::RecursiveASTVisitor<VariableFinder> {
+        const clang::VarDecl* first = nullptr;
+
+        bool VisitVarDecl(const clang::VarDecl* decl) {
+            if(decl->getName() == "first") {
+                first = decl;
+            }
+            return true;
+        }
+    } variables;
+
+    variables.TraverseAST(unit->context());
+    ZASSERT(variables.first);
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+    ZASSERT(!finder.input.isNull());
+
+    auto& resolver = unit->resolver();
+    auto deduced = resolver.deduce(variables.first);
+    ZASSERT(!deduced.isNull());
+    ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);
+
+    auto input = resolver.resolve(finder.input);
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
+}
+
 };  // ZEST_SUITE(TemplateResolver)
 
 }  // namespace

@@ -8,7 +8,23 @@ inlay_hints = [
     { line = "auto copy⟨: char⟩ = T();" },
 ]
 
+[answers.partial_member]
+inlay_hints = []
+
 [answers.nested]
 inlay_hints = [
     { line = "auto copy⟨: char⟩ = T();" },
 ]
+
+[answers.member_template]
+inlay_hints = [
+    { line = "auto copy⟨: char⟩ = T();" },
+]
+
+[answers.levels]
+inlay_hints = [
+    { line = "auto outer⟨: char⟩ = T();" },
+]
+
+[answers.twice]
+inlay_hints = []

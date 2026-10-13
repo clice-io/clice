@@ -1,6 +1,6 @@
-// Locals of a template instantiated once: an `auto` copy takes the type
-// the instantiation gives it; a range-for element of a dependent range has
-// no initializer to deduce from.
+// Locals of a template instantiated once, a class template's included: an
+// `auto` copy takes the type the instantiation gives it; a range-for element
+// of a dependent range has no initializer to deduce from.
 struct Point {
     int x;
 };
@@ -20,3 +20,12 @@ void walk(const T& points) {
 void use() {
     walk(Points{});
 }
+
+template <typename T>
+struct Holder {
+    void reset() {
+        auto §(member)copy = T();
+    }
+};
+
+template struct Holder<Point>;
