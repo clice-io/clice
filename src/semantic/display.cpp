@@ -1450,11 +1450,15 @@ auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
         name = TST->getTemplateName();
         arguments = TST->template_arguments();
     } else if(const auto* record = llvm::dyn_cast<clang::RecordType>(T)) {
-        if(auto it = standard_aliases().find(context.getCanonicalType(type).getTypePtr());
-           it != standard_aliases().end() && it->second) {
-            return qualified(context.getTypedefType(clang::ElaboratedTypeKeyword::None,
-                                                    /*Qualifier=*/std::nullopt,
-                                                    it->second));
+        // Collecting the aliases reads all of namespace std, which a unit
+        // built on a PCH pays for once per request; another class has none.
+        if(record->getDecl()->isInStdNamespace()) {
+            if(auto it = standard_aliases().find(context.getCanonicalType(type).getTypePtr());
+               it != standard_aliases().end() && it->second) {
+                return qualified(context.getTypedefType(clang::ElaboratedTypeKeyword::None,
+                                                        /*Qualifier=*/std::nullopt,
+                                                        it->second));
+            }
         }
         const auto* spec =
             llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record->getDecl());
