@@ -89,6 +89,14 @@ auto documentation(const index::IndexQuery& query,
                    index::SymbolHash hash,
                    Fid anchor,
                    const DocumentationOptions& options) -> Documentation {
+    // A parameter shows what its function's comment says of it, as hover's
+    // card does.
+    if(auto info = query.symbol_info(hash, anchor);
+       info && info->kind == SymbolKind::Parameter && info->parent != 0) {
+        auto owner = symbol_documentation(query, info->parent, anchor, options, 0);
+        const auto* param = owner.param(info->name);
+        return param ? Documentation{.brief = param->text} : Documentation();
+    }
     return symbol_documentation(query, hash, anchor, options, 0);
 }
 

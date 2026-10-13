@@ -349,12 +349,18 @@ void LSPClient::register_lifecycle() {
         label_parts = params.capabilities.text_document.has_value() &&
                       params.capabilities.text_document->inlay_hint.has_value();
 
+        // The formats come in the client's order of preference.
         if(params.capabilities.text_document.has_value() &&
            params.capabilities.text_document->hover.has_value() &&
-           params.capabilities.text_document->hover->content_format.has_value() &&
-           llvm::is_contained(*params.capabilities.text_document->hover->content_format,
-                              protocol::MarkupKind::Markdown)) {
-            hover_markup = protocol::MarkupKind::Markdown;
+           params.capabilities.text_document->hover->content_format.has_value()) {
+            auto& formats = *params.capabilities.text_document->hover->content_format;
+            auto preferred = llvm::find_if(formats, [](const protocol::MarkupKind& kind) {
+                return kind == protocol::MarkupKind::Markdown ||
+                       kind == protocol::MarkupKind::PlainText;
+            });
+            if(preferred != formats.end()) {
+                hover_markup = *preferred;
+            }
         }
 
         if(params.capabilities.text_document.has_value() &&

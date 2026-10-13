@@ -181,6 +181,34 @@
           }
         }
       ]
+    },
+    {
+      "name": "plain text preferred",
+      "blocks": [
+        {
+          "label": "function",
+          "marker": "function",
+          "value": {
+            "hover": {
+              "plaintext": "function answer\n\nComputes the answer. Tests primality of `p`.\n\n→ int\nParameters:\n- int p\n\nconstexpr int answer(int p)",
+              "range": {
+                "$place": "constexpr int ⟦answer⟧(int p) {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 14
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 20
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ]
 }

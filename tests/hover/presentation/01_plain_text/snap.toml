@@ -86,3 +86,17 @@ Size: 4 bytes, alignment 4 bytes
 public: int second
 '''
 range = "int ⟦second⟧;"
+
+["plain text preferred".function.hover]
+plaintext = '''
+function answer
+
+Computes the answer. Tests primality of `p`.
+
+→ int
+Parameters:
+- int p
+
+constexpr int answer(int p)
+'''
+range = "constexpr int ⟦answer⟧(int p) {"

@@ -860,9 +860,13 @@ private:
                 auto name =
                     rest.take_until([](char c) { return c == ' ' || c == '\t' || c == '('; });
                 if(rest.substr(name.size()).starts_with("(")) {
-                    auto close = rest.find(')', name.size());
-                    name =
-                        rest.take_front(close == llvm::StringRef::npos ? rest.size() : close + 1);
+                    int depth = 0;
+                    auto close = std::find_if(rest.begin() + name.size(), rest.end(), [&](char c) {
+                        depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+                        return depth == 0;
+                    });
+                    name = rest.take_front(close == rest.end() ? rest.size()
+                                                               : close - rest.begin() + 1);
                 }
                 copy(command.kind, name);
                 return rest.substr(name.size());

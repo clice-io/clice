@@ -139,6 +139,21 @@ T copy(T value)
 '''
 range = "⟦copy⟧(1);"
 
+["index cards carry documentation".parameter.hover]
+markdown = '''
+### parameter `shape`
+
+---
+
+The shape it reads.
+
+---
+```cpp
+Shape shape
+```
+'''
+range = "return area(2, 3) + ⟦shape⟧.sides + LIMIT + calls;"
+
 ["index cards follow the options".call.hover]
 markdown = '''
 ### function `area`

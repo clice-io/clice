@@ -172,6 +172,9 @@ ZEST_CASE(CopyDoc) {
 
     auto missing = parse_documentation("@copydoc other", lookup);
     ZEXPECT(missing.brief == "See `other`.");
+
+    auto nested = parse_documentation("@copydoc source(void (*)(int)) More.", lookup);
+    ZEXPECT(nested.brief == "See `source(void (*)(int))`. More.");
 }
 
 ZEST_CASE(CopiedNotes) {

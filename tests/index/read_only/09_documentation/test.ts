@@ -11,6 +11,7 @@ const markers = [
     "overload",
     "nested",
     "template",
+    "parameter",
 ];
 
 // Read-only, the cards come from the index: the comment documenting the

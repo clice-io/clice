@@ -16,3 +16,12 @@ test("plain text client", async (t) => {
         await t.show(name, s.hover(t.marker(name)));
     }
 });
+
+test("plain text preferred", async (t) => {
+    const s = await t.start({
+        capabilities: { textDocument: { hover: { contentFormat: ["plaintext", "markdown"] } } },
+    });
+    s.open("main.cpp");
+    await s.sync();
+    await t.show("function", s.hover(t.marker("function")));
+});
