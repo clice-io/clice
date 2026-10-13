@@ -1318,6 +1318,66 @@ std::vector<IndexQuery::Located> IndexQuery::search(const SymbolQuery& query,
     return results;
 }
 
+IndexQuery::Completables
+    IndexQuery::completables(llvm::StringRef prefix, Fid file, std::size_t limit) const {
+    SymbolQuery query;
+    query.pattern = prefix.str();
+    // Members outnumber the names of namespaces: the ranking is fetched
+    // wider than the names wanted.
+    auto ranked = ranked_search(query, limit * 8);
+    llvm::DenseSet<SymbolHash> seen;
+    for(auto& hit: ranked.hits) {
+        seen.insert(hit.symbol.hash);
+    }
+    if(auto preamble = preamble_blob(file)) {
+        NameRanker ranker(query);
+        preamble->iterate_symbols([&](SymbolHash hash,
+                                      const SymbolIdentity& identity,
+                                      llvm::ArrayRef<std::uint32_t>) {
+            if(!has_flag(identity.flags, SymbolFlags::Completable) ||
+               identity.scope != SymbolScope::External || !is_searchable_kind(identity.kind) ||
+               !seen.insert(hash).second) {
+                return true;
+            }
+            auto quality = symbol_quality(identity.name, identity.kind, identity.flags, 0);
+            if(auto rank = ranker.rank(identity.name, identity.args, quality)) {
+                ranked.hits.push_back(
+                    {.rank = *rank, .symbol = SymbolRef::from(hash, identity), .anchor = {}});
+            }
+            return true;
+        });
+        std::ranges::sort(ranked.hits, [](const Ranked& lhs, const Ranked& rhs) {
+            return ranks_after(rhs.rank,
+                               rhs.symbol.name,
+                               rhs.symbol.args,
+                               rhs.symbol.hash,
+                               lhs.rank,
+                               lhs.symbol.name,
+                               lhs.symbol.args,
+                               lhs.symbol.hash);
+        });
+    }
+
+    Completables result{.exhausted = ranked.exhausted};
+    for(auto& hit: ranked.hits) {
+        if(!has_flag(hit.symbol.flags, SymbolFlags::Completable) ||
+           hit.symbol.scope != SymbolScope::External) {
+            continue;
+        }
+        if(result.names.size() == limit) {
+            result.exhausted = false;
+            break;
+        }
+        Fid declared;
+        if(auto identity = index.identity_of(hit.symbol.hash);
+           identity && identity->file != no_file) {
+            declared = Fid{identity->file};
+        }
+        result.names.push_back({.symbol = std::move(hit.symbol), .file = declared});
+    }
+    return result;
+}
+
 std::vector<IndexQuery::Located> IndexQuery::locate(const SymbolQuery& query) const {
     if(query.handle) {
         Fid anchor;

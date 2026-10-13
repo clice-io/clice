@@ -347,8 +347,12 @@ export interface CompletionItem {
     /// edit inserts over.
     replace?: Location | undefined;
     insertRange?: Location | undefined;
-    /// Ascending is best first: clice writes `2 - score`.
+    /// Ascending is best first: clice writes `8 - score`.
     sortText: string;
+    /// The documentation, markdown or plain text as the server sent it.
+    documentation?: string | undefined;
+    /// The edits elsewhere in the file accepting also makes.
+    edits?: { at: Location; text: string }[] | undefined;
 }
 
 export interface Completion {
@@ -377,7 +381,8 @@ function rank(items: readonly CompletionItem[]): CompletionItem[] {
 
 /// The first items by rank, and how many more there are, so a short list
 /// never reads as "nothing else matched"; a list the server cut short says
-/// so. The parts asked (`insert`, `filter`, `edit`) join each item.
+/// so. The parts asked (`insert`, `filter`, `edit`, `documentation`, `edits`)
+/// join each item.
 export function renderCompletion(
     completion: Completion,
     options: { scope?: RenderScope; parts?: ReadonlySet<string>; limit?: number } = {},
@@ -405,6 +410,17 @@ export function renderCompletion(
                 : {}),
             ...(parts.has("edit") && scope !== undefined && item.insertRange !== undefined
                 ? { insert_range: place(item.insertRange, scope) }
+                : {}),
+            ...(parts.has("documentation") && item.documentation !== undefined
+                ? { documentation: item.documentation }
+                : {}),
+            ...(parts.has("edits") && scope !== undefined && item.edits !== undefined
+                ? {
+                      edits: item.edits.map((extra) => ({
+                          at: place(extra.at, scope),
+                          text: extra.text,
+                      })),
+                  }
                 : {}),
         }));
     return {

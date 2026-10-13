@@ -337,7 +337,8 @@ std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& para
     return to_raw_json(
         feature::code_complete(params,
                                *parse_feature_config<feature::CodeCompletionOptions>(config),
-                               {.snippets = true, .insert_replace = true}));
+                               {.snippets = true, .insert_replace = true, .markdown = true})
+            .list);
 }
 
 std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,

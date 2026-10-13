@@ -94,10 +94,13 @@ public:
     /// The interactive stateless builds: the buffer and its compile inputs
     /// go to a stateless worker, which compiles a buffer state the shared
     /// AST round may not have seen yet.
-    RawResult completion(const Ticket& ticket,
-                         const protocol::Position& position,
-                         const feature::CompletionClient& client,
-                         kota::cancellation_token token = {});
+    kota::task<worker::CompletionResult, kota::ipc::Error>
+        completion(const Ticket& ticket,
+                   const protocol::Position& position,
+                   const feature::CompletionClient& client,
+                   std::vector<feature::ScopeCandidate> candidates,
+                   bool more_candidates,
+                   kota::cancellation_token token = {});
     RawResult signature_help(const Ticket& ticket,
                              const protocol::Position& position,
                              kota::cancellation_token token = {});
@@ -124,12 +127,13 @@ private:
     /// quarantine passage, different IPC type, evidence slot and label.
     /// `wp` arrives with the fields particular to its request filled in.
     template <typename Params>
-    RawResult interactive(std::uint8_t evidence,
-                          llvm::StringRef label,
-                          const Ticket& ticket,
-                          protocol::Position position,
-                          Params wp,
-                          kota::cancellation_token token);
+    kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
+        interactive(std::uint8_t evidence,
+                    llvm::StringRef label,
+                    const Ticket& ticket,
+                    protocol::Position position,
+                    Params wp,
+                    kota::cancellation_token token);
 
     /// Send an AST query of kind `evidence` to the worker holding the
     /// document, which the caller compiled. A resend after a worker death

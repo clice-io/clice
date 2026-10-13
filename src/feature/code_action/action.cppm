@@ -64,6 +64,11 @@ void fix_its(CompilationUnitRef unit, LocalSourceRange selection, std::vector<Co
 
 IncludeInsertion include_insertion(CompilationUnitRef unit);
 
+/// Where a new `import` line goes in `content`: after the last import
+/// ahead of every other declaration, else after the module declaration;
+/// in a file with neither, after its leading directives.
+std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions& options);
+
 /// The main-file byte range a source range spells; nullopt when either
 /// end is inside a macro or another file.
 std::optional<LocalSourceRange> main_range(CompilationUnitRef unit, clang::SourceRange range);

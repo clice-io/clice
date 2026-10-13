@@ -78,11 +78,13 @@ interface RawCompletionItem {
     tags?: string[] | null;
     insert_text?: string | null;
     insert_text_format?: string | null;
+    documentation?: string | { kind: string; value: string } | null;
     /// Ranges already in LSP positions.
     text_edit?:
         | { range: proto.Range; new_text: string }
         | { insert: proto.Range; replace: proto.Range; new_text: string }
         | null;
+    additional_text_edits?: { range: proto.Range; new_text: string }[] | null;
 }
 
 interface RawCompletionList {
@@ -333,6 +335,14 @@ export class Inspect extends Client {
                             ? { path: at.path, range: edit.insert }
                             : undefined,
                     sortText: item.sort_text ?? "",
+                    documentation:
+                        typeof item.documentation === "string"
+                            ? item.documentation
+                            : (item.documentation?.value ?? undefined),
+                    edits: item.additional_text_edits?.map((extra) => ({
+                        at: { path: at.path, range: extra.range },
+                        text: extra.new_text,
+                    })),
                 };
             }),
         };

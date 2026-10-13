@@ -47,40 +47,64 @@ inline auto to_uri(llvm::StringRef file) -> std::string {
 /// Corresponds to the `[code_completion]` section in clice.toml.
 struct CodeCompletionOptions {
     KOTATSU_ANNOTATE(defaulted = true,
+                     choices = {"placeholders", "delimiters", "none"},
+                     description =
+                         "What completing a call or a template inserts after the "
+                         "name: \"placeholders\" its parentheses or angle brackets "
+                         "with a placeholder per parameter, \"delimiters\" the empty "
+                         "parentheses or brackets with the cursor between them, "
+                         "\"none\" the name alone. It applies to functions, "
+                         "function-like macros, variables holding a lambda and "
+                         "class, alias and variable templates; an overload set "
+                         "listed as one item takes the delimiters. Nothing is "
+                         "added where the arguments are written already or the "
+                         "name is not called, as when taking a function's "
+                         "address. Clients without snippet support get the "
+                         "parentheses of a call alone.")
+    <std::string> arguments = "placeholders";
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description = "Collapse an overload set into a single completion item.")
+    <bool> bundle_overloads = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Complete statements such as `if` and `for` as snippets "
                          "with placeholders for their parts; otherwise only the "
                          "keyword is inserted. Ignored for clients without "
                          "snippet support.")
-    <bool> enable_keyword_snippet = false;
+    <bool> statement_snippets = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Insert function arguments as a snippet when completing "
-                         "a call. For functions this applies to individually "
-                         "listed overloads, so it requires `bundle_overloads = "
-                         "false`; function-like macros have no overload sets and "
-                         "always take the snippet. Ignored for clients without "
-                         "snippet support.")
-    <bool> enable_function_arguments_snippet = false;
+                         "After `.` on a pointer, list the members `->` reaches and "
+                         "turn the `.` into `->` when one is chosen; likewise `->` "
+                         "on an object becomes `.`.")
+    <bool> dot_to_arrow = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Insert template arguments as a snippet when completing "
-                         "a class, alias or variable template. Ignored for clients "
-                         "without snippet support.")
-    <bool> enable_template_arguments_snippet = false;
+                         "Where a name is completed unqualified, also offer the "
+                         "project's names of other namespaces, inserting the "
+                         "qualifier they need; one in several namespaces is "
+                         "offered once per namespace. Names the file reaches "
+                         "already are offered as they are; for the others see "
+                         "`insert_includes` and `insert_imports`. Needs the "
+                         "index for names the file does not reach.")
+    <bool> all_scopes = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Insert parentheses when completing a function call, "
-                         "unless the name is already followed by one; with snippet "
-                         "support the cursor lands between them.")
-    <bool> insert_paren_in_function_call = false;
+                         "With `all_scopes`, also offer names declared in headers "
+                         "the file does not include yet, adding the `#include` "
+                         "of the header that declares them.")
+    <bool> insert_includes = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "Collapse an overload set into a single completion item.")
-    <bool> bundle_overloads = true;
+                     description =
+                         "With `all_scopes`, also offer names exported by modules "
+                         "the file does not import yet, adding the `import`.")
+    <bool> insert_imports = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -99,6 +123,9 @@ struct CompletionClient {
     /// An item may carry both an insert and a replace range; the editor
     /// picks one by its own setting.
     bool insert_replace = false;
+
+    /// Documentation may be markdown rather than plain text.
+    bool markdown = false;
 };
 
 /// Corresponds to the `[hover]` section in clice.toml.
@@ -517,10 +544,57 @@ protocol::Diagnostic file_warning(std::string message);
 /// includes.
 bool in_includer_context(const protocol::Diagnostic& diagnostic);
 
+/// A name of another namespace unqualified completion may offer, found in
+/// the index: the completion looks it up to tell whether the file reaches
+/// it already (CodeCompletionOptions::all_scopes).
+struct ScopeCandidate {
+    std::string name;
+
+    /// The namespaces around it, outermost first, inline ones left out.
+    std::vector<std::string> scope;
+
+    protocol::CompletionItemKind kind = protocol::CompletionItemKind::Text;
+    bool is_template = false;
+
+    /// The module exporting it, `name` or `name:partition`, when a module
+    /// unit declares it.
+    std::string module;
+
+    /// The symbol, by which the server picks the header declaring it.
+    std::uint64_t symbol = 0;
+};
+
+/// Where an `#include` a completion item needs goes.
+struct IncludePlace {
+    protocol::Position position;
+
+    /// A module unit without a global module fragment opens one there.
+    bool opens_fragment = false;
+
+    /// The file is C: a standard name's header is the C library's.
+    bool c = false;
+};
+
+/// A completion's reply before the server finishes it: an item whose
+/// `data` holds a symbol (ScopeCandidate::symbol) names what the file does
+/// not include yet, and is whole once it adds the `#include` of the header
+/// declaring it, at `include`.
+struct Completion {
+    protocol::CompletionList list;
+    std::optional<IncludePlace> include;
+};
+
 auto code_complete(CompilationParams& params,
                    const CodeCompletionOptions& options = {},
                    const CompletionClient& client = {},
-                   PositionEncoding encoding = PositionEncoding::UTF16) -> protocol::CompletionList;
+                   PositionEncoding encoding = PositionEncoding::UTF16,
+                   llvm::ArrayRef<ScopeCandidate> candidates = {}) -> Completion;
+
+/// The identifier typed at `offset` of `text`, from its start to `offset`,
+/// when nothing qualifies it — no `::`, `.` or `->` before it — and it is
+/// not empty: where a completion may offer names of other namespaces.
+auto unqualified_prefix(llvm::StringRef text, std::uint32_t offset)
+    -> std::optional<llvm::StringRef>;
 
 /// The reply listing `items` under `code_completion.limit`: the best ranked
 /// stay, ties by label, and a list cut short is marked incomplete.

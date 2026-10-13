@@ -957,6 +957,7 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 protocol::CompletionItem item;
                 item.label = c.is_directory ? c.name + "/" : c.name;
                 item.kind = protocol::CompletionItemKind::File;
+                item.sort_text = std::format("{:010}", c.order);
                 item.text_edit = edit(c);
                 items.push_back(std::move(item));
             }
@@ -978,12 +979,32 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
                 module_names =
                     complete_module_import(project.dep_graph, pctx.prefix, scan_quick(declared));
             }
+            // The unit's own partitions first, then the modules whose
+            // interface lies nearest the file: the fewest directories up
+            // from it to one holding the interface.
+            auto directory = path::parent_path(path);
+            auto distance = [&](llvm::StringRef name) {
+                std::uint32_t up = 0;
+                if(name.starts_with(":")) {
+                    return up;
+                }
+                auto providers = project.dep_graph.lookup_module(name);
+                llvm::StringRef interface =
+                    providers.empty() ? llvm::StringRef()
+                                      : llvm::StringRef(project.file_table.resolve(providers.front()));
+                path::walk_ancestors(directory, "", [&](llvm::StringRef dir) {
+                    up += 1;
+                    return !path::under(interface, dir);
+                });
+                return up;
+            };
             std::vector<protocol::CompletionItem> items;
             items.reserve(module_names.size());
             for(auto& name: module_names) {
                 protocol::CompletionItem item;
                 item.label = name;
                 item.kind = protocol::CompletionItemKind::Module;
+                item.sort_text = std::format("{:05}", distance(name));
                 item.text_edit = protocol::TextEdit{
                     .range = *map.range(pctx.replace, PositionEncoding::UTF16),
                     .new_text = pctx.closed ? name : name + ";",
@@ -995,7 +1016,104 @@ Features::RawResult Features::complete(std::shared_ptr<Session> session,
         }
     }
 
-    co_return co_await dispatcher.completion(ticket, position, client, std::move(token));
+    std::vector<feature::ScopeCandidate> candidates;
+    bool exhausted = true;
+    if(auto prefix = offset ? feature::unqualified_prefix(session->text, *offset) : std::nullopt;
+       prefix && project.config.code_completion.all_scopes) {
+        exhausted = scope_candidates(*prefix, path_id, candidates);
+    }
+    auto result = co_await dispatcher
+                      .completion(ticket, position, client, candidates, !exhausted, std::move(token))
+                      .or_fail();
+    if(!result.include) {
+        co_return std::move(result.list);
+    }
+
+    // Items naming what the file does not include yet take the `#include`
+    // of the header declaring it; one whose header is unknown goes.
+    protocol::CompletionList list;
+    if(auto decoded =
+           kota::codec::json::from_string<kota::ipc::lsp_config>(result.list.data, list);
+       !decoded) {
+        co_return std::move(result.list);
+    }
+    std::string directory;
+    std::vector<std::string> arguments;
+    auto search = project.cdb.search_config(
+        contexts.resolve_command(path_id, directory, arguments).ref);
+    vfs::Scope scope(project.file_table.dirs);
+    feature::IncludeInsertion insertion{.opens_fragment = result.include->opens_fragment};
+    std::erase_if(list.items, [&](protocol::CompletionItem& item) {
+        auto symbol = to_lsp::hierarchy_symbol(item.data);
+        if(!symbol) {
+            return false;
+        }
+        item.data.reset();
+        auto candidate = llvm::find_if(candidates, [&](const feature::ScopeCandidate& each) {
+            return each.symbol == *symbol;
+        });
+        auto header = candidate == candidates.end()
+                          ? std::nullopt
+                          : include_for(*candidate, result.include->c, path_id, search, scope);
+        if(!header) {
+            return true;
+        }
+        protocol::Position at = result.include->position;
+        item.additional_text_edits = std::vector{protocol::TextEdit{
+            .range = {at, at},
+            .new_text = insertion.text(*header),
+        }};
+        return false;
+    });
+    co_return to_raw(list);
+}
+
+bool Features::scope_candidates(llvm::StringRef prefix,
+                                Fid file,
+                                std::vector<feature::ScopeCandidate>& candidates) const {
+    auto kind_of = [](SymbolKind kind) {
+        using Kind = protocol::CompletionItemKind;
+        switch(kind) {
+            case SymbolKind::Namespace: return Kind::Module;
+            case SymbolKind::Class:
+            case SymbolKind::Struct:
+            case SymbolKind::Union: return Kind::Class;
+            case SymbolKind::Enum: return Kind::Enum;
+            case SymbolKind::EnumMember: return Kind::EnumMember;
+            case SymbolKind::Function: return Kind::Function;
+            case SymbolKind::Variable: return Kind::Variable;
+            case SymbolKind::Type:
+            case SymbolKind::Concept: return Kind::TypeParameter;
+            default: return Kind::Text;
+        }
+    };
+    auto found = query.completables(prefix, file, scope_candidate_limit);
+    for(auto& [symbol, declared]: found.names) {
+        feature::ScopeCandidate candidate{
+            .name = symbol.name,
+            .kind = kind_of(symbol.kind),
+            .is_template = index::has_flag(symbol.flags, index::SymbolFlags::Template),
+            .symbol = symbol.hash,
+        };
+        auto chain = query.container_chain(symbol.hash);
+        // An unscoped enumerator is named in its enumeration's scope.
+        if(!chain.empty() && chain.back().kind == SymbolKind::Enum) {
+            chain.pop_back();
+        }
+        if(llvm::any_of(chain, [](const index::SymbolRef& container) {
+               return container.kind != SymbolKind::Namespace;
+           })) {
+            continue;
+        }
+        for(auto& container: chain) {
+            candidate.scope.push_back(container.name);
+        }
+        if(declared.valid() && index::has_flag(symbol.flags, index::SymbolFlags::Exported)) {
+            candidate.module = project.dep_graph.module_of(declared).str();
+        }
+        candidates.push_back(std::move(candidate));
+    }
+    return found.exhausted;
 }
 
 Features::RawResult Features::signature_help(std::shared_ptr<Session> session,

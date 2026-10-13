@@ -38,22 +38,6 @@ auto underlying_function(const clang::Decl* decl) -> const clang::FunctionDecl* 
     return decl->getAsFunction();
 }
 
-/// Returns the decl that should be used for querying comments: the written
-/// pattern an instantiation came from, the decl itself otherwise.
-auto decl_for_comment(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
-    /// Chase the pattern to a fixed point: a comparison operator instantiated
-    /// from a spaceship operator that is itself a template instantiation
-    /// needs two hops. Termination rests on clang's instantiation graph
-    /// being acyclic — every hop moves strictly toward a written pattern.
-    while(const auto* pattern = decls::instantiated_from(decl)) {
-        if(pattern == decl) {
-            break;
-        }
-        decl = pattern;
-    }
-    return decl;
-}
-
 /// Default argument might exist but be unavailable, in the case of unparsed
 /// arguments for example. This function returns the default argument if it is
 /// available.
@@ -336,8 +320,7 @@ auto decl_hover(const clang::NamedDecl* decl,
     }
 
     info.name = display::name_of(decl);
-    const auto* comment_decl = decl_for_comment(decl);
-    info.documentation = display::comment(comment_decl);
+    info.documentation = display::comment(decl);
     if(info.documentation.empty()) {
         info.documentation = synthesize_documentation(decl);
     }
@@ -479,8 +462,7 @@ auto deduced_type_hover(clang::QualType type,
         info.definition = type_as_definition(display::type(context, type, options));
 
         if(const auto* decl = type->getAsTagDecl()) {
-            const auto* comment_decl = decl_for_comment(decl);
-            info.documentation = display::comment(comment_decl);
+            info.documentation = display::comment(decl);
         }
     }
 

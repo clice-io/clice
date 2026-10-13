@@ -1,0 +1,16 @@
+[answers.included.completion]
+items = [
+    { label = "geo::area(double radius)", kind = "Function", detail = "double", insert = "geo::area(${1:double radius})", snippet = true },
+]
+
+[answers.not_included.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-5", text = '#include "shapes.h"' },
+        ],
+    },
+]

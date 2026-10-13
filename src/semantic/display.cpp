@@ -9,6 +9,7 @@ module;
 
 module clice;
 
+import :semantic.decls;
 import :semantic.display;
 import :semantic.types;
 import :support.format;
@@ -545,6 +546,16 @@ auto summarize(const clang::Expr* expr) -> std::string {
 
 auto comment(const clang::NamedDecl* decl) -> std::string {
     assert(decl);
+    /// Chase the pattern to a fixed point: a comparison operator instantiated
+    /// from a spaceship operator that is itself a template instantiation
+    /// needs two hops. Termination rests on clang's instantiation graph
+    /// being acyclic — every hop moves strictly toward a written pattern.
+    while(const auto* pattern = decls::instantiated_from(decl)) {
+        if(pattern == decl) {
+            break;
+        }
+        decl = pattern;
+    }
     if(llvm::isa<clang::NamespaceDecl>(decl)) {
         /// Namespaces often have too many redecls for any particular redecl comment
         /// to be useful. Moreover, we often confuse file headers or generated

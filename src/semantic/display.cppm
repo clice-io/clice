@@ -126,8 +126,9 @@ auto template_args(const clang::NamedDecl& decl) -> std::string;
 /// hints: names, literals, and simple unary/binary operator forms.
 auto summarize(const clang::Expr* expr) -> std::string;
 
-/// The formatted documentation comment attached to the decl, empty if
-/// none. Namespaces are skipped as their comments are rarely useful.
+/// The formatted documentation comment attached to the decl, or to the
+/// written pattern an instantiation came from; empty if none. Namespaces
+/// are skipped as their comments are rarely useful.
 auto comment(const clang::NamedDecl* decl) -> std::string;
 
 /// The class(es) and function a local declaration lives in, joined with

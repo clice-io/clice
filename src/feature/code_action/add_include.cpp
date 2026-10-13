@@ -316,6 +316,46 @@ IncludeInsertion include_insertion(CompilationUnitRef unit) {
     return {.offset = after_leading_comments(content, unit.lang_options())};
 }
 
+std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions& options) {
+    std::uint32_t anchor = 0;
+    bool fragment = false;
+    bool declared = false;
+    Lexer lexer(content, {.lang_opts = &options});
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        if(token.is_directive_hash()) {
+            auto next = lexer.advance();
+            while(!next.is_eod() && !next.is_eof()) {
+                next = lexer.advance();
+            }
+            // A module unit's directives before its declaration are in its
+            // global module fragment, where no import may go.
+            if(!fragment && !declared) {
+                anchor = line_end(content, next.range.begin);
+            }
+            continue;
+        }
+        auto text = token.text(content);
+        if(text == "export") {
+            token = lexer.advance();
+            text = token.text(content);
+        }
+        if(text != "module" && text != "import") {
+            break;
+        }
+        auto next = lexer.advance();
+        if(text == "module" && next.kind == clang::tok::semi) {
+            fragment = true;
+            continue;
+        }
+        while(next.kind != clang::tok::semi && !next.is_eof()) {
+            next = lexer.advance();
+        }
+        declared |= text == "module";
+        anchor = line_end(content, next.range.end);
+    }
+    return anchor;
+}
+
 void add_include(CompilationUnitRef unit,
                  LocalSourceRange selection,
                  std::vector<CodeAction>& out) {

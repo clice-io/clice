@@ -27,14 +27,18 @@ kota::ipc::Error content_modified() {
 namespace {
 
 /// What a request answers when the workers could not serve it.
-template <typename Outcome>
-Outcome empty_answer() {
-    using Value = typename Outcome::value_type;
+template <typename Value>
+Value empty_value() {
     if constexpr(std::is_same_v<Value, serde_raw>) {
         return serde_raw{"null"};
     } else {
         return Value{};
     }
+}
+
+template <typename Outcome>
+Outcome empty_answer() {
+    return empty_value<typename Outcome::value_type>();
 }
 
 }  // namespace
@@ -310,12 +314,14 @@ kota::task<std::vector<feature::CodeAction>, kota::ipc::Error>
 }
 
 template <typename Params>
-Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
+kota::task<typename protocol::RequestTraits<Params>::Result, kota::ipc::Error>
+    Dispatcher::interactive(std::uint8_t evidence,
                                               llvm::StringRef label,
                                               const Ticket& ticket,
                                               protocol::Position position,
                                               Params wp,
                                               kota::cancellation_token token) {
+    using Result = typename protocol::RequestTraits<Params>::Result;
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
@@ -327,7 +333,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     };
     if(barred()) {
         LOG_DEBUG("{}: {} is barred by a crash", label, path);
-        co_return serde_raw{"null"};
+        co_return empty_value<Result>();
     }
 
     wp.file = path;
@@ -347,7 +353,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
         // A module refused for crashing a worker is no error to show: the
         // note the compile put on the file says why.
         if(session.quarantine->crashed(evidence_kind(EvidenceKind::PCM))) {
-            co_return serde_raw{"null"};
+            co_return empty_value<Result>();
         }
         LOG_WARN("{}: dependency preparation failed for {}", label, path);
         co_await kota::fail(kota::ipc::Error{"Dependency preparation failed"});
@@ -358,7 +364,7 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     // before dispatching it again.
     if(barred()) {
         LOG_DEBUG("{}: {} was barred during dependency prep", label, path);
-        co_return serde_raw{"null"};
+        co_return empty_value<Result>();
     }
     auto wait_ms = timer.ms_f();
 
@@ -397,15 +403,20 @@ Dispatcher::RawResult Dispatcher::interactive(std::uint8_t evidence,
     co_return std::move(result);
 }
 
-Dispatcher::RawResult Dispatcher::completion(const Ticket& ticket,
-                                             const protocol::Position& position,
-                                             const feature::CompletionClient& client,
-                                             kota::cancellation_token token) {
+kota::task<worker::CompletionResult, kota::ipc::Error>
+    Dispatcher::completion(const Ticket& ticket,
+                           const protocol::Position& position,
+                           const feature::CompletionClient& client,
+                           std::vector<feature::ScopeCandidate> candidates,
+                           bool more_candidates,
+                           kota::cancellation_token token) {
     return interactive(evidence_kind(EvidenceKind::Completion),
                        "Completion",
                        ticket,
                        position,
-                       worker::CompletionParams{.client = client},
+                       worker::CompletionParams{.client = client,
+                                                .candidates = std::move(candidates),
+                                                .more_candidates = more_candidates},
                        std::move(token));
 }
 
