@@ -1,6 +1,6 @@
 ---
 name: resolve-comments
-description: Pull unresolved review threads of the current PR, apply the fixes in the worktree, resolve the threads, and return a compact summary. Runs inline; the digest script keeps the bot boilerplate out of the conversation.
+description: Use in each watch round of an open PR — pulls its unresolved review threads, fixes them in the worktree, resolves them, and returns a compact summary.
 ---
 
 Handle one round of review comments for the current branch's PR.
@@ -38,6 +38,12 @@ how it is phrased.
   or push — the main conversation runs the pre-push verification and
   pushes.
 - Wrong, or already addressed: no change.
+- Outside the PR's scope: no change. That covers refactoring and
+  style-preference suggestions, a defect only Objective-C code reaches,
+  and a "for consistency" argument that asks for more than this PR set
+  out to do. A real defect among them is noted in the report. A field
+  never set or a branch left unimplemented is assumed deliberate until
+  blame or the plan says otherwise.
 - Debatable design question: do not stall and do not leave it open.
   Pick the most defensible solution, apply it, and record the decision
   in the report — chosen approach, rejected alternative, and why. The
@@ -86,9 +92,9 @@ mutation($id: ID!) {
 
 ## Report
 
-One line per thread: `path:line — <the point, in a few words> — fixed in
-<files> | no change (<why>)` (file-level threads have no `line` — just
-`path`). Then a **Decisions** block: every design
+One line per thread:
+`path:line — <the point, in a few words> — fixed in <files> | no change (<why>)`
+(file-level threads have no `line` — just `path`). Then a **Decisions** block: every design
 call taken (chosen vs. alternative, one line each) — the main
 conversation accumulates these across rounds and reports them to the
 maintainer with the final ready-to-merge summary. End with counts

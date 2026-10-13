@@ -303,16 +303,16 @@ prettier = "*"
 clang-format = "==23.1.1"
 
 [feature.format.tasks]
-format-cpp = "fd -H -e cpp -e h -e cc -e hpp -e cppm -x clang-format -i"
+format-cpp = "fd -H -e cpp -e h -e cc -e hpp -e cppm -X clang-format -i"
 format-python = "ruff format ."
 format-lua = "stylua ."
-format-web = "fd -H -e js -e mjs -e ts -e css -x prettier --write"
-format-markdown = "fd -H -e md -x prettier --write"
-format-json = "fd -H -e json -e jsonc -E package-lock.json -E clice-config.schema.json -x prettier --write"
-format-toml = "fd -H -e toml -x tombi format"
+format-web = "fd -H -e js -e mjs -e ts -e css -X prettier --write"
+format-markdown = "fd -H -e md -X prettier --write"
+format-json = "fd -H -e json -e jsonc -E package-lock.json -E clice-config.schema.json -X prettier --write"
+format-toml = "fd -H -e toml -X tombi format"
 format-yaml = """
-fd -H -e yaml -e yml -E '*.snap.yml' -x prettier --write && \
-fd -H "^\\.clang-(format|tidy)$" -x prettier --write --parser yaml
+fd -H -e yaml -e yml -E '*.snap.yml' -X prettier --write && \
+fd -H "^\\.clang-(format|tidy)$" -X prettier --write --parser yaml
 """
 format = { depends-on = [
     "format-cpp",

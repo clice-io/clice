@@ -1,6 +1,6 @@
 ---
 name: build
-description: Build clice. Optional arg = build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context — compile output and mechanical fixes stay out of the main conversation; only the outcome returns.
+description: Build clice on this machine. Optional arg = build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context; only the outcome returns.
 context: fork
 ---
 
