@@ -7,12 +7,5 @@ async function snippets(a: AnswersContext): Promise<void> {
 }
 
 answers("default", snippets);
-answers(
-    "configured",
-    {
-        config: {
-            code_completion: { bundle_overloads: false, enable_function_arguments_snippet: true },
-        },
-    },
-    snippets,
-);
+answers("delimiters", { config: { code_completion: { arguments: "delimiters" } } }, snippets);
+answers("none", { config: { code_completion: { arguments: "none" } } }, snippets);

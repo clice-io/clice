@@ -7,8 +7,4 @@ async function items(a: AnswersContext): Promise<void> {
 }
 
 answers("default", items);
-answers(
-    "configured",
-    { config: { code_completion: { insert_paren_in_function_call: true } } },
-    items,
-);
+answers("delimiters", { config: { code_completion: { arguments: "delimiters" } } }, items);

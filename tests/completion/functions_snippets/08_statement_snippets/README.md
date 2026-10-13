@@ -1,5 +1,5 @@
 ---
-option: code_completion.enable_keyword_snippet
+option: code_completion.statement_snippets
 ---
 
 # Statement keywords

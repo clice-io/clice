@@ -1,5 +1,5 @@
 ---
-option: code_completion.enable_template_arguments_snippet
+option: code_completion.arguments
 ---
 
 # Template argument placeholders

@@ -1,6 +1,6 @@
 // Locals of a template instantiated once, a class template's included: an
-// `auto` copy takes the type the instantiation gives it; a range-for element
-// of a dependent range has no initializer to deduce from.
+// `auto` copy takes the type the instantiation gives it, a range-for element
+// the element of the range it gives.
 struct Point {
     int x;
 };
