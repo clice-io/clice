@@ -1,0 +1,14 @@
+[answers.named]
+inlay_hints = [
+    { line = "auto copy⟨: char⟩ = T();" },
+]
+
+[answers.partial]
+inlay_hints = [
+    { line = "auto copy⟨: char⟩ = T();" },
+]
+
+[answers.nested]
+inlay_hints = [
+    { line = "auto copy⟨: char⟩ = T();" },
+]

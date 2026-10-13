@@ -22,7 +22,7 @@ Language Server Protocol features available when using clice as an editor backen
 | [Diagnostics](./diagnostics.md)           | 9 supported                               |
 | [Code Action](./code-action.md)           | 38 supported                              |
 | [Semantic Tokens](./semantic-tokens.md)   | 40 supported · 2 partial · 5 unsupported  |
-| [Inlay Hints](./inlay-hints.md)           | 26 supported · 1 partial · 4 unsupported  |
+| [Inlay Hints](./inlay-hints.md)           | 27 supported · 4 unsupported              |
 | [Document Links](./document-links.md)     | 7 supported · 1 partial                   |
 | [Document Symbols](./document-symbols.md) | 17 supported · 6 partial · 3 unsupported  |
 | [Folding Ranges](./folding-ranges.md)     | 19 supported                              |

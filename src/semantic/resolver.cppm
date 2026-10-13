@@ -6,8 +6,8 @@ module clice:semantic.resolver;
 
 namespace clice::types {
 
-/// What a parameter of a function template stands for when no
-/// instantiation in progress binds it.
+/// What a parameter of the template a query is inside of stands for when
+/// no instantiation in progress binds it.
 struct ResolverOptions {
     /// The argument of the template's only instantiation in the unit. An
     /// index stored for other units to share leaves it off: the index of a

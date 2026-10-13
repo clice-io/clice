@@ -286,9 +286,12 @@ clang::NamedDecl* only_instantiation_impl(TemplateDeclTy* TD) {
                 continue;
         }
         // A class template specialization the code only names, through a
-        // pointer to it, is not instantiated.
+        // pointer to it, is not instantiated; one a partial specialization
+        // matches instantiates the partial specialization instead.
         if constexpr(std::is_same_v<TemplateDeclTy, clang::ClassTemplateDecl>) {
-            if(Spec->getTemplateSpecializationKind() == clang::TSK_Undeclared)
+            if(Spec->getTemplateSpecializationKind() == clang::TSK_Undeclared ||
+               llvm::isa<clang::ClassTemplatePartialSpecializationDecl*>(
+                   Spec->getSpecializedTemplateOrPartial()))
                 continue;
         }
         if(Only != nullptr)

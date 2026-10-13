@@ -19,3 +19,15 @@ struct Twice {
 
 template struct Twice<char>;
 template struct Twice<int>;
+
+template <typename T>
+struct Outside {
+    void reset();
+};
+
+template <typename T>
+void Outside<T>::reset() {
+    §(outside)⟦auto copy = T();⟧
+}
+
+template struct Outside<char>;

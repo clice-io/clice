@@ -5,14 +5,14 @@
   "title": "Instantiated templates",
   "summary": "A variable whose type depends on a class template shows the type its only instantiation gives it",
   "prose": "With two instantiations deducing different types there is no one type to show.",
-  "status": "partial",
+  "status": "supported",
   "issues": [
     "clangd#2275"
   ],
   "files": [
     {
       "path": "main.cpp",
-      "text": "void take(int first, int second);\n\ntemplate <typename T>\nstruct Single {\n    void reset() {\n        take(1, 2);\n        auto copy = T();\n    }\n};\n\ntemplate struct Single<char>;\n\ntemplate <typename T>\nstruct Twice {\n    void reset() {\n        auto copy = T();\n    }\n};\n\ntemplate struct Twice<char>;\ntemplate struct Twice<int>;\n",
+      "text": "void take(int first, int second);\n\ntemplate <typename T>\nstruct Single {\n    void reset() {\n        take(1, 2);\n        auto copy = T();\n    }\n};\n\ntemplate struct Single<char>;\n\ntemplate <typename T>\nstruct Twice {\n    void reset() {\n        auto copy = T();\n    }\n};\n\ntemplate struct Twice<char>;\ntemplate struct Twice<int>;\n\ntemplate <typename T>\nstruct Outside {\n    void reset();\n};\n\ntemplate <typename T>\nvoid Outside<T>::reset() {\n    auto copy = T();\n}\n\ntemplate struct Outside<char>;\n",
       "markers": [
         {
           "name": "single",
@@ -24,6 +24,12 @@
           "name": "twice",
           "begin": 242,
           "end": 258,
+          "range": true
+        },
+        {
+          "name": "outside",
+          "begin": 441,
+          "end": 457,
           "range": true
         }
       ]
@@ -37,7 +43,6 @@
           "label": "single",
           "marker": "single",
           "value": {
-            "wrong": "the only instantiation, Single<char>, fixes the type of copy, which should show : char (clangd#2275)",
             "inlay_hints": [
               {
                 "line": {
@@ -79,6 +84,30 @@
           "marker": "twice",
           "value": {
             "inlay_hints": []
+          }
+        },
+        {
+          "label": "outside",
+          "marker": "outside",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto copy⟨: char⟩ = T();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 29,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 29,
+                      "character": 20
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       ]

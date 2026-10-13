@@ -255,11 +255,11 @@ tests/inlay_hints/type_hints/10_scopes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2275 -->
+<!-- BEGIN CAPABILITY: supported clangd#2275 -->
 
 **已实例化的模板**
 
-模板体中的提示只显示一次，但类型依赖于模板的变量不会显示提示，即使唯一的实例化已确定其类型也是如此
+类型依赖于类模板的变量会显示其唯一实例化所给出的类型
 
 当两个实例化推导出不同类型时，就没有一个统一的类型可供显示。
 

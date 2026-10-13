@@ -6,3 +6,8 @@ inlay_hints = [
 
 [answers.twice]
 inlay_hints = []
+
+[answers.outside]
+inlay_hints = [
+    { line = "auto copy⟨: char⟩ = T();" },
+]
