@@ -78,9 +78,8 @@ void test() {
     if(!compile() || !unit->diagnostics().empty()) {
         return std::nullopt;
     }
-    auto before = unit->expanded_token_searches();
     unit->semantics();
-    return unit->expanded_token_searches() - before;
+    return unit->expanded_token_searches();
 }
 
 ZEST_CASE(ModuleNodes) {
