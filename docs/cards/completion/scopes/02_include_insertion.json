@@ -14,8 +14,13 @@
       "markers": []
     },
     {
+      "path": "inc/bits/shapes_impl.h",
+      "text": "#pragma once\n\n#include \"../../shapes.h\"\n\nnamespace shapes {\n\ninline void on_reset() {}\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
       "path": "main.cpp",
-      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
+      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    using Shape = circ;\n    on_rese;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
       "markers": [
         {
           "name": "not_included",
@@ -24,63 +29,75 @@
           "range": false
         },
         {
+          "name": "type_only",
+          "begin": 90,
+          "end": 90,
+          "range": false
+        },
+        {
+          "name": "internal_definition",
+          "begin": 103,
+          "end": 103,
+          "range": false
+        },
+        {
           "name": "function_expected",
-          "begin": 102,
-          "end": 102,
+          "begin": 139,
+          "end": 139,
           "range": false
         },
         {
           "name": "function_call",
-          "begin": 113,
-          "end": 113,
+          "begin": 150,
+          "end": 150,
           "range": false
         },
         {
           "name": "class_template",
-          "begin": 122,
-          "end": 122,
+          "begin": 159,
+          "end": 159,
           "range": false
         },
         {
           "name": "alias_template",
-          "begin": 135,
-          "end": 135,
+          "begin": 172,
+          "end": 172,
           "range": false
         },
         {
           "name": "variable_template",
-          "begin": 163,
-          "end": 163,
+          "begin": 200,
+          "end": 200,
           "range": false
         },
         {
           "name": "enumerator",
-          "begin": 188,
-          "end": 188,
+          "begin": 225,
+          "end": 225,
           "range": false
         },
         {
           "name": "scoped_enumerator",
-          "begin": 213,
-          "end": 213,
+          "begin": 250,
+          "end": 250,
           "range": false
         },
         {
           "name": "class_member",
-          "begin": 241,
-          "end": 241,
+          "begin": 278,
+          "end": 278,
           "range": false
         },
         {
           "name": "standard_name",
-          "begin": 252,
-          "end": 252,
+          "begin": 289,
+          "end": 289,
           "range": false
         },
         {
           "name": "macro",
-          "begin": 286,
-          "end": 286,
+          "begin": 323,
+          "end": 323,
           "range": false
         }
       ]
@@ -99,12 +116,12 @@
     },
     {
       "path": "shapes.cpp",
-      "text": "#include \"shapes.h\"\n#include \"standard.h\"\n\nnamespace shapes {\n\nvoid on_resize(int width) {}\n\n}  // namespace shapes\n\nnamespace art {\n\nint redraw_budget = 0;\n\n}  // namespace art\n",
+      "text": "#include \"shapes.h\"\n#include \"standard.h\"\n#include <bits/shapes_impl.h>\n\nnamespace shapes {\n\nvoid on_resize(int width) {}\n\n}  // namespace shapes\n\nnamespace art {\n\nint redraw_budget = 0;\n\n}  // namespace art\n",
       "markers": []
     },
     {
       "path": "shapes.h",
-      "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n    static int circle_count;\n};\n\nvoid on_resize(int width);\nvoid redraw();\nvoid redraw(int times);\n\ntemplate <class T>\nstruct Grid {};\n\ntemplate <class T>\nusing Row = Grid<T>;\n\ntemplate <class T>\nconstexpr int grid_size = 4;\n\nenum Shade { shade_dark };\n\nenum class Tone { tone_bright };\n\n}  // namespace shapes\n",
+      "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n    static int circle_count;\n};\n\nvoid on_resize(int width);\nvoid on_reset();\n\nint circle_total = 0;\nvoid redraw();\nvoid redraw(int times);\n\ntemplate <class T>\nstruct Grid {};\n\ntemplate <class T>\nusing Row = Grid<T>;\n\ntemplate <class T>\nconstexpr int grid_size = 4;\n\nenum Shade { shade_dark };\n\nenum class Tone { tone_bright };\n\n}  // namespace shapes\n",
       "markers": []
     },
     {
@@ -158,6 +175,99 @@
                       "text": "#include \"shapes.h\"\n"
                     }
                   ]
+                },
+                {
+                  "label": "shapes::circle_total",
+                  "kind": "Variable",
+                  "insert": "shapes::circle_total",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-4",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "type_only",
+          "marker": "type_only",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-5",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "internal_definition",
+          "marker": "internal_definition",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::on_reset",
+                  "kind": "Function",
+                  "insert": "shapes::on_reset($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-6",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
                 }
               ]
             }
@@ -176,7 +286,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-5",
+                        "$place": "⟦⟧ @-7",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -211,7 +321,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-6",
+                        "$place": "⟦⟧ @-8",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -246,7 +356,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-7",
+                        "$place": "⟦⟧ @-9",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -271,7 +381,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-7",
+                        "$place": "⟦⟧ @-9",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -306,7 +416,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-8",
+                        "$place": "⟦⟧ @-10",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -341,7 +451,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-9",
+                        "$place": "⟦⟧ @-11",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -375,7 +485,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-10",
+                        "$place": "⟦⟧ @-12",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -428,7 +538,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-13",
+                        "$place": "⟦⟧ @-15",
                         "path": "main.cpp",
                         "range": {
                           "start": {
@@ -502,6 +612,30 @@
                       "text": "module;\n#include \"shapes.h\"\n"
                     }
                   ]
+                },
+                {
+                  "label": "shapes::circle_total",
+                  "kind": "Variable",
+                  "insert": "shapes::circle_total",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧export module tools;",
+                        "path": "tools.cppm",
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 0,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "module;\n#include \"shapes.h\"\n"
+                    }
+                  ]
                 }
               ]
             }
@@ -520,6 +654,24 @@
         {
           "label": "not_included",
           "marker": "not_included",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "type_only",
+          "marker": "type_only",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "internal_definition",
+          "marker": "internal_definition",
           "value": {
             "completion": {
               "items": []
@@ -689,7 +841,7 @@
                   "edits": [
                     {
                       "at": {
-                        "$place": "⟦⟧ @-6",
+                        "$place": "⟦⟧ @-8",
                         "path": "main.cpp",
                         "range": {
                           "start": {

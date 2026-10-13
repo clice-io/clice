@@ -1,5 +1,7 @@
 {
   // plain.c is C: the names of C++ namespaces are none of its business.
+  // inc holds a header only the library itself includes.
+  "flags": ["-Iinc"],
   "units": {
     "main.cpp": [],
     "shapes.cpp": [],

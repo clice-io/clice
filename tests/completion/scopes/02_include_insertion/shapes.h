@@ -8,6 +8,9 @@ struct Circle {
 };
 
 void on_resize(int width);
+void on_reset();
+
+int circle_total = 0;
 void redraw();
 void redraw(int times);
 

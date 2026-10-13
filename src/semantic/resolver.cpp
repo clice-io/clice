@@ -1038,15 +1038,8 @@ public:
 
     /// The value of a name the folding cannot see through.
     std::optional<llvm::APSInt> value_of(const clang::Expr* expr) {
-        /// An alias's value parameter keeps the argument it stands for.
-        if(auto* substituted = llvm::dyn_cast<clang::SubstNonTypeTemplateParmExpr>(expr)) {
-            return evaluate(substituted->getReplacement());
-        }
-        /// A trait's operands are named through the class's own members
-        /// (`is_same_v<key_type, value_type>`).
-        if(auto trait = type_trait(expr, [&](clang::QualType operand) {
-               return resolve(substitute(operand));
-           })) {
+        if(auto trait =
+               type_trait(expr, [&](clang::QualType operand) { return substitute(operand); })) {
             return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
         }
         if(auto NTTP = referenced_nttp(expr)) {
@@ -2646,21 +2639,6 @@ private:
                         if(bound && !bound->isNull() &&
                            bound->getKind() != clang::TemplateArgument::Pack) {
                             out.push_back(*bound);
-                            changed = true;
-                            continue;
-                        }
-                    }
-                    /// A value computed from the parameters (`is_set`, a
-                    /// static member of the class) folds while the frames
-                    /// binding them are here; a later lookup no longer has
-                    /// them.
-                    if(auto* expr = argument.getAsExpr();
-                       expr->isValueDependent() && !expr->isTypeDependent()) {
-                        auto type = expr->getType().getUnqualifiedType();
-                        auto value = evaluate(expr);
-                        if(auto folded =
-                               value ? convert_integral(context, *value, type) : std::nullopt) {
-                            out.emplace_back(context, *folded, type);
                             changed = true;
                             continue;
                         }

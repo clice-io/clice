@@ -1942,6 +1942,15 @@ public:
                        !llvm::isa<clang::ClassTemplateSpecializationDecl,
                                   clang::VarTemplateSpecializationDecl>(decl);
             };
+            /// Where only a type may be written, what names one, or a scope.
+            bool types_only = context.getKind() == clang::CodeCompletionContext::CCC_Type;
+            auto names_type = llvm::IsaPred<clang::TypeDecl,
+                                            clang::ClassTemplateDecl,
+                                            clang::TypeAliasTemplateDecl,
+                                            clang::ConceptDecl,
+                                            clang::NamespaceDecl,
+                                            clang::NamespaceAliasDecl>;
+
             /// The names this compile parsed in `scope` and in the namespaces
             /// in it, but those a reserved name keeps internal. A preamble's
             /// come from the index instead (ScopeCandidate): reading them all
@@ -1963,8 +1972,9 @@ public:
                         self(context);
                     }
                     if(!identifier || (reserved && !prefix_starts_with_underscore) ||
-                       !offerable(named) || offered.contains(named->getCanonicalDecl()) ||
-                       !sema.isVisible(named) || !matcher.match(identifier->getName())) {
+                       !offerable(named) || (types_only && !names_type(named)) ||
+                       offered.contains(named->getCanonicalDecl()) || !sema.isVisible(named) ||
+                       !matcher.match(identifier->getName())) {
                         continue;
                     }
                     if(auto qualifier = qualifier_of(named)) {
@@ -2015,7 +2025,8 @@ public:
                     auto found = visible(scope, candidate.name);
                     for(auto* decl: found) {
                         decl = decl->getUnderlyingDecl();
-                        if(offered.contains(decl->getCanonicalDecl())) {
+                        if(offered.contains(decl->getCanonicalDecl()) ||
+                           (types_only && !names_type(decl))) {
                             continue;
                         }
                         if(auto qualifier = qualifier_of(decl)) {
@@ -2033,7 +2044,10 @@ public:
 
                 // The file does not reach it: an import or an include will,
                 // but none brings a whole namespace.
-                if(candidate.kind == protocol::CompletionItemKind::Module) {
+                using Kind = protocol::CompletionItemKind;
+                if(candidate.kind == Kind::Module ||
+                   (types_only && candidate.kind != Kind::Class && candidate.kind != Kind::Enum &&
+                    candidate.kind != Kind::TypeParameter)) {
                     continue;
                 }
                 bool imported = !candidate.module.empty();

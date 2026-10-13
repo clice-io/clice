@@ -4,6 +4,8 @@ namespace app {
 
 double draw() {
     Circ§(not_included) c;
+    using Shape = circ§(type_only);
+    on_rese§(internal_definition);
     void (*handler)(int) = on_resi§(function_expected);
     redra§(function_call);
     Gri§(class_template) grid;

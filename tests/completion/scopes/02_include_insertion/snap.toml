@@ -8,6 +8,39 @@ items = [
             { at = "⟦⟧ @-4", text = '#include "shapes.h"' },
         ],
     },
+    {
+        label = "shapes::circle_total",
+        kind = "Variable",
+        insert = "shapes::circle_total",
+        edits = [
+            { at = "⟦⟧ @-4", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.type_only.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-5", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.internal_definition.completion]
+items = [
+    {
+        label = "shapes::on_reset",
+        kind = "Function",
+        insert = "shapes::on_reset($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-6", text = '#include "shapes.h"' },
+        ],
+    },
 ]
 
 [default.function_expected.completion]
@@ -17,7 +50,7 @@ items = [
         kind = "Function",
         insert = "shapes::on_resize",
         edits = [
-            { at = "⟦⟧ @-5", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-7", text = '#include "shapes.h"' },
         ],
     },
 ]
@@ -30,7 +63,7 @@ items = [
         insert = "shapes::redraw($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-6", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-8", text = '#include "shapes.h"' },
         ],
     },
 ]
@@ -43,7 +76,7 @@ items = [
         insert = "shapes::Grid<$0>",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-7", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-9", text = '#include "shapes.h"' },
         ],
     },
     {
@@ -52,7 +85,7 @@ items = [
         insert = "shapes::grid_size<$0>",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-7", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-9", text = '#include "shapes.h"' },
         ],
     },
 ]
@@ -65,7 +98,7 @@ items = [
         insert = "shapes::Row<$0>",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-8", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-10", text = '#include "shapes.h"' },
         ],
     },
 ]
@@ -78,7 +111,7 @@ items = [
         insert = "shapes::grid_size<$0>",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-9", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-11", text = '#include "shapes.h"' },
         ],
     },
 ]
@@ -90,7 +123,7 @@ items = [
         kind = "EnumMember",
         insert = "shapes::Shade::shade_dark",
         edits = [
-            { at = "⟦⟧ @-10", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-12", text = '#include "shapes.h"' },
         ],
     },
 ]
@@ -109,7 +142,7 @@ items = [
         insert = "std::vector<$0>",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-13", text = "#include <vector>" },
+            { at = "⟦⟧ @-15", text = "#include <vector>" },
         ],
     },
 ]
@@ -134,7 +167,25 @@ module;
 #include "shapes.h"
 '''
 
+[[default.module_unit.completion.items]]
+label = "shapes::circle_total"
+kind = "Variable"
+insert = "shapes::circle_total"
+
+[[default.module_unit.completion.items.edits]]
+at = "⟦⟧export module tools;"
+text = '''
+module;
+#include "shapes.h"
+'''
+
 [configured.not_included.completion]
+items = []
+
+[configured.type_only.completion]
+items = []
+
+[configured.internal_definition.completion]
 items = []
 
 [configured.function_expected.completion]
@@ -188,7 +239,7 @@ items = [
         insert = "shapes::redraw($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧ @-6", text = '#include "shapes.h"' },
+            { at = "⟦⟧ @-8", text = '#include "shapes.h"' },
         ],
     },
 ]

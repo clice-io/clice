@@ -139,18 +139,18 @@ std::optional<std::string> Features::include_for(const feature::ScopeCandidate& 
             return header->name().str();
         }
     }
-    // The canonical declaration's file, a definition when there is one:
-    // a header unless the definition is in a source file, where the
-    // headers declaring the symbol are the ones to include.
+    // The canonical declaration's header first, a definition when there is
+    // one; then the headers declaring the symbol, for a definition in a
+    // source file or in a header no `#include` can name.
     llvm::SmallVector<Fid, 2> headers;
     if(auto located = query.resolve(candidate.symbol, file);
        located && is_header_path(located->site.path)) {
         headers.push_back(located->site.file);
-    } else {
-        for(const auto& site: query.sites(candidate.symbol, file, RelationKind::Declaration)) {
-            if(site.file.valid() && is_header_path(site.path)) {
-                headers.push_back(site.file);
-            }
+    }
+    for(const auto& site: query.sites(candidate.symbol, file, RelationKind::Declaration)) {
+        if(site.file.valid() && is_header_path(site.path) &&
+           !llvm::is_contained(headers, site.file)) {
+            headers.push_back(site.file);
         }
     }
     auto includer = project.file_table.spelling(file);

@@ -77,6 +77,7 @@ void use() {
     tool_v§(anonymous_namespace);
     shap§(nested_namespace);
     linked_v§(linkage);
+    using Linked = linked_v§(type_only);
     Vect§(class_specialization);
     fil§(function_specialization);
 }

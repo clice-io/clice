@@ -44,6 +44,9 @@ items = [
     { label = "linked::linked_value", kind = "Variable", detail = "int", insert = "linked::linked_value" },
 ]
 
+[answers.type_only.completion]
+items = []
+
 [answers.class_specialization.completion]
 items = [
     { label = "containers::Vector<class T>", kind = "Class", insert = "containers::Vector<${1:class T}>", snippet = true },

@@ -1,5 +1,6 @@
 #include "shapes.h"
 #include "standard.h"
+#include <bits/shapes_impl.h>
 
 namespace shapes {
 
