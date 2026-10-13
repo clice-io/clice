@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace std {\n\ninline namespace __1 {\n\ntemplate <typename Char>\nstruct basic_string {};\n\ntypedef basic_string<char> string;\n\n}  // namespace __1\n\ntemplate <typename T>\nstruct vector {\n    T& front();\n};\n\ntemplate <typename T>\nusing _NonArray = T;\n\ntemplate <typename T>\nstruct shared_ptr {};\n\nshared_ptr<_NonArray<int>> share_count();\n\ntemplate <typename T>\nstruct __unique_holder {\n    using __type = shared_ptr<T>;\n};\n\ntemplate <typename T>\nusing __holder_t = typename __unique_holder<T>::__type;\n\n__holder_t<long> hold_count();\n\ntemplate <typename... Ts>\nstruct tuple {\n    tuple(Ts... values);\n};\n\ntemplate <typename State>\nstruct fpos {};\n\ntypedef fpos<int> streampos;\ntypedef fpos<int> wstreampos;\n\n}  // namespace std\n\nvoid use(std::vector<std::string>& names, std::vector<std::fpos<int>>& positions) {\n    auto& first = names.front();\n    auto shared = std::share_count();\n    auto held = std::hold_count();\n    auto& position = positions.front();\n    std::tuple both(names.front(), 1);\n}\n",
+      "text": "namespace std {\n\ninline namespace __1 {\n\ntemplate <typename Char>\nstruct basic_string {};\n\ntypedef basic_string<char> string;\n\n}  // namespace __1\n\ntemplate <typename T>\nstruct vector {\n    T& front();\n};\n\ntemplate <typename T>\nusing _NonArray = T;\n\ntemplate <typename T>\nstruct shared_ptr {};\n\nshared_ptr<_NonArray<int>> share_count();\n\ntemplate <typename T>\nstruct __unique_holder {\n    using __type = shared_ptr<T>;\n};\n\ntemplate <typename T>\nusing __holder_t = typename __unique_holder<T>::__type;\n\n__holder_t<long> hold_count();\n\ntemplate <typename... Ts>\nstruct tuple {\n    tuple(Ts... values);\n};\n\ntemplate <typename State>\nstruct fpos {};\n\ntypedef fpos<int> streampos;\ntypedef fpos<int> wstreampos;\n\n}  // namespace std\n\nstruct Outer {\n    template <typename... Ts>\n    struct Inner {};\n};\n\nvoid use(std::vector<std::string>& names,\n         std::vector<std::fpos<int>>& positions,\n         std::vector<Outer::Inner<std::string>>& inners) {\n    auto& first = names.front();\n    auto shared = std::share_count();\n    auto held = std::hold_count();\n    auto& position = positions.front();\n    std::tuple both(names.front(), 1);\n    auto inner = inners.front();\n}\n",
       "markers": []
     }
   ],
@@ -28,11 +28,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 48,
+                      "line": 55,
                       "character": 4
                     },
                     "end": {
-                      "line": 48,
+                      "line": 55,
                       "character": 32
                     }
                   }
@@ -44,11 +44,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 49,
+                      "line": 56,
                       "character": 4
                     },
                     "end": {
-                      "line": 49,
+                      "line": 56,
                       "character": 37
                     }
                   }
@@ -60,11 +60,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 50,
+                      "line": 57,
                       "character": 4
                     },
                     "end": {
-                      "line": 50,
+                      "line": 57,
                       "character": 34
                     }
                   }
@@ -76,11 +76,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 51,
+                      "line": 58,
                       "character": 4
                     },
                     "end": {
-                      "line": 51,
+                      "line": 58,
                       "character": 39
                     }
                   }
@@ -92,12 +92,28 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 52,
+                      "line": 59,
                       "character": 4
                     },
                     "end": {
-                      "line": 52,
+                      "line": 59,
                       "character": 38
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto inner⟨: Outer::Inner<string>⟩ = inners.front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 60,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 60,
+                      "character": 32
                     }
                   }
                 }

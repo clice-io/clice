@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename A, typename B>\nstruct Pair {\n    A first;\n    B second;\n    Pair(A a, B b);\n};\n\nPair pair(1, 2.5);\nauto copy = Pair(3, 'c');\nauto* heap = new Pair(4, 5);\n\ntemplate <typename T>\nusing same = T;\n\ntemplate <typename T>\nstruct Holder {\n    Holder(T value);\n};\n\ntemplate <typename T>\nHolder(T) -> Holder<same<T>>;\n\nauto held = Holder(6);\n\ntemplate <typename T>\nusing Twin = Pair<T, T>;\n\nTwin twin(7, 8);\n\ntemplate <typename T>\nstruct Outer {\n    template <typename U>\n    struct Inner {\n        Inner(U item);\n    };\n};\n\nOuter<int>::Inner inner(1.5);\n\ntemplate <typename T>\nstruct Traits {};\n\ntemplate <typename T, typename Tr = Traits<T>>\nstruct Text {\n    Text(const T* source);\n};\n\ntemplate <typename T>\nText(const T*) -> Text<T, Traits<T>>;\n\nText text(\"abc\");\n",
+      "text": "template <typename A, typename B>\nstruct Pair {\n    A first;\n    B second;\n    Pair(A a, B b);\n};\n\nPair pair(1, 2.5);\nauto copy = Pair(3, 'c');\nauto* heap = new Pair(4, 5);\n\ntemplate <typename T>\nusing same = T;\n\ntemplate <typename T>\nstruct Holder {\n    Holder(T value);\n};\n\ntemplate <typename T>\nHolder(T) -> Holder<same<T>>;\n\nauto held = Holder(6);\n\ntemplate <typename T>\nusing Twin = Pair<T, T>;\n\nTwin twin(7, 8);\nauto twins = Twin(9, 10);\n\ntemplate <typename T>\nstruct Outer {\n    template <typename U>\n    struct Inner {\n        Inner(U item);\n    };\n};\n\nOuter<int>::Inner inner(1.5);\n\ntemplate <typename T>\nstruct Traits {};\n\ntemplate <typename T, typename Tr = Traits<T>>\nstruct Text {\n    Text(const T* source);\n};\n\ntemplate <typename T>\nText(const T*) -> Text<T, Traits<T>>;\n\nText text(\"abc\");\n",
       "markers": []
     }
   ],
@@ -106,15 +106,31 @@
               },
               {
                 "line": {
+                  "$place": "auto twins⟨: Pair<int, int>⟩ = Twin(⟨a:⟩9, ⟨b:⟩10);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
                   "$place": "Outer<int>::Inner⟨<double>⟩ inner(⟨item:⟩1.5);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 37,
+                      "line": 38,
                       "character": 0
                     },
                     "end": {
-                      "line": 37,
+                      "line": 38,
                       "character": 29
                     }
                   }
@@ -126,11 +142,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 50,
+                      "line": 51,
                       "character": 0
                     },
                     "end": {
-                      "line": 50,
+                      "line": 51,
                       "character": 17
                     }
                   }
@@ -235,15 +251,31 @@
               },
               {
                 "line": {
+                  "$place": "auto twins⟨: Pair<int, int>⟩ = Twin(⟨a:⟩9, ⟨b:⟩10);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 25
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
                   "$place": "Outer<int>::Inner inner(⟨item:⟩1.5);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 37,
+                      "line": 38,
                       "character": 0
                     },
                     "end": {
-                      "line": 37,
+                      "line": 38,
                       "character": 29
                     }
                   }
@@ -255,11 +287,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 50,
+                      "line": 51,
                       "character": 0
                     },
                     "end": {
-                      "line": 50,
+                      "line": 51,
                       "character": 17
                     }
                   }

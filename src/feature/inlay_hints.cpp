@@ -740,8 +740,18 @@ private:
             return false;
         }
         const auto* deduced = written->getType()->getContainedDeducedType();
-        return !deduced || (options.deduced_template_arguments &&
-                            llvm::isa<clang::DeducedTemplateSpecializationType>(deduced));
+        const auto* template_deduced =
+            llvm::dyn_cast_if_present<clang::DeducedTemplateSpecializationType>(deduced);
+        return !deduced || (template_deduced && shows_deduced_arguments(template_deduced));
+    }
+
+    /// Whether a type left to class template argument deduction gets its
+    /// arguments hinted. An alias template's arguments are not its
+    /// target's: `Twin` of `Pair<T, T>` takes one.
+    bool shows_deduced_arguments(const clang::DeducedTemplateSpecializationType* type) const {
+        return options.deduced_template_arguments &&
+               llvm::isa_and_present<clang::ClassTemplateDecl>(
+                   type->getTemplateName().getAsTemplateDecl());
     }
 
     bool hints_calls() const {
@@ -1712,16 +1722,13 @@ private:
     /// `Pair pair(1, 2.5)`; the written type keeps the bare template name,
     /// `deduced` is what its owner got.
     void add_deduced_arguments_hint(const clang::TypeSourceInfo* written, clang::QualType deduced) {
-        if(!options.deduced_template_arguments || !written || deduced->isDependentType()) {
+        if(!written || deduced->isDependentType()) {
             return;
         }
         auto loc = written->getTypeLoc()
                        .getUnqualifiedLoc()
                        .getAs<clang::DeducedTemplateSpecializationTypeLoc>();
-        // An alias template's arguments are not its target's: `Same` of
-        // `Pair<T, T>` takes one.
-        if(!loc || !llvm::isa_and_present<clang::ClassTemplateDecl>(
-                       loc.getTypePtr()->getTemplateName().getAsTemplateDecl())) {
+        if(!loc || !shows_deduced_arguments(loc.getTypePtr())) {
             return;
         }
         const auto* spec = llvm::dyn_cast_if_present<clang::ClassTemplateSpecializationDecl>(

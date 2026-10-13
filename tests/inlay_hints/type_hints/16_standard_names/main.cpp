@@ -45,10 +45,18 @@ typedef fpos<int> wstreampos;
 
 }  // namespace std
 
-void use(std::vector<std::string>& names, std::vector<std::fpos<int>>& positions) {
+struct Outer {
+    template <typename... Ts>
+    struct Inner {};
+};
+
+void use(std::vector<std::string>& names,
+         std::vector<std::fpos<int>>& positions,
+         std::vector<Outer::Inner<std::string>>& inners) {
     auto& first = names.front();
     auto shared = std::share_count();
     auto held = std::hold_count();
     auto& position = positions.front();
     std::tuple both(names.front(), 1);
+    auto inner = inners.front();
 }

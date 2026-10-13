@@ -26,6 +26,7 @@ template <typename T>
 using Twin = Pair<T, T>;
 
 Twin twin(7, 8);
+auto twins = Twin(9, 10);
 
 template <typename T>
 struct Outer {

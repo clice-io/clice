@@ -5,6 +5,7 @@ inlay_hints = [
     { line = "auto* heap = new Pair⟨<int, int>⟩(⟨a:⟩4, ⟨b:⟩5);" },
     { line = "auto held = Holder⟨<int>⟩(⟨value:⟩6);" },
     { line = "Twin twin(⟨a:⟩7, ⟨b:⟩8);" },
+    { line = "auto twins⟨: Pair<int, int>⟩ = Twin(⟨a:⟩9, ⟨b:⟩10);" },
     { line = "Outer<int>::Inner⟨<double>⟩ inner(⟨item:⟩1.5);" },
     { line = 'Text⟨<char>⟩ text(⟨source:⟩"abc");' },
 ]
@@ -16,6 +17,7 @@ inlay_hints = [
     { line = "auto* heap⟨: Pair<int, int> *⟩ = new Pair(⟨a:⟩4, ⟨b:⟩5);" },
     { line = "auto held⟨: Holder<same<int>>⟩ = Holder(⟨value:⟩6);" },
     { line = "Twin twin(⟨a:⟩7, ⟨b:⟩8);" },
+    { line = "auto twins⟨: Pair<int, int>⟩ = Twin(⟨a:⟩9, ⟨b:⟩10);" },
     { line = "Outer<int>::Inner inner(⟨item:⟩1.5);" },
     { line = 'Text text(⟨source:⟩"abc");' },
 ]

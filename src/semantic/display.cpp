@@ -1426,6 +1426,13 @@ auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
             return type;
         }
         name = clang::TemplateName(spec->getSpecializedTemplate());
+        // A member template keeps the class around it (`Outer::Inner`).
+        if(const auto* outer = llvm::dyn_cast<clang::CXXRecordDecl>(spec->getDeclContext())) {
+            name = context.getQualifiedTemplateName(
+                clang::NestedNameSpecifier(context.getCanonicalTagType(outer).getTypePtr()),
+                /*TemplateKeyword=*/false,
+                name);
+        }
         arguments = spec->getTemplateArgs().asArray();
     } else {
         return type;
