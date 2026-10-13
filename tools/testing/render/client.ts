@@ -38,6 +38,7 @@ import {
     type Refused,
     type Renameable,
     type Renamed,
+    type Popup,
     type Signatures,
     type Token,
     type WorkspaceSymbol,
@@ -83,7 +84,7 @@ export abstract class Client {
     ): Promise<Completion>;
     protected abstract fetchSignatureHelp(
         at: Anchor,
-        selected: string | undefined,
+        popup: Popup | undefined,
     ): Promise<Signatures>;
     protected abstract fetchHighlights(at: Anchor): Promise<Highlight[]>;
     protected abstract fetchSelectionRange(at: Anchor): Promise<Range[]>;
@@ -148,10 +149,10 @@ export abstract class Client {
         );
     }
 
-    /// The signature help at `at`; with `selected`, asked while the client
-    /// shows the signature so labeled active.
-    signatureHelp(at: Anchor, selected?: string): Promise<Signatures> {
-        return shown(this.fetchSignatureHelp(at, selected), "signature_help", renderSignatures);
+    /// The signature help at `at`; with `popup`, asked again while the
+    /// client shows those signatures.
+    signatureHelp(at: Anchor, popup?: Popup): Promise<Signatures> {
+        return shown(this.fetchSignatureHelp(at, popup), "signature_help", renderSignatures);
     }
 
     highlights(at: Anchor): Promise<Highlight[]> {

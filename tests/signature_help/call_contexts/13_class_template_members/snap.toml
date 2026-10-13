@@ -13,3 +13,11 @@ active = 0
 [answers.function_object.signature_help]
 signatures = ["callback(⟦int⟧, double) -> bool"]
 active = 0
+
+[answers.class_pack.signature_help]
+signatures = ["fill(Tag tag, ⟦int⟧, double) -> void"]
+active = 0
+
+[answers.own_pack.signature_help]
+signatures = ["append(int first, ⟦Extra ...rest⟧) -> void"]
+active = 0

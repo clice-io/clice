@@ -1,0 +1,25 @@
+[answers.inherited]
+wrong = "the inherited Base(int, int) is missing: only the implicit copy and move constructors show (clangd#1363)"
+
+[answers.inherited.signature_help]
+signatures = [
+    "make_unique(⟦const Derived &⟧) -> unique_ptr<Derived>",
+    "make_unique(⟦Derived &&⟧) -> unique_ptr<Derived>",
+]
+active = 0
+
+[answers.public_only.signature_help]
+signatures = ["make_unique(⟦int port⟧) -> unique_ptr<Socket>"]
+active = 0
+
+[answers.too_many.signature_help]
+signatures = []
+
+[answers.initializer_list.signature_help]
+signatures = [
+    "emplace(⟦int rows⟧, int columns) -> Grid &",
+    "emplace(⟦const Grid &⟧) -> Grid &",
+    "emplace(⟦Grid &&⟧) -> Grid &",
+    "emplace(⟦initializer_list<U> list⟧, Args &&...args) -> Grid &",
+]
+active = 0

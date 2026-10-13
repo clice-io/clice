@@ -426,6 +426,13 @@ export interface Signatures {
     active: number;
 }
 
+/// A signature help popup a client shows: its labels, the selected one
+/// active.
+export interface Popup {
+    signatures: readonly string[];
+    active: number;
+}
+
 /// Each signature with its active parameter in ⟦⟧, which one is active,
 /// and the documentation the client shows with it.
 export function renderSignatures({ signatures, active }: Signatures): Table {

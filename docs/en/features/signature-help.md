@@ -187,7 +187,7 @@ tests/signature_help/call_contexts/10_macros
 
 ## Parameter Display
 
-Each parameter shows as the declaration spells it, with its default value.
+Each parameter shows as the call takes it, its default value as the source writes it.
 
 <!-- BEGIN GENERATED ITEMS: signature_help/parameters -->
 
@@ -280,5 +280,3 @@ Registered: `(`, `)`, `{`, `}`, `<`, `>`, `,`
 | `<`       | Template args      | Show overload signatures |
 | `>`       | Template close     | Update context           |
 | `,`       | Argument separator | Update active parameter  |
-
-A parameter list being declared, a call already closed and a comment show nothing.

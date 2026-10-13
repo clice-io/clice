@@ -5,3 +5,7 @@ active = 0
 [answers.extra.signature_help]
 signatures = ["record(int code, ⟦...⟧) -> void"]
 active = 0
+
+[answers.pointer.signature_help]
+signatures = ["(const char *format, ⟦...⟧) -> void"]
+active = 0

@@ -10,18 +10,24 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Adder {\n    int operator()(int a, int b) const;\n};\n\nAdder make_adder();\n\nint main() {\n    Adder add;\n    add(1, 2);\n    make_adder()(1, 2);\n}\n",
+      "text": "struct Adder {\n    int operator()(int a, int b) const;\n};\n\nAdder make_adder();\n\nstruct Visitor {\n    int operator()(int node);\n    int operator()(int node) const;\n};\n\nint main() {\n    Adder add;\n    add(1, 2);\n    make_adder()(1, 2);\n    Visitor visit;\n    visit(1);\n}\n",
       "markers": [
         {
           "name": "pos",
-          "begin": 116,
-          "end": 116,
+          "begin": 203,
+          "end": 203,
           "range": false
         },
         {
           "name": "unnamed",
-          "begin": 140,
-          "end": 140,
+          "begin": 227,
+          "end": 227,
+          "range": false
+        },
+        {
+          "name": "const_overloads",
+          "begin": 263,
+          "end": 263,
           "range": false
         }
       ]
@@ -50,6 +56,18 @@
             "signature_help": {
               "signatures": [
                 "operator()(⟦int a⟧, int b) const -> int"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "const_overloads",
+          "marker": "const_overloads",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "visit(⟦int node⟧) -> int"
               ],
               "active": 0
             }

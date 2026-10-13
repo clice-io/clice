@@ -863,18 +863,23 @@ export class CliceClient {
         });
     }
 
-    /// With `selected`, asked again while the popup shows that signature
-    /// active, as typing in the call asks.
-    signatureHelpAt(uri: string, line: number, character: number, selected?: string) {
+    /// With `shown`, asked again while the popup shows those signatures,
+    /// the `active` one selected, as typing in the call asks.
+    signatureHelpAt(
+        uri: string,
+        line: number,
+        character: number,
+        shown?: { signatures: readonly string[]; active: number },
+    ) {
         const context =
-            selected === undefined
+            shown === undefined
                 ? undefined
                 : {
                       triggerKind: proto.SignatureHelpTriggerKind.ContentChange,
                       isRetrigger: true,
                       activeSignatureHelp: {
-                          signatures: [{ label: selected }],
-                          activeSignature: 0,
+                          signatures: shown.signatures.map((label) => ({ label })),
+                          activeSignature: shown.active,
                       },
                   };
         return this.sendRequest(proto.SignatureHelpRequest.type, {

@@ -414,6 +414,14 @@ Maximum number of completion items, the best ranked; `0` means no limit. A list 
 
 <!-- END GENERATED CONFIG -->
 
+## `[signature_help]`
+
+The `[signature_help]` section controls what the signature help popup shows.
+
+<!-- BEGIN GENERATED CONFIG: signature_help -->
+
+<!-- END GENERATED CONFIG -->
+
 ## `[[rules]]`
 
 A rule names files by pattern and says where they take their compile commands from and how those commands are edited. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, the first matching rule with a `default_command` supplies the command of a file without an entry, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and `index = false` on any matching rule keeps the file out of the index. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu.

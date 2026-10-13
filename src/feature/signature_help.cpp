@@ -88,6 +88,21 @@ const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
     return function;
 }
 
+/// The declaration `function` was instantiated from. A member template of a
+/// class template's specialization keeps no link of its own: its template
+/// does.
+const clang::FunctionDecl* pattern_of(const clang::FunctionDecl& function) {
+    if(auto* pattern = function.getTemplateInstantiationPattern()) {
+        return pattern;
+    }
+    if(auto* described = function.getDescribedFunctionTemplate()) {
+        if(auto* member = described->getInstantiatedFromMemberTemplate()) {
+            return member->getTemplatedDecl();
+        }
+    }
+    return nullptr;
+}
+
 /// The name of `function`'s parameter `index`. A declaration that leaves
 /// it out borrows it from another declaration of the function, or of the
 /// one it was instantiated from.
@@ -105,7 +120,7 @@ llvm::StringRef parameter_name(const clang::FunctionDecl& function, unsigned ind
         return {};
     };
     auto name = named(function);
-    if(auto* pattern = function.getTemplateInstantiationPattern();
+    if(auto* pattern = pattern_of(function);
        name.empty() && pattern && pattern->getNumParams() == function.getNumParams()) {
         name = named(*pattern);
     }
@@ -117,7 +132,7 @@ llvm::StringRef parameter_name(const clang::FunctionDecl& function, unsigned ind
 /// is named after the pack, which names none of them. A member template
 /// of a class template's specialization keeps its own pack.
 std::pair<unsigned, unsigned> expanded_pack(const clang::FunctionDecl& function) {
-    auto* pattern = function.getTemplateInstantiationPattern();
+    auto* pattern = pattern_of(function);
     if(!pattern) {
         return {};
     }
@@ -208,6 +223,19 @@ public:
                                    std::uint32_t candidate_count,
                                    clang::SourceLocation open_paren,
                                    bool braced) final {
+        if(forwarding) {
+            // The standard library reaches only public constructors.
+            for(auto& candidate: llvm::make_range(candidates, candidates + candidate_count)) {
+                auto* constructor = candidate.getFunction();
+                if(constructor->getAccess() == clang::AS_public) {
+                    add_forwarded(*shown(constructor), [&](Signature& signature) {
+                        arguments(signature, *shown(constructor));
+                    });
+                }
+            }
+            return;
+        }
+
         help.signatures.reserve(candidate_count);
         help.active_signature = 0;
 
@@ -230,7 +258,7 @@ public:
                     continue;
                 }
                 listed.push_back(function);
-                if(!forwarded(sema, *function, current_arg)) {
+                if(!forwarded(sema, *function, current_arg, open_paren)) {
                     call(sema, *function, current_arg, open_paren, braced);
                 }
                 continue;
@@ -415,7 +443,7 @@ private:
             }
         }
 
-        if(!llvm::isa<clang::CXXConstructorDecl>(function)) {
+        if(!llvm::isa<clang::CXXConstructorDecl, clang::CXXDestructorDecl>(function)) {
             stream << " -> ";
             function.getReturnType().print(stream, policy);
         }
@@ -446,20 +474,24 @@ private:
 
     /// The class a standard library function forwards its trailing pack to
     /// the constructor of: `make_unique<Widget>(`, a container's
-    /// `emplace_back(`. Null for any other function.
-    static clang::CXXRecordDecl* forwarding_target(clang::Sema& sema,
-                                                   const clang::FunctionDecl& function) {
+    /// `emplace_back(`. Null for any other function, and for an overload
+    /// whose `initializer_list` goes to the constructor too.
+    static clang::QualType forwarding_target(clang::Sema& sema,
+                                             const clang::FunctionDecl& function) {
         auto* name = function.getIdentifier();
         auto params = shown(&function)->parameters();
-        if(!name || params.empty() || !params.back()->isParameterPack()) {
-            return nullptr;
+        if(!name || !function.getTemplateSpecializationArgs() || params.empty() ||
+           !params.back()->isParameterPack() || llvm::any_of(params.drop_back(), [&](auto* param) {
+               return sema.isStdInitializerList(param->getType().getNonReferenceType(), nullptr);
+           })) {
+            return {};
         }
 
         clang::QualType target;
         if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function)) {
             if(!method->getParent()->isInStdNamespace() ||
                (!name->getName().starts_with("emplace") && name->getName() != "try_emplace")) {
-                return nullptr;
+                return {};
             }
             // A map's try_emplace builds the mapped value, every other
             // emplace an element.
@@ -467,82 +499,109 @@ private:
                 name->getName() == "try_emplace" ? "mapped_type" : "value_type");
             auto* alias = method->getParent()->lookup(&member).find_first<clang::TypedefNameDecl>();
             if(!alias) {
-                return nullptr;
+                return {};
             }
             target = alias->getUnderlyingType();
         } else {
             if(!function.isInStdNamespace() ||
                !llvm::is_contained({"make_unique", "make_shared", "allocate_shared"},
                                    name->getName())) {
-                return nullptr;
+                return {};
             }
             // The call names the class in its first template argument.
-            auto* arguments = function.getTemplateSpecializationArgs();
-            if(!arguments) {
-                return nullptr;
-            }
-            target = arguments->get(0).getAsType();
+            target = function.getTemplateSpecializationArgs()->get(0).getAsType();
         }
 
-        auto* record = target->getAsCXXRecordDecl();
-        if(!record || !sema.isCompleteType(function.getLocation(), target)) {
-            return nullptr;
+        if(!target->getAsCXXRecordDecl() || !sema.isCompleteType(function.getLocation(), target)) {
+            return {};
         }
-        return record;
+        return target;
     }
 
     /// Answers a standard library function that forwards its arguments to
-    /// a constructor with each constructor's parameters after its own ones
-    /// before the pack; false for any other function.
+    /// a constructor with the constructors that can take the arguments
+    /// written so far, each after the function's own parameters before
+    /// the pack; false for any other function.
     bool forwarded(clang::Sema& sema,
                    const clang::FunctionDecl& candidate,
-                   std::uint32_t current_arg) {
-        auto* record = forwarding_target(sema, candidate);
-        if(!record) {
+                   std::uint32_t current_arg,
+                   clang::SourceLocation open_paren) {
+        auto target = forwarding_target(sema, candidate);
+        if(target.isNull()) {
             return false;
         }
         auto& function = *shown(&candidate);
-        unsigned prefix = function.getNumParams() - 1;
-        // The constructor's arguments written before the cursor.
-        unsigned typed = current_arg > prefix ? current_arg - prefix : 0;
         // The standard library writes make_unique's return type through
         // its own aliases; a member's is a member type of the container.
         auto result = llvm::isa<clang::CXXMethodDecl>(function)
                           ? function.getReturnType()
                           : candidate.getReturnType().getCanonicalType();
-
-        auto add = [&](const clang::NamedDecl& documented, auto&& write) {
-            Signature signature;
-            function.getDeclName().print(signature.stream, policy);
-            signature.stream << "(";
-            parameters(signature, function, 0, prefix);
-            write(signature);
-            signature.stream << ") -> ";
-            result.print(signature.stream, policy);
-            help.signatures.push_back(
-                std::move(signature).finish(current_arg, documentation(documented)));
+        forwarding = Forwarding{
+            .function = &function,
+            .result = result,
+            .argument = current_arg,
         };
 
-        // An aggregate with nothing to initialize is its default constructor.
+        // The specialization Sema deduced from the arguments written so far
+        // holds their types in its pack: an expression of each stands in for
+        // its argument.
+        auto& context = sema.getASTContext();
+        auto template_arguments = candidate.getTemplateSpecializationArgs()->asArray();
+        auto pack = llvm::find_if(template_arguments, [](const auto& argument) {
+            return argument.getKind() == clang::TemplateArgument::Pack;
+        });
+        llvm::SmallVector<clang::Expr*> typed;
+        for(const auto& element: pack->pack_elements()) {
+            auto type = element.getAsType();
+            typed.push_back(new (context) clang::OpaqueValueExpr(
+                open_paren,
+                type.getNonReferenceType(),
+                type->isLValueReferenceType() ? clang::VK_LValue : clang::VK_XValue));
+        }
+
+        // Parentheses initialize an aggregate too since C++20, which Sema's
+        // constructor help leaves to braces.
+        auto* record = target->getAsCXXRecordDecl();
         if(record->isAggregate() && sema.getLangOpts().CPlusPlus20 &&
-           (record->getNumBases() > 0 || !record->field_empty())) {
-            add(*record, [&](Signature& signature) { fields(signature, *record); });
+           typed.size() <
+               record->getNumBases() + std::distance(record->field_begin(), record->field_end())) {
+            add_forwarded(*record, [&](Signature& signature) { fields(signature, *record); });
         }
-        for(auto* found: sema.LookupConstructors(record)) {
-            if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(found)) {
-                found = shadow->getTargetDecl();
-            }
-            auto* constructor = shown(found->getAsFunction());
-            auto params = constructor->parameters();
-            bool takes_more = params.size() > typed || constructor->isVariadic() ||
-                              (!params.empty() && params.back()->isParameterPack());
-            if(constructor->isDeleted() || (typed > 0 && !takes_more)) {
-                continue;
-            }
-            add(*constructor, [&](Signature& signature) { arguments(signature, *constructor); });
-        }
+        // Sema answers the constructors through ProcessOverloadCandidates.
+        sema.CodeCompletion().ProduceConstructorSignatureHelp(target,
+                                                              open_paren,
+                                                              typed,
+                                                              open_paren,
+                                                              /*Braced=*/false);
+        forwarding.reset();
         return true;
     }
+
+    /// A signature of the forwarding call being answered: its function's
+    /// parameters before the pack, then what `write` writes.
+    void add_forwarded(const clang::NamedDecl& documented,
+                       llvm::function_ref<void(Signature&)> write) {
+        auto& function = *forwarding->function;
+        Signature signature;
+        function.getDeclName().print(signature.stream, policy);
+        signature.stream << "(";
+        parameters(signature, function, 0, function.getNumParams() - 1);
+        write(signature);
+        signature.stream << ") -> ";
+        forwarding->result.print(signature.stream, policy);
+        help.signatures.push_back(
+            std::move(signature).finish(forwarding->argument, documentation(documented)));
+    }
+
+    /// The forwarding call whose constructors Sema is reporting.
+    struct Forwarding {
+        const clang::FunctionDecl* function;
+        clang::QualType result;
+        /// The argument the cursor is on in the forwarding call.
+        std::uint32_t argument;
+    };
+
+    std::optional<Forwarding> forwarding;
 
     protocol::SignatureHelp& help;
     const SignatureHelpOptions& options;
@@ -673,6 +732,12 @@ auto signature_help(CompilationParams& params,
     if(auto call = macro_call_at(unit, offset); call && (call->direct || help.signatures.empty())) {
         return macro_signature(*call);
     }
+
+    // Overloads told apart only by what a label leaves out, such as the
+    // qualifiers of a call operator named after its object, read as one.
+    llvm::StringSet<> labels;
+    llvm::erase_if(help.signatures,
+                   [&](const auto& signature) { return !labels.insert(signature.label).second; });
 
     // The overload the client shows stays active while it is listed: the
     // user may have picked it over the one Sema ranks first.

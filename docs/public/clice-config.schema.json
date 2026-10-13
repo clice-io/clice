@@ -69,6 +69,13 @@
                 "limit": 0
             }
         },
+        "signature_help": {
+            "$ref": "#/$defs/SignatureHelpOptions",
+            "description": "The [signature_help] section: signature help options.",
+            "default": {
+                "documentation": true
+            }
+        },
         "rules": {
             "type": "array",
             "items": {
@@ -273,6 +280,17 @@
                     "maximum": 4294967295,
                     "description": "Maximum number of completion items, the best ranked; `0` means no limit. A list cut short is marked incomplete, so the editor asks again as you type.",
                     "default": 0
+                }
+            },
+            "additionalProperties": false
+        },
+        "SignatureHelpOptions": {
+            "type": "object",
+            "properties": {
+                "documentation": {
+                    "type": "boolean",
+                    "description": "Show the called function's documentation comment.",
+                    "default": true
                 }
             },
             "additionalProperties": false

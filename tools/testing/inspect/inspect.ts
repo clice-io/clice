@@ -27,6 +27,7 @@ import type {
     Refused,
     Renameable,
     Renamed,
+    Popup,
     Signatures,
     Token,
     WorkspaceSymbol,
@@ -340,12 +341,9 @@ export class Inspect extends Client {
         };
     }
 
-    protected async fetchSignatureHelp(
-        at: Anchor,
-        selected: string | undefined,
-    ): Promise<Signatures> {
-        if (selected !== undefined) {
-            return this.cannot("signature help asked again with a signature selected", at);
+    protected async fetchSignatureHelp(at: Anchor, popup: Popup | undefined): Promise<Signatures> {
+        if (popup !== undefined) {
+            return this.cannot("signature help asked again with its popup shown", at);
         }
         const raw = (await this.atPoint("signature_help", at)) as RawSignatureHelp | null;
         if (raw === null) {

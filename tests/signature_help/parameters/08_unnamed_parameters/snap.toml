@@ -9,3 +9,7 @@ active = 0
 [answers.template_redeclared.signature_help]
 signatures = ["larger(⟦const T &a⟧, const T &b) -> const T &"]
 active = 0
+
+[answers.declared_after.signature_help]
+signatures = ["clamp(int value, ⟦int low⟧, int high) -> int"]
+active = 0

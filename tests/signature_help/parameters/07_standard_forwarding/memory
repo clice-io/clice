@@ -20,4 +20,7 @@ struct shared_ptr {};
 
 template <class T, class... Args>
 shared_ptr<T> make_shared(Args&&... args);
+
+template <class T, class Alloc, class... Args>
+shared_ptr<T> allocate_shared(const Alloc& alloc, Args&&... args);
 }  // namespace std

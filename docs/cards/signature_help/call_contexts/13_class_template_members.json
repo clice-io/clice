@@ -10,30 +10,42 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nstruct Vector {\n    T& at(int index);\n    void assign(int count, const T& value);\n    template <typename U>\n    U convert(U fallback) const;\n};\n\ntemplate <typename Signature>\nstruct Function;\n\ntemplate <typename Result, typename... Args>\nstruct Function<Result(Args...)> {\n    Result operator()(Args... args) const;\n};\n\nstruct Point {\n    int x;\n    int y;\n};\n\nvoid use(Vector<Point> points, Function<bool(int, double)> callback) {\n    points.at(0);\n    points.assign(3, Point{});\n    points.convert(1.0);\n    callback(1, 2.0);\n}\n",
+      "text": "template <typename T>\nstruct Vector {\n    T& at(int index);\n    void assign(int count, const T& value);\n    template <typename U>\n    U convert(U fallback) const;\n};\n\ntemplate <typename... Columns>\nstruct Row {\n    template <typename Tag>\n    void fill(Tag tag, Columns... values);\n    template <typename... Extra>\n    void append(int first, Extra... rest);\n};\n\ntemplate <typename Signature>\nstruct Function;\n\ntemplate <typename Result, typename... Args>\nstruct Function<Result(Args...)> {\n    Result operator()(Args... args) const;\n};\n\nstruct Point {\n    int x;\n    int y;\n};\n\nvoid use(Vector<Point> points, Function<bool(int, double)> callback, Row<int, double> row) {\n    points.at(0);\n    points.assign(3, Point{});\n    points.convert(1.0);\n    callback(1, 2.0);\n    row.fill(0, 1, 2.0);\n    row.append(1, 2);\n}\n",
       "markers": [
         {
           "name": "member",
-          "begin": 468,
-          "end": 468,
+          "begin": 685,
+          "end": 685,
           "range": false
         },
         {
           "name": "parameter",
-          "begin": 493,
-          "end": 493,
+          "begin": 710,
+          "end": 710,
           "range": false
         },
         {
           "name": "member_template",
-          "begin": 522,
-          "end": 522,
+          "begin": 739,
+          "end": 739,
           "range": false
         },
         {
           "name": "function_object",
-          "begin": 541,
-          "end": 541,
+          "begin": 758,
+          "end": 758,
+          "range": false
+        },
+        {
+          "name": "class_pack",
+          "begin": 783,
+          "end": 783,
+          "range": false
+        },
+        {
+          "name": "own_pack",
+          "begin": 810,
+          "end": 810,
           "range": false
         }
       ]
@@ -86,6 +98,30 @@
             "signature_help": {
               "signatures": [
                 "callback(⟦int⟧, double) -> bool"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "class_pack",
+          "marker": "class_pack",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "fill(Tag tag, ⟦int⟧, double) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "own_pack",
+          "marker": "own_pack",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "append(int first, ⟦Extra ...rest⟧) -> void"
               ],
               "active": 0
             }

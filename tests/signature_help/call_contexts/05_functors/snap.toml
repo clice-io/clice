@@ -5,3 +5,7 @@ active = 0
 [answers.unnamed.signature_help]
 signatures = ["operator()(⟦int a⟧, int b) const -> int"]
 active = 0
+
+[answers.const_overloads.signature_help]
+signatures = ["visit(⟦int node⟧) -> int"]
+active = 0

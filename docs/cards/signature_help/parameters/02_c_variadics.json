@@ -10,18 +10,24 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "void record(int code, ...);\n\nint main() {\n    record(0);\n    record(0, 1);\n}\n",
+      "text": "void record(int code, ...);\nvoid (*logger)(const char* format, ...);\n\nint main() {\n    record(0);\n    record(0, 1);\n    logger(\"%d\", 1);\n}\n",
       "markers": [
         {
           "name": "pos",
-          "begin": 53,
-          "end": 53,
+          "begin": 94,
+          "end": 94,
           "range": false
         },
         {
           "name": "extra",
-          "begin": 71,
-          "end": 71,
+          "begin": 112,
+          "end": 112,
+          "range": false
+        },
+        {
+          "name": "pointer",
+          "begin": 133,
+          "end": 133,
           "range": false
         }
       ]
@@ -50,6 +56,18 @@
             "signature_help": {
               "signatures": [
                 "record(int code, ⟦...⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "pointer",
+          "marker": "pointer",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "(const char *format, ⟦...⟧) -> void"
               ],
               "active": 0
             }

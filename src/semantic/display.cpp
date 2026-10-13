@@ -907,8 +907,8 @@ auto default_argument(const clang::ParmVarDecl* param, const Options& options)
         return text;
     }
 
-    /// Written in a macro's body: the source holds the macro's text, not
-    /// this declaration's.
+    // Written in a macro's body: the source holds the macro's text, not
+    // this declaration's.
     auto policy = derive_policy(context, options);
     policy.ConstantsAsWritten = true;
     llvm::raw_string_ostream os(text);

@@ -21,3 +21,7 @@ active = 0
 [answers.call_operator.signature_help]
 signatures = ["grid(int row, ⟦int column⟧) -> int"]
 active = 0
+
+[answers.destructor.signature_help]
+signatures = ["~Widget()"]
+active = 0
