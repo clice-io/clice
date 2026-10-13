@@ -330,6 +330,10 @@ struct SignatureHelpParams {
     std::unordered_map<std::string, std::string> pcms;
 
     Config config;
+
+    /// The label of the signature the client shows active, empty when the
+    /// popup is not open.
+    std::string selected;
 };
 
 /// Format a document (or a byte range of it) with clang-format.

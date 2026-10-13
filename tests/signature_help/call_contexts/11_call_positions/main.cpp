@@ -1,6 +1,7 @@
 // Calls in the shapes editing meets most: through a pointer, after a nested
 // call, at an argument that has a default, with explicit template arguments,
-// building a temporary, the second argument of a call operator.
+// building a temporary, the second argument of a call operator, a destructor
+// called by name.
 
 struct Widget {
     Widget(int width, int height);
@@ -22,4 +23,5 @@ void calls(Widget* widget, Grid grid) {
     (void)convert<int>(§(explicit_template)1.0);
     Widget local = Widget(§(temporary)1, 2);
     (void)grid(0, §(call_operator)1);
+    widget->~Widget(§(destructor));
 }

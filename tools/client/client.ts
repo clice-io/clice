@@ -863,11 +863,29 @@ export class CliceClient {
         });
     }
 
-    signatureHelpAt(uri: string, line: number, character: number) {
-        return this.sendRequest(
-            proto.SignatureHelpRequest.type,
-            this.textDocumentPosition(uri, line, character),
-        );
+    /// With `shown`, asked again while the popup shows those signatures,
+    /// the `active` one selected, as typing in the call asks.
+    signatureHelpAt(
+        uri: string,
+        line: number,
+        character: number,
+        shown?: { signatures: readonly string[]; active: number },
+    ) {
+        const context =
+            shown === undefined
+                ? undefined
+                : {
+                      triggerKind: proto.SignatureHelpTriggerKind.ContentChange,
+                      isRetrigger: true,
+                      activeSignatureHelp: {
+                          signatures: shown.signatures.map((label) => ({ label })),
+                          activeSignature: shown.active,
+                      },
+                  };
+        return this.sendRequest(proto.SignatureHelpRequest.type, {
+            ...this.textDocumentPosition(uri, line, character),
+            ...(context === undefined ? {} : { context }),
+        });
     }
 
     documentSymbols(uri: string) {

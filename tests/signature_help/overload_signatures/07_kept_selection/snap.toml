@@ -1,0 +1,23 @@
+[test.asked.signature_help]
+signatures = [
+    "draw(int x, ⟦int y⟧, int z) -> void",
+    "draw(int x, ⟦int y⟧) -> void",
+    "draw(double x, ⟦double y⟧) -> void",
+]
+active = 0
+
+[test.picked.signature_help]
+signatures = [
+    "draw(int x, ⟦int y⟧, int z) -> void",
+    "draw(int x, ⟦int y⟧) -> void",
+    "draw(double x, ⟦double y⟧) -> void",
+]
+active = 2
+
+[test."not listed".signature_help]
+signatures = [
+    "draw(int x, ⟦int y⟧, int z) -> void",
+    "draw(int x, ⟦int y⟧) -> void",
+    "draw(double x, ⟦double y⟧) -> void",
+]
+active = 0

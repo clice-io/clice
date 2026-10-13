@@ -1,0 +1,15 @@
+[answers.definition_unnamed.signature_help]
+signatures = ["resize(⟦int count⟧) -> void"]
+active = 0
+
+[answers.declaration_unnamed.signature_help]
+signatures = ["fill(int count, ⟦int value⟧) -> void"]
+active = 0
+
+[answers.template_redeclared.signature_help]
+signatures = ["larger(⟦const T &a⟧, const T &b) -> const T &"]
+active = 0
+
+[answers.declared_after.signature_help]
+signatures = ["clamp(int value, ⟦int low⟧, int high) -> int"]
+active = 0

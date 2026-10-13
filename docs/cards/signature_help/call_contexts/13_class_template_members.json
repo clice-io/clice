@@ -1,0 +1,133 @@
+{
+  "id": "signature_help/call_contexts/13_class_template_members",
+  "topic": "signature_help",
+  "subtopic": "call_contexts",
+  "title": "Class template members",
+  "summary": "A member of a class template shows the types the object's class is instantiated with",
+  "prose": "`Vector<Point>::at` returns `Point &`, not `T &`, and a call through a\nfunction object shows the parameters of the function type it was declared\nwith. A member template's own parameters stay as it declares them.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Vector {\n    T& at(int index);\n    void assign(int count, const T& value);\n    template <typename U>\n    U convert(U fallback) const;\n};\n\ntemplate <typename... Columns>\nstruct Row {\n    template <typename Tag>\n    void fill(Tag tag, Columns... values);\n    template <typename... Extra>\n    void append(int first, Extra... rest);\n};\n\ntemplate <typename Signature>\nstruct Function;\n\ntemplate <typename Result, typename... Args>\nstruct Function<Result(Args...)> {\n    Result operator()(Args... args) const;\n};\n\nstruct Point {\n    int x;\n    int y;\n};\n\nvoid use(Vector<Point> points, Function<bool(int, double)> callback, Row<int, double> row) {\n    points.at(0);\n    points.assign(3, Point{});\n    points.convert(1.0);\n    callback(1, 2.0);\n    row.fill(0, 1, 2.0);\n    row.append(1, 2);\n}\n",
+      "markers": [
+        {
+          "name": "member",
+          "begin": 685,
+          "end": 685,
+          "range": false
+        },
+        {
+          "name": "parameter",
+          "begin": 710,
+          "end": 710,
+          "range": false
+        },
+        {
+          "name": "member_template",
+          "begin": 739,
+          "end": 739,
+          "range": false
+        },
+        {
+          "name": "function_object",
+          "begin": 758,
+          "end": 758,
+          "range": false
+        },
+        {
+          "name": "class_pack",
+          "begin": 783,
+          "end": 783,
+          "range": false
+        },
+        {
+          "name": "own_pack",
+          "begin": 810,
+          "end": 810,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "member",
+          "marker": "member",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "at(⟦int index⟧) -> Point &"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "parameter",
+          "marker": "parameter",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "assign(int count, ⟦const Point &value⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "member_template",
+          "marker": "member_template",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "convert(⟦U fallback⟧) const -> U"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "function_object",
+          "marker": "function_object",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "callback(⟦int⟧, double) -> bool"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "class_pack",
+          "marker": "class_pack",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "fill(Tag tag, ⟦int⟧, double) -> void"
+              ],
+              "active": 0
+            }
+          }
+        },
+        {
+          "label": "own_pack",
+          "marker": "own_pack",
+          "value": {
+            "signature_help": {
+              "signatures": [
+                "append(int first, ⟦Extra ...rest⟧) -> void"
+              ],
+              "active": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

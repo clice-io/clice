@@ -44,22 +44,21 @@ tests/signature_help/overload_signatures/04_const_overloads
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**选定的重载**
+
+用户在弹窗中切换到的重载，在继续输入调用时保持显示
+
+在输入调用的过程中再次请求时，只要编辑器当前显示的重载仍在列表中，签名帮助就会保持它为当前重载，而不会跳回与实参最匹配的那一个。
+
+```case
+tests/signature_help/overload_signatures/07_kept_selection
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
-
-- [x] 模板实例化模式解析（显示模板模式，而非实例化结果）
-
-- [ ] 优先显示用户提供的构造函数，而非编译器生成的构造函数（[clangd#1259](https://github.com/clangd/clangd/issues/1259)）
-
-- [ ] 按参数个数过滤待决重载候选项（[clangd#2342](https://github.com/clangd/clangd/issues/2342)）
-
-  ```cpp
-  template<typename T>
-  void process(T& obj) {
-      obj.foo(1, 2);  // if T has foo(int) and foo(int,int), only show foo(int,int) as viable
-  }
-  ```
-
-- [ ] 改进待决重载的启发式解析（[clangd#1083](https://github.com/clangd/clangd/issues/1083)）
 
 ## 调用场景
 
@@ -67,11 +66,13 @@ tests/signature_help/overload_signatures/04_const_overloads
 
 <!-- BEGIN GENERATED ITEMS: signature_help/call_contexts -->
 
-<!-- BEGIN CAPABILITY: supported clangd#726 clangd#2541 -->
+<!-- BEGIN CAPABILITY: supported clangd#726 -->
 
 **构造函数与聚合类型**
 
 调用构造函数时会列出构造函数，不显示返回类型；使用花括号进行聚合初始化时会列出字段
+
+使用花括号书写时，构造函数也以花括号显示。
 
 ```case
 tests/signature_help/call_contexts/01_constructors
@@ -91,7 +92,7 @@ tests/signature_help/call_contexts/02_function_pointers
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#299 clangd#1387 -->
+<!-- BEGIN CAPABILITY: supported clangd#299 -->
 
 **模板实参列表**
 
@@ -119,7 +120,9 @@ tests/signature_help/call_contexts/04_nested_calls
 
 **仿函数调用**
 
-调用对象时会显示其 `operator()` 重载
+调用对象时，会以对象的名称显示其 `operator()` 重载
+
+调用中没有写出名称的对象（例如函数返回的对象）会显示为带限定符的 `operator()`。
 
 ```case
 tests/signature_help/call_contexts/05_functors
@@ -195,11 +198,25 @@ tests/signature_help/call_contexts/10_macros
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**类模板成员**
+
+类模板的成员显示对象所属类实例化时使用的类型
+
+`Vector<Point>::at` 返回 `Point &` 而不是 `T &`；通过函数对象调用时，会显示声明该对象时所用函数类型的参数。成员模板自身的参数则保持其声明中的写法。
+
+```case
+tests/signature_help/call_contexts/13_class_template_members
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 参数显示
 
-每个参数均按声明中的写法显示，并包含默认值。
+每个参数按调用实际接受的形式显示，默认值则保持源码中的写法。
 
 <!-- BEGIN GENERATED ITEMS: signature_help/parameters -->
 
@@ -207,7 +224,9 @@ tests/signature_help/call_contexts/10_macros
 
 **默认实参**
 
-带有默认值的参数会在标签中显示其默认值
+带有默认值的参数按源码中的写法显示其默认值
+
+宏仍显示为宏，八进制数仍显示为八进制；跨多行书写的默认值合并为一行显示。
 
 ```case
 tests/signature_help/parameters/01_default_arguments
@@ -215,13 +234,11 @@ tests/signature_help/parameters/01_default_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **C 风格可变参数函数**
 
-会列出具名参数，但标签省略了末尾的 `...`
-
-光标移到具名参数之后的实参上时，不会标记任何参数，标签中也没有提示该函数还能接受更多实参。
+C 风格的 `...` 显示为最后一个参数，光标位于具名参数之后的任一实参上时都会标记它
 
 ```case
 tests/signature_help/parameters/02_c_variadics
@@ -241,13 +258,11 @@ tests/signature_help/parameters/03_parameter_packs
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2284 -->
+<!-- BEGIN CAPABILITY: supported clangd#2284 -->
 
 **显式对象参数**
 
-C++23 的 `this` 参数会显示在标签中，且光标位于第一个实参上时会标记该参数
-
-调用成员函数时所用的对象不是实参，但标签仍会列出 `this Shape &self`，并在光标位于 `dx` 对应的实参上时标记它。
+C++23 的 `this` 参数不会出现在标签中：调用成员函数时所用的对象不是实参
 
 ```case
 tests/signature_help/parameters/05_explicit_object_parameters
@@ -267,37 +282,43 @@ tests/signature_help/parameters/06_forwarding
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported clangd#638 -->
+
+**标准库转发函数**
+
+`make_unique`、`make_shared` 以及容器的 `emplace` 函数会显示其所构造对象的构造函数
+
+列出能够接受目前已写出实参的构造函数，最匹配的排在最前；每个构造函数的参数都排在该函数自身的参数之后，例如 map 的 `try_emplace` 的键。聚合类型则列出其字段。
+
+```case
+tests/signature_help/parameters/07_standard_forwarding
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
-
-- [ ] 美化标准库参数名（[clangd#736](https://github.com/clangd/clangd/issues/736)）
-
-  ```
-  // current:  push_back(const value_type& __x)
-  // expected: push_back(const value_type& value)
-  ```
-
-- [ ] 保留参数类型中的枚举类作用域（[clangd#2475](https://github.com/clangd/clangd/issues/2475)）
-
-  ```cpp
-  enum class Color { Red, Green, Blue };
-  void paint(Color c);
-  paint(^  // show "(Color c)", not "(c)" with scope stripped
-  ```
 
 ## 文档
 
-- [ ] 当前参数的文档（来自 `@param` 文档注释）
+被调用函数的文档注释与其签名一同显示，格式为纯文本。
 
-  ```cpp
-  /// @param path The file system path.
-  /// @param mode POSIX file permission bits.
-  void open(std::string path, int mode);
-  open("file", ^  // show documentation for mode parameter
-  ```
+<!-- BEGIN GENERATED ITEMS: signature_help/documentation -->
 
-- [ ] 遵循 `documentationFormat` 能力（[clangd#945](https://github.com/clangd/clangd/issues/945)）
-- [ ] 通过继承的构造函数传递文档（[clangd#1936](https://github.com/clangd/clangd/issues/1936)）
-- [ ] 重载集中的重载数量指示器
+<!-- BEGIN CAPABILITY: supported -->
+
+**文档注释**
+
+被调用函数的文档注释与其签名一同显示
+
+在 `[signature_help]` 节中设置 `documentation = false` 后，弹窗只显示签名。
+
+```case
+tests/signature_help/documentation/01_doc_comments
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 ## 触发字符
 
@@ -312,10 +333,3 @@ tests/signature_help/parameters/06_forwarding
 | `<`  | 模板实参     | 显示重载签名 |
 | `>`  | 模板闭合     | 更新上下文   |
 | `,`  | 实参分隔符   | 更新当前形参 |
-
-- [ ] 避免误触发——不要在注释、字符串字面量中或定义函数时触发（[clangd#51](https://github.com/clangd/clangd/issues/51)、[clangd#289](https://github.com/clangd/clangd/issues/289)）
-
-  ```cpp
-  void foo(int x, int y) {  // should NOT trigger signature help
-  //       ^^^^^^^^^^^^^ this is a definition, not a call
-  ```

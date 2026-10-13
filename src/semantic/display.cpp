@@ -889,6 +889,44 @@ auto param_type(const clang::TemplateTemplateParmDecl& param, const Options& opt
 
 }  // namespace
 
+auto default_argument(const clang::ParmVarDecl* param, const Options& options)
+    -> std::optional<std::string> {
+    const clang::Expr* arg = default_arg(param);
+    if(!arg) {
+        return std::nullopt;
+    }
+
+    auto& context = param->getASTContext();
+    auto range = clang::Lexer::makeFileCharRange(
+        clang::CharSourceRange::getTokenRange(arg->getSourceRange()),
+        context.getSourceManager(),
+        context.getLangOpts());
+    std::string text;
+    if(range.isValid()) {
+        auto written =
+            clang::Lexer::getSourceText(range, context.getSourceManager(), context.getLangOpts());
+        for(auto line: llvm::split(written, '\n')) {
+            line = line.trim();
+            if(line.empty()) {
+                continue;
+            }
+            if(!text.empty()) {
+                text += ' ';
+            }
+            text += line;
+        }
+        return text;
+    }
+
+    // Written in a macro's body: the source holds the macro's text, not
+    // this declaration's.
+    auto policy = derive_policy(context, options);
+    policy.ConstantsAsWritten = true;
+    llvm::raw_string_ostream os(text);
+    arg->printPretty(os, nullptr, policy, 0, "\n", &context);
+    return text;
+}
+
 auto param(const clang::ParmVarDecl* param, const Options& options) -> Param {
     assert(param);
     Param result;
@@ -896,11 +934,7 @@ auto param(const clang::ParmVarDecl* param, const Options& options) -> Param {
     if(!param->getName().empty()) {
         result.name = param->getNameAsString();
     }
-    if(const clang::Expr* arg = default_arg(param)) {
-        result.default_value.emplace();
-        llvm::raw_string_ostream os(*result.default_value);
-        arg->printPretty(os, nullptr, derive_policy(param->getASTContext(), options));
-    }
+    result.default_value = default_argument(param, options);
     return result;
 }
 

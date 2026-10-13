@@ -434,6 +434,7 @@ export interface Signature {
     label: string;
     /// The active parameter's span in the label.
     active?: { begin: number; end: number } | undefined;
+    documentation?: string | undefined;
 }
 
 export interface Signatures {
@@ -441,15 +442,30 @@ export interface Signatures {
     active: number;
 }
 
-/// Each signature with its active parameter in ⟦⟧, and which one is
+/// A signature help popup a client shows: its labels, the selected one
 /// active.
+export interface Popup {
+    signatures: readonly string[];
+    active: number;
+}
+
+/// Each signature with its active parameter in ⟦⟧, which one is active,
+/// and the documentation the client shows with it.
 export function renderSignatures({ signatures, active }: Signatures): Table {
     const labels = signatures.map(({ label, active: parameter }) =>
         parameter === undefined
             ? label
             : `${label.slice(0, parameter.begin)}⟦${label.slice(parameter.begin, parameter.end)}⟧${label.slice(parameter.end)}`,
     );
-    return labels.length === 0 ? { signatures: [] } : { signatures: labels, active };
+    if (labels.length === 0) {
+        return { signatures: [] };
+    }
+    const documentation = signatures[active]?.documentation;
+    return {
+        signatures: labels,
+        active,
+        ...(documentation === undefined ? {} : { documentation }),
+    };
 }
 
 /// A semantic token on one line, as the server sends it: a multiline token

@@ -103,6 +103,7 @@ public:
                    kota::cancellation_token token = {});
     RawResult signature_help(const Ticket& ticket,
                              const protocol::Position& position,
+                             std::string selected,
                              kota::cancellation_token token = {});
 
     /// Formatting on a stateless worker: no sema runs, but it is still this
