@@ -56,4 +56,10 @@ auto declared_type(const clang::TypeDecl* decl) -> clang::QualType;
 /// where `written` holds none of these or no single instantiation exists.
 auto deduced_type(clang::DynTypedNode written, const clang::Decl* owner) -> clang::QualType;
 
+/// Whether code could write `type` where it stands: nothing in it waits for
+/// instantiation to say what an expression's type is (`<dependent type>`,
+/// a dependent `decltype`, an undeduced `auto`), and no template parameter
+/// in it is one an abbreviated template invented for an `auto`.
+auto writable(clang::QualType type) -> bool;
+
 }  // namespace clice::types

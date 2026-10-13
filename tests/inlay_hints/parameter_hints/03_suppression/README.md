@@ -1,7 +1,3 @@
----
-issues: [clangd#1877]
----
-
 # Hint suppression
 
 Named arguments and `/*name=*/` comments suppress parameter hints

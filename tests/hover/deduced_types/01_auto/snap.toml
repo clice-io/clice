@@ -108,6 +108,17 @@ Result
 '''
 range = "⟦auto⟧ inferred_result() {"
 
+[answers.dependent.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+T
+```
+'''
+range = "⟦auto⟧ value = T{};"
+
 [answers.undeduced.hover]
 markdown = '''
 ### type `auto`
@@ -117,4 +128,4 @@ markdown = '''
 /* not deduced */
 ```
 '''
-range = "⟦auto⟧ value = T{};"
+range = "⟦auto⟧ sum = value + 1;"

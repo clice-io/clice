@@ -5,7 +5,7 @@
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
-clice 为代码中未显式给出的信息渲染内联标注：调用处的参数名、推导出的类型，以及按位置进行聚合初始化时对应的字段名。提示类别可以通过 `[inlay_hints]` 配置节单独开关；下面各节介绍默认开启的类别。
+clice 为代码中未显式给出的信息渲染内联标注：调用处的参数名、推导出的类型、按位置进行聚合初始化时对应的字段名，以及右花括号或 `#endif` 所结束的结构。每种提示在 `[inlay_hints]` 配置节中都有各自的开关；下面各节会说明哪些提示默认关闭。
 
 ## 参数名提示
 
@@ -25,7 +25,7 @@ tests/inlay_hints/parameter_hints/01_argument_names
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1877 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **提示抑制**
 
@@ -45,6 +45,8 @@ tests/inlay_hints/parameter_hints/03_suppression
 
 用 `&` 标记通过非常量左值引用传递的实参
 
+该标记有单独的开关 `inlay_hints.mutable_references`：关闭参数名提示后，该标记仍会保留，其后的参数名为空。
+
 ```case
 tests/inlay_hints/parameter_hints/05_reference_markers
 ```
@@ -57,7 +59,7 @@ tests/inlay_hints/parameter_hints/05_reference_markers
 
 经包装函数转发的参数包会解析出目标函数的参数名
 
-直接转交实参时，无需 `std::forward` 也能解析出参数名；位于固定的前置与后置实参之间的参数包会解析到其对应的参数；传递给可调用对象的参数包则会解析到其调用运算符。
+直接转交实参时，无需 `std::forward` 也能解析出参数名；位于固定的前置与后置实参之间的参数包会解析到其对应的参数；传递给可调用对象的参数包则会解析到其调用运算符。最终用于初始化标量的参数包没有可显示的参数名。
 
 ```case
 tests/inlay_hints/parameter_hints/06_forwarding
@@ -111,7 +113,7 @@ tests/inlay_hints/parameter_hints/10_dependent_calls
 
 以宏形式书写的实参会显示提示；宏体内生成的调用不显示提示
 
-类对象宏（object-like macro）在源码中算作一个实参。涵盖多个实参的宏没有可放置提示的位置，而作为宏实参编写的代码会保留提示。
+类对象宏（object-like macro）在源码中算作一个实参。涵盖多个实参的宏没有可放置提示的位置；作为宏实参编写的代码会保留提示，其中嵌套了宏时也是如此，而嵌套宏自身的宏体不显示提示。
 
 ```case
 tests/inlay_hints/parameter_hints/12_macros
@@ -119,11 +121,13 @@ tests/inlay_hints/parameter_hints/12_macros
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2248 -->
+<!-- BEGIN CAPABILITY: supported clangd#2248 -->
 
-**宽松名称匹配**
+**带前缀的参数名**
 
-参数名 `aParam` 目前还无法抑制实参 `param` 的提示
+实参名与去掉单字母前缀后的参数名相同时，无需提示
+
+传给 `aParam` 的 `param`、传给 `pBuffer` 的 `buffer` 都视为同名。`inlay_hints.prefixed_names` 会重新显示这些提示。
 
 ```case
 tests/inlay_hints/parameter_hints/16_near_matches
@@ -139,6 +143,20 @@ tests/inlay_hints/parameter_hints/16_near_matches
 
 ```case
 tests/inlay_hints/parameter_hints/17_inherited_constructors
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**单字母参数名**
+
+只有一个参数的函数不显示该参数的单字母名称
+
+像 `push(int x)` 中的 `x` 这样的名称，并没有提供调用本身之外的信息；参数较多时，这些字母能区分各个参数，因此仍会显示。`inlay_hints.single_letter_names` 会显示所有这类名称。
+
+```case
+tests/inlay_hints/parameter_hints/24_single_letter_names
 ```
 
 <!-- END CAPABILITY -->
@@ -163,13 +181,13 @@ tests/inlay_hints/type_hints/01_auto_variables
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1298 clangd#1357 -->
+<!-- BEGIN CAPABILITY: supported clangd#1298 clangd#1357 clangd#2268 -->
 
 **类型语法糖的长度限制**
 
-别名会保留原有写法，类型名过长时则改用带语法糖的名称
+别名会保留原有写法，过长的类型则保留能放下的部分
 
-如果类型没有足够短的写法，就不显示提示；默认模板实参始终不显示。长度上限由 `inlay_hints.type_name_limit` 设置；设为 `0` 即可取消限制。
+超出长度上限的类型会先改用带语法糖的名称，再把放不下的模板实参写成 `…`，但保留最外层的名称；连最外层名称都放不下的类型不显示提示。默认模板实参始终不显示。长度上限由 `inlay_hints.max_length.types` 设置；设为 `0` 即可取消限制。
 
 ```case
 tests/inlay_hints/type_hints/02_type_sugar
@@ -193,7 +211,9 @@ tests/inlay_hints/type_hints/03_structured_bindings
 
 **Lambda**
 
-变量、推导出的返回类型和初始化捕获都会显示提示
+推导出的返回类型和初始化捕获会显示提示
+
+保存 Lambda 的变量不显示类型：其初始化器已表明它是什么。
 
 ```case
 tests/inlay_hints/type_hints/04_lambdas
@@ -229,16 +249,30 @@ tests/inlay_hints/type_hints/07_auto_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1749 -->
+<!-- BEGIN CAPABILITY: supported clangd#1749 clangd#2603 -->
 
 **显式写出的初始化器**
 
-初始化器已在强制类型转换或函数式类型转换中写出的类型，不再显示提示
+初始化器已写出的类型不再显示提示
 
-初始化器只写出类模板名、模板实参留待推导时，仍会显示提示。
+强制类型转换、函数式类型转换、`new`、以模板实参写出该类型的工厂函数（`make_owner<Box<int>>()` 得到 `Owner<Box<int>>`），以及 Lambda，都已表明变量保存的是什么。初始化器只写出类模板名、模板实参留待推导时，推导出的实参改为显示在类模板名的书写处；工厂函数的结果若带有调用中未写出的模板实参，仍会显示提示。`inlay_hints.spelled_types` 会显示所有提示。
 
 ```case
 tests/inlay_hints/type_hints/08_explicit_initializers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2275 -->
+
+**模板中的类型**
+
+模板中的变量按模板本身的写法显示其类型
+
+类型取决于只有实例化才能算出的表达式（例如 `input + 1`）时，不显示提示；初始化器已写出的类型也不显示。恰好只实例化一次的模板则改为显示该实例化中的类型。
+
+```case
+tests/inlay_hints/type_hints/09_dependent_auto
 ```
 
 <!-- END CAPABILITY -->
@@ -261,7 +295,7 @@ tests/inlay_hints/type_hints/10_scopes
 
 类模板中的 `auto` 变量会显示该模板唯一实例化所给出的类型
 
-当两个实例化推导出不同类型时，就没有一个统一的类型可供显示。
+当两个实例化推导出不同类型时，按模板本身的写法显示类型。
 
 ```case
 tests/inlay_hints/type_hints/12_instantiated_templates
@@ -283,6 +317,20 @@ tests/inlay_hints/type_hints/13_binding_aliases
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**标准库名称**
+
+标准库类型按标准为其规定的名称显示
+
+标准库用别名命名的特化会显示为该别名，例如显示 `string` 而不是 `basic_string<char>`，但标准库为它起了两个别名时除外；标准库内部的别名使用保留名称，会改为显示其所代表的类型。
+
+```case
+tests/inlay_hints/type_hints/16_standard_names
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 指派符提示
@@ -291,13 +339,13 @@ tests/inlay_hints/type_hints/13_binding_aliases
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/designator_hints -->
 
-<!-- BEGIN CAPABILITY: supported clangd#2303 -->
+<!-- BEGIN CAPABILITY: supported clangd#1277 -->
 
 **字段和索引指派符**
 
-按位置进行聚合初始化时显示 `.field=` 和 `[index]=`
+按位置进行聚合初始化时显示 `.field=`，启用后还会显示 `[index]=`
 
-即使成员的大小依赖于模板参数，数组指派符仍能正常显示；保留成员名则会被跳过，不予显示。
+数组索引默认关闭，可通过 `inlay_hints.array_indices` 开启：开启后，数据表中的每个元素都会带上一个索引。关闭数组索引时，穿过数组的指派符路径只显示其中的字段；开启数组索引但关闭字段指派符时，这类路径不显示提示。即使成员的大小依赖于模板参数，数组指派符仍能正常显示；保留成员名则会被跳过，不予显示。
 
 ```case
 tests/inlay_hints/designator_hints/01_fields_and_indices
@@ -361,17 +409,17 @@ tests/inlay_hints/designator_hints/07_parenthesized_init
 
 ## 块结尾提示
 
-默认关闭（`inlay_hints.block_end`）。跨行代码块的右花括号后会显示提示，注明该花括号对应的结构。
+十行及以上的代码块会在结尾处注明它所结束的结构：默认只针对命名空间和 `#endif`，开启 `inlay_hints.block_end` 后还包括函数、类型和控制流结构。
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/block_end -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: supported clangd#1634 -->
 
 **右花括号后的名称**
 
-跨行代码块的右花括号后会显示提示，注明该花括号对应的结构
+行数较多的代码块的右花括号后会显示提示，注明该花括号对应的结构
 
-函数、类型、命名空间和控制流结构都有这类提示；`if` 和 `while` 的条件较短时会显示条件，`else if` 链只显示为 `// if`，超过 60 个字符的标签则会省略。单行代码块不显示提示。
+代码块至少有 `inlay_hints.min_block_lines` 行（默认十行，本例为两行）时，函数、类型和控制流结构都有这类提示。`if` 和 `while` 的条件较短时会显示条件，`else if` 链只显示为 `// if`，超过 60 个字符的标签会用 `…` 截断。点击名称会跳转到对应代码块的开头。
 
 ```case
 tests/inlay_hints/block_end/01_block_end_hints
@@ -379,13 +427,53 @@ tests/inlay_hints/block_end/01_block_end_hints
 
 <!-- END CAPABILITY -->
 
-<!-- END GENERATED ITEMS -->
+<!-- BEGIN CAPABILITY: supported clangd#1807 -->
 
-一个相关设想是用 `#endif` 提示显示与之匹配的条件（[clangd#2487](https://github.com/clangd/clangd/issues/2487)），但该功能尚未实现。
+**代码块高度**
+
+只有十行及以上的代码块才会在结尾显示提示
+
+高度包括左右花括号所在的行。`inlay_hints.min_block_lines` 同时为块结尾、命名空间结尾和 `#endif` 设置这一高度。
+
+```case
+tests/inlay_hints/block_end/02_block_heights
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**命名空间结尾**
+
+行数较多的命名空间会在右花括号后注明其名称
+
+`namespace a::b::c` 的结尾只有一条提示，写出完整路径；匿名命名空间只显示为 `// namespace`；后面已有注释的花括号不显示提示。默认开启。
+
+```case
+tests/inlay_hints/block_end/03_namespace_ends
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#2487 -->
+
+**`#endif` 后的条件**
+
+结束较长条件编译块的 `#endif` 会显示它所结束的条件
+
+`#ifdef NAME` 显示 `NAME`，`#ifndef NAME` 显示 `!NAME`，`#if` 则按原样显示其条件，超过 60 个字符时用 `…` 截断，构建时跳过的分支中也是如此；后面已有注释的 `#endif` 不显示提示。点击条件会跳转到对应的 `#if`。默认开启。
+
+```case
+tests/inlay_hints/block_end/04_endif
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 ## 默认实参提示
 
-默认关闭（`inlay_hints.default_arguments`）。使用默认实参的调用处会显示省略的实参，超出类型名长度限制的内容会缩略显示。
+默认关闭（`inlay_hints.default_arguments`）。使用默认实参的调用处会显示省略的实参，超出 `inlay_hints.max_length.default_arguments` 的内容会缩略显示。
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/default_arguments -->
 
@@ -405,7 +493,7 @@ tests/inlay_hints/default_arguments/01_omitted_arguments
 
 ## 可点击的提示
 
-提示中的名称都链接到其所指对象的声明。
+提示中的名称都链接到其所指对象的声明；右花括号或 `#endif` 后的名称则链接到对应代码块的开头。
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/links -->
 
@@ -427,42 +515,20 @@ tests/inlay_hints/links/02_type_links
 
 ## 其他提示类型
 
-代码中隐含的其他信息目前还没有提示。
+类模板实参推导（class template argument deduction）得出的模板实参。
 
 <!-- BEGIN GENERATED ITEMS: inlay_hints/other_kinds -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2583 -->
-
-**模板实参名称**
-
-调用处显式指定的模板实参，目前还不会显示它所绑定的模板形参
-
-```case
-tests/inlay_hints/other_kinds/01_template_arguments
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2331 -->
+<!-- BEGIN CAPABILITY: supported clangd#2331 -->
 
 **推导出的类模板实参**
 
-对于通过构造函数调用推导出实参的类模板，目前还不会显示这些实参
+类模板的实参由初始化推导得出时，会显示这些实参
+
+凡是只写出模板名而未写实参的地方，实参都会显示在模板名之后：声明、函数式类型转换、`new` 表达式；实参按模板名本身接受的形式显示，不受外围作用域影响，也不受推导指引（deduction guide）中所写的别名或默认值影响。由这类类型转换初始化的变量，只要实参已经表明了类型，就不再单独显示类型。
 
 ```case
 tests/inlay_hints/other_kinds/02_ctad_arguments
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#2254 -->
-
-**隐式转换**
-
-调用处的实参发生隐式转换时，目前还不会显示该转换
-
-```case
-tests/inlay_hints/other_kinds/03_implicit_conversions
 ```
 
 <!-- END CAPABILITY -->
@@ -471,17 +537,16 @@ tests/inlay_hints/other_kinds/03_implicit_conversions
 
 ## 配置
 
-`clice.toml` 的 `[inlay_hints]` 配置节（或通过 `initializationOptions` 提供的同名键）控制所有类别：`enabled`、`parameters`、`deduced_types`、`designators`、`block_end`、`default_arguments` 和 `type_name_limit`。详见[配置指南](../guide/configuration.md#inlay-hints)。配置更改会在服务器重启后生效，无需重新编译。
+`clice.toml` 的 `[inlay_hints]` 配置节（或通过 `initializationOptions` 提供的同名键）包含每种提示的开关、代码块结尾显示提示所需的最小高度，以及 `[inlay_hints.max_length]` 下的长度上限。详见[配置指南](../guide/configuration.md#inlay-hints)。配置更改会在服务器重启后生效，无需重新编译。
 
 ## 交互行为
 
 - 请求按范围限定：请求范围之外的提示会被丢弃。
 - 参数提示锚定在实参左侧；类型提示和指派符提示锚定在声明一侧，通过 LSP 的间距标志控制间距，而不嵌入空格。
 - 内容完全相同的重复提示（例如模板实例化产生的提示）会合并为一条。
+- 每行最多 100 条提示；超出的部分（例如写在一行里的生成表格）不会发送。
 - 提示中的类型名、参数名和指派符字段都是链接：点击会跳转到所指符号的定义，悬停则显示该符号的悬停卡片。符号存在声明时，链接指向该声明，这样从链接处执行“跳转到定义”即可到达定义。链接随提示一起发给客户端；不支持 LSP 3.17 内联提示的客户端只收到纯文本。
 
 ## 其他已知不足
 
 - [ ] 通过 `InlayHintLabelPart` 为缩写类型提示提供可展开的标签部分（[clangd#2269](https://github.com/clangd/clangd/issues/2269)）
-- [ ] 根据作用域缩写类型名——在 `namespace foo` 内显示 `Bar` 而不是 `foo::Bar`（[clangd#2270](https://github.com/clangd/clangd/issues/2270)）
-- [ ] 协程返回模板类型时丢失参数提示（[clangd#2437](https://github.com/clangd/clangd/issues/2437)）

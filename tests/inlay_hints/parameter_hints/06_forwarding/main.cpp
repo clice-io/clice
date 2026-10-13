@@ -6,7 +6,7 @@ struct remove_reference {
 };
 
 template <typename T>
-constexpr T&& forward(typename remove_reference<T>::type& t) noexcept;
+constexpr T&& forward(typename remove_reference<T>::type& value) noexcept;
 
 }  // namespace std
 
@@ -36,10 +36,16 @@ int chain(Args&&... args) {
     return head_tail(std::forward<Args>(args)...);
 }
 
+template <typename T, typename... Args>
+T* create(Args&&... args) {
+    return new T(std::forward<Args>(args)...);
+}
+
 void use() {
     wrap(1, 2);
     call_with(1, 2, 3);
     chain(32, 42);
+    create<int>(5);
 }
 
 template <typename F, typename... Args>

@@ -5,7 +5,9 @@ inlay_hints = [
 ]
 
 [answers.twice]
-inlay_hints = []
+inlay_hints = [
+    { line = "auto copy⟨: T⟩ = value;" },
+]
 
 [answers.outside]
 inlay_hints = [

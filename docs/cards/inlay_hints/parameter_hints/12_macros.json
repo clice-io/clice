@@ -4,7 +4,7 @@
   "subtopic": "parameter_hints",
   "title": "Macros at call sites",
   "summary": "Arguments spelled as macros hint; calls generated inside macro bodies do not",
-  "prose": "An object-like macro is one written argument. A macro covering several arguments has no place to anchor a hint, and code written as a macro argument keeps its hints.",
+  "prose": "An object-like macro is one written argument. A macro covering several arguments has no place to anchor a hint, and code written as a macro argument keeps its hints, through a macro nested in it too, whose own body stays bare.",
   "status": "supported",
   "issues": [
     "clangd#2620"
@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "void report(double value);\nvoid plot(double x, double y);\nint check(int status);\n\n#define PI 3.14\n#define CALL_REPORT() report(2.71)\n#define PAIR 1.0, 2.0\n#define ASSERT(expr) if(!(expr)) {}\n\nvoid use() {\n    report(PI);\n    CALL_REPORT();\n    plot(PAIR);\n    ASSERT(check(42) == 0);\n}\n",
+      "text": "void report(double value);\nvoid plot(double x, double y);\nint check(int status);\n\n#define PI 3.14\n#define CALL_REPORT() report(2.71)\n#define PAIR 1.0, 2.0\n#define ASSERT(expr) if(!(expr)) {}\n\nvoid outer_call(int first, int second, int third);\nint inner_call(int left, int right, int last);\n#define OUTER(arg) outer_call(0, 0, arg)\n#define INNER(arg) inner_call(0, 0, arg)\n#define SWAPPED(second, first) plot(first, second)\n\nvoid use() {\n    report(PI);\n    CALL_REPORT();\n    plot(PAIR);\n    ASSERT(check(42) == 0);\n    OUTER(INNER(3));\n    SWAPPED(4.0, 5.0);\n}\n",
       "markers": []
     }
   ],
@@ -30,11 +30,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 10,
+                      "line": 16,
                       "character": 4
                     },
                     "end": {
-                      "line": 10,
+                      "line": 16,
                       "character": 15
                     }
                   }
@@ -46,12 +46,44 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 13,
+                      "line": 19,
                       "character": 4
                     },
                     "end": {
-                      "line": 13,
+                      "line": 19,
                       "character": 27
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "OUTER(⟨third:⟩INNER(⟨last:⟩3));",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 20
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "SWAPPED(⟨y:⟩4.0, ⟨x:⟩5.0);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 22
                     }
                   }
                 }

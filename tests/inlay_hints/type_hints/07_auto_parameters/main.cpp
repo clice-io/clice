@@ -1,10 +1,10 @@
-int twice(auto x) {
-    return x + x;
+int twice(auto value) {
+    return value + value;
 }
 
 int result = twice(21);
 
-int measure(auto x) {
+int measure(auto value) {
     return 1;
 }
 

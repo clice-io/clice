@@ -270,7 +270,9 @@ tests/hover/aliases/03_c_anonymous_structs
 
 **`auto`**
 
-Hovering `auto` shows the type it stands for, or that it is not deduced yet in a template
+Hovering `auto` shows the type it stands for, in a template as the template would write it
+
+A type only instantiation can work out, such as that of `value + 1`, is not deduced yet.
 
 ```case
 tests/hover/deduced_types/01_auto

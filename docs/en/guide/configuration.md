@@ -288,7 +288,7 @@ Maximum number of members the definition of a hovered class or enum lists: data 
 
 ## `[inlay_hints]`
 
-The `[inlay_hints]` section controls which inlay hint categories the server produces. A client-side refresh then requests hints with the updated values; no recompile is involved.
+The `[inlay_hints]` section controls which inlay hints the server produces and how long they may grow. Changes take effect after a server restart; no recompile is involved.
 
 <!-- BEGIN GENERATED CONFIG: inlay_hints -->
 
@@ -308,7 +308,37 @@ Master switch: `false` disables all inlay hints.
 | ------------ | ------ | ------- |
 | `parameters` | `bool` | `true`  |
 
-Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, including `&` markers for arguments passed by mutable reference.
+Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`.
+
+</div>
+
+<div class="config-option">
+
+| Option               | Type   | Default |
+| -------------------- | ------ | ------- |
+| `mutable_references` | `bool` | `true`  |
+
+`&` marking an argument passed by mutable reference, e.g. `mutate(&value: v)`.
+
+</div>
+
+<div class="config-option">
+
+| Option           | Type   | Default |
+| ---------------- | ------ | ------- |
+| `prefixed_names` | `bool` | `false` |
+
+Parameter name hints for an argument named like the parameter without its one-letter prefix, e.g. `param` passed to `aParam`.
+
+</div>
+
+<div class="config-option">
+
+| Option                | Type   | Default |
+| --------------------- | ------ | ------- |
+| `single_letter_names` | `bool` | `false` |
+
+Parameter name hints for a function taking one parameter whose name is a single letter, e.g. `push_back(x: 1)`.
 
 </div>
 
@@ -318,7 +348,27 @@ Parameter name hints at call sites, e.g. `draw(width: 800, height: 600)`, includ
 | --------------- | ------ | ------- |
 | `deduced_types` | `bool` | `true`  |
 
-Deduced type hints for `auto` variables, structured bindings and deduced return types.
+Deduced type hints for `auto` variables, structured bindings, init-captures and `auto` parameters, the type a `decltype` names, and deduced return types.
+
+</div>
+
+<div class="config-option">
+
+| Option          | Type   | Default |
+| --------------- | ------ | ------- |
+| `spelled_types` | `bool` | `false` |
+
+Deduced type hints for a variable whose initializer already names its type, e.g. `static_cast<long>(x)`, `Widget{1, 2}` or `std::make_unique<Widget>()`.
+
+</div>
+
+<div class="config-option">
+
+| Option                       | Type   | Default |
+| ---------------------------- | ------ | ------- |
+| `deduced_template_arguments` | `bool` | `true`  |
+
+The template arguments class template argument deduction found, e.g. `<int, double>` after `pair` in `std::pair pair(1, 2.5)`.
 
 </div>
 
@@ -334,11 +384,41 @@ Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Poi
 
 <div class="config-option">
 
+| Option          | Type   | Default |
+| --------------- | ------ | ------- |
+| `array_indices` | `bool` | `false` |
+
+Array index designator hints in aggregate initialization, e.g. `[0]=` and `[1]=` in `int pair[2] = {1, 2}`.
+
+</div>
+
+<div class="config-option">
+
 | Option      | Type   | Default |
 | ----------- | ------ | ------- |
 | `block_end` | `bool` | `false` |
 
-`// name` hints after the closing brace of long blocks (functions, types, namespaces, control flow).
+`// name` after the closing brace of a function, type or control flow block, linking to its start.
+
+</div>
+
+<div class="config-option">
+
+| Option          | Type   | Default |
+| --------------- | ------ | ------- |
+| `namespace_end` | `bool` | `true`  |
+
+`// namespace name` after the closing brace of a namespace, linking to its start.
+
+</div>
+
+<div class="config-option">
+
+| Option  | Type   | Default |
+| ------- | ------ | ------- |
+| `endif` | `bool` | `true`  |
+
+`// condition` after an `#endif`, the condition of the `#if` it closes, linking to it.
 
 </div>
 
@@ -348,7 +428,7 @@ Field designator hints in aggregate initialization, e.g. `.x=` and `.y=` in `Poi
 | ------------------- | ------ | ------- |
 | `default_arguments` | `bool` | `false` |
 
-Show the default arguments a call omitted, abbreviated when long.
+The default arguments a call omitted.
 
 </div>
 
@@ -356,9 +436,49 @@ Show the default arguments a call omitted, abbreviated when long.
 
 | Option            | Type     | Default |
 | ----------------- | -------- | ------- |
-| `type_name_limit` | `uint32` | `32`    |
+| `min_block_lines` | `uint32` | `10`    |
 
-Byte budget for rendered hint text: over-long deduced types fall back to a sugared spelling or are dropped, over-long default arguments are abbreviated. `0` means no limit.
+The height in lines, both ends included, from which a block, namespace or conditional gets a hint at its end.
+
+</div>
+
+<div class="config-option">
+
+| Option             | Type     | Default |
+| ------------------ | -------- | ------- |
+| `max_length.types` | `uint32` | `32`    |
+
+Maximum length in characters of a deduced type or of deduced template arguments; `0` means no limit. The template arguments that do not fit become `…`, e.g. `tuple<int, string, …>`; a type whose outermost name does not fit is not shown.
+
+</div>
+
+<div class="config-option">
+
+| Option                         | Type     | Default |
+| ------------------------------ | -------- | ------- |
+| `max_length.default_arguments` | `uint32` | `32`    |
+
+Maximum length in characters of the omitted default arguments; `0` means no limit. One too long becomes `…`, and the list is cut with `…` where it no longer fits.
+
+</div>
+
+<div class="config-option">
+
+| Option                 | Type     | Default |
+| ---------------------- | -------- | ------- |
+| `max_length.block_end` | `uint32` | `60`    |
+
+Maximum length in characters of a block end or namespace end label, cut with `…` past it; `0` means no limit.
+
+</div>
+
+<div class="config-option">
+
+| Option             | Type     | Default |
+| ------------------ | -------- | ------- |
+| `max_length.endif` | `uint32` | `60`    |
+
+Maximum length in characters of an `#endif` condition, cut with `…` past it; `0` means no limit.
 
 </div>
 

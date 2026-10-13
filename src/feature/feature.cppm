@@ -288,7 +288,41 @@ struct HoverInfo {
     markup::Document present() const;
 };
 
-/// Corresponds to the `[inlay_hints]` section in clice.toml.
+/// Corresponds to the `[inlay_hints.max_length]` section in clice.toml.
+struct InlayHintLengths {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Maximum length in characters of a deduced type or of "
+                         "deduced template arguments; `0` means no limit. The "
+                         "template arguments that do not fit become `…`, e.g. "
+                         "`tuple<int, string, …>`; a type whose outermost name "
+                         "does not fit is not shown.")
+    <std::uint32_t> types = 32;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Maximum length in characters of the omitted default "
+                         "arguments; `0` means no limit. One too long becomes "
+                         "`…`, and the list is cut with `…` where it no longer "
+                         "fits.")
+    <std::uint32_t> default_arguments = 32;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Maximum length in characters of a block end or "
+                         "namespace end label, cut with `…` past it; `0` means "
+                         "no limit.")
+    <std::uint32_t> block_end = 60;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Maximum length in characters of an `#endif` condition, "
+                         "cut with `…` past it; `0` means no limit.")
+    <std::uint32_t> endif = 60;
+};
+
+/// Corresponds to the `[inlay_hints]` section in clice.toml. Every switch
+/// shows one kind of hint.
 struct InlayHintsOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description = "Master switch: `false` disables all inlay hints.")
@@ -297,15 +331,49 @@ struct InlayHintsOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "Parameter name hints at call sites, e.g. `draw(width: "
-                         "800, height: 600)`, including `&` markers for arguments "
-                         "passed by mutable reference.")
+                         "800, height: 600)`.")
     <bool> parameters = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
+                         "`&` marking an argument passed by mutable reference, "
+                         "e.g. `mutate(&value: v)`.")
+    <bool> mutable_references = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Parameter name hints for an argument named like the "
+                         "parameter without its one-letter prefix, e.g. `param` "
+                         "passed to `aParam`.")
+    <bool> prefixed_names = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Parameter name hints for a function taking one "
+                         "parameter whose name is a single letter, e.g. "
+                         "`push_back(x: 1)`.")
+    <bool> single_letter_names = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
                          "Deduced type hints for `auto` variables, structured "
-                         "bindings and deduced return types.")
+                         "bindings, init-captures and `auto` parameters, the type "
+                         "a `decltype` names, and deduced return types.")
     <bool> deduced_types = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Deduced type hints for a variable whose initializer "
+                         "already names its type, e.g. `static_cast<long>(x)`, "
+                         "`Widget{1, 2}` or `std::make_unique<Widget>()`.")
+    <bool> spelled_types = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "The template arguments class template argument "
+                         "deduction found, e.g. `<int, double>` after `pair` in "
+                         "`std::pair pair(1, 2.5)`.")
+    <bool> deduced_template_arguments = true;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
@@ -315,23 +383,43 @@ struct InlayHintsOptions {
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "`// name` hints after the closing brace of long blocks "
-                         "(functions, types, namespaces, control flow).")
+                         "Array index designator hints in aggregate "
+                         "initialization, e.g. `[0]=` and `[1]=` in "
+                         "`int pair[2] = {1, 2}`.")
+    <bool> array_indices = false;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "`// name` after the closing brace of a function, type "
+                         "or control flow block, linking to its start.")
     <bool> block_end = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Show the default arguments a call omitted, abbreviated "
-                         "when long.")
+                         "`// namespace name` after the closing brace of a "
+                         "namespace, linking to its start.")
+    <bool> namespace_end = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "`// condition` after an `#endif`, the condition of the "
+                         "`#if` it closes, linking to it.")
+    <bool> endif = true;
+
+    KOTATSU_ANNOTATE(defaulted = true, description = "The default arguments a call omitted.")
     <bool> default_arguments = false;
 
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Byte budget for rendered hint text: over-long deduced "
-                         "types fall back to a sugared spelling or are dropped, "
-                         "over-long default arguments are abbreviated. `0` means "
-                         "no limit.")
-    <std::uint32_t> type_name_limit = 32;
+                         "The height in lines, both ends included, from which a "
+                         "block, namespace or conditional gets a hint at its end.")
+    <std::uint32_t> min_block_lines = 10;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "The [inlay_hints.max_length] table: how long each kind "
+                         "of hint may grow.")
+    <InlayHintLengths> max_length;
 };
 
 /// Corresponds to the `[signature_help]` section in clice.toml.
@@ -406,6 +494,10 @@ struct InlayHintPart {
     /// translation unit names (a parameter, an internal type); empty for one
     /// every unit names.
     std::string anchor;
+
+    /// The main-file offset a piece naming no symbol navigates to: where the
+    /// block a block end hint closes starts.
+    std::optional<std::uint32_t> target;
 
     friend auto operator<=>(const InlayHintPart&, const InlayHintPart&) = default;
 };
@@ -507,9 +599,9 @@ auto inlay_hints(CompilationUnitRef unit,
                  const InlayHintsOptions& options = {}) -> std::vector<InlayHint>;
 
 /// Protocol encoding of computed hints against the text they describe. A label
-/// naming a symbol keeps its pieces when `locate` gives the location each
-/// symbol's piece navigates to; without it, and for every other label, the
-/// label is one string.
+/// with a piece naming a symbol or a target keeps its pieces when `locate`
+/// gives the location each such piece navigates to; without it, and for
+/// every other label, the label is one string.
 auto inlay_hints_to_protocol(
     llvm::ArrayRef<InlayHint> hints,
     const PositionMap& map,

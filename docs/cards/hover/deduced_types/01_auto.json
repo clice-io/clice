@@ -3,14 +3,14 @@
   "topic": "hover",
   "subtopic": "deduced_types",
   "title": "`auto`",
-  "summary": "Hovering `auto` shows the type it stands for, or that it is not deduced yet in a template",
-  "prose": "",
+  "summary": "Hovering `auto` shows the type it stands for, in a template as the template would write it",
+  "prose": "A type only instantiation can work out, such as that of `value + 1`, is not deduced yet.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace placeholder_types {\nstruct Result {};\nstruct Dimensions {\n    long rows;\n    long columns;\n};\ntemplate <typename T> struct Holder {};\n\nvoid locals() {\n    long source = 0;\n    auto first = 4L;\n    const auto second = 5L;\n    auto& third = source;\n    auto* fourth = &source;\n    auto fifth = &source;\n    auto sixth = [](long value) { return value; };\n    auto seventh = Holder<long>{};\n    auto [rows, columns] = Dimensions{};\n}\n\nauto explicit_result() -> long {\n    return 6;\n}\n\nauto inferred_result() {\n    return Result{};\n}\n\ntemplate <typename T> void pending() {\n    auto value = T{};\n}\n}\n",
+      "text": "namespace placeholder_types {\nstruct Result {};\nstruct Dimensions {\n    long rows;\n    long columns;\n};\ntemplate <typename T> struct Holder {};\n\nvoid locals() {\n    long source = 0;\n    auto first = 4L;\n    const auto second = 5L;\n    auto& third = source;\n    auto* fourth = &source;\n    auto fifth = &source;\n    auto sixth = [](long value) { return value; };\n    auto seventh = Holder<long>{};\n    auto [rows, columns] = Dimensions{};\n}\n\nauto explicit_result() -> long {\n    return 6;\n}\n\nauto inferred_result() {\n    return Result{};\n}\n\ntemplate <typename T> void pending() {\n    auto value = T{};\n    auto sum = value + 1;\n}\n}\n",
       "markers": [
         {
           "name": "simple",
@@ -73,9 +73,15 @@
           "range": false
         },
         {
-          "name": "undeduced",
+          "name": "dependent",
           "begin": 583,
           "end": 583,
+          "range": false
+        },
+        {
+          "name": "undeduced",
+          "begin": 605,
+          "end": 605,
           "range": false
         }
       ]
@@ -316,11 +322,11 @@
           }
         },
         {
-          "label": "undeduced",
-          "marker": "undeduced",
+          "label": "dependent",
+          "marker": "dependent",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\n/* not deduced */\n```",
+              "markdown": "### type `auto`\n\n---\n```cpp\nT\n```",
               "range": {
                 "$place": "⟦auto⟧ value = T{};",
                 "path": "main.cpp",
@@ -331,6 +337,29 @@
                   },
                   "end": {
                     "line": 29,
+                    "character": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "label": "undeduced",
+          "marker": "undeduced",
+          "value": {
+            "hover": {
+              "markdown": "### type `auto`\n\n---\n```cpp\n/* not deduced */\n```",
+              "range": {
+                "$place": "⟦auto⟧ sum = value + 1;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 30,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 30,
                     "character": 8
                   }
                 }

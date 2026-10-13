@@ -1,6 +1,18 @@
-[answers."main.cpp"]
+[default."main.cpp"]
 inlay_hints = [
     { line = "mutate(⟨&value:⟩v);" },
+    { line = "observe(⟨value:⟩v);" },
+    { line = "take(⟨value:⟩static_cast<int&&>(v));" },
+]
+
+["names off"."main.cpp"]
+inlay_hints = [
+    { line = "mutate(⟨&:⟩v);" },
+]
+
+["markers off"."main.cpp"]
+inlay_hints = [
+    { line = "mutate(⟨value:⟩v);" },
     { line = "observe(⟨value:⟩v);" },
     { line = "take(⟨value:⟩static_cast<int&&>(v));" },
 ]

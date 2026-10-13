@@ -141,7 +141,6 @@ inlay_hints = []
 ["escalation upgrades inlay hints".edited]
 inlay_hints = [
     { line = "return add(⟨a:⟩x, ⟨b:⟩x);" },
-    { line = "int main() { return twice(⟨x:⟩2); }" },
 ]
 
 ["diverged buffer serves no links".diverged]

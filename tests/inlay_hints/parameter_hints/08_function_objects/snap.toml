@@ -3,6 +3,7 @@ inlay_hints = [
     { line = "cb(⟨status:⟩1, ⟨detail:⟩2);" },
     { line = "cb.operator()(⟨status:⟩3, ⟨detail:⟩4);" },
     { line = 'handler(⟨status:⟩0, ⟨message:⟩"ok");' },
-    { line = "auto cmp⟨: (lambda)⟩ = [](int lhs, int rhs)⟨-> bool⟩ { return lhs < rhs; };" },
+    { line = 'device->open(⟨path:⟩"/dev/null", ⟨flags:⟩0);' },
+    { line = "auto cmp = [](int lhs, int rhs)⟨-> bool⟩ { return lhs < rhs; };" },
     { line = "cmp(⟨lhs:⟩1, ⟨rhs:⟩2);" },
 ]

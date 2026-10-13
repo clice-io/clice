@@ -1,9 +1,9 @@
 module;
 
 #include "modules/prelude.h"
-/// Parts of this file (only_instantiation, proto_type_loc) are ported from
-/// clangd's AST.cpp and InlayHints.cpp (llvmorg-21.1.8), and
-/// resolve_forwarding_params follows clangd's resolveForwardingParameters;
+/// Parts of this file (only_instantiation) are ported from clangd's AST.cpp
+/// (llvmorg-21.1.8), and resolve_forwarding_params follows clangd's
+/// resolveForwardingParameters;
 /// LLVM project, licensed under Apache License v2.0 with LLVM Exceptions.
 /// See https://llvm.org/LICENSE.txt for license information.
 
@@ -483,8 +483,9 @@ struct PackForwardFinder : clang::RecursiveASTVisitor<PackForwardFinder> {
     llvm::ArrayRef<const clang::ParmVarDecl*> params;
 
     bool VisitCallExpr(clang::CallExpr* call) {
+        // `std::forward` hands its argument on to the call around it.
         auto* fn = callee_of(call);
-        if(!fn) {
+        if(!fn || is_std_forward(fn)) {
             return true;
         }
         llvm::ArrayRef<const clang::Expr*> args(call->getArgs(), call->getNumArgs());
@@ -633,48 +634,23 @@ auto parameter_bindings(const clang::Stmt* call) -> llvm::SmallVector<ParameterB
     return bindings;
 }
 
-auto proto_type_loc(clang::Expr* expr) -> clang::FunctionProtoTypeLoc {
-    assert(expr);
-    clang::TypeLoc target;
-    clang::Expr* naked_fn = expr->IgnoreParenCasts();
-
-    if(const auto* T = naked_fn->getType().getTypePtr()->getAs<clang::TypedefType>()) {
-        target = T->getDecl()->getTypeSourceInfo()->getTypeLoc();
-    } else if(const auto* DR = llvm::dyn_cast<clang::DeclRefExpr>(naked_fn)) {
-        const auto* D = DR->getDecl();
-        if(const auto* const VD = llvm::dyn_cast<clang::VarDecl>(D)) {
-            target = VD->getTypeSourceInfo()->getTypeLoc();
-        }
+auto explicit_template_arguments(const clang::Expr* callee)
+    -> llvm::ArrayRef<clang::TemplateArgumentLoc> {
+    if(const auto* ref = llvm::dyn_cast<clang::DeclRefExpr>(callee)) {
+        return ref->template_arguments();
     }
-
-    if(!target) {
-        return {};
+    if(const auto* member = llvm::dyn_cast<clang::MemberExpr>(callee)) {
+        return member->template_arguments();
     }
-
-    // Unwrap types that may be wrapping the function type
-    while(true) {
-        if(auto p = target.getAs<clang::PointerTypeLoc>()) {
-            target = p.getPointeeLoc();
-            continue;
-        }
-
-        if(auto a = target.getAs<clang::AttributedTypeLoc>()) {
-            target = a.getModifiedLoc();
-            continue;
-        }
-
-        if(auto p = target.getAs<clang::ParenTypeLoc>()) {
-            target = p.getInnerLoc();
-            continue;
-        }
-
-        break;
+    if(const auto* overload = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
+        return overload->template_arguments();
     }
-
-    if(auto f = target.getAs<clang::FunctionProtoTypeLoc>()) {
-        return f;
+    if(const auto* ref = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
+        return ref->template_arguments();
     }
-
+    if(const auto* member = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
+        return member->template_arguments();
+    }
     return {};
 }
 

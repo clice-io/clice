@@ -701,7 +701,17 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
     }
     // A reply names the same few types and parameters over and over.
     llvm::DenseMap<std::pair<index::SymbolHash, Fid>, std::optional<protocol::Location>> located;
-    auto locate = [&](const feature::InlayHintPart& part) {
+    auto locate = [&](const feature::InlayHintPart& part) -> std::optional<protocol::Location> {
+        if(part.target) {
+            auto position = session->positions().position(*part.target, PositionEncoding::UTF16);
+            if(!position) {
+                return std::nullopt;
+            }
+            return protocol::Location{
+                .uri = feature::to_uri(project.file_table.display(session->path_id)),
+                .range = {*position, *position},
+            };
+        }
         auto anchor = part.anchor.empty()
                           ? session->path_id
                           : project.file_table.intern(Spelling::absolute(part.anchor));

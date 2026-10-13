@@ -1,0 +1,127 @@
+{
+  "id": "inlay_hints/type_hints/16_standard_names",
+  "topic": "inlay_hints",
+  "subtopic": "type_hints",
+  "title": "Standard library names",
+  "summary": "Standard library types show by the names the standard gives them",
+  "prose": "A specialization the library names with an alias shows that alias, `string` rather than `basic_string<char>`, unless it names it with two; the library's internal aliases, whose names are reserved, give way to what they stand for.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "namespace std {\n\ninline namespace __1 {\n\ntemplate <typename Char>\nstruct basic_string {};\n\ntypedef basic_string<char> string;\n\n}  // namespace __1\n\ntemplate <typename T>\nstruct vector {\n    T& front();\n};\n\ntemplate <typename T>\nusing _NonArray = T;\n\ntemplate <typename T>\nstruct shared_ptr {};\n\nshared_ptr<_NonArray<int>> share_count();\n\ntemplate <typename T>\nstruct __unique_holder {\n    using __type = shared_ptr<T>;\n};\n\ntemplate <typename T>\nusing __holder_t = typename __unique_holder<T>::__type;\n\n__holder_t<long> hold_count();\n\ntemplate <typename... Ts>\nstruct tuple {\n    tuple(Ts... values);\n};\n\ntemplate <typename State>\nstruct fpos {};\n\ntypedef fpos<int> streampos;\ntypedef fpos<int> wstreampos;\n\n}  // namespace std\n\nstruct Outer {\n    template <typename... Ts>\n    struct Inner {};\n};\n\nvoid use(std::vector<std::string>& names,\n         std::vector<std::fpos<int>>& positions,\n         std::vector<Outer::Inner<std::string>>& inners) {\n    auto& first = names.front();\n    auto shared = std::share_count();\n    auto held = std::hold_count();\n    auto& position = positions.front();\n    std::tuple both(names.front(), 1);\n    auto inner = inners.front();\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "inlay_hints": [
+              {
+                "line": {
+                  "$place": "auto& first⟨: string &⟩ = names.front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 55,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 55,
+                      "character": 32
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto shared⟨: shared_ptr<int>⟩ = std::share_count();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 56,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 56,
+                      "character": 37
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto held⟨: shared_ptr<long>⟩ = std::hold_count();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 57,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 57,
+                      "character": 34
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto& position⟨: fpos<int> &⟩ = positions.front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 58,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 58,
+                      "character": 39
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "std::tuple⟨<string, int>⟩ both(names.front(), 1);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 59,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 59,
+                      "character": 38
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "auto inner⟨: Outer::Inner<string>⟩ = inners.front();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 60,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 60,
+                      "character": 32
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
