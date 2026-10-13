@@ -1,16 +1,17 @@
 [answers.value_type_use.semantic_token]
 text = "value_type"
 type = "type"
+modifiers = ["classScope"]
 
 [answers.reset_use.semantic_token]
 text = "reset"
 type = "method"
-modifiers = ["static"]
+modifiers = ["static", "classScope"]
 
 [answers.size_use.semantic_token]
 text = "size"
 type = "method"
-modifiers = ["readonly"]
+modifiers = ["readonly", "classScope"]
 
 [answers.value_type_use2]
 wrong = "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)"

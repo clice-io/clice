@@ -436,6 +436,7 @@ auto index_document_symbols(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver
             .kind = entry->symbol.kind,
             .range = entry->range,
             .selection_range = entry->selection_range,
+            .deprecated = index::has_flag(entry->symbol.flags, index::SymbolFlags::Deprecated),
             .children = std::move(children),
         });
     };

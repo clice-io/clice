@@ -405,6 +405,12 @@ public:
         return lexical.macro_definitions;
     }
 
+    /// The main file's `#pragma mark` directives in source order, the
+    /// preamble's and skipped blocks' included.
+    llvm::ArrayRef<LexicalInfo::PragmaMark> pragma_marks() const {
+        return lexical.pragma_marks;
+    }
+
     /// The main file's raw string literal tokens in source order.
     llvm::ArrayRef<LocalSourceRange> raw_strings() const {
         return lexical.raw_strings;

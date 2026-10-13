@@ -36,9 +36,10 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
         case SymbolKind::Label:
         case SymbolKind::Keyword:
         case SymbolKind::Primitive:
-        case SymbolKind::Directive:
         case SymbolKind::MacroParameter:
         case SymbolKind::Attribute: return Variable;
+        // A `#pragma mark`, which clangd and Xcode list as a file.
+        case SymbolKind::Directive: return File;
         // The vocabulary has no macro kind; Constant reads right for the
         // object-like majority and the parameter-list detail marks the rest.
         case SymbolKind::Macro: return Constant;
@@ -96,6 +97,25 @@ auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> 
     return detail;
 }
 
+/// The template arguments an explicit instantiation of a function names:
+/// as written, or as deduced when it writes none.
+auto instantiation_args(const clang::ExplicitInstantiationDecl& directive,
+                        const clang::FunctionDecl& function) -> std::string {
+    std::string args;
+    llvm::raw_string_ostream stream(args);
+    clang::PrintingPolicy policy(function.getASTContext().getLangOpts());
+    if(auto count = directive.getNumTemplateArgs(); count && *count != 0) {
+        llvm::SmallVector<clang::TemplateArgumentLoc> written;
+        for(unsigned index = 0; index < *count; index += 1) {
+            written.push_back(directive.getTemplateArg(index));
+        }
+        clang::printTemplateArgumentList(stream, written, policy);
+    } else if(const auto* deduced = function.getTemplateSpecializationArgs()) {
+        clang::printTemplateArgumentList(stream, deduced->asArray(), policy);
+    }
+    return args;
+}
+
 /// Collects the outline by walking the unit's cached Semantics node table —
 /// the DFS pre-order record of the main file's written AST — instead of
 /// running another RecursiveASTVisitor over the TU. Nesting comes for free:
@@ -147,6 +167,8 @@ public:
             }
         }
 
+        add_marks();
+
         return std::move(symbols);
     }
 
@@ -170,10 +192,27 @@ private:
         // An explicit instantiation directive outlines as a childless symbol
         // of its specialization: the instantiated members sit at the pattern.
         if(const auto* directive = llvm::dyn_cast<clang::ExplicitInstantiationDecl>(decl)) {
-            add_symbol(*directive->getSpecialization(),
-                       directive->getNameLoc(),
-                       directive->getSourceRange());
+            const auto* specialization = directive->getSpecialization();
+            auto* symbol =
+                add_symbol(*specialization, directive->getNameLoc(), directive->getSourceRange());
+            // name_of spells the arguments of a function specialization
+            // only when it is an explicit specialization: a library's
+            // `extern template` would otherwise name every use of it so.
+            const auto* function = llvm::dyn_cast<clang::FunctionDecl>(specialization);
+            if(symbol && function &&
+               clang::isTemplateInstantiation(function->getTemplateSpecializationKind())) {
+                symbol->name += instantiation_args(*directive, *function);
+            }
             return false;
+        }
+
+        // A friend declaration names an entity of the enclosing scope; only
+        // a hidden friend's definition lives nowhere else in the outline.
+        if(const auto* friend_decl = llvm::dyn_cast<clang::FriendDecl>(decl)) {
+            const auto* function = friend_decl->getFriendDecl()
+                                       ? friend_decl->getFriendDecl()->getAsFunction()
+                                       : nullptr;
+            return function && function->isThisDeclarationADefinition();
         }
 
         const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
@@ -239,6 +278,7 @@ private:
         symbol.detail = symbol_detail(unit.context(), named);
         symbol.selection_range = selection_range;
         symbol.range = range;
+        symbol.deprecated = named.isDeprecated();
         return &symbol;
     }
 
@@ -295,6 +335,78 @@ private:
             }
         }
         level->push_back(std::move(symbol));
+    }
+
+    /// Xcode's sections, which clangd follows: `#pragma mark - Name` groups
+    /// the symbols of its scope after it, up to the scope's next mark or
+    /// its end; `#pragma mark Name` is an entry of its own.
+    void add_marks() {
+        llvm::SmallVector<LexicalInfo::PragmaMark> marks;
+        for(const auto& mark: unit.semantics().pragma_marks()) {
+            if(!inactive(mark.range.begin)) {
+                marks.push_back(mark);
+            }
+        }
+
+        auto content = unit.main_content();
+        DocumentSymbol root{
+            .range = {0, static_cast<std::uint32_t>(content.size())},
+            .children = std::move(symbols),
+        };
+
+        auto child_containing = [](DocumentSymbol& scope,
+                                   LocalSourceRange range) -> DocumentSymbol* {
+            auto child = llvm::find_if(scope.children, [&](const DocumentSymbol& child) {
+                return child.range.contains(range);
+            });
+            return child == scope.children.end() ? nullptr : &*child;
+        };
+
+        for(auto [index, mark]: llvm::enumerate(marks)) {
+            auto* scope = &root;
+            while(auto* child = child_containing(*scope, mark.range)) {
+                scope = child;
+            }
+
+            DocumentSymbol symbol{
+                .kind = SymbolKind::Directive,
+                .range = mark.range,
+                .selection_range = mark.range,
+            };
+            auto text = content.slice(mark.text.begin, mark.text.end).trim();
+            auto group = text;
+            if(!group.consume_front("-") || (!group.empty() && group.ltrim() == group)) {
+                symbol.name = text.empty() ? "(unnamed mark)" : text.str();
+                scope->children.push_back(std::move(symbol));
+                continue;
+            }
+            symbol.name = group.empty() ? "(unnamed group)" : group.ltrim().str();
+
+            auto end = scope->range.end;
+            for(const auto& next: llvm::ArrayRef(marks).drop_front(index + 1)) {
+                if(!scope->range.contains(next.range)) {
+                    break;
+                }
+                if(!child_containing(*scope, next.range)) {
+                    end = next.range.begin;
+                    break;
+                }
+            }
+
+            auto& siblings = scope->children;
+            auto owned =
+                std::ranges::stable_partition(siblings, [&](const DocumentSymbol& sibling) {
+                    return sibling.range.begin < mark.range.begin || sibling.range.begin >= end;
+                });
+            for(auto& child: owned) {
+                symbol.range.end = std::max(symbol.range.end, child.range.end);
+                symbol.children.push_back(std::move(child));
+            }
+            siblings.erase(owned.begin(), owned.end());
+            siblings.push_back(std::move(symbol));
+        }
+
+        symbols = std::move(root.children);
     }
 
     /// The module or partition the unit defines.
@@ -383,6 +495,10 @@ auto to_protocol_symbol(const DocumentSymbol& symbol,
 
     if(!symbol.detail.empty()) {
         result.detail = symbol.detail;
+    }
+
+    if(symbol.deprecated) {
+        result.tags = std::vector{protocol::SymbolTag::Deprecated};
     }
 
     if(!symbol.children.empty()) {

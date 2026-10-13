@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "modifiers",
   "title": "Mutable arguments",
-  "summary": "An argument passed by mutable reference or pointer does not carry a modifier yet",
+  "summary": "An argument the callee may modify, through a reference or a pointer to non-const, carries a modifier",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [
     "clangd#839"
   ],
@@ -43,10 +43,13 @@
           "label": "by_reference",
           "marker": "by_reference",
           "value": {
-            "wrong": "an argument bound to a mutable reference should carry the usedAsMutableReference modifier (clangd#839)",
             "semantic_token": {
               "text": "value",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "usedAsMutableReference",
+                "functionScope"
+              ]
             }
           }
         },
@@ -54,10 +57,13 @@
           "label": "by_pointer",
           "marker": "by_pointer",
           "value": {
-            "wrong": "an argument passed as a mutable pointer should carry the usedAsMutablePointer modifier (clangd#839)",
             "semantic_token": {
               "text": "value",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "usedAsMutablePointer",
+                "functionScope"
+              ]
             }
           }
         },
@@ -67,7 +73,10 @@
           "value": {
             "semantic_token": {
               "text": "value",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         }

@@ -7,14 +7,14 @@ semantic_tokens = [
     {
         at = 'const char* ⟦greeting⟧ = "héllo wörld 😀"; int after_text = 1;',
         type = "variable",
-        modifiers = ["definition", "readonly"],
+        modifiers = ["definition", "readonly", "globalScope"],
     },
     { at = 'const char* greeting = ⟦"héllo wörld 😀"⟧; int after_text = 1;', type = "string" },
     { at = 'const char* greeting = "héllo wörld 😀"; ⟦int⟧ after_text = 1;', type = "primitive" },
     {
         at = 'const char* greeting = "héllo wörld 😀"; int ⟦after_text⟧ = 1;',
         type = "variable",
-        modifiers = ["definition"],
+        modifiers = ["definition", "globalScope"],
     },
     { at = 'const char* greeting = "héllo wörld 😀"; int after_text = ⟦1⟧;', type = "number" },
     { at = "⟦/* café ☕ and 😀 */⟧ int after_block = 2;", type = "comment" },
@@ -22,11 +22,15 @@ semantic_tokens = [
     {
         at = "/* café ☕ and 😀 */ int ⟦after_block⟧ = 2;",
         type = "variable",
-        modifiers = ["definition"],
+        modifiers = ["definition", "globalScope"],
     },
     { at = "/* café ☕ and 😀 */ int after_block = ⟦2⟧;", type = "number" },
     { at = "⟦int⟧ after_comment = 3; // naïve 😀", type = "primitive" },
-    { at = "int ⟦after_comment⟧ = 3; // naïve 😀", type = "variable", modifiers = ["definition"] },
+    {
+        at = "int ⟦after_comment⟧ = 3; // naïve 😀",
+        type = "variable",
+        modifiers = ["definition", "globalScope"],
+    },
     { at = "int after_comment = ⟦3⟧; // naïve 😀", type = "number" },
     { at = "int after_comment = 3; ⟦// naïve 😀⟧", type = "comment" },
 ]

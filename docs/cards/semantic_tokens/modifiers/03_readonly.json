@@ -94,7 +94,8 @@
               "type": "enumMember",
               "modifiers": [
                 "definition",
-                "readonly"
+                "readonly",
+                "globalScope"
               ]
             }
           }
@@ -108,7 +109,8 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "readonly"
+                "readonly",
+                "fileScope"
               ]
             }
           }
@@ -122,7 +124,8 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "readonly"
+                "readonly",
+                "fileScope"
               ]
             }
           }
@@ -136,7 +139,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "readonly"
+                "readonly",
+                "classScope"
               ]
             }
           }
@@ -149,7 +153,8 @@
               "text": "write",
               "type": "method",
               "modifiers": [
-                "declaration"
+                "declaration",
+                "classScope"
               ]
             }
           }
@@ -163,7 +168,8 @@
               "type": "parameter",
               "modifiers": [
                 "definition",
-                "readonly"
+                "readonly",
+                "functionScope"
               ]
             }
           }
@@ -177,7 +183,8 @@
               "type": "parameter",
               "modifiers": [
                 "definition",
-                "readonly"
+                "readonly",
+                "functionScope"
               ]
             }
           }
@@ -191,7 +198,8 @@
               "type": "parameter",
               "modifiers": [
                 "definition",
-                "readonly"
+                "readonly",
+                "functionScope"
               ]
             }
           }
@@ -204,7 +212,8 @@
               "text": "read",
               "type": "method",
               "modifiers": [
-                "readonly"
+                "readonly",
+                "classScope"
               ]
             }
           }
@@ -215,7 +224,10 @@
           "value": {
             "semantic_token": {
               "text": "write",
-              "type": "method"
+              "type": "method",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         },
@@ -227,7 +239,8 @@
               "text": "limit",
               "type": "variable",
               "modifiers": [
-                "readonly"
+                "readonly",
+                "fileScope"
               ]
             }
           }

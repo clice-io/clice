@@ -105,7 +105,8 @@
               "text": "field",
               "type": "field",
               "modifiers": [
-                "definition"
+                "definition",
+                "classScope"
               ]
             }
           }
@@ -119,7 +120,8 @@
               "type": "variable",
               "modifiers": [
                 "declaration",
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -133,7 +135,8 @@
               "type": "enumMember",
               "modifiers": [
                 "definition",
-                "readonly"
+                "readonly",
+                "globalScope"
               ]
             }
           }
@@ -146,7 +149,8 @@
               "text": "global_value",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -159,7 +163,8 @@
               "text": "param",
               "type": "parameter",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }
@@ -172,7 +177,8 @@
               "text": "local",
               "type": "variable",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }
@@ -183,7 +189,10 @@
           "value": {
             "semantic_token": {
               "text": "param",
-              "type": "parameter"
+              "type": "parameter",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -193,7 +202,10 @@
           "value": {
             "semantic_token": {
               "text": "global_value",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -203,7 +215,10 @@
           "value": {
             "semantic_token": {
               "text": "field",
-              "type": "field"
+              "type": "field",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         },
@@ -213,7 +228,10 @@
           "value": {
             "semantic_token": {
               "text": "local",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -225,7 +243,8 @@
               "text": "shared",
               "type": "variable",
               "modifiers": [
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -236,7 +255,10 @@
           "value": {
             "semantic_token": {
               "text": "field",
-              "type": "field"
+              "type": "field",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         },
@@ -248,7 +270,8 @@
               "text": "Idle",
               "type": "enumMember",
               "modifiers": [
-                "readonly"
+                "readonly",
+                "globalScope"
               ]
             }
           }

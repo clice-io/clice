@@ -75,7 +75,8 @@
               "text": "demo",
               "type": "namespace",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -88,7 +89,8 @@
               "text": "inner",
               "type": "namespace",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -101,7 +103,8 @@
               "text": "more",
               "type": "namespace",
               "modifiers": [
-                "definition"
+                "definition",
+                "globalScope"
               ]
             }
           }
@@ -114,7 +117,8 @@
               "text": "alias",
               "type": "namespace",
               "modifiers": [
-                "definition"
+                "definition",
+                "fileScope"
               ]
             }
           }
@@ -125,7 +129,10 @@
           "value": {
             "semantic_token": {
               "text": "demo",
-              "type": "namespace"
+              "type": "namespace",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -135,7 +142,10 @@
           "value": {
             "semantic_token": {
               "text": "inner",
-              "type": "namespace"
+              "type": "namespace",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -145,7 +155,10 @@
           "value": {
             "semantic_token": {
               "text": "alias",
-              "type": "namespace"
+              "type": "namespace",
+              "modifiers": [
+                "fileScope"
+              ]
             }
           }
         },
@@ -155,7 +168,10 @@
           "value": {
             "semantic_token": {
               "text": "value",
-              "type": "variable"
+              "type": "variable",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         }

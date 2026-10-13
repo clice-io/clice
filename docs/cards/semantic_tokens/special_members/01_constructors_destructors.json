@@ -68,7 +68,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "constructorOrDestructor"
+                "constructorOrDestructor",
+                "classScope"
               ]
             }
           }
@@ -82,7 +83,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "constructorOrDestructor"
+                "constructorOrDestructor",
+                "classScope"
               ]
             }
           }
@@ -93,7 +95,10 @@
           "value": {
             "semantic_token": {
               "text": "Session",
-              "type": "struct"
+              "type": "struct",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -106,7 +111,8 @@
               "type": "method",
               "modifiers": [
                 "definition",
-                "constructorOrDestructor"
+                "constructorOrDestructor",
+                "classScope"
               ]
             }
           }
@@ -120,7 +126,8 @@
               "type": "method",
               "modifiers": [
                 "definition",
-                "constructorOrDestructor"
+                "constructorOrDestructor",
+                "classScope"
               ]
             }
           }
@@ -133,7 +140,8 @@
               "text": "~",
               "type": "method",
               "modifiers": [
-                "constructorOrDestructor"
+                "constructorOrDestructor",
+                "classScope"
               ]
             }
           }

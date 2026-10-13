@@ -1,63 +1,79 @@
 [answers.class_extern.semantic_token]
 text = "Holder"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.class_extern_arg.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.class_def.semantic_token]
 text = "Holder"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.class_def_arg.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.function_extern.semantic_token]
 text = "convert"
 type = "function"
+modifiers = ["globalScope"]
 
 [answers.function_extern_arg.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.function_extern_param.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.function_def.semantic_token]
 text = "convert"
 type = "function"
+modifiers = ["globalScope"]
 
 [answers.function_def_arg.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.function_def_param.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.variable_extern_type.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.variable_extern.semantic_token]
 text = "zero"
 type = "variable"
+modifiers = ["globalScope"]
 
 [answers.variable_extern_arg.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.variable_def_type.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.variable_def.semantic_token]
 text = "zero"
 type = "variable"
+modifiers = ["globalScope"]
 
 [answers.variable_def_arg.semantic_token]
 text = "Widget"
 type = "struct"
+modifiers = ["globalScope"]

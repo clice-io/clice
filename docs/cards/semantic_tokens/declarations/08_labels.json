@@ -37,7 +37,10 @@
           "value": {
             "semantic_token": {
               "text": "done",
-              "type": "label"
+              "type": "label",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -49,7 +52,8 @@
               "text": "done",
               "type": "label",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }

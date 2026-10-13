@@ -1,13 +1,14 @@
 [answers.Gauge.semantic_token]
 text = "Gauge"
 type = "struct"
+modifiers = ["globalScope"]
 
 [answers.read.semantic_token]
 text = "read"
 type = "method"
-modifiers = ["definition", "readonly"]
+modifiers = ["definition", "readonly", "classScope"]
 
 [answers.reset.semantic_token]
 text = "reset"
 type = "method"
-modifiers = ["definition", "static"]
+modifiers = ["definition", "static", "classScope"]

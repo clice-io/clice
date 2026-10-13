@@ -46,7 +46,8 @@
               "type": "concept",
               "modifiers": [
                 "definition",
-                "templated"
+                "templated",
+                "globalScope"
               ]
             }
           }
@@ -59,7 +60,8 @@
               "text": "Small",
               "type": "concept",
               "modifiers": [
-                "templated"
+                "templated",
+                "globalScope"
               ]
             }
           }
@@ -72,7 +74,8 @@
               "text": "Small",
               "type": "concept",
               "modifiers": [
-                "templated"
+                "templated",
+                "globalScope"
               ]
             }
           }

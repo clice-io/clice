@@ -1,31 +1,19 @@
-[answers.global]
-wrong = "should carry the globalScope modifier (clangd#352)"
-
 [answers.global.semantic_token]
 text = "global_scope"
 type = "variable"
-modifiers = ["definition"]
-
-[answers.in_file]
-wrong = "should carry the fileScope modifier (clangd#352)"
+modifiers = ["definition", "globalScope"]
 
 [answers.in_file.semantic_token]
 text = "file_scope"
 type = "variable"
-modifiers = ["definition"]
-
-[answers.in_class]
-wrong = "should carry the classScope modifier (clangd#352)"
+modifiers = ["definition", "fileScope"]
 
 [answers.in_class.semantic_token]
 text = "class_scope"
 type = "field"
-modifiers = ["definition"]
-
-[answers.in_function]
-wrong = "should carry the functionScope modifier (clangd#352)"
+modifiers = ["definition", "classScope"]
 
 [answers.in_function.semantic_token]
 text = "function_scope"
 type = "variable"
-modifiers = ["definition"]
+modifiers = ["definition", "functionScope"]

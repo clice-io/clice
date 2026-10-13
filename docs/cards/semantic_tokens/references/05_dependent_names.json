@@ -64,7 +64,10 @@
           "value": {
             "semantic_token": {
               "text": "value_type",
-              "type": "type"
+              "type": "type",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         },
@@ -76,7 +79,8 @@
               "text": "reset",
               "type": "method",
               "modifiers": [
-                "static"
+                "static",
+                "classScope"
               ]
             }
           }
@@ -89,7 +93,8 @@
               "text": "size",
               "type": "method",
               "modifiers": [
-                "readonly"
+                "readonly",
+                "classScope"
               ]
             }
           }

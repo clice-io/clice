@@ -1,9 +1,9 @@
 [answers.old_api_decl.semantic_token]
 text = "old_api"
 type = "function"
-modifiers = ["declaration", "deprecated"]
+modifiers = ["declaration", "deprecated", "globalScope"]
 
 [answers.old_api_use.semantic_token]
 text = "old_api"
 type = "function"
-modifiers = ["deprecated"]
+modifiers = ["deprecated", "globalScope"]

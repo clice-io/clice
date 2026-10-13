@@ -40,7 +40,8 @@
               "type": "function",
               "modifiers": [
                 "declaration",
-                "deprecated"
+                "deprecated",
+                "globalScope"
               ]
             }
           }
@@ -53,7 +54,8 @@
               "text": "old_api",
               "type": "function",
               "modifiers": [
-                "deprecated"
+                "deprecated",
+                "globalScope"
               ]
             }
           }

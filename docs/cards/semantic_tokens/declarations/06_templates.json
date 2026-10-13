@@ -99,7 +99,8 @@
               "text": "T",
               "type": "type",
               "modifiers": [
-                "definition"
+                "definition",
+                "classScope"
               ]
             }
           }
@@ -113,7 +114,8 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "readonly"
+                "readonly",
+                "classScope"
               ]
             }
           }
@@ -127,7 +129,8 @@
               "type": "struct",
               "modifiers": [
                 "definition",
-                "templated"
+                "templated",
+                "globalScope"
               ]
             }
           }
@@ -138,7 +141,10 @@
           "value": {
             "semantic_token": {
               "text": "T",
-              "type": "type"
+              "type": "type",
+              "modifiers": [
+                "classScope"
+              ]
             }
           }
         },
@@ -150,7 +156,8 @@
               "text": "N",
               "type": "variable",
               "modifiers": [
-                "readonly"
+                "readonly",
+                "classScope"
               ]
             }
           }
@@ -164,7 +171,8 @@
               "type": "function",
               "modifiers": [
                 "declaration",
-                "templated"
+                "templated",
+                "globalScope"
               ]
             }
           }
@@ -177,7 +185,8 @@
               "text": "T",
               "type": "type",
               "modifiers": [
-                "definition"
+                "definition",
+                "functionScope"
               ]
             }
           }
@@ -188,7 +197,10 @@
           "value": {
             "semantic_token": {
               "text": "T",
-              "type": "type"
+              "type": "type",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -201,7 +213,8 @@
               "type": "function",
               "modifiers": [
                 "definition",
-                "templated"
+                "templated",
+                "globalScope"
               ]
             }
           }
@@ -212,7 +225,10 @@
           "value": {
             "semantic_token": {
               "text": "T",
-              "type": "type"
+              "type": "type",
+              "modifiers": [
+                "functionScope"
+              ]
             }
           }
         },
@@ -222,7 +238,10 @@
           "value": {
             "semantic_token": {
               "text": "Array",
-              "type": "struct"
+              "type": "struct",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         },
@@ -232,7 +251,10 @@
           "value": {
             "semantic_token": {
               "text": "identity",
-              "type": "function"
+              "type": "function",
+              "modifiers": [
+                "globalScope"
+              ]
             }
           }
         }

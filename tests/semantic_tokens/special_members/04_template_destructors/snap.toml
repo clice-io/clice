@@ -1,19 +1,19 @@
 [answers.tilde_decl.semantic_token]
 text = "~"
 type = "method"
-modifiers = ["declaration", "constructorOrDestructor"]
+modifiers = ["declaration", "constructorOrDestructor", "classScope"]
 
 [answers.Holder_use.semantic_token]
 text = "Holder"
 type = "struct"
-modifiers = ["templated"]
+modifiers = ["templated", "globalScope"]
 
 [answers.tilde_def.semantic_token]
 text = "~"
 type = "method"
-modifiers = ["definition", "constructorOrDestructor"]
+modifiers = ["definition", "constructorOrDestructor", "classScope"]
 
 [answers.Holder_use2.semantic_token]
 text = "Holder"
 type = "struct"
-modifiers = ["templated"]
+modifiers = ["templated", "globalScope"]

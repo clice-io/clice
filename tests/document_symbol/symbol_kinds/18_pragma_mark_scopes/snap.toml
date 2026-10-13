@@ -1,0 +1,65 @@
+[answers.outline]
+document_symbols = [
+    { name = "Helpers", kind = "File", at = "⟦#pragma mark Helpers⟧" },
+    { name = "helper", kind = "Function", at = "int ⟦helper⟧();", detail = "int ()" },
+    {
+        name = "Widget",
+        kind = "Class",
+        at = "class ⟦Widget⟧ {",
+        detail = "class",
+        children = [
+            {
+                name = "Drawing",
+                kind = "File",
+                at = "⟦#pragma mark - Drawing⟧",
+                children = [
+                    { name = "draw", kind = "Method", at = "void ⟦draw⟧();", detail = "void ()" },
+                    { name = "paint", kind = "Method", at = "void ⟦paint⟧();", detail = "void ()" },
+                ],
+            },
+            {
+                name = "(unnamed group)",
+                kind = "File",
+                at = "⟦#pragma mark -⟧",
+                children = [
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;", detail = "int" },
+                ],
+            },
+        ],
+    },
+    { name = "after", kind = "Function", at = "int ⟦after⟧();", detail = "int ()" },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "Helpers", kind = "File", at = "⟦#pragma mark Helpers⟧", range = "⟦#pragma mark Helpers⟧" },
+    { name = "helper", kind = "Function", at = "int ⟦helper⟧();", range = "⟦int helper()⟧;" },
+    {
+        name = "Widget",
+        kind = "Class",
+        at = "class ⟦Widget⟧ {",
+        range = "⟦class Widget { … }⟧ (9 lines)",
+        children = [
+            {
+                name = "Drawing",
+                kind = "File",
+                at = "⟦#pragma mark - Drawing⟧",
+                range = "⟦#pragma mark - Drawing … void paint()⟧ (3 lines)",
+                children = [
+                    { name = "draw", kind = "Method", at = "void ⟦draw⟧();", range = "⟦void draw()⟧;" },
+                    { name = "paint", kind = "Method", at = "void ⟦paint⟧();", range = "⟦void paint()⟧;" },
+                ],
+            },
+            {
+                name = "(unnamed group)",
+                kind = "File",
+                at = "⟦#pragma mark -⟧",
+                range = "⟦#pragma mark - … int width⟧ (2 lines)",
+                children = [
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
+                ],
+            },
+        ],
+    },
+    { name = "after", kind = "Function", at = "int ⟦after⟧();", range = "⟦int after()⟧;" },
+]

@@ -1,7 +1,7 @@
 [answers."main.cpp"]
 semantic_tokens = [
     { at = "⟦int⟧ before = 0;", type = "primitive" },
-    { at = "int ⟦before⟧ = 0;", type = "variable", modifiers = ["definition"] },
+    { at = "int ⟦before⟧ = 0;", type = "variable", modifiers = ["definition", "globalScope"] },
     { at = "int before = ⟦0⟧;", type = "number" },
     { at = "⟦#if⟧ 0 @3", type = "directive" },
     { at = "#if ⟦0⟧ @3", type = "number" },
@@ -37,7 +37,7 @@ semantic_tokens = [
     { at = "⟦elif_branch;⟧", type = "identifier", modifiers = ["inactive"] },
     { at = "⟦#else⟧", type = "directive" },
     { at = "⟦int⟧ taken = 4;", type = "primitive" },
-    { at = "int ⟦taken⟧ = 4;", type = "variable", modifiers = ["definition"] },
+    { at = "int ⟦taken⟧ = 4;", type = "variable", modifiers = ["definition", "globalScope"] },
     { at = "int taken = ⟦4⟧;", type = "number" },
     { at = "⟦#endif⟧ @21", type = "directive" },
     { at = "⟦#if⟧ 0 @23", type = "directive" },

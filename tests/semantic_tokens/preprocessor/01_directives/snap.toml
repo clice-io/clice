@@ -1,7 +1,11 @@
 [answers."main.cpp"]
 semantic_tokens = [
     { at = "⟦int⟧ before_conditional = 0;", type = "primitive" },
-    { at = "int ⟦before_conditional⟧ = 0;", type = "variable", modifiers = ["definition"] },
+    {
+        at = "int ⟦before_conditional⟧ = 0;",
+        type = "variable",
+        modifiers = ["definition", "globalScope"],
+    },
     { at = "int before_conditional = ⟦0⟧;", type = "number" },
     { at = "⟦#if⟧ 0", type = "directive" },
     { at = "#if ⟦0⟧", type = "number" },
@@ -9,7 +13,11 @@ semantic_tokens = [
     { at = "int ⟦disabled_branch;⟧", type = "identifier", modifiers = ["inactive"] },
     { at = "⟦#else⟧", type = "directive" },
     { at = "⟦int⟧ enabled_branch = 1;", type = "primitive" },
-    { at = "int ⟦enabled_branch⟧ = 1;", type = "variable", modifiers = ["definition"] },
+    {
+        at = "int ⟦enabled_branch⟧ = 1;",
+        type = "variable",
+        modifiers = ["definition", "globalScope"],
+    },
     { at = "int enabled_branch = ⟦1⟧;", type = "number" },
     { at = "⟦#endif⟧ @7", type = "directive" },
     { at = "⟦#define⟧ FLAG", type = "directive" },
@@ -17,7 +25,7 @@ semantic_tokens = [
     { at = "⟦#ifdef⟧ FLAG", type = "directive" },
     { at = "#ifdef ⟦FLAG⟧", type = "macro" },
     { at = "⟦int⟧ flagged = 2;", type = "primitive" },
-    { at = "int ⟦flagged⟧ = 2;", type = "variable", modifiers = ["definition"] },
+    { at = "int ⟦flagged⟧ = 2;", type = "variable", modifiers = ["definition", "globalScope"] },
     { at = "int flagged = ⟦2⟧;", type = "number" },
     { at = "⟦#endif⟧ @12", type = "directive" },
     { at = "⟦#pragma⟧ pack(1)", type = "directive" },
@@ -30,7 +38,7 @@ semantic_tokens = [
     {
         at = "const char* ⟦stringized⟧ = STRINGIZE(abc);",
         type = "variable",
-        modifiers = ["definition", "readonly"],
+        modifiers = ["definition", "readonly", "globalScope"],
     },
     { at = "const char* stringized = ⟦STRINGIZE⟧(abc);", type = "macro" },
 ]
