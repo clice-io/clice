@@ -271,9 +271,8 @@ public:
                     for(auto* param: location.getParams()) {
                         auto* identifier = param->getIdentifier();
                         auto name = identifier ? identifier->deuglifiedName() : "";
-                        signature.parameter([&](llvm::raw_ostream& os) {
-                            print_parameter(os, *param, name);
-                        });
+                        signature.parameter(
+                            [&](llvm::raw_ostream& os) { print_parameter(os, *param, name); });
                     }
                     variadic(signature, location.getTypePtr()->isVariadic());
                     stream << ") -> ";
@@ -338,7 +337,9 @@ public:
 
 private:
     /// Prints `type` as a reader knows it, around `declarator`.
-    void print(llvm::raw_ostream& stream, clang::QualType type, const llvm::Twine& declarator = "") {
+    void print(llvm::raw_ostream& stream,
+               clang::QualType type,
+               const llvm::Twine& declarator = "") {
         readable->readable(type).print(stream, policy, declarator);
     }
 
@@ -464,8 +465,7 @@ private:
     void fields(Signature& signature, const clang::RecordDecl& record) {
         if(auto* cxx_record = llvm::dyn_cast<clang::CXXRecordDecl>(&record)) {
             for(const auto& base: cxx_record->bases()) {
-                signature.parameter(
-                    [&](llvm::raw_ostream& os) { print(os, base.getType()); });
+                signature.parameter([&](llvm::raw_ostream& os) { print(os, base.getType()); });
             }
         }
         for(auto* field: record.fields()) {
