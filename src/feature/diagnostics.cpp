@@ -50,6 +50,86 @@ bool instantiation_note(std::uint32_t id) {
     }
 }
 
+/// The page documenting a clang-tidy check. clang's own diagnostics have
+/// a page listing many warning flags, but it says too little to be worth
+/// linking.
+std::optional<std::string> document_uri(const DiagnosticID& id) {
+    if(id.source != DiagnosticSource::ClangTidy) {
+        return std::nullopt;
+    }
+    // This won't correctly get the module for clang-analyzer checks, but as we
+    // don't link in the analyzer that shouldn't be an issue.
+    // This would also need updating if anyone decides to create a module with a
+    // '-' in the name.
+    auto [module, check] = id.name.split('-');
+    if(module.empty() || check.empty()) {
+        return std::nullopt;
+    }
+    return std::format("https://clang.llvm.org/extra/clang-tidy/checks/{}/{}.html", module, check);
+}
+
+bool is_deprecated(const DiagnosticID& id) {
+    namespace diag = clang::diag;
+    static llvm::DenseSet<std::uint32_t> deprecated_diags{
+        diag::warn_access_decl_deprecated,
+        diag::warn_atl_uuid_deprecated,
+        diag::warn_deprecated,
+        diag::warn_deprecated_altivec_src_compat,
+        diag::warn_deprecated_comma_subscript,
+        diag::warn_deprecated_copy,
+        diag::warn_deprecated_copy_with_dtor,
+        diag::warn_deprecated_copy_with_user_provided_copy,
+        diag::warn_deprecated_copy_with_user_provided_dtor,
+        diag::warn_deprecated_def,
+        diag::warn_deprecated_increment_decrement_volatile,
+        diag::warn_deprecated_message,
+        diag::warn_deprecated_redundant_constexpr_static_def,
+        diag::warn_deprecated_register,
+        diag::warn_deprecated_simple_assign_volatile,
+        diag::warn_deprecated_string_literal_conversion,
+        diag::warn_deprecated_this_capture,
+        diag::warn_deprecated_volatile_param,
+        diag::warn_deprecated_volatile_return,
+        diag::warn_deprecated_volatile_structured_binding,
+        diag::warn_opencl_attr_deprecated_ignored,
+        diag::warn_property_method_deprecated,
+        diag::warn_vector_mode_deprecated,
+    };
+
+    if(id.source == DiagnosticSource::ClangTidy) {
+        return id.name.starts_with("modernize-");
+    }
+    return deprecated_diags.contains(id.value);
+}
+
+bool is_unused(const DiagnosticID& id) {
+    namespace diag = clang::diag;
+    static llvm::DenseSet<std::uint32_t> unused_diags = {
+        diag::warn_opencl_attr_deprecated_ignored,
+        diag::warn_pragma_attribute_unused,
+        diag::warn_unused_but_set_parameter,
+        diag::warn_unused_but_set_variable,
+        diag::warn_unused_comparison,
+        diag::warn_unused_const_variable,
+        diag::warn_unused_exception_param,
+        diag::warn_unused_function,
+        diag::warn_unused_label,
+        diag::warn_unused_lambda_capture,
+        diag::warn_unused_local_typedef,
+        diag::warn_unused_member_function,
+        diag::warn_unused_parameter,
+        diag::warn_unused_private_field,
+        diag::warn_unused_property_backing_ivar,
+        diag::warn_unused_template,
+        diag::warn_unused_variable,
+    };
+
+    if(id.source == DiagnosticSource::ClangTidy) {
+        return id.name.starts_with("misc-unused-");
+    }
+    return unused_diags.contains(id.value);
+}
+
 class Presenter {
 public:
     Presenter(CompilationUnit& unit, PositionEncoding encoding) :
@@ -83,10 +163,10 @@ public:
         if(auto code = main.id.diagnostic_code(); !code.empty()) {
             diagnostic.code = code.str();
         }
-        if(auto uri = main.id.diagnostic_document_uri()) {
+        if(auto uri = document_uri(main.id)) {
             diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
         }
-        diagnostic.source = diagnostic_source_name(main.id.source).str();
+        diagnostic.source = main.id.source == DiagnosticSource::ClangTidy ? "clang-tidy" : "clang";
         add_tag(diagnostic, main.id);
         for(const auto& note: main.notes) {
             add_related(diagnostic, note.fid, note.range, note.message);
@@ -214,9 +294,9 @@ private:
     }
 
     void add_tag(protocol::Diagnostic& diagnostic, DiagnosticID id) {
-        if(id.is_deprecated()) {
+        if(is_deprecated(id)) {
             diagnostic.tags.emplace().push_back(protocol::DiagnosticTag::Deprecated);
-        } else if(id.is_unused()) {
+        } else if(is_unused(id)) {
             diagnostic.tags.emplace().push_back(protocol::DiagnosticTag::Unnecessary);
         }
     }

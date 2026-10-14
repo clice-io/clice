@@ -9,23 +9,17 @@ import :syntax.token;
 namespace clice {
 
 enum class DiagnosticLevel : std::uint8_t {
-    Ignored,
     Note,
     Remark,
     Warning,
     Error,
     Fatal,
-    Invalid,
 };
 
 enum class DiagnosticSource : std::uint8_t {
-    Unknown,
     Clang,
     ClangTidy,
-    Clice,
 };
-
-llvm::StringRef diagnostic_source_name(DiagnosticSource source);
 
 struct DiagnosticID {
     /// The diagnostic id value.
@@ -41,15 +35,6 @@ struct DiagnosticID {
 
     /// Get the diagnostic code.
     llvm::StringRef diagnostic_code() const;
-
-    /// Get help diagnostic uri for the diagnostic.
-    std::optional<std::string> diagnostic_document_uri() const;
-
-    /// Whether this diagnostic represents an deprecated diagnostic.
-    bool is_deprecated() const;
-
-    /// Whether this diagnostic represents an unused diagnostic.
-    bool is_unused() const;
 
     /// Whether this diagnostic reports a failure to read a prebuilt
     /// artifact (PCH/PCM) — clang's "AST Deserialization Issue" category.

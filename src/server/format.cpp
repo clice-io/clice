@@ -4,7 +4,6 @@ module;
 
 module clice;
 
-import :compile.diagnostic;
 import :feature.feature;
 import :server.format;
 
@@ -23,23 +22,16 @@ static bool is_file_not_found(const protocol::Diagnostic& diagnostic) {
 /// File-top warning explaining that diagnostics were produced with a guessed
 /// compile command, pointing at the compilation database documentation.
 static protocol::Diagnostic make_inferred_command_diagnostic(CommandSource source) {
-    DiagnosticID id{
-        .value = 0,
-        .level = DiagnosticLevel::Warning,
-        .source = DiagnosticSource::Clice,
-        .name = "inferred-compile-command",
-    };
-
     auto diagnostic = feature::file_warning(std::format(
         "No compilation database entry for this file (compile command was {}), so some includes "
         "may not be found. Configure compile_commands.json for accurate diagnostics.",
         source == CommandSource::Fallback   ? "synthesized from defaults"
         : source == CommandSource::Inferred ? "borrowed from a nearby translation unit"
                                             : "inferred from an including file"));
-    diagnostic.code = id.name.str();
-    if(auto uri = id.diagnostic_document_uri()) {
-        diagnostic.code_description = protocol::CodeDescription{.href = std::move(*uri)};
-    }
+    diagnostic.code = "inferred-compile-command";
+    diagnostic.code_description = protocol::CodeDescription{
+        .href = "https://docs.clice.io/clice/guide/quick-start#project-setup",
+    };
     return diagnostic;
 }
 

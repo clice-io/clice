@@ -11,16 +11,6 @@ import :support.format;
 
 namespace clice {
 
-llvm::StringRef diagnostic_source_name(DiagnosticSource source) {
-    switch(source) {
-        case DiagnosticSource::Unknown: return {};
-        case DiagnosticSource::Clang: return "clang";
-        case DiagnosticSource::ClangTidy: return "clang-tidy";
-        case DiagnosticSource::Clice: return "clice";
-    }
-    std::unreachable();
-}
-
 llvm::StringRef DiagnosticID::diagnostic_code() const {
     if(source == DiagnosticSource::ClangTidy) {
         return name;
@@ -56,106 +46,6 @@ llvm::StringRef DiagnosticID::diagnostic_code() const {
     }
 }
 
-std::optional<std::string> DiagnosticID::diagnostic_document_uri() const {
-    switch(source) {
-        case DiagnosticSource::Unknown:
-        case DiagnosticSource::Clang: {
-            // There is a page listing many warning flags, but it provides too little
-            // information to be worth linking.
-            // https://clang.llvm.org/docs/DiagnosticsReference.html
-            return std::nullopt;
-        }
-
-        case DiagnosticSource::ClangTidy: {
-            // This won't correctly get the module for clang-analyzer checks, but as we
-            // don't link in the analyzer that shouldn't be an issue.
-            // This would also need updating if anyone decides to create a module with a
-            // '-' in the name.
-            auto [module, check] = name.split('-');
-            if(module.empty() || check.empty()) {
-                return std::nullopt;
-            }
-
-            return std::format("https://clang.llvm.org/extra/clang-tidy/checks/{}/{}.html",
-                               module,
-                               check);
-        }
-
-        case DiagnosticSource::Clice: {
-            // clice's own guidance diagnostics link to the setup guide that
-            // explains how to provide a compilation database.
-            if(name == "inferred-compile-command") {
-                return "https://docs.clice.io/clice/guide/quick-start#project-setup";
-            }
-            return std::nullopt;
-        }
-    }
-
-    return std::nullopt;
-}
-
-bool DiagnosticID::is_deprecated() const {
-    namespace diag = clang::diag;
-    static llvm::DenseSet<std::uint32_t> deprecated_diags{
-        diag::warn_access_decl_deprecated,
-        diag::warn_atl_uuid_deprecated,
-        diag::warn_deprecated,
-        diag::warn_deprecated_altivec_src_compat,
-        diag::warn_deprecated_comma_subscript,
-        diag::warn_deprecated_copy,
-        diag::warn_deprecated_copy_with_dtor,
-        diag::warn_deprecated_copy_with_user_provided_copy,
-        diag::warn_deprecated_copy_with_user_provided_dtor,
-        diag::warn_deprecated_def,
-        diag::warn_deprecated_increment_decrement_volatile,
-        diag::warn_deprecated_message,
-        diag::warn_deprecated_redundant_constexpr_static_def,
-        diag::warn_deprecated_register,
-        diag::warn_deprecated_simple_assign_volatile,
-        diag::warn_deprecated_string_literal_conversion,
-        diag::warn_deprecated_this_capture,
-        diag::warn_deprecated_volatile_param,
-        diag::warn_deprecated_volatile_return,
-        diag::warn_deprecated_volatile_structured_binding,
-        diag::warn_opencl_attr_deprecated_ignored,
-        diag::warn_property_method_deprecated,
-        diag::warn_vector_mode_deprecated,
-    };
-
-    if(source == DiagnosticSource::ClangTidy) {
-        return name.starts_with("modernize-");
-    }
-    return source == DiagnosticSource::Clang && deprecated_diags.contains(value);
-}
-
-bool DiagnosticID::is_unused() const {
-    namespace diag = clang::diag;
-    static llvm::DenseSet<std::uint32_t> unused_diags = {
-        diag::warn_opencl_attr_deprecated_ignored,
-        diag::warn_pragma_attribute_unused,
-        diag::warn_unused_but_set_parameter,
-        diag::warn_unused_but_set_variable,
-        diag::warn_unused_comparison,
-        diag::warn_unused_const_variable,
-        diag::warn_unused_exception_param,
-        diag::warn_unused_function,
-        diag::warn_unused_label,
-        diag::warn_unused_lambda_capture,
-        diag::warn_unused_local_typedef,
-        diag::warn_unused_member_function,
-        diag::warn_unused_parameter,
-        diag::warn_unused_private_field,
-        diag::warn_unused_property_backing_ivar,
-        diag::warn_unused_template,
-        diag::warn_unused_variable,
-    };
-
-    if(source == DiagnosticSource::ClangTidy) {
-        return name.starts_with("misc-unused-");
-    }
-    return source == DiagnosticSource::Clang && unused_diags.contains(value);
-}
-
 bool DiagnosticID::is_deserialization_error() const {
     // Category membership rather than an ID list: the family is large
     // (DiagnosticSerializationKinds) and grows across clang versions,
@@ -176,14 +66,14 @@ bool is_note(clang::DiagnosticsEngine::Level level) {
 
 DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
     switch(level) {
-        case clang::DiagnosticsEngine::Ignored: return DiagnosticLevel::Ignored;
         case clang::DiagnosticsEngine::Note: return DiagnosticLevel::Note;
         case clang::DiagnosticsEngine::Remark: return DiagnosticLevel::Remark;
         case clang::DiagnosticsEngine::Warning: return DiagnosticLevel::Warning;
         case clang::DiagnosticsEngine::Error: return DiagnosticLevel::Error;
         case clang::DiagnosticsEngine::Fatal: return DiagnosticLevel::Fatal;
-        default: return DiagnosticLevel::Invalid;
+        case clang::DiagnosticsEngine::Ignored: break;
     }
+    std::unreachable();
 }
 
 }  // namespace
@@ -334,6 +224,10 @@ public:
 
         if(unit.checker) {
             level = unit.checker->adjust_level(level, raw_diagnostic);
+            if(level == clang::DiagnosticsEngine::Ignored) {
+                attach_notes = false;
+                return;
+            }
         }
         auto diagnostic = convert(level, raw_diagnostic);
         if(unit.checker) {
@@ -341,14 +235,13 @@ public:
         }
         // A check can report one finding more than once, from several
         // instantiations of a template.
-        attach_notes = diagnostic.id.level != DiagnosticLevel::Ignored &&
-                       (diagnostic.id.source != DiagnosticSource::ClangTidy ||
-                        findings
-                            .emplace(diagnostic.fid,
-                                     diagnostic.range.begin,
-                                     diagnostic.range.end,
-                                     diagnostic.message)
-                            .second);
+        attach_notes = diagnostic.id.source != DiagnosticSource::ClangTidy ||
+                       findings
+                           .emplace(diagnostic.fid,
+                                    diagnostic.range.begin,
+                                    diagnostic.range.end,
+                                    diagnostic.message)
+                           .second;
         if(attach_notes) {
             unit.collected_diagnostics.push_back(std::move(diagnostic));
         }
