@@ -82,13 +82,15 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
         if(range.getBegin() == range.getEnd()) {
             return half;
         }
-        auto begin = written_range(range.getBegin());
-        if(!begin || begin->file != half->file) {
+        // Up to the whole `>>`, then back to its first half.
+        auto whole =
+            written_range({range.getBegin(), SM.getExpansionRange(range.getEnd()).getBegin()});
+        if(!whole || whole->file != half->file) {
             return std::nullopt;
         }
         return FileRange{
             half->file,
-            {begin->range.begin, half->range.end}
+            {whole->range.begin, half->range.end}
         };
     }
 
@@ -101,8 +103,9 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
         }
         // Invalid code can end a range at the eof, which the tokens leave
         // out: an unclosed block ends at its last token.
-        bool at_eof = end.offset == file_content(end.file).size();
-        if(!at_eof || !collected_tokens || end.file != main) {
+        bool at_eof = collected_tokens && !collected_tokens->expanded().empty() &&
+                      range.getEnd() == collected_tokens->expanded().back().location();
+        if(!at_eof) {
             return FileRange{
                 begin.file,
                 {begin.offset, end.offset + token_length(range.getEnd())}
@@ -132,9 +135,6 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
     }
     auto begin = decompose(SM, chars.getBegin());
     auto end = decompose(SM, chars.getEnd());
-    if(begin.file != end.file) {
-        return std::nullopt;
-    }
     return FileRange{
         begin.file,
         {begin.offset, end.offset}

@@ -1850,7 +1850,7 @@ Derived* use();
 
 ZEST_CASE(HeaderMacroDropped) {
     // Macro occurrences flow through the same gate: a definition in an
-    // included header is dropped from an main-file-only build, while
+    // included header is dropped from a focus-only build, while
     // the reference in the main file is kept.
     add_file("baz.h", R"(
 #define BAZ 1

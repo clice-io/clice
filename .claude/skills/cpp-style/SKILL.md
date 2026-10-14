@@ -30,7 +30,7 @@ defending against ghosts.
 - **Delete, don't comment out.** Git history is the archive.
 - **One behavior difference is one options field.** Two behaviors of the
   same logic are selected by a boolean in an options struct
-  (`SemanticsOptions{.instantiations = true}`), not by a subclass, a dummy
+  (`SemanticsOptions{.all_files = true}`), not by a subclass, a dummy
   collaborator, or a parallel code path.
 - **Cross-cutting invariants get a single writer.** Accounting, budgets,
   ownership and visibility guarantees live in one type whose methods are the

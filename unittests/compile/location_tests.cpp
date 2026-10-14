@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :compile.compilation;
+import :compile.directive;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -78,7 +79,7 @@ struct Box {};
     ZEXPECT(focus.written_range(outer.getSourceRange()) == range("outer"));
 }
 
-ZEST_CASE(SplitAngleBracketsAfterMacro) {
+ZEST_CASE(SplitAfterMacro) {
     add_main("main.cpp", R"cpp(
 namespace n {
 template <typename T>
@@ -97,9 +98,9 @@ Vec<§(inner)⟦Vec<int>⟧> v;
     auto inner = outer.getArgLoc(0).getTypeSourceInfo()->getTypeLoc();
     auto focus = unit->focus_file();
 
-    // `n` is only part of what `Vec` expands to: nothing was written as
-    // the type, and the invocations around it end at the split `>`.
-    ZEXPECT(!focus.written_range(inner.getSourceRange()));
+    // The inner type starts with the whole of what the inner `Vec` expands
+    // to and ends at the first `>` of `>>`.
+    ZEXPECT(focus.written_range(inner.getSourceRange()) == range("inner"));
     ZEXPECT(focus.produced_range(inner.getSourceRange()) == range("inner"));
 }
 
@@ -122,6 +123,31 @@ void f() §(body)⟦{
     // The block ends at the eof, which the written text leaves out.
     ZEXPECT(unit->focus_file().written_range(function->getBody()->getSourceRange()) ==
             range("body"));
+}
+
+ZEST_CASE(PreambleIsFocus) {
+    add_file("a.h", "int a();\n");
+    add_main("main.cpp", R"cpp(#include "a.h"
+#define §(name)⟦LOCAL⟧ 1
+int x = LOCAL;
+)cpp");
+    ZASSERT(compile_with_pch());
+    auto focus = unit->focus_file();
+    const clang::MacroInfo* local = nullptr;
+    for(auto& macro: unit->directives()[focus.file()].macros) {
+        if(macro.kind == MacroRef::Ref) {
+            local = macro.macro;
+        }
+    }
+    ZASSERT(local);
+
+    // The `#define` lies in the preamble the PCH recorded, a file of its
+    // own at the same offsets.
+    auto definition = local->getDefinitionLoc();
+    ZEXPECT(unit->file_id(definition) != focus.file());
+    ZEXPECT(focus.contains(unit->file_id(definition)));
+    ZEXPECT(focus.offset(definition) == range("name").begin);
+    ZEXPECT(focus.written_range(definition) == range("name"));
 }
 
 };  // ZEST_SUITE(Location)

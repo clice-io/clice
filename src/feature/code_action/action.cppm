@@ -67,13 +67,13 @@ IncludeInsertion include_insertion(CompilationUnit& unit);
 /// in a file with neither, after its leading directives.
 std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions& options);
 
-/// The focus-file text a range spells when no macro takes part in it.
+/// The focus-file text a range spells when neither end is in a macro.
 /// Code actions edit only such text: a macro argument may be expanded
 /// more than once, a comma an edit brings into it splits it, and the
 /// macro's own tokens around it change what the edit means.
 std::optional<LocalSourceRange> editable_range(CompilationUnit& unit, clang::SourceRange range);
 
-/// The text a source range spells when no macro takes part in it, in
+/// The text a source range spells when neither end is in a macro, in
 /// whichever file it lies but a builtin buffer.
 std::optional<llvm::StringRef> spelled_text(CompilationUnit& unit, clang::SourceRange range);
 
