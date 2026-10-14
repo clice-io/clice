@@ -73,8 +73,8 @@ std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions
 /// macro's own tokens around it change what the edit means.
 std::optional<LocalSourceRange> editable_range(CompilationUnit& unit, clang::SourceRange range);
 
-/// The text a source range was written as (CompilationUnit::written_range),
-/// in whichever file it lies but a builtin buffer.
+/// The text a source range spells when no macro takes part in it, in
+/// whichever file it lies but a builtin buffer.
 std::optional<llvm::StringRef> spelled_text(CompilationUnit& unit, clang::SourceRange range);
 
 /// The whitespace opening the line containing `offset`.

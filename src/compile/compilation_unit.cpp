@@ -92,21 +92,26 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
         };
     }
 
+    auto main = SM.getMainFileID();
     if(range.getBegin().isFileID() && range.getEnd().isFileID()) {
         auto begin = decompose(SM, range.getBegin());
         auto end = decompose(SM, range.getEnd());
         if(begin.file != end.file) {
             return std::nullopt;
         }
-        return FileRange{
-            begin.file,
-            {begin.offset, end.offset + token_length(range.getEnd())}
-        };
+        // Invalid code can end a range at the eof, which the tokens leave
+        // out: an unclosed block ends at its last token.
+        bool at_eof = end.offset == file_content(end.file).size();
+        if(!at_eof || !collected_tokens || end.file != main) {
+            return FileRange{
+                begin.file,
+                {begin.offset, end.offset + token_length(range.getEnd())}
+            };
+        }
     }
 
     // Macros are mapped through the tokens the parse saw: only those of
     // the focus file are collected.
-    auto main = SM.getMainFileID();
     if(collected_tokens && SM.getFileID(SM.getExpansionLoc(range.getBegin())) == main) {
         auto spelled = collected_tokens->spelled_for(range);
         if(spelled.empty()) {
@@ -139,8 +144,8 @@ auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<F
 auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
     auto& SM = this->SM();
     auto begin = decompose(SM, SM.getExpansionLoc(range.getBegin()));
-    auto last = SM.getExpansionRange(range.getEnd()).getEnd();
-    auto end = decompose(SM, last);
+    auto last = SM.getExpansionRange(range.getEnd());
+    auto end = decompose(SM, last.getEnd());
     if(end.file != begin.file) {
         return {
             begin.file,
@@ -149,7 +154,7 @@ auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
     }
     return {
         begin.file,
-        {begin.offset, end.offset + token_length(last)}
+        {begin.offset, end.offset + (last.isTokenRange() ? token_length(last.getEnd()) : 0)}
     };
 }
 

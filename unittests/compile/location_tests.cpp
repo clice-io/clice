@@ -78,6 +78,51 @@ struct Box {};
     ZEXPECT(focus.written_range(outer.getSourceRange()) == range("outer"));
 }
 
+ZEST_CASE(SplitAngleBracketsAfterMacro) {
+    add_main("main.cpp", R"cpp(
+namespace n {
+template <typename T>
+struct Box {};
+}
+#define Vec n::Box
+
+Vec<§(inner)⟦Vec<int>⟧> v;
+)cpp");
+    ZASSERT(compile());
+    const auto* var = variable("v");
+    ZASSERT(var);
+    auto outer =
+        var->getTypeSourceInfo()->getTypeLoc().getAs<clang::TemplateSpecializationTypeLoc>();
+    ZASSERT(!outer.isNull());
+    auto inner = outer.getArgLoc(0).getTypeSourceInfo()->getTypeLoc();
+    auto focus = unit->focus_file();
+
+    // `n` is only part of what `Vec` expands to: nothing was written as
+    // the type, and the invocations around it end at the split `>`.
+    ZEXPECT(!focus.written_range(inner.getSourceRange()));
+    ZEXPECT(focus.produced_range(inner.getSourceRange()) == range("inner"));
+}
+
+ZEST_CASE(UnclosedBlock) {
+    add_main("main.cpp", R"cpp(
+void f() §(body)⟦{
+    int x = 1;⟧
+// trailing
+)cpp");
+    ZASSERT(compile());
+    const clang::FunctionDecl* function = nullptr;
+    for(auto* decl: unit->top_level_decls()) {
+        if(auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            function = candidate;
+        }
+    }
+    ZASSERT(function && function->getBody());
+
+    // The block ends at the eof, which the written text leaves out.
+    ZEXPECT(unit->focus_file().written_range(function->getBody()->getSourceRange()) ==
+            range("body"));
+}
+
 };  // ZEST_SUITE(Location)
 
 }  // namespace

@@ -830,10 +830,13 @@ std::optional<LocalSourceRange> editable_range(CompilationUnit& unit, clang::Sou
     if(range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
         return std::nullopt;
     }
-    return editable_range(unit, range);
+    return unit.focus_file().written_range(range);
 }
 
 std::optional<llvm::StringRef> spelled_text(CompilationUnit& unit, clang::SourceRange range) {
+    if(range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
+        return std::nullopt;
+    }
     auto written = unit.written_range(range);
     if(!written || unit.is_builtin_file(written->file)) {
         return std::nullopt;

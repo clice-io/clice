@@ -165,13 +165,15 @@ public:
               DefinitionOptions options) : unit(unit), decl(decl), from(from), options(options) {}
 
     std::optional<std::string> run() {
-        auto written = unit.written_range(written_declaration(decl)->getSourceRange());
-        if(!written || unit.is_builtin_file(written->file)) {
+        auto range = written_declaration(decl)->getSourceRange();
+        auto text = spelled_text(unit, range);
+        if(!text) {
             return std::nullopt;
         }
-        fid = written->file;
-        base = written->range.begin;
-        source = unit.file_content(fid).substr(base, written->range.length());
+        auto begin = unit.written_at(range.getBegin());
+        fid = begin.file;
+        base = begin.offset;
+        source = *text;
         // Lexed here: the unit's spelled tokens cover the main file only.
         tokens = clang::syntax::tokenize(clang::syntax::FileRange(fid, base, base + source.size()),
                                          unit.context().getSourceManager(),
@@ -197,10 +199,13 @@ public:
 
 private:
     /// A location of the declaration relative to its text; nullopt when
-    /// it is written elsewhere, in a macro's own tokens.
+    /// a macro spells it.
     std::optional<std::uint32_t> offset_of(clang::SourceLocation location) {
+        if(!location.isFileID()) {
+            return std::nullopt;
+        }
         auto [file, offset] = unit.written_at(location);
-        if(file != fid || offset < base || offset > base + source.size()) {
+        if(file != fid) {
             return std::nullopt;
         }
         return offset - base;
@@ -209,11 +214,6 @@ private:
     /// The tokens all lie in the declaration's text.
     std::uint32_t offset_of(const clang::syntax::Token& token) {
         return unit.written_at(token.location()).offset - base;
-    }
-
-    /// The length of the token written for `location`.
-    std::uint32_t length_at(clang::SourceLocation location) {
-        return unit.token_length(unit.context().getSourceManager().getSpellingLoc(location));
     }
 
     /// The end of a token at `offset`, with the spaces following it.
@@ -302,7 +302,7 @@ private:
             }
             if(auto offset = offset_of(attr->getLocation())) {
                 patches.push_back(
-                    {before_spaces(*offset), *offset + length_at(attr->getLocation()), ""});
+                    {before_spaces(*offset), *offset + unit.token_length(attr->getLocation()), ""});
             }
         }
     }
@@ -325,7 +325,7 @@ private:
         if(!equal) {
             return false;
         }
-        patches.push_back({before_spaces(*equal), *end + length_at(range.getEnd()), ""});
+        patches.push_back({before_spaces(*equal), *end + unit.token_length(range.getEnd()), ""});
         return true;
     }
 
