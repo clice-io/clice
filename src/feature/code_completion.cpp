@@ -1344,8 +1344,6 @@ public:
         overloads.reserve(candidate_count);
         std::unordered_map<std::string, std::size_t> overload_index;
 
-        /// How well `filter` matches what is typed; none when it is not
-        /// offered at all.
         auto match = [&](llvm::StringRef filter) -> std::optional<float> {
             // Filter out _/__ prefixed internal symbols unless user typed _.
             if(filter.empty() || (filter.starts_with("_") && !prefix.spelling.starts_with("_"))) {
@@ -2035,9 +2033,8 @@ public:
                     }
                     auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
                     auto* identifier = named ? named->getIdentifier() : nullptr;
-                    bool reserved = identifier && identifier->getName().starts_with("_");
                     if(auto* space = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
-                        if(!reserved || space->isInline()) {
+                        if(space->isInline() || !space->getName().starts_with("_")) {
                             self(space);
                         }
                     } else if(auto* context = llvm::dyn_cast<clang::DeclContext>(decl);
