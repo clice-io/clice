@@ -54,6 +54,8 @@ ZEST_CASE(InsideList) {
     ZEXPECT(documenting(content, "T value") == "");
     ZEXPECT(documenting("/// Picks.\ntemplate <int N = (1 > 0)>\nint pick();\n", "int pick()") ==
             "Picks.");
+    ZEXPECT(documenting("/// Orders.\ntemplate <bool B = 1 < 2>\nvoid order();\n",
+                        "void order()") == "Orders.");
     ZEXPECT(documenting("/// Holds.\nstd::vector<int> values;\n", "values") == "Holds.");
 }
 
