@@ -427,6 +427,9 @@ struct IncludeTreeResult {
 
     /// The tree, each node's file an index into `paths`.
     std::vector<index::IncludeNode> nodes;
+
+    /// The places the run's failed lookups looked that held no file.
+    std::vector<std::string> absent;
 };
 
 /// Request the document links of an open file's AST. Only the main-file

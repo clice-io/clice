@@ -36,6 +36,10 @@ struct HostTree {
     VersionID root;
     std::vector<index::IncludeNode> nodes;
 
+    /// The places the run's failed lookups looked that held no file (see
+    /// TUManifest::absent).
+    std::vector<VersionID> absent;
+
     /// Project::commands_epoch of the run the tree came from: it serves
     /// the commands it ran under.
     std::uint64_t commands_epoch = 0;
@@ -51,7 +55,8 @@ struct HostTree {
 /// a preprocess run left. Empty when the compile never enters the header.
 /// Nullopt when no tree can tell: none is known, or the unit or a file on
 /// the way changed since — for a header the tree never enters, a file of
-/// the lexical chain to it, which may have gained the include. A compile
+/// the lexical chain to it, which may have gained the include — or a file
+/// appeared where the compile looked and found none. A compile
 /// entering the header only through an include its command forces in,
 /// which no cut of the unit's text reproduces, yields the lexical chain.
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header);
