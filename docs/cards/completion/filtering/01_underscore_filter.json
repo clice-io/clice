@@ -10,18 +10,18 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "int _private_thing;\nint public_thing;\n\nint x = pu;\nint y = _p;\n",
+      "text": "int _private_thing;\nint public_thing;\n\nint x = p;\nint y = _p;\n",
       "markers": [
         {
           "name": "hidden",
-          "begin": 49,
-          "end": 49,
+          "begin": 48,
+          "end": 48,
           "range": false
         },
         {
           "name": "typed_underscore",
-          "begin": 61,
-          "end": 61,
+          "begin": 60,
+          "end": 60,
           "range": false
         }
       ]
