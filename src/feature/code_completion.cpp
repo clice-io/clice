@@ -1344,7 +1344,15 @@ public:
         overloads.reserve(candidate_count);
         std::unordered_map<std::string, std::size_t> overload_index;
 
-        bool prefix_starts_with_underscore = prefix.spelling.starts_with("_");
+        /// How well `filter` matches what is typed; none when it is not
+        /// offered at all.
+        auto match = [&](llvm::StringRef filter) -> std::optional<float> {
+            // Filter out _/__ prefixed internal symbols unless user typed _.
+            if(filter.empty() || (filter.starts_with("_") && !prefix.spelling.starts_with("_"))) {
+                return std::nullopt;
+            }
+            return matcher.match(filter);
+        };
 
         auto build_item = [&](const Candidate& candidate, float score) {
             protocol::CompletionItem item{
@@ -1405,21 +1413,11 @@ public:
         };
 
         auto add = [&](const Candidate& candidate) {
-            llvm::StringRef filter = candidate.filter.empty() ? candidate.label : candidate.filter;
-            if(filter.empty()) {
+            auto matched = match(candidate.filter.empty() ? candidate.label : candidate.filter);
+            if(!matched) {
                 return;
             }
-
-            // Filter out _/__ prefixed internal symbols unless user typed _.
-            if(!prefix_starts_with_underscore && filter.starts_with("_")) {
-                return;
-            }
-
-            auto match = matcher.match(filter);
-            if(!match.has_value()) {
-                return;
-            }
-            auto score = *match * candidate.relevance;
+            auto score = *matched * candidate.relevance;
             if(candidate.deprecated) {
                 score *= 0.5F;
             }
@@ -1668,6 +1666,17 @@ public:
         auto add_declaration = [&](clang::CodeCompletionResult& candidate, float relevance) {
             auto* declaration = candidate.Declaration;
             offered.insert(declaration->getCanonicalDecl());
+            auto name = display::name_of(declaration,
+                                         {
+                                             .suppress_ctor_template_args = true,
+                                             .qualified = false,
+                                         });
+            // Sema offers every name in scope, of which the typed prefix
+            // keeps a few: what follows is too costly to spend on the rest.
+            if(!match(name)) {
+                return;
+            }
+
             // A qualifier clang does not mark informative must be
             // written: the name alone does not reach the
             // declaration (a scoped enumerator outside its enum).
@@ -1678,11 +1687,6 @@ public:
             }
 
             auto kind = completion_kind(declaration);
-            auto name = display::name_of(declaration,
-                                         {
-                                             .suppress_ctor_template_args = true,
-                                             .qualified = false,
-                                         });
             Candidate item{
                 .label = qualifier + name,
                 .kind = kind,
@@ -1856,6 +1860,9 @@ public:
                 }
 
                 case clang::CodeCompletionResult::RK_Macro: {
+                    if(!match(candidate.Macro->getName())) {
+                        break;
+                    }
                     auto* info = sema.getPreprocessor().getMacroInfo(candidate.Macro);
                     bool function_like = info && info->isFunctionLike();
 
@@ -2037,10 +2044,9 @@ public:
                               context && context->isTransparentContext()) {
                         self(context);
                     }
-                    if(!identifier || (reserved && !prefix_starts_with_underscore) ||
-                       !offerable(named) || (types_only && !names_type(named)) ||
-                       offered.contains(named->getCanonicalDecl()) || !sema.isVisible(named) ||
-                       !matcher.match(identifier->getName())) {
+                    if(!identifier || !match(identifier->getName()) || !offerable(named) ||
+                       (types_only && !names_type(named)) ||
+                       offered.contains(named->getCanonicalDecl()) || !sema.isVisible(named)) {
                         continue;
                     }
                     if(auto qualifier = qualifier_of(named)) {
