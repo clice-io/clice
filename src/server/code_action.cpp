@@ -122,6 +122,51 @@ bool internal_header(llvm::StringRef spelling) {
 
 }  // namespace
 
+std::optional<std::string> Features::include_for(const feature::ScopeCandidate& candidate,
+                                                 bool c,
+                                                 Fid file,
+                                                 const SearchConfig& search,
+                                                 vfs::Scope& scope) const {
+    namespace stdlib = clang::tooling::stdlib;
+    std::string qualifier;
+    for(const auto& segment: candidate.scope) {
+        qualifier += segment + "::";
+    }
+    if(auto symbol = stdlib::Symbol::named(qualifier,
+                                           candidate.name,
+                                           c ? stdlib::Lang::C : stdlib::Lang::CXX)) {
+        if(auto header = symbol->header()) {
+            return header->name().str();
+        }
+    }
+    // The canonical declaration's header first, a definition when there is
+    // one; then the headers declaring the symbol, for a definition in a
+    // source file or in a header no `#include` can name.
+    llvm::SmallVector<Fid, 2> headers;
+    if(auto located = query.resolve(candidate.symbol, file);
+       located && is_header_path(located->site.path)) {
+        headers.push_back(located->site.file);
+    }
+    for(const auto& site: query.sites(candidate.symbol, file, RelationKind::Declaration)) {
+        if(site.file.valid() && is_header_path(site.path) &&
+           !llvm::is_contained(headers, site.file)) {
+            headers.push_back(site.file);
+        }
+    }
+    auto includer = project.file_table.spelling(file);
+    for(auto header: headers) {
+        if(header == file || is_context_header_path(project.file_table.resolve(header))) {
+            continue;
+        }
+        auto spelling =
+            include_spelling(project.file_table.resolve(header), search, includer, scope);
+        if(spelling && !internal_header(*spelling)) {
+            return spelling;
+        }
+    }
+    return std::nullopt;
+}
+
 kota::task<std::vector<protocol::CodeAction>, kota::ipc::Error>
     Features::code_action(Ticket ticket,
                           const protocol::Range& range,

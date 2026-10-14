@@ -1,0 +1,4 @@
+{
+  // Directives name macros the file never defines, which is no error.
+  "compiles": true
+}

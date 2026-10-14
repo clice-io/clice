@@ -1,0 +1,86 @@
+[default.module_unit.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-4", text = "import shapes;" },
+        ],
+    },
+]
+
+[default.own_partition.completion]
+items = [
+    {
+        label = "measures::measure_area",
+        kind = "Function",
+        insert = "measures::measure_area",
+        edits = [
+            { at = "⟦⟧ @-5", text = "import :measure;" },
+        ],
+    },
+]
+
+[default.same_partition.completion]
+items = []
+
+[default.conditional.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-4", text = "import shapes;" },
+        ],
+    },
+]
+
+[default.without_modules.completion]
+items = []
+
+[default.plain_unit.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-4", text = "import shapes;" },
+        ],
+    },
+]
+
+[default.fragment.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-4", text = "import shapes;" },
+        ],
+    },
+]
+
+[configured.module_unit.completion]
+items = []
+
+[configured.own_partition.completion]
+items = []
+
+[configured.same_partition.completion]
+items = []
+
+[configured.conditional.completion]
+items = []
+
+[configured.without_modules.completion]
+items = []
+
+[configured.plain_unit.completion]
+items = []
+
+[configured.fragment.completion]
+items = []

@@ -7,8 +7,4 @@ async function items(a: AnswersContext): Promise<void> {
 }
 
 answers("default", items);
-answers(
-    "configured",
-    { config: { code_completion: { enable_function_arguments_snippet: true } } },
-    items,
-);
+answers("none", { config: { code_completion: { arguments: "none" } } }, items);

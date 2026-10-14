@@ -612,6 +612,44 @@ ZEST_CASE(StaleTreeFallsBack) {
     ZEXPECT(host->lines.empty());
 };
 
+ZEST_CASE(AppearedFileFallsBack) {
+    /// The tree was taken while part.cpp was missing, so its compile
+    /// entered nothing there; once the file exists the tree cannot tell
+    /// and the lexical chain stands in.
+    TreeProject p;
+    llvm::StringRef unity_text = "#define UNITY\n#include \"part.cpp\"\n";
+    auto unity = p.write("unity.cpp", unity_text);
+    auto part = p.project.file_table.intern(Spelling::absolute(p.tmp.path("part.cpp")));
+    auto root = VersionID{p.version(unity, unity_text)};
+    std::vector<VersionID> absent{p.project.file_table.intern_version(part, 0)};
+
+    index::TUManifest manifest;
+    manifest.tu_fv = root;
+    manifest.absent = absent;
+    p.project.project_index.manifests[unity] = std::move(manifest);
+    auto before = enterings(p.project, unity, part);
+    ZASSERT(before);
+    ZEXPECT(before->empty());
+
+    p.write("part.cpp", "int part;\n");
+    p.project.file_table.disk.end_turn();
+    p.project.dep_graph.set_includes(unity, 0, {{part}});
+    p.project.dep_graph.build_reverse_map();
+    ZEXPECT(!enterings(p.project, unity, part).has_value());
+    auto host = default_host(p.project, part);
+    ZASSERT(host);
+    ZEXPECT(host->chain == std::vector<Fid>{unity, part});
+
+    /// A preprocess run's tree the same.
+    p.project.project_index.manifests.erase(unity);
+    p.project.include_trees[unity] = {
+        .root = root,
+        .absent = absent,
+        .commands_epoch = p.project.commands_epoch,
+    };
+    ZEXPECT(!enterings(p.project, unity, part).has_value());
+};
+
 ZEST_CASE(RepeatedHeaderChangeStales) {
     /// The header's guard decided its second include: once the header
     /// changes the tree cannot tell; a header included once keeps it.

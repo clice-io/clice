@@ -1,0 +1,1027 @@
+{
+  "id": "completion/scopes/02_include_insertion",
+  "topic": "completion",
+  "subtopic": "scopes",
+  "title": "Headers not included yet",
+  "summary": "A name the project declares in a header the file does not include yet completes with the `#include` that brings it",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "geometry.h",
+      "text": "#pragma once\n\n#define GEO_SCALE 2\n\nnamespace geo {\n\ndouble area(double radius);\n\n}  // namespace geo\n",
+      "markers": []
+    },
+    {
+      "path": "inc/bits/shapes_impl.h",
+      "text": "#pragma once\n\n#include \"../../shapes.h\"\n\nnamespace shapes {\n\ninline void on_reset() {}\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"geometry.h\"\n\nnamespace app {\n\ndouble draw() {\n    Circ c;\n    using Shape = circ;\n    on_rese;\n    void (*handler)(int) = on_resi;\n    redra;\n    Gri grid;\n    Ro row;\n    int size = grid_si;\n    int shade = shade_d;\n    auto tone = tone_br;\n    int count = circle_cou;\n    vecto values;\n    double scale = GEO_SC;\n    repai;\n    return geo::area(c.radius) * scale;\n}\n\n}  // namespace app\n",
+      "markers": [
+        {
+          "name": "not_included",
+          "begin": 64,
+          "end": 64,
+          "range": false
+        },
+        {
+          "name": "type_only",
+          "begin": 90,
+          "end": 90,
+          "range": false
+        },
+        {
+          "name": "internal_definition",
+          "begin": 103,
+          "end": 103,
+          "range": false
+        },
+        {
+          "name": "function_expected",
+          "begin": 139,
+          "end": 139,
+          "range": false
+        },
+        {
+          "name": "function_call",
+          "begin": 150,
+          "end": 150,
+          "range": false
+        },
+        {
+          "name": "class_template",
+          "begin": 159,
+          "end": 159,
+          "range": false
+        },
+        {
+          "name": "alias_template",
+          "begin": 172,
+          "end": 172,
+          "range": false
+        },
+        {
+          "name": "variable_template",
+          "begin": 200,
+          "end": 200,
+          "range": false
+        },
+        {
+          "name": "enumerator",
+          "begin": 225,
+          "end": 225,
+          "range": false
+        },
+        {
+          "name": "scoped_enumerator",
+          "begin": 250,
+          "end": 250,
+          "range": false
+        },
+        {
+          "name": "class_member",
+          "begin": 278,
+          "end": 278,
+          "range": false
+        },
+        {
+          "name": "standard_name",
+          "begin": 289,
+          "end": 289,
+          "range": false
+        },
+        {
+          "name": "macro",
+          "begin": 323,
+          "end": 323,
+          "range": false
+        },
+        {
+          "name": "deprecated",
+          "begin": 334,
+          "end": 334,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "palette.c",
+      "text": "#include \"palette.h\"\n\nint first_color(void) {\n    return color_red;\n}\n",
+      "markers": []
+    },
+    {
+      "path": "palette.h",
+      "text": "#pragma once\n\nenum Color { color_red, color_green };\n\nstruct Swatch {\n    int hue;\n};\n",
+      "markers": []
+    },
+    {
+      "path": "plain.c",
+      "text": "void run(void) {\n    Circ;\n    int color = color_r;\n    Swat *swatch;\n}\n",
+      "markers": [
+        {
+          "name": "c_file",
+          "begin": 25,
+          "end": 25,
+          "range": false
+        },
+        {
+          "name": "c_enumerator",
+          "begin": 50,
+          "end": 50,
+          "range": false
+        },
+        {
+          "name": "c_tag",
+          "begin": 60,
+          "end": 60,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "shapes.cpp",
+      "text": "#include \"shapes.h\"\n#include \"standard.h\"\n#include <bits/shapes_impl.h>\n\nnamespace shapes {\n\nvoid on_resize(int width) {}\n\n}  // namespace shapes\n\nnamespace art {\n\nint redraw_budget = 0;\n\n}  // namespace art\n",
+      "markers": []
+    },
+    {
+      "path": "shapes.h",
+      "text": "#pragma once\n\nnamespace shapes {\n\nstruct Circle {\n    double radius;\n    static int circle_count;\n};\n\nvoid on_resize(int width);\nvoid on_reset();\n\nint circle_total = 0;\nvoid redraw();\nvoid redraw(int times);\n\n[[deprecated(\"use redraw\")]] void repaint();\nvoid repaint_all();\n\ntemplate <class T>\nstruct Grid {};\n\ntemplate <class T>\nusing Row = Grid<T>;\n\ntemplate <class T>\nconstexpr int grid_size = 4;\n\nenum Shade { shade_dark };\n\nenum class Tone { tone_bright };\n\n}  // namespace shapes\n",
+      "markers": []
+    },
+    {
+      "path": "standard.h",
+      "text": "#pragma once\n\nnamespace std {\n\ntemplate <class T>\nclass vector;\n\n}  // namespace std\n",
+      "markers": []
+    },
+    {
+      "path": "tools.cppm",
+      "text": "export module tools;\n\nexport namespace tools {\n\nvoid use() {\n    Circ c;\n}\n\n}  // namespace tools\n",
+      "markers": [
+        {
+          "name": "module_unit",
+          "begin": 69,
+          "end": 69,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "not_included",
+          "marker": "not_included",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-4",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                },
+                {
+                  "label": "shapes::circle_total",
+                  "kind": "Variable",
+                  "insert": "shapes::circle_total",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-4",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "type_only",
+          "marker": "type_only",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-5",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "internal_definition",
+          "marker": "internal_definition",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::on_reset",
+                  "kind": "Function",
+                  "insert": "shapes::on_reset($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-6",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "function_expected",
+          "marker": "function_expected",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::on_resize",
+                  "kind": "Function",
+                  "insert": "shapes::on_resize",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-7",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "function_call",
+          "marker": "function_call",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::redraw(…) +1 overload",
+                  "kind": "Function",
+                  "insert": "shapes::redraw($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-8",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "class_template",
+          "marker": "class_template",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Grid",
+                  "kind": "Class",
+                  "insert": "shapes::Grid<$0>",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-9",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                },
+                {
+                  "label": "shapes::grid_size",
+                  "kind": "Variable",
+                  "insert": "shapes::grid_size<$0>",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-9",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "alias_template",
+          "marker": "alias_template",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Row",
+                  "kind": "TypeParameter",
+                  "insert": "shapes::Row<$0>",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-10",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "variable_template",
+          "marker": "variable_template",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::grid_size",
+                  "kind": "Variable",
+                  "insert": "shapes::grid_size<$0>",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-11",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "enumerator",
+          "marker": "enumerator",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Shade::shade_dark",
+                  "kind": "EnumMember",
+                  "insert": "shapes::Shade::shade_dark",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-12",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "scoped_enumerator",
+          "marker": "scoped_enumerator",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "class_member",
+          "marker": "class_member",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "standard_name",
+          "marker": "standard_name",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "std::vector",
+                  "kind": "Class",
+                  "insert": "std::vector<$0>",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-15",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include <vector>\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "macro",
+          "marker": "macro",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "GEO_SCALE",
+                  "kind": "Constant",
+                  "insert": "GEO_SCALE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "deprecated",
+          "marker": "deprecated",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::repaint_all",
+                  "kind": "Function",
+                  "insert": "shapes::repaint_all($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-17",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                },
+                {
+                  "label": "shapes::repaint",
+                  "kind": "Function",
+                  "deprecated": true,
+                  "insert": "shapes::repaint($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-17",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "c_file",
+          "marker": "c_file",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "c_enumerator",
+          "marker": "c_enumerator",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "color_red",
+                  "kind": "EnumMember",
+                  "insert": "color_red",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧void run(void) {",
+                        "path": "plain.c",
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 0,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"palette.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "c_tag",
+          "marker": "c_tag",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "module_unit",
+          "marker": "module_unit",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::Circle",
+                  "kind": "Class",
+                  "insert": "shapes::Circle",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧export module tools;",
+                        "path": "tools.cppm",
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 0,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "module;\n#include \"shapes.h\"\n"
+                    }
+                  ]
+                },
+                {
+                  "label": "shapes::circle_total",
+                  "kind": "Variable",
+                  "insert": "shapes::circle_total",
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧export module tools;",
+                        "path": "tools.cppm",
+                        "range": {
+                          "start": {
+                            "line": 0,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 0,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "module;\n#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "configured",
+      "config": {
+        "code_completion": {
+          "insert_includes": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "not_included",
+          "marker": "not_included",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "type_only",
+          "marker": "type_only",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "internal_definition",
+          "marker": "internal_definition",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "function_expected",
+          "marker": "function_expected",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "function_call",
+          "marker": "function_call",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "class_template",
+          "marker": "class_template",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "alias_template",
+          "marker": "alias_template",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "variable_template",
+          "marker": "variable_template",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "enumerator",
+          "marker": "enumerator",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "scoped_enumerator",
+          "marker": "scoped_enumerator",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "class_member",
+          "marker": "class_member",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "standard_name",
+          "marker": "standard_name",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "macro",
+          "marker": "macro",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "GEO_SCALE",
+                  "kind": "Constant",
+                  "insert": "GEO_SCALE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "deprecated",
+          "marker": "deprecated",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "c_file",
+          "marker": "c_file",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "c_enumerator",
+          "marker": "c_enumerator",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "c_tag",
+          "marker": "c_tag",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "module_unit",
+          "marker": "module_unit",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "unbundled",
+      "config": {
+        "code_completion": {
+          "bundle_overloads": false
+        }
+      },
+      "blocks": [
+        {
+          "label": "macro",
+          "marker": "macro",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "GEO_SCALE",
+                  "kind": "Constant",
+                  "insert": "GEO_SCALE"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "limited",
+      "config": {
+        "code_completion": {
+          "limit": 1
+        }
+      },
+      "blocks": [
+        {
+          "label": "function_call",
+          "marker": "function_call",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "shapes::redraw(…) +1 overload",
+                  "kind": "Function",
+                  "insert": "shapes::redraw($0)",
+                  "snippet": true,
+                  "edits": [
+                    {
+                      "at": {
+                        "$place": "⟦⟧ @-8",
+                        "path": "main.cpp",
+                        "range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 0
+                          }
+                        }
+                      },
+                      "text": "#include \"shapes.h\"\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

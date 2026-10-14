@@ -1,5 +1,6 @@
 // A local that shadows a global variable, or hides a same-named function, is
-// the one candidate offered: no duplicate entry, not the hidden function.
+// the one candidate offered by its name: no duplicate entry; the hidden
+// function only with the qualifier that still reaches it.
 int counter = 0;
 
 void tally() {

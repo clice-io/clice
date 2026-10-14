@@ -1,0 +1,36 @@
+[default.pointer.completion]
+items = [
+    {
+        label = "value",
+        kind = "Field",
+        detail = "int",
+        insert = "value",
+        edits = [
+            { at = "return node⟦.⟧;", text = "->" },
+        ],
+    },
+    {
+        label = "next",
+        kind = "Field",
+        detail = "Node *",
+        insert = "next",
+        edits = [
+            { at = "return node⟦.⟧;", text = "->" },
+        ],
+    },
+]
+
+[default.arrow_on_class.completion]
+items = [
+    { label = "value", kind = "Field", detail = "int", insert = "value" },
+    { label = "next", kind = "Field", detail = "Node *", insert = "next" },
+]
+
+[configured.pointer.completion]
+items = []
+
+[configured.arrow_on_class.completion]
+items = [
+    { label = "value", kind = "Field", detail = "int", insert = "value" },
+    { label = "next", kind = "Field", detail = "Node *", insert = "next" },
+]

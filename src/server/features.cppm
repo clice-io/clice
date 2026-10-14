@@ -4,6 +4,7 @@ module;
 
 module clice:server.features;
 
+import :command.search_config;
 import :feature.feature;
 import :index.query;
 import :project.project;
@@ -11,6 +12,7 @@ import :sched.index.pump;
 import :server.dispatcher;
 import :server.session;
 import :server.session_store;
+import :vfs.dir_cache;
 
 namespace clice {
 
@@ -222,6 +224,28 @@ public:
     std::vector<protocol::SymbolInformation> workspace_symbol(llvm::StringRef query);
 
 private:
+    /// The most names of other namespaces one completion offers from the
+    /// index (CodeCompletionOptions::all_scopes).
+    constexpr static std::size_t scope_candidate_limit = 100;
+
+    /// The names of other namespaces the index offers where `prefix` is
+    /// completed unqualified in `file`, appended to `candidates`; whether
+    /// they are all of them.
+    bool scope_candidates(llvm::StringRef prefix,
+                          Fid file,
+                          std::vector<feature::ScopeCandidate>& candidates) const;
+
+    /// The header, quotes or brackets included, an `#include` for
+    /// `candidate` names in `file`, as `search` finds it: a standard name's
+    /// from the standard library's own table (the C library's for a C
+    /// file), another's the header the index says declares it. None when
+    /// only a library's internal header is known.
+    std::optional<std::string> include_for(const feature::ScopeCandidate& candidate,
+                                           bool c,
+                                           Fid file,
+                                           const SearchConfig& search,
+                                           vfs::Scope& scope) const;
+
     /// Whether the worker's AST can answer for this session right now:
     /// compiled, current, and its compile not barred by a crash (the bar
     /// sits before ensure_compiled's clean-AST fast path, so a barred

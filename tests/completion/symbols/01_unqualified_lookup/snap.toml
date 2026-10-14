@@ -2,4 +2,5 @@
 items = [
     { label = "folded(int x)", kind = "Variable", detail = "void" },
     { label = "for", kind = "Keyword" },
+    { label = "A::fooooo()", kind = "Function", detail = "void" },
 ]

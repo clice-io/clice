@@ -303,8 +303,12 @@ bool mentions_parameters(clang::QualType type, const clang::TemplateParameterLis
             return !found;
         }
 
+        /// A function parameter named in a trailing return type
+        /// (`-> decltype(f(key))`) stands for its type.
         bool VisitDeclRefExpr(clang::DeclRefExpr* expr) {
-            found |= owns(expr->getDecl());
+            auto* decl = expr->getDecl();
+            found |= owns(decl) || (llvm::isa<clang::ParmVarDecl>(decl) &&
+                                    mentions_parameters(decl->getType(), params));
             return !found;
         }
 
@@ -486,10 +490,14 @@ public:
                 if(value) {
                     value = convert_integral(context, *value, NTTPD->getType());
                 }
+                /// A value that does not fold stays the expression: the
+                /// patterns it would choose between are then all possible
+                /// (see lookup_through_any).
                 if(!value) {
-                    break;
+                    open_defaults.insert(expr);
                 }
-                out.emplace_back(clang::TemplateArgument(context, *value, NTTPD->getType()));
+                out.emplace_back(value ? clang::TemplateArgument(context, *value, NTTPD->getType())
+                                       : argument);
                 continue;
             }
 
@@ -578,7 +586,12 @@ public:
         }
 
         llvm::SmallVector<clang::TemplateArgument, 4> deduced;
-        auto deduction = deduce_arguments(context, list, patterns, arguments, deduced);
+        auto deduction = deduce_arguments(context,
+                                          list,
+                                          patterns,
+                                          arguments,
+                                          deduced,
+                                          open_defaults.getArrayRef());
         if(deduction == Deduction::Failed) {
             return deduction;
         }
@@ -648,14 +661,20 @@ public:
 
         if(auto* record = type->getAsCXXRecordDecl()) {
             /// A member class reached through a dependent name
-            /// (`Host<T>::Nested`) resolves to the bare member of the
-            /// pattern; looking it up again through its qualifier leaves the
-            /// enclosing specialization's bindings on the stack, so what its
-            /// members are written in (`T`) stays bound.
-            if(auto* DNT = written->getAs<clang::DependentNameType>();
-               DNT && record->isDependentContext()) {
+            /// (`Host<T>::Nested`), or rewritten with its enclosing class as
+            /// its qualifier, is the bare member of the pattern; looking it
+            /// up again through its qualifier leaves the enclosing
+            /// specialization's bindings on the stack, so what its members
+            /// are written in (`T`) stays bound.
+            clang::NestedNameSpecifier qualifier = std::nullopt;
+            if(auto* DNT = written->getAs<clang::DependentNameType>()) {
+                qualifier = DNT->getQualifier();
+            } else if(auto* RT = type->getAs<clang::RecordType>()) {
+                qualifier = RT->getQualifier();
+            }
+            if(qualifier && record->isDependentContext()) {
                 auto frames = stack.size();
-                auto* member = preferred(lookup(DNT->getQualifier(), DNT->getIdentifier()));
+                auto* member = preferred(lookup(qualifier, record->getDeclName()));
                 if(member && member->getCanonicalDecl() == record->getCanonicalDecl()) {
                     auto members = lookup_in_record(record, name);
                     if(members.empty()) {
@@ -743,10 +762,21 @@ public:
 
     /// `name` in `record` itself, else in its bases.
     lookup_result lookup_in_record(clang::CXXRecordDecl* record, clang::DeclarationName name) {
-        if(auto members = record->lookup(name); !members.empty()) {
-            return members;
+        auto members = record->lookup(name);
+        if(members.empty()) {
+            return lookup_in_bases(record, name);
         }
-        return lookup_in_bases(record, name);
+        /// A using-declaration naming a member of a dependent base stands
+        /// for what it names there.
+        if(members.isSingleResult()) {
+            if(auto* named = llvm::dyn_cast<clang::UnresolvedUsingValueDecl>(members.front())) {
+                return lookup(named->getQualifier(), name);
+            }
+            if(auto* named = llvm::dyn_cast<clang::UnresolvedUsingTypenameDecl>(members.front())) {
+                return lookup(named->getQualifier(), name);
+            }
+        }
+        return members;
     }
 
     /// Search for `name` in the base classes of `CRD`, each of them: a name
@@ -865,10 +895,11 @@ public:
            choice.outcome == PartialOutcome::Unverified) {
             LOG_DEBUG(
                 "{}"
-                "no certain partial; degrading",
+                "no certain partial; looking through each",
                 pad());
+            auto members = lookup_through_any(CTD, arguments, name);
             indent -= 1;
-            return lookup_result();
+            return members;
         }
         auto* best = choice.winner;
 
@@ -898,12 +929,42 @@ public:
         return lookup_result();
     }
 
-    /// Deduction alone may match several overlapping partials; pick the
-    /// most specialized one, as real instantiation would — but only among
-    /// partials whose dependent pattern constraints survive the
-    /// pseudo-SFINAE probe (see member_absent).
-    PartialChoice<clang::ClassTemplatePartialSpecializationDecl>
-        match_partial(clang::ClassTemplateDecl* CTD, TemplateArguments arguments) {
+    /// `name` in `CTD<arguments>` where it is not certain which pattern
+    /// applies — a defaulted argument does not fold, a constraint is not
+    /// decided: what every pattern that may apply finds alike, a member of a
+    /// base they share; else nothing. The frames of the primary's lookup
+    /// stay, as lookup's do.
+    lookup_result lookup_through_any(clang::ClassTemplateDecl* CTD,
+                                     TemplateArguments arguments,
+                                     clang::DeclarationName name) {
+        auto frames = stack.size();
+        std::optional<lookup_result> common;
+        for(auto& match: viable_partials(CTD, arguments)) {
+            lookup_result members;
+            if(deduce_template_arguments(match.partial, arguments) != Deduction::Failed) {
+                members = lookup_in_record(match.partial, name);
+            }
+            stack.truncate(frames);
+            if(members.empty() || (common && !same_declarations(*common, members))) {
+                return lookup_result();
+            }
+            common = members;
+        }
+        if(deduce_template_arguments(CTD, arguments) == Deduction::Failed) {
+            return lookup_result();
+        }
+        auto members = lookup_in_record(CTD->getTemplatedDecl(), name);
+        if(members.empty() || (common && !same_declarations(*common, members))) {
+            stack.truncate(frames);
+            return lookup_result();
+        }
+        return members;
+    }
+
+    /// The partial specializations whose pattern deduces against
+    /// `arguments` and survives the pseudo-SFINAE probe (see member_absent).
+    llvm::SmallVector<PartialMatch<clang::ClassTemplatePartialSpecializationDecl>, 4>
+        viable_partials(clang::ClassTemplateDecl* CTD, TemplateArguments arguments) {
         llvm::SmallVector<clang::ClassTemplatePartialSpecializationDecl*> partials;
         CTD->getPartialSpecializations(partials);
 
@@ -925,8 +986,15 @@ public:
             }
             matched.push_back({.partial = partial, .verified = deduction == Deduction::Matched});
         }
+        return matched;
+    }
 
-        return select_partial(context, matched);
+    /// Deduction alone may match several overlapping partials; pick the
+    /// most specialized one among the viable ones, as real instantiation
+    /// would.
+    PartialChoice<clang::ClassTemplatePartialSpecializationDecl>
+        match_partial(clang::ClassTemplateDecl* CTD, TemplateArguments arguments) {
+        return select_partial(context, viable_partials(CTD, arguments));
     }
 
     /// The pattern real instantiation of `CTD<visibleArguments>` would use:
@@ -970,6 +1038,10 @@ public:
 
     /// The value of a name the folding cannot see through.
     std::optional<llvm::APSInt> value_of(const clang::Expr* expr) {
+        if(auto trait =
+               type_trait(expr, [&](clang::QualType operand) { return substitute(operand); })) {
+            return llvm::APSInt(llvm::APInt(1, *trait ? 1 : 0), /*isUnsigned=*/true);
+        }
         if(auto NTTP = referenced_nttp(expr)) {
             auto* bound = stack.find_argument(NTTP, NTTP->getDepth(), NTTP->getIndex());
             if(bound && bound->getKind() == clang::TemplateArgument::Integral) {
@@ -1027,7 +1099,9 @@ public:
         auto frames = stack.size();
         clang::QualType type;
         unsigned object_quals = 0;
-        if(auto* call = llvm::dyn_cast<clang::CallExpr>(expr)) {
+        if(auto* operand = dereferenced(expr)) {
+            type = deref_type(resolve_object(expr_type(operand)), rvalue(operand));
+        } else if(auto* call = llvm::dyn_cast<clang::CallExpr>(expr)) {
             type = call_type(call);
         } else if(auto* subscript = llvm::dyn_cast<clang::ArraySubscriptExpr>(expr)) {
             type = subscript_type(subscript);
@@ -1051,8 +1125,9 @@ public:
                     type = PET->getPattern();
                 }
                 auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-                type =
-                    var && var->getInit() && undeduced(type) ? deduce_auto(var) : substitute(type);
+                type = var && (var->getInit() || var->isCXXForRangeDecl()) && undeduced(type)
+                           ? deduce_auto(var)
+                           : substitute(type);
                 if(auto* field = llvm::dyn_cast<clang::FieldDecl>(value); !field) {
                     object_quals = 0;
                 } else if(field->isMutable()) {
@@ -1115,9 +1190,20 @@ public:
             return clang::QualType();
         }
 
+        /// Clang gives the variable of a range-based `for` over a dependent
+        /// range no initializer.
+        const clang::Expr* init = var->getInit();
+        if(!init) {
+            auto element = var->isCXXForRangeDecl() ? loop_element(var) : clang::QualType();
+            auto type = element.isNull()
+                            ? element
+                            : bind_auto(var->getType(), element, element->isLValueReferenceType());
+            deducing.erase(var);
+            return type;
+        }
+
         /// Direct initialization deduces from its one expression; a braced
         /// list after `=` makes an `initializer_list`, which is not modeled.
-        const clang::Expr* init = var->getInit();
         if(auto* list = llvm::dyn_cast<clang::ParenListExpr>(init)) {
             init = list->getNumExprs() == 1 ? list->getExpr(0) : nullptr;
         } else if(auto* list = llvm::dyn_cast<clang::InitListExpr>(init)) {
@@ -1156,14 +1242,21 @@ public:
             return lvalue ? context.getLValueReferenceType(source) : source;
         }
 
+        /// Clang cannot tell what a dependent call or subscript yields, nor
+        /// what a cast to a dependent reference type collapses to
+        /// (`static_cast<T&&>` with `T = int&`); the type says.
+        bool opaque = evaluated &&
+                      llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(init->IgnoreParens());
+        return bind_auto(declared,
+                         source,
+                         source->isLValueReferenceType() || (!opaque && init->isLValue()));
+    }
+
+    /// `declared`, a non-`decltype(auto)` type holding `auto`, with it
+    /// deduced from a value of type `source`, an lvalue when `lvalue`.
+    clang::QualType bind_auto(clang::QualType declared, clang::QualType source, bool lvalue) {
         auto argument = source.getNonReferenceType();
         if(auto* RRT = declared->getAs<clang::RValueReferenceType>()) {
-            /// Clang cannot tell what a dependent call or subscript yields,
-            /// nor what a cast to a dependent reference type collapses to
-            /// (`static_cast<T&&>` with `T = int&`); the type says.
-            bool opaque = evaluated && llvm::isa<clang::CallExpr, clang::ArraySubscriptExpr>(
-                                           init->IgnoreParens());
-            bool lvalue = source->isLValueReferenceType() || (!opaque && init->isLValue());
             auto pointee = RRT->getPointeeType();
             if(lvalue && llvm::isa<clang::AutoType>(pointee) && !pointee.hasLocalQualifiers()) {
                 return context.getLValueReferenceType(argument);
@@ -1173,6 +1266,54 @@ public:
             argument = context.getAdjustedParameterType(argument).getUnqualifiedType();
         }
         return replace_auto(declared, argument);
+    }
+
+    /// What the range-based `for` declaring `var` binds it to: what
+    /// dereferencing the `begin()` of its range yields, an array's element.
+    /// Null while the statement is no part of its function's body yet, as
+    /// when a completion parses the loop. The frames of the lookups stay
+    /// for the caller to truncate.
+    clang::QualType loop_element(const clang::VarDecl* var) {
+        auto* function =
+            llvm::dyn_cast_or_null<clang::FunctionDecl>(var->getParentFunctionOrMethod());
+        auto* body = function ? function->getBody() : nullptr;
+        if(!body) {
+            return clang::QualType();
+        }
+
+        struct Finder : clang::RecursiveASTVisitor<Finder> {
+            const clang::VarDecl* var;
+            const clang::CXXForRangeStmt* found = nullptr;
+
+            bool VisitCXXForRangeStmt(clang::CXXForRangeStmt* loop) {
+                if(loop->getLoopVariable() == var) {
+                    found = loop;
+                }
+                return !found;
+            }
+        } finder{.var = var};
+
+        finder.TraverseStmt(body);
+        if(!finder.found || !finder.found->getRangeInit()) {
+            return clang::QualType();
+        }
+
+        auto* range_init = finder.found->getRangeInit();
+        auto range = resolve_object(expr_type(range_init));
+        if(range.isNull()) {
+            return range;
+        }
+        if(auto* array = context.getAsArrayType(range)) {
+            return context.getLValueReferenceType(array->getElementType());
+        }
+        auto begin = context.DeclarationNames.getIdentifier(&context.Idents.get("begin"));
+        auto members = lookup(range, begin);
+        llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(), members.end());
+        drop_by_arity(candidates, 0, /*member_call=*/true);
+        /// `begin()` is called on the variable the range initializes.
+        select_by_object(candidates, range);
+        auto iterator = common_return_type(candidates, {});
+        return iterator.isNull() ? iterator : deref_type(resolve_object(iterator), false);
     }
 
     /// `declared` with its `auto` replaced by `argument`, each pointer of
@@ -1229,8 +1370,53 @@ public:
         auto members = lookup(object, subscript);
         llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(), members.end());
         drop_by_arity(candidates, 1, /*member_call=*/true);
-        select_by_object(candidates, object);
+        select_by_object(candidates, object, rvalue(expr->getLHS()));
         return common_return_type(candidates, {});
+    }
+
+    /// The operand `expr` dereferences, a `*` a dependent operand left
+    /// unresolved; null for any other expression.
+    const static clang::Expr* dereferenced(const clang::Expr* expr) {
+        if(auto* unary = llvm::dyn_cast<clang::UnaryOperator>(expr);
+           unary && unary->getOpcode() == clang::UO_Deref) {
+            return unary->getSubExpr();
+        }
+        if(auto* call = llvm::dyn_cast<clang::CXXOperatorCallExpr>(expr);
+           call && call->getOperator() == clang::OO_Star && call->getNumArgs() == 1) {
+            return call->getArg(0);
+        }
+        return nullptr;
+    }
+
+    /// What dereferencing an `object` yields: a pointer's pointee, else what
+    /// the class's own `operator*` returns. A non-member operator is no
+    /// candidate, as for any dependent operator but `[]` and `->`, which
+    /// can only be members. The frames of the lookup stay for the caller to
+    /// truncate.
+    clang::QualType deref_type(clang::QualType object, bool rvalue) {
+        if(object.isNull()) {
+            return object;
+        }
+        if(auto* PT = object->getAs<clang::PointerType>()) {
+            return context.getLValueReferenceType(PT->getPointeeType());
+        }
+        auto star = context.DeclarationNames.getCXXOperatorName(clang::OO_Star);
+        auto members = lookup(object, star);
+        llvm::SmallVector<const clang::NamedDecl*, 4> candidates(members.begin(), members.end());
+        drop_by_arity(candidates, 0, /*member_call=*/true);
+        select_by_object(candidates, object, rvalue);
+        return common_return_type(candidates, {});
+    }
+
+    /// Whether the object `base` denotes is an rvalue: a call returning no
+    /// lvalue reference, or a temporary. A name denotes an lvalue.
+    bool rvalue(const clang::Expr* base) {
+        base = base->IgnoreParenImpCasts();
+        if(llvm::isa<clang::CallExpr>(base)) {
+            auto type = type_of(base);
+            return !type.isNull() && !type->isLValueReferenceType();
+        }
+        return !base->isLValue();
     }
 
     /// The type a call returns, before resolution; the frames it pushes
@@ -1238,9 +1424,10 @@ public:
     clang::QualType call_type(const clang::CallExpr* call) {
         auto* callee = call->getCallee()->IgnoreParenImpCasts();
         /// Argument-dependent lookup adds candidates only instantiation
-        /// sees; the ordinary set proves nothing about the callee.
+        /// sees; the ordinary set proves nothing about the callee. Without
+        /// arguments it adds none.
         if(auto* ULE = llvm::dyn_cast<clang::UnresolvedLookupExpr>(callee);
-           ULE && ULE->requiresADL()) {
+           ULE && ULE->requiresADL() && call->getNumArgs() > 0) {
             return clang::QualType();
         }
         return common_return_type(call_candidates(call),
@@ -1251,12 +1438,25 @@ public:
     /// type they all return (`map::operator[]` takes a `const key_type&` or
     /// a `key_type&&`, and returns `mapped_type&` either way). Null when
     /// they disagree, or there are none.
+    ///
+    /// A template returning the `decltype` of a call on the parameters only
+    /// deduction would bind tells nothing, and the others decide: beside a
+    /// map's plain `find`, the heterogeneous `find(const K&) ->
+    /// decltype(...)` a defaulted template argument disables unless the
+    /// comparator opts in. One returning a parameter itself may be the one
+    /// chosen, and leaves the call untyped.
     clang::QualType
         common_return_type(llvm::ArrayRef<const clang::NamedDecl*> candidates,
                            llvm::ArrayRef<clang::TemplateArgumentLoc> template_arguments) {
         clang::QualType common;
         for(auto* candidate: candidates) {
             auto type = return_type(candidate, template_arguments);
+            if(auto* function = as_function(candidate);
+               type.isNull() && function && template_arguments.empty() &&
+               function->getDescribedFunctionTemplate() &&
+               function->getReturnType()->getAs<clang::DecltypeType>()) {
+                continue;
+            }
             if(type.isNull() || (!common.isNull() && !context.hasSameType(type, common))) {
                 return clang::QualType();
             }
@@ -1293,6 +1493,12 @@ public:
             for(auto& argument: template_arguments) {
                 bound.push_back(argument.getArgument());
             }
+        }
+        /// Unbound, they would be resolved through the rest of the stack:
+        /// a `decltype` of a call on them names whatever that call returns
+        /// on anything.
+        if(bound.empty() && mentions_parameters(function->getReturnType(), params)) {
+            return clang::QualType();
         }
         stack.push(FTD, params, bound);
         auto type = substitute(function->getReturnType());
@@ -1421,56 +1627,75 @@ public:
         candidates.erase(removed.begin(), removed.end());
     }
 
-    /// Overloads that differ only in the cv-qualifiers of their object
-    /// parameter (`front()` and `front() const`) are told apart by the
-    /// object, as overload resolution would: a method less qualified than
-    /// the object cannot bind it, and of the rest the least qualified binds
-    /// best. Any other set is left whole: ranking it needs conversions.
+    /// Overloads that differ only in their object parameter — its cv- and
+    /// ref-qualifiers, `front()` and `front() const`, `value() &` and
+    /// `value() &&` — are told apart by the object, an lvalue unless
+    /// `rvalue`, as overload resolution would: a method that cannot bind the
+    /// object drops out (one less cv-qualified than it, `&` on an rvalue,
+    /// `&&` on an lvalue), and of the rest the one adding the fewest
+    /// qualifiers binds best, an rvalue taking `const&` last. An overload
+    /// with no such sibling is left alone: ranking it needs conversions.
     void select_by_object(llvm::SmallVectorImpl<const clang::NamedDecl*>& candidates,
-                          clang::QualType object) {
+                          clang::QualType object,
+                          bool rvalue = false) {
         if(object.isNull() || candidates.size() < 2) {
             return;
         }
-        auto* first = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(as_function(candidates.front()));
-        if(!first) {
-            return;
-        }
-        auto differs_only_in_cv = [&](const clang::NamedDecl* decl) {
+        auto method_of = [](const clang::NamedDecl* decl) -> const clang::CXXMethodDecl* {
             auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(as_function(decl));
-            return method && method->isImplicitObjectMemberFunction() &&
-                   method->getRefQualifier() == first->getRefQualifier() &&
-                   !method->getDescribedFunctionTemplate() ==
-                       !first->getDescribedFunctionTemplate() &&
+            return method && method->isImplicitObjectMemberFunction() ? method : nullptr;
+        };
+        auto alike = [&](const clang::CXXMethodDecl* lhs, const clang::CXXMethodDecl* rhs) {
+            return !lhs->getDescribedFunctionTemplate() == !rhs->getDescribedFunctionTemplate() &&
                    std::ranges::equal(
-                       method->parameters(),
-                       first->parameters(),
-                       [&](const clang::ParmVarDecl* lhs, const clang::ParmVarDecl* rhs) {
-                           return context.hasSameType(lhs->getType(), rhs->getType());
+                       lhs->parameters(),
+                       rhs->parameters(),
+                       [&](const clang::ParmVarDecl* left, const clang::ParmVarDecl* right) {
+                           return context.hasSameType(left->getType(), right->getType());
                        });
         };
-        if(!std::ranges::all_of(candidates, differs_only_in_cv)) {
-            return;
-        }
 
         auto quals = resolve_object(object).getCVRQualifiers();
-        /// How many qualifiers the method adds to the object's; -1 when it
-        /// lacks some of them.
-        auto added = [&](const clang::NamedDecl* decl) {
-            auto method_quals = llvm::cast<clang::CXXMethodDecl>(as_function(decl))
-                                    ->getMethodQualifiers()
-                                    .getCVRQualifiers();
-            return (method_quals & quals) == quals ? std::popcount(method_quals & ~quals) : -1;
+        /// How well the method binds the object, lower better; -1 when it
+        /// cannot.
+        auto rank = [&](const clang::CXXMethodDecl* method) {
+            auto method_quals = method->getMethodQualifiers().getCVRQualifiers();
+            auto ref = method->getRefQualifier();
+            if((method_quals & quals) != quals ||
+               (rvalue ? ref == clang::RQ_LValue && !(method_quals & clang::Qualifiers::Const)
+                       : ref == clang::RQ_RValue)) {
+                return -1;
+            }
+            return std::popcount(method_quals & ~quals) * 2 +
+                   (rvalue && ref == clang::RQ_LValue ? 1 : 0);
         };
-        int best = -1;
+        auto outranked = [&](const clang::NamedDecl* decl) {
+            auto* method = method_of(decl);
+            if(!method) {
+                return false;
+            }
+            auto score = rank(method);
+            bool siblings = false;
+            for(auto* other: candidates) {
+                auto* sibling = method_of(other);
+                if(!sibling || sibling == method || !alike(method, sibling)) {
+                    continue;
+                }
+                siblings = true;
+                if(auto other_score = rank(sibling);
+                   other_score >= 0 && (score < 0 || other_score < score)) {
+                    return true;
+                }
+            }
+            return siblings && score < 0;
+        };
+        llvm::SmallVector<const clang::NamedDecl*, 4> kept;
         for(auto* candidate: candidates) {
-            if(auto count = added(candidate); count >= 0 && (best < 0 || count < best)) {
-                best = count;
+            if(!outranked(candidate)) {
+                kept.push_back(candidate);
             }
         }
-        auto removed = std::ranges::remove_if(candidates, [&](const clang::NamedDecl* decl) {
-            return best < 0 || added(decl) != best;
-        });
-        candidates.erase(removed.begin(), removed.end());
+        candidates.assign(kept.begin(), kept.end());
     }
 
     /// A call's candidate set: the callee clang resolved itself (a call
@@ -1494,13 +1719,18 @@ public:
         bool member_call =
             llvm::isa<clang::UnresolvedMemberExpr, clang::CXXDependentScopeMemberExpr>(callee);
         clang::QualType object;
+        bool rvalue_object = false;
         if(auto OE = llvm::dyn_cast<clang::OverloadExpr>(callee)) {
             candidates.append(OE->decls_begin(), OE->decls_end());
             if(auto UME = llvm::dyn_cast<clang::UnresolvedMemberExpr>(OE)) {
                 object = member_object(UME->getBaseType(), UME->isArrow());
+                rvalue_object =
+                    !UME->isArrow() && !UME->isImplicitAccess() && rvalue(UME->getBase());
             }
         } else if(auto DSME = llvm::dyn_cast<clang::CXXDependentScopeMemberExpr>(callee)) {
             object = member_object(DSME);
+            rvalue_object =
+                !DSME->isArrow() && !DSME->isImplicitAccess() && rvalue(DSME->getBase());
             auto members = lookup_member(object, DSME->getMember());
             candidates.append(members.begin(), members.end());
         } else if(auto DSDRE = llvm::dyn_cast<clang::DependentScopeDeclRefExpr>(callee)) {
@@ -1517,7 +1747,7 @@ public:
         if(!has_pack_argument) {
             drop_by_arity(candidates, expr->getNumArgs(), member_call);
         }
-        select_by_object(candidates, object);
+        select_by_object(candidates, object, rvalue_object);
         return candidates;
     }
 
@@ -1576,6 +1806,47 @@ private:
                 auto ICT = llvm::cast<clang::InjectedClassNameType>(T);
                 result = rewrite(ICT->getDecl()->getCanonicalTemplateSpecializationType(context),
                                  policy);
+                break;
+            }
+
+            /// A member class of a template is written in the template's
+            /// parameters through the class enclosing it: the type takes that
+            /// class, rewritten, as its qualifier, through which lookup binds
+            /// the parameters again.
+            case clang::Type::Record: {
+                auto* RT = llvm::cast<clang::RecordType>(T);
+                auto qualifier = RT->getQualifier();
+                if(!qualifier) {
+                    auto* parent =
+                        llvm::dyn_cast<clang::CXXRecordDecl>(RT->getDecl()->getDeclContext());
+                    if(!parent || !parent->isDependentContext()) {
+                        break;
+                    }
+                    auto enclosing =
+                        parent->getDescribedClassTemplate() ||
+                                llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(parent)
+                            ? parent->getCanonicalTemplateSpecializationType(context)
+                            : context.getCanonicalTagType(parent);
+                    qualifier = clang::NestedNameSpecifier(enclosing.getTypePtr());
+                }
+                if(auto rewritten = rewrite_specifier(qualifier, policy); rewritten != qualifier) {
+                    result = context.getTagType(RT->getKeyword(),
+                                                rewritten,
+                                                RT->getDecl(),
+                                                /*OwnsTag=*/false);
+                }
+                break;
+            }
+
+            /// `using typename Base::name;` names what `typename
+            /// Base::name` would.
+            case clang::Type::UnresolvedUsing: {
+                auto* decl = llvm::cast<clang::UnresolvedUsingType>(T)->getDecl();
+                result =
+                    rewrite(context.getDependentNameType(clang::ElaboratedTypeKeyword::Typename,
+                                                         decl->getQualifier(),
+                                                         decl->getIdentifier()),
+                            policy);
                 break;
             }
 
@@ -1703,24 +1974,15 @@ private:
             case clang::Type::UnaryTransform: {
                 auto UTT = llvm::cast<clang::UnaryTransformType>(T);
                 auto base = rewrite(UTT->getBaseType(), policy);
-                if(base == UTT->getBaseType()) {
+                if(auto computed = transformed(UTT->getUTTKind(), base); !computed.isNull()) {
+                    result = computed;
                     break;
-                }
-                /// A resolved enum operand computes the transform directly.
-                if(UTT->getUTTKind() == clang::UnaryTransformType::EnumUnderlyingType) {
-                    if(auto ET = base->getAs<clang::EnumType>()) {
-                        if(auto definition = ET->getDecl()->getDefinition()) {
-                            result = definition->getIntegerType();
-                            break;
-                        }
-                    }
                 }
                 /// Rebuilding with a non-dependent operand would fabricate a
                 /// node whose canonical type is the operand itself — a wrong
-                /// answer for every transform (Sema computes the result type
-                /// and we do not, except for the enum case above). Degrade to
-                /// the unrewritten node instead.
-                if(!base->isDependentType()) {
+                /// answer for every transform transformed() does not
+                /// compute. Degrade to the unrewritten node instead.
+                if(base == UTT->getBaseType() || !base->isDependentType()) {
                     break;
                 }
                 result = context.getUnaryTransformType(base, base, UTT->getUTTKind());
@@ -2012,6 +2274,90 @@ private:
             return nullptr;
         }
         return &instantiation->getTemplateSpecializationArgs()->get(TTPT->getIndex());
+    }
+
+    /// What the transform `kind` (`__add_pointer`, `__remove_cvref`) makes
+    /// of `base`, as Sema computes it, where the shape of `base` decides it:
+    /// not for a bare template parameter, which may become a reference, nor
+    /// for the signedness transforms. Null where it does not.
+    clang::QualType transformed(clang::UnaryTransformType::UTTKind kind, clang::QualType base) {
+        using Kind = clang::UnaryTransformType;
+        auto shaped = [&] {
+            switch(base.getCanonicalType()->getTypeClass()) {
+                case clang::Type::Builtin: return !base->isDependentType();
+                case clang::Type::Pointer:
+                case clang::Type::MemberPointer:
+                case clang::Type::LValueReference:
+                case clang::Type::RValueReference:
+                case clang::Type::Record:
+                case clang::Type::Enum:
+                case clang::Type::InjectedClassName:
+                case clang::Type::TemplateSpecialization:
+                case clang::Type::ConstantArray:
+                case clang::Type::IncompleteArray:
+                case clang::Type::DependentSizedArray:
+                case clang::Type::FunctionProto: return true;
+                default: return false;
+            }
+        };
+        if(!shaped()) {
+            return clang::QualType();
+        }
+        auto value = base.getNonReferenceType();
+        auto without = [&](unsigned removed) {
+            auto quals = base.getQualifiers();
+            quals.removeCVRQualifiers(removed);
+            return context.getQualifiedType(base.getUnqualifiedType(), quals);
+        };
+        /// A function type with qualifiers of its own (`int() const`) has
+        /// no pointer nor reference; void has no reference.
+        auto* function = base->getAs<clang::FunctionProtoType>();
+        bool referenceable = !function || (function->getMethodQuals().empty() &&
+                                           function->getRefQualifier() == clang::RQ_None);
+        switch(kind) {
+            case Kind::AddPointer: return referenceable ? context.getPointerType(value) : base;
+            case Kind::AddLvalueReference:
+                return base->isVoidType() || !referenceable ? base
+                                                            : context.getLValueReferenceType(value);
+            case Kind::AddRvalueReference:
+                if(base->isVoidType() || !referenceable || base->isLValueReferenceType()) {
+                    return base;
+                }
+                return context.getRValueReferenceType(value);
+            case Kind::RemoveReference: return value;
+            case Kind::RemoveCVRef: return value.getUnqualifiedType();
+            case Kind::RemoveCV:
+                return without(clang::Qualifiers::Const | clang::Qualifiers::Volatile);
+            case Kind::RemoveConst: return without(clang::Qualifiers::Const);
+            case Kind::RemoveVolatile: return without(clang::Qualifiers::Volatile);
+            case Kind::RemoveRestrict: return without(clang::Qualifiers::Restrict);
+            case Kind::RemovePointer: {
+                auto* pointer = base->getAs<clang::PointerType>();
+                return pointer ? pointer->getPointeeType() : base;
+            }
+            case Kind::RemoveExtent: {
+                auto* array = context.getAsArrayType(base);
+                return array ? array->getElementType() : base;
+            }
+            case Kind::RemoveAllExtents: return context.getBaseElementType(base);
+            case Kind::Decay: {
+                if(context.getAsArrayType(value)) {
+                    return context.getArrayDecayedType(value);
+                }
+                if(value->isFunctionType()) {
+                    return context.getPointerType(value);
+                }
+                return value.getUnqualifiedType();
+            }
+            case Kind::EnumUnderlyingType: {
+                auto* ET = base->getAs<clang::EnumType>();
+                auto* definition = ET ? ET->getDecl()->getDefinition() : nullptr;
+                return definition ? definition->getIntegerType() : clang::QualType();
+            }
+            case Kind::MakeSigned:
+            case Kind::MakeUnsigned: return clang::QualType();
+        }
+        std::unreachable();
     }
 
     clang::QualType rewrite_parameter(const clang::TemplateTypeParmType* TTPT, Policy policy) {
@@ -2938,6 +3284,9 @@ private:
     llvm::SmallPtrSet<const void*, 8> active_resolutions;
     llvm::DenseSet<std::pair<const void*, void*>> active_ctd_lookups;
     llvm::SmallPtrSet<const clang::VarDecl*, 4> deducing;
+    /// The defaults of value parameters that did not fold, which may hold
+    /// any value (Unifier).
+    llvm::SmallSetVector<const clang::Expr*, 4> open_defaults;
     unsigned depth = 0;
     unsigned steps = 0;
     unsigned probing = 0;

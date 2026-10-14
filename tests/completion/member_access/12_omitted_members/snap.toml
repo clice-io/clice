@@ -1,27 +1,27 @@
 [answers.dot.completion]
 items = [
-    { label = "base_field", kind = "Field", detail = "int" },
     { label = "resize(int width)", kind = "Method", detail = "void" },
     { label = "width", kind = "Field", detail = "int" },
+    { label = "base_field", kind = "Field", detail = "int" },
 ]
 
 [answers.arrow.completion]
 items = [
-    { label = "base_field", kind = "Field", detail = "int" },
     { label = "resize(int width)", kind = "Method", detail = "void" },
     { label = "width", kind = "Field", detail = "int" },
+    { label = "base_field", kind = "Field", detail = "int" },
 ]
 
 [answers.scope.completion]
 items = [
-    { label = "Base", kind = "Class" },
     { label = "Widget", kind = "Class" },
+    { label = "resize(int width)", kind = "Method", detail = "void" },
+    { label = "width", kind = "Field", detail = "int" },
+    { label = "Base", kind = "Class" },
     { label = "base_field", kind = "Field", detail = "int" },
     { label = "operator bool() const", kind = "Method" },
     { label = "operator=(const Widget &)", kind = "Method", detail = "Widget &" },
     { label = "operator[](int index) const", kind = "Method", detail = "int" },
-    { label = "resize(int width)", kind = "Method", detail = "void" },
-    { label = "width", kind = "Field", detail = "int" },
-    { label = "~Base()", kind = "Method", detail = "void" },
     { label = "~Widget()", kind = "Method", detail = "void" },
+    { label = "~Base()", kind = "Method", detail = "void" },
 ]

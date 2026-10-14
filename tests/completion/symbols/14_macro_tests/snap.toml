@@ -1,0 +1,19 @@
+[answers.ifdef.completion]
+items = [
+    { label = "CLAMP", kind = "Keyword", insert = "CLAMP" },
+]
+
+[answers.defined.completion]
+items = [
+    { label = "CLAMP", kind = "Keyword", insert = "CLAMP" },
+]
+
+[answers.undef.completion]
+items = [
+    { label = "CLAMP", kind = "Keyword", insert = "CLAMP" },
+]
+
+[answers.after_code.completion]
+items = [
+    { label = "CLAMP", kind = "Keyword", insert = "CLAMP" },
+]

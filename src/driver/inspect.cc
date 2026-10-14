@@ -314,9 +314,12 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
 std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& params,
                                                          const Config& config) {
     // The replies of an editor client that takes everything an item can carry.
-    return to_raw_json(feature::code_complete(params,
-                                              config.code_completion,
-                                              {.snippets = true, .insert_replace = true}));
+    return to_raw_json(
+        feature::code_complete(params,
+                               config.code_completion,
+                               config.documentation,
+                               {.snippets = true, .insert_replace = true, .markdown = true})
+            .list);
 }
 
 std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,

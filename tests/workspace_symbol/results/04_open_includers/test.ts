@@ -5,7 +5,9 @@ import { expect } from "vitest";
 // it: the open source is not indexed, and the search finds only the
 // header's symbols the source itself mentions until the source closes.
 test(async (t) => {
-    const s = await t.start();
+    const s = await t.spawn();
+    s.open("main.cpp", { pull: false });
+    await s.initialize();
     expect(await s.errors("main.cpp")).toEqual([]);
     await s.indexed();
     for (const query of ["Widget", "Shape", "area"]) {

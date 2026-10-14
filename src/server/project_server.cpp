@@ -148,6 +148,10 @@ void ProjectServer::configure(const std::optional<kota::codec::dyn::Value>& init
         }
         ast.readonly = ReadonlyMode::Off;
     }
+    if(const std::string& arguments = project.config.code_completion.arguments;
+       arguments != "placeholders" && arguments != "delimiters" && arguments != "none") {
+        LOG_WARN("Unknown code_completion.arguments '{}'; using placeholders", arguments);
+    }
     freshness.options.withhold = cfg.enable_indexing.value;
     if(cfg.cache_dir_defaulted.value) {
         CacheStore::write_ignore_markers(cfg.cache_dir);

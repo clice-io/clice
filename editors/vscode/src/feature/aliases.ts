@@ -17,10 +17,13 @@ function identity(document: vscode.TextDocument): string | undefined {
     }
 }
 
-/// The selection an opening request asked for (a definition's range, a
-/// terminal link's line): it lands as a selection change after the editor
-/// turns active, or not at all when none was asked for.
-function requestedSelection(editor: vscode.TextEditor): Promise<vscode.Selection> {
+/// The selection the opener wants. The one its open request asked for (a
+/// definition's range, a terminal link's line) is in once a round trip to
+/// the window returns: VS Code sets it in the turn that reports the editor.
+/// An opener that sets the selection, or opens another file, after its open
+/// returns gets a short while more.
+async function requestedSelection(editor: vscode.TextEditor): Promise<vscode.Selection> {
+    await vscode.commands.getCommands();
     return new Promise((resolve) => {
         const done = (selection: vscode.Selection) => {
             subscription.dispose();

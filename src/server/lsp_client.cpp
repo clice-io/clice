@@ -375,6 +375,11 @@ void LSPClient::register_lifecycle() {
             completion_client = {
                 .snippets = item.snippet_support,
                 .insert_replace = item.insert_replace_support,
+                .markdown = item.documentation_format &&
+                            llvm::any_of(*item.documentation_format,
+                                         [](const std::string& kind) {
+                                             return kind == protocol::MarkupKind::Markdown;
+                                         }),
             };
         }
 

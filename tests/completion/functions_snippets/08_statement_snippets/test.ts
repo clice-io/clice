@@ -7,4 +7,4 @@ async function items(a: AnswersContext): Promise<void> {
 }
 
 answers("default", items);
-answers("configured", { config: { code_completion: { enable_keyword_snippet: true } } }, items);
+answers("configured", { config: { code_completion: { statement_snippets: true } } }, items);

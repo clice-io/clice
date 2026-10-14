@@ -4089,6 +4089,22 @@ ZEST_CASE(StandardMapIterator) {
     )code");
 }
 
+ZEST_CASE(AbominableAddPointer) {
+    /// A function type with qualifiers of its own has no pointer.
+    run(R"code(
+        template <typename X, typename F>
+        struct wrap {
+            using type = F;
+        };
+
+        template <typename X>
+        struct test {
+            using input = __add_pointer(typename wrap<X, int() const>::type);
+            using expect = int() const;
+        };
+    )code");
+}
+
 ZEST_CASE(DependentTemplateHead) {
     /// A template template argument that is itself a dependent name (libc++
     /// binds `_Alloc::template rebind` this way): the rebuilt head must be a
@@ -4862,6 +4878,77 @@ ZEST_CASE(MutableValueDefault) {
         template <typename X>
         struct test {
             using input = typename Gemm<X>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    InputFinder finder(*unit);
+    finder.TraverseAST(unit->context());
+
+    auto input = unit->resolver().resolve(finder.input);
+    ZASSERT(!input.isNull());
+    ZEXPECT(input->isDependentType());
+}
+
+ZEST_CASE(OpenDefaultSharedBase) {
+    /// A default that does not fold leaves both patterns possible; a member
+    /// they reach through one base resolves.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Probe {
+            static inline bool value = true;
+        };
+
+        template <typename U>
+        struct Base {
+            using type = U*;
+        };
+
+        template <typename T, bool = Probe<T>::value>
+        struct Choice : Base<T> {};
+
+        template <typename T>
+        struct Choice<T, false> : Base<T> {};
+
+        template <typename X>
+        struct test {
+            using input = typename Choice<X>::type;
+            using expect = X*;
+        };
+    )code");
+    ZASSERT(compile());
+    expect_resolved();
+}
+
+ZEST_CASE(OpenDefaultDifferentBases) {
+    /// One declaration reached through different specializations of a base
+    /// is no common answer.
+    add_main("main.cpp", R"code(
+        template <typename T>
+        struct Probe {
+            static inline bool value = true;
+        };
+
+        template <typename T>
+        struct Left {};
+
+        template <typename T>
+        struct Right {};
+
+        template <typename U>
+        struct Base {
+            using type = U;
+        };
+
+        template <typename T, bool = Probe<T>::value>
+        struct Choice : Base<Left<T>> {};
+
+        template <typename T>
+        struct Choice<T, false> : Base<Right<T>> {};
+
+        template <typename X>
+        struct test {
+            using input = typename Choice<X>::type;
         };
     )code");
     ZASSERT(compile());

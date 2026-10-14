@@ -7,8 +7,5 @@ async function items(a: AnswersContext): Promise<void> {
 }
 
 answers("default", items);
-answers(
-    "configured",
-    { config: { code_completion: { enable_template_arguments_snippet: true } } },
-    items,
-);
+answers("delimiters", { config: { code_completion: { arguments: "delimiters" } } }, items);
+answers("none", { config: { code_completion: { arguments: "none" } } }, items);

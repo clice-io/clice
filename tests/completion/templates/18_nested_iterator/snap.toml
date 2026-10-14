@@ -1,0 +1,20 @@
+[answers.call_arrow.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.call_star.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.named_type.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]

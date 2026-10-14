@@ -1,0 +1,292 @@
+[default.not_included.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-4", text = '#include "shapes.h"' },
+        ],
+    },
+    {
+        label = "shapes::circle_total",
+        kind = "Variable",
+        insert = "shapes::circle_total",
+        edits = [
+            { at = "⟦⟧ @-4", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.type_only.completion]
+items = [
+    {
+        label = "shapes::Circle",
+        kind = "Class",
+        insert = "shapes::Circle",
+        edits = [
+            { at = "⟦⟧ @-5", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.internal_definition.completion]
+items = [
+    {
+        label = "shapes::on_reset",
+        kind = "Function",
+        insert = "shapes::on_reset($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-6", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.function_expected.completion]
+items = [
+    {
+        label = "shapes::on_resize",
+        kind = "Function",
+        insert = "shapes::on_resize",
+        edits = [
+            { at = "⟦⟧ @-7", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.function_call.completion]
+items = [
+    {
+        label = "shapes::redraw(…) +1 overload",
+        kind = "Function",
+        insert = "shapes::redraw($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-8", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.class_template.completion]
+items = [
+    {
+        label = "shapes::Grid",
+        kind = "Class",
+        insert = "shapes::Grid<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-9", text = '#include "shapes.h"' },
+        ],
+    },
+    {
+        label = "shapes::grid_size",
+        kind = "Variable",
+        insert = "shapes::grid_size<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-9", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.alias_template.completion]
+items = [
+    {
+        label = "shapes::Row",
+        kind = "TypeParameter",
+        insert = "shapes::Row<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-10", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.variable_template.completion]
+items = [
+    {
+        label = "shapes::grid_size",
+        kind = "Variable",
+        insert = "shapes::grid_size<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-11", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.enumerator.completion]
+items = [
+    {
+        label = "shapes::Shade::shade_dark",
+        kind = "EnumMember",
+        insert = "shapes::Shade::shade_dark",
+        edits = [
+            { at = "⟦⟧ @-12", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.scoped_enumerator.completion]
+items = []
+
+[default.class_member.completion]
+items = []
+
+[default.standard_name.completion]
+items = [
+    {
+        label = "std::vector",
+        kind = "Class",
+        insert = "std::vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-15", text = "#include <vector>" },
+        ],
+    },
+]
+
+[default.macro.completion]
+items = [
+    { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
+]
+
+[default.deprecated.completion]
+items = [
+    {
+        label = "shapes::repaint_all",
+        kind = "Function",
+        insert = "shapes::repaint_all($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-17", text = '#include "shapes.h"' },
+        ],
+    },
+    {
+        label = "shapes::repaint",
+        kind = "Function",
+        deprecated = true,
+        insert = "shapes::repaint($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-17", text = '#include "shapes.h"' },
+        ],
+    },
+]
+
+[default.c_file.completion]
+items = []
+
+[default.c_enumerator.completion]
+items = [
+    {
+        label = "color_red",
+        kind = "EnumMember",
+        insert = "color_red",
+        edits = [
+            { at = "⟦⟧void run(void) {", text = '#include "palette.h"' },
+        ],
+    },
+]
+
+[default.c_tag.completion]
+items = []
+
+[[default.module_unit.completion.items]]
+label = "shapes::Circle"
+kind = "Class"
+insert = "shapes::Circle"
+
+[[default.module_unit.completion.items.edits]]
+at = "⟦⟧export module tools;"
+text = '''
+module;
+#include "shapes.h"
+'''
+
+[[default.module_unit.completion.items]]
+label = "shapes::circle_total"
+kind = "Variable"
+insert = "shapes::circle_total"
+
+[[default.module_unit.completion.items.edits]]
+at = "⟦⟧export module tools;"
+text = '''
+module;
+#include "shapes.h"
+'''
+
+[configured.not_included.completion]
+items = []
+
+[configured.type_only.completion]
+items = []
+
+[configured.internal_definition.completion]
+items = []
+
+[configured.function_expected.completion]
+items = []
+
+[configured.function_call.completion]
+items = []
+
+[configured.class_template.completion]
+items = []
+
+[configured.alias_template.completion]
+items = []
+
+[configured.variable_template.completion]
+items = []
+
+[configured.enumerator.completion]
+items = []
+
+[configured.scoped_enumerator.completion]
+items = []
+
+[configured.class_member.completion]
+items = []
+
+[configured.standard_name.completion]
+items = []
+
+[configured.macro.completion]
+items = [
+    { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
+]
+
+[configured.deprecated.completion]
+items = []
+
+[configured.c_file.completion]
+items = []
+
+[configured.c_enumerator.completion]
+items = []
+
+[configured.c_tag.completion]
+items = []
+
+[configured.module_unit.completion]
+items = []
+
+[unbundled.macro.completion]
+items = [
+    { label = "GEO_SCALE", kind = "Constant", insert = "GEO_SCALE" },
+]
+
+[limited.function_call.completion]
+items = [
+    {
+        label = "shapes::redraw(…) +1 overload",
+        kind = "Function",
+        insert = "shapes::redraw($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-8", text = '#include "shapes.h"' },
+        ],
+    },
+]

@@ -89,6 +89,11 @@ std::vector<std::string> complete_module_import(const DependencyGraph& graph,
 struct IncludeCandidate {
     std::string name;
     bool is_directory = false;
+
+    /// Where the search found it, ascending: the includer's directory, the
+    /// quoted then the angled search directories, the system ones the
+    /// command names, last the toolchain's own; in search order within each.
+    std::uint32_t order = 0;
 };
 
 /// Return header and directory names matching a prefix in the given search paths.

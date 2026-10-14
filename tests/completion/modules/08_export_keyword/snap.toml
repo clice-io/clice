@@ -1,0 +1,13 @@
+[interface.interface.completion]
+items = [
+    { label = "export", kind = "Keyword" },
+]
+
+[interface.ordinary_unit.completion]
+items = []
+
+[implementation.implementation.completion]
+items = []
+
+[implementation.partition_implementation.completion]
+items = []

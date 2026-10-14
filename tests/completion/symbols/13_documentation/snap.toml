@@ -1,0 +1,33 @@
+[["markdown client".function.completion.items]]
+label = "read_count"
+kind = "Variable"
+detail = "int"
+
+[["markdown client".function.completion.items]]
+label = "read_sensor(int channel)"
+kind = "Function"
+detail = "int"
+documentation = '''
+Reads the sensor once.  
+Returns the reading in \*\*millivolts\*\*.
+'''
+
+["markdown client".instantiated_member.completion]
+items = [
+    { label = "last_value", kind = "Field", detail = "int", documentation = "The last value the probe took." },
+]
+
+[["plain text client".function.completion.items]]
+label = "read_count"
+kind = "Variable"
+detail = "int"
+
+[["plain text client".function.completion.items]]
+label = "read_sensor(int channel)"
+kind = "Function"
+detail = "int"
+documentation = '''
+Reads the sensor once.
+
+Returns the reading in **millivolts**.
+'''

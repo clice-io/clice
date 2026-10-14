@@ -1,8 +1,8 @@
 [answers.member.completion]
 items = [
     { label = "partial_only", kind = "Field", detail = "int" },
-    { label = "partial_stages", kind = "Variable", detail = "const int" },
     { label = "template", kind = "Keyword" },
+    { label = "partial_stages", kind = "Variable", detail = "const int" },
 ]
 
 [answers.scope.completion]

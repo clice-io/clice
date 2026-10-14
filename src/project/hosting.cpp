@@ -78,10 +78,13 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
                                                       Fid host,
                                                       Fid header,
                                                       VersionID root,
-                                                      llvm::ArrayRef<index::IncludeNode> nodes) {
+                                                      llvm::ArrayRef<index::IncludeNode> nodes,
+                                                      llvm::ArrayRef<VersionID> absent) {
     using CheckResult = vfs::DiskState::CheckResult;
     auto& files = project.file_table;
-    if(files.check_version(root) != CheckResult::Fresh) {
+    if(files.check_version(root) != CheckResult::Fresh ||
+       llvm::any_of(absent,
+                    [&](VersionID place) { return files.present(files.version(place).fid); })) {
         return std::nullopt;
     }
     auto file_of = [&](std::uint32_t node) {
@@ -253,14 +256,24 @@ std::optional<Lender> command_lender(Project& project, Fid file) {
 std::optional<llvm::SmallVector<Host>> enterings(Project& project, Fid host, Fid header) {
     if(auto it = project.project_index.manifests.find(host);
        it != project.project_index.manifests.end()) {
-        if(auto found = tree_enterings(project, host, header, it->second.tu_fv, it->second.nodes)) {
+        if(auto found = tree_enterings(project,
+                                       host,
+                                       header,
+                                       it->second.tu_fv,
+                                       it->second.nodes,
+                                       it->second.absent)) {
             return found;
         }
     }
     if(auto it = project.include_trees.find(host);
        it != project.include_trees.end() && it->second.root.valid() &&
        it->second.commands_epoch == project.commands_epoch) {
-        return tree_enterings(project, host, header, it->second.root, it->second.nodes);
+        return tree_enterings(project,
+                              host,
+                              header,
+                              it->second.root,
+                              it->second.nodes,
+                              it->second.absent);
     }
     return std::nullopt;
 }

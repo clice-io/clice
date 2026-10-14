@@ -1,0 +1,5 @@
+[answers.names.completion]
+items = [
+    { label = "zeta", kind = "Module", insert = "zeta;", replace = "import ⟦⟧" },
+    { label = "alpha", kind = "Module", insert = "alpha;", replace = "import ⟦⟧" },
+]

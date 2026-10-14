@@ -1,22 +1,22 @@
 [answers.called.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "x", kind = "Field", detail = "int" },
     { label = "y", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.algorithm.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "x", kind = "Field", detail = "int" },
     { label = "y", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.two_parameters.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "x", kind = "Field", detail = "int" },
     { label = "y", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.several.completion]

@@ -88,7 +88,7 @@
       "name": "configured",
       "config": {
         "code_completion": {
-          "enable_keyword_snippet": true
+          "statement_snippets": true
         }
       },
       "blocks": [

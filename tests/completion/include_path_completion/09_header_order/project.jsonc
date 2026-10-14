@@ -1,0 +1,5 @@
+{
+  "flags": ["-iquote", "quote", "-Iinc", "-isystem", "sys"],
+  "units": { "main.cpp": [] },
+  "compiles": false
+}

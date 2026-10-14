@@ -1,0 +1,21 @@
+[answers.noexcept_function_type.completion]
+items = [
+    { label = "guarded_calls", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.scope.completion]
+items = [
+    { label = "retries", kind = "Variable", detail = "int" },
+    { label = "value_type", kind = "TypeParameter" },
+    { label = "Settings", kind = "Class" },
+    { label = "operator=(…) +1 overload", kind = "Method" },
+    { label = "~Settings()", kind = "Method", detail = "void" },
+]
+
+[answers.function_type.completion]
+items = [
+    { label = "calls", kind = "Field", detail = "int" },
+    { label = "target", kind = "Field", detail = "void (*)(int)" },
+    { label = "template", kind = "Keyword" },
+]

@@ -23,8 +23,14 @@ class Unifier {
 public:
     using TemplateArguments = llvm::ArrayRef<clang::TemplateArgument>;
 
-    explicit Unifier(clang::ASTContext& context, unsigned depth, unsigned size) :
-        context(context), depth(depth), bindings(size) {}
+    /// `open` are value arguments that may hold any value — defaults that
+    /// do not fold: a value pattern meeting one is undecided. Any other
+    /// argument whose value is not known matches no value a pattern fixes.
+    explicit Unifier(clang::ASTContext& context,
+                     unsigned depth,
+                     unsigned size,
+                     llvm::ArrayRef<const clang::Expr*> open = {}) :
+        context(context), depth(depth), bindings(size), open(open) {}
 
     /// Unify `patterns` (a partial specialization's argument pattern or a
     /// primary template's injected arguments) against `arguments`. On success,
@@ -47,6 +53,12 @@ public:
 
     llvm::ArrayRef<Deferred> deferred() const {
         return deferred_checks;
+    }
+
+    /// Whether a value pattern met an open argument: the match then holds
+    /// or not once its value is known.
+    bool undecided() const {
+        return undecided_values;
     }
 
 private:
@@ -75,7 +87,9 @@ private:
     clang::ASTContext& context;
     unsigned depth;
     llvm::SmallVector<clang::TemplateArgument, 4> bindings;
+    llvm::ArrayRef<const clang::Expr*> open;
     llvm::SmallVector<Deferred, 1> deferred_checks;
+    bool undecided_values = false;
 
     /// Element-wise matching state for a structured pack expansion pattern:
     /// while `expanding`, pack parameters accumulate one element per matched
@@ -115,7 +129,8 @@ Deduction deduce_arguments(clang::ASTContext& context,
                            clang::TemplateParameterList* params,
                            llvm::ArrayRef<clang::TemplateArgument> patterns,
                            llvm::ArrayRef<clang::TemplateArgument> arguments,
-                           llvm::SmallVectorImpl<clang::TemplateArgument>& deduced);
+                           llvm::SmallVectorImpl<clang::TemplateArgument>& deduced,
+                           llvm::ArrayRef<const clang::Expr*> open = {});
 
 /// The outcome of select_partial: a winner, or why there is none. Real
 /// instantiation diagnoses an ambiguity (no partial dominates every other
@@ -174,6 +189,14 @@ std::optional<llvm::APSInt>
     evaluate_integral(clang::ASTContext& context,
                       const clang::Expr* expr,
                       llvm::function_ref<std::optional<llvm::APSInt>(const clang::Expr*)> value_of);
+
+/// What a standard type-category trait `expr` spells — `std::is_object_v<T>`,
+/// `std::is_object<T>::value` or `__is_object(T)` — says of its operand,
+/// `bound` giving the operand under the caller's bindings; none when it is
+/// no such trait, or the operand's shape leaves it open (a template
+/// parameter may become any type).
+std::optional<bool> type_trait(const clang::Expr* expr,
+                               llvm::function_ref<clang::QualType(clang::QualType)> bound);
 
 /// If `expr` is a (possibly parenthesized/casted) reference to a non-type
 /// template parameter, return its declaration.

@@ -66,12 +66,19 @@ export interface AnswersContext extends Requests {
 }
 
 /// The client the answers render for: versioned edits, markdown hover
-/// cards, snippets, insert-and-replace ranges, inlay hint label parts.
+/// cards, snippets, insert-and-replace ranges, markdown documentation,
+/// inlay hint label parts.
 const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
     workspace: { workspaceEdit: { documentChanges: true } },
     textDocument: {
         hover: { contentFormat: ["markdown", "plaintext"] },
-        completion: { completionItem: { snippetSupport: true, insertReplaceSupport: true } },
+        completion: {
+            completionItem: {
+                snippetSupport: true,
+                insertReplaceSupport: true,
+                documentationFormat: ["markdown", "plaintext"],
+            },
+        },
         inlayHint: {},
         rename: { prepareSupport: true },
     },

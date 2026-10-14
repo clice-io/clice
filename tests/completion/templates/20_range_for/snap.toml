@@ -1,0 +1,22 @@
+[answers.range.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.array.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.temporary_range.completion]
+items = [
+    { label = "left", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.typed_variable.completion]
+items = []

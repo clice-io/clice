@@ -1,0 +1,8 @@
+[answers.pos.completion]
+items = [
+    { label = "total_items", kind = "Variable", detail = "int" },
+    { label = "total_local", kind = "Variable", detail = "int" },
+    { label = "total_amount", kind = "Field", detail = "int" },
+    { label = "total_count()", kind = "Function", detail = "int" },
+    { label = "TOTAL_BUDGET", kind = "Constant" },
+]

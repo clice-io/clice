@@ -3,19 +3,19 @@
   "topic": "completion",
   "subtopic": "filtering",
   "title": "Deprecated tagging",
-  "summary": "A `[[deprecated]]` candidate is marked deprecated, its plain sibling is not",
+  "summary": "A `[[deprecated]]` candidate is marked deprecated and ranks after its plain sibling",
   "prose": "",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "[[deprecated]] int old_thing(int x);\nint new_thing(int x);\n\nint z = thing;\n",
+      "text": "[[deprecated]] int legacy_thing(int x);\nint modern_thing(int x);\n\nint z = thing;\n",
       "markers": [
         {
           "name": "pos",
-          "begin": 73,
-          "end": 73,
+          "begin": 79,
+          "end": 79,
           "range": false
         }
       ]
@@ -32,12 +32,12 @@
             "completion": {
               "items": [
                 {
-                  "label": "new_thing(int x)",
+                  "label": "modern_thing(int x)",
                   "kind": "Function",
                   "detail": "int"
                 },
                 {
-                  "label": "old_thing(int x)",
+                  "label": "legacy_thing(int x)",
                   "kind": "Function",
                   "detail": "int",
                   "deprecated": true

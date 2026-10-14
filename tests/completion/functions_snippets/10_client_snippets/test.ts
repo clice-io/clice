@@ -2,13 +2,7 @@ import { test } from "@clice/tools/testing";
 
 // Snippets reach only a client that declares snippet support; any other gets
 // the plain text the same options insert.
-const config = {
-    code_completion: {
-        bundle_overloads: false,
-        enable_function_arguments_snippet: true,
-        insert_paren_in_function_call: true,
-    },
-};
+const config = { code_completion: { bundle_overloads: false } };
 
 test("plain text client", async (t) => {
     const s = await t.start({ config });

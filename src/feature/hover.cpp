@@ -274,7 +274,7 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
         }
     }
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(value);
-       var && var->getInit() && type->getContainedAutoType()) {
+       var && (var->getInit() || var->isCXXForRangeDecl()) && type->getContainedAutoType()) {
         auto deduced = unit.resolver().deduce(var);
         return deduced.isNull() ? type : deduced;
     }
@@ -286,7 +286,8 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
 /// the variable's resolved type with the declarator's pointers, references
 /// and qualifiers taken off.
 auto resolved_auto(const clang::VarDecl* var, CompilationUnitRef unit) -> clang::QualType {
-    auto resolved = var->getInit() ? unit.resolver().deduce(var) : clang::QualType();
+    auto resolved = var->getInit() || var->isCXXForRangeDecl() ? unit.resolver().deduce(var)
+                                                               : clang::QualType();
     if(resolved.isNull() || !types::writable(resolved)) {
         return {};
     }

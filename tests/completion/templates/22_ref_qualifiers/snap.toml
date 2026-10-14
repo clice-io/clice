@@ -1,0 +1,29 @@
+[answers.lvalue.completion]
+items = [
+    { label = "mutable_member", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.const_lvalue.completion]
+items = [
+    { label = "constant_member", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.rvalue.completion]
+items = [
+    { label = "moved_member", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.cast_to_rvalue.completion]
+items = [
+    { label = "moved_member", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.temporary.completion]
+items = [
+    { label = "moved_member", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

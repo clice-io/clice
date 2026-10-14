@@ -1,0 +1,65 @@
+{
+  "id": "completion/ranking/01_closest_first",
+  "topic": "completion",
+  "subtopic": "ranking",
+  "title": "Closest names first",
+  "summary": "Among the names a prefix matches, locals come first, then the class's members, then the file's names, macros last",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define TOTAL_BUDGET 100\n\nint total_count();\n\nstruct Ledger {\n    int total_amount;\n\n    int sum(int total_items) {\n        int total_local = 0;\n        tota;\n        return total_local;\n    }\n};\n",
+      "markers": [
+        {
+          "name": "pos",
+          "begin": 157,
+          "end": 157,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "pos",
+          "marker": "pos",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "total_items",
+                  "kind": "Variable",
+                  "detail": "int"
+                },
+                {
+                  "label": "total_local",
+                  "kind": "Variable",
+                  "detail": "int"
+                },
+                {
+                  "label": "total_amount",
+                  "kind": "Field",
+                  "detail": "int"
+                },
+                {
+                  "label": "total_count()",
+                  "kind": "Function",
+                  "detail": "int"
+                },
+                {
+                  "label": "TOTAL_BUDGET",
+                  "kind": "Constant"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

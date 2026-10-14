@@ -378,6 +378,7 @@ static worker::IncludeTreeResult
         .paths = std::move(tree.paths),
         .path_hashes = std::move(tree.path_hashes),
         .nodes = std::move(tree.nodes),
+        .absent = unit.absent(),
     };
 }
 
@@ -450,23 +451,33 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     return result;
 }
 
-static kota::codec::RawValue handle_completion(const worker::CompletionParams& params,
-                                               const std::shared_ptr<std::atomic_bool>& stop) {
+static worker::CompletionResult handle_completion(const worker::CompletionParams& params,
+                                                  const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
     CompilationParams cp;
     cp.kind = CompilationKind::Completion;
     fill_args(cp, params.directory, params.arguments);
-    use_artifacts(cp, params.pch, params.pcms);
+    // Clang does not read again the part of the file the PCH stands in for:
+    // a point there is completed without it.
+    use_artifacts(cp,
+                  params.offset <= params.pch.second ? decltype(params.pch){} : params.pch,
+                  params.pcms);
     cp.add_remapped_file(params.file, params.text);
     cp.add_synthesized(params.synthesized);
     cp.completion = {params.file, params.offset};
     cp.stop = stop;
 
-    auto list = feature::code_complete(cp, params.config.code_completion, params.client);
-    LOG_DEBUG("Completion done: {} items, {}ms", list.items.size(), timer.ms());
+    auto completion = feature::code_complete(cp,
+                                             params.config.code_completion,
+                                             params.config.documentation,
+                                             params.client,
+                                             PositionEncoding::UTF16,
+                                             params.candidates);
+    LOG_DEBUG("Completion done: {} items, {}ms", completion.list.items.size(), timer.ms());
+    completion.list.is_incomplete = completion.list.is_incomplete || params.more_candidates;
 
-    return to_raw(list);
+    return {.list = to_raw(completion.list), .include = completion.include};
 }
 
 static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpParams& params,
@@ -608,7 +619,7 @@ int run_stateless_worker_mode(const std::string& worker_name, const std::string&
         worker::IncludeTreeResult{.success = false, .error = "Preprocessing cancelled"},
         &handle_include_tree);
     const kota::codec::RawValue cancelled_query{"null"};
-    serve<worker::CompletionParams>(peer, cancelled_query, &handle_completion);
+    serve<worker::CompletionParams>(peer, worker::CompletionResult{}, &handle_completion);
     serve<worker::SignatureHelpParams>(peer, cancelled_query, &handle_signature_help);
     serve<worker::FormatParams>(
         peer,

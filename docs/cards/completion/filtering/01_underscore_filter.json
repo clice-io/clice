@@ -53,13 +53,13 @@
             "completion": {
               "items": [
                 {
-                  "label": "_Pragma",
-                  "kind": "Constant"
-                },
-                {
                   "label": "_private_thing",
                   "kind": "Variable",
                   "detail": "int"
+                },
+                {
+                  "label": "_Pragma",
+                  "kind": "Constant"
                 }
               ]
             }

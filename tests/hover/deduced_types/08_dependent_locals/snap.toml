@@ -13,12 +13,23 @@ auto first = points
 '''
 range = "auto ⟦first⟧ = points;"
 
+[answers.element_auto.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+Point
+```
+'''
+range = "for (⟦auto⟧ point : points) {"
+
 [answers.element.hover]
 markdown = '''
 ### variable `point`
 
 ---
-Type: `auto`
+Type: `Point`
 
 ---
 ```cpp

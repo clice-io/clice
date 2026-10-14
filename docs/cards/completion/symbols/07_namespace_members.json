@@ -32,10 +32,6 @@
             "completion": {
               "items": [
                 {
-                  "label": "Point",
-                  "kind": "Class"
-                },
-                {
                   "label": "area_of(int r)",
                   "kind": "Function",
                   "detail": "int"
@@ -44,6 +40,10 @@
                   "label": "origin",
                   "kind": "Variable",
                   "detail": "int"
+                },
+                {
+                  "label": "Point",
+                  "kind": "Class"
                 }
               ]
             }

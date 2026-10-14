@@ -301,6 +301,21 @@ struct CompletionParams {
     Config config;
 
     feature::CompletionClient client;
+
+    /// The names of other namespaces the index found for the typed prefix.
+    std::vector<feature::ScopeCandidate> candidates;
+
+    /// The index found more of them: the list is incomplete, so the editor
+    /// asks again as the prefix grows.
+    bool more_candidates = false;
+};
+
+/// A completion's reply: the list as the client takes it, and where the
+/// `#include` goes that the items marked with their symbol need
+/// (feature::Completion).
+struct CompletionResult {
+    kota::codec::RawValue list{"null"};
+    std::optional<feature::IncludePlace> include;
 };
 
 /// Signature help over unsaved buffer content; same inputs as completion.
@@ -430,6 +445,9 @@ struct IncludeTreeResult {
 
     /// The tree, each node's file an index into `paths`.
     std::vector<index::IncludeNode> nodes;
+
+    /// The places the run's failed lookups looked that held no file.
+    std::vector<std::string> absent;
 };
 
 /// Request the document links of an open file's AST. Only the main-file
@@ -581,7 +599,7 @@ struct RequestTraits<clice::worker::IncludeTreeParams> {
 
 template <>
 struct RequestTraits<clice::worker::CompletionParams> {
-    using Result = kota::codec::RawValue;
+    using Result = clice::worker::CompletionResult;
     constexpr inline static std::string_view method = "clice/worker/completion";
 };
 

@@ -32,7 +32,7 @@
             "completion": {
               "items": [
                 {
-                  "label": "base_field",
+                  "label": "derived_field",
                   "kind": "Field",
                   "detail": "int"
                 },
@@ -42,7 +42,7 @@
                   "detail": "int"
                 },
                 {
-                  "label": "derived_field",
+                  "label": "base_field",
                   "kind": "Field",
                   "detail": "int"
                 }

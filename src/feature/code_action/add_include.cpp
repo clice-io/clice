@@ -316,6 +316,70 @@ IncludeInsertion include_insertion(CompilationUnitRef unit) {
     return {.offset = after_leading_comments(content, unit.lang_options())};
 }
 
+std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions& options) {
+    std::uint32_t anchor = 0;
+    bool fragment = false;
+    bool declared = false;
+    // An import inside a conditional block moves the anchor past the block:
+    // the next one would be as conditional.
+    std::uint32_t depth = 0;
+    bool held = false;
+    Lexer lexer(content, {.lang_opts = &options});
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        // The lexer ends a module declaration's line as it ends a directive.
+        if(token.is_eod()) {
+            continue;
+        }
+        if(token.is_directive_hash()) {
+            auto keyword = lexer.advance();
+            auto name = keyword.text(content);
+            auto next = keyword;
+            while(!next.is_eod() && !next.is_eof()) {
+                next = lexer.advance();
+            }
+            auto end = line_end(content, next.range.begin);
+            if(name == "if" || name == "ifdef" || name == "ifndef") {
+                depth += 1;
+            } else if(name == "endif" && depth > 0) {
+                depth -= 1;
+                if(depth == 0 && held) {
+                    anchor = end;
+                    held = false;
+                }
+            }
+            // A module unit's directives before its declaration are in its
+            // global module fragment, where no import may go.
+            if(!fragment && !declared) {
+                anchor = end;
+            }
+            continue;
+        }
+        auto text = token.text(content);
+        if(text == "export") {
+            token = lexer.advance();
+            text = token.text(content);
+        }
+        if(text != "module" && text != "import") {
+            break;
+        }
+        auto next = lexer.advance();
+        if(text == "module" && next.kind == clang::tok::semi) {
+            fragment = true;
+            continue;
+        }
+        while(next.kind != clang::tok::semi && !next.is_eof()) {
+            next = lexer.advance();
+        }
+        declared |= text == "module";
+        if(depth > 0) {
+            held = true;
+        } else {
+            anchor = line_end(content, next.range.end);
+        }
+    }
+    return anchor;
+}
+
 void add_include(CompilationUnitRef unit,
                  LocalSourceRange selection,
                  std::vector<CodeAction>& out) {

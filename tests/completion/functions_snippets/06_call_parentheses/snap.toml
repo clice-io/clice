@@ -1,6 +1,6 @@
 [default.bare.completion]
 items = [
-    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
+    { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute(${1:int x})", snippet = true },
 ]
 
 [default.followed.completion]
@@ -18,22 +18,22 @@ items = [
     { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
 ]
 
-[configured.bare.completion]
+[delimiters.bare.completion]
 items = [
     { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute($0)", snippet = true },
 ]
 
-[configured.followed.completion]
+[delimiters.followed.completion]
 items = [
     { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
 ]
 
-[configured.template_arguments.completion]
+[delimiters.template_arguments.completion]
 items = [
     { label = "convert(T value)", kind = "Function", detail = "int", insert = "convert" },
 ]
 
-[configured.using_declaration.completion]
+[delimiters.using_declaration.completion]
 items = [
     { label = "compute(int x)", kind = "Function", detail = "int", insert = "compute" },
 ]

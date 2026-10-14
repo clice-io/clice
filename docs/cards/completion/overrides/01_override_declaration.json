@@ -4,7 +4,7 @@
   "subtopic": "overrides",
   "title": "Override declarations",
   "summary": "Inside a derived class, a base class's virtual function completes as a whole override declaration, return type and `override` included",
-  "prose": "Inside the override, the name completes as itself, not as a call of the base version.",
+  "prose": "Inside the override, the name completes as a call, not as another declaration.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -56,7 +56,8 @@
                   "label": "draw(int x, int y) const",
                   "kind": "Method",
                   "detail": "int",
-                  "insert": "draw"
+                  "insert": "draw(${1:int x}, ${2:int y})",
+                  "snippet": true
                 }
               ]
             }

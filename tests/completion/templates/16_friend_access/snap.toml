@@ -1,31 +1,31 @@
 [answers.defined_inside.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.defined_outside.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.friend_class.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.friend_template.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.friend_specialization.completion]
 items = [
-    { label = "template", kind = "Keyword" },
     { label = "value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
 ]
 
 [answers.not_a_friend.completion]

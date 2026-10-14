@@ -266,11 +266,13 @@ ZEST_CASE(BornValidDefaults) {
     ZEXPECT(config.inlay_hints.block_end.value == false);
     ZEXPECT(config.inlay_hints.default_arguments.value == false);
     ZEXPECT(config.inlay_hints.max_length.types.value == 32u);
-    ZEXPECT(config.code_completion.enable_keyword_snippet.value == false);
-    ZEXPECT(config.code_completion.enable_function_arguments_snippet.value == false);
-    ZEXPECT(config.code_completion.enable_template_arguments_snippet.value == false);
-    ZEXPECT(config.code_completion.insert_paren_in_function_call.value == false);
+    ZEXPECT(config.code_completion.arguments == "placeholders");
     ZEXPECT(config.code_completion.bundle_overloads.value == true);
+    ZEXPECT(config.code_completion.statement_snippets.value == false);
+    ZEXPECT(config.code_completion.dot_to_arrow.value == true);
+    ZEXPECT(config.code_completion.all_scopes.value == true);
+    ZEXPECT(config.code_completion.insert_includes.value == true);
+    ZEXPECT(config.code_completion.insert_imports.value == true);
     ZEXPECT(config.code_completion.limit.value == 0u);
 }
 
@@ -886,7 +888,7 @@ bundle_overloads = false
     ZEXPECT(config.code_completion.limit.value == 5u);
     // Named by nobody: field-initializer defaults.
     ZEXPECT(config.inlay_hints.deduced_types.value == true);
-    ZEXPECT(config.code_completion.insert_paren_in_function_call.value == false);
+    ZEXPECT(config.code_completion.arguments == "placeholders");
 }
 
 ZEST_CASE(InitOptionsOverlayRulesReplace) {

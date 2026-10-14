@@ -82,11 +82,13 @@
             "$ref": "#/$defs/CodeCompletionOptions",
             "description": "The [code_completion] section: code completion options.",
             "default": {
-                "enable_keyword_snippet": false,
-                "enable_function_arguments_snippet": false,
-                "enable_template_arguments_snippet": false,
-                "insert_paren_in_function_call": false,
+                "arguments": "placeholders",
                 "bundle_overloads": true,
+                "statement_snippets": false,
+                "dot_to_arrow": true,
+                "all_scopes": true,
+                "insert_includes": true,
+                "insert_imports": true,
                 "limit": 0
             }
         },
@@ -369,29 +371,44 @@
         "CodeCompletionOptions": {
             "type": "object",
             "properties": {
-                "enable_keyword_snippet": {
-                    "type": "boolean",
-                    "description": "Complete statements such as `if` and `for` as snippets with placeholders for their parts; otherwise only the keyword is inserted. Ignored for clients without snippet support.",
-                    "default": false
-                },
-                "enable_function_arguments_snippet": {
-                    "type": "boolean",
-                    "description": "Insert function arguments as a snippet when completing a call. For functions this applies to individually listed overloads, so it requires `bundle_overloads = false`; function-like macros have no overload sets and always take the snippet. Ignored for clients without snippet support.",
-                    "default": false
-                },
-                "enable_template_arguments_snippet": {
-                    "type": "boolean",
-                    "description": "Insert template arguments as a snippet when completing a class, alias or variable template. Ignored for clients without snippet support.",
-                    "default": false
-                },
-                "insert_paren_in_function_call": {
-                    "type": "boolean",
-                    "description": "Insert parentheses when completing a function call, unless the name is already followed by one; with snippet support the cursor lands between them.",
-                    "default": false
+                "arguments": {
+                    "type": "string",
+                    "enum": [
+                        "placeholders",
+                        "delimiters",
+                        "none"
+                    ],
+                    "description": "What completing a call or a template inserts after the name: \"placeholders\" its parentheses or angle brackets with a placeholder per parameter, \"delimiters\" the empty parentheses or brackets with the cursor between them, \"none\" the name alone. It applies to functions, function-like macros, variables holding a lambda and class, alias and variable templates; an overload set listed as one item takes the delimiters. Nothing is added where the arguments are written already or the name is not called, as when taking a function's address. Clients without snippet support get the parentheses of a call alone.",
+                    "default": "placeholders"
                 },
                 "bundle_overloads": {
                     "type": "boolean",
                     "description": "Collapse an overload set into a single completion item.",
+                    "default": true
+                },
+                "statement_snippets": {
+                    "type": "boolean",
+                    "description": "Complete statements such as `if` and `for` as snippets with placeholders for their parts; otherwise only the keyword is inserted. Ignored for clients without snippet support.",
+                    "default": false
+                },
+                "dot_to_arrow": {
+                    "type": "boolean",
+                    "description": "After `.` on a pointer, list the members `->` reaches and turn the `.` into `->` when one is chosen.",
+                    "default": true
+                },
+                "all_scopes": {
+                    "type": "boolean",
+                    "description": "Where an unqualified name is being typed, also offer the project's names of other namespaces it matches, inserting the qualifier they need; one in several namespaces is offered once per namespace. Names the file reaches already are offered as they are; for the others see `insert_includes` and `insert_imports`. Needs the index for names the file does not reach.",
+                    "default": true
+                },
+                "insert_includes": {
+                    "type": "boolean",
+                    "description": "With `all_scopes`, also offer names declared in headers the file does not include yet, adding the `#include` of the header that declares them.",
+                    "default": true
+                },
+                "insert_imports": {
+                    "type": "boolean",
+                    "description": "With `all_scopes`, also offer names exported by modules the file does not import yet, adding the `import`.",
                     "default": true
                 },
                 "limit": {

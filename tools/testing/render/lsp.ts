@@ -366,6 +366,14 @@ export function completion(
                         ? { path, range: edit.insert }
                         : undefined,
                 sortText: item.sortText ?? "",
+                documentation:
+                    typeof item.documentation === "string"
+                        ? item.documentation
+                        : item.documentation?.value,
+                edits: item.additionalTextEdits?.map((extra) => ({
+                    at: { path, range: extra.range },
+                    text: extra.newText,
+                })),
             };
         }),
     };

@@ -1,0 +1,24 @@
+[answers.lambda.completion]
+items = [
+    { label = "on_exit(int status)", kind = "Variable", detail = "int", insert = "on_exit(${1:int status})", snippet = true },
+]
+
+[answers.result_expected.completion]
+items = [
+    { label = "on_exit(int status)", kind = "Variable", detail = "int", insert = "on_exit(${1:int status})", snippet = true },
+]
+
+[answers.result_converted.completion]
+items = [
+    { label = "on_exit(int status)", kind = "Variable", detail = "int", insert = "on_exit(${1:int status})", snippet = true },
+]
+
+[answers.lambda_expected.completion]
+items = [
+    { label = "on_exit(int status)", kind = "Variable", detail = "int", insert = "on_exit" },
+]
+
+[answers.function_expected.completion]
+items = [
+    { label = "on_event(int id)", kind = "Function", detail = "void", insert = "on_event" },
+]

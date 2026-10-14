@@ -1,0 +1,13 @@
+[answers.pointer.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.iterator.completion]
+items = [
+    { label = "count", kind = "Field", detail = "int" },
+    { label = "inner", kind = "Field", detail = "T" },
+    { label = "template", kind = "Keyword" },
+]

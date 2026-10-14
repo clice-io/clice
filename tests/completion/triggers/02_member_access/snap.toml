@@ -1,13 +1,13 @@
 [answers.arrow.completion]
 items = [
-    { label = "count", kind = "Variable", detail = "int" },
     { label = "member", kind = "Field", detail = "int" },
+    { label = "count", kind = "Variable", detail = "int" },
 ]
 
 [answers.dot.completion]
 items = [
-    { label = "count", kind = "Variable", detail = "int" },
     { label = "member", kind = "Field", detail = "int" },
+    { label = "count", kind = "Variable", detail = "int" },
 ]
 
 [answers.scope.completion]
@@ -15,6 +15,6 @@ items = [
     { label = "Widget", kind = "Class" },
     { label = "count", kind = "Variable", detail = "int" },
     { label = "member", kind = "Field", detail = "int" },
-    { label = "operator=(…) +2 overloads", kind = "Method" },
+    { label = "operator=(…) +1 overload", kind = "Method" },
     { label = "~Widget()", kind = "Method", detail = "void" },
 ]

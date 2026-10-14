@@ -1,0 +1,191 @@
+{
+  "id": "completion/include_path_completion/09_header_order",
+  "topic": "completion",
+  "subtopic": "include_path_completion",
+  "title": "Nearest headers first",
+  "summary": "Header names list the includer's directory first, then the quoted include directories, the others in order, the system's last",
+  "prose": "",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "hdrorder_tools.h",
+      "text": "",
+      "markers": []
+    },
+    {
+      "path": "inc/hdrorder_shapes.h",
+      "text": "",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"hdrorder\"\n#include <hdrorder>\n",
+      "markers": [
+        {
+          "name": "quoted",
+          "begin": 18,
+          "end": 18,
+          "range": false
+        },
+        {
+          "name": "angled",
+          "begin": 38,
+          "end": 38,
+          "range": false
+        }
+      ]
+    },
+    {
+      "path": "quote/hdrorder_widgets.h",
+      "text": "",
+      "markers": []
+    },
+    {
+      "path": "sys/hdrorder_alloc.h",
+      "text": "",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "quoted",
+          "marker": "quoted",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "hdrorder_tools.h",
+                  "kind": "File",
+                  "insert": "hdrorder_tools.h\"",
+                  "replace": {
+                    "$place": "#include \"⟦hdrorder\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 19
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "hdrorder_widgets.h",
+                  "kind": "File",
+                  "insert": "hdrorder_widgets.h\"",
+                  "replace": {
+                    "$place": "#include \"⟦hdrorder\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 19
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "hdrorder_shapes.h",
+                  "kind": "File",
+                  "insert": "hdrorder_shapes.h\"",
+                  "replace": {
+                    "$place": "#include \"⟦hdrorder\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 19
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "hdrorder_alloc.h",
+                  "kind": "File",
+                  "insert": "hdrorder_alloc.h\"",
+                  "replace": {
+                    "$place": "#include \"⟦hdrorder\"⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 19
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "label": "angled",
+          "marker": "angled",
+          "value": {
+            "completion": {
+              "items": [
+                {
+                  "label": "hdrorder_shapes.h",
+                  "kind": "File",
+                  "insert": "hdrorder_shapes.h>",
+                  "replace": {
+                    "$place": "#include <⟦hdrorder>⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 19
+                      }
+                    }
+                  }
+                },
+                {
+                  "label": "hdrorder_alloc.h",
+                  "kind": "File",
+                  "insert": "hdrorder_alloc.h>",
+                  "replace": {
+                    "$place": "#include <⟦hdrorder>⟧",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 10
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 19
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
