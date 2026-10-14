@@ -119,9 +119,8 @@ to the critical path (preamble indexing).
 - **Idle machine.** No concurrent builds. On WSL2 specifically, do not run
   ninja alongside a benchmark: page-cache-sensitive numbers wobble because
   WSL2 reclaims mmap'd cache aggressively.
-- **One variable at a time.** The pipeline stages and the A/B knobs
-  (token collection, PCH on/off) exist so a comparison changes exactly one
-  thing.
+- **One variable at a time.** The pipeline stages and the PCH on/off knob
+  exist so a comparison changes exactly one thing.
 
 ## Reference numbers
 

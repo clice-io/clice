@@ -479,9 +479,8 @@ extern "C++" int main(int argc, const char** argv) {
     }
     std::println("Profiling {} file(s), {} run(s) per stage\n", files.size(), runs);
 
-    std::println("  {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>8}  file",
+    std::println("  {:>7} {:>7} {:>7} {:>7} {:>7} {:>8}  file",
                  "pp",
-                 "pp+tok",
                  "parse",
                  "index",
                  "pch",
