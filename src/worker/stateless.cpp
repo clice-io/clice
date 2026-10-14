@@ -457,7 +457,11 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
     CompilationParams cp;
     cp.kind = CompilationKind::Completion;
     fill_args(cp, params.directory, params.arguments);
-    use_artifacts(cp, params.pch, params.pcms);
+    // Clang does not read again the part of the file the PCH stands in for:
+    // a point there is completed without it.
+    use_artifacts(cp,
+                  params.offset <= params.pch.second ? decltype(params.pch){} : params.pch,
+                  params.pcms);
     cp.add_remapped_file(params.file, params.text);
     cp.add_synthesized(params.synthesized);
     cp.completion = {params.file, params.offset};
