@@ -956,6 +956,7 @@ ZEST_CASE(DependentOperatorUnreferenced) {
 }
 
 ZEST_CASE(PastedFragmentUses) {
+    kind = CompilationKind::Whole;
     add_file("kinds.inc", "KIND(red)\nKIND(green)\n");
     add_file("decls.inc", "int helper();\nint value = helper();\n");
     add_file("take.h", "constexpr int fallback = 1;\nint take(int x = fallback);\n");
@@ -1051,6 +1052,7 @@ ZEST_CASE(InternalPartitionName) {
 }
 
 ZEST_CASE(ImportedDeclarationsSkipped) {
+    kind = CompilationKind::Whole;
     add_files("main.cpp", R"(
 #[widget.h]
 struct Widget {
@@ -1257,6 +1259,7 @@ ZEST_CASE(SpelledInMacroRedeclarations) {
 }
 
 ZEST_CASE(CrossFileHeaderIndex) {
+    kind = CompilationKind::Whole;
     add_file("header.h", R"(
             #pragma once
             int §(hdr_func)⟦§(hdr_func)helper⟧();
@@ -1307,6 +1310,7 @@ ZEST_CASE(CrossFileHeaderIndex) {
 }
 
 ZEST_CASE(KnownVariantsSkipped) {
+    kind = CompilationKind::Whole;
     add_file("header.h", R"(
             #pragma once
             int only_in_header(int parameter);
@@ -1746,7 +1750,7 @@ ZEST_CASE(CanonicalFile) {
         int main_only();
     )");
     ZASSERT(compile());
-    decode_index(index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit, {.all_files = true}));
 
     auto main_path = tu_index.view.path_count() - 1;
     auto header_path = [&] {
@@ -1771,7 +1775,7 @@ ZEST_CASE(CanonicalFile) {
     ZASSERT(defined.file == header_path);
     ZASSERT(has(defined, index::SymbolFlags::Completable));
 
-    // A main-file-only build keeps no header entries: a symbol the main file
+    // A focus-only build keeps no header entries: a symbol the main file
     // merely uses has no declaring entry at all.
     decode_index(index::build_tu_index(*unit));
     auto used = symbol_named("header_only").second;
@@ -1799,7 +1803,7 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
     // A full build keeps the preamble entries: this proves the entry exists
     // (so the gate test below cannot pass vacuously) and that the loaded
     // fid resolves through the graph to the header's path.
-    decode_index(index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit, {.all_files = true}));
     bool found = false;
     for(auto& [path_id, index]: tu_index.file_indices) {
         found |= tu_index.view.path(path_id).ends_with("foo.h");
@@ -1831,7 +1835,7 @@ Derived* use();
 
     // Full build: the base-specifier entries end up in the preamble header
     // and its loaded fid resolves to the header's path.
-    decode_index(index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit, {.all_files = true}));
     bool found = false;
     for(auto& [path_id, index]: tu_index.file_indices) {
         found |= tu_index.view.path(path_id).ends_with("bar.h");
@@ -2144,6 +2148,8 @@ ZEST_CASE(ClassParametersStayUnbound) {
                                        {"copy", SymbolKind::Variable, {RelationKind::Definition}},
                                        {"T",    SymbolKind::Type,     {RelationKind::Reference} },
     });
+    kind = CompilationKind::Whole;
+    ZASSERT(compile());
     decode_index(index::build_tu_index(*unit));
     ZEXPECT(spelled_in("local") == std::vector<Spelled>{
                                        {"auto", SymbolKind::Type,     {RelationKind::Deduced}   },
@@ -2450,6 +2456,7 @@ ZEST_CASE(SynthesizedCallsKeepRelations) {
 }
 
 ZEST_CASE(TUIndexSections) {
+    kind = CompilationKind::Whole;
     add_file("header.h", R"(
             #pragma once
             inline int §(hdr)helper() { return 1; }

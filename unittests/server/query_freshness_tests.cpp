@@ -118,6 +118,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
             return §(use)helper();
         }
     )");
+    kind = CompilationKind::Whole;
     ZASSERT(compile());
     merge_into_workspace();
 
@@ -165,6 +166,7 @@ ZEST_CASE(DeletedFileWithdrawsIndex) {
         int helper() { return 1; }
         int use() { return §(use)helper(); }
     )");
+    kind = CompilationKind::Whole;
     ZASSERT(compile());
     merge_into_workspace();
     auto hash = symbol_at(main_id, point("use"));

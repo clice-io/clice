@@ -67,6 +67,7 @@ ZEST_CASE(MergeCollectsExternalSymbols) {
         static int local_fn() { return 1; }
         int use() { return external_fn() + local_fn(); }
     )");
+    kind = CompilationKind::Whole;
     ZASSERT(compile());
 
     clice::FileTable pool;
@@ -92,6 +93,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
         #include "shared.h"
         int use() { return lib::shared_fn(); }
     )");
+    kind = CompilationKind::Whole;
     ZASSERT(compile());
 
     clice::FileTable pool;
@@ -122,6 +124,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
         #include "shared.h"
         [[deprecated]] int lib::shared_fn() { return 1; }
     )");
+    definer.kind = CompilationKind::Whole;
     ZASSERT(definer.compile());
     std::string definer_bytes = index::build_tu_index(*definer.unit);
     auto definer_view = index::TUIndex::from_bytes(definer_bytes);
@@ -148,6 +151,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
         #include "shared.h"
         int lib::shared_fn() { return 2; }
     )");
+    mover.kind = CompilationKind::Whole;
     ZASSERT(mover.compile());
     std::string mover_bytes = index::build_tu_index(*mover.unit);
     auto mover_view = index::TUIndex::from_bytes(mover_bytes);
@@ -283,6 +287,7 @@ ZEST_CASE(GlobalRoundTripWithRealMerge) {
         int global_value = 42;
         int reader() { return global_value; }
     )");
+    kind = CompilationKind::Whole;
     ZASSERT(compile());
 
     clice::FileTable pool;

@@ -89,7 +89,11 @@ std::vector<index::IndexQuery::Located> locate(llvm::StringRef text) {
     return query.locate(*index::SymbolQuery::parse(text));
 }
 
-void merge_into_workspace() {
+/// Compile the added sources as the background index does and merge the
+/// unit's index.
+void index_workspace() {
+    kind = CompilationKind::Whole;
+    ZASSERT(compile());
     merge_unit(project, *unit, main_id);
     if(auto header = project.file_table.find(Spelling::absolute(TestVFS::path("header.h")))) {
         header_id = *header;
@@ -104,8 +108,7 @@ ZEST_CASE(DefinitionAcrossFiles) {
         #include "header.h"
         §(use)⟦§(use)Widget⟧ instance;
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto hit_offset = point("use");
     index::SymbolHash symbol = 0;
@@ -128,8 +131,7 @@ ZEST_CASE(ReferencesAcrossFiles) {
         #include "header.h"
         int call() { return §(use)⟦§(use)shared_fn⟧(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     index::SymbolHash symbol = 0;
     project.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
@@ -149,8 +151,7 @@ ZEST_CASE(LocalReferencesClosed) {
             return §(use)q + p;
         }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     for(auto [marker, expected]: {
             std::pair{"use",   2U},
@@ -170,8 +171,7 @@ ZEST_CASE(HighlightsClosedFile) {
             return §(read)⟦§(read)count⟧;
         }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto cursor = query.symbol_at(main_id, point("read"));
     ZASSERT(cursor);
@@ -194,8 +194,7 @@ ZEST_CASE(InternalAcrossFiles) {
         #include "header.h"
         int call() { return §(main_use)helper(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto from_main = query.symbol_at(main_id, point("main_use"));
     auto from_header = query.symbol_at(header_id, point("def", "header.h"));
@@ -221,8 +220,7 @@ ZEST_CASE(InternalTypeTarget) {
         #include "header.h"
         int read() { auto [§(var)point, count] = make(); return point.x + count; }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto cursor = query.symbol_at(main_id, point("var"));
     ZASSERT(cursor);
@@ -238,8 +236,7 @@ ZEST_CASE(InternalAcrossUnits) {
         #include "header.h"
         int a() { return §(use)helper(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
     auto a_id = main_id;
     auto a_use = point("use");
 
@@ -249,8 +246,7 @@ ZEST_CASE(InternalAcrossUnits) {
         #include "header.h"
         int b() { return helper(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto cursor = query.symbol_at(a_id, a_use);
     ZASSERT(cursor);
@@ -263,8 +259,7 @@ ZEST_CASE(OverloadSetCursor) {
         void §(double)take(double);
         template <class T> void call(T t) { §(use)take(t); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto cursor = query.symbol_at(main_id, point("use"));
     ZASSERT(cursor);
@@ -281,8 +276,7 @@ ZEST_CASE(SearchSymbols) {
         struct Searchable { int field; };
         Searchable instance;
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto results = search("Searchable");
     ZASSERT(!results.empty());
@@ -299,8 +293,7 @@ ZEST_CASE(UnnamedScopes) {
             typedef struct { int §(field)⟦§(field)field⟧; } Point;
         }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto at = [&](llvm::StringRef name) {
         index::SymbolHash found = 0;
@@ -330,8 +323,7 @@ ZEST_CASE(QualifiedNames) {
         } }
         template <typename T> void outer::inner::Widget<T>::paint() {}
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     index::SymbolHash method = 0;
     project.project_index.shards[main_id].lookup(point("method"), [&](const index::Occurrence& o) {
@@ -399,8 +391,7 @@ ZEST_CASE(LocalsAndCursors) {
         static void helper() {}
         void use() { helper(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     // A callable's locals are no search target, whatever its kind.
     ZASSERT(search("hidden").empty());
@@ -426,8 +417,7 @@ ZEST_CASE(LocalSymbolName) {
         static int §(local)⟦§(local)hidden⟧() { return 1; }
         int use() { return hidden(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     index::SymbolHash symbol = 0;
     project.project_index.shards[main_id].lookup(point("local"), [&](const index::Occurrence& o) {
@@ -449,8 +439,7 @@ ZEST_CASE(LocalsByPath) {
         static void helper(int hidden) {}
         void use() { helper(1); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     ZASSERT(search("hidden").empty());
     ZASSERT(search("hidden path:main.cpp").size() == 2U);
@@ -468,8 +457,7 @@ ZEST_CASE(LocateEveryExactMatch) {
         source += std::format("namespace n{} {{ int value; }}\n", i);
     }
     add_main("main.cpp", source);
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     ZEXPECT(locate("value").size() == 70U);
 }
@@ -482,8 +470,7 @@ ZEST_CASE(OpenSessionServedByShard) {
         #include "header.h"
         §(use)⟦§(use)Widget⟧ instance;
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     // Open the document with exactly the indexed content and never
     // compile it: freshness clause 4 serves it from its shard.
@@ -503,8 +490,7 @@ ZEST_CASE(DivergedBufferWithdrawsShard) {
         int stale_fn() { return 1; }
         int use() { return §(use)⟦§(use)stale_fn⟧(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     auto session = store.open(main_id);
     auto edited = unit->focus_file().content().str() + "// edited\n";
@@ -528,8 +514,7 @@ ZEST_CASE(HeaderEdgesFromHostManifest) {
         #include "header.h"
         Widget instance;
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     // The header has no manifest of its own; its directive is a node of
     // the host TU's manifest hanging off the header's node.
@@ -552,8 +537,7 @@ ZEST_CASE(StaleContributionSuppressed) {
         int stale_fn() { return 1; }
         int use() { return §(use)⟦§(use)stale_fn⟧(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     index::SymbolHash symbol = 0;
     project.project_index.shards[main_id].lookup(point("use"), [&](const index::Occurrence& o) {
@@ -578,8 +562,7 @@ ZEST_CASE(ClassNameOverConstructor) {
         };
         }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     for(auto name: {"Widget", "outer::Widget"}) {
         auto results = locate(name);
@@ -597,8 +580,7 @@ ZEST_CASE(UndefinedBesideStaleUse) {
         #include "header.h"
         int use() { return external(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     // A file using the symbol moved on; nothing defines the symbol, so the
     // declaration still places it.
@@ -617,8 +599,7 @@ ZEST_CASE(DeletedDefinitionFallsBack) {
         #include "header.h"
         int removed() { return 0; }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
 
     clear();
     add_file("header.h", header);
@@ -626,8 +607,7 @@ ZEST_CASE(DeletedDefinitionFallsBack) {
         #include "header.h"
         int use() { return removed(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
     auto use_id = main_id;
 
     // The table keeps the definition the first unit reported; the shards
@@ -639,8 +619,7 @@ ZEST_CASE(DeletedDefinitionFallsBack) {
         #include "header.h"
         int kept() { return removed(); }
     )");
-    ZASSERT(compile());
-    merge_into_workspace();
+    index_workspace();
     project.file_table.observe(use_id, DiskObservation{.hash = 1});
 
     auto results = search("removed");

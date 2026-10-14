@@ -276,7 +276,7 @@ public:
     /// file of its expansion record.
     auto file_id(clang::SourceLocation location) -> clang::FileID;
 
-    /// Where the token at `location` is written. Of `#define CALL(f) f(1)`
+    /// Where the token at `location` is written. Of `#define CALL(f) f(1) + 0`
     /// and `CALL(helper);`, `helper` is written in the argument and `(1)`
     /// in the `#define`; a token a `##` pasted, in the scratch buffer.
     auto written_at(clang::SourceLocation location) -> FileOffset;
@@ -288,13 +288,13 @@ public:
     auto seen_at(clang::SourceLocation location) -> FileOffset;
 
     /// Where the macro invocation that produced `location` starts, the
-    /// location itself outside macros: all of `helper(1)` at `CALL`.
+    /// location itself outside macros: all of `helper(1) + 0` at `CALL`.
     auto produced_at(clang::SourceLocation location) -> FileOffset;
 
     /// The text `range` was written as, token for token: a macro argument
     /// its tokens, a whole expansion the invocation; none when the range
-    /// takes in part of a macro's own tokens (`helper(1)` above) or runs
-    /// across files. In the focus file it is read off the tokens a Content
+    /// takes in only part of a macro's own tokens (`helper(1)` above) or
+    /// runs across files. In the focus file it is read off the tokens a Content
     /// compile collects, elsewhere off clang's own mapping.
     auto written_range(clang::SourceRange range) -> std::optional<FileRange>;
 

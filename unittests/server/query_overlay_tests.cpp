@@ -55,9 +55,10 @@ std::string main_path;
 
 /// Compile the added sources, persist the preamble index (exactly what
 /// the PCH build produces), and open a session whose pch_key points at
-/// it. The session's own index is the main-file-only TU index, mirroring
-/// the production per-edit index.
+/// it. The session's own index is the focus file's TU index of an open
+/// file's compile, mirroring the production per-edit index.
 void open_with_overlay(std::source_location location = std::source_location::current()) {
+    kind = CompilationKind::Whole;
     ZASSERT(compile());
 
     full_index = index::TUIndex::from_buffer(
@@ -66,6 +67,9 @@ void open_with_overlay(std::source_location location = std::source_location::cur
 
     auto blob_path = dir.path("overlay.pch.idx");
     dir.touch("overlay.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));
+
+    kind = CompilationKind::Content;
+    ZASSERT(compile());
 
     auto& st = project.pch_cache["key"];
     st.path = "unused.pch";

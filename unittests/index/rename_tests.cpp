@@ -42,9 +42,11 @@ std::string file(llvm::StringRef name) {
     return CanonicalPath(Spelling::absolute(dir.path(name))).str();
 }
 
-/// Compile the added sources as one unit, merge its index, and put its
-/// files on disk with the text the index read.
+/// Compile the added sources as one unit, as the background index does,
+/// merge its index, and put its files on disk with the text the index
+/// read.
 void merge() {
+    kind = CompilationKind::Whole;
     ZASSERT(compile());
     merge_unit(project, *unit, main_id);
     for(auto& entry: sources.all_files) {

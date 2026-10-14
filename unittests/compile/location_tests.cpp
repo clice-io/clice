@@ -25,31 +25,35 @@ const clang::VarDecl* variable(llvm::StringRef name) {
 
 ZEST_CASE(MacroArgumentAndBody) {
     add_main("main.cpp", R"cpp(
-#define CALL(f) f(§(one)1)
+#define CALL(f) f(§(one)1) + 0
 int helper(int);
 int x = §(call)⟦CALL(§(arg)⟦helper⟧)⟧;
 )cpp");
     ZASSERT(compile());
     const auto* var = variable("x");
     ZASSERT(var);
-    const auto* call = llvm::dyn_cast<clang::CallExpr>(var->getInit()->IgnoreImplicit());
+    const auto* sum = llvm::dyn_cast<clang::BinaryOperator>(var->getInit()->IgnoreImplicit());
+    ZASSERT(sum);
+    const auto* call = llvm::dyn_cast<clang::CallExpr>(sum->getLHS()->IgnoreImplicit());
     ZASSERT(call);
     const auto* callee = call->getCallee()->IgnoreImplicit();
     const auto* one = call->getArg(0);
     auto focus = unit->focus_file();
 
-    // `helper(1)` takes half its tokens from the argument, half from the
-    // macro's own body: no text was written as it.
+    // `helper(1)` takes its name from the argument and the rest from part
+    // of the macro's own body: no text was written as it. The whole
+    // expansion was written as the invocation.
     ZEXPECT(!focus.written_range(call->getSourceRange()));
     ZEXPECT(focus.produced_range(call->getSourceRange()) == range("call"));
+    ZEXPECT(focus.written_range(sum->getSourceRange()) == range("call"));
 
     ZEXPECT(focus.written_range(callee->getSourceRange()) == range("arg"));
     ZEXPECT(focus.produced_range(callee->getSourceRange()) == range("call"));
     ZEXPECT(focus.offset(callee->getBeginLoc()) == range("arg").begin);
-    ZEXPECT(unit->produced_at(callee->getBeginLoc()).offset == point("call"));
+    ZEXPECT(unit->produced_at(callee->getBeginLoc()).offset == range("call").begin);
 
     ZEXPECT(unit->written_at(one->getBeginLoc()).offset == point("one"));
-    ZEXPECT(focus.offset(one->getBeginLoc()) == point("call"));
+    ZEXPECT(focus.offset(one->getBeginLoc()) == range("call").begin);
 }
 
 ZEST_CASE(SplitAngleBrackets) {
