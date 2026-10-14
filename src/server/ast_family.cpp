@@ -760,12 +760,17 @@ kota::task<bool> ASTFamily::fetch_include_tree(Fid host) {
     for(auto& node: tree.nodes) {
         node.file = versions[node.file].raw;
     }
+    std::vector<VersionID> absent;
+    for(auto& place: tree.absent) {
+        absent.push_back(files.intern_version(files.intern(Spelling::absolute(place)), 0));
+    }
     // The tree can move the host's contexts: the listings it changes are
     // stale.
     project.context_epoch += 1;
     project.include_trees[host] = {
         .root = versions.back(),
         .nodes = std::move(tree.nodes),
+        .absent = std::move(absent),
         .commands_epoch = started.first,
         .last_run = {started.first, started.second + 1},
     };
