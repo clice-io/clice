@@ -9,7 +9,6 @@ module clice;
 
 import :command.argument_parser;
 import :compile.compilation;
-import :compile.tidy;
 import :config.config;
 import :index.database;
 import :index.manifest;

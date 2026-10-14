@@ -5,7 +5,7 @@ module;
 module clice:project.project;
 
 import :command.command;
-import :compile.dep_file;
+import :compile.compilation;
 import :config.config;
 import :index.database;
 import :index.project_index;

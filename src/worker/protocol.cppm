@@ -4,8 +4,7 @@ module;
 
 module clice:worker.protocol;
 
-import :compile.dep_file;
-import :compile.tidy;
+import :compile.compilation;
 import :config.config;
 import :feature.feature;
 import :index.include_tree;

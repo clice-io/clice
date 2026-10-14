@@ -4,7 +4,7 @@ module;
 
 module clice:sched.families.turun;
 
-import :compile.tidy;
+import :compile.compilation;
 import :project.command_resolver;
 import :project.index_store;
 import :project.project;

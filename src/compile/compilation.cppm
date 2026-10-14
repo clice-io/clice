@@ -4,10 +4,8 @@ module;
 
 module clice:compile.compilation;
 
-import :compile.dep_file;
 import :compile.diagnostic;
 import :compile.directive;
-import :compile.tidy;
 import :compile.tokens;
 import :syntax.lexical_scan;
 import :syntax.position;
@@ -17,6 +15,68 @@ import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
+
+namespace tidy {
+
+/// The frozen clang-tidy configuration of one run. Plain data on purpose:
+/// it travels in worker requests and in the TURun family's product plan,
+/// both of which freeze it at takeoff.
+struct TidyParams {
+    /// Effective checks glob list in clang-tidy syntax; empty falls back
+    /// to the built-in default set.
+    std::string checks;
+
+    /// Check options (the .clang-tidy CheckOptions map).
+    std::vector<std::pair<std::string, std::string>> options;
+
+    /// Checks whose findings report as errors (WarningsAsErrors globs).
+    std::string warnings_as_errors;
+
+    /// Also report findings in headers matching this regex (clang-tidy's
+    /// HeaderFilterRegex; empty = main file only).
+    std::string header_filter;
+
+    /// Headers excluded from reporting even when header_filter matches
+    /// (clang-tidy's ExcludeHeaderFilterRegex).
+    std::string exclude_header_filter;
+
+    /// Also report findings in system headers.
+    bool system_headers = false;
+
+    /// What the checks take for headers and for sources by extension;
+    /// unset keeps clang-tidy's defaults.
+    std::optional<std::vector<std::string>> header_file_extensions;
+    std::optional<std::vector<std::string>> implementation_file_extensions;
+
+    /// Extra compiler args from the configuration. -W<group> flags are
+    /// consumed engine-side by apply_warning_options so the Checks gate
+    /// applies (the clangd approach, see tidy.cpp); a batch lint run
+    /// additionally applies the remaining args (command_extra_args) to
+    /// its driver command at resolution, as clang-tidy itself does. The
+    /// interactive command is never rewritten.
+    std::vector<std::string> extra_args;
+    std::vector<std::string> extra_args_before;
+};
+
+class ClangTidyChecker;
+
+}  // namespace tidy
+
+/// One compile input paired with the hash of the bytes the compiler actually
+/// consumed for it — taken from the compiler's own in-memory buffers at build
+/// time, never from a later disk read. A later disk read could describe
+/// content the build never saw (the file may change while the build runs),
+/// which would poison every staleness check built on it.
+///
+/// hash == 0 means the consumed bytes were not available for hashing; the
+/// staleness check treats such an entry conservatively (rebuild once).
+struct DepFile {
+    std::string path;
+    std::uint64_t hash = 0;
+
+    /// A place a failed lookup looked: the build saw no file there.
+    bool absent = false;
+};
 
 enum class CompilationKind : std::uint8_t {
     /// Only preprocess the source file: directives are available, AST

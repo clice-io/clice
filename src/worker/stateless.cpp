@@ -9,7 +9,6 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.tidy;
 import :feature.feature;
 import :index.include_tree;
 import :index.tu_index;
