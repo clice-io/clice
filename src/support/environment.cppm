@@ -20,9 +20,9 @@ inline std::optional<std::uint64_t> env_integer(llvm::StringRef name) {
 /// Test hook: CLICE_TEST_JITTER=<ms> makes this a random delay of up to that
 /// many milliseconds, zero while it is unset. The places that race with an
 /// editor's actions (a worker starting a request's work, a background index
-/// round starting, the disk loop's changes applied) wait it out, so a run
-/// of the cases under it meets the orders a loaded machine meets; a case
-/// whose answer changes left an order unpinned.
+/// round starting) wait it out, so a run of the cases under it meets the
+/// orders a loaded machine meets; a case whose answer changes left an order
+/// unpinned.
 inline std::chrono::milliseconds test_jitter() {
     const static auto max = env_integer("CLICE_TEST_JITTER");
     if(!max) {

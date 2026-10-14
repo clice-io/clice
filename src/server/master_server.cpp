@@ -38,11 +38,12 @@ MasterServer::MasterServer(kota::event_loop& loop,
     projects.push_back(make_project(CanonicalPath()));
     files.disk.shadow = llvm::sys::Process::GetEnv("CLICE_SHADOW_FRESHNESS").has_value();
     // A disk change can be seen deep inside any operation — a staleness
-    // check, a rescan inside a cascade: the drain runs on a later loop
-    // turn, outside it.
+    // check, a rescan inside a cascade: the drain runs on the next loop
+    // turn, outside it, before any compile that read the change can
+    // finish; a later drain would mark that compile's AST stale.
     files.disk.on_change = [this] {
         bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
-            co_await kota::sleep(test_jitter());
+            co_await kota::sleep(std::chrono::milliseconds(0));
             server.drain_disk_changes();
         }(*this));
     };
