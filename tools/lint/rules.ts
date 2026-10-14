@@ -57,6 +57,7 @@ const timers: Rule.RuleModule = {
         // imports are hoisted, so the calls are judged once all are seen.
         const imported = new Set<string>();
         const schedulers = new Set<string>();
+        const modules = new Set<string>();
         const calls: ESTree.CallExpression[] = [];
         const timer = (callee: ESTree.Node): boolean => {
             if (callee.type === "Identifier") {
@@ -73,6 +74,8 @@ const timers: Rule.RuleModule = {
                 callee.property.name === "wait" &&
                 ((object.type === "Identifier" && schedulers.has(object.name)) ||
                     (object.type === "MemberExpression" &&
+                        object.object.type === "Identifier" &&
+                        modules.has(object.object.name) &&
                         object.property.type === "Identifier" &&
                         object.property.name === "scheduler"))
             );
@@ -84,6 +87,7 @@ const timers: Rule.RuleModule = {
                 }
                 for (const specifier of node.specifiers) {
                     if (specifier.type !== "ImportSpecifier") {
+                        modules.add(specifier.local.name);
                         continue;
                     }
                     const name =

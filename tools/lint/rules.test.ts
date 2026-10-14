@@ -26,6 +26,7 @@ tester.run("timers", clice.rules.timers, {
         'import { setTimeout as delay } from "node:timers/promises";',
         'import { setTimeout as delay } from "node:timers/promises";\n' +
             "// No event: the log is read again.\nawait delay(1000);",
+        'await this.scheduler.wait("ready");',
     ],
     invalid: [
         {

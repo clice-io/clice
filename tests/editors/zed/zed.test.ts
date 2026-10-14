@@ -97,20 +97,28 @@ function readLog(): string {
     return fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
 }
 
+/// The end of Zed's log, for a failure to show where Zed stopped.
+function logTail(): string {
+    return `--- end of ${log}:\n${readLog().split("\n").slice(-80).join("\n")}`;
+}
+
 /// What `found` returns once it returns something; a `found` that throws
-/// ends the wait, and what never comes fails after STARTUP_TIMEOUT, with
-/// the end of Zed's log.
+/// ends the wait, and so does the end of `zed`. What never comes fails
+/// after STARTUP_TIMEOUT.
 /// No event: Zed announces nothing but its files, read again each second.
-async function until<T>(found: () => T | undefined, what: string): Promise<T> {
+async function until<T>(zed: ChildProcess, found: () => T | undefined, what: string): Promise<T> {
     const deadline = Date.now() + STARTUP_TIMEOUT;
     for (;;) {
         const value = found();
         if (value !== undefined) {
             return value;
         }
+        const ended = zed.exitCode ?? zed.signalCode;
+        if (ended !== null) {
+            throw new Error(`Zed ended (${ended}) before the ${what}\n${logTail()}`);
+        }
         if (Date.now() > deadline) {
-            const tail = readLog().split("\n").slice(-80).join("\n");
-            throw new Error(`no ${what} within ${STARTUP_TIMEOUT} ms\n--- end of ${log}:\n${tail}`);
+            throw new Error(`no ${what} within ${STARTUP_TIMEOUT} ms\n${logTail()}`);
         }
         await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
@@ -129,11 +137,19 @@ function cliceReady(dir: string): boolean {
 }
 
 async function stop(zed: ChildProcess): Promise<void> {
-    const exited = zed.exitCode === null ? once(zed, "exit") : Promise.resolve();
+    const exited =
+        zed.exitCode === null && zed.signalCode === null ? once(zed, "exit") : Promise.resolve();
     if (process.platform === "win32") {
         spawnSync("taskkill", ["/F", "/T", "/PID", String(zed.pid)]);
     } else {
-        process.kill(-zed.pid!, "SIGKILL");
+        try {
+            process.kill(-zed.pid!, "SIGKILL");
+        } catch (error) {
+            // ESRCH: nothing of the group Zed led is left to stop.
+            if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+                throw error;
+            }
+        }
     }
     await exited;
 }
@@ -157,6 +173,7 @@ async function indexExtensions(): Promise<void> {
     const index = path.join(data, "extensions", "index.json");
     try {
         await until(
+            zed,
             () =>
                 readLog().includes("extensions updated") &&
                 fs.existsSync(index) &&
@@ -179,23 +196,25 @@ async function startServer(dir: string, file: string, env: Record<string, string
             throw new Error(`${file}: ${failure[0]}`);
         }
     };
-    const alive = () => {
-        if (zed.exitCode !== null) {
-            throw new Error(`${file}: Zed exited with code ${zed.exitCode}`);
-        }
-        checkFailed();
-    };
     try {
-        const started = await until(() => {
-            alive();
-            return STARTED.exec(readLog())?.[1];
-        }, `start of clice for ${file}`);
+        const started = await until(
+            zed,
+            () => {
+                checkFailed();
+                return STARTED.exec(readLog())?.[1];
+            },
+            `start of clice for ${file}`,
+        );
         // The start counts once clice is ready: Zed took its answer to
         // initialize and said it was initialized.
-        await until(() => {
-            alive();
-            return cliceReady(dir) ? true : undefined;
-        }, `initialize of clice for ${file}`);
+        await until(
+            zed,
+            () => {
+                checkFailed();
+                return cliceReady(dir) ? true : undefined;
+            },
+            `initialize of clice for ${file}`,
+        );
         return fs.realpathSync.native(JSON.parse(`"${started}"`) as string);
     } finally {
         await stop(zed);
