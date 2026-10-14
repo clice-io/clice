@@ -1,0 +1,32 @@
+[answers.standard.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+std::string // aka: basic_string<char>
+```
+'''
+range = "⟦auto⟧& name = names.front();"
+
+[answers.nested.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+std::pmr::string // aka: basic_string<char, polymorphic_allocator<char>>
+```
+'''
+range = "⟦auto⟧& text = texts.front();"
+
+[answers.header_alias.hover]
+markdown = '''
+### type `auto`
+
+---
+```cpp
+__u32 // aka: unsigned int
+```
+'''
+range = "⟦auto⟧ sum = checksum();"

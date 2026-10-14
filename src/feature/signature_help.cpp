@@ -195,7 +195,7 @@ public:
         help.active_signature = 0;
 
         context = &sema.getASTContext();
-        readable.emplace(*context);
+        readable.emplace(*context, options);
         options.readable = &*readable;
         policy = display::printing_policy(*context, options);
 
@@ -408,12 +408,8 @@ private:
             }
         }
         for(auto* field: record.fields()) {
-            signature.parameter([&](llvm::raw_ostream& os) {
-                print(os, field->getType(), field->getName());
-                if(auto value = display::default_initializer(*field, options)) {
-                    os << " = " << *value;
-                }
-            });
+            signature.parameter(
+                [&](llvm::raw_ostream& os) { os << display::field(*field, options); });
         }
     }
 

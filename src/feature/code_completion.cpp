@@ -1738,12 +1738,19 @@ public:
             // Where Sema gives a parameter list and a type, they are printed
             // as every feature prints them.
             if(!readable) {
-                readable.emplace(sema.getASTContext());
+                readable.emplace(sema.getASTContext(), display_options);
                 display_options.readable = &*readable;
             }
             const auto* function = declaration->getAsFunction();
-            if(function && item.signature.starts_with("(")) {
-                item.signature = call_signature(*function, display_options);
+            if(function) {
+                // A function template whose arguments a call cannot deduce
+                // lists them first, `<typename U>(...)`.
+                auto list = item.signature.starts_with("<") ? item.signature.find(">(") + 1 : 0;
+                if(list < item.signature.size() && item.signature[list] == '(') {
+                    item.signature.replace(list,
+                                           std::string::npos,
+                                           call_signature(*function, display_options));
+                }
             }
             if(!item.return_type.empty()) {
                 clang::QualType type;
@@ -1752,6 +1759,12 @@ public:
                 } else if(item.signature.starts_with("(")) {
                     // A variable holding something called: what the call gives.
                     type = call_result(declaration);
+                } else if(const auto* enumerator =
+                              llvm::dyn_cast<clang::EnumConstantDecl>(declaration)) {
+                    // C types an enumerator `int`, as C++ does inside its
+                    // enum: its enum is what it reads as.
+                    type = sema.getASTContext().getCanonicalTagType(
+                        llvm::cast<clang::EnumDecl>(enumerator->getDeclContext()));
                 } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(declaration)) {
                     type = value->getType();
                 }

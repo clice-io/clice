@@ -1781,8 +1781,7 @@ private:
     const InlayHintsOptions& options;
 
     // The sugared type is more useful in some cases, and the canonical
-    // type in other cases. Suppress scopes to keep type names short;
-    // anonymous tag locations stay off so lambda locations don't print.
+    // type in other cases. Suppress scopes to keep type names short.
     // Not setting PrintCanonicalTypes for "auto" allows
     // SuppressDefaultTemplateArgs (set by default) to have an effect.
     display::Options display_options = {.suppress_scope = true, .clean_uglified = true};
@@ -1799,7 +1798,7 @@ private:
     /// The arrays behind std::initializer_list objects, visited after them.
     llvm::DenseSet<const clang::InitListExpr*> initializer_lists;
 
-    display::ReadableTypes readable_types{unit.context()};
+    display::ReadableTypes readable_types{unit.context(), display_options};
 };
 
 }  // namespace

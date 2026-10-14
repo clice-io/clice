@@ -1,0 +1,4 @@
+[answers.enumerator.completion]
+items = [
+    { label = "green", kind = "EnumMember", detail = "enum color" },
+]

@@ -18,11 +18,18 @@ typedef basic_string<char> string;
 template <typename T>
 struct vector {
     T& at(int __index);
+
+    template <typename U>
+    U as(const T& __value);
 };
 
 }  // namespace std
 
 std::vector<std::string> names;
+
+template <typename... Ts>
+void emit(Ts... values);
+void total(int values[4]);
 
 int x = confi§(default_argument);
 int y = printf§(variadic);
@@ -31,4 +38,6 @@ void use() {
     liste§(several_lines);
     retr§(macro_body);
     names.a§(standard_alias);
+    emi§(pack);
+    tota§(array);
 }

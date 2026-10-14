@@ -1,9 +1,9 @@
 [answers."main.cpp"]
 inlay_hints = [
-    { line = "auto& first⟨: std::string &⟩ = names.front();" },
+    { line = "auto& first⟨: string &⟩ = names.front();" },
     { line = "auto shared⟨: shared_ptr<int>⟩ = std::share_count();" },
     { line = "auto held⟨: shared_ptr<long>⟩ = std::hold_count();" },
     { line = "auto& position⟨: fpos<int> &⟩ = positions.front();" },
-    { line = "std::tuple⟨<std::string, int>⟩ both(names.front(), 1);" },
-    { line = "auto inner⟨: Outer::Inner<std::string>⟩ = inners.front();" },
+    { line = "std::tuple⟨<string, int>⟩ both(names.front(), 1);" },
+    { line = "auto inner⟨: Outer::Inner<string>⟩ = inners.front();" },
 ]

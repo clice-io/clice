@@ -1,3 +1,7 @@
+[answers.standard_bool.signature_help]
+signatures = ["toggle(⟦bool on⟧) -> int"]
+active = 0
+
 [answers.redeclared.signature_help]
 signatures = ["area(⟦int⟧, int) -> int"]
 active = 0

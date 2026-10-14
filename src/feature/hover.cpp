@@ -1625,19 +1625,19 @@ auto hover_info(CompilationUnitRef unit,
     }
 
     auto& context = unit.context();
-    display::ReadableTypes readable(unit.context());
     display::Options display_options = {
         .terse = true,
         .polish_for_declaration = true,
         .constants_as_written = true,
         .suppress_ctor_template_args = true,
         .clean_uglified = true,
-        .readable = &readable,
         .resolve_decltype = true,
         .tag_keyword_prefix = true,
         .show_aka = options.show_aka,
         .max_members = options.max_members,
     };
+    display::ReadableTypes readable(context, display_options);
+    display_options.readable = &readable;
 
     auto location = unit.create_location(unit.main_file(), offset);
     auto tokens = unit.spelled_tokens_touch(location);

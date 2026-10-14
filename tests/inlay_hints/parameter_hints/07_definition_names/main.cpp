@@ -4,8 +4,8 @@ void fill(int _value, int __count);
 
 int scale(int good);
 
-void blend(int, int);
 void blend(int alpha, int beta);
+void blend(int, int);
 
 void use() {
     resize(800, 600);

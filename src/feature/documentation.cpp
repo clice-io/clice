@@ -8,6 +8,7 @@ import :compile.compilation_unit;
 import :compile.documentation;
 import :feature.feature;
 import :index.query;
+import :semantic.display;
 import :support.markup;
 import :syntax.documentation;
 
@@ -114,9 +115,10 @@ auto documentation(const index::IndexQuery& query,
         if(const auto* param = owner.template_param(info->name)) {
             return Documentation{.brief = param->text};
         }
-        // A template parameter sits in its template's header, right under
-        // the template's comment, which documents the template alone.
-        if(own == owner) {
+        // A template parameter, which stays in its file, sits in its
+        // template's header right under the template's comment, which
+        // documents the template alone.
+        if(info->scope == index::SymbolScope::FileLocal && own == owner) {
             return {};
         }
     }
@@ -164,11 +166,11 @@ void add_details(markup::Document& output, const Documentation& documentation) {
 
 void add_summary(markup::Document& output,
                  const Documentation& documentation,
-                 const std::optional<std::string>& attribute) {
+                 std::optional<llvm::StringRef> attribute) {
     if(attribute || documentation.deprecated) {
         auto& paragraph = output.add_paragraph().append_text("Deprecated");
         if(attribute && !attribute->empty()) {
-            paragraph.append_text(": " + *attribute);
+            paragraph.append_text(": " + attribute->str());
         } else if(documentation.deprecated && !documentation.deprecated->empty()) {
             paragraph.append_text(": ").append_markdown(*documentation.deprecated);
         }

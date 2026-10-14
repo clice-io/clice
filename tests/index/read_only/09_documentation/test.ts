@@ -31,7 +31,14 @@ test("index cards of template parameters", async (t) => {
     s.open("main.cpp", { pull: false });
     s.open("header.h", { pull: false });
     await s.sync();
-    await t.show("template_parameter", s.hover(t.marker("template_parameter")));
+    for (const name of [
+        "template_parameter",
+        "undocumented_parameter",
+        "non_type_parameter",
+        "copied_alias",
+    ]) {
+        await t.show(name, s.hover(t.marker(name)));
+    }
 });
 
 test("index cards follow the options", async (t) => {

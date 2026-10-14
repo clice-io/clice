@@ -21,6 +21,20 @@ struct Square : Shape {
 template <typename T, typename = decltype(T{})>
 §(template_parameter)T copy(T value);
 
+/// Repeats a value.
+template <typename U>
+§(undocumented_parameter)U repeat(U value);
+
+/// A fixed buffer.
+/// @tparam Size Its capacity.
+template <int Size>
+struct Buffer {
+    char data[§(non_type_parameter)Size];
+
+    /// @copydoc Buffer
+    using §(copied_alias)self = Buffer;
+};
+
 #define LIMIT 4 ///< The most it takes.
 
 extern int calls; ///< How many calls so far.

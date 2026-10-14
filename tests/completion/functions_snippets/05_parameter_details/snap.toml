@@ -22,4 +22,15 @@ items = [
 [answers.standard_alias.completion]
 items = [
     { label = "at(int index)", kind = "Method", detail = "std::string &" },
+    { label = "as<typename U>(const std::string &value)", kind = "Method", detail = "U" },
+]
+
+[answers.pack.completion]
+items = [
+    { label = "emit(Ts ...values)", kind = "Function", detail = "void" },
+]
+
+[answers.array.completion]
+items = [
+    { label = "total(int values[4])", kind = "Function", detail = "void" },
 ]

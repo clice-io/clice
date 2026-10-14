@@ -1,0 +1,42 @@
+[answers.template_first.hover]
+markdown = '''
+### function `scale`
+
+---
+
+Scales a value.
+
+→ `T`
+Template parameters:
+- `typename T` — The arithmetic type.
+
+Parameters:
+- `T value` — The value to scale.
+- `T factor` — How much to scale by.
+
+---
+```cpp
+template <typename T> T scale(T value, T factor)
+```
+'''
+range = "T ⟦scale⟧(T value, T factor);"
+
+[answers.renamed.hover]
+markdown = '''
+### function `copy`
+
+---
+
+Copies bytes.
+
+→ `void`
+Parameters:
+- `char * destination` — Where they go.
+- `int count` — How many.
+
+---
+```cpp
+void copy(char *destination, int count)
+```
+'''
+range = "⟦copy⟧(buffer, 4);"

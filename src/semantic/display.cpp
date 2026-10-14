@@ -902,15 +902,6 @@ auto default_argument(const clang::ParmVarDecl* param, const Options& options)
     return as_written(param->getASTContext(), arg, options);
 }
 
-auto default_initializer(const clang::FieldDecl& field, const Options& options)
-    -> std::optional<std::string> {
-    const clang::Expr* init = field.getInClassInitializer();
-    if(!init) {
-        return std::nullopt;
-    }
-    return as_written(field.getASTContext(), init, options);
-}
-
 auto method_qualifiers(const clang::CXXMethodDecl& method) -> std::string {
     std::string text;
     if(auto qualifiers = method.getMethodQualifiers(); !qualifiers.empty()) {
@@ -957,6 +948,21 @@ auto parameter(const clang::ParmVarDecl& param, llvm::StringRef name, const Opti
     auto text = type(param.getASTContext(), written, options, declarator).text;
     if(auto value = default_argument(&param, options)) {
         text += " = " + *value;
+    }
+    return text;
+}
+
+auto field(const clang::FieldDecl& field, const Options& options) -> std::string {
+    auto& context = field.getASTContext();
+    auto text = type(context, field.getType(), options, field.getName()).text;
+    if(const auto* width = field.getBitWidth()) {
+        text += " : " + as_written(context, width, options);
+    }
+    if(const auto* init = field.getInClassInitializer()) {
+        if(field.getInClassInitStyle() != clang::ICIS_ListInit) {
+            text += " = ";
+        }
+        text += as_written(context, init, options);
     }
     return text;
 }
@@ -1414,6 +1420,19 @@ bool ReadableTypes::reserved(const clang::NamedDecl* decl) const {
     return decl && clang::isReservedInAllContexts(decl->isReserved(context.getLangOpts()));
 }
 
+bool ReadableTypes::internal(const clang::NamedDecl* decl) const {
+    if(!reserved(decl)) {
+        return false;
+    }
+    for(const auto* scope = decl->getDeclContext(); scope; scope = scope->getParent()) {
+        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope);
+           ns && (ns->isStdNamespace() || reserved(ns))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 auto ReadableTypes::standard_aliases()
     -> const llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>& {
     if(aliases) {
@@ -1466,7 +1485,7 @@ auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
         return qualified(readable(subst->getReplacementType()));
     }
     if(const auto* alias = llvm::dyn_cast<clang::TypedefType>(T);
-       alias && reserved(alias->getDecl())) {
+       alias && internal(alias->getDecl())) {
         return qualified(readable(alias->desugar()));
     }
     if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(T)) {
@@ -1482,7 +1501,7 @@ auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
     clang::TemplateName name;
     llvm::ArrayRef<clang::TemplateArgument> arguments;
     if(const auto* TST = llvm::dyn_cast<clang::TemplateSpecializationType>(T)) {
-        if(TST->isTypeAlias() && reserved(TST->getTemplateName().getAsTemplateDecl())) {
+        if(TST->isTypeAlias() && internal(TST->getTemplateName().getAsTemplateDecl())) {
             return qualified(readable(TST->getAliasedType()));
         }
         name = TST->getTemplateName();
@@ -1493,9 +1512,9 @@ auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
         if(record->getDecl()->isInStdNamespace()) {
             if(auto it = standard_aliases().find(context.getCanonicalType(type).getTypePtr());
                it != standard_aliases().end() && it->second) {
-                return qualified(context.getTypedefType(clang::ElaboratedTypeKeyword::None,
-                                                        written_scope(it->second),
-                                                        it->second));
+                auto scope = scoped ? written_scope(it->second) : std::nullopt;
+                return qualified(
+                    context.getTypedefType(clang::ElaboratedTypeKeyword::None, scope, it->second));
             }
         }
         const auto* spec =

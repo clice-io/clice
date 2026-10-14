@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "void resize(int, int);\n\nvoid fill(int _value, int __count);\n\nint scale(int good);\n\nvoid blend(int, int);\nvoid blend(int alpha, int beta);\n\nvoid use() {\n    resize(800, 600);\n    fill(1, 2);\n    scale(7);\n    blend(1, 2);\n}\n\nvoid blend(int, int) {}\n\nvoid resize(int width, int height) {}\n\nint scale(int bad) {\n    return bad;\n}\n",
+      "text": "void resize(int, int);\n\nvoid fill(int _value, int __count);\n\nint scale(int good);\n\nvoid blend(int alpha, int beta);\nvoid blend(int, int);\n\nvoid use() {\n    resize(800, 600);\n    fill(1, 2);\n    scale(7);\n    blend(1, 2);\n}\n\nvoid blend(int, int) {}\n\nvoid resize(int width, int height) {}\n\nint scale(int bad) {\n    return bad;\n}\n",
       "markers": []
     }
   ],

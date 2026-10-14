@@ -173,16 +173,18 @@ auto type(clang::ASTContext& context,
 auto maybe_desugar(clang::ASTContext& context, clang::QualType type) -> clang::QualType;
 
 /// Types as a reader knows them: a deduced `auto` gives way to the type it
-/// stands for, an alias with a reserved name (`_NonArray<int>`) to what it
-/// names, and a standard class template specialization to the standard
-/// alias naming it, as the code writes it (`std::string` for
-/// `basic_string<char>`), in template arguments too. libc++ marks those
+/// stands for, an alias the standard library keeps to itself
+/// (`_NonArray<int>`) to what it names, and a standard class template specialization to the
+/// standard alias naming it (`string` for `basic_string<char>`), in template arguments too, under
+/// the namespaces the code writes it with
+/// (`std::string`) unless the options suppress scopes. libc++ marks those
 /// aliases as preferred names, which the printer honors; libstdc++ only
 /// declares them. One per request: the aliases are collected once, on first
 /// use.
 class ReadableTypes {
 public:
-    explicit ReadableTypes(clang::ASTContext& context) : context(context) {}
+    ReadableTypes(clang::ASTContext& context, const Options& options) :
+        context(context), scoped(!options.suppress_scope) {}
 
     auto readable(clang::QualType type) -> clang::QualType;
 
@@ -190,6 +192,11 @@ private:
     auto readable(const clang::TemplateArgument& argument) -> clang::TemplateArgument;
 
     bool reserved(const clang::NamedDecl* decl) const;
+
+    /// A reserved name a library keeps to itself, within namespace std or a
+    /// reserved one (`_NonArray`, `__gnu_cxx::__alloc_traits`). One outside
+    /// them, as `__m128`, is the name its header gives its users.
+    bool internal(const clang::NamedDecl* decl) const;
 
     /// The scope the code names a namespace member through, `std::pmr::`.
     auto written_scope(const clang::NamedDecl* decl) const -> clang::NestedNameSpecifier;
@@ -200,6 +207,7 @@ private:
         -> const llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>&;
 
     clang::ASTContext& context;
+    bool scoped;
     std::optional<llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>> aliases;
 };
 
@@ -213,11 +221,6 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
 /// The default argument of `param` as the source writes it, on one line;
 /// nullopt when there is none, or it is not parsed yet.
 auto default_argument(const clang::ParmVarDecl* param, const Options& options = {})
-    -> std::optional<std::string>;
-
-/// The default member initializer of `field`, as default_argument gives a
-/// parameter's default.
-auto default_initializer(const clang::FieldDecl& field, const Options& options)
     -> std::optional<std::string>;
 
 /// The name `function`'s parameter `index` shows under: the first one its
@@ -238,6 +241,11 @@ auto param(const clang::ParmVarDecl* param, const Options& options = {}) -> Para
 /// default argument.
 auto parameter(const clang::ParmVarDecl& param, llvm::StringRef name, const Options& options)
     -> std::string;
+
+/// A field as its declaration writes it: its bit width and default member
+/// initializer as the source writes them, as parameter() gives a default
+/// argument.
+auto field(const clang::FieldDecl& field, const Options& options) -> std::string;
 
 /// Render every parameter of a template parameter list.
 auto template_params(const clang::TemplateParameterList* params, const Options& options = {})

@@ -24,12 +24,12 @@ inlay_hints = [
         ],
     },
     {
-        line = "fill(⟨_value:⟩1);",
+        line = "fill(⟨value:⟩1);",
         hints = [
             {
-                label = "_value:",
+                label = "value:",
                 links = [
-                    { value = "_value", target = "void fill(int ⟦_value⟧);" },
+                    { value = "value", target = "void fill(int ⟦__value⟧);" },
                 ],
             },
         ],

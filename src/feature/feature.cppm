@@ -178,7 +178,7 @@ void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringR
 /// comment, then the brief.
 void add_summary(markup::Document& output,
                  const Documentation& documentation,
-                 const std::optional<std::string>& attribute);
+                 std::optional<llvm::StringRef> attribute);
 
 /// Add a list of parameters under `title`: each of the `signature`'s with
 /// what the comment says of it, then the ones only the comment names;
