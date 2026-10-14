@@ -120,6 +120,71 @@ ZEST_CASE(BuildPCHThenCompile) {
     std::remove(pch_path.c_str());
 }
 
+ZEST_CASE(UserFatalErrorSparesPCH) {
+    TempDir tmp;
+    tmp.touch("common.h", "struct Point { int x, y; };\n");
+    std::string main_text = "#include \"common.h\"\nPoint p{1, 2};\nimport missing;\n";
+    tmp.touch("main.cpp", main_text);
+    auto main_file = tmp.path("main.cpp");
+    auto dir = std::string(tmp.root);
+    auto preamble_bound = compute_preamble_bound(main_text);
+    std::vector<std::string> arguments = {"clang++",
+                                          "-resource-dir",
+                                          std::string(resource_dir()),
+                                          "-std=c++20",
+                                          "-I",
+                                          dir,
+                                          main_file};
+
+    WorkerHandle sl;
+    ZASSERT(sl.spawn());
+    std::string pch_path;
+    sl.run([&]() -> kota::task<> {
+        worker::BuildPCHParams params;
+        params.file = main_file;
+        params.directory = dir;
+        params.arguments = arguments;
+        params.content = main_text;
+        params.preamble_bound = preamble_bound;
+        params.output_path = tmp.path("preamble.pch");
+        params.index_output_path = tmp.path("preamble.pch.idx");
+
+        auto result = co_await sl.peer->send_request(params);
+        ZASSERT(result);
+        ZASSERT(result.value().success);
+        pch_path = result.value().output_path;
+        sl.peer->close_output();
+    });
+    ZASSERT(!pch_path.empty());
+
+    // The missing module is fatal and the parse goes on past it: the
+    // compile is a result, and its error names no precompiled file.
+    WorkerHandle sf;
+    ZASSERT(sf.spawn(true));
+    bool done = false;
+    sf.run([&]() -> kota::task<> {
+        worker::CompileParams params;
+        params.path = main_file;
+        params.version = 1;
+        params.text = main_text;
+        params.directory = dir;
+        params.arguments = arguments;
+        params.pch = {pch_path, preamble_bound};
+
+        auto result = co_await sf.peer->send_request(params);
+        ZASSERT(result);
+        ZEXPECT(result.value().status == worker::CompileStatus::Done);
+        ZEXPECT(!result.value().pch_suspect);
+        ZEXPECT(std::ranges::any_of(result.value().diagnostics, [](auto& diagnostic) {
+            auto* message = std::get_if<std::string>(&diagnostic.message);
+            return message && llvm::StringRef(*message).contains("module 'missing' not found");
+        }));
+        done = true;
+        sf.peer->close_output();
+    });
+    ZASSERT(done);
+}
+
 ZEST_CASE(BlobWriteFailure) {
     TempDir tmp;
 

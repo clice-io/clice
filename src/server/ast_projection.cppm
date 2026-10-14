@@ -131,8 +131,9 @@ struct ASTProjectionTable {
 
     /// Whether the projection's index describes the current buffer. The
     /// arbitration key of the index freshness contract (IndexQuery
-    /// clauses 3-4): a current-but-indexless projection (fatal error, no
-    /// AST) is an honest gap, not a servable index.
+    /// clauses 3-4): a current-but-indexless projection (no AST, or an
+    /// index the worker could not hand over) is an honest gap, not a
+    /// servable index.
     bool index_current(Fid path_id) const {
         const auto* entry = find(path_id);
         return entry && entry->current && entry->projection && entry->projection->index &&

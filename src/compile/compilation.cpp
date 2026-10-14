@@ -62,6 +62,7 @@ std::unique_ptr<clang::CompilerInvocation>
     for(auto& argument: input.arguments) {
         arguments.push_back(argument.c_str());
     }
+    LOG_DEBUG("Compile command: {}", print_argv(arguments));
     auto invocation =
         create_compiler_invocation(arguments, input.directory, input.vfs, diagnostic_engine);
     if(!invocation) {
@@ -472,7 +473,6 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
     clang::noteBottomOfStack();
 
     std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
-    LOG_DEBUG("Compile command: {}", llvm::join(unit->params.input.arguments, " "));
     unit->outcome = unit->run();
     return unit;
 }

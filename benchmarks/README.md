@@ -21,10 +21,9 @@ your question:
    Standalone binaries in this directory, Bazel targets of their own
    (`//:benchmarks`), each answering one decision:
    - `scan_benchmark` — dependency-graph scan over a real CDB.
-   - `pipeline_benchmark` — per-TU stage profile (preprocess with/without
-     token collection, parse, index build/serialize, preamble PCH build incl.
-     preamble indexing, reparse over PCH incl. interactive indexing), one
-     result per file.
+   - `pipeline_benchmark` — per-TU stage profile (preprocess, parse, index
+     build/serialize, preamble PCH build incl. preamble indexing, reparse over
+     PCH incl. interactive indexing), one result per file.
    - `pch_chain_benchmark` — monolithic vs chained PCH strategy (ported
      from PR #405).
 

@@ -127,7 +127,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
 
         auto unit = compile(std::move(cp));
 
-        if(unit->completed() && unit->has_output()) {
+        if(unit->has_output()) {
             pcm_paths[path_id] = *tmp;
             co_return RoundOutcome::Success;
         }

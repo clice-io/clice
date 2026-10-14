@@ -169,7 +169,7 @@ int x = 1;
     ZEXPECT(!unit->fatal_error());
 }
 
-ZEST_CASE(PCHBuildPopulatesInfo) {
+ZEST_CASE(PCHBuild) {
     add_file("preamble.h", R"(
 #pragma once
 int preamble_func();
@@ -268,7 +268,7 @@ int main() { return preamble_func(); }
         preamble.input.add_remapped_file(main_vfs_path, source.content, bound);
         {
             auto preamble_unit = clice::compile(std::move(preamble));
-            ZASSERT(preamble_unit->completed());
+            ZASSERT(preamble_unit->has_output());
         }
 
         auto blob = read_file(*pch_path);
@@ -318,7 +318,7 @@ ZEST_CASE(PCHIgnoresInputMtime) {
         .output_file = *pch_path,
     };
     preamble.input.add_remapped_file(main_vfs_path, content, bound);
-    ZASSERT(clice::compile(std::move(preamble))->completed());
+    ZASSERT(clice::compile(std::move(preamble))->has_output());
 
     auto compile_with = [&] {
         CompilationParams reuse{.kind = CompilationKind::Content, .input = params.input};
@@ -496,7 +496,7 @@ ZEST_CASE(PCHKeepsModuleImports) {
     auto pcm_path = vfs::temp_file("b", "pcm");
     ZASSERT(pcm_path.operator bool());
     module_params.output_file = *pcm_path;
-    ZASSERT(clice::compile(std::move(module_params))->completed());
+    ZASSERT(clice::compile(std::move(module_params))->has_output());
 
     CompilationParams preamble;
     preamble.kind = CompilationKind::Preamble;
@@ -511,7 +511,7 @@ ZEST_CASE(PCHKeepsModuleImports) {
     params.input.pch = {*pch_path, bound};
 
     preamble.input.add_remapped_file(tmp.path("main.cpp"), content, bound);
-    ZASSERT(clice::compile(std::move(preamble))->completed());
+    ZASSERT(clice::compile(std::move(preamble))->has_output());
 
     auto unit = clice::compile(std::move(params));
     ZASSERT(unit->completed());
@@ -521,6 +521,35 @@ ZEST_CASE(PCHKeepsModuleImports) {
 
     llvm::sys::fs::remove(*pch_path);
     llvm::sys::fs::remove(*pcm_path);
+}
+
+ZEST_CASE(PCHWithoutModule) {
+    TempDir tmp;
+    tmp.touch("b.pcm", "not a module file");
+    tmp.touch("pre.h", "import B;\n");
+    llvm::StringRef content = "#include \"pre.h\"\nint use();\n";
+    tmp.touch("main.cpp", content);
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    CompilationParams preamble{
+        .kind = CompilationKind::Preamble,
+        .input = {.arguments = cxx20_command(cdb, tmp, "main.cpp")},
+    };
+    preamble.input.pcms.try_emplace("B", tmp.path("b.pcm"));
+    preamble.input.add_remapped_file(tmp.path("main.cpp"),
+                                     content,
+                                     compute_preamble_bound(content));
+    auto pch_path = vfs::temp_file("clice-test", "pch");
+    ZASSERT(pch_path.operator bool());
+    preamble.output_file = *pch_path;
+
+    // A preamble whose module fails to load gets no PCH.
+    auto unit = clice::compile(std::move(preamble));
+    ZASSERT(unit->completed());
+    ZEXPECT(!unit->has_output());
+
+    llvm::sys::fs::remove(*pch_path);
 }
 
 ZEST_CASE(PCHContentDifference) {

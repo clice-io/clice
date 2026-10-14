@@ -1258,7 +1258,8 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
         next->failed_pch_key = failed_pch;
         // The AST and the file index commit together — that pairing is
         // what lets navigation trust the index after ensure_compiled. A
-        // compile that produced no index data (fatal error, no AST) must
+        // compile that produced no index data (no AST, or an index it could
+        // not hand over) must
         // therefore drop the previous buffer's index rather than leave it
         // posing as current: an honest gap over yesterday's offsets.
         if(result.value().index_in_file) {

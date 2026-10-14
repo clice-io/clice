@@ -5,8 +5,6 @@
 /// Stages, mirroring the server's own build shapes:
 ///   read               source file I/O
 ///   preprocess         PreprocessOnlyAction
-///   preprocess_tokens  PreprocessOnlyAction collecting the tokens a Content
-///                      compile does (delta = their cost)
 ///   parse              full parse without PCH + envelope build (the
 ///                      background-index worker shape)
 ///   pch_build          preamble PCH build + preamble envelope incl. disk
@@ -87,7 +85,6 @@ struct FileResult {
 
     double read_ms = -1;
     double preprocess_ms = -1;
-    double preprocess_tokens_ms = -1;
     double parse_ms = -1;
     double index_ms = -1;
     double pch_build_ms = -1;
@@ -108,10 +105,11 @@ CompilationParams make_params(CompilationKind kind,
                               const std::vector<const char*>& arguments,
                               llvm::StringRef file,
                               llvm::StringRef content) {
-    CompilationParams params;
-    params.kind = kind;
-    params.arguments = arguments;
-    params.add_remapped_file(file, content);
+    CompilationParams params{
+        .kind = kind,
+        .input = {.arguments = {arguments.begin(), arguments.end()}},
+    };
+    params.input.add_remapped_file(file, content);
     return params;
 }
 
@@ -157,35 +155,24 @@ FileResult profile_file(llvm::StringRef file,
     }
 
     // One unmeasured preprocess warms the OS caches for every header the
-    // TU touches; without it the first measured variant pays the cold-cache
-    // cost and the tokens-vs-no-tokens delta is polluted.
-    {
-        auto params = make_params(CompilationKind::Preprocess, arguments, file, content);
-        preprocess(params);
-    }
+    // TU touches; without it the first measured stage pays the cold-cache
+    // cost.
+    compile(make_params(CompilationKind::Preprocess, arguments, file, content));
 
-    for(bool collect_tokens: {false, true}) {
-        auto& out_ms = collect_tokens ? result.preprocess_tokens_ms : result.preprocess_ms;
-        ok = run_stage(runs, out_ms, [&] {
-            auto params =
-                make_params(collect_tokens ? CompilationKind::Content : CompilationKind::Preprocess,
-                            arguments,
-                            file,
-                            content);
-            auto unit = preprocess(params);
-            // completed() only covers frontend execution; missing headers,
-            // bad flags and ordinary source errors surface as diagnostics
-            // on a completed unit, and such a run's timing must not enter
-            // the samples (same for every acceptance check below).
-            if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
-                result.error = "preprocess failed: " + llvm::join(errors, "; ");
-                return false;
-            }
-            return true;
-        });
-        if(!ok) {
-            return result;
+    ok = run_stage(runs, result.preprocess_ms, [&] {
+        auto unit = compile(make_params(CompilationKind::Preprocess, arguments, file, content));
+        // completed() only covers frontend execution; missing headers,
+        // bad flags and ordinary source errors surface as diagnostics
+        // on a completed unit, and such a run's timing must not enter
+        // the samples (same for every acceptance check below).
+        if(auto errors = collect_errors(*unit); !unit->completed() || !errors.empty()) {
+            result.error = "preprocess failed: " + llvm::join(errors, "; ");
+            return false;
         }
+        return true;
+    });
+    if(!ok) {
+        return result;
     }
 
     // The background-index worker shape: plain parse, then index build and
@@ -198,9 +185,8 @@ FileResult profile_file(llvm::StringRef file,
         llvm::timeTraceProfilerInitialize(/*TimeTraceGranularity=*/500, "pipeline_benchmark");
     }
     ok = run_stage(tracing ? 1 : runs, result.parse_ms, [&] {
-        auto params = make_params(CompilationKind::Indexing, arguments, file, content);
-        auto unit = compile(params);
-        if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
+        auto unit = compile(make_params(CompilationKind::Whole, arguments, file, content));
+        if(auto errors = collect_errors(*unit); !unit->completed() || !errors.empty()) {
             result.error = "parse failed: " + llvm::join(errors, "; ");
             return false;
         }
@@ -213,7 +199,7 @@ FileResult profile_file(llvm::StringRef file,
         };
 
         ScopedTimer index_timer;
-        auto serialized = index::build_tu_index(unit);
+        auto serialized = index::build_tu_index(*unit);
         keep_min(result.index_ms, index_timer.ms_f());
         result.index_bytes = serialized.size();
 
@@ -265,15 +251,15 @@ FileResult profile_file(llvm::StringRef file,
 
     std::vector<std::uint8_t> open_conditionals;
     ok = run_stage(runs, result.pch_build_ms, [&] {
-        CompilationParams params;
-        params.kind = CompilationKind::Preamble;
-        params.arguments = arguments;
-        params.add_remapped_file(file, content, result.preamble_bound);
-        params.output_file = *pch_path;
+        CompilationParams params{
+            .kind = CompilationKind::Preamble,
+            .input = {.arguments = {arguments.begin(), arguments.end()}},
+            .output_file = *pch_path,
+        };
+        params.input.add_remapped_file(file, content, result.preamble_bound);
 
-        PCHInfo pch_info;
-        auto unit = compile(params, pch_info);
-        if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
+        auto unit = compile(std::move(params));
+        if(auto errors = collect_errors(*unit); !unit->has_output() || !errors.empty()) {
             result.error = "pch build failed: " + llvm::join(errors, "; ");
             return false;
         }
@@ -282,11 +268,11 @@ FileResult profile_file(llvm::StringRef file,
         // preamble's envelope, document links and inactive regions and
         // writes the blob next to the PCH before reporting success; the
         // stage must carry that cost to match a didOpen.
-        auto links = feature::document_links(unit);
-        auto inactive = feature::inactive_regions(unit, {}, 0, result.preamble_bound);
+        auto links = feature::document_links(*unit);
+        auto inactive = feature::inactive_regions(*unit, {}, 0, result.preamble_bound);
         open_conditionals = std::move(inactive.open_stack);
-        auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
-        auto blob = index::build_preamble_index(unit,
+        auto diagnostics = to_client_json(feature::diagnostics(*unit), "[]");
+        auto blob = index::build_preamble_index(*unit,
                                                 links,
                                                 inactive.regions,
                                                 open_conditionals,
@@ -294,7 +280,7 @@ FileResult profile_file(llvm::StringRef file,
 
         // The PCH is flushed to disk by the unit's destructor; the blob
         // write follows it, like the worker's on-disk ordering contract.
-        unit = CompilationUnit(nullptr);
+        unit.reset();
         if(auto error = vfs::write(*state_path, blob)) {
             result.error = "preamble state write failed: " + error.message();
             return false;
@@ -312,9 +298,9 @@ FileResult profile_file(llvm::StringRef file,
 
     run_stage(runs, result.parse_pch_ms, [&] {
         auto params = make_params(CompilationKind::Content, arguments, file, content);
-        params.pch = {*pch_path, result.preamble_bound};
-        auto unit = compile(params);
-        if(auto errors = collect_errors(unit); !unit.completed() || !errors.empty()) {
+        params.input.pch = {*pch_path, result.preamble_bound};
+        auto unit = compile(std::move(params));
+        if(auto errors = collect_errors(*unit); !unit->completed() || !errors.empty()) {
             result.error = "parse with pch failed: " + llvm::join(errors, "; ");
             return false;
         }
@@ -322,8 +308,8 @@ FileResult profile_file(llvm::StringRef file,
         // The didChange pass (stateful worker) also computes inactive
         // regions and builds the interested-only envelope before replying;
         // include them so parse and parse_pch bound the same work.
-        feature::inactive_regions(unit, open_conditionals, result.preamble_bound);
-        index::build_tu_index(unit, /*interested_only=*/true);
+        feature::inactive_regions(*unit, open_conditionals, result.preamble_bound);
+        index::build_tu_index(*unit, /*interested_only=*/true);
         return true;
     });
 
@@ -335,9 +321,8 @@ void print_file(const FileResult& result) {
     auto cell = [](double ms) {
         return ms < 0 ? std::string("      -") : std::format("{:>7.1f}", ms);
     };
-    std::println("  {} {} {} {} {} {} {}  {}",
+    std::println("  {} {} {} {} {} {}  {}",
                  cell(result.preprocess_ms),
-                 cell(result.preprocess_tokens_ms),
                  cell(result.parse_ms),
                  cell(result.index_ms),
                  cell(result.pch_build_ms),
@@ -361,7 +346,6 @@ void print_summary(std::vector<FileResult>& results) {
     StageStats stats[] = {
         {"read"},
         {"preprocess"},
-        {"preprocess_tokens"},
         {"parse"},
         {"index"},
         {"pch_build"},
@@ -370,11 +354,10 @@ void print_summary(std::vector<FileResult>& results) {
     for(auto& result: results) {
         stats[0].add(result.read_ms);
         stats[1].add(result.preprocess_ms);
-        stats[2].add(result.preprocess_tokens_ms);
-        stats[3].add(result.parse_ms);
-        stats[4].add(result.index_ms);
-        stats[5].add(result.pch_build_ms);
-        stats[6].add(result.parse_pch_ms);
+        stats[2].add(result.parse_ms);
+        stats[3].add(result.index_ms);
+        stats[4].add(result.pch_build_ms);
+        stats[5].add(result.parse_pch_ms);
     }
 
     std::println("");

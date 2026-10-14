@@ -178,35 +178,18 @@ std::string virtual_path(llvm::StringRef name) {
     return path.str().str();
 }
 
-/// Owns argument storage for one compile invocation.
-struct ArgList {
-    std::vector<std::string> storage;
-    std::vector<const char*> argv;
-
-    ArgList(std::initializer_list<std::string> args) : storage(args) {
-        for(auto& arg: storage) {
-            argv.push_back(arg.c_str());
-        }
-    }
-};
-
-ArgList make_pch_args(const std::string& file) {
-    return ArgList{"clang++",
-                   "-std=c++20",
-                   "-resource-dir",
-                   resource_dir().str(),
-                   "-x",
-                   "c++-header",
-                   file};
+std::vector<std::string> make_pch_args(const std::string& file) {
+    return {"clang++",
+            "-std=c++20",
+            "-resource-dir",
+            resource_dir().str(),
+            "-x",
+            "c++-header",
+            file};
 }
 
-ArgList make_source_args(const std::string& file) {
-    return ArgList{"clang++",
-                   "-std=c++20",
-                   "-resource-dir",
-                   resource_dir().str(),
-                   "-fsyntax-only",
-                   file};
+std::vector<std::string> make_source_args(const std::string& file) {
+    return {"clang++", "-std=c++20", "-resource-dir", resource_dir().str(), "-fsyntax-only", file};
 }
 
 struct PCHBuildResult {
@@ -224,31 +207,27 @@ PCHBuildResult build_one_pch(const std::string& header_text,
                              const std::string& prev_pch = "") {
     PCHBuildResult result;
 
-    CompilationParams cp;
-    cp.kind = CompilationKind::Preamble;
-    cp.output_file = output_path;
-
-    auto args = make_pch_args(file_path);
-    cp.arguments = args.argv;
-    cp.add_remapped_file(file_path, header_text);
+    CompilationParams cp{
+        .kind = CompilationKind::Preamble,
+        .input = {.arguments = make_pch_args(file_path)},
+        .output_file = output_path,
+    };
+    cp.input.add_remapped_file(file_path, header_text);
 
     if(!prev_pch.empty()) {
         // Bound 0: PrecompiledPreambleBytes tells clang to skip the first N
         // bytes of the current source, which is only correct when the PCH
         // was built FROM the current file (monolithic preamble). Each chain
         // link is a separate file, so nothing must be skipped.
-        cp.pch = {prev_pch, 0};
+        cp.input.pch = {prev_pch, 0};
     }
 
     auto start = Clock::now();
 
-    PCHInfo pch_info;
-    auto unit = compile(cp, pch_info);
-    bool ok = unit.completed();
-
-    if(!ok) {
+    auto unit = compile(std::move(cp));
+    if(!unit->has_output()) {
         result.ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
-        auto errors = collect_errors(unit);
+        auto errors = collect_errors(*unit);
         result.error =
             errors.empty() ? "PCH compilation failed (no diagnostics)" : llvm::join(errors, "; ");
         return result;
@@ -256,7 +235,7 @@ PCHBuildResult build_one_pch(const std::string& header_text,
 
     // The unit's destructor flushes the PCH to disk; that write is part of
     // the build cost being compared, so destroy before stopping the clock.
-    unit = CompilationUnit(nullptr);
+    unit.reset();
     result.ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
 
     if(!llvm::sys::fs::exists(output_path)) {
@@ -285,19 +264,18 @@ std::string make_heavy_source(const std::string& preamble,
 bool verify_pch(const std::string& pch_path,
                 const std::vector<std::string>& headers,
                 std::size_t count) {
-    CompilationParams cp;
-    cp.kind = CompilationKind::Content;
-
     auto file = virtual_path("pch-verify.cpp");
-    auto args = make_source_args(file);
-    cp.arguments = args.argv;
-    cp.add_remapped_file(file, make_heavy_source("", headers, count));
-    cp.pch = {pch_path, 0};
+    CompilationParams cp{
+        .kind = CompilationKind::Content,
+        .input = {.arguments = make_source_args(file)},
+    };
+    cp.input.add_remapped_file(file, make_heavy_source("", headers, count));
+    cp.input.pch = {pch_path, 0};
 
-    auto unit = compile(cp);
+    auto unit = compile(std::move(cp));
     // completed() only covers frontend execution; a compile over a broken
     // PCH still completes carrying ordinary error diagnostics.
-    return unit.completed() && collect_errors(unit).empty();
+    return unit->completed() && collect_errors(*unit).empty();
 }
 
 /// Compile a source file over a given PCH and report the wall-clock time,
@@ -306,20 +284,19 @@ double compile_with_pch(const std::string& source_text,
                         const std::string& source_file,
                         const std::string& pch_path,
                         std::uint32_t preamble_bound) {
-    CompilationParams cp;
-    cp.kind = CompilationKind::Content;
-
-    auto args = make_source_args(source_file);
-    cp.arguments = args.argv;
-    cp.add_remapped_file(source_file, source_text);
-    cp.pch = {pch_path, preamble_bound};
+    CompilationParams cp{
+        .kind = CompilationKind::Content,
+        .input = {.arguments = make_source_args(source_file)},
+    };
+    cp.input.add_remapped_file(source_file, source_text);
+    cp.input.pch = {pch_path, preamble_bound};
 
     auto start = Clock::now();
-    auto unit = compile(cp);
+    auto unit = compile(std::move(cp));
     // See verify_pch: an erroneous parse still reports completed(), and its
     // timing must not enter the latency samples.
-    bool ok = unit.completed() && collect_errors(unit).empty();
-    unit = CompilationUnit(nullptr);
+    bool ok = unit->completed() && collect_errors(*unit).empty();
+    unit.reset();
     auto end = Clock::now();
 
     if(!ok)

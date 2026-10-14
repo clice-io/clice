@@ -108,7 +108,7 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     preamble.input.add_remapped_file(TestVFS::path(src_path), main_source.content, bound);
     {
         auto preamble_unit = clice::compile(std::move(preamble));
-        if(!preamble_unit->completed() || !preamble_unit->has_output()) {
+        if(!preamble_unit->has_output()) {
             for(auto& diag: preamble_unit->diagnostics()) {
                 LOG_ERROR("{}", diag.message);
             }
@@ -239,7 +239,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         builder.params.input.pcms = built_pcms;
 
         auto built = clice::compile(std::move(builder.params));
-        if(!built->completed() || !built->has_output()) {
+        if(!built->has_output()) {
             for(auto& diag: built->diagnostics()) {
                 LOG_ERROR("{}", diag.message);
             }

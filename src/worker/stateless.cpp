@@ -140,11 +140,10 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
-    // A cancelled parse reports !completed(); the extra check catches a
+    // A cancelled parse has no output; the stop check catches a
     // cancellation arriving between the parse and the serialization, whose
     // blob nobody will read. The tmp file is removed like any failed build.
-    bool success =
-        unit->completed() && unit->has_output() && !stop->load(std::memory_order_relaxed);
+    bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit->build_at().count();
 
     // A build that failed on errors still reports what it read.
@@ -225,8 +224,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
-    bool success =
-        unit->completed() && unit->has_output() && !stop->load(std::memory_order_relaxed);
+    bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit->build_at().count();
 
     // A build that failed on errors still reports what it read.
@@ -234,9 +232,10 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     if(unit->completed()) {
         deps = unit->deps();
         // deps() collects include targets only; the module source is a
-        // build input of its PCM all the same. Named by its identity like
-        // every other dep: the command spells it as written, which
-        // consumers cannot stat reliably.
+        // build input of its PCM all the same, and unlike the PCH key the
+        // PCM cache key embeds no content: only the deps see the source
+        // change. Named by its identity like every other dep: the command
+        // spells it as written, which consumers cannot stat reliably.
         deps.emplace_back(std::string(unit->file_path(unit->main_file())),
                           llvm::xxh3_64bits(unit->main_content()));
     }
