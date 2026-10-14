@@ -2142,7 +2142,7 @@ ZEST_CASE(ClassParametersStayUnbound) {
     // The only instantiation binds the class's parameter in an open file's
     // index, where `auto` stands for Widget; a stored index leaves it
     // unbound, as every unit shares it, and `auto` stands for `T`.
-    decode_index(index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit, {.all_files = true}));
     ZEXPECT(spelled_in("local") == std::vector<Spelled>{
                                        {"auto", SymbolKind::Struct,   {RelationKind::Deduced}   },
                                        {"copy", SymbolKind::Variable, {RelationKind::Definition}},
