@@ -238,7 +238,6 @@ void CompilationUnit::run_tidy() {
     context.setTraversalScope({context.getTranslationUnitDecl()});
 }
 
-/// A wrapper ast consumer, so that we can cancel the ast parse
 /// Sema hands the functions it instantiates to the consumer too.
 static bool implicitly_instantiated(const clang::Decl* decl) {
     auto kind = clang::TSK_Undeclared;
@@ -252,6 +251,7 @@ static bool implicitly_instantiated(const clang::Decl* decl) {
     return kind == clang::TSK_ImplicitInstantiation;
 }
 
+/// A wrapper ast consumer, so that we can cancel the ast parse
 class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
     ParseConsumer(std::unique_ptr<clang::ASTConsumer> consumer, CompilationUnit& unit) :
