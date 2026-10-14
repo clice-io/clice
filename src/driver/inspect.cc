@@ -519,10 +519,11 @@ void run_feature(FileEntry& entry,
     auto unit = clice::compile(std::move(params));
     if(!unit->completed()) {
         entry.error = "compile_error";
+        auto& messages = entry.diagnostics.emplace();
         for(const auto& diagnostic: unit->diagnostics()) {
-            entry.diagnostics.push_back(diagnostic.message);
+            messages.push_back(diagnostic.message);
             for(const auto& note: diagnostic.notes) {
-                entry.diagnostics.push_back(note.message);
+                messages.push_back(note.message);
             }
         }
         return;
