@@ -1451,50 +1451,51 @@ struct StandardTypedefs {
 constexpr StandardTypedefs standard_typedefs[] = {
     {"basic_string",
      "string wstring u8string u16string u32string pmr::string pmr::wstring pmr::u8string "
-     "pmr::u16string pmr::u32string"},
-    {"basic_string_view", "string_view wstring_view u8string_view u16string_view u32string_view"},
-    {"basic_ios", "ios wios"},
-    {"basic_streambuf", "streambuf wstreambuf"},
-    {"basic_istream", "istream wistream"},
-    {"basic_ostream", "ostream wostream"},
-    {"basic_iostream", "iostream wiostream"},
-    {"basic_stringbuf", "stringbuf wstringbuf"},
-    {"basic_istringstream", "istringstream wistringstream"},
-    {"basic_ostringstream", "ostringstream wostringstream"},
-    {"basic_stringstream", "stringstream wstringstream"},
-    {"basic_spanbuf", "spanbuf wspanbuf"},
-    {"basic_ispanstream", "ispanstream wispanstream"},
-    {"basic_ospanstream", "ospanstream wospanstream"},
-    {"basic_spanstream", "spanstream wspanstream"},
-    {"basic_filebuf", "filebuf wfilebuf"},
-    {"basic_ifstream", "ifstream wifstream"},
-    {"basic_ofstream", "ofstream wofstream"},
-    {"basic_fstream", "fstream wfstream"},
-    {"basic_syncbuf", "syncbuf wsyncbuf"},
-    {"basic_osyncstream", "osyncstream wosyncstream"},
-    {"fpos", "streampos wstreampos u8streampos u16streampos u32streampos"},
-    {"basic_regex", "regex wregex"},
-    {"sub_match", "csub_match wcsub_match ssub_match wssub_match"},
+     "pmr::u16string pmr::u32string"                                                                     },
+    {"basic_string_view",          "string_view wstring_view u8string_view u16string_view u32string_view"},
+    {"basic_ios",                  "ios wios"                                                            },
+    {"basic_streambuf",            "streambuf wstreambuf"                                                },
+    {"basic_istream",              "istream wistream"                                                    },
+    {"basic_ostream",              "ostream wostream"                                                    },
+    {"basic_iostream",             "iostream wiostream"                                                  },
+    {"basic_stringbuf",            "stringbuf wstringbuf"                                                },
+    {"basic_istringstream",        "istringstream wistringstream"                                        },
+    {"basic_ostringstream",        "ostringstream wostringstream"                                        },
+    {"basic_stringstream",         "stringstream wstringstream"                                          },
+    {"basic_spanbuf",              "spanbuf wspanbuf"                                                    },
+    {"basic_ispanstream",          "ispanstream wispanstream"                                            },
+    {"basic_ospanstream",          "ospanstream wospanstream"                                            },
+    {"basic_spanstream",           "spanstream wspanstream"                                              },
+    {"basic_filebuf",              "filebuf wfilebuf"                                                    },
+    {"basic_ifstream",             "ifstream wifstream"                                                  },
+    {"basic_ofstream",             "ofstream wofstream"                                                  },
+    {"basic_fstream",              "fstream wfstream"                                                    },
+    {"basic_syncbuf",              "syncbuf wsyncbuf"                                                    },
+    {"basic_osyncstream",          "osyncstream wosyncstream"                                            },
+    {"fpos",                       "streampos wstreampos u8streampos u16streampos u32streampos"          },
+    {"basic_regex",                "regex wregex"                                                        },
+    {"sub_match",                  "csub_match wcsub_match ssub_match wssub_match"                       },
     {"match_results",
-     "cmatch wcmatch smatch wsmatch pmr::cmatch pmr::wcmatch pmr::smatch pmr::wsmatch"},
-    {"regex_iterator", "cregex_iterator wcregex_iterator sregex_iterator wsregex_iterator"},
+     "cmatch wcmatch smatch wsmatch pmr::cmatch pmr::wcmatch pmr::smatch pmr::wsmatch"                   },
+    {"regex_iterator",             "cregex_iterator wcregex_iterator sregex_iterator wsregex_iterator"   },
     {"regex_token_iterator",
      "cregex_token_iterator wcregex_token_iterator sregex_token_iterator "
-     "wsregex_token_iterator"},
-    {"basic_format_context", "format_context wformat_context"},
-    {"basic_format_parse_context", "format_parse_context wformat_parse_context"},
-    {"basic_format_args", "format_args wformat_args"},
-    {"basic_stacktrace", "stacktrace pmr::stacktrace"},
-    {"integral_constant", "true_type false_type"},
+     "wsregex_token_iterator"                                                                            },
+    {"basic_format_context",       "format_context wformat_context"                                      },
+    {"basic_format_parse_context", "format_parse_context wformat_parse_context"                          },
+    {"basic_format_args",          "format_args wformat_args"                                            },
+    {"basic_stacktrace",           "stacktrace pmr::stacktrace"                                          },
+    {"integral_constant",          "true_type false_type"                                                },
     {"ratio",
      "quecto ronto yocto zepto atto femto pico nano micro milli centi deci deca hecto kilo mega "
-     "giga tera peta exa zetta yotta ronna quetta"},
+     "giga tera peta exa zetta yotta ronna quetta"                                                       },
     {"duration",
      "chrono::nanoseconds chrono::microseconds chrono::milliseconds chrono::seconds "
-     "chrono::minutes chrono::hours chrono::days chrono::weeks chrono::months chrono::years"},
+     "chrono::minutes chrono::hours chrono::days chrono::weeks chrono::months chrono::years"             },
     {"time_point",
      "chrono::sys_seconds chrono::sys_days chrono::local_seconds chrono::local_days "
-     "chrono::utc_seconds chrono::tai_seconds chrono::gps_seconds filesystem::file_time_type"},
+     "chrono::utc_seconds chrono::tai_seconds chrono::gps_seconds filesystem::file_time_type"            },
+    {"zoned_time",                 "chrono::zoned_seconds"                                               },
     {"atomic",
      "atomic_bool atomic_char atomic_schar atomic_uchar atomic_short atomic_ushort atomic_int "
      "atomic_uint atomic_long atomic_ulong atomic_llong atomic_ullong atomic_char8_t "
@@ -1505,44 +1506,45 @@ constexpr StandardTypedefs standard_typedefs[] = {
      "atomic_int_fast8_t atomic_uint_fast8_t atomic_int_fast16_t atomic_uint_fast16_t "
      "atomic_int_fast32_t atomic_uint_fast32_t atomic_int_fast64_t atomic_uint_fast64_t "
      "atomic_intptr_t atomic_uintptr_t atomic_size_t atomic_ptrdiff_t atomic_intmax_t "
-     "atomic_uintmax_t atomic_signed_lock_free atomic_unsigned_lock_free"},
-    {"linear_congruential_engine", "minstd_rand0 minstd_rand"},
-    {"mersenne_twister_engine", "mt19937 mt19937_64"},
-    {"subtract_with_carry_engine", "ranlux24_base ranlux48_base"},
-    {"discard_block_engine", "ranlux24 ranlux48"},
-    {"shuffle_order_engine", "knuth_b"},
-    {"philox_engine", "philox4x32 philox4x64"},
-    {"coroutine_handle", "noop_coroutine_handle"},
-    {"counting_semaphore", "binary_semaphore"},
+     "atomic_uintmax_t atomic_signed_lock_free atomic_unsigned_lock_free"                                },
+    {"linear_congruential_engine", "minstd_rand0 minstd_rand"                                            },
+    {"mersenne_twister_engine",    "mt19937 mt19937_64"                                                  },
+    {"subtract_with_carry_engine", "ranlux24_base ranlux48_base"                                         },
+    {"discard_block_engine",       "ranlux24 ranlux48"                                                   },
+    {"shuffle_order_engine",       "knuth_b"                                                             },
+    {"philox_engine",              "philox4x32 philox4x64"                                               },
+    {"coroutine_handle",           "noop_coroutine_handle"                                               },
+    {"counting_semaphore",         "binary_semaphore"                                                    },
 };
 
 }  // namespace
 
 auto ReadableTypes::standard_alias(const clang::ClassTemplateSpecializationDecl& spec)
     -> const clang::TypedefNameDecl* {
-    auto [cached, inserted] = aliases.try_emplace(spec.getCanonicalDecl(), nullptr);
+    auto type = context.getCanonicalTagType(&spec);
+    auto [cached, inserted] = aliases.try_emplace(type.getTypePtr(), nullptr);
     if(!inserted) {
         return cached->second;
     }
     const auto* typedefs = llvm::find_if(standard_typedefs, [&](const StandardTypedefs& entry) {
         return entry.pattern == spec.getSpecializedTemplate()->getName();
     });
-    const clang::NamespaceDecl* std = nullptr;
+    const clang::NamespaceDecl* outermost = nullptr;
     for(const auto* scope = spec.getDeclContext(); scope; scope = scope->getParent()) {
         if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
-            std = ns;
+            outermost = ns;
         }
     }
-    if(typedefs == std::end(standard_typedefs) || !std || !std->isStdNamespace()) {
+    if(typedefs == std::end(standard_typedefs) || !outermost || !outermost->isStdNamespace()) {
         return nullptr;
     }
 
-    auto type = context.getCanonicalTagType(&spec);
+    // Each name is looked up on its own: a unit built on a PCH reads only
+    // the declarations found, where walking namespace std would read it all.
     const clang::TypedefNameDecl* found = nullptr;
     for(auto name: llvm::split(typedefs->names, ' ')) {
-        const clang::DeclContext* scope = std;
-        auto [outer, last] = name.rsplit("::");
-        if(!last.empty()) {
+        const clang::DeclContext* scope = outermost;
+        if(auto [outer, last] = name.rsplit("::"); !last.empty()) {
             scope = scope->lookup(&context.Idents.get(outer)).find_first<clang::NamespaceDecl>();
             if(!scope) {
                 continue;
@@ -1551,16 +1553,15 @@ auto ReadableTypes::standard_alias(const clang::ClassTemplateSpecializationDecl&
         }
         const auto* alias =
             scope->lookup(&context.Idents.get(name)).find_first<clang::TypedefNameDecl>();
-        if(!alias || !llvm::isa<clang::TemplateSpecializationType>(alias->getUnderlyingType()) ||
-           !context.hasSameType(alias->getUnderlyingType(), type)) {
+        if(!alias || !context.hasSameType(alias->getUnderlyingType(), type)) {
             continue;
         }
-        if(found && found->getCanonicalDecl() != alias->getCanonicalDecl()) {
+        if(found) {
             return nullptr;
         }
         found = alias;
     }
-    aliases[spec.getCanonicalDecl()] = found;
+    cached->second = found;
     return found;
 }
 

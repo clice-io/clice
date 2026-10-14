@@ -183,8 +183,8 @@ auto maybe_desugar(clang::ASTContext& context, clang::QualType type) -> clang::Q
 /// the namespaces the code writes it with
 /// (`std::string`) unless the options suppress scopes. libc++ marks those
 /// aliases as preferred names, which the printer honors; libstdc++ only
-/// declares them. One per request: each alias is looked up once, on first
-/// use.
+/// declares them. One per request: a specialization's alias is looked up
+/// once, on first use.
 class ReadableTypes {
 public:
     ReadableTypes(clang::ASTContext& context, const Options& options) :
@@ -212,8 +212,7 @@ private:
 
     clang::ASTContext& context;
     bool scoped;
-    llvm::DenseMap<const clang::ClassTemplateSpecializationDecl*, const clang::TypedefNameDecl*>
-        aliases;
+    llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*> aliases;
 };
 
 /// Evaluate an expression and render its value: enums symbolically, big
