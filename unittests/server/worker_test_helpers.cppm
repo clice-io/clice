@@ -61,13 +61,17 @@ struct WorkerHandle : kota::zest::LoopFixture {
     std::unique_ptr<kota::ipc::BincodePeer> peer;
     int stderr_fd = -1;
 
+    /// Changes to the environment the worker inherits.
+    std::vector<kota::process::env_change> env;
+
     /// The gates placed, and of them the ones the worker parked at.
     std::uint64_t gates = 0;
     llvm::DenseSet<std::uint64_t> parked_gates;
     kota::event gate_parked{false};
 
     WorkerHandle() {
-        // Outlasts the 30s bound the cancellation tests put on a request.
+        // Hang detection: outlasts the 30s bound the cancellation tests put
+        // on a request.
         watchdog = std::chrono::seconds(45);
     }
 
@@ -90,6 +94,7 @@ struct WorkerHandle : kota::zest::LoopFixture {
             opts.args.push_back("--max-documents");
             opts.args.push_back(std::to_string(max_documents));
         }
+        opts.env_changes = env;
         opts.streams = {
             kota::process::stdio::pipe(true, false),  // stdin: child reads
             kota::process::stdio::pipe(false, true),  // stdout: child writes

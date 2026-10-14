@@ -42,7 +42,6 @@ MasterServer::MasterServer(kota::event_loop& loop,
     // turn, outside it.
     files.disk.on_change = [this] {
         bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
-            // Time is the feature: none, or the test hook's delay.
             co_await kota::sleep(test_jitter());
             server.drain_disk_changes();
         }(*this));

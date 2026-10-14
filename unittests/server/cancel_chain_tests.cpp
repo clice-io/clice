@@ -74,6 +74,8 @@ ZEST_CASE(HandlerCancelChainsThrough) {
         worker::QueryParams qp;
         qp.kind = worker::QueryKind::DocumentSymbol;
         qp.path = src;
+        // Hang detection: a reply that never comes fails here, before the
+        // watchdog.
         auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
         ZASSERT(symbols);
         ZEXPECT(symbols.value().data == "null");
@@ -89,9 +91,9 @@ ZEST_CASE(HandlerCancelChainsThrough) {
 
 // The scheduler's cooperative cancel of a stateless build is an IPC cancel
 // whose answer the sender keeps awaiting (the slot must stay busy while the
-// worker is): the answer is the cancel's. The stop flag it trips cuts the
-// parse at the next declaration, which StatefulWorker.IpcCancelInterruptsCompile
-// pins by the AST it leaves.
+// worker is): the stop flag it trips cuts the parse at the next declaration.
+// The source ends in a pragma that crashes the worker (CLICE_TEST_PRAGMA_CRASH):
+// only a parse run to its end reaches it.
 ZEST_CASE(IpcCancelStopsBuild) {
     TempDir tmp;
     std::string text;
@@ -99,10 +101,15 @@ ZEST_CASE(IpcCancelStopsBuild) {
     for(int i = 0; i < 200'000; i += 1) {
         text += std::format("int v{};\n", i);
     }
+    text += "#pragma clang __debug crash\n";
     tmp.touch("probe.cpp", text);
     auto src = tmp.path("probe.cpp");
+    tmp.touch("small.cpp", "int small;\n");
 
     WorkerHandle w;
+    w.env = {
+        {.name = "CLICE_TEST_PRAGMA_CRASH", .value = "1"}
+    };
     ZASSERT(w.spawn());
 
     bool test_done = false;
@@ -127,6 +134,13 @@ ZEST_CASE(IpcCancelStopsBuild) {
         source.cancel();
         w.release(gate);
         co_await group.join();
+
+        // The worker lives on: the parse stopped short of the pragma.
+        bp.file = tmp.path("small.cpp");
+        bp.arguments = make_args(bp.file);
+        auto next = co_await w.peer->send_request(bp);
+        ZASSERT(next);
+        ZEXPECT(next->success);
 
         test_done = true;
         w.peer->close_output();

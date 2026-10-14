@@ -53,5 +53,9 @@ tester.run("timers", clice.rules.timers, {
             code: 'await withTimeout(stderrEof, 2_000, "stderr EOF");',
             errors: [{ messageId: "shortBound" }],
         },
+        {
+            code: '// Hang detection: EOF follows the exit.\nawait withTimeout(stderrEof, 2_000, "stderr EOF");',
+            errors: [{ messageId: "shortBound" }],
+        },
     ],
 });

@@ -60,6 +60,12 @@ export class StepRecord {
 /// hung server (up to half a minute).
 export const SCRIPT_DEADLINE_MS = 250_000;
 
+/// How long each wait of a failed test's teardown gets — the sync asking
+/// what still ran, the shutdown, the exit, the end of stderr — so that
+/// together they fit in what the script's deadline leaves before the
+/// runner's timeout.
+export const FAILED_TEARDOWN_MS = 10_000;
+
 function asError(error: unknown): Error {
     return error instanceof Error ? error : new Error(String(error));
 }

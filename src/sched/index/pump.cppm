@@ -168,7 +168,7 @@ public:
 
     /// Wait until is_idle(): every round, requeue rounds included, has run
     /// and saved its results.
-    kota::task<> idle();
+    kota::task<> wait_idle();
 
     /// Number of files remaining in the indexing queue.
     std::size_t pending_files() const {
@@ -271,7 +271,7 @@ private:
     bool indexing_active = false;
     bool indexing_scheduled = false;
 
-    /// Set whenever a round ends; idle() waits on it.
+    /// Set whenever a round ends; wait_idle() waits on it.
     kota::event round_ended{false};
     std::shared_ptr<kota::timer> index_idle_timer;
 

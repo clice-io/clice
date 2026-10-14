@@ -475,12 +475,14 @@ export class CliceClient {
 
     /// Gracefully shut down: shutdown request, exit notification, then the
     /// clean-exit gate (exit code, stderr EOF, drop report, sanitizer
-    /// scan). Marks the client disposed so the session teardown skips it.
-    async shutdown(options: { verbose?: boolean } = {}): Promise<void> {
+    /// scan), each wait given `bound` milliseconds. Marks the client
+    /// disposed so the session teardown skips it.
+    async shutdown(options: { verbose?: boolean; bound?: number } = {}): Promise<void> {
+        const bound = options.bound ?? 60_000;
         try {
             await withTimeout(
                 this.sendRequest(proto.ShutdownRequest.type),
-                60_000,
+                bound,
                 "shutdown request",
             );
         } catch {
@@ -501,7 +503,7 @@ export class CliceClient {
         }
 
         try {
-            await this.assertExitedCleanly();
+            await this.assertExitedCleanly(bound);
         } finally {
             this.dispose();
         }
@@ -530,7 +532,7 @@ export class CliceClient {
         let stderrComplete = true;
         let stderrFailure: string | undefined;
         try {
-            await withTimeout(this.stderrEof, 60_000, "stderr EOF");
+            await withTimeout(this.stderrEof, timeout, "stderr EOF");
         } catch (exc) {
             stderrComplete = false;
             stderrFailure = String(exc);

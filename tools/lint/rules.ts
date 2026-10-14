@@ -20,9 +20,10 @@ const TIMER_MODULES = new Set(["timers", "timers/promises", "node:timers", "node
 /// `Hang detection: <why>` for a bound that only a hang reaches, `Time is
 /// the feature: <why>` where the time itself is what the code does (a
 /// pacing, a grace period, a test whose claim is about time), `No event:
-/// <why>` for a condition re-checked until it holds, as nothing announces
-/// it. A literal bound of `withTimeout` (tools/promise.ts) shorter than a
-/// minute needs one too.
+/// <why>` for what nothing announces: a condition re-checked until it
+/// holds, or an end. A literal bound of `withTimeout` (tools/promise.ts)
+/// shorter than a minute is no hang bound: only `Time is the feature:`
+/// allows it.
 const timers: Rule.RuleModule = {
     meta: {
         type: "problem",
@@ -40,20 +41,20 @@ const timers: Rule.RuleModule = {
     },
     create(context) {
         const source = context.sourceCode;
-        const labelled = (node: ESTree.Node): boolean =>
+        const labelled = (node: ESTree.Node, labels: readonly string[]): boolean =>
             [node, ...source.getAncestors(node)]
                 .filter((each) => each.type !== "Program")
                 .some((each) =>
                     source.getCommentsBefore(each).some((comment) => {
                         const text = comment.value.replace(/^[/*\s]+/, "");
-                        return LABELS.some(
+                        return labels.some(
                             (label) => text.startsWith(label) && text.length > label.length + 1,
                         );
                     }),
                 );
-        const check = (node: ESTree.Node, messageId = "unlabelled"): void => {
-            if (!labelled(node)) {
-                context.report({ node, messageId });
+        const check = (node: ESTree.Node): void => {
+            if (!labelled(node, LABELS)) {
+                context.report({ node, messageId: "unlabelled" });
             }
         };
         return {
@@ -74,9 +75,10 @@ const timers: Rule.RuleModule = {
                     name === "withTimeout" &&
                     bound?.type === "Literal" &&
                     typeof bound.value === "number" &&
-                    bound.value < SHORTEST_BOUND
+                    bound.value < SHORTEST_BOUND &&
+                    !labelled(node, ["Time is the feature:"])
                 ) {
-                    check(node, "shortBound");
+                    context.report({ node, messageId: "shortBound" });
                 }
             },
             ImportDeclaration(node) {

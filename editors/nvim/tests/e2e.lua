@@ -193,18 +193,26 @@ if not items or #items == 0 then
 end
 
 if scenario.context then
-    -- A context command ends in a request of the plugin's own; the server
-    -- then compiles the buffer anew and publishes its diagnostics. Idle
-    -- before the command, the server publishes nothing else.
-    local function after_publish(command)
-        sync()
-        got_diagnostics = false
+    -- A context command ends in a request of the plugin's own: once it is
+    -- answered, a sync waits out the compile it started.
+    local function after_request(method, command)
+        local answered = false
+        local autocmd = vim.api.nvim_create_autocmd('LspRequest', {
+            callback = function(args)
+                local sent = args.data.request
+                if sent.method == method and sent.type == 'complete' then
+                    answered = true
+                end
+            end,
+        })
         command()
         if not vim.wait(60000, function()
-            return got_diagnostics
+            return answered
         end, 50) then
-            fail 'no diagnostics after the context command'
+            fail(method .. ' was not answered')
         end
+        vim.api.nvim_del_autocmd(autocmd)
+        sync()
     end
 
     local function context_is(automatic)
@@ -236,13 +244,13 @@ if scenario.context then
             return opts.format_item(item):find(scenario.context, 1, true) ~= nil
         end))
     end
-    after_publish(vim.cmd.LspCliceSwitchContext)
+    after_request('clice/switchContext', vim.cmd.LspCliceSwitchContext)
     if not context_is(false) then
         fail 'LspCliceSwitchContext did not switch the context'
     end
 
     step 'reset context'
-    after_publish(vim.cmd.LspCliceResetContext)
+    after_request('clice/resetContext', vim.cmd.LspCliceResetContext)
     if not context_is(true) then
         fail 'LspCliceResetContext did not reset the context'
     end

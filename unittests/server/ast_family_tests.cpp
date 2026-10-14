@@ -313,12 +313,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
     auto src = tmp.path("edited_only.cpp");
 
     Stack stack;
-    std::string text;
-    text.reserve(1 << 22);
-    for(int i = 0; i < 200'000; ++i) {
-        text += std::format("int v{};\n", i);
-    }
-    auto session = stack.open(src, std::move(text));
+    auto session = stack.open(src, "int v0;\n");
 
     bool waiter_done = false;
     bool waiter_ok = false;
@@ -384,12 +379,7 @@ ZEST_CASE(SupersededCompileCancelled) {
     auto src = tmp.path("edited.cpp");
 
     Stack stack;
-    std::string text;
-    text.reserve(1 << 22);
-    for(int i = 0; i < 200'000; ++i) {
-        text += std::format("int v{};\n", i);
-    }
-    auto session = stack.open(src, std::move(text));
+    auto session = stack.open(src, "int v0;\n");
 
     bool first_done = false;
     bool second_ok = false;

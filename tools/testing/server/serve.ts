@@ -71,7 +71,7 @@ import {
     type MarkerAnchor,
 } from "../cases/anchors.ts";
 import { DAMAGE, describeChange, type Disk } from "../cases/disk.ts";
-import { StepRecord } from "./steps.ts";
+import { FAILED_TEARDOWN_MS, StepRecord } from "./steps.ts";
 
 /// A crash or kill the test provokes in the worker running `request` on
 /// `file` ("query:Hover", "compile", "buildPch").
@@ -1251,7 +1251,7 @@ export class Serve extends Client {
                 try {
                     const { pending } = await withTimeout(
                         client.sync({ deadlineMs: 1_000 }),
-                        60_000,
+                        FAILED_TEARDOWN_MS,
                         "sync",
                     );
                     console.log(
@@ -1265,7 +1265,9 @@ export class Serve extends Client {
         for (const server of this.servers.reverse()) {
             try {
                 if (!server.disposed) {
-                    await server.shutdown({ verbose: failed });
+                    await server.shutdown(
+                        failed ? { verbose: true, bound: FAILED_TEARDOWN_MS } : {},
+                    );
                 }
             } catch (error) {
                 errors.push(error);

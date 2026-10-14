@@ -75,7 +75,6 @@ CrashScope::CrashScope(std::string tag) : tag(std::move(tag)) {
     running_size = this->tag.size();
 
     park_at_test_gate(this->tag);
-    // Time is the feature: none, or the test hook's delay.
     std::this_thread::sleep_for(test_jitter());
 
     // Tests crash the request whose tag contains CLICE_TEST_CRASH_REQUEST

@@ -2184,12 +2184,8 @@ ZEST_CASE(AdvisoryCancelCooperates) {
     // frees only once the worker is actually idle — and the result is
     // classified as a cancellation, with the worker healthy afterwards.
     TempDir tmp;
-    std::string big;
-    for(int i = 0; i < 200000; i += 1) {
-        big += "int v_" + std::to_string(i) + " = " + std::to_string(i) + ";\n";
-    }
-    tmp.touch("big.cpp", big);
-    auto big_src = tmp.path("big.cpp");
+    tmp.touch("first.cpp", "int x = 1;\n");
+    auto first_src = tmp.path("first.cpp");
     tmp.touch("small.cpp", "int y = 2;\n");
     auto small_src = tmp.path("small.cpp");
 
@@ -2200,9 +2196,9 @@ ZEST_CASE(AdvisoryCancelCooperates) {
 
         worker::TURunParams params;
         params.index = true;
-        params.file = big_src;
+        params.file = first_src;
         params.directory = "/tmp";
-        params.arguments = make_args(big_src);
+        params.arguments = make_args(first_src);
 
         kota::cancellation_source advisory;
         bool cancelled = false;

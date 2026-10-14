@@ -450,7 +450,7 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     on_progress_changed.emit();
 }
 
-kota::task<> IndexPump::idle() {
+kota::task<> IndexPump::wait_idle() {
     while(!is_idle()) {
         round_ended.reset();
         co_await round_ended.wait();
