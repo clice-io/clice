@@ -266,7 +266,7 @@ bool CompilationUnit::host_source(clang::FileID fid) {
     // the predefines buffer.
     if(!host) {
         host.emplace();
-        auto& SM = SM();
+        auto& SM = this->SM();
         auto predefines = instance->getPreprocessor().getPredefinesFileID();
         for(auto& [path, cut]: params.input.synthesized) {
             if(cut.forced) {
@@ -304,7 +304,7 @@ bool CompilationUnit::from_context(clang::FileID fid) {
 }
 
 bool CompilationUnit::encloses_main_file(const clang::Decl* decl) {
-    auto& SM = SM();
+    auto& SM = this->SM();
     auto start = SM.getLocForStartOfFile(main_file());
     // A scope left open at the end of the unit has no end.
     auto end = expansion_location(decl->getEndLoc());
