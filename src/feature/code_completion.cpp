@@ -2066,7 +2066,7 @@ public:
                     auto [primary, partition] = llvm::StringRef(candidate.module).split(':');
                     if(primary != own) {
                         import = std::format("import {};\n", primary);
-                    } else if(!partition.empty()) {
+                    } else if(!partition.empty() && candidate.module != module->Name) {
                         import = std::format("import :{};\n", partition);
                     } else {
                         continue;

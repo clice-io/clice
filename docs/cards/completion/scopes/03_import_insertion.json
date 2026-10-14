@@ -33,8 +33,15 @@
     },
     {
       "path": "app_measure.cppm",
-      "text": "export module app:measure;\n\nexport namespace app::measures {\n\ndouble measure_area(double radius);\n\n}  // namespace app::measures\n",
-      "markers": []
+      "text": "export module app:measure;\n\nexport namespace app::measures {\n\ndouble measure_area(double radius);\n\ndouble ring(double radius) {\n    return perim(radius);\n}\n\ndouble perimeter(double radius);\n\n}  // namespace app::measures\n",
+      "markers": [
+        {
+          "name": "same_partition",
+          "begin": 144,
+          "end": 144,
+          "range": false
+        }
+      ]
     },
     {
       "path": "config.h",
@@ -164,6 +171,15 @@
                   ]
                 }
               ]
+            }
+          }
+        },
+        {
+          "label": "same_partition",
+          "marker": "same_partition",
+          "value": {
+            "completion": {
+              "items": []
             }
           }
         },
@@ -300,6 +316,15 @@
         {
           "label": "own_partition",
           "marker": "own_partition",
+          "value": {
+            "completion": {
+              "items": []
+            }
+          }
+        },
+        {
+          "label": "same_partition",
+          "marker": "same_partition",
           "value": {
             "completion": {
               "items": []
