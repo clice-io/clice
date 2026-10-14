@@ -31,14 +31,14 @@ namespace {
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnit& unit) :
-        unit(unit), content(unit.main_content()) {
-        for(auto& directive: unit.get<Semantics>().block_directives()) {
+        unit(unit), semantics(unit.get<Semantics>()), content(unit.main_content()) {
+        for(auto& directive: semantics.block_directives()) {
             block_directives.push_back(directive.range.begin);
         }
     }
 
     auto collect() -> std::vector<FoldingRange> {
-        auto nodes = unit.get<Semantics>().node_entries();
+        auto nodes = semantics.node_entries();
         std::uint32_t index = 0;
         while(index < nodes.size()) {
             const Semantics::Node& entry = nodes[index];
@@ -68,12 +68,12 @@ public:
             index += 1;
         }
 
-        collect_block_directives(unit.get<Semantics>().block_directives());
-        collect_module_fragments(unit.get<Semantics>().module_declarations());
-        collect_comments(unit.get<Semantics>().comments());
-        collect_macro_definitions(unit.get<Semantics>().macro_definitions());
-        add_runs(unit.get<Semantics>().include_directives(), protocol::FoldingRangeKind::Imports);
-        collect_raw_strings(unit.get<Semantics>().raw_strings());
+        collect_block_directives(semantics.block_directives());
+        collect_module_fragments(semantics.module_declarations());
+        collect_comments(semantics.comments());
+        collect_macro_definitions(semantics.macro_definitions());
+        add_runs(semantics.include_directives(), protocol::FoldingRangeKind::Imports);
+        collect_raw_strings(semantics.raw_strings());
         add_runs(usings, "usingDeclaration");
 
         // Order by kind and text after position so equal entries are adjacent
@@ -186,7 +186,7 @@ private:
             // wrapper is itself a function's body; a coroutine lambda has no
             // functionBody producer, so its block must keep folding here.
             if(parent != Semantics::invalid) {
-                const Semantics::Node& parent_entry = unit.get<Semantics>().node(parent);
+                const Semantics::Node& parent_entry = semantics.node(parent);
                 if(const auto* function = parent_entry.node.get<clang::FunctionDecl>();
                    function && function->getBody() == compound) {
                     return;
@@ -194,9 +194,8 @@ private:
                 if(const auto* coroutine = parent_entry.node.get<clang::CoroutineBodyStmt>();
                    coroutine && coroutine->getBody() == compound &&
                    parent_entry.parent != Semantics::invalid) {
-                    const auto* function = unit.get<Semantics>()
-                                               .node(parent_entry.parent)
-                                               .node.get<clang::FunctionDecl>();
+                    const auto* function =
+                        semantics.node(parent_entry.parent).node.get<clang::FunctionDecl>();
                     if(function && function->getBody() == coroutine) {
                         return;
                     }
@@ -562,6 +561,7 @@ private:
     }
 
     CompilationUnit& unit;
+    const Semantics& semantics;
     llvm::StringRef content;
     std::vector<FoldingRange> ranges;
 
