@@ -115,14 +115,25 @@ if (process.platform !== "win32") {
             fs.mkdirSync(path.join(root, "real"));
             fs.writeFileSync(path.join(root, "real", "a.cpp"), "int a() { return 0; }\n");
             fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
+            const secondUri = vscode.Uri.file(path.join(root, "link", "a.cpp"));
+            // Activated first, the extension hears of the second name's editor
+            // first; then the host stays busy while the selection the open
+            // asked for arrives, as a loaded CI runner's does.
+            await vscode.extensions.getExtension("clice-io.clice")?.activate();
+            const busy = vscode.window.onDidChangeActiveTextEditor((editor) => {
+                if (editor?.document.uri.toString() === secondUri.toString()) {
+                    const until = Date.now() + 500;
+                    while (Date.now() < until) {
+                        // Busy.
+                    }
+                }
+            });
             try {
                 const first = await vscode.workspace.openTextDocument(
                     vscode.Uri.file(path.join(root, "real", "a.cpp")),
                 );
                 await vscode.window.showTextDocument(first);
-                const second = await vscode.workspace.openTextDocument(
-                    vscode.Uri.file(path.join(root, "link", "a.cpp")),
-                );
+                const second = await vscode.workspace.openTextDocument(secondUri);
                 await vscode.window.showTextDocument(second, {
                     selection: new vscode.Range(0, 4, 0, 5),
                     preview: false,
@@ -144,6 +155,7 @@ if (process.platform !== "win32") {
                 assert.strictEqual(active?.document.uri.toString(), first.uri.toString());
                 assert.deepStrictEqual(active.selection.start, new vscode.Position(0, 4));
             } finally {
+                busy.dispose();
                 await vscode.commands.executeCommand("workbench.action.closeAllEditors");
                 fs.rmSync(root, { recursive: true, force: true });
             }
