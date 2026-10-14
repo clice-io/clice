@@ -1737,7 +1737,7 @@ auto hover(CompilationUnit& unit,
         return std::nullopt;
     }
 
-    return to_protocol_hover(*info, kind, focus.positions(), encoding);
+    return to_protocol_hover(*info, kind, unit.focus_file().positions(), encoding);
 }
 
 }  // namespace clice::feature
