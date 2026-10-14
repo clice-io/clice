@@ -15,7 +15,7 @@ struct Tester {
     CompilationParams params;
     FileTable file_table;
     CompilationDatabase database{file_table};
-    std::optional<CompilationUnit> unit;
+    std::unique_ptr<CompilationUnit> unit;
     std::string src_path;
 
     /// Target triple for the VFS-only compile path. Empty means the host
@@ -24,9 +24,6 @@ struct Tester {
     std::string triple;
 
     AnnotatedSources sources;
-
-    /// Owns argument strings so that params.arguments (const char*) remains valid.
-    std::vector<std::string> owned_args;
 
     /// The VFS used for compilation.
     llvm::IntrusiveRefCntPtr<TestVFS> vfs;

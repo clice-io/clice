@@ -47,8 +47,8 @@ See [Compilation Command Resolution](command-resolve.md).
 
 Wraps the Clang compiler, abstracting Clang APIs into safe, unified compilation interfaces. This layer is purely a compilation abstraction with no server logic.
 
-- `CompilationUnit` / `CompilationUnitRef`: RAII wrappers around the Clang AST context. `CompilationUnitRef` provides a unified read-only view for accessing source location mappings, preprocessor directives, AST nodes, and more. This is the primary input for `src/feature/` and `src/index/`.
-- `CompilationParams`: Describes the complete configuration for a single compilation, including compilation type (Preamble / Content / Completion / Indexing, etc.), file remapping, PCH/PCM reuse, etc.
+- `CompilationUnit`: one compilation's AST, what Clang reported while it ran (diagnostics, preprocessor directives, tokens, dependencies), and the helpers that read them, such as source location mappings. `compile()` returns it, and it is the primary input for `src/feature/` and `src/index/`.
+- `CompilationParams`: Describes a single compilation: its kind (Preprocess / Preamble / ModuleInterface / Content / Whole / Completion), its input (the command, the files served from memory, the PCH and PCMs it loads), and what else runs over the parse, such as clang-tidy.
 - `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node and its token ownership; selection, feature projections, and index production are pure queries over the map rather than separate AST walks
 - Diagnostic and clang-tidy collection during compilation.
 
@@ -85,7 +85,7 @@ See [Symbol Index](symbol-index.md).
 
 ### `src/feature/` — LSP Feature Implementations
 
-Concrete implementations of LSP features. Each feature takes a `CompilationUnitRef` and returns the corresponding LSP response data. This layer is purely computational -- it has no involvement with network communication, state management, or process scheduling.
+Concrete implementations of LSP features. Each feature takes a `CompilationUnit` and returns the corresponding LSP response data. This layer is purely computational -- it has no involvement with network communication, state management, or process scheduling.
 
 Includes: code completion, hover information, signature help, semantic highlighting, inlay hints, document symbols, document links, folding ranges, formatting, diagnostics, etc.
 

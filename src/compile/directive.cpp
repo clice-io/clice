@@ -4,24 +4,22 @@ module;
 
 module clice;
 
+import :compile.compilation;
 import :compile.directive;
-import :compile.implement;
 import :syntax.lexer;
 import :vfs.path;
 
 namespace clice {
 
-namespace {
-
-class DirectiveCollector : public clang::PPCallbacks {
+class CompilationUnit::DirectiveCollector : public clang::PPCallbacks {
 public:
-    DirectiveCollector(CompilationUnitRef unit) : unit(unit) {}
+    DirectiveCollector(CompilationUnit& unit) : unit(unit) {}
 
 private:
     void add_condition(clang::SourceLocation location,
                        Condition::BranchKind kind,
                        Condition::ConditionValue value) {
-        auto& directive = unit->directives[unit.file_id(location)];
+        auto& directive = unit.collected_directives[unit.file_id(location)];
         directive.conditions.emplace_back(kind, value, location);
     }
 
@@ -68,7 +66,7 @@ private:
             return;
         }
 
-        auto& directive = unit->directives[unit.file_id(loc)];
+        auto& directive = unit.collected_directives[unit.file_id(loc)];
         directive.macros.emplace_back(MacroRef{def, kind, loc});
     }
 
@@ -81,7 +79,7 @@ public:
                   llvm::StringRef filename,
                   bool is_angled,
                   clang::OptionalFileEntryRef file) override {
-        unit->directives[unit.file_id(location)].has_embeds.emplace_back(clice::HasEmbed{
+        unit.collected_directives[unit.file_id(location)].has_embeds.emplace_back(clice::HasEmbed{
             .file_name = filename,
             .file = file,
             .is_angled = is_angled,
@@ -94,7 +92,7 @@ public:
                         bool is_angled,
                         clang::OptionalFileEntryRef file,
                         const clang::LexEmbedParametersResult&) override {
-        unit->directives[unit.file_id(location)].embeds.emplace_back(Embed{
+        unit.collected_directives[unit.file_id(location)].embeds.emplace_back(Embed{
             .file_name = filename,
             .file = file,
             .is_angled = is_angled,
@@ -109,8 +107,8 @@ public:
     /// an absent input, spelled as clang looked: `..` resolves past a
     /// symlinked directory.
     void add_absent(llvm::StringRef name, bool angled, clang::SourceLocation location) {
-        auto& absent = unit->absent;
-        auto& files = unit->instance->getFileManager();
+        auto& absent = unit.absent_paths;
+        auto& files = unit.instance->getFileManager();
         auto add = [&](llvm::StringRef directory) {
             llvm::SmallString<256> candidate(directory);
             path::append(candidate, name);
@@ -122,11 +120,11 @@ public:
             return;
         }
         if(!angled) {
-            if(auto includer = unit->SM().getFileEntryRefForID(unit.file_id(location))) {
+            if(auto includer = unit.SM().getFileEntryRefForID(unit.file_id(location))) {
                 add(includer->getDir().getName());
             }
         }
-        auto& search = unit->instance->getPreprocessor().getHeaderSearchInfo();
+        auto& search = unit.instance->getPreprocessor().getHeaderSearchInfo();
         for(auto it = angled ? search.angled_dir_begin() : search.quoted_dir_begin();
             it != search.search_dir_end();
             ++it) {
@@ -154,7 +152,7 @@ public:
 
         /// An `IncludeDirective` call is always followed by either a `LexedFileChanged`
         /// or a `FileSkipped`. so we cannot get the file id of included file here.
-        unit->directives[prev_fid].includes.emplace_back(Include{
+        unit.collected_directives[prev_fid].includes.emplace_back(Include{
             .fid = {},
             .location = include_tok.getLocation(),
         });
@@ -169,7 +167,7 @@ public:
            this->prev_fid.isValid() && prev_fid == this->prev_fid) {
             /// Once the file has changed, it means that the last include is not skipped.
             /// Therefore, we initialize its file id with the current file id.
-            auto& include = unit->directives[prev_fid].includes.back();
+            auto& include = unit.collected_directives[prev_fid].includes.back();
             include.skipped = false;
             include.fid = curr_fid;
         }
@@ -181,7 +179,7 @@ public:
         if(prev_fid.isValid()) {
             /// File with guard will have only one file id in `SourceManager`, use
             /// `translateFile` to find it.
-            auto& include = unit->directives[prev_fid].includes.back();
+            auto& include = unit.collected_directives[prev_fid].includes.back();
             include.skipped = true;
 
             /// Get the FileID for the given file. If the source file is included multiple
@@ -194,7 +192,7 @@ public:
                       clang::ModuleIdPath names,
                       const clang::Module* M) override {
         auto fid = unit.file_id(unit.expansion_location(import_location));
-        auto& import = unit->directives[fid].imports.emplace_back();
+        auto& import = unit.collected_directives[fid].imports.emplace_back();
         import.location = import_location;
         for(auto name: names) {
             if(!import.name.empty())
@@ -237,7 +235,7 @@ public:
         // The filename may come from a macro's argument: record where it
         // is spelled.
         location = unit.file_location(location);
-        unit->directives[unit.file_id(location)].has_includes.emplace_back(file, location);
+        unit.collected_directives[unit.file_id(location)].has_includes.emplace_back(file, location);
         if(!file) {
             add_absent(file_name, is_angled, location);
         }
@@ -246,7 +244,7 @@ public:
     void PragmaDirective(clang::SourceLocation loc, clang::PragmaIntroducerKind kind) override {
         if(kind != clang::PIK_HashPragma) {
             auto fid = unit.file_id(unit.expansion_location(loc));
-            unit->directives[fid].pragma_operators.push_back(loc);
+            unit.collected_directives[fid].pragma_operators.push_back(loc);
         }
     }
 
@@ -254,7 +252,7 @@ public:
         // `dump` leaves the rest of its line to the parser, which prints
         // it. Nothing here wants the dump printed.
         if(command == "dump") {
-            unit->instance->getPreprocessor().DiscardUntilEndOfDirective();
+            unit.instance->getPreprocessor().DiscardUntilEndOfDirective();
         }
     }
 
@@ -276,7 +274,7 @@ public:
 
     void add_diagnostic_pragma(DiagnosticPragma pragma) {
         auto fid = unit.file_id(unit.expansion_location(pragma.loc));
-        unit->directives[fid].diagnostic_pragmas.push_back(std::move(pragma));
+        unit.collected_directives[fid].diagnostic_pragmas.push_back(std::move(pragma));
     }
 
     void If(clang::SourceLocation loc,
@@ -371,14 +369,11 @@ public:
 
 private:
     clang::FileID prev_fid;
-    CompilationUnitRef unit;
-    llvm::DenseMap<clang::MacroInfo*, std::size_t> macro_cache;
+    CompilationUnit& unit;
 };
 
-}  // namespace
-
-void CompilationUnitRef::Self::collect_directives() {
-    instance->getPreprocessor().addPPCallbacks(std::make_unique<DirectiveCollector>(this));
+std::unique_ptr<clang::PPCallbacks> CompilationUnit::directive_collector() {
+    return std::make_unique<DirectiveCollector>(*this);
 }
 
 }  // namespace clice

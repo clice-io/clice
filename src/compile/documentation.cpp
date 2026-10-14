@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.documentation;
 import :semantic.decls;
 import :syntax.doc_comment;
@@ -18,7 +18,7 @@ namespace {
 /// The comments documenting this one declaration, and the text of its
 /// file they are in.
 std::pair<llvm::StringRef, llvm::ArrayRef<LexicalInfo::Comment>>
-    documenting(CompilationUnitRef unit, const clang::Decl* decl) {
+    documenting(CompilationUnit& unit, const clang::Decl* decl) {
     auto range = decls::written_range(decl);
     if(decl->isImplicit() || range.isInvalid()) {
         return {};
@@ -41,7 +41,7 @@ std::pair<llvm::StringRef, llvm::ArrayRef<LexicalInfo::Comment>>
 
 }  // namespace
 
-std::string doc_comment(CompilationUnitRef unit, const clang::NamedDecl* decl, bool inherit) {
+std::string doc_comment(CompilationUnit& unit, const clang::NamedDecl* decl, bool inherit) {
     /// Chase the pattern to a fixed point: a comparison operator instantiated
     /// from a spaceship operator that is itself a template instantiation
     /// needs two hops. Termination rests on clang's instantiation graph
@@ -86,7 +86,7 @@ std::string doc_comment(CompilationUnitRef unit, const clang::NamedDecl* decl, b
     return std::move(choice).take();
 }
 
-std::string doc_comment(CompilationUnitRef unit, const clang::MacroInfo* macro) {
+std::string doc_comment(CompilationUnit& unit, const clang::MacroInfo* macro) {
     auto [fid, extent] = unit.decompose_range(
         clang::SourceRange(macro->getDefinitionLoc(), macro->getDefinitionEndLoc()));
     auto content = unit.file_content(fid);
@@ -94,7 +94,7 @@ std::string doc_comment(CompilationUnitRef unit, const clang::MacroInfo* macro) 
     return comment_text(content, run);
 }
 
-llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnitRef unit,
+llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnit& unit,
                                                               const clang::NamedDecl* decl,
                                                               llvm::StringRef name) {
     auto copied = parse_copied_name(name);

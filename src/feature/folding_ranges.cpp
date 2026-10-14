@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.semantics;
 import :feature.feature;
 import :semantic.decls;
@@ -30,7 +30,7 @@ namespace {
 /// first line.
 class FoldingRangeCollector {
 public:
-    explicit FoldingRangeCollector(CompilationUnitRef unit) :
+    explicit FoldingRangeCollector(CompilationUnit& unit) :
         unit(unit), content(unit.main_content()) {
         for(auto& directive: unit.semantics().block_directives()) {
             block_directives.push_back(directive.range.begin);
@@ -206,7 +206,7 @@ private:
         }
 
         if(const auto* call = llvm::dyn_cast<clang::CallExpr>(stmt)) {
-            auto tokens = unit.expanded_tokens(call->getSourceRange());
+            auto tokens = unit.tokens().expanded(call->getSourceRange());
             if(tokens.empty() || tokens.back().kind() != clang::tok::r_paren) {
                 return;
             }
@@ -263,7 +263,7 @@ private:
                 range.setBegin(parameters_end);
             }
             auto tokens =
-                unit.expanded_tokens(range).drop_until([](const clang::syntax::Token& token) {
+                unit.tokens().expanded(range).drop_until([](const clang::syntax::Token& token) {
                     return token.kind() == clang::tok::l_brace;
                 });
             if(!tokens.empty()) {
@@ -440,7 +440,8 @@ private:
     void add_block(const clang::Decl* decl,
                    clang::SourceLocation right_brace,
                    protocol::FoldingRangeKind kind) {
-        auto tokens = unit.expanded_tokens(decl->getSourceRange())
+        auto tokens = unit.tokens()
+                          .expanded(decl->getSourceRange())
                           .drop_until([](const clang::syntax::Token& token) {
                               return token.kind() == clang::tok::l_brace;
                           });
@@ -559,7 +560,7 @@ private:
             std::min(content.find_first_of("\r\n", offset), content.size()));
     }
 
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     llvm::StringRef content;
     std::vector<FoldingRange> ranges;
 
@@ -572,7 +573,7 @@ private:
 
 }  // namespace
 
-auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange> {
+auto folding_ranges(CompilationUnit& unit) -> std::vector<FoldingRange> {
     return FoldingRangeCollector(unit).collect();
 }
 

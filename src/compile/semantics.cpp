@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.semantics;
 import :semantic.decls;
 import :semantic.resolver;
@@ -190,7 +190,7 @@ clang::SourceRange taken_source_range(const SemanticNode& node) {
 // VarDecl in the selection tree.
 class SemanticsBuilder : public clang::RecursiveASTVisitor<SemanticsBuilder> {
 public:
-    static void build(Semantics& semantics, CompilationUnitRef unit, SemanticsOptions options) {
+    static void build(Semantics& semantics, CompilationUnit& unit, SemanticsOptions options) {
         SemanticsBuilder builder(semantics, unit, options);
         builder.TraverseAST(unit.context());
         assert(builder.stack.size() == 1 && "Unpaired push/pop?");
@@ -466,7 +466,7 @@ public:
 private:
     using Base = RecursiveASTVisitor<SemanticsBuilder>;
 
-    SemanticsBuilder(Semantics& semantics, CompilationUnitRef unit, SemanticsOptions options) :
+    SemanticsBuilder(Semantics& semantics, CompilationUnit& unit, SemanticsOptions options) :
         semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()) {
         main_fid = unit.main_file();
         main_file_range =
@@ -476,9 +476,9 @@ private:
         // Token ownership serves the main file's features; the whole-TU
         // shape reads no tokens.
         if(options.main_file_only) {
-            semantics.tokens = unit.spelled_tokens();
-            semantics.pp_ignored = &unit.preprocessed_away();
-            taken.resize(unit.expanded_tokens().size());
+            semantics.tokens = unit.tokens().spelled();
+            semantics.pp_ignored = &unit.tokens().preprocessed_away();
+            taken.resize(unit.tokens().expanded().size());
         }
 
         stack.push_back(Semantics::invalid);
@@ -673,16 +673,16 @@ private:
             return;
         }
 
-        auto tokens = unit.expanded_tokens(S);
+        auto tokens = unit.tokens().expanded(S);
         if(tokens.empty()) {
             return;
         }
-        auto begin = static_cast<unsigned>(tokens.data() - unit.expanded_tokens().data());
+        auto begin = static_cast<unsigned>(tokens.data() - unit.tokens().expanded().data());
         auto end = begin + static_cast<unsigned>(tokens.size());
         for(auto index = taken.find_first_unset_in(begin, end); index != -1;
             index = taken.find_first_unset_in(index + 1, end)) {
             taken.set(index);
-            if(auto spelled = unit.expanded_token_origin(index)) {
+            if(auto spelled = unit.tokens().origin(index)) {
                 add_token_entry(*spelled, self);
             }
         }
@@ -903,7 +903,7 @@ private:
     }
 
     Semantics& semantics;
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     SemanticsOptions options;
     clang::SourceManager& SM;
     clang::FileID main_fid;
@@ -926,7 +926,7 @@ private:
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
 };
 
-Semantics Semantics::build(CompilationUnitRef unit, SemanticsOptions options) {
+Semantics Semantics::build(CompilationUnit& unit, SemanticsOptions options) {
     Semantics semantics;
     SemanticsBuilder::build(semantics, unit, options);
     return semantics;

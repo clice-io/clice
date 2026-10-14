@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.semantics;
 import :feature.code_action.action;
 import :syntax.lexical_scan;
@@ -32,7 +32,7 @@ struct Slot {
 /// The innermost conditional branch open at `offset` of the main file.
 /// The lexical block directives rather than the directive table: the
 /// preamble's conditionals are compiled into the PCH and never reach it.
-std::optional<std::uint32_t> enclosing_branch(CompilationUnitRef unit, std::uint32_t offset) {
+std::optional<std::uint32_t> enclosing_branch(CompilationUnit& unit, std::uint32_t offset) {
     llvm::SmallVector<std::uint32_t, 4> open;
     for(const auto& directive: unit.semantics().block_directives()) {
         auto at = directive.range.begin;
@@ -65,7 +65,7 @@ std::optional<std::uint32_t> enclosing_branch(CompilationUnitRef unit, std::uint
 /// The lines the definition owns; nullopt when it spans a macro, another
 /// file or a conditional directive, whose text cannot be moved as a
 /// block.
-std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
+std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
                                                  const clang::FunctionDecl* definition) {
     auto range = main_range(unit, written_declaration(definition)->getSourceRange());
     if(!range) {
@@ -78,7 +78,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnitRef unit,
     // Attribute specifiers right before the declaration (`[[deprecated]]`
     // on a line of its own, or a macro spelling one) lie outside its
     // range.
-    auto tokens = unit.spelled_tokens();
+    auto tokens = unit.tokens().spelled();
     auto& SM = unit.context().getSourceManager();
     auto token_at = [&](std::uint32_t offset) {
         return std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
@@ -212,7 +212,7 @@ llvm::SmallVector<const clang::Decl*, 4> requirements(clang::ASTContext& context
 }
 
 /// The orders the text between the first and the last slot relies on.
-std::vector<Dependency> dependencies(CompilationUnitRef unit, llvm::ArrayRef<Slot> slots) {
+std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot> slots) {
     auto main = unit.main_file();
     LocalSourceRange region{slots.front().range.begin, slots.back().range.end};
     auto offset_of = [&](clang::SourceLocation location) -> std::optional<std::uint32_t> {
@@ -310,7 +310,7 @@ std::vector<Dependency> dependencies(CompilationUnitRef unit, llvm::ArrayRef<Slo
 /// line and their slots overlap. A definition whose move would break an
 /// order the text relies on stays where it is, the others ordered around
 /// it.
-std::vector<TextReplacement> permutation(CompilationUnitRef unit, std::vector<Slot> slots) {
+std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot> slots) {
     std::ranges::sort(slots, {}, [](const Slot& slot) { return slot.range.begin; });
     for(auto [previous, slot]: llvm::zip(slots, llvm::drop_begin(slots))) {
         if(slot.range.begin < previous.range.end) {
@@ -414,7 +414,7 @@ std::vector<TextReplacement> permutation(CompilationUnitRef unit, std::vector<Sl
 }  // namespace
 
 void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
-    auto unit = ctx.unit;
+    auto& unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
     const clang::FunctionDecl* anchor = nullptr;
     if(!record) {

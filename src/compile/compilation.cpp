@@ -10,7 +10,9 @@ import :command.command;
 import :command.invocation;
 import :compile.compilation;
 import :compile.diagnostic;
-import :compile.implement;
+import :compile.identity;
+import :compile.semantics;
+import :compile.tidy;
 import :compile.tokens;
 import :semantic.decls;
 import :support.logging;
@@ -18,7 +20,12 @@ import :vfs.file_system;
 
 namespace clice {
 
-CompilationUnitRef::Self::~Self() {
+CompilationUnit::CompilationUnit(CompilationParams params) : params(std::move(params)) {
+    using namespace std::chrono;
+    build_time = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+}
+
+CompilationUnit::~CompilationUnit() {
     if(action) {
         // We already notified the pp of end-of-file earlier, so detach it first.
         // We must keep it alive until after EndSourceFile(), Sema relies on this.
@@ -29,11 +36,14 @@ CompilationUnitRef::Self::~Self() {
     }
 }
 
+static bool writes_output(CompilationKind kind) {
+    return kind == CompilationKind::Preamble || kind == CompilationKind::ModuleInterface;
+}
+
 std::unique_ptr<clang::CompilerInvocation>
-    CompilationUnitRef::Self::create_invocation(this Self& self,
-                                                CompilationParams& params,
-                                                clang::DiagnosticConsumer* consumer) {
-    if(params.arguments.empty()) {
+    CompilationUnit::create_invocation(clang::DiagnosticConsumer* consumer) {
+    auto& input = params.input;
+    if(input.arguments.empty()) {
         LOG_ERROR_RET(nullptr, "Fail to create invocation: empty argument list from database");
     }
 
@@ -42,19 +52,22 @@ std::unique_ptr<clang::CompilerInvocation>
     /// https://github.com/llvm/llvm-project/pull/139584#issuecomment-2920704282.
     clang::DiagnosticOptions options;
     llvm::IntrusiveRefCntPtr diagnostic_engine =
-        clang::CompilerInstance::createDiagnostics(*params.vfs, options, consumer, false);
+        clang::CompilerInstance::createDiagnostics(*input.vfs, options, consumer, false);
     if(!diagnostic_engine) {
         LOG_ERROR_RET(nullptr, "Fail to create diagnostics engine");
     }
 
-    auto invocation = create_compiler_invocation(params.arguments,
-                                                 params.directory,
-                                                 params.vfs,
-                                                 diagnostic_engine);
+    std::vector<const char*> arguments;
+    arguments.reserve(input.arguments.size());
+    for(auto& argument: input.arguments) {
+        arguments.push_back(argument.c_str());
+    }
+    auto invocation =
+        create_compiler_invocation(arguments, input.directory, input.vfs, diagnostic_engine);
     if(!invocation) {
         LOG_ERROR_RET(nullptr,
                       " Fail to create invocation, arguments list is: {}",
-                      print_argv(params.arguments));
+                      print_argv(arguments));
     }
 
     auto& pp_opts = invocation->getPreprocessorOpts();
@@ -64,16 +77,15 @@ std::unique_ptr<clang::CompilerInvocation>
     // in CompilationUnit's destructor instead.
     pp_opts.RetainRemappedFileBuffers = true;
 
-    for(auto& [file, buffer]: params.buffers) {
+    for(auto& [file, text]: input.buffers) {
+        auto& buffer = remapped_buffers.emplace_back(llvm::MemoryBuffer::getMemBuffer(text));
         pp_opts.addRemappedFile(file, buffer.get());
     }
-    self.remapped_buffers = std::move(params.buffers);
-    self.synthesized = std::move(params.synthesized);
     if(params.kind != CompilationKind::Preamble) {
-        llvm::append_range(pp_opts.Includes, params.forced_includes);
+        llvm::append_range(pp_opts.Includes, input.forced_includes);
     }
 
-    auto [pch, bound] = params.pch;
+    auto& [pch, bound] = input.pch;
     // Tests stand in for a PCH damaged past clang's checks, which crashes
     // the parse reading it, by writing CLICE_TEST_DAMAGE into it.
     const static auto damage = llvm::sys::Process::GetEnv("CLICE_TEST_DAMAGE");
@@ -83,7 +95,7 @@ std::unique_ptr<clang::CompilerInvocation>
             LLVM_BUILTIN_TRAP;
         }
     }
-    pp_opts.ImplicitPCHInclude = std::move(pch);
+    pp_opts.ImplicitPCHInclude = pch;
     if(bound != 0) {
         pp_opts.PrecompiledPreambleBytes = {bound, false};
     }
@@ -100,9 +112,14 @@ std::unique_ptr<clang::CompilerInvocation>
 
     auto& header_search_opts = invocation->getHeaderSearchOpts();
     header_search_opts.Verbose = false;
-    for(auto& [name, path]: params.pcms) {
-        header_search_opts.PrebuiltModuleFiles.try_emplace(name.str(), std::move(path));
+    for(auto& [name, path]: input.pcms) {
+        header_search_opts.PrebuiltModuleFiles.try_emplace(name.str(), path);
     }
+
+    // The driver caps every command at 20 errors, past which clang raises
+    // a fatal error and instantiates no more templates: a file mid-edit
+    // would lose the rest of its AST.
+    invocation->getDiagnosticOpts().ErrorLimit = 0;
 
     auto& front_opts = invocation->getFrontendOpts();
     front_opts.ShowHelp = false;
@@ -141,10 +158,10 @@ std::unique_ptr<clang::CompilerInvocation>
 
     // MSVC targets defer template bodies by default so SDK headers written
     // for MSVC's lookup rules still parse, but a deferred body has no AST and
-    // every feature inside it goes blind. Only artifact builds keep the
+    // every feature inside it goes blind. Only PCH and PCM builds keep the
     // default: an error there discards the PCH/PCM, so those headers must
     // keep parsing the way clang meant them to.
-    if(params.output_file.empty()) {
+    if(!writes_output(params.kind)) {
         lang_opts.DelayedTemplateParsing = false;
     }
 
@@ -155,10 +172,41 @@ std::unique_ptr<clang::CompilerInvocation>
         lang_opts.IsHeaderFile = true;
     }
 
+    switch(params.kind) {
+        case CompilationKind::Preamble: {
+            front_opts.OutputFile = params.output_file;
+            front_opts.ProgramAction = clang::frontend::GeneratePCH;
+            pp_opts.GeneratePreamble = true;
+            // Without recorded mtimes clang checks each input by its size
+            // alone. Freshness is the master's call, made on content: a
+            // same-bytes rewrite (`git stash pop`, a branch switch) moves
+            // only the mtime and must not make clang reject a PCH the master
+            // still considers fresh. The size check stays, as it guards the
+            // reader against offsets past the end of a shrunk file.
+            front_opts.IncludeTimestamps = false;
+            lang_opts.CompilingPCH = true;
+            break;
+        }
+
+        case CompilationKind::ModuleInterface: {
+            front_opts.OutputFile = params.output_file;
+            front_opts.ProgramAction = clang::frontend::GenerateReducedModuleInterface;
+            break;
+        }
+
+        case CompilationKind::Preprocess:
+        case CompilationKind::Content:
+        case CompilationKind::Whole:
+        case CompilationKind::Completion: {
+            front_opts.OutputFile.clear();
+            break;
+        }
+    }
+
     return invocation;
 }
 
-void CompilationUnitRef::Self::run_tidy() {
+void CompilationUnit::run_tidy() {
     if(!checker) {
         return;
     }
@@ -168,12 +216,12 @@ void CompilationUnitRef::Self::run_tidy() {
     // restricted scope goes with it.
     auto& context = instance->getASTContext();
     if(!checker->batch) {
-        context.setTraversalScope(top_level_decls);
+        context.setTraversalScope(collected_decls);
     }
     // Checks re-lex through the preprocessor (modernize-use-trailing-return-type
     // does): what the directive collector records meanwhile is no directive
     // of the file.
-    auto collected = std::move(directives);
+    auto collected = std::move(collected_directives);
 
     // Tests crash the pass over a main file holding CLICE_TEST_TIDY_CRASH.
     const static auto crash = llvm::sys::Process::GetEnv("CLICE_TEST_TIDY_CRASH");
@@ -187,16 +235,14 @@ void CompilationUnitRef::Self::run_tidy() {
     /// However Action->EndSourceFile() would destroy the ASTContext!
     /// So just inform the preprocessor of EOF, while keeping everything alive.
     instance->getPreprocessor().EndSourceFile();
-    directives = std::move(collected);
+    collected_directives = std::move(collected);
     context.setTraversalScope({context.getTranslationUnitDecl()});
 }
 
-namespace {
-
 /// A wrapper ast consumer, so that we can cancel the ast parse
-class ProxyASTConsumer final : public clang::MultiplexConsumer {
+class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
-    ProxyASTConsumer(std::unique_ptr<clang::ASTConsumer> consumer, CompilationUnitRef unit) :
+    ParseConsumer(std::unique_ptr<clang::ASTConsumer> consumer, CompilationUnit& unit) :
         clang::MultiplexConsumer(std::move(consumer)), unit(unit) {}
 
     void collect_decl(clang::Decl* decl) {
@@ -222,15 +268,15 @@ public:
         if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl); var && var->isImplicit()) {
             if(auto* record = var->getType()->getAsRecordDecl();
                record && record->isAnonymousStructOrUnion()) {
-                unit->top_level_decls.push_back(record);
+                unit.collected_decls.push_back(record);
             }
         }
 
-        unit->top_level_decls.push_back(decl);
+        unit.collected_decls.push_back(decl);
     }
 
     auto HandleTopLevelDecl(clang::DeclGroupRef group) -> bool final {
-        if(unit->kind == CompilationKind::Content) {
+        if(unit.params.kind == CompilationKind::Content) {
             if(group.isDeclGroup()) {
                 for(auto decl: group) {
                     collect_decl(decl);
@@ -242,7 +288,7 @@ public:
 
         /// TODO: check atomic variable after the parse of each declaration
         /// may result in performance issue, benchmark in the future.
-        if(unit->stop && unit->stop->load()) {
+        if(unit.params.stop->load()) {
             return false;
         }
 
@@ -254,7 +300,7 @@ public:
     // are picked up here (a namespace block brings its own along).
     // noload_decls leaves a preamble's declarations on disk.
     void HandleTranslationUnit(clang::ASTContext& context) final {
-        if(unit->kind == CompilationKind::Content) {
+        if(unit.params.kind == CompilationKind::Content) {
             for(auto* decl: context.getTranslationUnitDecl()->noload_decls()) {
                 if(llvm::isa<clang::ExplicitInstantiationDecl>(decl)) {
                     collect_decl(decl);
@@ -264,8 +310,8 @@ public:
         // The PCH writer stores each import with the location where the
         // preprocessor made its module visible, and the reader skips the
         // imports without one; a C++20 import is made visible by Sema alone.
-        if(unit->kind == CompilationKind::Preamble) {
-            auto& pp = unit->instance->getPreprocessor();
+        if(unit.params.kind == CompilationKind::Preamble) {
+            auto& pp = unit.instance->getPreprocessor();
             for(auto* import: context.local_imports()) {
                 pp.makeModuleVisible(import->getImportedModule(), import->getLocation());
             }
@@ -274,13 +320,13 @@ public:
     }
 
 private:
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     llvm::SmallPtrSet<const clang::Decl*, 8> collected;
 };
 
-class ProxyAction final : public clang::WrapperFrontendAction {
+class CompilationUnit::ParseAction final : public clang::WrapperFrontendAction {
 public:
-    ProxyAction(std::unique_ptr<clang::FrontendAction> action, CompilationUnitRef unit) :
+    ParseAction(std::unique_ptr<clang::FrontendAction> action, CompilationUnit& unit) :
         clang::WrapperFrontendAction(std::move(action)), unit(unit) {}
 
     auto CreateASTConsumer(clang::CompilerInstance& instance, llvm::StringRef file)
@@ -288,55 +334,83 @@ public:
         auto consumer = WrapperFrontendAction::CreateASTConsumer(instance, file);
         if(!consumer)
             return nullptr;
-        return std::make_unique<ProxyASTConsumer>(std::move(consumer), unit);
+        return std::make_unique<ParseConsumer>(std::move(consumer), unit);
     }
 
     /// Make this public.
     using clang::WrapperFrontendAction::EndSourceFile;
 
 private:
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
 };
 
-}  // namespace
+static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind kind) {
+    switch(kind) {
+        case CompilationKind::Preprocess: return std::make_unique<clang::PreprocessOnlyAction>();
+        case CompilationKind::Preamble: return std::make_unique<clang::GeneratePCHAction>();
+        case CompilationKind::ModuleInterface:
+            return std::make_unique<clang::GenerateReducedModuleInterfaceAction>();
+        case CompilationKind::Content:
+        case CompilationKind::Whole:
+        case CompilationKind::Completion: return std::make_unique<clang::SyntaxOnlyAction>();
+    }
+    std::unreachable();
+}
 
-CompilationStatus CompilationUnitRef::Self::run_clang(
-    this Self& self,
-    CompilationParams& params,
-    std::unique_ptr<clang::FrontendAction> action,
-    llvm::function_ref<void(clang::CompilerInstance&)> before_execute) {
-    std::unique_ptr diagnostic_consumer = self.create_diagnostic();
-    std::unique_ptr invocation = self.create_invocation(params, diagnostic_consumer.get());
+/// Point clang's code completion at `offset` in the main file.
+static void complete_at(clang::CompilerInstance& instance, std::uint32_t offset) {
+    auto& SM = instance.getSourceManager();
+    auto main = SM.getMainFileID();
+    auto content = SM.getBufferData(main);
+    auto clamped = static_cast<std::uint32_t>(std::min<std::size_t>(offset, content.size()));
+    auto lines = kota::ipc::lsp::line_starts({content.data(), content.size()});
+    auto position = PositionMap(content, lines).position(clamped, PositionEncoding::UTF8);
+    assert(position && "clamped completion offset must be mappable");
+
+    /// Clang completion locations are 1-based.
+    auto& at = instance.getFrontendOpts().CodeCompletionAt;
+    at.FileName = SM.getFileEntryRefForID(main)->getName().str();
+    at.Line = position->line + 1;
+    at.Column = position->character + 1;
+}
+
+CompilationStatus CompilationUnit::run() {
+    auto diagnostic_consumer = diagnostic_collector();
+    auto invocation = create_invocation(diagnostic_consumer.get());
     if(!invocation) {
         return CompilationStatus::SetupFail;
     }
 
-    self.instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
-    auto& instance = *self.instance;
-    instance.createVirtualFileSystem(params.vfs, diagnostic_consumer.get());
-    instance.createDiagnostics(diagnostic_consumer.release(), true);
+    instance = std::make_unique<clang::CompilerInstance>(std::move(invocation));
+    instance->createVirtualFileSystem(params.input.vfs, diagnostic_consumer.get());
+    instance->createDiagnostics(diagnostic_consumer.release(), true);
     // A missing header is fatal to clang, which then reports nothing after it.
-    instance.getDiagnostics().setSeverity(clang::diag::err_pp_file_not_found,
-                                          clang::diag::Severity::Error,
-                                          {});
-    instance.createFileManager();
+    instance->getDiagnostics().setSeverity(clang::diag::err_pp_file_not_found,
+                                           clang::diag::Severity::Error,
+                                           {});
+    instance->createFileManager();
 
-    if(!instance.createTarget()) {
+    if(!instance->createTarget()) {
         return CompilationStatus::SetupFail;
     }
 
-    if(before_execute) {
-        before_execute(instance);
+    if(params.kind == CompilationKind::Completion) {
+        assert(params.completion.consumer && "a completion needs its consumer");
+        instance->setCodeCompletionConsumer(params.completion.consumer.release());
     }
 
-    self.action = std::make_unique<ProxyAction>(std::move(action), &self);
+    action = std::make_unique<ParseAction>(frontend_action(params.kind), *this);
 
-    if(!self.action->BeginSourceFile(instance, instance.getFrontendOpts().Inputs[0])) {
-        /// If the action is not empty, we will call `EndSourceFile` at the destructor of `Self`.
+    if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
+        /// If the action is not empty, we will call `EndSourceFile` in the destructor.
         /// But if we fail to `BeginSourceFile` we don't need to call `EndSourceFile`. So just
         /// reset it.
-        self.action.reset();
+        action.reset();
         return CompilationStatus::SetupFail;
+    }
+
+    if(params.kind == CompilationKind::Completion) {
+        complete_at(*instance, params.completion.offset);
     }
 
     /// FIXME: include-fixer, etc?
@@ -344,58 +418,54 @@ CompilationStatus CompilationUnitRef::Self::run_clang(
     /// The checks' PPCallbacks go first: the preamble replay reaches the
     /// callbacks registered before it (see tidy::configure).
     if(params.tidy) {
-        self.checker = tidy::configure(instance, *params.tidy, params.preamble_inactive_regions);
+        checker = tidy::configure(*instance,
+                                  *params.tidy,
+                                  params.kind != CompilationKind::Content,
+                                  params.preamble_inactive_regions);
     }
 
     /// Add PPCallbacks to collect preprocessing information.
-    self.collect_directives();
+    instance->getPreprocessor().addPPCallbacks(directive_collector());
 
     if(params.kind == CompilationKind::Content) {
-        self.tokens.emplace(instance.getPreprocessor());
+        collected_tokens.emplace(instance->getPreprocessor());
     }
 
-    if(auto error = self.action->Execute()) {
-        // Upstream FrontendAction::Execute() always returns success (errors go through
-        // diagnostics); log here only as a guard in case a custom action ever returns
-        // an unexpected llvm::Error.
-        LOG_ERROR("FrontendAction::Execute failed: {}", error);
-        return CompilationStatus::FatalError;
-    }
+    // Upstream FrontendAction::Execute() always returns success: errors go
+    // through diagnostics.
+    llvm::cantFail(action->Execute());
 
-    /// If the output file is not empty, it represents that we are
-    /// generating a PCH or PCM. A PCM build with errors fails. A PCH is
-    /// written in spite of its preamble's errors; clang writes none only
-    /// after a module failed to load.
-    if(!instance.getFrontendOpts().OutputFile.empty() &&
-       (self.kind == CompilationKind::Preamble ? instance.hadModuleLoaderFatalFailure()
-                                               : instance.getDiagnostics().hasErrorOccurred())) {
-        return CompilationStatus::FatalError;
-    }
-
-    /// Check whether the compilation is canceled, if so we think
-    /// it is an error.
-    if(self.stop && self.stop->load()) {
+    if(params.stop->load()) {
         return CompilationStatus::Cancelled;
     }
 
-    if(self.tokens) {
-        self.tokens->finish();
+    auto& diagnostics = instance->getDiagnostics();
+    fatal = diagnostics.hasFatalErrorOccurred();
+    /// A PCM build with errors writes nothing. A PCH is written in spite of
+    /// its preamble's errors; clang writes none only after a module failed
+    /// to load.
+    if(params.kind == CompilationKind::Preamble) {
+        output_ready = !instance->hadModuleLoaderFatalFailure();
+    } else if(params.kind == CompilationKind::ModuleInterface) {
+        output_ready = !diagnostics.hasErrorOccurred();
     }
 
-    self.run_tidy();
+    if(collected_tokens) {
+        collected_tokens->finish();
+    }
 
-    if(instance.hasASTContext()) {
-        self.resolver.emplace(instance.getASTContext());
+    run_tidy();
+
+    if(instance->hasASTContext()) {
+        template_resolver.emplace(instance->getASTContext());
     }
 
     return CompilationStatus::Completed;
 }
 
-CompilationUnit run_clang(CompilationParams& params,
-                          std::unique_ptr<clang::FrontendAction> action,
-                          llvm::function_ref<void(clang::CompilerInstance&)> before_execute = {},
-                          llvm::function_ref<void(CompilationUnitRef)> after_execute = {}) {
-    LOG_DEBUG("Compile command: {}", print_argv(params.arguments));
+std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
+    assert(writes_output(params.kind) != params.output_file.empty() &&
+           "PCH and PCM builds, and only they, write an output file");
 
     // Record the stack bottom so that clang's own recursion guards
     // (`clang::runWithSufficientStackSpace` in the parser, constant
@@ -403,126 +473,10 @@ CompilationUnit run_clang(CompilationParams& params,
     // deeply nested code would overflow the stack during parsing.
     clang::noteBottomOfStack();
 
-    auto self = new CompilationUnitRef::Self();
-    self->kind = params.kind;
-    self->stop = std::move(params.stop);
-    self->workspace = std::move(params.workspace);
-
-    using namespace std::chrono;
-    self->build_at = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
-
-    self->status = self->run_clang(params, std::move(action), before_execute);
-
-    if(self->status == CompilationStatus::Completed && after_execute) {
-        after_execute(self);
-    }
-
-    return CompilationUnit(self);
-}
-
-CompilationUnit preprocess(CompilationParams& params) {
-    return run_clang(params, std::make_unique<clang::PreprocessOnlyAction>());
-}
-
-CompilationUnit compile(CompilationParams& params) {
-    return run_clang(params,
-                     std::make_unique<clang::SyntaxOnlyAction>(),
-                     [](clang::CompilerInstance& instance) {
-                         /// Make sure the output file is empty.
-                         instance.getFrontendOpts().OutputFile.clear();
-                     });
-}
-
-CompilationUnit compile(CompilationParams& params, PCHInfo& out) {
-    assert(!params.output_file.empty() && "PCH file path cannot be empty");
-
-    auto unit = run_clang(
-        params,
-        std::make_unique<clang::GeneratePCHAction>(),
-        [&](clang::CompilerInstance& instance) {
-            /// Set options to generate PCH.
-            instance.getFrontendOpts().OutputFile = params.output_file.str();
-            instance.getFrontendOpts().ProgramAction = clang::frontend::GeneratePCH;
-            instance.getPreprocessorOpts().GeneratePreamble = true;
-
-            // Without recorded mtimes clang checks each input by its size
-            // alone. Freshness is the master's call, made on content: a
-            // same-bytes rewrite (`git stash pop`, a branch switch) moves
-            // only the mtime and must not make clang reject a PCH the master
-            // still considers fresh. The size check stays, as it guards the
-            // reader against offsets past the end of a shrunk file.
-            instance.getFrontendOpts().IncludeTimestamps = false;
-
-            instance.getLangOpts().CompilingPCH = true;
-        },
-        [&](CompilationUnitRef unit) {
-            out.path = params.output_file.str();
-            out.preamble = unit.main_content();
-            out.arguments = params.arguments;
-        });
-    if(unit.completed() || unit.fatal_error()) {
-        out.deps = unit.deps();
-    }
+    std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
+    LOG_DEBUG("Compile command: {}", llvm::join(unit->params.input.arguments, " "));
+    unit->outcome = unit->run();
     return unit;
-}
-
-CompilationUnit compile(CompilationParams& params, PCMInfo& out) {
-    assert(!params.output_file.empty() && "PCM file path cannot be empty");
-
-    auto unit = run_clang(
-        params,
-        std::make_unique<clang::GenerateReducedModuleInterfaceAction>(),
-        [&](clang::CompilerInstance& instance) {
-            /// Set options to generate PCH.
-            instance.getFrontendOpts().OutputFile = params.output_file.str();
-            instance.getFrontendOpts().ProgramAction =
-                clang::frontend::GenerateReducedModuleInterface;
-
-            out.srcPath = instance.getFrontendOpts().Inputs[0].getFile();
-        },
-        [&](CompilationUnitRef unit) {
-            out.path = params.output_file.str();
-            for(auto& [name, path]: params.pcms) {
-                out.mods.emplace_back(name);
-            }
-        });
-    if(unit.completed() || unit.fatal_error()) {
-        out.deps = unit.deps();
-        // deps() collects include targets only; the module source is a
-        // build input of its PCM all the same. Canonicalize it like every
-        // other dep — srcPath keeps the command line's raw spelling, which
-        // consumers cannot stat reliably.
-        out.deps.emplace_back(std::string(unit.file_path(unit.main_file())),
-                              llvm::xxh3_64bits(unit.main_content()));
-    }
-    return unit;
-}
-
-CompilationUnit complete(CompilationParams& params, clang::CodeCompleteConsumer* consumer) {
-    auto& [file, offset] = params.completion;
-
-    auto buffer = params.buffers.find(file);
-    assert(buffer != params.buffers.end() && "completion file must be remapped");
-    llvm::StringRef content = buffer->second->getBuffer();
-    auto completion_offset =
-        static_cast<std::uint32_t>(std::min<std::size_t>(offset, content.size()));
-    auto lines = kota::ipc::lsp::line_starts({content.data(), content.size()});
-    auto position = PositionMap(content, lines).position(completion_offset, PositionEncoding::UTF8);
-    assert(position && "clamped completion offset must be mappable");
-
-    /// Clang completion locations are 1-based.
-    auto line = position->line + 1;
-    auto column = position->character + 1;
-
-    return run_clang(params,
-                     std::make_unique<clang::SyntaxOnlyAction>(),
-                     [&](clang::CompilerInstance& instance) {
-                         /// Set options to run code completion.
-                         instance.getFrontendOpts().CodeCompletionAt.FileName = std::move(file);
-                         instance.getFrontendOpts().CodeCompletionAt.Line = line;
-                         instance.getFrontendOpts().CodeCompletionAt.Column = column;
-                         instance.setCodeCompletionConsumer(consumer);
-                     });
 }
 
 std::vector<std::string> collect_errors(CompilationUnit& unit) {

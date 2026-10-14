@@ -28,11 +28,13 @@ namespace protocol = kota::ipc::protocol;
 struct DocumentEntry {
     int version = 0;
     std::string text;
-    bool has_ast = false;
-    CompilationUnit unit{nullptr};
 
-    // Signaled when the first compilation completes (has_ast becomes true).
-    // Feature handlers co_await this before accessing the AST.
+    /// The AST of the last compile that completed; null while a compile
+    /// runs, and after one that did not complete.
+    std::unique_ptr<CompilationUnit> unit;
+
+    // Signaled when the first compilation finishes. Feature handlers
+    // co_await this before accessing the AST.
     kota::event ast_ready{false};
 
     // Compilation context (from CompileParams)
@@ -48,7 +50,7 @@ struct DocumentEntry {
     /// open.
     std::vector<std::uint32_t> inactive_regions() {
         auto regions = preamble_inactive_regions;
-        auto scan = feature::inactive_regions(unit, open_conditionals, pch.second);
+        auto scan = feature::inactive_regions(*unit, open_conditionals, pch.second);
         regions.insert(regions.end(), scan.regions.begin(), scan.regions.end());
         return regions;
     }
@@ -95,8 +97,8 @@ struct [[nodiscard]] PendingGuard {
 /// A compile's hold on its document, which wakes the AST waiters when
 /// released: at every exit of the compile, and when a cancel read with the
 /// request destroys its task before it starts. An unset ast_ready would
-/// hang every later query for the document (they observe has_ast == false
-/// and return their missing value; the next Compile sets a real AST).
+/// hang every later query for the document (they observe no unit and
+/// return their missing value; the next Compile sets a real AST).
 struct [[nodiscard]] CompileGuard {
     PendingGuard pending;
 
@@ -206,7 +208,7 @@ class StatefulWorker {
                 if(cancelled.load(std::memory_order_relaxed)) {
                     return std::move(missing);
                 }
-                if(!doc.has_ast || (!doc.unit.completed() && !doc.unit.fatal_error()))
+                if(!doc.unit)
                     return std::move(missing);
                 CrashScope crash_scope(worker::crash_tag(params));
                 ScopedTimer compute_timer;
@@ -266,10 +268,9 @@ RequestResult<worker::CompileParams>
     // it before the cancellable await, or a cancellation arriving while
     // the work is still queued would wake waiters with the previous
     // unit installed next to the new buffer — with_ast_or would serve
-    // stale offsets as current. Waiters observe has_ast == false and
-    // return their missing value until a compile finishes.
-    doc->has_ast = false;
-    doc->unit = CompilationUnit(nullptr);
+    // stale offsets as current. Waiters observe no unit and return their
+    // missing value until a compile finishes.
+    doc->unit.reset();
 
     // The parse itself is interruptible: CompilationParams::stop is
     // polled after every top-level declaration, so the queue hook
@@ -277,27 +278,27 @@ RequestResult<worker::CompileParams>
     // does) reaches into the middle of the AST build instead of
     // waiting for it to finish; an interrupted unit reports
     // !completed() and the phases after it are skipped like any other
-    // incomplete compile. The document stays coherent at every early
-    // exit (unit and has_ast are set together).
+    // incomplete compile.
     auto stop = std::make_shared<std::atomic_bool>(false);
     auto compile_result = co_await kota::queue(
         [&]() -> worker::CompileResult {
             CrashScope crash_scope(worker::crash_tag(params));
             ScopedTimer timer;
 
-            CompilationParams cp;
-            cp.kind = CompilationKind::Content;
-            fill_args(cp, doc->directory, doc->arguments);
-            cp.workspace = params.workspace;
-            use_artifacts(cp, doc->pch, doc->pcms);
-            cp.add_remapped_file(params.path, doc->text);
-            cp.add_synthesized(params.synthesized);
-            cp.tidy = params.tidy;
-            cp.preamble_inactive_regions = params.preamble_inactive_regions;
-            cp.stop = stop;
+            CompilationParams cp{
+                .kind = CompilationKind::Content,
+                .input = {.arguments = doc->arguments,
+                          .directory = doc->directory,
+                          .workspace = params.workspace},
+                .tidy = params.tidy,
+                .preamble_inactive_regions = params.preamble_inactive_regions,
+                .stop = stop,
+            };
+            use_artifacts(cp.input, doc->pch, doc->pcms);
+            cp.input.add_remapped_file(params.path, doc->text);
+            cp.input.add_synthesized(params.synthesized);
 
-            doc->unit = compile(cp);
-            doc->has_ast = true;
+            auto unit = compile(std::move(cp));
 
             worker::CompileResult result;
             result.version = doc->version;
@@ -307,14 +308,15 @@ RequestResult<worker::CompileParams>
             // AST-deserialization error naming no other prebuilt input
             // (that family's messages do not reliably carry the path —
             // "malformed or corrupted precompiled file: 'Blob ends too
-            // soon'"). User-code failures (missing include, modified
-            // header, bad flags) match neither, so the master never
-            // rebuilds an innocent shared PCH over a failure it did
-            // not cause. An anonymous read error with PCMs in play is
-            // ambiguous; blaming the PCH costs at most one retracted
-            // pair per round and self-corrects on the retry.
-            if(!doc->unit.completed() && !doc->pch.first.empty()) {
-                result.pch_suspect = std::ranges::any_of(doc->unit.diagnostics(), [&](auto& diag) {
+            // soon'"). The reader rejects a blob at setup, or finds it
+            // corrupt halfway through, which is fatal. User-code failures
+            // (missing include, modified header, bad flags) match neither,
+            // so the master never rebuilds an innocent shared PCH over a
+            // failure it did not cause. An anonymous read error with PCMs
+            // in play is ambiguous; blaming the PCH costs at most one
+            // retracted pair per round and self-corrects on the retry.
+            if((!unit->completed() || unit->fatal_error()) && !doc->pch.first.empty()) {
+                result.pch_suspect = std::ranges::any_of(unit->diagnostics(), [&](auto& diag) {
                     llvm::StringRef message = diag.message;
                     if(message.contains(doc->pch.first)) {
                         return true;
@@ -329,20 +331,20 @@ RequestResult<worker::CompileParams>
             }
 
             std::optional<std::string> index_error;
-            if(doc->unit.completed() && !stop->load(std::memory_order_relaxed)) {
-                result.build_at = doc->unit.build_at().count();
-                result.deps = doc->unit.deps();
+            if(unit->completed() && !stop->load(std::memory_order_relaxed)) {
+                result.build_at = unit->build_at().count();
+                result.deps = unit->deps();
 
                 // Build index for main file only (main_file_only=true).
                 index_error = hand_over_index(
-                    index::build_tu_index(doc->unit,
+                    index::build_tu_index(*unit,
                                           {.main_file_only = true, .only_instantiation = true}),
                     params.index_output_path,
                     result);
             }
 
-            if(doc->unit.completed() || doc->unit.fatal_error()) {
-                auto diags = feature::diagnostics(doc->unit);
+            if(unit->completed()) {
+                auto diags = feature::diagnostics(*unit);
                 if(index_error) {
                     diags.push_back(index_unavailable(*index_error));
                 }
@@ -350,28 +352,21 @@ RequestResult<worker::CompileParams>
                          params.path,
                          timer.ms(),
                          diags.size(),
-                         doc->unit.fatal_error());
+                         unit->fatal_error());
                 result.diagnostics = std::move(diags);
+                doc->unit = std::move(unit);
             } else {
-                result.status = doc->unit.setup_fail() ? worker::CompileStatus::SetupFail
-                                                       : worker::CompileStatus::Cancelled;
+                result.status = unit->setup_fail() ? worker::CompileStatus::SetupFail
+                                                   : worker::CompileStatus::Cancelled;
                 LOG_WARN("Compile incomplete: path={}, {}ms, setup_fail={}",
                          params.path,
                          timer.ms(),
-                         doc->unit.setup_fail());
-            }
-
-            // A unit that is neither complete nor a fatal-error result
-            // can never serve a query (with_ast_or refuses it), yet it
-            // pins the consumed artifacts — on Windows a mapped PCH
-            // cannot be replaced on disk, so holding it would block
-            // the master's rebuild of a retracted pair. Drop it last,
-            // after every use of the unit above; queries observe
-            // has_ast == false and return their missing value until a
-            // compile finishes.
-            if(!doc->unit.completed() && !doc->unit.fatal_error()) {
-                doc->unit = CompilationUnit(nullptr);
-                doc->has_ast = false;
+                         unit->setup_fail());
+                // An incomplete unit can never serve a query, yet it pins
+                // the consumed artifacts — on Windows a mapped PCH cannot
+                // be replaced on disk, so holding it would block the
+                // master's rebuild of a retracted pair.
+                unit.reset();
             }
             release_free_memory();
             return result;
@@ -400,7 +395,7 @@ void StatefulWorker::register_handlers() {
         return with_ast_or("DocumentLink",
                            params,
                            std::vector<index::DocumentLink>{},
-                           [&](DocumentEntry& doc) { return feature::document_links(doc.unit); });
+                           [&](DocumentEntry& doc) { return feature::document_links(*doc.unit); });
     });
 
     // === FoldingRange ===
@@ -410,7 +405,7 @@ void StatefulWorker::register_handlers() {
             "FoldingRange",
             params,
             std::optional<std::vector<feature::FoldingRange>>{},
-            [&](DocumentEntry& doc) { return std::optional(feature::folding_ranges(doc.unit)); });
+            [&](DocumentEntry& doc) { return std::optional(feature::folding_ranges(*doc.unit)); });
     });
 
     // === CodeAction ===
@@ -421,7 +416,7 @@ void StatefulWorker::register_handlers() {
                 "CodeAction",
                 params,
                 std::vector<feature::CodeAction>{},
-                [&](DocumentEntry& doc) { return feature::code_actions(doc.unit, params.range); });
+                [&](DocumentEntry& doc) { return feature::code_actions(*doc.unit, params.range); });
         });
 
     // === SelectionRange ===
@@ -431,7 +426,7 @@ void StatefulWorker::register_handlers() {
                            params,
                            std::vector<std::vector<LocalSourceRange>>{},
                            [&](DocumentEntry& doc) {
-                               return feature::selection_ranges(doc.unit, params.offsets);
+                               return feature::selection_ranges(*doc.unit, params.offsets);
                            });
     });
 
@@ -444,7 +439,7 @@ void StatefulWorker::register_handlers() {
                 params,
                 std::vector<feature::InlayHint>{},
                 [&](DocumentEntry& doc) {
-                    return feature::inlay_hints(doc.unit, params.range, params.config.inlay_hints);
+                    return feature::inlay_hints(*doc.unit, params.range, params.config.inlay_hints);
                 });
         });
 
@@ -470,7 +465,7 @@ void StatefulWorker::register_handlers() {
             switch(params.kind) {
                 case K::Hover:
                     return with_ast(kind, params, [&](DocumentEntry& doc) {
-                        auto result = feature::hover(doc.unit,
+                        auto result = feature::hover(*doc.unit,
                                                      params.offset,
                                                      params.config.hover,
                                                      params.config.documentation,
@@ -481,13 +476,13 @@ void StatefulWorker::register_handlers() {
                     return with_ast(kind, params, [&](DocumentEntry& doc) {
                         auto regions = doc.inactive_regions();
                         return to_raw(
-                            feature::semantic_tokens(doc.unit, regions, PositionEncoding::UTF16));
+                            feature::semantic_tokens(*doc.unit, regions, PositionEncoding::UTF16));
                     });
                 case K::DocumentSymbol:
                     return with_ast(kind, params, [&](DocumentEntry& doc) {
                         auto regions = doc.inactive_regions();
                         return to_raw(
-                            feature::document_symbols(doc.unit, regions, PositionEncoding::UTF16));
+                            feature::document_symbols(*doc.unit, regions, PositionEncoding::UTF16));
                     });
             }
             std::unreachable();

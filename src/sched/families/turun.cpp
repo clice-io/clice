@@ -6,7 +6,7 @@ module;
 
 module clice;
 
-import :compile.compilation;
+import :compile.tidy;
 import :sched.families.pcm;
 import :sched.families.turun;
 import :support.logging;

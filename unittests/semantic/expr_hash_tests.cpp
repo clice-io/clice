@@ -534,8 +534,8 @@ void statements() {
 }
 )cpp");
     prepare("-std=c++23");
-    params.arguments.insert(
-        params.arguments.end(),
+    params.input.arguments.insert(
+        params.input.arguments.end(),
         {"-fenable-matrix", "-fblocks", "-ffixed-point", "-fcxx-exceptions", "-fexceptions"});
     ZASSERT(try_compile());
     ZASSERT(!has_errors(*unit));
@@ -776,7 +776,7 @@ using mark_as_type = decltype(__builtin_astype(1, float));
 using mark_addrspace = decltype(addrspace_cast<__global int*>((__generic int*)nullptr));
 )cpp");
     opencl.prepare("-cl-std=clc++2021");
-    opencl.params.arguments.insert(opencl.params.arguments.end(), {"-x", "clcpp"});
+    opencl.params.input.arguments.insert(opencl.params.input.arguments.end(), {"-x", "clcpp"});
     ZASSERT(opencl.try_compile());
     ZASSERT(!has_errors(*opencl.unit));
     auto opencl_fidelity = check_marked(opencl);
@@ -791,7 +791,7 @@ __attribute__((global)) void kernel();
 using mark_cuda_call = decltype(kernel<<<1, 1>>>());
 )cpp");
         fixture.prepare("-std=c++20");
-        fixture.params.arguments.insert(fixture.params.arguments.end(), {"-x", "cuda"});
+        fixture.params.input.arguments.insert(fixture.params.input.arguments.end(), {"-x", "cuda"});
         ZASSERT(fixture.try_compile());
         ZASSERT(!has_errors(*fixture.unit));
         auto fidelity = check_marked(fixture);
@@ -813,7 +813,8 @@ using mark_sycl_name = decltype(__builtin_sycl_unique_stable_name(int));
         // clang 23 refuses SYCL device compilation for a non-GPU triple.
         fixture.triple = "spirv64-unknown-unknown";
         fixture.prepare("-std=c++20");
-        fixture.params.arguments.insert(fixture.params.arguments.end(), {"-fsycl-is-device"});
+        fixture.params.input.arguments.insert(fixture.params.input.arguments.end(),
+                                              {"-fsycl-is-device"});
         ZASSERT(fixture.try_compile());
         ZASSERT(!has_errors(*fixture.unit));
         auto fidelity = check_marked(fixture);
@@ -840,7 +841,7 @@ int ordinary(int);
 using mark_recovery = decltype([] { ordinary(1, 2); });
 )cpp");
         fixture.prepare();
-        fixture.params.arguments.push_back("-frecovery-ast");
+        fixture.params.input.arguments.push_back("-frecovery-ast");
         ZASSERT(fixture.try_compile());
         ZASSERT(fixture.unit->context().getDiagnostics().hasErrorOccurred());
         auto fidelity = check_marked(fixture);

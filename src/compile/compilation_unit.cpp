@@ -4,29 +4,30 @@ module;
 
 module clice;
 
-import :compile.implement;
+import :compile.compilation;
+import :compile.identity;
+import :compile.semantics;
 import :compile.tokens;
-import :semantic.display;
 import :syntax.lexical_scan;
 import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
 
-CompilationKind CompilationUnitRef::kind() {
-    return self->kind;
+bool CompilationUnit::fatal_error() {
+    return fatal;
 }
 
-CompilationStatus CompilationUnitRef::status() {
-    return self->status;
+bool CompilationUnit::has_output() {
+    return output_ready;
 }
 
-auto CompilationUnitRef::file_id(clang::FileEntryRef entry) -> clang::FileID {
-    return self->SM().translateFile(entry);
+auto CompilationUnit::file_id(clang::FileEntryRef entry) -> clang::FileID {
+    return SM().translateFile(entry);
 }
 
-auto CompilationUnitRef::file_id(llvm::StringRef file) -> clang::FileID {
-    auto entry = self->SM().getFileManager().getFileRef(file);
+auto CompilationUnit::file_id(llvm::StringRef file) -> clang::FileID {
+    auto entry = SM().getFileManager().getFileRef(file);
     if(entry) {
         return file_id(*entry);
     }
@@ -34,13 +35,13 @@ auto CompilationUnitRef::file_id(llvm::StringRef file) -> clang::FileID {
     return clang::FileID();
 }
 
-auto CompilationUnitRef::decompose_location(clang::SourceLocation location)
+auto CompilationUnit::decompose_location(clang::SourceLocation location)
     -> std::pair<clang::FileID, std::uint32_t> {
     assert(location.isFileID() && "Decompose macro location is meaningless!");
-    return self->SM().getDecomposedLoc(location);
+    return SM().getDecomposedLoc(location);
 }
 
-auto CompilationUnitRef::decompose_range(clang::SourceRange range)
+auto CompilationUnit::decompose_range(clang::SourceRange range)
     -> std::pair<clang::FileID, LocalSourceRange> {
     auto [begin, end] = range;
     assert(begin.isValid() && end.isValid() && "Invalid source range");
@@ -70,25 +71,25 @@ auto CompilationUnitRef::decompose_range(clang::SourceRange range)
     }
 }
 
-auto CompilationUnitRef::decompose_expansion_range(clang::SourceRange range)
+auto CompilationUnit::decompose_expansion_range(clang::SourceRange range)
     -> std::pair<clang::FileID, LocalSourceRange> {
     auto [begin, end] = range;
     // An end inside a macro expansion extends to the invocation's last
     // token: `MAKE_FN(name)` as a whole, not its macro name alone.
     return decompose_range(
-        clang::SourceRange(expansion_location(begin), self->SM().getExpansionRange(end).getEnd()));
+        clang::SourceRange(expansion_location(begin), SM().getExpansionRange(end).getEnd()));
 }
 
-auto CompilationUnitRef::file_id(clang::SourceLocation location) -> clang::FileID {
-    return self->SM().getFileID(location);
+auto CompilationUnit::file_id(clang::SourceLocation location) -> clang::FileID {
+    return SM().getFileID(location);
 }
 
-auto CompilationUnitRef::file_offset(clang::SourceLocation location) -> std::uint32_t {
-    return self->SM().getFileOffset(location);
+auto CompilationUnit::file_offset(clang::SourceLocation location) -> std::uint32_t {
+    return SM().getFileOffset(location);
 }
 
-auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
-    if(auto it = self->path_cache.find(entry); it != self->path_cache.end()) {
+auto CompilationUnit::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
+    if(auto it = path_cache.find(entry); it != path_cache.end()) {
         return it->second;
     }
 
@@ -100,7 +101,7 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
     /// read. A file only memory holds (a header context's fragment) is
     /// named like a missing one, through its directory.
     llvm::SmallString<128> spelled(entry.getName());
-    auto& files = self->SM().getFileManager();
+    auto& files = SM().getFileManager();
     files.makeAbsolutePath(spelled);
     // An -ivfsoverlay can name a file by a path only the overlay knows;
     // the file read is the one it redirects to.
@@ -114,19 +115,19 @@ auto CompilationUnitRef::file_path(clang::FileEntryRef entry) -> llvm::StringRef
 
     /// Allocate the path in the storage.
     auto size = path.size();
-    auto data = self->path_storage.Allocate<char>(size + 1);
+    auto data = path_storage.Allocate<char>(size + 1);
     memcpy(data, path.data(), size);
     data[size] = '\0';
 
-    auto [it, inserted] = self->path_cache.try_emplace(entry, llvm::StringRef(data, size));
+    auto [it, inserted] = path_cache.try_emplace(entry, llvm::StringRef(data, size));
     assert(inserted && "File path already exists");
     return it->second;
 }
 
-auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
+auto CompilationUnit::file_path(clang::FileID fid) -> llvm::StringRef {
     assert(fid.isValid() && "file_path: invalid fid");
 
-    auto entry = self->SM().getFileEntryRefForID(fid);
+    auto entry = SM().getFileEntryRefForID(fid);
     assert(entry && "file_path: fid has no backing file entry, check is_builtin_file first");
     if(!entry) {
         /// Callers violating the contract get a degraded result in release
@@ -137,33 +138,33 @@ auto CompilationUnitRef::file_path(clang::FileID fid) -> llvm::StringRef {
     return file_path(*entry);
 }
 
-auto CompilationUnitRef::workspace() -> llvm::StringRef {
-    return self->workspace;
+auto CompilationUnit::workspace() -> llvm::StringRef {
+    return params.input.workspace;
 }
 
-auto CompilationUnitRef::file_content(clang::FileID fid) -> llvm::StringRef {
-    return self->SM().getBufferData(fid);
+auto CompilationUnit::file_content(clang::FileID fid) -> llvm::StringRef {
+    return SM().getBufferData(fid);
 }
 
-auto CompilationUnitRef::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
-    return self->SM().getBufferDataOrNone(fid);
+auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
+    return SM().getBufferDataOrNone(fid);
 }
 
-auto CompilationUnitRef::main_file() -> clang::FileID {
-    return self->SM().getMainFileID();
+auto CompilationUnit::main_file() -> clang::FileID {
+    return SM().getMainFileID();
 }
 
-bool CompilationUnitRef::is_main_file(clang::FileID fid) {
-    return fid == main_file() || (fid.isValid() && fid == self->SM().getPreambleFileID());
+bool CompilationUnit::is_main_file(clang::FileID fid) {
+    return fid == main_file() || (fid.isValid() && fid == SM().getPreambleFileID());
 }
 
-auto CompilationUnitRef::main_content() -> llvm::StringRef {
+auto CompilationUnit::main_content() -> llvm::StringRef {
     return file_content(main_file());
 }
 
-auto CompilationUnitRef::positions(clang::FileID fid) -> PositionMap {
+auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
     auto content = file_content(fid);
-    auto [it, inserted] = self->line_tables.try_emplace(fid);
+    auto [it, inserted] = line_tables.try_emplace(fid);
     if(inserted) {
         it->second.starts = kota::ipc::lsp::line_starts({content.data(), content.size()});
         it->second.non_ascii = kota::ipc::lsp::non_ascii_lines({content.data(), content.size()});
@@ -171,22 +172,22 @@ auto CompilationUnitRef::positions(clang::FileID fid) -> PositionMap {
     return {content, it->second.starts, it->second.non_ascii};
 }
 
-auto CompilationUnitRef::positions() -> PositionMap {
+auto CompilationUnit::positions() -> PositionMap {
     return positions(main_file());
 }
 
-auto CompilationUnitRef::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment> {
-    auto [it, inserted] = self->comments.try_emplace(fid);
+auto CompilationUnit::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment> {
+    auto [it, inserted] = comment_cache.try_emplace(fid);
     if(inserted) {
         it->second = scan_comments(file_content(fid), &lang_options());
     }
     return it->second;
 }
 
-bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
+bool CompilationUnit::is_builtin_file(clang::FileID fid) {
     // No FileEntryRef => built-in/command line/scratch.
-    if(!self->SM().getFileEntryRefForID(fid)) {
-        if(auto buffer = self->SM().getBufferOrNone(fid)) {
+    if(!SM().getFileEntryRefForID(fid)) {
+        if(auto buffer = SM().getBufferOrNone(fid)) {
             auto name = buffer->getBufferIdentifier();
             return name == "<built-in>" || name == "<command line>" || name == "<scratch space>";
         }
@@ -195,51 +196,51 @@ bool CompilationUnitRef::is_builtin_file(clang::FileID fid) {
     return false;
 }
 
-auto CompilationUnitRef::spelling_location(clang::SourceLocation loc) -> clang::SourceLocation {
-    return self->SM().getSpellingLoc(loc);
+auto CompilationUnit::spelling_location(clang::SourceLocation loc) -> clang::SourceLocation {
+    return SM().getSpellingLoc(loc);
 }
 
-auto CompilationUnitRef::expansion_location(clang::SourceLocation location)
+auto CompilationUnit::expansion_location(clang::SourceLocation location)
     -> clang::SourceLocation {
-    return self->SM().getExpansionLoc(location);
+    return SM().getExpansionLoc(location);
 }
 
-auto CompilationUnitRef::file_location(clang::SourceLocation location) -> clang::SourceLocation {
-    return self->SM().getFileLoc(location);
+auto CompilationUnit::file_location(clang::SourceLocation location) -> clang::SourceLocation {
+    return SM().getFileLoc(location);
 }
 
-auto CompilationUnitRef::include_location(clang::FileID fid) -> clang::SourceLocation {
-    return self->SM().getIncludeLoc(fid);
+auto CompilationUnit::include_location(clang::FileID fid) -> clang::SourceLocation {
+    return SM().getIncludeLoc(fid);
 }
 
-const SynthesizedOrigin* CompilationUnitRef::origin(clang::FileID fid) {
+const SynthesizedOrigin* CompilationUnit::origin(clang::FileID fid) {
     if(!borrows_context()) {
         return nullptr;
     }
-    auto entry = self->SM().getFileEntryRefForID(fid);
+    auto entry = SM().getFileEntryRefForID(fid);
     if(!entry) {
         return nullptr;
     }
-    auto it = self->synthesized.find(file_path(*entry));
-    return it != self->synthesized.end() ? &it->second : nullptr;
+    auto it = params.input.synthesized.find(file_path(*entry));
+    return it != params.input.synthesized.end() ? &it->second : nullptr;
 }
 
-bool CompilationUnitRef::synthesized(clang::FileID fid) {
+bool CompilationUnit::synthesized(clang::FileID fid) {
     return origin(fid) != nullptr;
 }
 
-bool CompilationUnitRef::borrows_context() {
-    return !self->synthesized.empty();
+bool CompilationUnit::borrows_context() {
+    return !params.input.synthesized.empty();
 }
 
-auto CompilationUnitRef::source_path(clang::FileID fid) -> llvm::StringRef {
+auto CompilationUnit::source_path(clang::FileID fid) -> llvm::StringRef {
     if(auto* found = origin(fid)) {
         return found->source;
     }
     return file_path(fid);
 }
 
-std::uint32_t CompilationUnitRef::source_offset(clang::FileID fid, std::uint32_t offset) {
+std::uint32_t CompilationUnit::source_offset(clang::FileID fid, std::uint32_t offset) {
     auto* found = origin(fid);
     if(!found) {
         return offset;
@@ -254,7 +255,7 @@ std::uint32_t CompilationUnitRef::source_offset(clang::FileID fid, std::uint32_t
     return run->source_offset + (offset - run->offset);
 }
 
-bool CompilationUnitRef::host_source(clang::FileID fid) {
+bool CompilationUnit::host_source(clang::FileID fid) {
     if(!borrows_context()) {
         return is_main_file(fid);
     }
@@ -263,11 +264,11 @@ bool CompilationUnitRef::host_source(clang::FileID fid) {
     }
     // The host's first fragment is the one the compile -includes, from
     // the predefines buffer.
-    if(!self->host) {
-        self->host.emplace();
-        auto& SM = self->SM();
-        auto predefines = self->instance->getPreprocessor().getPredefinesFileID();
-        for(auto& [path, cut]: self->synthesized) {
+    if(!host) {
+        host.emplace();
+        auto& SM = SM();
+        auto predefines = instance->getPreprocessor().getPredefinesFileID();
+        for(auto& [path, cut]: params.input.synthesized) {
             if(cut.forced) {
                 continue;
             }
@@ -277,18 +278,18 @@ bool CompilationUnitRef::host_source(clang::FileID fid) {
             }
             auto root = SM.translateFile(*entry);
             if(root.isValid() && SM.getFileID(SM.getIncludeLoc(root)) == predefines) {
-                *self->host = source_path(root);
+                *host = source_path(root);
             }
         }
     }
-    return source_path(fid) == *self->host;
+    return source_path(fid) == *host;
 }
 
-bool CompilationUnitRef::from_context(clang::FileID fid) {
+bool CompilationUnit::from_context(clang::FileID fid) {
     if(!borrows_context()) {
         return false;
     }
-    auto [it, inserted] = self->context_files.try_emplace(fid);
+    auto [it, inserted] = context_files.try_emplace(fid);
     if(!inserted) {
         return it->second;
     }
@@ -298,12 +299,12 @@ bool CompilationUnitRef::from_context(clang::FileID fid) {
         result = include.isValid() && from_context(file_id(include));
     }
     // The recursion may have grown the map: store through a fresh lookup.
-    self->context_files[fid] = result;
+    context_files[fid] = result;
     return result;
 }
 
-bool CompilationUnitRef::encloses_main_file(const clang::Decl* decl) {
-    auto& SM = self->SM();
+bool CompilationUnit::encloses_main_file(const clang::Decl* decl) {
+    auto& SM = SM();
     auto start = SM.getLocForStartOfFile(main_file());
     // A scope left open at the end of the unit has no end.
     auto end = expansion_location(decl->getEndLoc());
@@ -311,98 +312,60 @@ bool CompilationUnitRef::encloses_main_file(const clang::Decl* decl) {
            (end.isInvalid() || SM.isBeforeInTranslationUnit(start, end));
 }
 
-auto CompilationUnitRef::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
-    return self->SM().getPresumedLoc(location, false);
+auto CompilationUnit::presumed_location(clang::SourceLocation location) -> clang::PresumedLoc {
+    return SM().getPresumedLoc(location, false);
 }
 
-auto CompilationUnitRef::create_location(clang::FileID fid, std::uint32_t offset)
+auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
     -> clang::SourceLocation {
-    return self->SM().getComposedLoc(fid, offset);
+    return SM().getComposedLoc(fid, offset);
 }
 
-const static TokenMap& token_map(CompilationUnitRef::Self* self) {
-    assert(self->tokens && "only a Content compile collects tokens");
-    return *self->tokens;
+auto CompilationUnit::tokens() -> const TokenMap& {
+    assert(collected_tokens && "only a Content compile collects tokens");
+    return *collected_tokens;
 }
 
-auto CompilationUnitRef::spelled_tokens() -> TokenRange {
-    return token_map(self).spelled();
+auto CompilationUnit::token_length(clang::SourceLocation location) -> std::uint32_t {
+    return clang::Lexer::MeasureTokenLength(location, SM(), instance->getLangOpts());
 }
 
-auto CompilationUnitRef::spelled_tokens(clang::SourceRange range) -> TokenRange {
-    return token_map(self).spelled_for(range);
-}
-
-auto CompilationUnitRef::spelled_tokens_touch(clang::SourceLocation location) -> TokenRange {
-    return token_map(self).spelled_touching(location);
-}
-
-auto CompilationUnitRef::preprocessed_away() -> const std::vector<bool>& {
-    return token_map(self).preprocessed_away();
-}
-
-auto CompilationUnitRef::expanded_tokens() -> TokenRange {
-    return token_map(self).expanded();
-}
-
-auto CompilationUnitRef::expanded_tokens(clang::SourceRange range) -> TokenRange {
-    return token_map(self).expanded(range);
-}
-
-auto CompilationUnitRef::expanded_token_searches() -> std::uint32_t {
-    return token_map(self).searches();
-}
-
-auto CompilationUnitRef::expansions_overlapping(TokenRange spelled)
-    -> llvm::ArrayRef<MacroExpansion> {
-    return token_map(self).expansions_overlapping(spelled);
-}
-
-auto CompilationUnitRef::expanded_token_origin(std::uint32_t index)
-    -> std::optional<std::uint32_t> {
-    return token_map(self).origin(index);
-}
-
-auto CompilationUnitRef::token_length(clang::SourceLocation location) -> std::uint32_t {
-    return clang::Lexer::MeasureTokenLength(location, self->SM(), self->instance->getLangOpts());
-}
-
-auto CompilationUnitRef::token_spelling(clang::SourceLocation location) -> std::string {
+auto CompilationUnit::token_spelling(clang::SourceLocation location) -> std::string {
     llvm::SmallString<64> buffer;
-    return clang::Lexer::getSpelling(location, buffer, self->SM(), self->instance->getLangOpts())
+    return clang::Lexer::getSpelling(location, buffer, SM(), instance->getLangOpts())
         .str();
 }
 
-bool CompilationUnitRef::is_named_module() {
-    return self->instance->getPreprocessor().isInNamedModule();
+bool CompilationUnit::is_named_module() {
+    return instance->getPreprocessor().isInNamedModule();
 }
 
-auto CompilationUnitRef::module_name() -> llvm::StringRef {
-    return self->instance->getPreprocessor().getNamedModuleName();
+auto CompilationUnit::module_name() -> llvm::StringRef {
+    return instance->getPreprocessor().getNamedModuleName();
 }
 
-bool CompilationUnitRef::defines_module() {
-    auto& pp = self->instance->getPreprocessor();
+bool CompilationUnit::defines_module() {
+    auto& pp = instance->getPreprocessor();
     return pp.isInNamedModule() && !pp.isInImplementationUnit();
 }
 
-auto CompilationUnitRef::diagnostics() -> std::vector<Diagnostic>& {
-    return self->diagnostics;
+auto CompilationUnit::diagnostics() -> llvm::ArrayRef<Diagnostic> {
+    return collected_diagnostics;
 }
 
-auto CompilationUnitRef::top_level_decls() -> llvm::ArrayRef<clang::Decl*> {
-    return self->top_level_decls;
+auto CompilationUnit::top_level_decls() -> llvm::ArrayRef<clang::Decl*> {
+    return collected_decls;
 }
 
-std::chrono::milliseconds CompilationUnitRef::build_at() {
-    return self->build_at;
+std::chrono::milliseconds CompilationUnit::build_at() {
+    return build_time;
 }
 
-clang::LangOptions& CompilationUnitRef::lang_options() {
-    return self->instance->getLangOpts();
+clang::LangOptions& CompilationUnit::lang_options() {
+    return instance->getLangOpts();
 }
 
-std::vector<DepFile> CompilationUnitRef::deps() {
+std::vector<DepFile> CompilationUnit::deps() {
     llvm::StringMap<std::uint64_t> deps;
 
     // Hash the buffer the compiler read for this fid — the consumed bytes.
@@ -415,7 +378,7 @@ std::vector<DepFile> CompilationUnitRef::deps() {
         }
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
-            if(auto buffer = self->SM().getBufferDataOrNone(fid)) {
+            if(auto buffer = SM().getBufferDataOrNone(fid)) {
                 it->second = llvm::xxh3_64bits(*buffer);
             }
         }
@@ -439,7 +402,7 @@ std::vector<DepFile> CompilationUnitRef::deps() {
         }
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
-            if(auto buffer = self->SM().getMemoryBufferForFileOrNone(*file)) {
+            if(auto buffer = SM().getMemoryBufferForFileOrNone(*file)) {
                 it->second = llvm::xxh3_64bits(vfs::without_bom(buffer->getBuffer()));
             }
         }
@@ -484,9 +447,9 @@ std::vector<DepFile> CompilationUnitRef::deps() {
     return result;
 }
 
-std::vector<std::string> CompilationUnitRef::absent() {
+std::vector<std::string> CompilationUnit::absent() {
     std::vector<std::string> result;
-    for(auto& entry: self->absent) {
+    for(auto& entry: absent_paths) {
         // The candidates over-approximate where a lookup looked (an
         // `#include_next` does not start at the first directory, a lookup
         // also fails on a directory of that name): only a place holding
@@ -499,61 +462,57 @@ std::vector<std::string> CompilationUnitRef::absent() {
     return result;
 }
 
-std::uint64_t CompilationUnitRef::entity(const clang::NamedDecl* decl) {
-    if(!self->entities) {
-        self->entities = std::make_unique<EntityTable>(*this);
+std::uint64_t CompilationUnit::entity(const clang::NamedDecl* decl) {
+    if(!entity_table) {
+        entity_table = std::make_unique<EntityTable>(*this);
     }
-    return self->entities->entity(decl);
+    return entity_table->entity(decl);
 }
 
-std::uint64_t CompilationUnitRef::entity(const clang::MacroInfo* macro) {
-    if(!self->entities) {
-        self->entities = std::make_unique<EntityTable>(*this);
+std::uint64_t CompilationUnit::entity(const clang::MacroInfo* macro) {
+    if(!entity_table) {
+        entity_table = std::make_unique<EntityTable>(*this);
     }
     auto location = macro->getDefinitionLoc();
-    return self->entities->entity(token_spelling(location), location);
+    return entity_table->entity(token_spelling(location), location);
 }
 
-std::uint64_t CompilationUnitRef::module_entity(llvm::StringRef name) {
-    if(!self->entities) {
-        self->entities = std::make_unique<EntityTable>(*this);
+std::uint64_t CompilationUnit::module_entity(llvm::StringRef name) {
+    if(!entity_table) {
+        entity_table = std::make_unique<EntityTable>(*this);
     }
-    return self->entities->module_entity(name);
+    return entity_table->module_entity(name);
 }
 
-std::uint64_t CompilationUnitRef::parent(const clang::NamedDecl* decl) {
-    if(!self->entities) {
-        self->entities = std::make_unique<EntityTable>(*this);
+std::uint64_t CompilationUnit::parent(const clang::NamedDecl* decl) {
+    if(!entity_table) {
+        entity_table = std::make_unique<EntityTable>(*this);
     }
-    return self->entities->parent(decl);
+    return entity_table->parent(decl);
 }
 
-clang::TranslationUnitDecl* CompilationUnitRef::tu() {
-    return self->instance->getASTContext().getTranslationUnitDecl();
+clang::TranslationUnitDecl* CompilationUnit::tu() {
+    return instance->getASTContext().getTranslationUnitDecl();
 }
 
-llvm::DenseMap<clang::FileID, Directive>& CompilationUnitRef::directives() {
-    return self->directives;
+llvm::DenseMap<clang::FileID, Directive>& CompilationUnit::directives() {
+    return collected_directives;
 }
 
-types::TemplateResolver& CompilationUnitRef::resolver() {
-    assert(self->resolver && "Template resolver is not available");
-    return *self->resolver;
+types::TemplateResolver& CompilationUnit::resolver() {
+    assert(template_resolver && "Template resolver is not available");
+    return *template_resolver;
 }
 
-const Semantics& CompilationUnitRef::semantics() {
-    if(!self->semantics_cache) {
-        self->semantics_cache = std::make_unique<Semantics>(Semantics::build(*this));
+const Semantics& CompilationUnit::semantics() {
+    if(!semantics_cache) {
+        semantics_cache = std::make_unique<Semantics>(Semantics::build(*this));
     }
-    return *self->semantics_cache;
+    return *semantics_cache;
 }
 
-clang::ASTContext& CompilationUnitRef::context() {
-    return self->instance->getASTContext();
-}
-
-CompilationUnit::~CompilationUnit() {
-    delete self;
+clang::ASTContext& CompilationUnit::context() {
+    return instance->getASTContext();
 }
 
 }  // namespace clice

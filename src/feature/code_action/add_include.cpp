@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :feature.code_action.action;
 import :syntax.lexer;
 
@@ -86,8 +86,8 @@ std::optional<std::size_t> call_arguments(llvm::ArrayRef<clang::syntax::Token> t
 
 /// None for a member named through `.` or `->`: the object's class
 /// declares it, not a header.
-std::optional<QualifiedName> qualified_name_at(CompilationUnitRef unit, std::uint32_t offset) {
-    auto tokens = unit.spelled_tokens();
+std::optional<QualifiedName> qualified_name_at(CompilationUnit& unit, std::uint32_t offset) {
+    auto tokens = unit.tokens().spelled();
     auto& SM = unit.context().getSourceManager();
     auto offset_of = [&](const clang::syntax::Token& token) {
         return unit.file_offset(token.location());
@@ -170,7 +170,7 @@ std::optional<clang::tooling::stdlib::Header>
 /// Where the text the user edits ends: a header compiled in its
 /// includer's context carries one line more, the include entering the
 /// synthesized rest of the includer.
-std::uint32_t text_end(CompilationUnitRef unit) {
+std::uint32_t text_end(CompilationUnit& unit) {
     auto content = unit.main_content();
     auto it = unit.directives().find(unit.main_file());
     if(it != unit.directives().end() && !it->second.includes.empty()) {
@@ -212,7 +212,7 @@ std::uint32_t after_leading_comments(llvm::StringRef content, const clang::LangO
 /// `#ifndef`/`#define` pair enclosing the whole file is a guard; a leading `#ifndef _GNU_SOURCE`
 /// block is not. A raw lex of the text rather than the directive table: the preamble's directives
 /// are compiled into the PCH and never reach this AST.
-IncludeInsertion include_insertion(CompilationUnitRef unit) {
+IncludeInsertion include_insertion(CompilationUnit& unit) {
     auto content = unit.main_content();
     auto end = text_end(unit);
 
@@ -380,9 +380,7 @@ std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions
     return anchor;
 }
 
-void add_include(CompilationUnitRef unit,
-                 LocalSourceRange selection,
-                 std::vector<CodeAction>& out) {
+void add_include(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
     namespace stdlib = clang::tooling::stdlib;
     auto name = qualified_name_at(unit, selection.begin);
     if(!name) {

@@ -53,19 +53,19 @@ Tester::~Tester() {
 }
 
 bool Tester::try_compile() {
-    auto built = clice::compile(params);
-    if(!built.completed()) {
-        for(auto& diag: built.diagnostics()) {
+    auto built = clice::compile(std::move(params));
+    if(!built->completed()) {
+        for(auto& diag: built->diagnostics()) {
             LOG_ERROR("{}", diag.message);
         }
         return false;
     }
-    unit.emplace(std::move(built));
+    unit = std::move(built);
     return true;
 }
 
 void Tester::prepare(llvm::StringRef standard) {
-    params = CompilationParams();
+    params = CompilationParams{.kind = CompilationKind::Content};
     unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
 
@@ -73,16 +73,9 @@ void Tester::prepare(llvm::StringRef standard) {
         vfs->add(file, source.content);
     }
 
-    owned_args = base_cc1_args(standard, triple);
-    owned_args.push_back(TestVFS::path(src_path));
-
-    params.arguments.clear();
-    for(auto& arg: owned_args) {
-        params.arguments.push_back(arg.c_str());
-    }
-
-    params.kind = CompilationKind::Content;
-    params.vfs = vfs;
+    params.input.arguments = base_cc1_args(standard, triple);
+    params.input.arguments.push_back(TestVFS::path(src_path));
+    params.input.vfs = vfs;
 }
 
 bool Tester::compile(llvm::StringRef standard) {
@@ -102,40 +95,36 @@ bool Tester::compile_with_pch(llvm::StringRef standard) {
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
         llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
-    params.vfs = overlay;
+    params.input.vfs = overlay;
 
     // Phase 1: Build PCH from the preamble portion.
-    params.kind = CompilationKind::Preamble;
-    params.output_file = *pch_path;
-
     auto& main_source = sources.all_files[src_path];
     auto bound = compute_preamble_bound(main_source.content);
-    auto main_vfs_path = TestVFS::path(src_path);
-    params.add_remapped_file(main_vfs_path, main_source.content, bound);
-
-    PCHInfo info;
+    CompilationParams preamble{
+        .kind = CompilationKind::Preamble,
+        .input = params.input,
+        .output_file = *pch_path,
+    };
+    preamble.input.add_remapped_file(TestVFS::path(src_path), main_source.content, bound);
     {
-        auto preamble_unit = clice::compile(params, info);
-        if(!preamble_unit.completed()) {
-            for(auto& diag: preamble_unit.diagnostics()) {
+        auto preamble_unit = clice::compile(std::move(preamble));
+        if(!preamble_unit->completed() || !preamble_unit->has_output()) {
+            for(auto& diag: preamble_unit->diagnostics()) {
                 LOG_ERROR("{}", diag.message);
             }
             return false;
         }
     }
 
-    // Phase 2: Compile content using the PCH. Re-add the buffers phase 1
-    // consumed: content compiles read the sources through remapping too.
-    params.output_file.clear();
-    params.kind = CompilationKind::Content;
-    params.pch = {info.path, static_cast<std::uint32_t>(info.preamble.size())};
-    params.buffers.clear();
+    // Phase 2: Compile content using the PCH. Content compiles read the
+    // sources through remapping too.
+    params.input.pch = {*pch_path, bound};
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
-            params.add_remapped_file(file, source.content);
+            params.input.add_remapped_file(file, source.content);
         } else {
             std::string path = path::is_absolute(file) ? file.str() : path::join(".", file);
-            params.add_remapped_file(path, source.content);
+            params.input.add_remapped_file(path, source.content);
         }
     }
 
@@ -246,16 +235,12 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         builder.prepare(standard);
         builder.params.kind = CompilationKind::ModuleInterface;
         builder.params.output_file = *pcm_path;
-        builder.params.vfs = overlay;
-        builder.params.pcms = built_pcms;
+        builder.params.input.vfs = overlay;
+        builder.params.input.pcms = built_pcms;
 
-        // The plain compile overload is syntax-only and never writes the
-        // BMI; module interfaces must go through the PCM overload or every
-        // dependent compile silently runs against an empty module file.
-        PCMInfo info;
-        auto built = clice::compile(builder.params, info);
-        if(!built.completed()) {
-            for(auto& diag: built.diagnostics()) {
+        auto built = clice::compile(std::move(builder.params));
+        if(!built->completed() || !built->has_output()) {
+            for(auto& diag: built->diagnostics()) {
                 LOG_ERROR("{}", diag.message);
             }
             return false;
@@ -265,8 +250,8 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     }
 
     prepare(standard);
-    params.vfs = overlay;
-    params.pcms = std::move(built_pcms);
+    params.input.vfs = overlay;
+    params.input.pcms = std::move(built_pcms);
     if(!try_compile()) {
         return false;
     }
@@ -323,7 +308,7 @@ LocalSourceRange Tester::range(llvm::StringRef name, llvm::StringRef file) {
 }
 
 void Tester::prepare_driver(llvm::StringRef standard) {
-    params = CompilationParams();
+    params = CompilationParams{.kind = CompilationKind::Content};
     unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     for(auto& [file, source]: sources.all_files) {
@@ -337,21 +322,20 @@ void Tester::prepare_driver(llvm::StringRef standard) {
                    entry->config,
                    database.input_kind(entry->config, src_path),
                    CommandSource::CDBExact};
-    params.arguments = database.render(ref);
-
-    params.kind = CompilationKind::Content;
+    auto rendered = database.render(ref);
+    params.input.arguments.assign(rendered.begin(), rendered.end());
 
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
         llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
-    params.vfs = overlay;
+    params.input.vfs = overlay;
 
     Spelling main(file_table.resolve(entry->file));
     for(auto& [file, source]: sources.all_files) {
         if(file == src_path) {
-            params.add_remapped_file(main, source.content);
+            params.input.add_remapped_file(main, source.content);
         } else {
-            params.add_remapped_file(Spelling(file, main.parent()), source.content);
+            params.input.add_remapped_file(Spelling(file, main.parent()), source.content);
         }
     }
 }
@@ -402,7 +386,6 @@ void Tester::clear() {
     unit.reset();
     sources.all_files.clear();
     src_path.clear();
-    owned_args.clear();
     vfs.reset();
     module_files.clear();
     for(auto& path: pcm_paths) {

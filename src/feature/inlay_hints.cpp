@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.semantics;
 import :feature.feature;
 import :index.tu_index;
@@ -519,7 +519,7 @@ private:
 class Collector {
 public:
     Collector(std::vector<InlayHint>& result,
-              CompilationUnitRef unit,
+              CompilationUnit& unit,
               LocalSourceRange restrict_range,
               const InlayHintsOptions& options) :
         result(result), unit(unit), restrict_range(restrict_range), options(options) {}
@@ -575,7 +575,7 @@ public:
 private:
     // Get the range of the main file that *exactly* corresponds to R.
     std::optional<LocalSourceRange> hint_range(clang::SourceRange R) {
-        auto tokens = unit.spelled_tokens(R);
+        auto tokens = unit.tokens().spelled_for(R);
 
         if(tokens.empty()) {
             return std::nullopt;
@@ -1783,7 +1783,7 @@ private:
 
 private:
     std::vector<InlayHint>& result;
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     LocalSourceRange restrict_range;
     const InlayHintsOptions& options;
 
@@ -1810,7 +1810,7 @@ private:
 
 }  // namespace
 
-auto inlay_hints(CompilationUnitRef unit, LocalSourceRange target, const InlayHintsOptions& options)
+auto inlay_hints(CompilationUnit& unit, LocalSourceRange target, const InlayHintsOptions& options)
     -> std::vector<InlayHint> {
     if(!options.enabled) {
         return {};

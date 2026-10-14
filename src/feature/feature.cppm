@@ -5,7 +5,6 @@ module;
 module clice:feature.feature;
 
 import :compile.compilation;
-import :compile.compilation_unit;
 import :index.manifest;
 import :index.types;
 import :semantic.display;
@@ -153,12 +152,12 @@ struct DocumentationOptions {
 
 /// The documentation of a declaration: its comment (doc_comment) read as
 /// `options` say.
-auto documentation(CompilationUnitRef unit,
+auto documentation(CompilationUnit& unit,
                    const clang::NamedDecl* decl,
                    const DocumentationOptions& options) -> Documentation;
 
 /// The same of a macro.
-auto documentation(CompilationUnitRef unit,
+auto documentation(CompilationUnit& unit,
                    const clang::MacroInfo* macro,
                    const DocumentationOptions& options) -> Documentation;
 
@@ -568,10 +567,9 @@ struct InlayHint {
 /// overloads without a regions argument scan the unit themselves — correct
 /// only for units compiled without a PCH; a PCH unit's preamble share
 /// needs the seeded regions the worker assembles at compile time.
-auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken>;
-auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
-    -> protocol::SemanticTokens;
-auto semantic_tokens(CompilationUnitRef unit,
+auto semantic_tokens(CompilationUnit& unit) -> std::vector<SemanticToken>;
+auto semantic_tokens(CompilationUnit& unit, PositionEncoding encoding) -> protocol::SemanticTokens;
+auto semantic_tokens(CompilationUnit& unit,
                      llvm::ArrayRef<std::uint32_t> inactive_regions,
                      PositionEncoding encoding) -> protocol::SemanticTokens;
 
@@ -582,7 +580,7 @@ auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
                                  const PositionMap& map,
                                  PositionEncoding encoding) -> protocol::SemanticTokens;
 
-auto folding_ranges(CompilationUnitRef unit) -> std::vector<FoldingRange>;
+auto folding_ranges(CompilationUnit& unit) -> std::vector<FoldingRange>;
 
 /// The kind of the fold a declaration's block makes, by the declaration's
 /// kind; none for a declaration owning no block. The AST collector and the
@@ -617,7 +615,7 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
 /// shows — a literal's text, a comment, the inside of a bracket pair, a
 /// statement with its `;`, a directive line. An offset nothing covers gets
 /// the empty range at it.
-auto selection_ranges(CompilationUnitRef unit, llvm::ArrayRef<std::uint32_t> offsets)
+auto selection_ranges(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>>;
 
 /// The ranges only the text shows, from a raw lex of `content`: what a
@@ -636,8 +634,8 @@ auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
 /// inactive regions. The overload without a regions argument scans the
 /// unit itself — correct only for units compiled without a PCH, as with
 /// semantic_tokens.
-auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol>;
-auto document_symbols(CompilationUnitRef unit,
+auto document_symbols(CompilationUnit& unit) -> std::vector<DocumentSymbol>;
+auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
                       PositionEncoding encoding) -> std::vector<protocol::DocumentSymbol>;
 
@@ -646,7 +644,7 @@ auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
                                   PositionEncoding encoding)
     -> std::vector<protocol::DocumentSymbol>;
 
-auto inlay_hints(CompilationUnitRef unit,
+auto inlay_hints(CompilationUnit& unit,
                  LocalSourceRange target,
                  const InlayHintsOptions& options = {}) -> std::vector<InlayHint>;
 
@@ -663,7 +661,7 @@ auto inlay_hints_to_protocol(
 
 /// Include-directive links of the main file, in byte offsets; the
 /// reply edge converts them with the session's line map.
-auto document_links(CompilationUnitRef unit) -> std::vector<index::DocumentLink>;
+auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink>;
 
 /// Find the filename-like argument of a preprocessor directive on the line
 /// containing `offset`. The offset may point at the directive/operator or
@@ -678,7 +676,7 @@ auto find_directive_argument(llvm::StringRef content,
 /// where the scanned content starts — pending inactive levels from the
 /// seed begin there. A scan that ends with open levels closes their
 /// pending regions at `end_offset` (the content bound).
-InactiveScan inactive_regions(CompilationUnitRef unit,
+InactiveScan inactive_regions(CompilationUnit& unit,
                               llvm::ArrayRef<std::uint8_t> open_stack = {},
                               std::uint32_t resume_offset = 0,
                               std::uint32_t end_offset = UINT32_MAX);
@@ -688,10 +686,10 @@ InactiveScan inactive_regions(CompilationUnitRef unit,
 /// finding repeated at one place (an alias check, a template instantiated
 /// twice) reported once.
 void for_each_diagnostic(
-    CompilationUnitRef unit,
+    CompilationUnit& unit,
     llvm::function_ref<void(const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes)> visit);
 
-auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding = PositionEncoding::UTF16)
+auto diagnostics(CompilationUnit& unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::Diagnostic>;
 
 /// A warning from clice itself about the file as a whole, on its first
@@ -746,7 +744,7 @@ struct Completion {
     std::optional<IncludePlace> include;
 };
 
-auto code_complete(CompilationParams& params,
+auto code_complete(CompilationParams params,
                    const CodeCompletionOptions& options = {},
                    const DocumentationOptions& documentation = {},
                    const CompletionClient& client = {},
@@ -766,7 +764,7 @@ auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t 
 
 /// Get the hover information for the symbol at the given offset in the
 /// main file of the unit.
-auto hover_info(CompilationUnitRef unit,
+auto hover_info(CompilationUnit& unit,
                 std::uint32_t offset,
                 const HoverOptions& options = {},
                 const DocumentationOptions& documentation = {}) -> std::optional<HoverInfo>;
@@ -778,7 +776,7 @@ auto to_protocol_hover(const HoverInfo& info,
                        const PositionMap& map,
                        PositionEncoding encoding) -> protocol::Hover;
 
-auto hover(CompilationUnitRef unit,
+auto hover(CompilationUnit& unit,
            std::uint32_t offset,
            const HoverOptions& options,
            const DocumentationOptions& documentation,
@@ -787,7 +785,7 @@ auto hover(CompilationUnitRef unit,
 
 /// `selected` is the label of the signature the client shows active: it
 /// stays active while it is listed.
-auto signature_help(CompilationParams& params,
+auto signature_help(CompilationParams params,
                     const SignatureHelpOptions& options,
                     const DocumentationOptions& documentation,
                     llvm::StringRef selected = {}) -> protocol::SignatureHelp;
@@ -898,7 +896,7 @@ struct CodeAction {
 /// The code actions available on a selection of the main file. Every
 /// action is computed to completion against this AST: single-TU actions
 /// carry their edits, the ones needing the index carry their request.
-auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::vector<CodeAction>;
+auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vector<CodeAction>;
 
 /// The pieces the index keeps, joined by blank lines; nullopt when none
 /// survives.

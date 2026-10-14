@@ -7,7 +7,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.selection;
 import :compile.semantics;
 import :feature.feature;
@@ -259,7 +259,7 @@ auto synthesize_documentation(const clang::NamedDecl* decl) -> std::string {
 
 /// A value's type inside a template as far as the resolver reaches it: a
 /// generic lambda's `auto` parameter is the type its only call passes.
-auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> clang::QualType {
+auto resolved_type(const clang::ValueDecl* value, CompilationUnit& unit) -> clang::QualType {
     auto type = value->getType();
     if(type.isNull() || !type->isDependentType()) {
         return type;
@@ -285,7 +285,7 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnitRef unit) -> cl
 /// stands for, as far as the resolver reaches it and code could write it:
 /// the variable's resolved type with the declarator's pointers, references
 /// and qualifiers taken off.
-auto resolved_auto(const clang::VarDecl* var, CompilationUnitRef unit) -> clang::QualType {
+auto resolved_auto(const clang::VarDecl* var, CompilationUnit& unit) -> clang::QualType {
     auto resolved = var->getInit() || var->isCXXForRangeDecl() ? unit.resolver().deduce(var)
                                                                : clang::QualType();
     if(resolved.isNull() || !types::writable(resolved)) {
@@ -332,7 +332,7 @@ auto card_kind(const clang::NamedDecl* decl) -> SymbolKind {
 
 /// The documentation of a parameter: what the comment of its function says
 /// of it, or of its template for a template parameter.
-auto parameter_documentation(CompilationUnitRef unit,
+auto parameter_documentation(CompilationUnit& unit,
                              const clang::NamedDecl* decl,
                              const DocumentationOptions& options) -> std::optional<Documentation> {
     bool function_parameter = llvm::isa<clang::ParmVarDecl>(decl);
@@ -365,7 +365,7 @@ auto parameter_documentation(CompilationUnitRef unit,
 auto decl_hover(const clang::NamedDecl* decl,
                 const display::Options& options,
                 const DocumentationOptions& documentation_options,
-                CompilationUnitRef unit) -> HoverInfo {
+                CompilationUnit& unit) -> HoverInfo {
     HoverInfo info;
     auto& context = decl->getASTContext();
 
@@ -452,7 +452,7 @@ auto decl_hover(const clang::NamedDecl* decl,
         declaration = binding->getDecomposedDecl();
     }
     info.definition = display::definition(declaration, options, [&](clang::SourceRange range) {
-        return unit.expanded_tokens(range).size();
+        return unit.tokens().expanded(range).size();
     });
     if(decls::is_exported(decl)) {
         info.definition.insert(0, "export ");
@@ -516,7 +516,7 @@ auto this_expr_hover(const clang::CXXThisExpr* expr,
 /// Generate a hover info given the deduced type.
 auto deduced_type_hover(clang::QualType type,
                         const clang::syntax::Token& token,
-                        CompilationUnitRef unit,
+                        CompilationUnit& unit,
                         const display::Options& options,
                         const DocumentationOptions& documentation_options) -> HoverInfo {
     HoverInfo info;
@@ -769,8 +769,7 @@ auto attr_hover(const clang::Attr* attr, clang::ASTContext& context) -> std::opt
     return info;
 }
 
-auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
-    -> std::optional<HoverInfo> {
+auto file_directive_hover(CompilationUnit& unit, std::uint32_t offset) -> std::optional<HoverInfo> {
     auto main_fid = unit.main_file();
     auto directives_it = unit.directives().find(main_fid);
     if(directives_it == unit.directives().end()) {
@@ -854,7 +853,7 @@ auto file_directive_hover(CompilationUnitRef unit, std::uint32_t offset)
 /// Written in another macro's arguments, it is expanded within that macro's
 /// top-level expansion, whose tokens carry the chain of expansions they
 /// went through.
-auto expansion_preview(CompilationUnitRef unit, clang::SourceLocation name) -> std::string {
+auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std::string {
     auto& sources = unit.context().getSourceManager();
 
     /// Whether the location lies in the reference's expansion.
@@ -893,7 +892,8 @@ auto expansion_preview(CompilationUnitRef unit, clang::SourceLocation name) -> s
     std::string preview;
     constexpr std::size_t preview_limit = 1024;
     llvm::DenseSet<clang::SourceLocation> seen;
-    for(auto& expansion: unit.expansions_overlapping(unit.spelled_tokens_touch(name))) {
+    for(auto& expansion:
+        unit.tokens().expansions_overlapping(unit.tokens().spelled_touching(name))) {
         for(const auto& token: expansion.expanded) {
             auto at = produced(token.location());
             if(at.isInvalid() || !seen.insert(at).second) {
@@ -920,7 +920,7 @@ auto expansion_preview(CompilationUnitRef unit, clang::SourceLocation name) -> s
 /// A macro name at the cursor, rendered from the preprocessor record —
 /// macro semantics never reach the AST. The card shows the `#define` text,
 /// plus a preview of the expanded tokens at expansion sites.
-auto macro_hover(CompilationUnitRef unit,
+auto macro_hover(CompilationUnit& unit,
                  std::uint32_t offset,
                  const DocumentationOptions& documentation_options) -> std::optional<HoverInfo> {
     auto directives_it = unit.directives().find(unit.main_file());
@@ -1032,7 +1032,7 @@ void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
 /// separator — `:`, `=`, `&&`, `||`, `?` — leading to what it does not spell
 /// (a range-for's `begin`, a copy's constructor) gives way to the token it
 /// follows: `for(auto& x: xs)` hovered right after `x` is `x`.
-auto decls_at(CompilationUnitRef unit, llvm::ArrayRef<clang::syntax::Token> touched)
+auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touched)
     -> llvm::SmallVector<const clang::NamedDecl*, 4> {
     const Semantics& semantics = unit.semantics();
     auto spelled = semantics.spelled_tokens();
@@ -1611,7 +1611,7 @@ markup::Document HoverInfo::present() const {
     return output;
 }
 
-auto hover_info(CompilationUnitRef unit,
+auto hover_info(CompilationUnit& unit,
                 std::uint32_t offset,
                 const HoverOptions& options,
                 const DocumentationOptions& documentation) -> std::optional<HoverInfo> {
@@ -1639,7 +1639,7 @@ auto hover_info(CompilationUnitRef unit,
     display_options.readable = &readable;
 
     auto location = unit.create_location(unit.main_file(), offset);
-    auto tokens = unit.spelled_tokens_touch(location);
+    auto tokens = unit.tokens().spelled_touching(location);
 
     /// Early exit if there were no tokens around the cursor.
     if(tokens.empty()) {
@@ -1728,7 +1728,7 @@ auto hover_info(CompilationUnitRef unit,
     return info;
 }
 
-auto hover(CompilationUnitRef unit,
+auto hover(CompilationUnit& unit,
            std::uint32_t offset,
            const HoverOptions& options,
            const DocumentationOptions& documentation,

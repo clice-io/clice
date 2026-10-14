@@ -6,13 +6,13 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :index.include_tree;
 import :support.logging;
 
 namespace clice::index {
 
-static std::uint32_t add_include_chain(CompilationUnitRef unit,
+static std::uint32_t add_include_chain(CompilationUnit& unit,
                                        clang::FileID fid,
                                        IncludeTree& tree,
                                        llvm::StringMap<std::uint32_t>& path_table) {
@@ -52,7 +52,7 @@ static std::uint32_t add_include_chain(CompilationUnitRef unit,
     return index;
 }
 
-IncludeTree IncludeTree::from(CompilationUnitRef unit, llvm::ArrayRef<clang::FileID> indexed_fids) {
+IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileID> indexed_fids) {
     llvm::StringMap<std::uint32_t> path_table;
     IncludeTree tree;
 

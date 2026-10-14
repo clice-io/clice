@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :command.command;
+import :compile.tidy;
 import :config.config;
 import :feature.feature;
 import :project.command_resolver;
@@ -349,7 +350,6 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
             failed = true;
         } else {
             plan.tidy = std::move(resolution.params);
-            plan.tidy->batch = true;
         }
     }
     if(!plan.tidy && !plan.index) {

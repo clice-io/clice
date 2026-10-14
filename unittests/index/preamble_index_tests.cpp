@@ -101,12 +101,8 @@ ZEST_CASE(ForcedIncludeServed) {
     // synthetic buffers themselves, the file must stay in the TU index
     // under its own path.
     prepare();
-    owned_args.insert(owned_args.end() - 1, "-include");
-    owned_args.insert(owned_args.end() - 1, TestVFS::path("forced.h"));
-    params.arguments.clear();
-    for(auto& arg: owned_args) {
-        params.arguments.push_back(arg.c_str());
-    }
+    params.input.arguments.insert(params.input.arguments.end() - 1, "-include");
+    params.input.arguments.insert(params.input.arguments.end() - 1, TestVFS::path("forced.h"));
     ZASSERT(try_compile());
 
     dir.touch("state.pch.idx", index::build_preamble_index(*unit, {}, {}, {}, {}));

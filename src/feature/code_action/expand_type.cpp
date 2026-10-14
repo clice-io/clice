@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.types;
 
@@ -31,7 +31,7 @@ bool is_specifier(const clang::syntax::Token& token) {
 }  // namespace
 
 void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
-    auto unit = ctx.unit;
+    auto& unit = ctx.unit;
     const auto* loc = ctx.node.get<clang::TypeLoc>();
     if(!loc) {
         return;
@@ -96,7 +96,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         declarator = declarator->getLocallyUnqualifiedSingleStepDesugaredType();
     }
     if(llvm::isa<clang::PointerType, clang::MemberPointerType>(declarator)) {
-        auto tokens = unit.spelled_tokens();
+        auto tokens = unit.tokens().spelled();
         const auto* at = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
             return unit.file_offset(token.location()) < range->begin;
         });
@@ -105,7 +105,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
             first -= 1;
         }
         auto starts_expansion = [&](const clang::syntax::Token& token) {
-            auto expansions = unit.expansions_overlapping(llvm::ArrayRef(token));
+            auto expansions = unit.tokens().expansions_overlapping(llvm::ArrayRef(token));
             return !expansions.empty() && expansions.front().spelled.begin() == &token;
         };
         for(const auto* it = first; it != tokens.begin(); it -= 1) {

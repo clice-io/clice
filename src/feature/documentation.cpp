@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.documentation;
 import :feature.feature;
 import :index.query;
@@ -52,7 +52,7 @@ Documentation read_copying(std::string text,
     return read(std::move(text), options, copied);
 }
 
-Documentation decl_documentation(CompilationUnitRef unit,
+Documentation decl_documentation(CompilationUnit& unit,
                                  const clang::NamedDecl* decl,
                                  const DocumentationOptions& options,
                                  unsigned depth) {
@@ -83,13 +83,13 @@ Documentation symbol_documentation(const index::IndexQuery& query,
 
 }  // namespace
 
-auto documentation(CompilationUnitRef unit,
+auto documentation(CompilationUnit& unit,
                    const clang::NamedDecl* decl,
                    const DocumentationOptions& options) -> Documentation {
     return decl_documentation(unit, decl, options, 0);
 }
 
-auto documentation(CompilationUnitRef unit,
+auto documentation(CompilationUnit& unit,
                    const clang::MacroInfo* macro,
                    const DocumentationOptions& options) -> Documentation {
     return read(doc_comment(unit, macro), options, nothing_copied);

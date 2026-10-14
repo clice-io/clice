@@ -967,7 +967,7 @@ struct §(ctx)ctx { int x; };
     context.add_main("part.h", "struct §(ctx)ctx;\nstruct §(part)part { int x; };\n");
     context.prepare("-std=c17");
     auto prefix = TestVFS::path(".clice-prefix.h");
-    context.params.add_synthesized({
+    context.params.input.add_synthesized({
         {
          .path = prefix,
          .content = marker + copied + "#line 9 \"elsewhere.c\"\n",
@@ -977,11 +977,8 @@ struct §(ctx)ctx { int x; };
                                  .length = static_cast<std::uint32_t>(copied.size())}}},
          }
     });
-    context.owned_args.insert(context.owned_args.end() - 1, {"-include", prefix});
-    context.params.arguments.clear();
-    for(auto& arg: context.owned_args) {
-        context.params.arguments.push_back(arg.c_str());
-    }
+    context.params.input.arguments.insert(context.params.input.arguments.end() - 1,
+                                          {"-include", prefix});
     ZASSERT(context.try_compile());
 
     ZEXPECT(entity_at(context, "part.h", "ctx") == entity_at(*this, "host.c", "ctx"));

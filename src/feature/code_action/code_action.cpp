@@ -5,7 +5,7 @@ module;
 module clice;
 
 import :command.command;
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.semantics;
 import :feature.code_action.action;
 import :semantic.display;
@@ -55,7 +55,7 @@ constexpr std::array specs = {
          .format = false},
 };
 
-void format_actions(CompilationUnitRef unit, std::vector<CodeAction>& actions, std::size_t from) {
+void format_actions(CompilationUnit& unit, std::vector<CodeAction>& actions, std::size_t from) {
     auto path = unit.file_path(unit.main_file());
     for(auto& action: llvm::drop_begin(actions, from)) {
         if(!action.edits.empty()) {
@@ -66,7 +66,7 @@ void format_actions(CompilationUnitRef unit, std::vector<CodeAction>& actions, s
 
 /// Walk the ancestor chain of the selection's innermost node and offer
 /// each spec its innermost matching node, once.
-void enumerate(CompilationUnitRef unit,
+void enumerate(CompilationUnit& unit,
                const SelectionTree& tree,
                bool main_is_header,
                std::vector<CodeAction>& out) {
@@ -712,7 +712,7 @@ std::optional<std::string> respell(clang::ASTContext& context,
 /// spelling finds something else at `from`, or is that of a template
 /// parameter among `hidden`.
 void print_constraint(llvm::raw_ostream& os,
-                      CompilationUnitRef unit,
+                      CompilationUnit& unit,
                       const clang::ConceptReference* reference,
                       const clang::DeclContext* from,
                       const llvm::StringSet<>& hidden) {
@@ -754,7 +754,7 @@ void print_constraint(llvm::raw_ostream& os,
 
 /// One "template <...>" head of `record`, the parameters spelled without
 /// defaults, followed by the requires-clause when the list has one.
-std::string template_head(CompilationUnitRef unit,
+std::string template_head(CompilationUnit& unit,
                           const clang::TemplateParameterList* params,
                           const clang::CXXRecordDecl* record,
                           const clang::DeclContext* from,
@@ -826,7 +826,7 @@ clang::AccessSpecifier trailing_access(const clang::CXXRecordDecl* record) {
 
 }  // namespace
 
-std::optional<LocalSourceRange> main_range(CompilationUnitRef unit, clang::SourceRange range) {
+std::optional<LocalSourceRange> main_range(CompilationUnit& unit, clang::SourceRange range) {
     if(range.isInvalid() || !range.getBegin().isFileID() || !range.getEnd().isFileID()) {
         return std::nullopt;
     }
@@ -837,7 +837,7 @@ std::optional<LocalSourceRange> main_range(CompilationUnitRef unit, clang::Sourc
     return unit.decompose_range(range).second;
 }
 
-std::optional<llvm::StringRef> spelled_text(CompilationUnitRef unit, clang::SourceRange range) {
+std::optional<llvm::StringRef> spelled_text(CompilationUnit& unit, clang::SourceRange range) {
     if(range.isInvalid() || !range.getBegin().isFileID() || !range.getEnd().isFileID()) {
         return std::nullopt;
     }
@@ -945,7 +945,7 @@ std::optional<std::string> type_name(clang::ASTContext& context,
     return bind_declarators(std::move(*spelled));
 }
 
-std::string template_heads(CompilationUnitRef unit,
+std::string template_heads(CompilationUnit& unit,
                            const clang::Decl* decl,
                            const clang::DeclContext* from) {
     llvm::SmallVector<std::pair<const clang::TemplateParameterList*, const clang::CXXRecordDecl*>,
@@ -969,7 +969,7 @@ std::string template_heads(CompilationUnitRef unit,
     return heads;
 }
 
-std::optional<TextReplacement> insert_members(CompilationUnitRef unit,
+std::optional<TextReplacement> insert_members(CompilationUnit& unit,
                                               const clang::CXXRecordDecl* record,
                                               llvm::ArrayRef<Member> members) {
     auto brace = main_range(unit, record->getBraceRange().getEnd());
@@ -1021,7 +1021,7 @@ std::optional<TextReplacement> insert_members(CompilationUnitRef unit,
         std::move(text)};
 }
 
-void for_each_file_scope_decl(CompilationUnitRef unit,
+void for_each_file_scope_decl(CompilationUnit& unit,
                               llvm::function_ref<void(const clang::Decl*)> visit) {
     auto entries = unit.semantics().node_entries();
     for(std::uint32_t i = 0; i < entries.size();) {
@@ -1051,7 +1051,7 @@ const clang::Decl* written_declaration(const clang::FunctionDecl* decl) {
 }
 
 std::vector<const clang::FunctionDecl*>
-    out_of_line_definitions(CompilationUnitRef unit, const clang::CXXRecordDecl* record) {
+    out_of_line_definitions(CompilationUnit& unit, const clang::CXXRecordDecl* record) {
     std::vector<const clang::FunctionDecl*> definitions;
     const auto* canonical = record->getCanonicalDecl();
     for_each_file_scope_decl(unit, [&](const clang::Decl* decl) {
@@ -1069,7 +1069,7 @@ std::vector<const clang::FunctionDecl*>
 
 }  // namespace action
 
-auto code_actions(CompilationUnitRef unit, LocalSourceRange selection) -> std::vector<CodeAction> {
+auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vector<CodeAction> {
     std::vector<CodeAction> out;
     action::fix_its(unit, selection, out);
     action::add_include(unit, selection, out);

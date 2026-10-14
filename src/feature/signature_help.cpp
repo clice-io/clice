@@ -5,7 +5,6 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.compilation_unit;
 import :compile.directive;
 import :feature.feature;
 import :semantic.decls;
@@ -601,7 +600,7 @@ struct MacroCall {
 
 /// The innermost call of a function-like macro around `offset`. Sema has
 /// no signature for it: the parser sees only what the macro expands to.
-auto macro_call_at(CompilationUnitRef unit, std::uint32_t offset) -> std::optional<MacroCall> {
+auto macro_call_at(CompilationUnit& unit, std::uint32_t offset) -> std::optional<MacroCall> {
     auto directive = unit.directives().find(unit.main_file());
     if(directive == unit.directives().end()) {
         return std::nullopt;
@@ -719,7 +718,7 @@ auto macro_signature(const MacroCall& call, const Documentation& doc) -> protoco
 
 }  // namespace
 
-auto signature_help(CompilationParams& params,
+auto signature_help(CompilationParams params,
                     const SignatureHelpOptions& options,
                     const DocumentationOptions& documentation,
                     llvm::StringRef selected) -> protocol::SignatureHelp {
@@ -734,21 +733,22 @@ auto signature_help(CompilationParams& params,
     complete_options.LoadExternal = true;
     complete_options.IncludeFixIts = false;
 
-    auto offset = std::get<1>(params.completion);
+    auto offset = params.completion.offset;
     std::vector<Documented> sources;
-    auto* consumer = new SignatureCollector(help, sources, complete_options);
-    auto unit = complete(params, consumer);
-    if(!unit.completed()) {
+    params.completion.consumer =
+        std::make_unique<SignatureCollector>(help, sources, complete_options);
+    auto unit = compile(std::move(params));
+    if(!unit->completed()) {
         return help;
     }
 
     // Inside a call written in a macro's arguments Sema's signature is the
     // call's; one written outside the macro, which Sema may report too,
     // is not where the cursor is.
-    if(auto call = macro_call_at(unit, offset); call && (call->direct || help.signatures.empty())) {
+    if(auto call = macro_call_at(*unit, offset); call && (call->direct || help.signatures.empty())) {
         return macro_signature(*call,
                                options.documentation
-                                   ? feature::documentation(unit, call->macro, documentation)
+                                   ? feature::documentation(*unit, call->macro, documentation)
                                    : Documentation());
     }
 
@@ -756,7 +756,7 @@ auto signature_help(CompilationParams& params,
         for(auto [signature, source]: llvm::zip_equal(help.signatures, sources)) {
             if(source.decl) {
                 document(signature,
-                         feature::documentation(unit, source.decl, documentation),
+                         feature::documentation(*unit, source.decl, documentation),
                          source.parameters);
             }
         }

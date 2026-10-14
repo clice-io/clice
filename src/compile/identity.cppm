@@ -11,7 +11,7 @@ module;
 
 module clice:compile.identity;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 
 namespace clice {
 
@@ -19,7 +19,7 @@ namespace clice {
 /// each declaration, canonical type and expression is encoded once.
 class EntityTable {
 public:
-    explicit EntityTable(CompilationUnitRef unit) : unit(unit) {}
+    explicit EntityTable(CompilationUnit& unit) : unit(unit) {}
 
     EntityTable(const EntityTable&) = delete;
     EntityTable& operator=(const EntityTable&) = delete;
@@ -75,7 +75,7 @@ private:
     void add_template_head(Hasher& hasher, const clang::TemplateParameterList* parameters);
     void add_value(Hasher& hasher, const clang::APValue& value);
 
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
 
     llvm::DenseMap<const clang::Decl*, std::uint64_t> entities;
     llvm::DenseSet<const clang::Decl*> in_progress;

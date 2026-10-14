@@ -5,6 +5,7 @@ module;
 module clice:worker.protocol;
 
 import :compile.dep_file;
+import :compile.tidy;
 import :config.config;
 import :feature.feature;
 import :index.include_tree;
@@ -143,7 +144,7 @@ struct CompileParams {
     int version;
     std::string text;
     std::string directory;
-    /// See CompilationParams::workspace.
+    /// See CompilationInput::workspace.
     std::string workspace;
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
@@ -213,7 +214,7 @@ struct CompileResult {
 struct BuildPCHParams {
     std::string file;
     std::string directory;
-    /// See CompilationParams::workspace.
+    /// See CompilationInput::workspace.
     std::string workspace;
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
@@ -258,7 +259,7 @@ struct BuildPCMParams {
 struct TURunParams {
     std::string file;
     std::string directory;
-    /// See CompilationParams::workspace.
+    /// See CompilationInput::workspace.
     std::string workspace;
     std::vector<std::string> arguments;
     /// Files the command names that exist only in memory (path, content):
@@ -429,7 +430,7 @@ struct TURunResult {
 struct IncludeTreeParams {
     std::string file;
     std::string directory;
-    /// See CompilationParams::workspace.
+    /// See CompilationInput::workspace.
     std::string workspace;
     std::vector<std::string> arguments;
 };

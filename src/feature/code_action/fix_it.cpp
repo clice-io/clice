@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :feature.code_action.action;
 
 namespace clice::feature::action {
@@ -46,7 +46,7 @@ std::string fix_title(llvm::StringRef content, const Diagnostic& diagnostic) {
 
 }  // namespace
 
-void fix_its(CompilationUnitRef unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
+void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
     auto content = unit.main_content();
     for_each_diagnostic(unit, [&](const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes) {
         if(main.fid != unit.main_file() || !main.range.intersects(selection)) {

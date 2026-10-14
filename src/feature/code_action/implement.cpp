@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.display;
 
@@ -94,7 +94,7 @@ std::optional<std::string> override_declaration(clang::ASTContext& context,
 }  // namespace
 
 void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
-    auto unit = ctx.unit;
+    auto& unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
     // A class still being typed has no closing brace for the overrides to
     // go before.

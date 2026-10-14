@@ -4,8 +4,9 @@ module;
 
 module clice;
 
+import :compile.compilation;
 import :compile.diagnostic;
-import :compile.implement;
+import :compile.tidy;
 import :support.format;
 
 namespace clice {
@@ -173,7 +174,7 @@ bool is_note(clang::DiagnosticsEngine::Level level) {
     return level == clang::DiagnosticsEngine::Note || level == clang::DiagnosticsEngine::Remark;
 }
 
-static DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
+DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
     switch(level) {
         case clang::DiagnosticsEngine::Ignored: return DiagnosticLevel::Ignored;
         case clang::DiagnosticsEngine::Note: return DiagnosticLevel::Note;
@@ -185,9 +186,11 @@ static DiagnosticLevel diagnostic_level(clang::DiagnosticsEngine::Level level) {
     }
 }
 
-class DiagnosticCollector : public clang::DiagnosticConsumer {
+}  // namespace
+
+class CompilationUnit::DiagnosticCollector : public clang::DiagnosticConsumer {
 public:
-    DiagnosticCollector(CompilationUnitRef unit) : unit(unit) {}
+    DiagnosticCollector(CompilationUnit& unit) : unit(unit) {}
 
     /// Decompose a file location; the preamble a PCH recorded of the main
     /// file is the main file.
@@ -200,7 +203,7 @@ public:
     /// crosses files or a macro expansion hides it.
     auto file_range(clang::CharSourceRange range, clang::FileID fid)
         -> std::optional<LocalSourceRange> {
-        range = clang::Lexer::makeFileCharRange(range, unit->SM(), unit.lang_options());
+        range = clang::Lexer::makeFileCharRange(range, unit.SM(), unit.lang_options());
         if(range.isInvalid()) {
             return std::nullopt;
         }
@@ -256,7 +259,7 @@ public:
     /// there, without a trace, and the insertions left in the argument may
     /// be half a fix (the `(` of a pair of parentheses).
     auto fix(const clang::Diagnostic& diagnostic) -> std::vector<TextReplacement> {
-        auto& sm = unit->SM();
+        auto& sm = unit.SM();
         std::vector<TextReplacement> edits;
         for(auto hint: diagnostic.getFixItHints()) {
             auto& range = hint.RemoveRange;
@@ -322,8 +325,8 @@ public:
                 raw_diagnostic.getID());
 
         if(!is_note(level)) {
-            if(unit->checker) {
-                level = unit->checker->adjust_level(level, raw_diagnostic);
+            if(unit.checker) {
+                level = unit.checker->adjust_level(level, raw_diagnostic);
             }
         }
         diagnostic.id.level = diagnostic_level(level);
@@ -363,22 +366,20 @@ public:
             diagnostic.fix = fix(raw_diagnostic);
         }
 
-        if(unit->checker) {
-            unit->checker->adjust_diag(diagnostic);
+        if(unit.checker) {
+            unit.checker->adjust_diag(diagnostic);
         }
-        unit.diagnostics().push_back(std::move(diagnostic));
+        unit.collected_diagnostics.push_back(std::move(diagnostic));
     }
 
     void EndSourceFile() override {}
 
 private:
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
 };
 
-}  // namespace
-
-std::unique_ptr<clang::DiagnosticConsumer> CompilationUnitRef::Self::create_diagnostic() {
-    return std::make_unique<DiagnosticCollector>(this);
+std::unique_ptr<clang::DiagnosticConsumer> CompilationUnit::diagnostic_collector() {
+    return std::make_unique<DiagnosticCollector>(*this);
 }
 
 }  // namespace clice

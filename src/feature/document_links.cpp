@@ -73,7 +73,7 @@ auto find_directive_argument(llvm::StringRef content,
     }
 }
 
-auto document_links(CompilationUnitRef unit) -> std::vector<index::DocumentLink> {
+auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
     std::vector<index::DocumentLink> links;
 
     auto main_fid = unit.main_file();

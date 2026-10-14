@@ -57,7 +57,7 @@ bool is_note(const Diagnostic& diagnostic) {
 
 class Presenter {
 public:
-    Presenter(CompilationUnitRef unit, PositionEncoding encoding) :
+    Presenter(CompilationUnit& unit, PositionEncoding encoding) :
         unit(unit), encoding(encoding), map(unit.positions()) {}
 
     /// A diagnostic and the notes clang attached to it, as published on the
@@ -259,7 +259,7 @@ private:
         });
     }
 
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     PositionEncoding encoding;
     PositionMap map;
 
@@ -270,7 +270,7 @@ private:
 }  // namespace
 
 void for_each_diagnostic(
-    CompilationUnitRef unit,
+    CompilationUnit& unit,
     llvm::function_ref<void(const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes)> visit) {
     std::set<std::tuple<clang::FileID, std::uint32_t, std::uint32_t, llvm::StringRef>> findings;
     llvm::ArrayRef<Diagnostic> raw = unit.diagnostics();
@@ -291,7 +291,7 @@ void for_each_diagnostic(
     }
 }
 
-auto diagnostics(CompilationUnitRef unit, PositionEncoding encoding)
+auto diagnostics(CompilationUnit& unit, PositionEncoding encoding)
     -> std::vector<protocol::Diagnostic> {
     Presenter presenter(unit, encoding);
     std::vector<protocol::Diagnostic> result;

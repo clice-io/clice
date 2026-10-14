@@ -6,7 +6,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.semantics;
 import :index.serialization;
 import :index.shard;
@@ -117,7 +117,7 @@ struct TUIndexBlob {
     llvm::ArrayRef<std::uint8_t> open_conditionals;
 
     /// The places the parse's failed lookups looked that held no file
-    /// (CompilationUnitRef::absent).
+    /// (CompilationUnit::absent).
     std::vector<std::string> absent;
 
     /// Preamble ride-along: the diagnostics the preamble's build raised,
@@ -308,7 +308,7 @@ bool is_completable(const clang::NamedDecl* decl) {
 /// relations from the resolve facts, macros from the preprocessor directives.
 class Projector {
 public:
-    Projector(CompilationUnitRef unit, const TUIndexOptions& options) :
+    Projector(CompilationUnit& unit, const TUIndexOptions& options) :
         unit(unit), main_file_only(options.main_file_only), known_variants(options.known_variants),
         resolver(unit.context(), {.only_instantiation = options.only_instantiation}) {}
 
@@ -1406,7 +1406,7 @@ public:
     }
 
 private:
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     bool main_file_only;
     llvm::ArrayRef<std::uint64_t> known_variants;
     types::TemplateResolver resolver;
@@ -1427,12 +1427,12 @@ private:
 
 }  // namespace
 
-std::string build_tu_index(CompilationUnitRef unit, const TUIndexOptions& options) {
+std::string build_tu_index(CompilationUnit& unit, const TUIndexOptions& options) {
     Projector projector(unit, options);
     return projector.build(nullptr);
 }
 
-std::string build_preamble_index(CompilationUnitRef unit,
+std::string build_preamble_index(CompilationUnit& unit,
                                  llvm::ArrayRef<DocumentLink> links,
                                  llvm::ArrayRef<std::uint32_t> inactive_regions,
                                  llvm::ArrayRef<std::uint8_t> open_conditionals,

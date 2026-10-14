@@ -6,7 +6,7 @@ module clice:index.include_tree;
 
 namespace clice {
 
-class CompilationUnitRef;
+class CompilationUnit;
 
 }
 
@@ -75,8 +75,7 @@ struct IncludeTree {
     /// this parse's preprocessor callbacks never see them. Their include
     /// chains are recovered through the SourceManager, which preserves
     /// include locations across PCH boundaries.
-    static IncludeTree from(CompilationUnitRef unit,
-                            llvm::ArrayRef<clang::FileID> indexed_fids = {});
+    static IncludeTree from(CompilationUnit& unit, llvm::ArrayRef<clang::FileID> indexed_fids = {});
 
     /// The node that entered `fid`, or no_node for a file entered without an
     /// include directive (the main file, synthetic buffers) — and,

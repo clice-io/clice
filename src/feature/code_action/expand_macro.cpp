@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :feature.code_action.action;
 import :syntax.lexer;
 
@@ -98,19 +98,17 @@ bool glues(llvm::StringRef left, llvm::StringRef right, const clang::LangOptions
 
 }  // namespace
 
-void expand_macro(CompilationUnitRef unit,
-                  LocalSourceRange selection,
-                  std::vector<CodeAction>& out) {
+void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
     auto main = unit.main_file();
-    auto touching = unit.spelled_tokens_touch(unit.create_location(main, selection.begin));
+    auto touching = unit.tokens().spelled_touching(unit.create_location(main, selection.begin));
     if(touching.empty()) {
         return;
     }
     auto& SM = unit.context().getSourceManager();
     const auto& options = unit.lang_options();
     auto content = unit.main_content();
-    auto spelled = unit.spelled_tokens();
-    for(const auto& expansion: unit.expansions_overlapping(touching)) {
+    auto spelled = unit.tokens().spelled();
+    for(const auto& expansion: unit.tokens().expansions_overlapping(touching)) {
         // A name the raw lexer must clean, one starting with a line splice,
         // stays raw.
         if(!llvm::is_contained({clang::tok::identifier, clang::tok::raw_identifier},

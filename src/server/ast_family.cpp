@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :compile.tidy;
 import :feature.feature;
 import :index.tu_index;
 import :sched.families.build_common;

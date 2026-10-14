@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.display;
 
@@ -158,7 +158,7 @@ struct DefinitionOptions {
 /// out-of-line definition, spelled for insertion into `from`.
 class Transform {
 public:
-    Transform(CompilationUnitRef unit,
+    Transform(CompilationUnit& unit,
               const clang::FunctionDecl* decl,
               const clang::DeclContext* from,
               DefinitionOptions options) : unit(unit), decl(decl), from(from), options(options) {}
@@ -586,7 +586,7 @@ private:
         patches.push_back({return_type->first, return_type->second, std::move(text)});
     }
 
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     const clang::FunctionDecl* decl;
     const clang::DeclContext* from;
     DefinitionOptions options;
@@ -600,7 +600,7 @@ private:
     std::optional<std::pair<std::uint32_t, std::uint32_t>> return_type;
 };
 
-std::optional<std::string> definition_text(CompilationUnitRef unit,
+std::optional<std::string> definition_text(CompilationUnit& unit,
                                            const clang::FunctionDecl* decl,
                                            const clang::DeclContext* from,
                                            DefinitionOptions options = {}) {
@@ -641,9 +641,9 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
 /// `end`, past the GNU attributes a class's closing brace may carry, a
 /// macro's expansion included (`} __attribute__((packed));`); nullopt when
 /// something else follows.
-std::optional<std::uint32_t> semicolon_after(CompilationUnitRef unit, clang::SourceLocation end) {
+std::optional<std::uint32_t> semicolon_after(CompilationUnit& unit, clang::SourceLocation end) {
     auto& sm = unit.context().getSourceManager();
-    auto tokens = unit.expanded_tokens();
+    auto tokens = unit.tokens().expanded();
     auto token = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
         return !sm.isBeforeInTranslationUnit(end, token.location());
     });
@@ -677,7 +677,7 @@ std::optional<std::uint32_t> semicolon_after(CompilationUnitRef unit, clang::Sou
 /// and past the rest of that line when only blanks or a comment remain
 /// there; right after it otherwise, inside whatever encloses it on that
 /// line (`namespace ns { void f(); }`).
-std::optional<Placement> placement_after(CompilationUnitRef unit, const clang::Decl* anchor) {
+std::optional<Placement> placement_after(CompilationUnit& unit, const clang::Decl* anchor) {
     // A class still being typed has no closing brace, nor has the class of
     // a lambda, which at file scope sits in a variable's initializer.
     if(auto* tag = llvm::dyn_cast<clang::TagDecl>(anchor);
@@ -722,7 +722,7 @@ std::optional<Placement> placement_after(CompilationUnitRef unit, const clang::D
 
 /// After the last out-of-line definition of the class's members in the
 /// main file, else after the class.
-std::optional<Placement> member_placement(CompilationUnitRef unit,
+std::optional<Placement> member_placement(CompilationUnit& unit,
                                           const clang::CXXRecordDecl* record) {
     auto definitions = out_of_line_definitions(unit, record);
     if(!definitions.empty()) {
@@ -731,7 +731,7 @@ std::optional<Placement> member_placement(CompilationUnitRef unit,
     return placement_after(unit, file_scope_anchor(record));
 }
 
-std::optional<Placement> placement_of(CompilationUnitRef unit, const clang::FunctionDecl* decl) {
+std::optional<Placement> placement_of(CompilationUnit& unit, const clang::FunctionDecl* decl) {
     if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
         return member_placement(unit, method->getParent());
     }
@@ -772,7 +772,7 @@ const clang::TagDecl*
 /// template's implicit specialization completes with its pattern's
 /// definition, instantiated yet or not. A class the compiler defines
 /// itself, such as AArch64's `va_list`, is complete everywhere.
-std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnitRef unit,
+std::optional<const clang::TagDecl*> last_needed_definition(CompilationUnit& unit,
                                                             const clang::FunctionDecl* decl) {
     auto& sm = unit.context().getSourceManager();
     const clang::TagDecl* last = nullptr;
@@ -833,7 +833,7 @@ bool defines_from(const clang::FunctionDecl* decl, const clang::DeclContext* fro
 /// The placement moved past `definition` when it lies further on in the
 /// main file; nullopt when the definition comes later elsewhere, or a
 /// definition of the function past it could not name the function.
-std::optional<Placement> placement_past(CompilationUnitRef unit,
+std::optional<Placement> placement_past(CompilationUnit& unit,
                                         Placement placement,
                                         const clang::TagDecl* definition,
                                         const clang::FunctionDecl* decl) {
@@ -848,7 +848,7 @@ std::optional<Placement> placement_past(CompilationUnitRef unit,
     return moved;
 }
 
-std::uint64_t container_entity(CompilationUnitRef unit, const clang::FunctionDecl* decl) {
+std::uint64_t container_entity(CompilationUnit& unit, const clang::FunctionDecl* decl) {
     if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
         return unit.entity(outermost_record(method->getParent()));
     }
@@ -871,7 +871,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
     if(!decl || !definable(decl)) {
         return;
     }
-    auto unit = ctx.unit;
+    auto& unit = ctx.unit;
     auto entity = unit.entity(decl);
     auto name = function_name(decl);
     auto qualified = [&](const clang::DeclContext* from) {
@@ -933,7 +933,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
 }
 
 void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
-    auto unit = ctx.unit;
+    auto& unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
     if(!record) {
         const auto* method = ctx.node.get<clang::CXXMethodDecl>();

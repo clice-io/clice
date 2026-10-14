@@ -87,29 +87,25 @@ using namespace clice;
 
 ZEST_SUITE(Diagnostic) {
 
-/// Holds VFS-backed CompilationParams with proper string ownership.
+/// Holds VFS-backed CompilationParams.
 struct DiagParams {
     llvm::IntrusiveRefCntPtr<TestVFS> vfs;
-    std::vector<std::string> owned_args;
     CompilationParams params;
 
     DiagParams(llvm::StringRef content, std::initializer_list<const char*> extra_args = {}) {
         vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
         vfs->add("main.cpp", content);
-        params.vfs = vfs;
+        params.kind = CompilationKind::Content;
+        params.input.vfs = vfs;
 
-        owned_args.push_back("clang++");
-        owned_args.push_back("-ffreestanding");
-        owned_args.push_back("-Xclang");
-        owned_args.push_back("-undef");
+        params.input.arguments.push_back("clang++");
+        params.input.arguments.push_back("-ffreestanding");
+        params.input.arguments.push_back("-Xclang");
+        params.input.arguments.push_back("-undef");
         for(auto a: extra_args) {
-            owned_args.push_back(a);
+            params.input.arguments.push_back(a);
         }
-        owned_args.push_back(TestVFS::path("main.cpp"));
-
-        for(auto& s: owned_args) {
-            params.arguments.push_back(s.c_str());
-        }
+        params.input.arguments.push_back(TestVFS::path("main.cpp"));
     }
 };
 
@@ -119,14 +115,15 @@ ZEST_CASE(TargetError) {
 
     std::string main_path = TestVFS::path("main.cpp");
     CompilationParams params;
-    params.vfs = vfs;
-    params.arguments = {"clang++", "-target", "aa-bb-cc", main_path.c_str()};
+    params.kind = CompilationKind::Content;
+    params.input.vfs = vfs;
+    params.input.arguments = {"clang++", "-target", "aa-bb-cc", main_path};
 
-    auto unit = compile(params);
-    ZASSERT(unit.setup_fail());
-    ZASSERT(unit.diagnostics().size() == 1);
+    auto unit = compile(std::move(params));
+    ZASSERT(unit->setup_fail());
+    ZASSERT(unit->diagnostics().size() == 1);
 
-    auto& diag = unit.diagnostics()[0];
+    auto& diag = unit->diagnostics()[0];
     ZEXPECT(diag.id.diagnostic_code() == "err_target_unknown_triple");
     ZEXPECT(diag.id.level == DiagnosticLevel::Error);
     ZEXPECT(diag.id.source == DiagnosticSource::Clang);
@@ -138,15 +135,15 @@ ZEST_CASE(TargetError) {
 ZEST_CASE(Error) {
     DiagParams dp("int main() { return 0 }");
 
-    auto unit = compile(dp.params);
-    ZASSERT(unit.completed());
-    ZASSERT(unit.diagnostics().size() == 1);
+    auto unit = compile(std::move(dp.params));
+    ZASSERT(unit->completed());
+    ZASSERT(unit->diagnostics().size() == 1);
 
-    auto& diag = unit.diagnostics()[0];
+    auto& diag = unit->diagnostics()[0];
     ZEXPECT(diag.id.diagnostic_code() == "err_expected_semi_after_stmt");
     ZEXPECT(diag.id.level == DiagnosticLevel::Error);
     ZEXPECT(diag.id.source == DiagnosticSource::Clang);
-    ZEXPECT(diag.fid == unit.main_file());
+    ZEXPECT(diag.fid == unit->main_file());
     ZEXPECT(diag.range.valid());
     ZEXPECT(diag.message == "expected ';' after return statement");
 };
@@ -154,11 +151,11 @@ ZEST_CASE(Error) {
 ZEST_CASE(Warning) {
     DiagParams dp("int main() { int x; return 0; }", {"-Wall", "-Wunused-variable"});
 
-    auto unit = compile(dp.params);
-    ZASSERT(unit.completed());
-    ZASSERT(unit.diagnostics().size() == 1);
+    auto unit = compile(std::move(dp.params));
+    ZASSERT(unit->completed());
+    ZASSERT(unit->diagnostics().size() == 1);
 
-    auto& diag = unit.diagnostics()[0];
+    auto& diag = unit->diagnostics()[0];
     ZEXPECT(diag.id.diagnostic_code() == "warn_unused_variable");
     ZEXPECT(diag.id.level == DiagnosticLevel::Warning);
     ZEXPECT(diag.id.source == DiagnosticSource::Clang);
@@ -166,17 +163,17 @@ ZEST_CASE(Warning) {
     ZEXPECT(diag.message.find("unused variable") != std::string::npos);
 }
 
-ZEST_CASE(PCHError) {
-    /// Any error in compilation will result in failure on generating PCH or PCM.
+ZEST_CASE(PCMError) {
+    /// A PCM build with errors writes no PCM.
     DiagParams dp(R"(
 void foo() {}
 void foo() {}
 )");
-    dp.params.output_file = "fake.pch";
+    dp.params.kind = CompilationKind::ModuleInterface;
+    dp.params.output_file = "fake.pcm";
 
-    PCHInfo info;
-    auto unit = compile(dp.params, info);
-    ZASSERT(unit.fatal_error());
+    auto unit = compile(std::move(dp.params));
+    ZASSERT(unit->completed() && !unit->has_output());
 }
 
 ZEST_CASE(ASTError) {
@@ -186,8 +183,8 @@ void foo() {}
 void foo() {}
 )");
 
-    auto unit = compile(dp.params);
-    ZASSERT(unit.completed());
+    auto unit = compile(std::move(dp.params));
+    ZASSERT(unit->completed());
 }
 
 ZEST_CASE(CommandLineNote) {
@@ -199,10 +196,10 @@ int main() { return 0; }
 )",
                   {"-DFOO=1"});
 
-    auto unit = compile(dp.params);
-    ZASSERT(unit.completed());
+    auto unit = compile(std::move(dp.params));
+    ZASSERT(unit->completed());
 
-    auto diagnostics = feature::diagnostics(unit);
+    auto diagnostics = feature::diagnostics(*unit);
     bool redefined = false;
     for(auto& diag: diagnostics) {
         if(auto* text = std::get_if<std::string>(&diag.message)) {

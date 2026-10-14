@@ -79,7 +79,7 @@ void test() {
         return std::nullopt;
     }
     unit->semantics();
-    return unit->expanded_token_searches();
+    return unit->tokens().searches();
 }
 
 ZEST_CASE(ModuleNodes) {

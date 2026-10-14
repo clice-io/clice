@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.selection;
 import :compile.semantics;
 import :feature.feature;
@@ -263,7 +263,7 @@ std::vector<Token> lex(llvm::StringRef content, const clang::LangOptions& lang_o
 /// Per raw token, whether the preprocessor skipped it; a token the unit's
 /// spelled tokens do not start at (a comment, a directive's end) shares
 /// the flag of the one before.
-llvm::SmallVector<bool, 0> skipped_tokens(CompilationUnitRef unit, llvm::ArrayRef<Token> tokens) {
+llvm::SmallVector<bool, 0> skipped_tokens(CompilationUnit& unit, llvm::ArrayRef<Token> tokens) {
     const auto& semantics = unit.semantics();
     auto count = static_cast<std::uint32_t>(semantics.spelled_tokens().size());
     llvm::SmallVector<bool, 0> skipped(tokens.size());
@@ -287,7 +287,7 @@ llvm::SmallVector<bool, 0> skipped_tokens(CompilationUnitRef unit, llvm::ArrayRe
 /// the nearest on either side (the cursor is in blank space, a comment or
 /// a qualifier). The selection never counts `;`, comments, qualifiers and
 /// what was preprocessed away, so they anchor nothing.
-llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnitRef unit, std::uint32_t offset) {
+llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnit& unit, std::uint32_t offset) {
     const auto& semantics = unit.semantics();
     auto tokens = semantics.spelled_tokens();
     auto range_of = [&](std::uint32_t i) {
@@ -339,8 +339,7 @@ llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnitRef unit, std::uin
 /// The characters of a `>` split off a `>>` — the parser closes two
 /// template argument lists on one token — or nothing for any other
 /// location.
-std::optional<LocalSourceRange> split_half(CompilationUnitRef unit,
-                                           clang::SourceLocation location) {
+std::optional<LocalSourceRange> split_half(CompilationUnit& unit, clang::SourceLocation location) {
     if(!location.isMacroID()) {
         return std::nullopt;
     }
@@ -357,7 +356,7 @@ std::optional<LocalSourceRange> split_half(CompilationUnitRef unit,
 
 /// A node's range in the main file: the tokens a macro argument or a
 /// whole expansion spells for it, else the invocations it spans.
-std::optional<LocalSourceRange> main_file_range(CompilationUnitRef unit, clang::SourceRange range) {
+std::optional<LocalSourceRange> main_file_range(CompilationUnit& unit, clang::SourceRange range) {
     if(range.isInvalid()) {
         return std::nullopt;
     }
@@ -369,7 +368,7 @@ std::optional<LocalSourceRange> main_file_range(CompilationUnitRef unit, clang::
         }
         return LocalSourceRange{begin->begin, half->end};
     }
-    if(auto spelled = unit.spelled_tokens(range); !spelled.empty()) {
+    if(auto spelled = unit.tokens().spelled_for(range); !spelled.empty()) {
         return LocalSourceRange{
             unit.file_offset(spelled.front().location()),
             unit.file_offset(spelled.back().location()) + spelled.back().length(),
@@ -449,7 +448,7 @@ std::optional<clang::SourceRange> angles(const SelectionTree::Node& node) {
 /// anchor that contain it — each statement also with the `;` that ends
 /// it, each template-id and template parameter list also with the inside
 /// of its angle brackets.
-void add_ast(CompilationUnitRef unit,
+void add_ast(CompilationUnit& unit,
              llvm::StringRef content,
              llvm::ArrayRef<Token> tokens,
              Steps& steps) {
@@ -491,7 +490,7 @@ void add_ast(CompilationUnitRef unit,
 
 }  // namespace
 
-auto selection_ranges(CompilationUnitRef unit, llvm::ArrayRef<std::uint32_t> offsets)
+auto selection_ranges(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>> {
     auto content = unit.main_content();
     auto tokens = lex(content, unit.lang_options());

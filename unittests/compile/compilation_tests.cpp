@@ -18,7 +18,7 @@ namespace clice::testing {
 namespace {
 
 /// The C++20 command of `file` in `tmp`, added to `cdb` and rendered.
-std::vector<const char*> cxx20_command(CompilationDatabase& cdb,
+std::vector<std::string> cxx20_command(CompilationDatabase& cdb,
                                        const TempDir& tmp,
                                        llvm::StringRef file) {
     auto path = tmp.path(file);
@@ -29,7 +29,8 @@ std::vector<const char*> cxx20_command(CompilationDatabase& cdb,
                    cdb.input_kind(entry.config, path),
                    CommandSource::CDBExact};
     ZEXPECT(cdb.toolchain().resolve(ref.config, ref.input));
-    return cdb.render(ref);
+    auto argv = cdb.render(ref);
+    return std::vector<std::string>(argv.begin(), argv.end());
 }
 
 ZEST_SUITE(Compiler, Tester) {
@@ -73,15 +74,13 @@ ZEST_CASE(DirectoryAnchorsIncludes) {
 int x = FROM_GEN;
 )");
 
-    std::vector<std::string> owned = {"clang++", "-std=c++20", "-Igen", tmp.path("main.cpp")};
-    for(auto& arg: owned) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.directory = tmp.root.str().str();
+    params.kind = CompilationKind::Content;
+    params.input.arguments = {"clang++", "-std=c++20", "-Igen", tmp.path("main.cpp")};
+    params.input.directory = tmp.root.str().str();
 
-    auto built = clice::compile(params);
-    ZASSERT(built.completed());
-    ZASSERT(built.diagnostics().empty());
+    auto built = clice::compile(std::move(params));
+    ZASSERT(built->completed());
+    ZASSERT(built->diagnostics().empty());
 }
 
 ZEST_CASE(OverlayNamesRedirectedFile) {
@@ -103,22 +102,20 @@ ZEST_CASE(OverlayNamesRedirectedFile) {
                                path::convert_to_slash(tmp.path("real/config.h")));
     tmp.touch("overlay.yaml", overlay);
 
-    std::vector<std::string> owned = {"clang++",
-                                      "-std=c++20",
-                                      "-ivfsoverlay",
-                                      tmp.path("overlay.yaml"),
-                                      "-I" + tmp.path("virtual"),
-                                      tmp.path("main.cpp")};
-    for(auto& arg: owned) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.directory = tmp.root.str().str();
+    params.kind = CompilationKind::Content;
+    params.input.arguments = {"clang++",
+                              "-std=c++20",
+                              "-ivfsoverlay",
+                              tmp.path("overlay.yaml"),
+                              "-I" + tmp.path("virtual"),
+                              tmp.path("main.cpp")};
+    params.input.directory = tmp.root.str().str();
 
-    auto built = clice::compile(params);
-    ZASSERT(built.completed());
-    ZASSERT(built.diagnostics().empty());
+    auto built = clice::compile(std::move(params));
+    ZASSERT(built->completed());
+    ZASSERT(built->diagnostics().empty());
     auto real = CanonicalPath(Spelling::absolute(tmp.path("real/config.h"))).str();
-    ZEXPECT(llvm::any_of(built.deps(), [&](const DepFile& dep) { return dep.path == real; }));
+    ZEXPECT(llvm::any_of(built->deps(), [&](const DepFile& dep) { return dep.path == real; }));
 }
 
 ZEST_CASE(StopCompilation) {
@@ -135,12 +132,41 @@ int main() { return 0; }
     // Set stop before compilation starts — verifies the mechanism works.
     stop->store(true);
 
-    auto built = clice::compile(params);
-    ZASSERT(!built.completed());
+    auto built = clice::compile(std::move(params));
+    ZASSERT(!built->completed());
     // Pinned distinctly from setup_fail: the worker maps this status to
     // CompileStatus::Cancelled, which the master discards without blaming
     // any artifact.
-    ZASSERT(built.cancelled());
+    ZASSERT(!built->setup_fail());
+}
+
+ZEST_CASE(NoErrorLimit) {
+    std::string content;
+    for(int i = 0; i < 25; i += 1) {
+        content += std::format("int f{0}() {{ return undefined_{0}; }}\n", i);
+    }
+    add_main("main.cpp", content);
+    prepare();
+    // The driver puts its default limit on every command.
+    params.input.arguments.insert(params.input.arguments.end() - 1, {"-ferror-limit", "19"});
+
+    ZASSERT(try_compile());
+    ZEXPECT(!unit->fatal_error());
+    ZEXPECT(collect_errors(*unit).size() == 25);
+}
+
+ZEST_CASE(FatalError) {
+    add_main("main.cpp", R"(
+import missing;
+int x = 1;
+)");
+    ZASSERT(compile());
+    ZEXPECT(unit->fatal_error());
+
+    clear();
+    add_main("main.cpp", "int x = 1;\n");
+    ZASSERT(compile());
+    ZEXPECT(!unit->fatal_error());
 }
 
 ZEST_CASE(PCHBuildPopulatesInfo) {
@@ -170,31 +196,23 @@ int main() { return 0; }
     auto& source = sources.all_files["main.cpp"];
     auto bound = compute_preamble_bound(source.content);
     auto main_vfs_path = TestVFS::path("main.cpp");
-    params.add_remapped_file(main_vfs_path, source.content, bound);
+    params.input.add_remapped_file(main_vfs_path, source.content, bound);
 
-    PCHInfo info;
-    auto preamble_unit = clice::compile(params, info);
-    ZASSERT(preamble_unit.completed());
-
-    // PCHInfo.path should match the output file.
-    ZASSERT(info.path == *pch_path);
+    auto preamble_unit = clice::compile(std::move(params));
+    ZASSERT(preamble_unit->completed());
+    ZASSERT(preamble_unit->has_output());
 
     // build_at is sampled before the compile runs (non-zero, recent).
-    ZASSERT(preamble_unit.build_at().count() > 0);
+    ZASSERT(preamble_unit->build_at().count() > 0);
 
-    // PCHInfo.preamble should be non-empty (contains the #include directives).
-    ZASSERT(!info.preamble.empty());
-
-    // PCHInfo.deps should list files involved in building the PCH, each with
+    // The deps should list files involved in building the PCH, each with
     // the hash of the consumed bytes.
-    ZASSERT(!info.deps.empty());
-    for(auto& dep: info.deps) {
+    auto deps = preamble_unit->deps();
+    ZASSERT(!deps.empty());
+    for(auto& dep: deps) {
         ZASSERT(!dep.path.empty());
         ZASSERT(dep.hash != 0);
     }
-
-    // PCHInfo.arguments should match what was passed in.
-    ZASSERT(info.arguments.size() == params.arguments.size());
 
     // Clean up the temp file.
     llvm::sys::fs::remove(*pch_path);
@@ -218,7 +236,7 @@ int main() { return preamble_func(); }
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
         llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
-    params.vfs = overlay;
+    params.input.vfs = overlay;
 
     auto pch_path = vfs::temp_file("clice-test", "pch");
     ZASSERT(pch_path.operator bool());
@@ -228,49 +246,44 @@ int main() { return preamble_func(); }
     auto main_vfs_path = TestVFS::path("main.cpp");
 
     // Corruption the reader detects in-process must stay attributable to
-    // the artifact — a setup failure, or a fatal error naming the blob —
-    // never a completed parse: that contract is what the master's quality
-    // gate (retract the pair and rebuild) keys on. Whole-file garbage is
-    // rejected by validation; truncation is caught reading the block
-    // structure. Mid-file bit flips can instead abort the process inside
-    // the bitstream reader (report_fatal_error), which in production
-    // kills the worker — that shape is exercised end-to-end by the
-    // integration corruption tests, not here.
+    // the PCH — a setup failure, or a parse cut short by a fatal error
+    // naming the blob — never a clean parse: that contract is what the
+    // master's quality gate (retract the pair and rebuild) keys on.
+    // Whole-file garbage is rejected by validation; truncation is caught
+    // reading the block structure. Mid-file bit flips can instead abort the
+    // process inside the bitstream reader (report_fatal_error), which in
+    // production kills the worker — that shape is exercised end-to-end by
+    // the integration corruption tests, not here.
     auto corrupt = [](std::string blob, std::size_t shape) -> std::string {
         return shape == 0 ? std::string(blob.size(), '\x5A')  // whole-file garbage
                           : blob.substr(0, blob.size() / 2);  // truncation
     };
 
     for(std::size_t shape = 0; shape < 2; ++shape) {
-        params.kind = CompilationKind::Preamble;
-        params.output_file = *pch_path;
-        params.pch = {};
-        params.buffers.clear();
-        params.add_remapped_file(main_vfs_path, source.content, bound);
-
-        PCHInfo info;
+        CompilationParams preamble{
+            .kind = CompilationKind::Preamble,
+            .input = params.input,
+            .output_file = *pch_path,
+        };
+        preamble.input.add_remapped_file(main_vfs_path, source.content, bound);
         {
-            auto preamble_unit = clice::compile(params, info);
-            ZASSERT(preamble_unit.completed());
+            auto preamble_unit = clice::compile(std::move(preamble));
+            ZASSERT(preamble_unit->completed());
         }
 
         auto blob = read_file(*pch_path);
         ZASSERT(blob.operator bool());
         ZASSERT(!vfs::write(*pch_path, corrupt(std::move(*blob), shape)));
 
-        params.kind = CompilationKind::Content;
-        params.output_file.clear();
-        params.pch = {*pch_path, static_cast<std::uint32_t>(info.preamble.size())};
-        params.buffers.clear();
-
-        auto content_unit = clice::compile(params);
-        ZASSERT(!content_unit.completed());
-        ZASSERT((content_unit.setup_fail() || content_unit.fatal_error()));
+        CompilationParams reuse{.kind = CompilationKind::Content, .input = params.input};
+        reuse.input.pch = {*pch_path, bound};
+        auto content_unit = clice::compile(std::move(reuse));
+        ZASSERT(content_unit->setup_fail() || content_unit->fatal_error());
         // The blame signal the master's retraction keys on (pch_suspect):
         // a diagnostic naming the blob, or an AST-deserialization error —
         // that family's messages do not reliably carry the path ("Blob
         // ends too soon").
-        bool blames_pch = std::ranges::any_of(content_unit.diagnostics(), [&](auto& diag) {
+        bool blames_pch = std::ranges::any_of(content_unit->diagnostics(), [&](auto& diag) {
             return llvm::StringRef(diag.message).contains(*pch_path) ||
                    diag.id.is_deserialization_error();
         });
@@ -292,40 +305,40 @@ ZEST_CASE(PCHIgnoresInputMtime) {
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
         llvm::makeIntrusiveRefCnt<vfs::View>());
     overlay->pushOverlay(vfs);
-    params.vfs = overlay;
+    params.input.vfs = overlay;
 
     auto pch_path = vfs::temp_file("clice-test", "pch");
     ZASSERT(pch_path.operator bool());
     auto main_vfs_path = TestVFS::path("main.cpp");
     auto bound = compute_preamble_bound(content);
 
-    params.kind = CompilationKind::Preamble;
-    params.output_file = *pch_path;
-    params.add_remapped_file(main_vfs_path, content, bound);
-    PCHInfo info;
-    ZASSERT(clice::compile(params, info).completed());
+    CompilationParams preamble{
+        .kind = CompilationKind::Preamble,
+        .input = params.input,
+        .output_file = *pch_path,
+    };
+    preamble.input.add_remapped_file(main_vfs_path, content, bound);
+    ZASSERT(clice::compile(std::move(preamble))->completed());
 
     auto compile_with = [&] {
-        params.kind = CompilationKind::Content;
-        params.output_file.clear();
-        params.pch = {*pch_path, bound};
-        params.buffers.clear();
-        return clice::compile(params);
+        CompilationParams reuse{.kind = CompilationKind::Content, .input = params.input};
+        reuse.input.pch = {*pch_path, bound};
+        return clice::compile(std::move(reuse));
     };
 
     // A same-bytes rewrite moves only the mtime.
     ZASSERT(set_file_mtime(header, file_mtime_ns(header) + 10'000'000'000));
     {
         auto unit = compile_with();
-        ZASSERT(unit.completed());
-        ZASSERT(std::ranges::none_of(unit.diagnostics(), [](auto& diag) {
+        ZASSERT(unit->completed());
+        ZASSERT(std::ranges::none_of(unit->diagnostics(), [](auto& diag) {
             return diag.id.level >= DiagnosticLevel::Error;
         }));
     }
 
     // A size change still rejects it.
     tmp.touch("preamble.h", "int preamble_func();\nint more;\n");
-    ZASSERT(!compile_with().completed());
+    ZASSERT(!compile_with()->completed());
 
     llvm::sys::fs::remove(*pch_path);
 }
@@ -438,34 +451,29 @@ export int a_value() { return b_value() + 1; }
     // Build PCM for mod_b.
     CompilationParams params_b;
     params_b.kind = CompilationKind::ModuleInterface;
-    params_b.arguments = cxx20_command(cdb, tmp, "mod_b.cppm");
+    params_b.input.arguments = cxx20_command(cdb, tmp, "mod_b.cppm");
 
     auto pcm_b_path = vfs::temp_file("mod_b", "pcm");
     ZASSERT(pcm_b_path.operator bool());
     params_b.output_file = *pcm_b_path;
 
-    PCMInfo info_b;
-    auto unit_b = clice::compile(params_b, info_b);
-    ZASSERT(unit_b.completed());
-    ZASSERT(info_b.path == *pcm_b_path);
+    auto unit_b = clice::compile(std::move(params_b));
+    ZASSERT(unit_b->completed());
+    ZASSERT(unit_b->has_output());
 
     // Build PCM for mod_a, passing B's PCM.
     CompilationParams params_a;
     params_a.kind = CompilationKind::ModuleInterface;
-    params_a.arguments = cxx20_command(cdb, tmp, "mod_a.cppm");
-    params_a.pcms.try_emplace("mod_b", info_b.path);
+    params_a.input.arguments = cxx20_command(cdb, tmp, "mod_a.cppm");
+    params_a.input.pcms.try_emplace("mod_b", *pcm_b_path);
 
     auto pcm_a_path = vfs::temp_file("mod_a", "pcm");
     ZASSERT(pcm_a_path.operator bool());
     params_a.output_file = *pcm_a_path;
 
-    PCMInfo info_a;
-    auto unit_a = clice::compile(params_a, info_a);
-    ZASSERT(unit_a.completed());
-    ZASSERT(info_a.path == *pcm_a_path);
-
-    // info_a should record mod_b as a dependency.
-    ZASSERT(llvm::find(info_a.mods, "mod_b") != info_a.mods.end());
+    auto unit_a = clice::compile(std::move(params_a));
+    ZASSERT(unit_a->completed());
+    ZASSERT(unit_a->has_output());
 
     // Clean up temp PCM files.
     llvm::sys::fs::remove(*pcm_b_path);
@@ -484,34 +492,30 @@ ZEST_CASE(PCHKeepsModuleImports) {
 
     CompilationParams module_params;
     module_params.kind = CompilationKind::ModuleInterface;
-    module_params.arguments = cxx20_command(cdb, tmp, "b.cppm");
+    module_params.input.arguments = cxx20_command(cdb, tmp, "b.cppm");
     auto pcm_path = vfs::temp_file("b", "pcm");
     ZASSERT(pcm_path.operator bool());
     module_params.output_file = *pcm_path;
-    PCMInfo pcm_info;
-    ZASSERT(clice::compile(module_params, pcm_info).completed());
+    ZASSERT(clice::compile(std::move(module_params))->completed());
 
-    CompilationParams params;
-    params.kind = CompilationKind::Preamble;
-    params.arguments = cxx20_command(cdb, tmp, "main.cpp");
-    params.pcms.try_emplace("B", *pcm_path);
+    CompilationParams preamble;
+    preamble.kind = CompilationKind::Preamble;
+    preamble.input.arguments = cxx20_command(cdb, tmp, "main.cpp");
+    preamble.input.pcms.try_emplace("B", *pcm_path);
     auto pch_path = vfs::temp_file("clice-test", "pch");
     ZASSERT(pch_path.operator bool());
-    params.output_file = *pch_path;
+    preamble.output_file = *pch_path;
     auto bound = compute_preamble_bound(content);
-    params.add_remapped_file(tmp.path("main.cpp"), content, bound);
-    PCHInfo pch_info;
-    ZASSERT(clice::compile(params, pch_info).completed());
 
-    // The PCH build moved the PCM paths out of the params.
-    params.kind = CompilationKind::Content;
-    params.output_file.clear();
-    params.pch = {*pch_path, bound};
-    params.pcms["B"] = *pcm_path;
-    params.buffers.clear();
-    auto unit = clice::compile(params);
-    ZASSERT(unit.completed());
-    ZASSERT(std::ranges::none_of(unit.diagnostics(), [](auto& diag) {
+    CompilationParams params{.kind = CompilationKind::Content, .input = preamble.input};
+    params.input.pch = {*pch_path, bound};
+
+    preamble.input.add_remapped_file(tmp.path("main.cpp"), content, bound);
+    ZASSERT(clice::compile(std::move(preamble))->completed());
+
+    auto unit = clice::compile(std::move(params));
+    ZASSERT(unit->completed());
+    ZASSERT(std::ranges::none_of(unit->diagnostics(), [](auto& diag) {
         return diag.id.level >= DiagnosticLevel::Error;
     }));
 

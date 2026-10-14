@@ -694,36 +694,23 @@ struct CollectedItem {
 
 /// A compile of the whole buffer a completion runs on, for what only the
 /// code after the completion point tells: what a template there is
-/// instantiated with. Made of the completion's parameters before the
-/// completion consumes them, and run at most once, when asked.
+/// instantiated with. Run at most once, when asked.
 class WholeBuffer {
 public:
-    explicit WholeBuffer(const CompilationParams& completion) {
-        params.kind = CompilationKind::Content;
-        params.arguments = completion.arguments;
-        params.directory = completion.directory;
-        params.workspace = completion.workspace;
-        params.vfs = completion.vfs;
-        params.pch = completion.pch;
-        params.pcms = completion.pcms;
-        params.synthesized = completion.synthesized;
-        params.forced_includes = completion.forced_includes;
-        params.stop = completion.stop;
-        for(const auto& [path, buffer]: completion.buffers) {
-            params.add_remapped_file(path, buffer->getBuffer());
-        }
-    }
+    explicit WholeBuffer(const CompilationParams& completion) :
+        input(completion.input), stop(completion.stop) {}
 
-    CompilationUnitRef unit() {
+    CompilationUnit& unit() {
         if(!compiled) {
-            compiled.emplace(compile(params));
+            compiled = compile({.kind = CompilationKind::Content, .input = input, .stop = stop});
         }
         return *compiled;
     }
 
 private:
-    CompilationParams params;
-    std::optional<CompilationUnit> compiled;
+    CompilationInput input;
+    std::shared_ptr<std::atomic_bool> stop;
+    std::unique_ptr<CompilationUnit> compiled;
 };
 
 /// Types of another compile of the same code rebuilt in this one: each
@@ -997,7 +984,7 @@ public:
            !source_manager.getBufferData(file).substr(this->offset + 1).contains(name->getName())) {
             return {};
         }
-        auto unit = whole.unit();
+        auto& unit = whole.unit();
         if(!unit.completed()) {
             return {};
         }
@@ -1069,7 +1056,7 @@ public:
         if(file != source_manager.getMainFileID()) {
             return nullptr;
         }
-        auto unit = whole.unit();
+        auto& unit = whole.unit();
         if(!unit.completed()) {
             return nullptr;
         }
@@ -2282,34 +2269,34 @@ private:
 
 }  // namespace
 
-auto code_complete(CompilationParams& params,
+auto code_complete(CompilationParams params,
                    const CodeCompletionOptions& options,
                    const DocumentationOptions& documentation,
                    const CompletionClient& client,
                    PositionEncoding encoding,
                    llvm::ArrayRef<ScopeCandidate> candidates) -> Completion {
-    auto offset = std::get<1>(params.completion);
+    auto offset = params.completion.offset;
 
     std::vector<protocol::CompletionItem> items;
     std::vector<const clang::NamedDecl*> documented;
     WholeBuffer whole(params);
     bool includes = false;
-    auto* consumer = new CodeCompletionCollector(offset,
-                                                 encoding,
-                                                 items,
-                                                 documented,
-                                                 options,
-                                                 client,
-                                                 candidates,
-                                                 includes,
-                                                 whole);
-    auto unit = complete(params, consumer);
+    params.completion.consumer = std::make_unique<CodeCompletionCollector>(offset,
+                                                                           encoding,
+                                                                           items,
+                                                                           documented,
+                                                                           options,
+                                                                           client,
+                                                                           candidates,
+                                                                           includes,
+                                                                           whole);
+    auto unit = compile(std::move(params));
 
     for(auto [item, decl]: llvm::zip_equal(items, documented)) {
         if(!decl) {
             continue;
         }
-        auto doc = feature::documentation(unit, decl, documentation);
+        auto doc = feature::documentation(*unit, decl, documentation);
         if(doc.empty()) {
             continue;
         }
@@ -2325,9 +2312,9 @@ auto code_complete(CompilationParams& params,
         .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
     if(includes) {
         // Clang's copy of the buffer carries a NUL at the completion point.
-        auto buffer = unit.main_content();
+        auto buffer = unit->main_content();
         auto content = buffer.take_front(offset).str() + buffer.drop_front(offset + 1).str();
-        auto insertion = action::include_insertion(unit);
+        auto insertion = action::include_insertion(*unit);
         if(insertion.offset > offset) {
             insertion.offset -= 1;
         }
@@ -2336,7 +2323,7 @@ auto code_complete(CompilationParams& params,
             completion.include = IncludePlace{
                 .position = *position,
                 .opens_fragment = insertion.opens_fragment,
-                .c = !unit.lang_options().CPlusPlus,
+                .c = !unit->lang_options().CPlusPlus,
             };
         }
     }

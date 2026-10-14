@@ -9,6 +9,7 @@ module clice;
 
 import :command.argument_parser;
 import :compile.compilation;
+import :compile.tidy;
 import :config.config;
 import :index.database;
 import :index.manifest;
@@ -206,18 +207,16 @@ IndexedTU index_file(TempDir& tmp,
     args.insert(args.end(), extra_args.begin(), extra_args.end());
 
     CompilationParams cp;
-    cp.kind = CompilationKind::Indexing;
-    cp.directory = std::string(tmp.root);
-    for(auto& arg: args) {
-        cp.arguments.push_back(arg.c_str());
-    }
+    cp.kind = CompilationKind::Whole;
+    cp.input.directory = std::string(tmp.root);
+    cp.input.arguments = std::move(args);
 
-    auto unit = compile(cp);
-    if(!unit.completed()) {
+    auto unit = compile(std::move(cp));
+    if(!unit->completed()) {
         return {};
     }
     IndexedTU result;
-    result.data = index::build_tu_index(unit, {.known_variants = known});
+    result.data = index::build_tu_index(*unit, {.known_variants = known});
     auto view = index::TUIndex::from_bytes(result.data);
     if(!view.loaded()) {
         return {};
@@ -3722,7 +3721,6 @@ ZEST_CASE(ModuleLintScanParity) {
     plan.tidy = tidy::TidyParams{
         .checks = "-*,bugprone-integer-division",
         .extra_args = {"-DUSE_M"},
-        .batch = true,
     };
 
     auto n_id = f.project.file_table.intern(Spelling::absolute(tmp.path("n.cppm")));

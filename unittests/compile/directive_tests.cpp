@@ -359,16 +359,16 @@ ZEST_CASE(FailedIncludeDeps) {
 #include "missing.h"
 )cpp");
     prepare();
-    auto built = clice::compile(params);
+    auto built = clice::compile(std::move(params));
 
-    auto deps = built.deps();
+    auto deps = built->deps();
     ZASSERT(deps.size() == 2U);
     ZASSERT(deps[0].path == TestVFS::path("test.h"));
     ZASSERT(deps[0].hash != 0);
     ZASSERT(deps[1].path == TestVFS::path("missing.h"));
     ZASSERT(deps[1].hash == 0U);
     ZASSERT(deps[1].absent);
-    ZASSERT(built.absent() == std::vector<std::string>{TestVFS::path("missing.h")});
+    ZASSERT(built->absent() == std::vector<std::string>{TestVFS::path("missing.h")});
 };
 
 };  // ZEST_SUITE(Directive)

@@ -13,13 +13,13 @@ namespace clice::testing {
 namespace {
 
 struct InputFinder : clang::RecursiveASTVisitor<InputFinder> {
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     clang::QualType input;
     clang::QualType expect;
 
     using Base = clang::RecursiveASTVisitor<InputFinder>;
 
-    InputFinder(CompilationUnitRef unit) : unit(unit) {}
+    InputFinder(CompilationUnit& unit) : unit(unit) {}
 
     bool TraverseDecl(clang::Decl* decl) {
         if(decl && (llvm::isa<clang::TranslationUnitDecl>(decl) ||

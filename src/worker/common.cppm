@@ -15,27 +15,17 @@ import :worker.serialize;
 
 namespace clice {
 
-/// Fill CompilationParams directory and arguments from worker request fields.
-inline void fill_args(CompilationParams& cp,
-                      const std::string& directory,
-                      const std::vector<std::string>& arguments) {
-    cp.directory = directory;
-    for(auto& arg: arguments) {
-        cp.arguments.push_back(arg.c_str());
-    }
-}
-
 /// Hand a compile the master's PCH and PCMs. The PCH comes from clice's
 /// store, so the process keeps its mapping for later compiles.
-inline void use_artifacts(CompilationParams& cp,
+inline void use_artifacts(CompilationInput& input,
                           const std::pair<std::string, std::uint32_t>& pch,
                           const std::unordered_map<std::string, std::string>& pcms) {
     if(!pch.first.empty()) {
-        cp.pch = pch;
+        input.pch = pch;
         vfs::keep_mapped(pch.first);
     }
     for(auto& [name, path]: pcms) {
-        cp.pcms.try_emplace(name, path);
+        input.pcms.try_emplace(name, path);
     }
 }
 

@@ -9,6 +9,7 @@ module clice;
 import :command.command;
 import :command.toolchain;
 import :compile.compilation;
+import :compile.tidy;
 import :config.config;
 import :driver.driver;
 import :feature.feature;
@@ -134,22 +135,22 @@ struct StrictJson {
     constexpr static bool deny_unknown_fields = true;
 };
 
-std::optional<kota::codec::RawValue> run_folding_ranges(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_folding_ranges(CompilationUnit& unit,
                                                         [[maybe_unused]] const Config& config) {
     return to_raw_json(feature::folding_ranges(unit));
 }
 
-std::optional<kota::codec::RawValue> run_semantic_tokens(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_semantic_tokens(CompilationUnit& unit,
                                                          [[maybe_unused]] const Config& config) {
     return to_raw_json(feature::semantic_tokens(unit));
 }
 
-std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnit& unit,
                                                           [[maybe_unused]] const Config& config) {
     return to_raw_json(feature::document_symbols(unit));
 }
 
-std::optional<kota::codec::RawValue> run_document_links(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_document_links(CompilationUnit& unit,
                                                         [[maybe_unused]] const Config& config) {
     return to_raw_json(feature::document_links(unit));
 }
@@ -178,7 +179,7 @@ struct RawInlayHint {
 /// as the server places it, from the unit's own TU index standing in for
 /// the server's — a declaration, else the definition, the main file's shard
 /// first as an open buffer's is.
-std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
                                                      LocalSourceRange range,
                                                      const Config& config) {
     auto hints = feature::inlay_hints(unit, range, config.inlay_hints);
@@ -237,7 +238,7 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnitRef unit,
     return to_raw_json(out);
 }
 
-std::optional<kota::codec::RawValue> run_selection_range(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_selection_range(CompilationUnit& unit,
                                                          std::uint32_t offset,
                                                          [[maybe_unused]] const Config& config) {
     return to_raw_json(feature::selection_ranges(unit, {offset}).front());
@@ -254,7 +255,7 @@ struct RawCodeAction {
 
 /// The index requests resolved as an empty index would: definitions into
 /// the main file are all kept, no header declares any name.
-std::optional<kota::codec::RawValue> run_code_action(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_code_action(CompilationUnit& unit,
                                                      LocalSourceRange selection,
                                                      [[maybe_unused]] const Config& config) {
     std::vector<RawCodeAction> out;
@@ -294,7 +295,7 @@ std::optional<kota::codec::RawValue> run_code_action(CompilationUnitRef unit,
 /// nullopt = serialization failure; an empty RawValue serializes as null
 /// and records a marker with no hover. The card is markdown, as a client
 /// that shows markdown gets it.
-std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_hover(CompilationUnit& unit,
                                                std::uint32_t offset,
                                                const Config& config) {
     auto info = feature::hover_info(unit, offset, config.hover, config.documentation);
@@ -311,26 +312,26 @@ std::optional<kota::codec::RawValue> run_hover(CompilationUnitRef unit,
 /// each point gets a fresh completion compile instead of a query
 /// against one shared unit. `params` arrives fully configured except for
 /// the completion offset.
-std::optional<kota::codec::RawValue> run_code_completion(CompilationParams& params,
+std::optional<kota::codec::RawValue> run_code_completion(CompilationParams params,
                                                          const Config& config) {
     // The replies of an editor client that takes everything an item can carry.
     return to_raw_json(
-        feature::code_complete(params,
+        feature::code_complete(std::move(params),
                                config.code_completion,
                                config.documentation,
                                {.snippets = true, .insert_replace = true, .markdown = true})
             .list);
 }
 
-std::optional<kota::codec::RawValue> run_signature_help(CompilationParams& params,
+std::optional<kota::codec::RawValue> run_signature_help(CompilationParams params,
                                                         const Config& config) {
     return to_raw_json(
-        feature::signature_help(params, config.signature_help, config.documentation));
+        feature::signature_help(std::move(params), config.signature_help, config.documentation));
 }
 
 /// Marker payload for document_highlight: the unit's own TU index stands
 /// in for the server's file index, the cursor resolved by the same rule.
-std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnitRef unit,
+std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& unit,
                                                             std::uint32_t offset,
                                                             [[maybe_unused]] const Config& config) {
     auto bytes = index::build_tu_index(unit, {.only_instantiation = true});
@@ -353,17 +354,17 @@ std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnitRef u
 /// point with its own completion compile (`run_complete`).
 struct FeatureSpec {
     llvm::StringRef name;
-    std::optional<kota::codec::RawValue> (*run)(CompilationUnitRef, const Config&) = nullptr;
-    std::optional<kota::codec::RawValue> (*run_at)(CompilationUnitRef,
+    std::optional<kota::codec::RawValue> (*run)(CompilationUnit&, const Config&) = nullptr;
+    std::optional<kota::codec::RawValue> (*run_at)(CompilationUnit&,
                                                    std::uint32_t,
                                                    const Config&) = nullptr;
-    std::optional<kota::codec::RawValue> (*run_over)(CompilationUnitRef,
+    std::optional<kota::codec::RawValue> (*run_over)(CompilationUnit&,
                                                      LocalSourceRange,
                                                      const Config&) = nullptr;
-    std::optional<kota::codec::RawValue> (*run_select)(CompilationUnitRef,
+    std::optional<kota::codec::RawValue> (*run_select)(CompilationUnit&,
                                                        LocalSourceRange,
                                                        const Config&) = nullptr;
-    std::optional<kota::codec::RawValue> (*run_complete)(CompilationParams&,
+    std::optional<kota::codec::RawValue> (*run_complete)(CompilationParams,
                                                          const Config&) = nullptr;
 };
 
@@ -393,25 +394,13 @@ struct SourceFile {
     FileMarkers markers;
 };
 
-/// The compile command for one file, arguments owned as strings so they
-/// outlive the compiles they parameterize.
+/// The compile command for one file.
 struct FileCommand {
     std::vector<std::string> arguments;
     std::string directory;
     std::string workspace;
     std::shared_ptr<const SynthesizedContext> synthesized;
 };
-
-void apply_command(CompilationParams& params, const FileCommand& command) {
-    for(auto& arg: command.arguments) {
-        params.arguments.push_back(arg.c_str());
-    }
-    params.directory = command.directory;
-    params.workspace = command.workspace;
-    if(command.synthesized) {
-        params.add_synthesized(command.synthesized->files);
-    }
-}
 
 /// The workspace the inspected file's directory belongs to: itself or the
 /// nearest ancestor holding a configuration file or a compile_commands.json
@@ -505,18 +494,19 @@ void run_feature(FileEntry& entry,
                  const SourceFile& file,
                  const FileCommand& command,
                  const Config& config) {
-    auto prepare = [&](CompilationParams& params) {
-        apply_command(params, command);
-        std::string text = file.content;
-        if(command.synthesized) {
-            command.synthesized->append_suffix_include(text);
-        }
-        params.add_remapped_file(file.path, text);
+    CompilationInput input{
+        .arguments = command.arguments,
+        .directory = command.directory,
+        .workspace = command.workspace,
     };
+    std::string text = file.content;
+    if(command.synthesized) {
+        input.add_synthesized(command.synthesized->files);
+        command.synthesized->append_suffix_include(text);
+    }
+    input.add_remapped_file(file.path, text);
 
-    CompilationParams params;
-    params.kind = CompilationKind::Content;
-    prepare(params);
+    CompilationParams params{.kind = CompilationKind::Content, .input = input};
     if(config.diagnostics.clang_tidy) {
         auto resolution = tidy::resolve_tidy_params(file.path);
         if(!resolution.error.empty()) {
@@ -525,11 +515,11 @@ void run_feature(FileEntry& entry,
         params.tidy = std::move(resolution.params);
     }
 
-    auto unit = clice::compile(params);
-    if(!unit.completed()) {
+    auto unit = clice::compile(std::move(params));
+    if(!unit->completed()) {
         entry.error = "compile_error";
         entry.diagnostics = std::ranges::to<std::vector>(
-            unit.diagnostics() | std::views::transform(&Diagnostic::message));
+            unit->diagnostics() | std::views::transform(&Diagnostic::message));
         return;
     }
 
@@ -537,7 +527,7 @@ void run_feature(FileEntry& entry,
     // working on them), so error diagnostics are reported separately: the
     // test harness rejects code that silently broke instead of pinning
     // garbage.
-    if(auto errors = collect_errors(unit); !errors.empty()) {
+    if(auto errors = collect_errors(*unit); !errors.empty()) {
         entry.diagnostics = std::move(errors);
     }
 
@@ -553,11 +543,13 @@ void run_feature(FileEntry& entry,
         }
         std::map<std::string, kota::codec::RawValue> markers;
         for(const auto& [name, offset]: points) {
-            CompilationParams cp;
-            cp.kind = CompilationKind::Completion;
-            prepare(cp);
-            cp.completion = {file.path, offset};
-            auto value = spec.run_complete(cp, config);
+            auto value = spec.run_complete(
+                {
+                    .kind = CompilationKind::Completion,
+                    .input = input,
+                    .completion = {.offset = offset},
+            },
+                config);
             if(!value.has_value()) {
                 entry.error = "serialize_error";
                 return;
@@ -569,7 +561,7 @@ void run_feature(FileEntry& entry,
     }
 
     if(spec.run != nullptr) {
-        entry.result = spec.run(unit, config);
+        entry.result = spec.run(*unit, config);
         if(!entry.result.has_value()) {
             entry.error = "serialize_error";
         }
@@ -585,7 +577,7 @@ void run_feature(FileEntry& entry,
         }
         std::map<std::string, kota::codec::RawValue> markers;
         for(const auto& [name, offset]: points) {
-            auto value = spec.run_at(unit, offset, config);
+            auto value = spec.run_at(*unit, offset, config);
             if(!value.has_value()) {
                 entry.error = "serialize_error";
                 return;
@@ -612,7 +604,7 @@ void run_feature(FileEntry& entry,
     }
     if(places.empty()) {
         entry.result =
-            run(unit, LocalSourceRange(0, static_cast<std::uint32_t>(file.content.size())), config);
+            run(*unit, LocalSourceRange(0, static_cast<std::uint32_t>(file.content.size())), config);
         if(!entry.result.has_value()) {
             entry.error = "serialize_error";
         }
@@ -620,7 +612,7 @@ void run_feature(FileEntry& entry,
     }
     std::map<std::string, kota::codec::RawValue> markers;
     for(const auto& [name, range]: places) {
-        auto value = run(unit, range, config);
+        auto value = run(*unit, range, config);
         if(!value.has_value()) {
             entry.error = "serialize_error";
             return;

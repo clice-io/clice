@@ -9,6 +9,7 @@ module;
 module clice;
 
 import :compile.compilation;
+import :compile.tidy;
 import :feature.feature;
 import :index.include_tree;
 import :index.tu_index;
@@ -119,45 +120,52 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
                                                     const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
-    CompilationParams cp;
-    cp.kind = CompilationKind::Preamble;
-    fill_args(cp, params.directory, params.arguments);
-    cp.workspace = params.workspace;
-    cp.add_remapped_file(params.file, params.content, params.preamble_bound);
-    cp.add_synthesized(params.synthesized);
-    use_artifacts(cp, {}, params.pcms);
-    cp.stop = stop;
-
     auto output = artifact_output("PCH", params.output_path, "clice-pch", "pch");
     if(!output) {
         return {false, output.error()};
     }
-    cp.output_file = *output;
 
-    PCHInfo pch_info;
+    CompilationParams cp{
+        .kind = CompilationKind::Preamble,
+        .input = {.arguments = params.arguments,
+                  .directory = params.directory,
+                  .workspace = params.workspace},
+        .output_file = *output,
+        .stop = stop,
+    };
+    cp.input.add_remapped_file(params.file, params.content, params.preamble_bound);
+    cp.input.add_synthesized(params.synthesized);
+    use_artifacts(cp.input, {}, params.pcms);
+
     ScopedTimer compile_timer;
-    auto unit = compile(cp, pch_info);
+    auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
     // A cancelled parse reports !completed(); the extra check catches a
     // cancellation arriving between the parse and the serialization, whose
     // blob nobody will read. The tmp file is removed like any failed build.
-    bool success = unit.completed() && !stop->load(std::memory_order_relaxed);
-    auto build_at = unit.build_at().count();
+    bool success = unit->completed() && unit->has_output() && !stop->load(std::memory_order_relaxed);
+    auto build_at = unit->build_at().count();
+
+    // A build that failed on errors still reports what it read.
+    std::vector<DepFile> deps;
+    if(unit->completed()) {
+        deps = unit->deps();
+    }
 
     std::vector<std::string> errors;
     if(!success)
-        errors = collect_errors(unit);
+        errors = collect_errors(*unit);
 
     std::string blob;
     ScopedTimer index_timer;
     if(success) {
-        blob = serialize_preamble_index(unit, params.preamble_bound);
+        blob = serialize_preamble_index(*unit, params.preamble_bound);
     }
     auto index_ms = index_timer.ms();
 
-    // Destroy CompilationUnit to flush PCH to disk.
+    // Destroying the unit writes the PCH to disk.
     ScopedTimer flush_timer;
-    unit = CompilationUnit(nullptr);
+    unit.reset();
     auto flush_ms = flush_timer.ms();
 
     // Write the blob strictly after the PCH flush: the CacheStore's
@@ -193,48 +201,54 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
                  timer.ms(),
                  llvm::join(errors, "; "));
     }
-    return finish_artifact("PCH",
-                           success,
-                           *output,
-                           build_at,
-                           pch_info.deps,
-                           errors,
-                           internal_error);
+    return finish_artifact("PCH", success, *output, build_at, deps, errors, internal_error);
 }
 
 static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams& params,
                                                     const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
-    CompilationParams cp;
-    cp.kind = CompilationKind::ModuleInterface;
-    fill_args(cp, params.directory, params.arguments);
-    use_artifacts(cp, {}, params.pcms);
-    cp.stop = stop;
-
     auto output = artifact_output("PCM", params.output_path, "clice-pcm", "pcm");
     if(!output) {
         return {false, output.error()};
     }
-    cp.output_file = *output;
 
-    PCMInfo pcm_info;
+    CompilationParams cp{
+        .kind = CompilationKind::ModuleInterface,
+        .input = {.arguments = params.arguments, .directory = params.directory},
+        .output_file = *output,
+        .stop = stop,
+    };
+    use_artifacts(cp.input, {}, params.pcms);
+
     ScopedTimer compile_timer;
-    auto unit = compile(cp, pcm_info);
+    auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
-    bool success = unit.completed() && !stop->load(std::memory_order_relaxed);
-    auto build_at = unit.build_at().count();
+    bool success = unit->completed() && unit->has_output() && !stop->load(std::memory_order_relaxed);
+    auto build_at = unit->build_at().count();
+
+    // A build that failed on errors still reports what it read.
+    std::vector<DepFile> deps;
+    if(unit->completed()) {
+        deps = unit->deps();
+        // deps() collects include targets only; the module source is a
+        // build input of its PCM all the same. Named by its identity like
+        // every other dep: the command spells it as written, which
+        // consumers cannot stat reliably.
+        deps.emplace_back(std::string(unit->file_path(unit->main_file())),
+                          llvm::xxh3_64bits(unit->main_content()));
+    }
 
     std::vector<std::string> errors;
     if(!success)
-        errors = collect_errors(unit);
+        errors = collect_errors(*unit);
 
     // TODO: PCM indexing. Unlike the PCH, a PCM is not a transient
     // buffer-derived artifact — module units are ordinary disk files with
     // CDB entries, so their symbols should flow through the normal
     // background-indexing path (no per-blob pair needed).
     ScopedTimer flush_timer;
-    unit = CompilationUnit(nullptr);
+    unit.reset();
     auto flush_ms = flush_timer.ms();
 
     if(success) {
@@ -250,13 +264,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                  timer.ms(),
                  llvm::join(errors, "; "));
     }
-    return finish_artifact("PCM",
-                           success,
-                           *output,
-                           build_at,
-                           pcm_info.deps,
-                           errors,
-                           /*internal_error=*/false);
+    return finish_artifact("PCM", success, *output, build_at, deps, errors, /*internal_error=*/false);
 }
 
 /// Collect the tidy pass's findings with real per-file locations: unlike
@@ -271,7 +279,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 /// with a usable AST despite errors, and a run that discarded them would
 /// pass broken code. Notes follow their finding in the stream and attach
 /// to it.
-static void collect_tidy_diagnostics(CompilationUnitRef unit,
+static void collect_tidy_diagnostics(CompilationUnit& unit,
                                      const tidy::TidyParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
     auto main_fid = unit.main_file();
@@ -359,16 +367,17 @@ static worker::IncludeTreeResult
                         const std::shared_ptr<std::atomic_bool>& stop) {
     LOG_INFO("IncludeTree request: file={}", params.file);
     ScopedTimer timer;
-    CompilationParams cp;
-    cp.kind = CompilationKind::Preprocess;
-    fill_args(cp, params.directory, params.arguments);
-    cp.workspace = params.workspace;
-    cp.stop = stop;
-    auto unit = preprocess(cp);
-    if(!unit.completed()) {
+    auto unit = compile({
+        .kind = CompilationKind::Preprocess,
+        .input = {.arguments = params.arguments,
+                  .directory = params.directory,
+                  .workspace = params.workspace},
+        .stop = stop,
+    });
+    if(!unit->completed()) {
         return {.success = false, .error = "preprocessing failed"};
     }
-    auto tree = index::IncludeTree::from(unit);
+    auto tree = index::IncludeTree::from(*unit);
     LOG_PERF("build",
              "kind=include_tree file={} nodes={} total_ms={}",
              params.file,
@@ -378,7 +387,7 @@ static worker::IncludeTreeResult
         .paths = std::move(tree.paths),
         .path_hashes = std::move(tree.path_hashes),
         .nodes = std::move(tree.nodes),
-        .absent = unit.absent(),
+        .absent = unit->absent(),
     };
 }
 
@@ -387,25 +396,25 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     LOG_INFO("TURun request: file={}", params.file);
     ScopedTimer timer;
 
-    CompilationParams cp;
-    // One parse serves every product of the plan: the tidy pass runs on a
-    // Content build, the plain AST build; a pure index run keeps the
-    // Indexing kind.
-    cp.kind = params.tidy ? CompilationKind::Content : CompilationKind::Indexing;
-    fill_args(cp, params.directory, params.arguments);
-    cp.workspace = params.workspace;
-    cp.add_synthesized(params.synthesized);
-    use_artifacts(cp, {}, params.pcms);
-    // The command-affecting extra args are already in params.arguments
-    // (applied at driver resolution); the plan's copies feed the engine's
-    // warning-options path only.
-    cp.tidy = params.tidy;
-    cp.stop = stop;
+    // One parse serves every product of the plan. The command-affecting
+    // extra args are already in params.arguments (applied at driver
+    // resolution); the plan's copies feed the engine's warning-options
+    // path only.
+    CompilationParams cp{
+        .kind = CompilationKind::Whole,
+        .input = {.arguments = params.arguments,
+                  .directory = params.directory,
+                  .workspace = params.workspace},
+        .tidy = params.tidy,
+        .stop = stop,
+    };
+    cp.input.add_synthesized(params.synthesized);
+    use_artifacts(cp.input, {}, params.pcms);
 
     ScopedTimer compile_timer;
-    auto unit = compile(cp);
+    auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
-    if(!unit.completed()) {
+    if(!unit->completed()) {
         LOG_WARN("TU run failed: file={}, {}ms", params.file, timer.ms());
         return {false, "TU run compilation failed"};
     }
@@ -420,7 +429,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {
-        auto blob = index::build_tu_index(unit, {.known_variants = params.known_variants});
+        auto blob = index::build_tu_index(*unit, {.known_variants = params.known_variants});
         index_bytes = blob.size();
         if(auto error = hand_over_index(std::move(blob), params.index_output_path, result)) {
             return {false, std::move(*error)};
@@ -428,14 +437,14 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     }
     auto index_ms = index_timer.ms();
     if(params.tidy) {
-        collect_tidy_diagnostics(unit, *params.tidy, result.tidy_diagnostics);
+        collect_tidy_diagnostics(*unit, *params.tidy, result.tidy_diagnostics);
     }
 
     // AST teardown for a large TU is material work that belongs to this
     // task: sample the total only after the unit is gone, so the logged
     // span covers everything that blocks the worker.
     ScopedTimer teardown_timer;
-    unit = CompilationUnit(nullptr);
+    unit.reset();
     auto teardown_ms = teardown_timer.ms();
 
     LOG_PERF(
@@ -455,20 +464,21 @@ static worker::CompletionResult handle_completion(const worker::CompletionParams
                                                   const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
-    CompilationParams cp;
-    cp.kind = CompilationKind::Completion;
-    fill_args(cp, params.directory, params.arguments);
+    CompilationParams cp{
+        .kind = CompilationKind::Completion,
+        .input = {.arguments = params.arguments, .directory = params.directory},
+        .completion = {.offset = params.offset},
+        .stop = stop,
+    };
     // Clang does not read again the part of the file the PCH stands in for:
     // a point there is completed without it.
-    use_artifacts(cp,
+    use_artifacts(cp.input,
                   params.offset <= params.pch.second ? decltype(params.pch){} : params.pch,
                   params.pcms);
-    cp.add_remapped_file(params.file, params.text);
-    cp.add_synthesized(params.synthesized);
-    cp.completion = {params.file, params.offset};
-    cp.stop = stop;
+    cp.input.add_remapped_file(params.file, params.text);
+    cp.input.add_synthesized(params.synthesized);
 
-    auto completion = feature::code_complete(cp,
+    auto completion = feature::code_complete(std::move(cp),
                                              params.config.code_completion,
                                              params.config.documentation,
                                              params.client,
@@ -484,16 +494,17 @@ static kota::codec::RawValue handle_signature_help(const worker::SignatureHelpPa
                                                    const std::shared_ptr<std::atomic_bool>& stop) {
     ScopedTimer timer;
 
-    CompilationParams cp;
-    cp.kind = CompilationKind::Completion;
-    fill_args(cp, params.directory, params.arguments);
-    use_artifacts(cp, params.pch, params.pcms);
-    cp.add_remapped_file(params.file, params.text);
-    cp.add_synthesized(params.synthesized);
-    cp.completion = {params.file, params.offset};
-    cp.stop = stop;
+    CompilationParams cp{
+        .kind = CompilationKind::Completion,
+        .input = {.arguments = params.arguments, .directory = params.directory},
+        .completion = {.offset = params.offset},
+        .stop = stop,
+    };
+    use_artifacts(cp.input, params.pch, params.pcms);
+    cp.input.add_remapped_file(params.file, params.text);
+    cp.input.add_synthesized(params.synthesized);
 
-    auto help = feature::signature_help(cp,
+    auto help = feature::signature_help(std::move(cp),
                                         params.config.signature_help,
                                         params.config.documentation,
                                         params.selected);

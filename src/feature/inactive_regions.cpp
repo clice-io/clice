@@ -10,7 +10,7 @@ import :support.text;
 
 namespace clice::feature {
 
-InactiveScan inactive_regions(CompilationUnitRef unit,
+InactiveScan inactive_regions(CompilationUnit& unit,
                               llvm::ArrayRef<std::uint8_t> open_stack,
                               std::uint32_t resume_offset,
                               std::uint32_t end_offset) {

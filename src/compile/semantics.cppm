@@ -11,7 +11,7 @@ import :syntax.token;
 
 namespace clice {
 
-class CompilationUnitRef;
+class CompilationUnit;
 
 namespace types {
 
@@ -24,7 +24,7 @@ class TemplateResolver;
 /// one tagged union (no nested discriminant like wrapping clang::DynTypedNode
 /// would introduce). Preprocessor payloads are pointers into the unit's
 /// Directive storage, which shares the unit's lifetime, comments into the
-/// unit's comments (CompilationUnitRef::comments); module declarations
+/// unit's comments (CompilationUnit::comments); module declarations
 /// point into the Semantics' own LexicalInfo storage.
 class SemanticNode {
 public:
@@ -334,7 +334,7 @@ public:
 
     /// Build the semantics of the unit: one full traversal taking tokens
     /// innermost-first, plus one pass over the preprocessor directives.
-    static Semantics build(CompilationUnitRef unit, SemanticsOptions options = {});
+    static Semantics build(CompilationUnit& unit, SemanticsOptions options = {});
 
     /// All recorded nodes in one index space: first the AST segment in DFS
     /// pre-order (a parent always precedes its children), then preprocessor
@@ -439,7 +439,7 @@ private:
     /// storage.
     LexicalInfo lexical;
 
-    /// The unit's comments of the main file (CompilationUnitRef::comments);
+    /// The unit's comments of the main file (CompilationUnit::comments);
     /// Comment nodes point into them.
     llvm::ArrayRef<LexicalInfo::Comment> main_comments;
 };

@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.semantics;
 import :feature.feature;
 import :feature.lexical_classify;
@@ -288,8 +288,7 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
 /// (a virtual file rendering the expansion with full semantic tokens).
 class SemanticTokensCollector {
 public:
-    SemanticTokensCollector(CompilationUnitRef unit,
-                            llvm::ArrayRef<std::uint32_t> inactive_regions) :
+    SemanticTokensCollector(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> inactive_regions) :
         unit(unit), semantics(unit.semantics()), content(unit.main_content()),
         comments(semantics.comments()), inactive_regions(inactive_regions) {}
 
@@ -718,7 +717,7 @@ private:
         InDirective,
     };
 
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     const Semantics& semantics;
     llvm::StringRef content;
     DirectiveContext directive_context = DirectiveContext::None;
@@ -797,18 +796,17 @@ private:
 
 }  // namespace
 
-auto semantic_tokens(CompilationUnitRef unit) -> std::vector<SemanticToken> {
+auto semantic_tokens(CompilationUnit& unit) -> std::vector<SemanticToken> {
     auto scan = inactive_regions(unit);
     SemanticTokensCollector collector(unit, scan.regions);
     return collector.collect();
 }
 
-auto semantic_tokens(CompilationUnitRef unit, PositionEncoding encoding)
-    -> protocol::SemanticTokens {
+auto semantic_tokens(CompilationUnit& unit, PositionEncoding encoding) -> protocol::SemanticTokens {
     return semantic_tokens_to_protocol(semantic_tokens(unit), unit.positions(), encoding);
 }
 
-auto semantic_tokens(CompilationUnitRef unit,
+auto semantic_tokens(CompilationUnit& unit,
                      llvm::ArrayRef<std::uint32_t> inactive_regions,
                      PositionEncoding encoding) -> protocol::SemanticTokens {
     SemanticTokensCollector collector(unit, inactive_regions);

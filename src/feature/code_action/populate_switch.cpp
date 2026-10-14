@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.display;
 
@@ -19,7 +19,7 @@ static bool declares_in_scope(const clang::CompoundStmt* body) {
 }
 
 void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
-    auto unit = ctx.unit;
+    auto& unit = ctx.unit;
     const auto* stmt = ctx.node.get<clang::SwitchStmt>();
     if(!stmt || !stmt->getCond()) {
         return;
@@ -91,7 +91,7 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         if(!brace) {
             return;
         }
-        auto tokens = unit.spelled_tokens();
+        auto tokens = unit.tokens().spelled();
         auto after = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
             return unit.file_offset(token.location()) <= brace->begin;
         });

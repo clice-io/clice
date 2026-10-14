@@ -96,7 +96,7 @@ bool has_c_linkage(const clang::Decl* decl) {
 /// entity per name, whichever header forward-declares it first; the
 /// main file of a header compiled in its host's context is no source
 /// file.
-bool needs_path(const clang::NamedDecl* decl, CompilationUnitRef unit) {
+bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
     if(!decl->getDeclContext()->getRedeclContext()->isFileContext()) {
         return false;
     }

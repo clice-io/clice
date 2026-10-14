@@ -17,7 +17,7 @@ import :support.text;
 namespace clice::feature::action {
 
 struct Context {
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     /// The node the action anchored on.
     const SelectionTree::Node& node;
     /// Whether the main file is a header: a definition then belongs in the
@@ -51,18 +51,16 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out);
 void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out);
 
 /// Anchored on the macro expansion under the selection, not on the tree.
-void expand_macro(CompilationUnitRef unit,
-                  LocalSourceRange selection,
-                  std::vector<CodeAction>& out);
+void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out);
 
 /// Anchored on an unresolved name the compiler diagnosed at the selection.
-void add_include(CompilationUnitRef unit, LocalSourceRange selection, std::vector<CodeAction>& out);
+void add_include(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out);
 
 /// The fixes the diagnostics on the selection carry, the compiler's and
 /// clang-tidy's: each diagnostic's own and those of its notes.
-void fix_its(CompilationUnitRef unit, LocalSourceRange selection, std::vector<CodeAction>& out);
+void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out);
 
-IncludeInsertion include_insertion(CompilationUnitRef unit);
+IncludeInsertion include_insertion(CompilationUnit& unit);
 
 /// Where a new `import` line goes in `content`: after the last import
 /// ahead of every other declaration, else after the module declaration;
@@ -71,11 +69,11 @@ std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions
 
 /// The main-file byte range a source range spells; nullopt when either
 /// end is inside a macro or another file.
-std::optional<LocalSourceRange> main_range(CompilationUnitRef unit, clang::SourceRange range);
+std::optional<LocalSourceRange> main_range(CompilationUnit& unit, clang::SourceRange range);
 
 /// The text a file range spells, in whichever file it lies; nullopt for
 /// macro locations and ranges crossing files.
-std::optional<llvm::StringRef> spelled_text(CompilationUnitRef unit, clang::SourceRange range);
+std::optional<llvm::StringRef> spelled_text(CompilationUnit& unit, clang::SourceRange range);
 
 /// The whitespace opening the line containing `offset`.
 llvm::StringRef line_indent(llvm::StringRef content, std::uint32_t offset);
@@ -110,7 +108,7 @@ std::optional<std::string> type_name(clang::ASTContext& context,
 /// "template <...>" heads of the class templates enclosing `decl` up to
 /// `from`, outermost first, one per line, the parameters spelled without
 /// their defaults; empty when none.
-std::string template_heads(CompilationUnitRef unit,
+std::string template_heads(CompilationUnit& unit,
                            const clang::Decl* decl,
                            const clang::DeclContext* from);
 
@@ -124,19 +122,19 @@ struct Member {
 /// indentation, under an access label wherever the access changes from
 /// the one the body ends in; nullopt when the class head or brace is
 /// spelled by a macro.
-std::optional<TextReplacement> insert_members(CompilationUnitRef unit,
+std::optional<TextReplacement> insert_members(CompilationUnit& unit,
                                               const clang::CXXRecordDecl* record,
                                               llvm::ArrayRef<Member> members);
 
 /// Visit the main file's declarations at file scope — the translation
 /// unit's and, descending, those of namespaces, linkage specifications and
 /// export blocks — in source order.
-void for_each_file_scope_decl(CompilationUnitRef unit,
+void for_each_file_scope_decl(CompilationUnit& unit,
                               llvm::function_ref<void(const clang::Decl*)> visit);
 
 /// The definitions of `record`'s member functions written out of line at
 /// file scope in the main file, in file order.
-std::vector<const clang::FunctionDecl*> out_of_line_definitions(CompilationUnitRef unit,
+std::vector<const clang::FunctionDecl*> out_of_line_definitions(CompilationUnit& unit,
                                                                 const clang::CXXRecordDecl* record);
 
 /// The function's outermost written declaration: the function template

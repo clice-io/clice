@@ -8,11 +8,14 @@ module;
 
 module clice;
 
-import :compile.implement;
+import :compile.diagnostic;
+import :compile.tidy;
 import :support.logging;
 import :vfs.file_system;
 
 namespace clice::tidy {
+
+using namespace clang::tidy;
 
 namespace {
 
@@ -218,20 +221,26 @@ private:
     }
 };
 
+/// clang-tidy's defaults with no checks. getDefaults instantiates every
+/// check factory, which are registered at link time.
+const clang::tidy::ClangTidyOptions& default_options() {
+    const static auto options = [] {
+        auto opts = clang::tidy::ClangTidyOptions::getDefaults();
+        opts.Checks->clear();
+        return opts;
+    }();
+    return options;
+}
+
 /// clang-tidy's own provider, but for a configuration file that does not
 /// parse: clang-tidy prints why and reads on as if the file were absent;
 /// this reads on the same, keeping why.
 struct ConfigFiles : clang::tidy::FileOptionsProvider {
     explicit ConfigFiles(llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> disk) :
-        FileOptionsProvider(
-            clang::tidy::ClangTidyGlobalOptions(),
-            [] {
-                auto opts = clang::tidy::ClangTidyOptions::getDefaults();
-                opts.Checks->clear();
-                return opts;
-            }(),
-            clang::tidy::ClangTidyOptions(),
-            std::move(disk)) {
+        FileOptionsProvider(clang::tidy::ClangTidyGlobalOptions(),
+                            default_options(),
+                            clang::tidy::ClangTidyOptions(),
+                            std::move(disk)) {
         ConfigHandlers = {
             {".clang-tidy", [this](llvm::MemoryBufferRef config) { return parse(config); }},
         };
@@ -258,29 +267,6 @@ struct ConfigFiles : clang::tidy::FileOptionsProvider {
     }
 };
 
-}  // namespace
-
-using namespace clang::tidy;
-
-bool is_registered_tidy_check(llvm::StringRef check) {
-    assert(!check.empty());
-    assert(!check.contains('*') && !check.contains(',') &&
-           "is_registered_tidy_check doesn't support globs");
-    assert(check.ltrim().front() != '-');
-
-    const static llvm::StringSet<llvm::BumpPtrAllocator> all_checks = [] {
-        llvm::StringSet<llvm::BumpPtrAllocator> result;
-        tidy::ClangTidyCheckFactories factories;
-        for(tidy::ClangTidyModuleRegistry::entry entry: tidy::ClangTidyModuleRegistry::entries())
-            entry.instantiate()->addCheckFactories(factories);
-        for(const auto& factory: factories)
-            result.insert(factory.getKey());
-        return result;
-    }();
-
-    return all_checks.contains(check);
-}
-
 std::optional<bool> is_fast_tidy_check(llvm::StringRef check) {
     static auto fast = llvm::StringMap<bool>{
 #define FAST(CHECK, TIME) {#CHECK, true},
@@ -305,14 +291,7 @@ tidy::ClangTidyCheckFactories get_fast_checks(const tidy::ClangTidyCheckFactorie
     return fast;
 }
 
-tidy::ClangTidyOptions create_options(const TidyParams& params) {
-    // getDefaults instantiates all check factories, which are registered at link
-    // time. So cache the results once.
-    const static auto default_opts = [] {
-        auto opts = tidy::ClangTidyOptions::getDefaults();
-        opts.Checks->clear();
-        return opts;
-    }();
+tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
     // These default checks are chosen for:
     //  - low false-positive rate
     //  - providing a lot of value
@@ -334,25 +313,25 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
                          // simplify appending in the lambda. So including an
                          // empty string here will force that.
                          "",
-                         // include-cleaner is directly integrated in IncludeCleaner.cpp
+                         // clangd runs include-cleaner itself, apart from
+                         // clang-tidy.
                          "-misc-include-cleaner",
 
                          // Check relies on seeing ifndef/define/endif directives,
-                         // clangd doesn't replay those when using a preamble.
+                         // which the preamble replay leaves out.
                          "-llvm-header-guard",
                          "-modernize-macro-to-enum",
                          "-cppcoreguidelines-macro-to-enum",
 
                          // Check can choke on invalid (intermediate) c++
-                         // code, which is often the case when clangd
-                         // tries to build an AST.
+                         // code, as code mid-edit often is.
                          "-bugprone-use-after-move",
                          // Check uses dataflow analysis, which might hang/crash unexpectedly on
                          // incomplete code.
                          "-bugprone-unchecked-optional-access",
                          "-abseil-unchecked-statusor-access");
 
-    tidy::ClangTidyOptions opts = default_opts;
+    tidy::ClangTidyOptions opts = default_options();
 
     // clang::clangd::provideEnvironment
     if(std::optional<std::string> user = llvm::sys::Process::GetEnv("USER")) {
@@ -364,7 +343,7 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
     // analyzer, the rest of that list, is not built in.)
     if(params.checks.empty()) {
         opts.Checks = default_checks;
-    } else if(params.batch) {
+    } else if(batch) {
         opts.Checks = "clang-diagnostic-*," + params.checks;
     } else {
         opts.Checks = params.checks;
@@ -372,7 +351,7 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
     // clang::clangd::disableUnusableChecks, after the configuration's own
     // list so that no configuration enables them again. A batch run never
     // parses code mid-edit.
-    if(!params.batch) {
+    if(!batch) {
         opts.Checks->append(bad_checks);
     }
     for(auto& [key, value]: params.options) {
@@ -404,6 +383,8 @@ tidy::ClangTidyOptions create_options(const TidyParams& params) {
     }
     return opts;
 }
+
+}  // namespace
 
 CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
                                     llvm::ArrayRef<std::string> extra_args_before) {
@@ -440,6 +421,8 @@ CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
     filter_into(extra_args, split.append);
     return split;
 }
+
+namespace {
 
 // Filter for clang diagnostics groups enabled by CTOptions.Checks.
 //
@@ -555,6 +538,8 @@ void apply_warning_options(llvm::ArrayRef<std::string> extra_args,
     }
 }
 
+}  // namespace
+
 ClangTidyChecker::ClangTidyChecker(std::unique_ptr<ClangTidyOptionsProvider> provider,
                                    clang::ast_matchers::MatchFinder::MatchFinderOptions options) :
     context(std::move(provider)), finder(options) {}
@@ -634,6 +619,7 @@ void ClangTidyChecker::adjust_diag(Diagnostic& diag) {
 
 std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
                                             const TidyParams& params,
+                                            bool batch,
                                             llvm::ArrayRef<std::uint32_t> preamble_inactive) {
     auto& input = instance.getFrontendOpts().Inputs[0];
 
@@ -641,7 +627,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         return nullptr;
     }
     auto file_name = input.getFile();
-    tidy::ClangTidyOptions opts = create_options(params);
+    tidy::ClangTidyOptions opts = create_options(params, batch);
 
     {
         // If clang-tidy is configured to emit clang warnings, we should too.
@@ -682,7 +668,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         return factories;
     }();
     tidy::ClangTidyCheckFactories factories =
-        params.batch ? all_factories : get_fast_checks(all_factories);
+        batch ? all_factories : get_fast_checks(all_factories);
     // Like clang-tidy: nodes in system headers are not even matched unless
     // the configuration asks for their findings.
     clang::ast_matchers::MatchFinder::MatchFinderOptions finder_options;
@@ -690,12 +676,12 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     std::unique_ptr<ClangTidyChecker> checker = std::make_unique<ClangTidyChecker>(
         std::make_unique<tidy::DefaultOptionsProvider>(tidy::ClangTidyGlobalOptions(), opts),
         finder_options);
-    checker->batch = params.batch;
+    checker->batch = batch;
 
     // A batch run's checks report through an engine of their own, as in
     // clang-tidy: the compiler's stops reporting after a fatal error (a
     // missing header) and applies the command's -Werror and -w to them.
-    if(params.batch) {
+    if(batch) {
         auto options = std::make_unique<clang::DiagnosticOptions>();
         checker->engine =
             std::make_unique<clang::DiagnosticsEngine>(instance.getDiagnostics().getDiagnosticIDs(),

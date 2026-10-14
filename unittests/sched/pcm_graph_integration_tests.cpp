@@ -105,14 +105,15 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
 
         CompilationParams cp;
         cp.kind = CompilationKind::ModuleInterface;
-        cp.directory = cdb.config(entry.config).directory;
-        cp.arguments = cdb.render(ref);
+        cp.input.directory = cdb.config(entry.config).directory;
+        auto arguments = cdb.render(ref);
+        cp.input.arguments.assign(arguments.begin(), arguments.end());
 
         // Fill ALL available PCM paths (clang needs transitive deps too).
         for(auto& [pid, pcm_path]: pcm_paths) {
             for(auto& [mod_name, mod_ids]: graph.modules()) {
                 if(llvm::find(mod_ids, Fid{pid}) != mod_ids.end()) {
-                    cp.pcms.try_emplace(mod_name, pcm_path);
+                    cp.input.pcms.try_emplace(mod_name, pcm_path);
                     break;
                 }
             }
@@ -124,11 +125,10 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
         }
         cp.output_file = *tmp;
 
-        PCMInfo info;
-        auto unit = compile(cp, info);
+        auto unit = compile(std::move(cp));
 
-        if(unit.completed()) {
-            pcm_paths[path_id] = std::string(cp.output_file);
+        if(unit->completed() && unit->has_output()) {
+            pcm_paths[path_id] = *tmp;
             co_return RoundOutcome::Success;
         }
         co_return RoundOutcome::Failed;
@@ -1131,20 +1131,21 @@ ZEST_CASE(module_implementation_unit) {
 
         CompilationParams cp;
         cp.kind = CompilationKind::Content;
-        cp.directory = env.cdb.config(impl_entry.config).directory;
-        cp.arguments = env.cdb.render(impl_ref);
+        cp.input.directory = env.cdb.config(impl_entry.config).directory;
+        auto arguments = env.cdb.render(impl_ref);
+        cp.input.arguments.assign(arguments.begin(), arguments.end());
         // Pass the built PCM so clang can resolve `module Greeter;`.
         for(auto& [pid, pcm_path]: env.pcm_paths) {
             for(auto& [mod_name, mod_ids]: env.graph.modules()) {
                 if(llvm::find(mod_ids, Fid{pid}) != mod_ids.end()) {
-                    cp.pcms.try_emplace(mod_name, pcm_path);
+                    cp.input.pcms.try_emplace(mod_name, pcm_path);
                     break;
                 }
             }
         }
 
-        auto unit = compile(cp);
-        ZEXPECT(unit.completed());
+        auto unit = compile(std::move(cp));
+        ZEXPECT(unit->completed());
     });
 }
 

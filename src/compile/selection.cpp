@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.selection;
 import :compile.semantics;
 
@@ -108,7 +108,7 @@ std::string SelectionTree::Node::kind() const {
     return std::move(OS.str());
 }
 
-bool SelectionTree::create_each(CompilationUnitRef unit,
+bool SelectionTree::create_each(CompilationUnit& unit,
                                 LocalSourceRange range,
                                 llvm::function_ref<bool(SelectionTree)> callback) {
     auto [begin, end] = range;
@@ -126,7 +126,8 @@ bool SelectionTree::create_each(CompilationUnitRef unit,
     auto location = unit.create_location(unit.main_file(), begin);
 
     // Prefer right token over left.
-    for(const clang::syntax::Token& token: llvm::reverse(unit.spelled_tokens_touch(location))) {
+    for(const clang::syntax::Token& token:
+        llvm::reverse(unit.tokens().spelled_touching(location))) {
         if(should_ignore_token(token)) {
             continue;
         }
@@ -149,7 +150,7 @@ bool SelectionTree::create_each(CompilationUnitRef unit,
     return false;
 }
 
-SelectionTree SelectionTree::create_right(CompilationUnitRef unit, LocalSourceRange range) {
+SelectionTree SelectionTree::create_right(CompilationUnit& unit, LocalSourceRange range) {
     std::optional<SelectionTree> result;
     create_each(unit, range, [&](SelectionTree T) {
         result = std::move(T);
@@ -158,7 +159,7 @@ SelectionTree SelectionTree::create_right(CompilationUnitRef unit, LocalSourceRa
     return std::move(*result);
 }
 
-SelectionTree::SelectionTree(CompilationUnitRef unit, LocalSourceRange range) :
+SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) :
     print_policy(unit.context().getLangOpts()) {
     print_policy.TerseOutput = true;
     print_policy.IncludeNewlines = false;

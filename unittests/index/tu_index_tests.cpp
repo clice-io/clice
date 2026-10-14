@@ -1967,11 +1967,7 @@ ZEST_CASE(SuperQualifierRef) {
     prepare("-std=c++20");
     /// __super needs Microsoft extensions; splice the flag in before the
     /// trailing source path.
-    owned_args.insert(owned_args.end() - 1, "-fms-extensions");
-    params.arguments.clear();
-    for(auto& arg: owned_args) {
-        params.arguments.push_back(arg.c_str());
-    }
+    params.input.arguments.insert(params.input.arguments.end() - 1, "-fms-extensions");
     ZASSERT(try_compile());
     decode_index(index::build_tu_index(*unit));
 

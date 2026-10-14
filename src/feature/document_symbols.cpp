@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :compile.semantics;
 import :feature.feature;
 import :semantic.display;
@@ -122,7 +122,7 @@ auto instantiation_args(const clang::ExplicitInstantiationDecl& directive,
 /// a symbol's frame stays open while the walk index is inside its subtree.
 class Collector {
 public:
-    Collector(CompilationUnitRef unit, llvm::ArrayRef<std::uint32_t> inactive_regions) :
+    Collector(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> inactive_regions) :
         unit(unit), inactive_regions(inactive_regions) {}
 
     auto collect() -> std::vector<DocumentSymbol> {
@@ -457,7 +457,7 @@ private:
         std::vector<DocumentSymbol>* previous;
     };
 
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     /// Sorted begin/end offset pairs.
     llvm::ArrayRef<std::uint32_t> inactive_regions;
     std::vector<DocumentSymbol> symbols;
@@ -515,7 +515,7 @@ auto to_protocol_symbol(const DocumentSymbol& symbol,
     return result;
 }
 
-auto outline(CompilationUnitRef unit, llvm::ArrayRef<std::uint32_t> inactive_regions)
+auto outline(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> inactive_regions)
     -> std::vector<DocumentSymbol> {
     auto result = Collector(unit, inactive_regions).collect();
     sort_symbols(result);
@@ -524,11 +524,11 @@ auto outline(CompilationUnitRef unit, llvm::ArrayRef<std::uint32_t> inactive_reg
 
 }  // namespace
 
-auto document_symbols(CompilationUnitRef unit) -> std::vector<DocumentSymbol> {
+auto document_symbols(CompilationUnit& unit) -> std::vector<DocumentSymbol> {
     return outline(unit, inactive_regions(unit).regions);
 }
 
-auto document_symbols(CompilationUnitRef unit,
+auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
                       PositionEncoding encoding) -> std::vector<protocol::DocumentSymbol> {
     return document_symbols_to_protocol(outline(unit, inactive_regions),

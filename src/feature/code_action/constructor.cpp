@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 import :feature.code_action.action;
 
 namespace clice::feature::action {
@@ -142,7 +142,7 @@ bool declares_std_move(clang::ASTContext& context, clang::SourceLocation locatio
 }  // namespace
 
 void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
-    auto unit = ctx.unit;
+    auto& unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
     // A class still being typed has no closing brace for the constructor
     // to go before.

@@ -555,7 +555,7 @@ int main() {{ gen(); return 0; }}
 )",
                          synthesized));
     prepare();
-    params.add_synthesized({
+    params.input.add_synthesized({
         {synthesized, "inline void gen() {}\n"}
     });
     ZASSERT(try_compile());

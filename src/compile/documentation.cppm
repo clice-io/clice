@@ -4,7 +4,7 @@ module;
 
 module clice:compile.documentation;
 
-import :compile.compilation_unit;
+import :compile.compilation;
 
 namespace clice {
 
@@ -14,17 +14,17 @@ namespace clice {
 /// its members read the template's. A namespace, a parameter and what the
 /// compiler declares implicitly have none. With `inherit`, a method
 /// overriding another without one takes that method's.
-std::string doc_comment(CompilationUnitRef unit, const clang::NamedDecl* decl, bool inherit);
+std::string doc_comment(CompilationUnit& unit, const clang::NamedDecl* decl, bool inherit);
 
 /// The text of the comment documenting a macro: above its `#define`, or
 /// after it on its line.
-std::string doc_comment(CompilationUnitRef unit, const clang::MacroInfo* macro);
+std::string doc_comment(CompilationUnit& unit, const clang::MacroInfo* macro);
 
 /// The declarations a `@copydoc` in the comment of `decl` may name
 /// (parse_copied_name): looked up from `decl`'s scope outward, or in the
 /// global scope, a qualified name part by part; of several, the functions
 /// declaring the parameters it lists, when it lists them.
-llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnitRef unit,
+llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnit& unit,
                                                               const clang::NamedDecl* decl,
                                                               llvm::StringRef name);
 

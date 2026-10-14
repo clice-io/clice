@@ -18,11 +18,11 @@ namespace {
 
 /// The function declared at a main-file offset.
 struct FunctionAt : clang::RecursiveASTVisitor<FunctionAt> {
-    CompilationUnitRef unit;
+    CompilationUnit& unit;
     std::uint32_t offset;
     const clang::FunctionDecl* found = nullptr;
 
-    FunctionAt(CompilationUnitRef unit, std::uint32_t offset) : unit(unit), offset(offset) {}
+    FunctionAt(CompilationUnit& unit, std::uint32_t offset) : unit(unit), offset(offset) {}
 
     bool shouldVisitTemplateInstantiations() const {
         return false;
