@@ -21,7 +21,8 @@ const TIMER_MODULES = new Set(["timers", "timers/promises", "node:timers", "node
 /// the feature: <why>` where the time itself is what the code does (a
 /// pacing, a grace period, a test whose claim is about time), `No event:
 /// <why>` for what nothing announces: a condition re-checked until it
-/// holds, or an end. A literal bound of `withTimeout` (tools/promise.ts)
+/// holds, or an end. A timer imported from a timers module under another
+/// name is a timer too. A literal bound of `withTimeout` (tools/promise.ts)
 /// shorter than a minute is no hang bound: only `Time is the feature:`
 /// allows it.
 const timers: Rule.RuleModule = {
@@ -52,13 +53,52 @@ const timers: Rule.RuleModule = {
                         );
                     }),
                 );
-        const check = (node: ESTree.Node): void => {
-            if (!labelled(node, LABELS)) {
-                context.report({ node, messageId: "unlabelled" });
+        // The local names of the timers a timers module gave the file;
+        // imports are hoisted, so the calls are judged once all are seen.
+        const imported = new Set<string>();
+        const schedulers = new Set<string>();
+        const calls: ESTree.CallExpression[] = [];
+        const timer = (callee: ESTree.Node): boolean => {
+            if (callee.type === "Identifier") {
+                return TIMER_FUNCTIONS.has(callee.name) || imported.has(callee.name);
             }
+            if (callee.type !== "MemberExpression" || callee.property.type !== "Identifier") {
+                return false;
+            }
+            if (TIMER_FUNCTIONS.has(callee.property.name)) {
+                return true;
+            }
+            const object = callee.object;
+            return (
+                callee.property.name === "wait" &&
+                ((object.type === "Identifier" && schedulers.has(object.name)) ||
+                    (object.type === "MemberExpression" &&
+                        object.property.type === "Identifier" &&
+                        object.property.name === "scheduler"))
+            );
         };
         return {
+            ImportDeclaration(node) {
+                if (!TIMER_MODULES.has(String(node.source.value))) {
+                    return;
+                }
+                for (const specifier of node.specifiers) {
+                    if (specifier.type !== "ImportSpecifier") {
+                        continue;
+                    }
+                    const name =
+                        specifier.imported.type === "Identifier"
+                            ? specifier.imported.name
+                            : String(specifier.imported.value);
+                    if (TIMER_FUNCTIONS.has(name)) {
+                        imported.add(specifier.local.name);
+                    } else if (name === "scheduler") {
+                        schedulers.add(specifier.local.name);
+                    }
+                }
+            },
             CallExpression(node) {
+                calls.push(node);
                 const callee = node.callee;
                 const name =
                     callee.type === "Identifier"
@@ -67,9 +107,6 @@ const timers: Rule.RuleModule = {
                             callee.property.type === "Identifier"
                           ? callee.property.name
                           : undefined;
-                if (name !== undefined && TIMER_FUNCTIONS.has(name)) {
-                    check(node);
-                }
                 const bound = node.arguments[1];
                 if (
                     name === "withTimeout" &&
@@ -81,9 +118,11 @@ const timers: Rule.RuleModule = {
                     context.report({ node, messageId: "shortBound" });
                 }
             },
-            ImportDeclaration(node) {
-                if (TIMER_MODULES.has(String(node.source.value))) {
-                    check(node);
+            "Program:exit"() {
+                for (const call of calls) {
+                    if (timer(call.callee) && !labelled(call, LABELS)) {
+                        context.report({ node: call, messageId: "unlabelled" });
+                    }
                 }
             },
         };

@@ -80,12 +80,12 @@ struct Stack {
         return graph.is_compiling({Family::AST, path_id.raw});
     }
 
-    /// Park the work of the next compile of `path` where it starts in the
-    /// worker (see BuildProbe::gate); returns the gate's id.
-    std::uint64_t gate_compile(const std::string& path) {
+    /// Park the work of the next compile of `path_id` where it starts in
+    /// the worker (see BuildProbe::gate); returns the gate's id.
+    std::uint64_t gate_compile(Fid path_id) {
         pool.probe = &probe;
         worker::CompileParams params;
-        params.path = path;
+        params.path = std::string(project.file_table.resolve(path_id));
         return probe.gate(worker::crash_tag(params));
     }
 
@@ -272,7 +272,7 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
             waiter_ok = co_await stack.ast.ensure_compiled(session);
             waiter_done = true;
         };
-        auto gate = stack.gate_compile(src);
+        auto gate = stack.gate_compile(session->path_id);
         group.spawn(waiter());
         co_await parked(stack.probe, gate);
         ZASSERT(stack.is_compiling(session->path_id));
@@ -330,7 +330,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
             waiter_ok = co_await stack.ast.ensure_compiled(session);
             waiter_done = true;
         };
-        auto gate = stack.gate_compile(src);
+        auto gate = stack.gate_compile(session->path_id);
         group.spawn(waiter());
         co_await parked(stack.probe, gate);
         ZASSERT(stack.is_compiling(session->path_id));
@@ -396,7 +396,7 @@ ZEST_CASE(SupersededCompileCancelled) {
             [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
             first_done = true;
         };
-        auto gate = stack.gate_compile(src);
+        auto gate = stack.gate_compile(session->path_id);
         group.spawn(first());
         co_await parked(stack.probe, gate);
         ZASSERT(stack.is_compiling(session->path_id));
@@ -1042,7 +1042,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
                                                           protocol::Position{0, 4});
             other_answered = result.has_value();
         };
-        auto gate = stack.gate_compile(src);
+        auto gate = stack.gate_compile(session->path_id);
         group.spawn(cancelled_waiter());
         group.spawn(other_waiter());
         co_await parked(stack.probe, gate);

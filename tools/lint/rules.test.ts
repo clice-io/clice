@@ -23,6 +23,9 @@ tester.run("timers", clice.rules.timers, {
         "await withTimeout(exited, 60_000);",
         "await withTimeout(exited, bound);",
         "// Time is the feature: the timeout itself is tested.\nawait withTimeout(hang, 5);",
+        'import { setTimeout as delay } from "node:timers/promises";',
+        'import { setTimeout as delay } from "node:timers/promises";\n' +
+            "// No event: the log is read again.\nawait delay(1000);",
     ],
     invalid: [
         {
@@ -46,7 +49,21 @@ tester.run("timers", clice.rules.timers, {
             errors: [{ messageId: "unlabelled" }],
         },
         {
-            code: 'import { setTimeout as delay } from "node:timers/promises";',
+            code:
+                "// Time is the feature: the pacing.\n" +
+                'import { setTimeout as delay } from "node:timers/promises";\nawait delay(200);',
+            errors: [{ messageId: "unlabelled" }],
+        },
+        {
+            code: 'await delay(200);\nimport { setTimeout as delay } from "node:timers/promises";',
+            errors: [{ messageId: "unlabelled" }],
+        },
+        {
+            code: 'import { scheduler as s } from "node:timers/promises";\nawait s.wait(200);',
+            errors: [{ messageId: "unlabelled" }],
+        },
+        {
+            code: 'import * as timers from "node:timers/promises";\nawait timers.scheduler.wait(200);',
             errors: [{ messageId: "unlabelled" }],
         },
         {
