@@ -64,7 +64,7 @@ struct Box {};
     ZASSERT(var);
     auto outer =
         var->getTypeSourceInfo()->getTypeLoc().getAs<clang::TemplateSpecializationTypeLoc>();
-    ZASSERT(outer);
+    ZASSERT(!outer.isNull());
     auto inner = outer.getArgLoc(0).getTypeSourceInfo()->getTypeLoc();
     auto focus = unit->focus_file();
 
