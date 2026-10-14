@@ -956,7 +956,8 @@ auto parameter(const clang::ParmVarDecl& param, llvm::StringRef name, const Opti
 
 auto field(const clang::FieldDecl& field, const Options& options) -> std::string {
     auto& context = field.getASTContext();
-    auto text = type(context, field.getType(), options, field.getName()).text;
+    auto text = field.isMutable() ? std::string("mutable ") : std::string();
+    text += type(context, field.getType(), options, field.getName()).text;
     if(const auto* width = field.getBitWidth()) {
         text += " : " + as_written(context, width, options);
     }

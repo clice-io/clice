@@ -246,9 +246,9 @@ auto param(const clang::ParmVarDecl* param, const Options& options = {}) -> Para
 auto parameter(const clang::ParmVarDecl& param, llvm::StringRef name, const Options& options)
     -> std::string;
 
-/// A field as its declaration writes it: its bit width and default member
-/// initializer as the source writes them, as parameter() gives a default
-/// argument.
+/// A field as its declaration writes it: `mutable`, then its bit width and
+/// default member initializer as the source writes them, as parameter()
+/// gives a default argument.
 auto field(const clang::FieldDecl& field, const Options& options) -> std::string;
 
 /// Render every parameter of a template parameter list.
