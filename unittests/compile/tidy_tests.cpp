@@ -42,8 +42,7 @@ std::unique_ptr<CompilationUnit> compile_main(const Sources& sources,
 std::vector<std::string> findings(CompilationUnit& unit) {
     std::vector<std::string> names;
     for(auto& diag: unit.diagnostics()) {
-        if(diag.id.source == DiagnosticSource::ClangTidy &&
-           diag.id.level != DiagnosticLevel::Ignored && diag.id.level != DiagnosticLevel::Note) {
+        if(diag.id.source == DiagnosticSource::ClangTidy) {
             names.push_back(diag.id.name.str());
         }
     }
@@ -109,25 +108,24 @@ ZEST_CASE(BatchTraversesHeaders) {
 }
 
 ZEST_CASE(HeaderNolint) {
-    Sources sources = {
-        {"ratio.h",  "inline double ratio(int a, int b) { return a / b; }  // NOLINT\n"},
-        {"main.cpp", "#include \"ratio.h\"\n"                                          },
+    auto compile_header = [](llvm::StringRef header) {
+        Sources sources = {
+            {"ratio.h",  header.str()            },
+            {"main.cpp", "#include \"ratio.h\"\n"},
+        };
+        return compile_main(sources,
+                            {.checks = "-*,bugprone-integer-division", .header_filter = ".*"},
+                            {},
+                            CompilationKind::Whole);
     };
-    auto unit = compile_main(sources,
-                             {.checks = "-*,bugprone-integer-division", .header_filter = ".*"},
-                             {},
-                             CompilationKind::Whole);
-    ZASSERT(unit->completed());
-    // A suppressed finding stays in the stream at the Ignored level.
-    bool suppressed = false;
-    for(auto& diag: unit->diagnostics()) {
-        ZEXPECT((diag.id.source != DiagnosticSource::ClangTidy ||
-                 diag.id.level == DiagnosticLevel::Ignored));
-        suppressed |= diag.id.source == DiagnosticSource::ClangTidy &&
-                      diag.id.name == "bugprone-integer-division" &&
-                      diag.id.level == DiagnosticLevel::Ignored;
-    }
-    ZASSERT(suppressed);
+    auto reported = compile_header("inline double ratio(int a, int b) { return a / b; }\n");
+    ZASSERT(reported->completed());
+    ZEXPECT(findings(*reported) == std::vector<std::string>{"bugprone-integer-division"});
+
+    auto suppressed =
+        compile_header("inline double ratio(int a, int b) { return a / b; }  // NOLINT\n");
+    ZASSERT(suppressed->completed());
+    ZEXPECT(findings(*suppressed).empty());
 }
 
 ZEST_CASE(EditorDropsUnusableChecks) {
@@ -201,19 +199,28 @@ ZEST_CASE(CompilerWarningProvenance) {
 }
 
 ZEST_CASE(NolintSilencesWarnings) {
-    auto unit = compile_main(
+    auto warnings = [](CompilationUnit& unit) {
+        return llvm::count_if(unit.diagnostics(), [](const Diagnostic& diag) {
+            return diag.id.level == DiagnosticLevel::Warning;
+        });
+    };
+    auto reported = compile_main(
+        {
+            {"main.cpp", "int f() { int unused; return 0; }\n"}
+    },
+        {},
+        {"-Wunused-variable"});
+    ZASSERT(reported->completed());
+    ZEXPECT(warnings(*reported) == 1);
+
+    auto silenced = compile_main(
         {
             {"main.cpp", "int f() { int unused; return 0; }  // NOLINT\n"}
     },
         {},
         {"-Wunused-variable"});
-    ZASSERT(unit->completed());
-    bool silenced = false;
-    for(auto& diag: unit->diagnostics()) {
-        ZEXPECT(diag.id.level != DiagnosticLevel::Warning);
-        silenced |= diag.id.level == DiagnosticLevel::Ignored;
-    }
-    ZASSERT(silenced);
+    ZASSERT(silenced->completed());
+    ZEXPECT(warnings(*silenced) == 0);
 }
 
 ZEST_CASE(OverlappingFixDropped) {

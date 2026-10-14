@@ -284,8 +284,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 /// headers report only under SystemHeaders. Compiler errors are kept
 /// regardless of location, as clang-tidy keeps them: a parse can complete
 /// with a usable AST despite errors, and a run that discarded them would
-/// pass broken code. Notes follow their finding in the stream and attach
-/// to it.
+/// pass broken code.
 static void collect_tidy_diagnostics(CompilationUnit& unit,
                                      const tidy::TidyParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
@@ -299,29 +298,11 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
         drop.emplace(params.exclude_header_filter);
     }
 
-    bool last_kept = false;
     for(const auto& raw: unit.diagnostics()) {
-        if(raw.id.level == DiagnosticLevel::Note) {
-            if(!last_kept || raw.fid.isInvalid() || !raw.range.valid()) {
-                continue;
-            }
-            if(auto start =
-                   unit.positions(raw.fid).position(raw.range.begin, PositionEncoding::UTF8)) {
-                out.back().notes.push_back({
-                    .file = std::string(unit.file_path(raw.fid)),
-                    .line = start->line + 1,
-                    .column = start->character + 1,
-                    .message = raw.message,
-                });
-            }
-            continue;
-        }
-        last_kept = false;
         bool clang_error =
             raw.id.source == DiagnosticSource::Clang &&
             (raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal);
-        if(!clang_error && (raw.id.source != DiagnosticSource::ClangTidy ||
-                            raw.id.level == DiagnosticLevel::Ignored)) {
+        if(!clang_error && raw.id.source != DiagnosticSource::ClangTidy) {
             continue;
         }
         if(raw.fid.isInvalid() || !raw.range.valid()) {
@@ -365,7 +346,20 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
             .message = raw.message,
             .check = std::move(check),
         });
-        last_kept = true;
+        for(const auto& note: raw.notes) {
+            if(note.fid.isInvalid() || !note.range.valid()) {
+                continue;
+            }
+            if(auto start =
+                   unit.positions(note.fid).position(note.range.begin, PositionEncoding::UTF8)) {
+                out.back().notes.push_back({
+                    .file = std::string(unit.file_path(note.fid)),
+                    .line = start->line + 1,
+                    .column = start->character + 1,
+                    .message = note.message,
+                });
+            }
+        }
     }
 }
 

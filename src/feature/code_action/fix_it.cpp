@@ -48,9 +48,9 @@ std::string fix_title(llvm::StringRef content, const Diagnostic& diagnostic) {
 
 void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
     auto content = unit.focus_file().content();
-    for_each_diagnostic(unit, [&](const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes) {
+    for(const auto& main: unit.diagnostics()) {
         if(!unit.focus_file().contains(main.fid) || !main.range.intersects(selection)) {
-            return;
+            continue;
         }
         if(!main.fix.empty()) {
             out.push_back(CodeAction{
@@ -60,7 +60,7 @@ void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<Code
             });
         }
         // A note's fix is an alternative the note itself describes.
-        for(const auto& note: notes) {
+        for(const auto& note: main.notes) {
             if(!note.fix.empty()) {
                 out.push_back(CodeAction{
                     .title = note.message,
@@ -69,7 +69,7 @@ void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<Code
                 });
             }
         }
-    });
+    }
 }
 
 }  // namespace clice::feature::action

@@ -316,27 +316,58 @@ public:
 
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
                           const clang::Diagnostic& raw_diagnostic) override {
-        /// Formatting can deserialize declarations, and the AST reader
-        /// reports the ODR mismatches it meets there as diagnostics of their
-        /// own, reentrantly: this one is built aside while theirs append.
-        Diagnostic diagnostic;
-        diagnostic.id.value = raw_diagnostic.getID();
-        diagnostic.error_by_default =
-            raw_diagnostic.getDiags()->getDiagnosticIDs()->isDefaultMappingAsError(
-                raw_diagnostic.getID());
-
         // The engine only marks a fatal error once another diagnostic
         // follows it.
         if(level == clang::DiagnosticsEngine::Fatal) {
             unit.fatal = true;
         }
-        if(!is_note(level)) {
-            if(unit.checker) {
-                level = unit.checker->adjust_level(level, raw_diagnostic);
+
+        // A note belongs to the diagnostic before it; one ahead of every
+        // diagnostic, or after one left out, belongs to none.
+        if(is_note(level)) {
+            if(attach_notes) {
+                auto note = convert(level, raw_diagnostic);
+                unit.collected_diagnostics.back().notes.push_back(std::move(note));
             }
+            return;
         }
+
+        if(unit.checker) {
+            level = unit.checker->adjust_level(level, raw_diagnostic);
+        }
+        auto diagnostic = convert(level, raw_diagnostic);
+        if(unit.checker) {
+            unit.checker->adjust_diag(diagnostic);
+        }
+        // A check can report one finding more than once, from several
+        // instantiations of a template.
+        attach_notes = diagnostic.id.level != DiagnosticLevel::Ignored &&
+                       (diagnostic.id.source != DiagnosticSource::ClangTidy ||
+                        findings
+                            .emplace(diagnostic.fid,
+                                     diagnostic.range.begin,
+                                     diagnostic.range.end,
+                                     diagnostic.message)
+                            .second);
+        if(attach_notes) {
+            unit.collected_diagnostics.push_back(std::move(diagnostic));
+        }
+    }
+
+    void EndSourceFile() override {}
+
+private:
+    /// Formatting can deserialize declarations, and the AST reader reports
+    /// the ODR mismatches it meets there as diagnostics of their own,
+    /// reentrantly: the one converted here is built aside while theirs
+    /// are recorded.
+    Diagnostic convert(clang::DiagnosticsEngine::Level level, const clang::Diagnostic& raw) {
+        Diagnostic diagnostic;
+        diagnostic.id.value = raw.getID();
         diagnostic.id.level = diagnostic_level(level);
         diagnostic.id.source = DiagnosticSource::Clang;
+        diagnostic.error_by_default =
+            raw.getDiags()->getDiagnosticIDs()->isDefaultMappingAsError(raw.getID());
 
         /// TODO:
         // use DiagnosticEngine::SetArgToStringFn to set a custom function to convert arguments to
@@ -350,38 +381,36 @@ public:
         // clice builds none, whatever the build declares.
         if(diagnostic.id.value == clang::diag::err_header_import_not_header_unit) {
             diagnostic.message = std::format("header units are not supported; {} is not imported",
-                                             raw_diagnostic.getArgStdStr(0));
+                                             raw.getArgStdStr(0));
         } else {
             llvm::SmallString<256> message;
-            raw_diagnostic.FormatDiagnostic(message);
+            raw.FormatDiagnostic(message);
             diagnostic.message = message.str();
         }
 
-        if(auto pair = diagnostic_range(raw_diagnostic)) {
+        if(auto pair = diagnostic_range(raw)) {
             auto [fid, range] = *pair;
             diagnostic.fid = fid;
             diagnostic.range = range;
-            if(raw_diagnostic.hasSourceManager()) {
-                diagnostic.in_system = raw_diagnostic.getSourceManager().isInSystemHeader(
-                    raw_diagnostic.getLocation());
+            if(raw.hasSourceManager()) {
+                diagnostic.in_system = raw.getSourceManager().isInSystemHeader(raw.getLocation());
             }
         }
 
         // One from the command line has no source to fix.
-        if(raw_diagnostic.hasSourceManager()) {
-            diagnostic.fix = fix(raw_diagnostic);
+        if(raw.hasSourceManager()) {
+            diagnostic.fix = fix(raw);
         }
-
-        if(unit.checker) {
-            unit.checker->adjust_diag(diagnostic);
-        }
-        unit.collected_diagnostics.push_back(std::move(diagnostic));
+        return diagnostic;
     }
 
-    void EndSourceFile() override {}
-
-private:
     CompilationUnit& unit;
+
+    /// Whether the notes that follow belong to a recorded diagnostic.
+    bool attach_notes = false;
+
+    /// The clang-tidy findings recorded, by place and message.
+    std::set<std::tuple<clang::FileID, std::uint32_t, std::uint32_t, std::string>> findings;
 };
 
 std::unique_ptr<clang::DiagnosticConsumer> CompilationUnit::diagnostic_collector() {

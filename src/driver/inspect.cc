@@ -519,8 +519,12 @@ void run_feature(FileEntry& entry,
     auto unit = clice::compile(std::move(params));
     if(!unit->completed()) {
         entry.error = "compile_error";
-        entry.diagnostics = std::ranges::to<std::vector>(
-            unit->diagnostics() | std::views::transform(&Diagnostic::message));
+        for(const auto& diagnostic: unit->diagnostics()) {
+            entry.diagnostics.push_back(diagnostic.message);
+            for(const auto& note: diagnostic.notes) {
+                entry.diagnostics.push_back(note.message);
+            }
+        }
         return;
     }
 

@@ -163,6 +163,21 @@ ZEST_CASE(Warning) {
     ZEXPECT(diag.message.find("unused variable") != std::string::npos);
 }
 
+ZEST_CASE(NotesAttached) {
+    DiagParams dp("void foo() {}\nvoid foo() {}\n");
+
+    auto unit = compile(std::move(dp.params));
+    ZASSERT(unit->completed());
+    ZASSERT(unit->diagnostics().size() == 1);
+
+    auto& diag = unit->diagnostics()[0];
+    ZEXPECT(diag.id.diagnostic_code() == "err_redefinition");
+    ZASSERT(diag.notes.size() == 1);
+    ZEXPECT(diag.notes[0].id.level == DiagnosticLevel::Note);
+    ZEXPECT(diag.notes[0].message == "previous definition is here");
+    ZEXPECT(diag.notes[0].range.begin == 5);
+}
+
 ZEST_CASE(PCMError) {
     /// A PCM build with errors writes no PCM.
     DiagParams dp(R"(

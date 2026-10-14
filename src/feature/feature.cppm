@@ -681,14 +681,6 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                               std::uint32_t resume_offset = 0,
                               std::uint32_t end_offset = UINT32_MAX);
 
-/// The unit's diagnostics as the editor is shown them, each with the
-/// notes that follow it: the suppressed ones left out, and a clang-tidy
-/// finding repeated at one place (an alias check, a template instantiated
-/// twice) reported once.
-void for_each_diagnostic(
-    CompilationUnit& unit,
-    llvm::function_ref<void(const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes)> visit);
-
 auto diagnostics(CompilationUnit& unit, PositionEncoding encoding = PositionEncoding::UTF16)
     -> std::vector<protocol::Diagnostic>;
 

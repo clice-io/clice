@@ -87,6 +87,9 @@ struct Diagnostic {
     /// text applied together; empty when it has none, or one the main
     /// file's text cannot express.
     std::vector<TextReplacement> fix;
+
+    /// The notes clang attached to it, in order.
+    std::vector<Diagnostic> notes;
 };
 
 }  // namespace clice

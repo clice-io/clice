@@ -50,11 +50,6 @@ bool instantiation_note(std::uint32_t id) {
     }
 }
 
-bool is_note(const Diagnostic& diagnostic) {
-    return diagnostic.id.level == DiagnosticLevel::Note ||
-           diagnostic.id.level == DiagnosticLevel::Remark;
-}
-
 class Presenter {
 public:
     Presenter(CompilationUnit& unit, PositionEncoding encoding) :
@@ -62,8 +57,7 @@ public:
 
     /// A diagnostic and the notes clang attached to it, as published on the
     /// main file; nullopt when it does not concern the main file.
-    std::optional<protocol::Diagnostic> present(const Diagnostic& main,
-                                                llvm::ArrayRef<Diagnostic> notes) {
+    std::optional<protocol::Diagnostic> present(const Diagnostic& main) {
         // The header itself is the main file here; its own pragma is
         // exactly what makes it a system header for every includer.
         if(main.id.value == clang::diag::pp_pragma_sysheader_in_main_file &&
@@ -76,7 +70,7 @@ public:
             .message = main.message,
         };
         // One from the command line stays at the top of the file.
-        if(main.fid.isValid() && !place(main, notes, diagnostic)) {
+        if(main.fid.isValid() && !place(main, diagnostic)) {
             return std::nullopt;
         }
 
@@ -94,7 +88,7 @@ public:
         }
         diagnostic.source = diagnostic_source_name(main.id.source).str();
         add_tag(diagnostic, main.id);
-        for(const auto& note: notes) {
+        for(const auto& note: main.notes) {
             add_related(diagnostic, note.fid, note.range, note.message);
         }
         return diagnostic;
@@ -111,9 +105,7 @@ private:
     /// takes part in it, a note, and to the top a fatal one, which silences
     /// everything after it, or a missing header, the likely cause of what
     /// goes wrong after it. Nothing else concerns the main file.
-    bool place(const Diagnostic& main,
-               llvm::ArrayRef<Diagnostic> notes,
-               protocol::Diagnostic& diagnostic) {
+    bool place(const Diagnostic& main, protocol::Diagnostic& diagnostic) {
         auto focus = unit.focus_file();
         auto in_main = [&](const Diagnostic& note) {
             return focus.contains(note.fid);
@@ -124,8 +116,8 @@ private:
             // raises shows where the scope opened.
             auto anchor = main.range;
             if(past_suffix_include(anchor.begin)) {
-                auto note = llvm::find_if(notes, in_main);
-                if(note == notes.end()) {
+                auto note = llvm::find_if(main.notes, in_main);
+                if(note == main.notes.end()) {
                     return false;
                 }
                 anchor = note->range;
@@ -142,14 +134,14 @@ private:
         if(main.error_by_default) {
             std::optional<LocalSourceRange> anchor;
             std::string_view where = "In template";
-            auto request = llvm::find_if(notes, [&](const Diagnostic& note) {
+            auto request = llvm::find_if(main.notes, [&](const Diagnostic& note) {
                 return in_main(note) && instantiation_note(note.id.value);
             });
-            if(request != notes.end()) {
+            if(request != main.notes.end()) {
                 anchor = request->range;
             } else if(in_context) {
                 where = includer_context;
-                if(auto note = llvm::find_if(notes, in_main); note != notes.end()) {
+                if(auto note = llvm::find_if(main.notes, in_main); note != main.notes.end()) {
                     anchor = note->range;
                 } else if(main.id.level == DiagnosticLevel::Fatal ||
                           main.id.value == clang::diag::err_pp_file_not_found) {
@@ -185,8 +177,8 @@ private:
             return false;
         }
 
-        auto note = llvm::find_if(notes, in_main);
-        if(note == notes.end()) {
+        auto note = llvm::find_if(main.notes, in_main);
+        if(note == main.notes.end()) {
             return false;
         }
         auto range = map.range(note->range, encoding);
@@ -269,37 +261,15 @@ private:
 
 }  // namespace
 
-void for_each_diagnostic(
-    CompilationUnit& unit,
-    llvm::function_ref<void(const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes)> visit) {
-    std::set<std::tuple<clang::FileID, std::uint32_t, std::uint32_t, llvm::StringRef>> findings;
-    llvm::ArrayRef<Diagnostic> raw = unit.diagnostics();
-    // Notes follow the diagnostic they belong to; one ahead of every
-    // diagnostic belongs to none.
-    while(!raw.empty()) {
-        const auto& main = raw.front();
-        auto notes = raw.drop_front().take_while(is_note);
-        raw = raw.drop_front(notes.size() + 1);
-        if(is_note(main) || main.id.level == DiagnosticLevel::Ignored) {
-            continue;
-        }
-        if(main.id.source == DiagnosticSource::ClangTidy &&
-           !findings.emplace(main.fid, main.range.begin, main.range.end, main.message).second) {
-            continue;
-        }
-        visit(main, notes);
-    }
-}
-
 auto diagnostics(CompilationUnit& unit, PositionEncoding encoding)
     -> std::vector<protocol::Diagnostic> {
     Presenter presenter(unit, encoding);
     std::vector<protocol::Diagnostic> result;
-    for_each_diagnostic(unit, [&](const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes) {
-        if(auto diagnostic = presenter.present(main, notes)) {
+    for(const auto& main: unit.diagnostics()) {
+        if(auto diagnostic = presenter.present(main)) {
             result.push_back(std::move(*diagnostic));
         }
-    });
+    }
     return result;
 }
 

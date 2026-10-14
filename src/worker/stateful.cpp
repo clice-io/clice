@@ -316,7 +316,7 @@ RequestResult<worker::CompileParams>
             // in play is ambiguous; blaming the PCH costs at most one
             // retracted pair per round and self-corrects on the retry.
             if((!unit->completed() || unit->fatal_error()) && !doc->pch.first.empty()) {
-                result.pch_suspect = std::ranges::any_of(unit->diagnostics(), [&](auto& diag) {
+                auto blames_pch = [&](const Diagnostic& diag) {
                     llvm::StringRef message = diag.message;
                     if(message.contains(doc->pch.first)) {
                         return true;
@@ -327,6 +327,9 @@ RequestResult<worker::CompileParams>
                     return std::ranges::none_of(doc->pcms, [&](auto& entry) {
                         return message.contains(entry.second);
                     });
+                };
+                result.pch_suspect = std::ranges::any_of(unit->diagnostics(), [&](auto& diag) {
+                    return blames_pch(diag) || std::ranges::any_of(diag.notes, blames_pch);
                 });
             }
 
