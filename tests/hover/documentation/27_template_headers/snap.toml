@@ -8,7 +8,7 @@ Sums the elements of a range.
 
 → `int`
 Parameters:
-- `headers::Range && r`
+- `headers::Range &&r`
 
 ---
 ```cpp

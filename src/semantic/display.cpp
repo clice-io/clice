@@ -924,13 +924,15 @@ auto param(const clang::ParmVarDecl* param, const Options& options) -> Param {
     assert(param);
     Param result;
     result.type = type(param->getASTContext(), param->getType(), options);
-    if(auto named = decls::named_parameters(*param); !named.empty()) {
-        result.name = named.front()->getIdentifier()->deuglifiedName().str();
+    auto named = decls::named_parameters(*param);
+    if(!named.empty()) {
+        result.name = named.front()->getName().str();
         for(const auto* declaration: named) {
             result.written.push_back(declaration->getName().str());
         }
     }
     result.default_value = default_argument(param, options);
+    result.declaration = parameter(*param, result.name.value_or(""), options);
     return result;
 }
 
@@ -959,9 +961,7 @@ auto field(const clang::FieldDecl& field, const Options& options) -> std::string
         text += " : " + as_written(context, width, options);
     }
     if(const auto* init = field.getInClassInitializer()) {
-        if(field.getInClassInitStyle() != clang::ICIS_ListInit) {
-            text += " = ";
-        }
+        text += field.getInClassInitStyle() == clang::ICIS_ListInit ? " " : " = ";
         text += as_written(context, init, options);
     }
     return text;
@@ -1385,14 +1385,18 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Type& type) {
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Param& param) {
-    if(param.type) {
-        os << param.type->text;
-    }
-    if(param.name) {
-        os << " " << *param.name;
-    }
-    if(param.default_value) {
-        os << " = " << *param.default_value;
+    if(param.declaration) {
+        os << *param.declaration;
+    } else {
+        if(param.type) {
+            os << param.type->text;
+        }
+        if(param.name) {
+            os << " " << *param.name;
+        }
+        if(param.default_value) {
+            os << " = " << *param.default_value;
+        }
     }
     if(param.type && param.type->aka) {
         os << " (aka " << *param.type->aka << ")";

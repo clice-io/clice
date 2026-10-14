@@ -120,8 +120,9 @@ struct Signature {
     llvm::raw_svector_ostream stream{label};
     std::vector<protocol::ParameterInformation> parameters;
 
-    /// The names a documentation comment may give each parameter, none
-    /// for one it cannot name (an expanded pack's element).
+    /// The names a documentation comment may give each parameter, the one
+    /// the signature shows first; none for one it cannot name (an expanded
+    /// pack's element).
     std::vector<llvm::SmallVector<std::string, 1>> names;
 
     /// The last parameter takes every argument past the ones before it: a
@@ -334,9 +335,12 @@ private:
             bool expanded = index >= pack_begin && index < pack_end;
             auto name = expanded ? "" : display::parameter_name(function, index);
             llvm::SmallVector<std::string, 1> names;
-            if(!expanded) {
+            if(!name.empty()) {
+                names.push_back(name.str());
                 for(const auto* named: decls::named_parameters(function, index)) {
-                    names.push_back(named->getName().str());
+                    if(!llvm::is_contained(names, named->getName())) {
+                        names.push_back(named->getName().str());
+                    }
                 }
             }
             signature.parameter(
@@ -649,12 +653,15 @@ auto macro_call_at(CompilationUnitRef unit, std::uint32_t offset) -> std::option
     return innermost;
 }
 
-/// Shows `doc` with `signature` as plain text, each parameter's `@param`
-/// beside that parameter instead; `names` are the parameters'
-/// (Signature::names).
+/// Shows `doc` with `signature` as plain text, its `@param`s under the names
+/// the signature shows, and each parameter's `@param` beside it too; `names`
+/// are the parameters' (Signature::names).
 void document(protocol::SignatureInformation& signature,
               const Documentation& doc,
               llvm::ArrayRef<llvm::SmallVector<std::string, 1>> names) {
+    if(doc.empty()) {
+        return;
+    }
     auto shown = doc;
     if(signature.parameters) {
         for(auto [parameter, written]: llvm::zip_equal(*signature.parameters, names)) {
@@ -663,19 +670,17 @@ void document(protocol::SignatureInformation& signature,
                 if(!param || param->text.empty()) {
                     continue;
                 }
-                parameter.documentation = param->direction.empty()
-                                              ? param->text
-                                              : "(" + param->direction + ") " + param->text;
-                llvm::erase_if(shown.params, [&](const Documentation::Param& listed) {
-                    return listed.name == param->name;
-                });
+                parameter.documentation = param->text;
+                for(auto& listed: shown.params) {
+                    if(listed.name == param->name) {
+                        listed.name = written.front();
+                    }
+                }
                 break;
             }
         }
     }
-    if(!shown.empty()) {
-        signature.documentation = present(shown).as_plain_text();
-    }
+    signature.documentation = present(shown).as_plain_text();
 }
 
 auto macro_signature(const MacroCall& call, const Documentation& doc) -> protocol::SignatureHelp {

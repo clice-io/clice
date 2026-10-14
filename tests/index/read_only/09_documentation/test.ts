@@ -26,6 +26,9 @@ test("index cards carry documentation", async (t) => {
     expect((await s.counts()).pch).toBe(0);
 });
 
+// A template parameter's card shows its template's @tparam, never the
+// template's own comment, which the index finds right above it; a member alias
+// that copies that comment keeps it.
 test("index cards of template parameters", async (t) => {
     const s = await t.start({ config: { project: { readonly: "on" } } });
     s.open("main.cpp", { pull: false });

@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto sum⟨: __u32⟩ = checksum();" },
+    { line = "auto packed⟨: __v4sf⟩ = lanes();" },
+]

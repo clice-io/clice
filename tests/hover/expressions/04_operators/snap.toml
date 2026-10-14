@@ -22,7 +22,7 @@ markdown = '''
 ---
 → `void`
 Parameters:
-- `void * memory`
+- `void *memory`
 
 ---
 ```cpp

@@ -107,6 +107,10 @@ struct Param {
 
     /// std::nullopt if no default is provided.
     std::optional<std::string> default_value;
+
+    /// A function parameter as its declaration writes it (parameter()), which
+    /// is how it prints; a template parameter prints from the fields above.
+    std::optional<std::string> declaration;
 };
 
 /// The raw spelled identifier of the decl, empty if its name is not a
@@ -232,8 +236,8 @@ auto parameter_name(const clang::FunctionDecl& function, unsigned index) -> llvm
 /// ` const`, ` &`, ` &&`; empty for none.
 auto method_qualifiers(const clang::CXXMethodDecl& method) -> std::string;
 
-/// Render a function parameter with its default value, under the name it
-/// shows under, as parameter_name gives it.
+/// Render a function parameter with its default value, under the first name
+/// its declarations write (decls::named_parameters).
 auto param(const clang::ParmVarDecl* param, const Options& options = {}) -> Param;
 
 /// A function parameter as its declaration writes it, under `name`: the

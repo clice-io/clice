@@ -8,7 +8,7 @@ Flags a widget to be displayed.
 
 → `void`
 Parameters:
-- `GtkWidget * widget (aka struct _GtkWidget *)` — a `GtkWidget`
+- `GtkWidget *widget (aka struct _GtkWidget *)` — a `GtkWidget`
 
 ---
 ```cpp

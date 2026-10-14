@@ -1,4 +1,7 @@
-// A parameter with a default value shows it; a trailing `...` shows.
+// Parameters show as their declarations write them: a default as written,
+// even over several lines or in a macro's body, a pack's `...name`, an array,
+// standard aliases, and the template arguments a call must write; a trailing
+// `...` shows.
 int configure(int timeout, int retries = 3, int delay = 10);
 int printf_like(const char* fmt, ...);
 

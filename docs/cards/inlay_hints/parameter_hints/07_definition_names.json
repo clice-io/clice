@@ -3,7 +3,7 @@
   "topic": "inlay_hints",
   "subtopic": "parameter_hints",
   "title": "Names from definitions",
-  "summary": "Unnamed declaration parameters take the definition's names; leading underscores strip",
+  "summary": "Unnamed declaration parameters take the names an earlier declaration, or else the definition, gives them; leading underscores strip",
   "prose": "When both the declaration and the definition name a parameter, the declaration wins.",
   "status": "supported",
   "issues": [],

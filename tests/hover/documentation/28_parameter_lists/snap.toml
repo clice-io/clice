@@ -31,12 +31,12 @@ Copies bytes.
 
 → `void`
 Parameters:
-- `char * destination` — Where they go.
-- `int count` — How many.
+- `char *destination` — Where they go.
+- `int __count` — How many.
 
 ---
 ```cpp
-void copy(char *destination, int count)
+void copy(char *destination, int __count)
 ```
 '''
 range = "⟦copy⟧(buffer, 4);"

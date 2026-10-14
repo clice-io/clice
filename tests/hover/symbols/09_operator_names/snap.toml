@@ -29,7 +29,7 @@ markdown = '''
 ---
 → `bool`
 Parameters:
-- `const Vec & other`
+- `const Vec &other`
 
 ---
 ```cpp
@@ -46,7 +46,7 @@ markdown = '''
 ---
 → `bool`
 Parameters:
-- `const Vec & other`
+- `const Vec &other`
 
 ---
 ```cpp

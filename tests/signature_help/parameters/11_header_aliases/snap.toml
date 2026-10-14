@@ -1,0 +1,3 @@
+[answers.header_alias.signature_help]
+signatures = ["checksum(⟦__u32 seed⟧) -> __u32"]
+active = 0

@@ -1,3 +1,3 @@
 [answers.fields.signature_help]
-signatures = ['Flags{unsigned int mode : 3 = 2, ⟦int level{1}⟧, const char *name = "plain"}']
+signatures = ['Flags{unsigned int mode : 3 = 2, ⟦int level {1}⟧, const char *name = "plain"}']
 active = 0

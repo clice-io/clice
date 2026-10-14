@@ -32,7 +32,7 @@
           "marker": "documented",
           "value": {
             "hover": {
-              "markdown": "### function `gtk_widget_show`\n\n---\n\nFlags a widget to be displayed.\n\n→ `void`\nParameters:\n- `GtkWidget * widget (aka struct _GtkWidget *)` — a `GtkWidget`\n\n---\n```cpp\nvoid gtk_widget_show(GtkWidget *widget)\n```",
+              "markdown": "### function `gtk_widget_show`\n\n---\n\nFlags a widget to be displayed.\n\n→ `void`\nParameters:\n- `GtkWidget *widget (aka struct _GtkWidget *)` — a `GtkWidget`\n\n---\n```cpp\nvoid gtk_widget_show(GtkWidget *widget)\n```",
               "range": {
                 "$place": "void ⟦gtk_widget_show⟧(GtkWidget *widget);",
                 "path": "main.cpp",
