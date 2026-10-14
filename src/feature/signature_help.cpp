@@ -745,7 +745,8 @@ auto signature_help(CompilationParams params,
     // Inside a call written in a macro's arguments Sema's signature is the
     // call's; one written outside the macro, which Sema may report too,
     // is not where the cursor is.
-    if(auto call = macro_call_at(*unit, offset); call && (call->direct || help.signatures.empty())) {
+    if(auto call = macro_call_at(*unit, offset);
+       call && (call->direct || help.signatures.empty())) {
         return macro_signature(*call,
                                options.documentation
                                    ? feature::documentation(*unit, call->macro, documentation)

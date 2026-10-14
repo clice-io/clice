@@ -143,7 +143,8 @@ static worker::ArtifactBuildResult handle_build_pch(const worker::BuildPCHParams
     // A cancelled parse reports !completed(); the extra check catches a
     // cancellation arriving between the parse and the serialization, whose
     // blob nobody will read. The tmp file is removed like any failed build.
-    bool success = unit->completed() && unit->has_output() && !stop->load(std::memory_order_relaxed);
+    bool success =
+        unit->completed() && unit->has_output() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit->build_at().count();
 
     // A build that failed on errors still reports what it read.
@@ -224,7 +225,8 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
     ScopedTimer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
-    bool success = unit->completed() && unit->has_output() && !stop->load(std::memory_order_relaxed);
+    bool success =
+        unit->completed() && unit->has_output() && !stop->load(std::memory_order_relaxed);
     auto build_at = unit->build_at().count();
 
     // A build that failed on errors still reports what it read.
@@ -264,7 +266,13 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                  timer.ms(),
                  llvm::join(errors, "; "));
     }
-    return finish_artifact("PCM", success, *output, build_at, deps, errors, /*internal_error=*/false);
+    return finish_artifact("PCM",
+                           success,
+                           *output,
+                           build_at,
+                           deps,
+                           errors,
+                           /*internal_error=*/false);
 }
 
 /// Collect the tidy pass's findings with real per-file locations: unlike

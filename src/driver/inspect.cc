@@ -548,7 +548,7 @@ void run_feature(FileEntry& entry,
                     .kind = CompilationKind::Completion,
                     .input = input,
                     .completion = {.offset = offset},
-            },
+                },
                 config);
             if(!value.has_value()) {
                 entry.error = "serialize_error";
@@ -603,8 +603,9 @@ void run_feature(FileEntry& entry,
         }
     }
     if(places.empty()) {
-        entry.result =
-            run(*unit, LocalSourceRange(0, static_cast<std::uint32_t>(file.content.size())), config);
+        entry.result = run(*unit,
+                           LocalSourceRange(0, static_cast<std::uint32_t>(file.content.size())),
+                           config);
         if(!entry.result.has_value()) {
             entry.error = "serialize_error";
         }

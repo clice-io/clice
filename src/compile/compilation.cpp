@@ -439,15 +439,13 @@ CompilationStatus CompilationUnit::run() {
         return CompilationStatus::Cancelled;
     }
 
-    auto& diagnostics = instance->getDiagnostics();
-    fatal = diagnostics.hasFatalErrorOccurred();
     /// A PCM build with errors writes nothing. A PCH is written in spite of
     /// its preamble's errors; clang writes none only after a module failed
     /// to load.
     if(params.kind == CompilationKind::Preamble) {
         output_ready = !instance->hadModuleLoaderFatalFailure();
     } else if(params.kind == CompilationKind::ModuleInterface) {
-        output_ready = !diagnostics.hasErrorOccurred();
+        output_ready = !instance->getDiagnostics().hasErrorOccurred();
     }
 
     if(collected_tokens) {

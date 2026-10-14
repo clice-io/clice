@@ -324,6 +324,11 @@ public:
             raw_diagnostic.getDiags()->getDiagnosticIDs()->isDefaultMappingAsError(
                 raw_diagnostic.getID());
 
+        // The engine only marks a fatal error once another diagnostic
+        // follows it.
+        if(level == clang::DiagnosticsEngine::Fatal) {
+            unit.fatal = true;
+        }
         if(!is_note(level)) {
             if(unit.checker) {
                 level = unit.checker->adjust_level(level, raw_diagnostic);

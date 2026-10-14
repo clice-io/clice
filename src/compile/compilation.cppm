@@ -412,7 +412,8 @@ private:
 
     /// Create the `clang::CompilerInvocation` of the compile: the command,
     /// with every flag clice needs set and every one it must not see reset.
-    std::unique_ptr<clang::CompilerInvocation> create_invocation(clang::DiagnosticConsumer* consumer);
+    std::unique_ptr<clang::CompilerInvocation>
+        create_invocation(clang::DiagnosticConsumer* consumer);
 
     CompilationStatus run();
 

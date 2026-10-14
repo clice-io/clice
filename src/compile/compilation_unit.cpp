@@ -200,8 +200,7 @@ auto CompilationUnit::spelling_location(clang::SourceLocation loc) -> clang::Sou
     return SM().getSpellingLoc(loc);
 }
 
-auto CompilationUnit::expansion_location(clang::SourceLocation location)
-    -> clang::SourceLocation {
+auto CompilationUnit::expansion_location(clang::SourceLocation location) -> clang::SourceLocation {
     return SM().getExpansionLoc(location);
 }
 
@@ -332,8 +331,7 @@ auto CompilationUnit::token_length(clang::SourceLocation location) -> std::uint3
 
 auto CompilationUnit::token_spelling(clang::SourceLocation location) -> std::string {
     llvm::SmallString<64> buffer;
-    return clang::Lexer::getSpelling(location, buffer, SM(), instance->getLangOpts())
-        .str();
+    return clang::Lexer::getSpelling(location, buffer, SM(), instance->getLangOpts()).str();
 }
 
 bool CompilationUnit::is_named_module() {
