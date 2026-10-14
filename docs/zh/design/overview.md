@@ -49,8 +49,8 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 
 - `CompilationUnit`：一次编译的 AST、Clang 运行时报告的内容（诊断、预处理器指令、Token、依赖），以及读取它们的辅助函数，例如源位置映射。它由 `compile()` 返回，是 `src/feature/` 和 `src/index/` 的主要输入。
 - `CompilationParams`：描述单次编译：编译类型（Preprocess / Preamble / ModuleInterface / Content / Whole / Completion）、输入（编译命令、从内存提供的文件、要加载的 PCH 和 PCM），以及在解析之上额外运行的内容，例如 clang-tidy。
-- `Semantics`：统一语义映射——每次编译仅遍历一次 AST，记录所有相关节点及其 Token 归属；选择、功能投影和索引生成都是对该映射的纯查询，而无须分别遍历 AST
 - 在编译期间收集诊断信息和 clang-tidy 结果。
+- 上层基于 AST 推导出的内容（例如语义映射）在首次使用时才构建，之后随编译单元一起保存（`CompilationUnit::get`）。
 
 ### `src/syntax/` — 轻量级语法处理
 
@@ -67,8 +67,10 @@ clice 是一个全新的 C++ 语言服务器，从架构层面重新设计，旨
 
 ### `src/semantic/` — 语义分析
 
-提供 Clang 原生 API 之外、直接基于 AST 的语义分析能力，编译层建立在它之上。
+提供 Clang 原生 API 之外、基于编译单元 AST 的语义分析能力。
 
+- `Semantics`：统一语义映射——每次编译仅遍历一次 AST，记录所有相关节点及其 Token 归属；选择、功能投影和索引生成都是对该映射的纯查询，而无须分别遍历 AST
+- `EntityTable`：声明的标识；编译器会合并的声明，在不同翻译单元中得到相同的标识
 - `TemplateResolver`：通过伪实例化解析依赖名，使语义分析能够透视模板上下文。详见 [模板解析器](template-resolver.md)。
 - `SymbolKind` / `RelationKind`：细粒度的符号种类和关系类型
 
