@@ -49,16 +49,9 @@ struct BatchStack {
     explicit BatchStack(kota::event_loop& loop) : loop(loop) {}
 };
 
-/// Poll until the pump has drained every round (requeue rounds included)
-/// and persisted its results.
-kota::task<> wait_until_indexed(const IndexPump& pump) {
-    while(!pump.is_idle()) {
-        co_await kota::sleep(200);
-    }
-}
-
 kota::task<> checkpoint_task(BatchStack& stack) {
     while(true) {
+        // Time is the feature: the checkpoints' pace.
         co_await kota::sleep(SchedulingStack::checkpoint_interval());
         co_await stack.sched.checkpoint();
     }
@@ -81,6 +74,7 @@ void report_progress(BatchStack& stack, const BatchOptions& options) {
 kota::task<> progress_ticker(BatchStack& stack, const BatchOptions& options) {
     constexpr auto pace = std::chrono::seconds(10);
     while(true) {
+        // Time is the feature: the report's pace.
         co_await kota::sleep(pace);
         report_progress(stack, options);
     }
@@ -274,7 +268,7 @@ kota::task<> run(BatchStack& stack, const BatchOptions& options, BatchResult& re
     }
     BatchLifetime lifetime(stack);
     lifetime.aux.spawn(progress_ticker(stack, options));
-    co_await kota::with_token(wait_until_indexed(stack.sched.pump), lifetime.token());
+    co_await kota::with_token(stack.sched.pump.idle(), lifetime.token());
     auto interrupted = co_await lifetime.finish();
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
@@ -540,7 +534,7 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
         // the run exits clean.
         project.config.project.enable_indexing.value = true;
         stack.sched.pump.schedule(/*immediate=*/true);
-        co_await kota::with_token(wait_until_indexed(stack.sched.pump), lifetime.token());
+        co_await kota::with_token(stack.sched.pump.idle(), lifetime.token());
     }
     if(co_await lifetime.finish()) {
         result.interrupted = true;

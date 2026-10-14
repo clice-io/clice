@@ -61,11 +61,6 @@ ZEST_CASE(CancelledCompileFreesStrand) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        // A deterministically slow TU: two hundred thousand trivial
-        // declarations keep the parse far past the cancellation tick on any
-        // hardware — two consecutive macOS runners completed a whole
-        // four-STL-header compile roundtrip inside 20ms — while the
-        // per-declaration stop poll keeps the cancelled remainder cheap.
         std::string text;
         text.reserve(1 << 22);
         for(int i = 0; i < 200'000; ++i) {
@@ -91,16 +86,13 @@ ZEST_CASE(CancelledCompileFreesStrand) {
             auto result = co_await w.peer->send_request(cp, opts);
             first_failed = !result.has_value();
         };
+        // The compile is under way, holding the strand, when the cancel
+        // arrives.
+        auto gate = w.gate(cp);
         group.spawn(sender());
-        // One short tick: enough for the request bytes to flush, far below
-        // any parse of four STL headers. The $/cancelRequest then chases
-        // the request down the same pipe, and the single-threaded worker
-        // processes it while the handler is parked on the pool await — the
-        // compile cannot have replied first, so the cancel deterministically
-        // arrives mid-flight (a 150ms window lost this race on a warm macOS
-        // runner that compiled the TU faster).
-        co_await kota::sleep(20, w.loop);
+        co_await w.parked(gate);
         source.cancel();
+        w.release(gate);
         co_await group.join();
         ZEXPECT(first_failed);
 
@@ -167,9 +159,11 @@ ZEST_CASE(IpcCancelInterruptsCompile) {
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
+        auto gate = w.gate(cp);
         group.spawn(sender());
-        co_await kota::sleep(20, w.loop);
+        co_await w.parked(gate);
         source.cancel();
+        w.release(gate);
         co_await group.join();
         ZASSERT(cancelled);
 
@@ -221,8 +215,11 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
         group.spawn(sender());
+        // No event: the writes to the stopped worker's pipe finish
+        // unannounced; a turn of the loop is all they need.
         co_await kota::sleep(50, w.loop);
         source.cancel();
+        // No event: as above.
         co_await kota::sleep(50, w.loop);
         ZASSERT(!w.proc.kill(SIGCONT));
         co_await group.join();

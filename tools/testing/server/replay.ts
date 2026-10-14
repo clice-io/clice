@@ -73,6 +73,7 @@ export async function replay(s: Serve, file: string): Promise<void> {
         if (message.method === "shutdown" || message.method === "exit") {
             break;
         }
+        // Time is the feature: the trace plays at the pace it was recorded.
         await new Promise((resolve) => setTimeout(resolve, Math.max(0, ts - previous)));
         previous = ts;
         if (message.method === undefined) {

@@ -56,48 +56,33 @@ import { canonicalUri, Workspace } from "./workspace.ts";
 
 import { withTimeout } from "../promise.ts";
 
-export function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export interface WaitUntilOptions {
-    timeout: number;
-    interval: number;
-    description: string;
-}
-
-function formatWaitState(state: unknown): string {
-    try {
-        return JSON.stringify({ value: state });
-    } catch {
-        return String(state);
-    }
-}
-
-export async function waitUntil<T>(
-    predicate: () => T | Promise<T>,
-    { timeout, interval, description }: WaitUntilOptions,
-): Promise<T> {
-    const deadline = Date.now() + timeout;
-    let lastState: T;
-    for (;;) {
-        lastState = await predicate();
-        if (lastState) {
-            return lastState;
-        }
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) {
-            break;
-        }
-        await sleep(Math.min(interval, remaining));
-    }
-    throw new Error(
-        `Timed out after ${timeout}ms waiting for ${description}; ` +
-            `last state: ${formatWaitState(lastState)}`,
-    );
-}
-
 const SANITIZER_MARKER_BUFFERS = SANITIZER_MARKERS.map((m) => Buffer.from(m));
+
+/// Writes the messages to the server in the order they are sent. Under the
+/// test hook CLICE_TEST_JITTER=<ms> (the server's half is test_jitter in
+/// src/support/environment.cppm), each first waits a random time up to that
+/// many milliseconds, as a slow editor's messages do.
+class ServerWriter extends StreamMessageWriter {
+    private readonly jitter = Number(process.env["CLICE_TEST_JITTER"] ?? 0);
+    private queue: Promise<void> = Promise.resolve();
+
+    override write(message: proto.Message): Promise<void> {
+        return this.enqueue(() => super.write(message));
+    }
+
+    /// Runs `write` once every write sent before it is done.
+    enqueue(write: () => Promise<void> | void): Promise<void> {
+        const written = this.queue.then(async () => {
+            if (this.jitter > 0) {
+                // Time is the feature: the delay is what the hook adds.
+                await new Promise((resolve) => setTimeout(resolve, Math.random() * this.jitter));
+            }
+            await write();
+        });
+        this.queue = written.catch(() => undefined);
+        return written;
+    }
+}
 
 export interface StartOptions {
     /// The server treats stderr as best-effort, but a client that never
@@ -171,6 +156,7 @@ export function initializationOptionsFor(
 export class CliceClient {
     child: ChildProcessWithoutNullStreams;
     protected connection: proto.ProtocolConnection;
+    private writer: ServerWriter;
 
     diagnostics = new Map<string, proto.Diagnostic[]>();
     /// Every publishDiagnostics received, in order.
@@ -215,9 +201,10 @@ export class CliceClient {
 
     private constructor(child: ChildProcessWithoutNullStreams) {
         this.child = child;
+        this.writer = new ServerWriter(child.stdin);
         this.connection = createProtocolConnection(
             new StreamMessageReader(child.stdout),
-            new StreamMessageWriter(child.stdin),
+            this.writer,
         );
         this.exited = new Promise((resolve) => {
             child.on("exit", (code) => {
@@ -349,7 +336,7 @@ export class CliceClient {
             messages.flatMap((message) => ("id" in message ? [String(message.id)] : [])),
         );
         const responses = new Map<string, proto.ResponseMessage>();
-        const { stdout: reader, stdin: writer } = this.child;
+        const { stdout: reader, stdin } = this.child;
         const answered = new Promise<Map<string, proto.ResponseMessage>>((resolve) => {
             if (pending.size === 0) {
                 resolve(responses);
@@ -388,17 +375,19 @@ export class CliceClient {
             };
             reader.on("data", onData);
         });
-        writer.write(
-            Buffer.concat(
-                messages.map((message) => {
-                    const body = Buffer.from(JSON.stringify(message), "utf-8");
-                    return Buffer.concat([
-                        Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "ascii"),
-                        body,
-                    ]);
-                }),
-            ),
-        );
+        void this.writer.enqueue(() => {
+            stdin.write(
+                Buffer.concat(
+                    messages.map((message) => {
+                        const body = Buffer.from(JSON.stringify(message), "utf-8");
+                        return Buffer.concat([
+                            Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "ascii"),
+                            body,
+                        ]);
+                    }),
+                ),
+            );
+        });
         return answered;
     }
 
@@ -491,7 +480,7 @@ export class CliceClient {
         try {
             await withTimeout(
                 this.sendRequest(proto.ShutdownRequest.type),
-                10_000,
+                60_000,
                 "shutdown request",
             );
         } catch {
@@ -519,7 +508,7 @@ export class CliceClient {
     }
 
     /// The clean-exit gate every session must pass.
-    async assertExitedCleanly(timeout = 10_000): Promise<void> {
+    async assertExitedCleanly(timeout = 60_000): Promise<void> {
         const failures: string[] = [];
 
         if (this.child.exitCode === null && this.child.signalCode === null) {
@@ -541,7 +530,7 @@ export class CliceClient {
         let stderrComplete = true;
         let stderrFailure: string | undefined;
         try {
-            await withTimeout(this.stderrEof, 2_000, "stderr EOF");
+            await withTimeout(this.stderrEof, 60_000, "stderr EOF");
         } catch (exc) {
             stderrComplete = false;
             stderrFailure = String(exc);

@@ -1,5 +1,6 @@
 import vitest from "@vitest/eslint-plugin";
 import tseslint from "typescript-eslint";
+import clice from "@clice/tools/lint";
 
 export default tseslint.config(
     { ignores: ["node_modules/"] },
@@ -12,7 +13,9 @@ export default tseslint.config(
                 tsconfigRootDir: import.meta.dirname,
             },
         },
+        plugins: { clice },
         rules: {
+            "clice/timers": "error",
             // The harness logs through the runner's console on purpose (server
             // stderr excerpts, snapshot notices).
             "no-console": "off",

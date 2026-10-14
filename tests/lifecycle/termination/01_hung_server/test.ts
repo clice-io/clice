@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { test, type Serve, type TestContext } from "@clice/tools/testing";
+import { running, test, type Serve, type TestContext } from "@clice/tools/testing";
 
 // A server whose worker is deep in a compile that never ends still ends
 // when its editor goes: on its input closing, and with the workers going
@@ -16,26 +16,12 @@ async function hung(t: TestContext): Promise<Serve> {
     return s;
 }
 
-/// Whether a process has the pid: signal 0 checks without sending, and
-/// ESRCH says none has.
-function alive(pid: number): boolean {
-    try {
-        process.kill(pid, 0);
-        return true;
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ESRCH") {
-            return false;
-        }
-        throw error;
-    }
-}
-
 // Neovim quits by closing the server's input, without `exit`.
 test("closed input ends it", async (t) => {
     const s = await hung(t);
     // The editor's side of the pipe, which no action models.
     s.client.child.stdin.end();
-    await s.client.assertExitedCleanly(15_000);
+    await s.client.assertExitedCleanly();
     s.client.dispose();
 });
 
@@ -44,11 +30,8 @@ test("workers die with it", async (t) => {
     const { stateful, stateless } = (await s.stats()).workers;
     const workers = [...stateful, ...stateless];
     expect(workers).toHaveLength(2);
-    expect(workers.filter(alive)).toEqual(workers);
+    expect(workers.filter(running)).toEqual(workers);
     await s.kill();
-    // No event marks another process gone. Each worker watches its server
-    // and exits with it (exit_with_parent): what is left is the time a
-    // dying process takes to leave.
-    await t.elapse(2_000, "workers exiting after their server");
-    expect(workers.filter(alive)).toEqual([]);
+    // Each worker watches its server and exits with it (exit_with_parent).
+    await t.gone(workers);
 });

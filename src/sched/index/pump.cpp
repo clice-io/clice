@@ -9,6 +9,7 @@ module clice;
 import :sched.families.turun;
 import :sched.graph;
 import :sched.index.pump;
+import :support.environment;
 import :support.logging;
 import :support.process;
 import :support.timer;
@@ -187,13 +188,14 @@ void IndexPump::schedule(bool immediate) {
     if(!index_idle_timer) {
         index_idle_timer = std::make_shared<kota::timer>(kota::timer::create(loop));
     }
-    // The idle timeout exists to batch edit storms into one round; a
-    // follow-up round for work requeued during the round that just ended
-    // has already been batched by that round and starts right away — a
-    // crashed file's retry must not owe an extra idle window on top of the
-    // round boundary it already waited out.
+    // Time is the feature: the idle timeout batches edit storms into one
+    // round. A follow-up round for work requeued during the round that just
+    // ended has already been batched by that round and starts right away —
+    // a crashed file's retry must not owe an extra idle window on top of
+    // the round boundary it already waited out.
     index_idle_timer->start(
-        std::chrono::milliseconds(immediate ? 0 : project.config.project.idle_timeout_ms.value));
+        std::chrono::milliseconds(immediate ? 0 : project.config.project.idle_timeout_ms.value) +
+        test_jitter());
 
     if(!bg_tasks.spawn(run_background_indexing())) {
         indexing_scheduled = false;
@@ -448,6 +450,13 @@ kota::task<> IndexPump::run_index_task(PendingTable::TakenDebt taken,
     on_progress_changed.emit();
 }
 
+kota::task<> IndexPump::idle() {
+    while(!is_idle()) {
+        round_ended.reset();
+        co_await round_ended.wait();
+    }
+}
+
 kota::task<> IndexPump::run_background_indexing() {
     if(index_idle_timer) {
         co_await index_idle_timer->wait();
@@ -530,6 +539,7 @@ kota::task<> IndexPump::run_background_indexing() {
     // before the write await would let a next round's save overlap this
     // one's in-flight batch, racing same-key blob writes on the pool.
     indexing_active = false;
+    round_ended.set();
 
     // Files enqueued or requeued while the round ran saw their schedule()
     // no-op against indexing_active; without this kick they would wait for

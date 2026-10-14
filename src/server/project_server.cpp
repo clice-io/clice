@@ -512,10 +512,12 @@ kota::task<> ProjectServer::metadata_flush_task() {
     // arriving while the save runs re-schedule through request_flush, and
     // a save that could not clear the flags (serialization or write
     // failure) retries on the next spawn with this backoff.
+    // Time is the feature: the debounce.
     co_await kota::sleep(std::chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     co_await sched.pump.persist();
     if(project.artifacts_dirty || sched.store.contexts.dirty) {
+        // Time is the feature: the retry's backoff.
         co_await kota::sleep(std::chrono::seconds(5));
         schedule_metadata_flush();
     }
@@ -523,6 +525,7 @@ kota::task<> ProjectServer::metadata_flush_task() {
 
 kota::task<> ProjectServer::checkpoint_task() {
     while(true) {
+        // Time is the feature: the checkpoints' pace.
         co_await kota::sleep(SchedulingStack::checkpoint_interval());
         co_await sched.checkpoint();
         if(sched.store.last_save_shards() > 0) {
@@ -582,6 +585,7 @@ void ProjectServer::start_control_listener() {
 kota::task<> ProjectServer::sources_poll_task() {
     auto interval = std::chrono::seconds(project.config.tracker.workspace_poll_seconds.value);
     while(true) {
+        // Time is the feature: the workspace loop's pace.
         co_await kota::sleep(interval);
         auto events = co_await tracker->tick_sources();
         if(!events.empty()) {

@@ -7,3 +7,4 @@ export type { Disk } from "./cases/disk.ts";
 export { refusal, type Park, type Serve, type ServerOptions } from "./server/serve.ts";
 export { at, type Anchor } from "./cases/anchors.ts";
 export * as generate from "./cases/generate.ts";
+export { running } from "../client/process.ts";

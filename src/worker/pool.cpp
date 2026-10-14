@@ -371,6 +371,7 @@ kota::task<> WorkerPool::stop() {
 }
 
 kota::task<> WorkerPool::kill_stragglers() {
+    // Time is the feature: the grace a worker gets after SIGTERM.
     co_await kota::sleep(std::chrono::milliseconds(5000), loop);
     LOG_WARN("Workers still alive 5s after SIGTERM; escalating to SIGKILL");
     for(auto& w: stateless_workers)
@@ -524,15 +525,17 @@ kota::task<> WorkerPool::monitor_worker(std::size_t index, bool stateful) {
         co_return;
     }
 
-    // The final diagnostic can still sit in the stderr pipe when the exit
-    // is observed; give the drain a bounded moment to reach EOF — a
-    // grandchild holding the pipe open must not stall the respawn. The
-    // slot is already dying, so a shutdown meanwhile skips its reaped pid.
+    // The final diagnostic, the crash marker that names the request among
+    // it, can still sit in the stderr pipe when the exit is observed: the
+    // drain reaches EOF first. The slot is already dying, so a shutdown
+    // meanwhile skips its reaped pid.
     if(auto tail = workers[index].stderr_tail) {
         auto drained = [](std::shared_ptr<StderrTail> tail) -> kota::task<> {
             co_await tail->drained.wait();
         };
-        co_await kota::with_timeout(drained(std::move(tail)), std::chrono::seconds(1), loop);
+        // Hang detection: a short bound runs out on a stalled master (a
+        // loaded machine), and the crash then blames no request.
+        co_await kota::with_timeout(drained(std::move(tail)), std::chrono::minutes(1), loop);
         if(stop_scope.cancelled())
             co_return;
     }
@@ -721,6 +724,7 @@ kota::task<> WorkerPool::respawn_after(std::size_t index,
                      workers[index].name,
                      delay.count(),
                      workers[index].crash_streak);
+            // Time is the feature: the crash streak's backoff.
             co_await kota::with_token(kota::sleep(delay, loop), stop_scope.token());
         }
         if(stop_scope.cancelled())
@@ -760,6 +764,7 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
 }
 
 kota::task<> WorkerPool::revive_slot(std::size_t index, bool stateful) {
+    // Time is the feature: the cooldown of a slot given up.
     co_await kota::with_token(kota::sleep(options.revive_after, loop), stop_scope.token());
     if(stop_scope.cancelled()) {
         co_return;
@@ -911,8 +916,8 @@ std::size_t WorkerPool::pick_idle_stateless() {
 
 kota::task<> WorkerPool::monitor_loop() {
     while(true) {
-        co_await kota::with_token(kota::sleep(std::chrono::milliseconds(3000), loop),
-                                  stop_scope.token());
+        // Time is the feature: the pace of the checks below.
+        co_await kota::with_token(kota::sleep(options.monitor_interval, loop), stop_scope.token());
         if(stop_scope.cancelled())
             co_return;
 

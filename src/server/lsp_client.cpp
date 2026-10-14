@@ -1252,6 +1252,8 @@ void LSPClient::register_extensions() {
             auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::max(deadline - std::chrono::steady_clock::now(),
                          std::chrono::steady_clock::duration::zero()));
+            // Hang detection: past the deadline, the answer names what
+            // still runs.
             co_await kota::when_any(srv.wait_idle(this->peer), kota::sleep(left, srv.loop));
             ext::SyncResult result;
             for(auto& project: srv.projects) {

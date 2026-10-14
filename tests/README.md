@@ -168,7 +168,8 @@ A script registers tests of two kinds, each `(fn)`, `(name, fn)`,
   there (with `interrupt: { units, signals }` it signals the run once that many
   units are indexed); `t.disk` reads and changes the copy (`write`, `edit`,
   `rm`, `symlink`, `touch`, `list`, `corrupt`, `database`); `t.replay()` plays
-  the case's `trace.jsonl` to a server; `t.elapse(ms, why)` lets time pass
+  the case's `trace.jsonl` to a server; `t.gone(pids)` waits until processes
+  the test did not start have ended; `t.elapse(ms, why)` lets time pass
   where time is the claim. A test may start several servers and run several
   commands; each is shut down and gated at the end.
 
@@ -394,6 +395,11 @@ written by hand that a case can show.
   version, `s.sync()` (the server idle, exact accounting), a park reached, a
   command's exit, a batch pause point reached. No sleeps, no polling,
   no wall-clock assertions; where time is the claim, `t.elapse(ms, why)`.
+  The one end with no event, that of a process the test did not start, is
+  `t.gone(pids)`, which looks for the processes until they are gone. The
+  lint rule `clice/timers` (tools/lint) holds every timer in tools/, tests/
+  and editors/vscode to this, `pixi run check-timers` those of src/ and
+  unittests/.
 - **Test hooks** make the events observable: the server's `clice/internal/sync`,
   build counts, holds and worker gates (`s.park`), watches of its background
   loops (`clice/internal/watch`, `s.watch`); the batch commands' pause point
@@ -481,6 +487,9 @@ npm run cases -w tests        every case, against $CLICE_EXECUTABLE
 CLICE_CASES=hover/ …               the cases under a path
 CLICE_CASES_SHARD=2/4 …            shard 2 of 4: whole subtopics, balanced by case count
 UPDATE_SNAPSHOTS=1 …               rewrite outputs, print the summary
+CLICE_TEST_JITTER=50 …             random delays up to 50 ms where the server's own work
+                                   races a test's actions: an output that changes left
+                                   an order unpinned
 npm run coverage -w tests     after a full run
 npm test -w tools                  the tools' own tests, the framework's among them
 ```

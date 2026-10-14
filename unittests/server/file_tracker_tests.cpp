@@ -683,7 +683,7 @@ ZEST_CASE(CDBForgedStampSeen) {
     ZASSERT(tick(tracker, files).empty());
     ZASSERT(tick(tracker, files).empty());
 
-    // Past the coarse clock inode times are taken from.
+    // Time is the feature: past the coarse clock inode times are taken from.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     tmp.touch("compile_commands.json",
               build_cdb_json({

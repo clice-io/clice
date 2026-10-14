@@ -582,6 +582,8 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef library,
         if(rc == EINVAL && reopens < 3) {
             mdb_env_close(env);
             reopens += 1;
+            // No event: the closing process is done with the lock file
+            // unannounced; each reopen gives it a little longer.
             std::this_thread::sleep_for(std::chrono::milliseconds(10 * reopens));
             continue;
         }

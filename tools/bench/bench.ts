@@ -398,6 +398,7 @@ async function shutdownServer(client: CliceClient, opts: Options): Promise<void>
         await client.sendNotification("exit");
     } finally {
         client.disposed = true;
+        // Hang detection: a clangd still running after `exit` is killed.
         setTimeout(() => {
             client.child.kill("SIGKILL");
         }, 5_000).unref();
@@ -513,6 +514,7 @@ async function runWarmRequests(opts: Options, file: string): Promise<ScenarioRes
     // warmup event is timestamped <= boundary, every measured one >= boundary+1.
     const boundary = Date.now();
     while (Date.now() <= boundary) {
+        // Time is the feature: the wait is for the clock itself.
         await new Promise((resolve) => setTimeout(resolve, 1));
     }
     bench.perfWindowStart = boundary + 1;

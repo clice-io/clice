@@ -53,6 +53,21 @@ export function anomaliesInMessages(messages: string[]): string[] {
     });
 }
 
+/// What a C or C++ runtime prints as it aborts, which no logger tags: glibc's
+/// own checks and assert(), macOS's assert(), the C++ runtimes' terminate,
+/// LLVM's fatal errors.
+const ABORT_PATTERNS = [
+    /Fatal glibc error/,
+    /\*\*\* .* \*\*\*: terminated/,
+    /\b(?:free|malloc|realloc|calloc)\(\): /,
+    /double free or corruption/,
+    /Assertion `.*' failed/,
+    /Assertion failed: .*, function /,
+    /libc\+\+abi: /,
+    /terminate called /,
+    /LLVM ERROR: /,
+];
+
 export function serverStderrExcerpt(stderrText: string): string {
     const interesting = stderrText
         .split("\n")
@@ -62,7 +77,8 @@ export function serverStderrExcerpt(stderrText: string): string {
                 line.includes("[error]") ||
                 line.includes("Sanitizer") ||
                 line.includes("==ERROR:") ||
-                line.includes("runtime error:"),
+                line.includes("runtime error:") ||
+                ABORT_PATTERNS.some((pattern) => pattern.test(line)),
         );
     return interesting.slice(-80).join("\n");
 }

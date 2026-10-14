@@ -17,6 +17,7 @@ import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.cache_store;
+import :worker.probe;
 
 namespace clice::testing {
 
@@ -53,6 +54,7 @@ struct Stack {
     CommandResolver commands{project};
     ContextsBlob blob;
     EditorContext contexts{project, commands, blob};
+    BuildProbe probe;
     WorkerPool pool{loop};
     TaskGraph graph;
     PCMFamily pcm{graph, project, commands, pool};
@@ -76,6 +78,15 @@ struct Stack {
 
     bool is_compiling(Fid path_id) const {
         return graph.is_compiling({Family::AST, path_id.raw});
+    }
+
+    /// Park the work of the next compile of `path` where it starts in the
+    /// worker (see BuildProbe::gate); returns the gate's id.
+    std::uint64_t gate_compile(const std::string& path) {
+        pool.probe = &probe;
+        worker::CompileParams params;
+        params.path = path;
+        return probe.gate(worker::crash_tag(params));
     }
 
     void register_pch_store(TempDir& tmp) {
@@ -261,24 +272,14 @@ ZEST_CASE(ShutdownUnblocksWaiters) {
             waiter_ok = co_await stack.ast.ensure_compiled(session);
             waiter_done = true;
         };
+        auto gate = stack.gate_compile(src);
         group.spawn(waiter());
-
-        for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
-            co_await kota::sleep(10);
-        }
+        co_await parked(stack.probe, gate);
         ZASSERT(stack.is_compiling(session->path_id));
         ZASSERT(!waiter_done);
 
         co_await stack.ast.stop();
-
-        // Bounded: a waiter left hanging fails this cleanly here instead
-        // of hanging the whole binary.
-        for(int i = 0; i < 100 && !waiter_done; ++i) {
-            co_await kota::sleep(100);
-        }
-        if(!waiter_done) {
-            group.cancel();
-        }
+        stack.probe.release(gate);
         co_await group.join();
 
         ZEXPECT(waiter_done);
@@ -334,11 +335,9 @@ ZEST_CASE(EditInterruptsStaleCompile) {
             waiter_ok = co_await stack.ast.ensure_compiled(session);
             waiter_done = true;
         };
+        auto gate = stack.gate_compile(src);
         group.spawn(waiter());
-
-        for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
-            co_await kota::sleep(10);
-        }
+        co_await parked(stack.probe, gate);
         ZASSERT(stack.is_compiling(session->path_id));
 
         // What the didChange handler does: fold the edit in, then supersede.
@@ -346,13 +345,7 @@ ZEST_CASE(EditInterruptsStaleCompile) {
         session->sync_text();
         session->generation += 1;
         stack.ast.supersede(session->path_id);
-
-        for(int i = 0; i < 600 && !waiter_done; ++i) {
-            co_await kota::sleep(100);
-        }
-        if(!waiter_done) {
-            group.cancel();
-        }
+        stack.probe.release(gate);
         co_await group.join();
 
         ZASSERT(waiter_done);
@@ -413,11 +406,9 @@ ZEST_CASE(SupersededCompileCancelled) {
             [[maybe_unused]] bool ok = co_await stack.ast.ensure_compiled(session);
             first_done = true;
         };
+        auto gate = stack.gate_compile(src);
         group.spawn(first());
-
-        for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
-            co_await kota::sleep(10);
-        }
+        co_await parked(stack.probe, gate);
         ZASSERT(stack.is_compiling(session->path_id));
 
         // The edit arrives while the slow compile is in flight.
@@ -430,13 +421,7 @@ ZEST_CASE(SupersededCompileCancelled) {
             second_ok = co_await stack.ast.ensure_compiled(session);
         };
         group.spawn(second());
-
-        for(int i = 0; i < 600 && !(first_done && second_ok); ++i) {
-            co_await kota::sleep(100);
-        }
-        if(!(first_done && second_ok)) {
-            group.cancel();
-        }
+        stack.probe.release(gate);
         co_await group.join();
 
         ZEXPECT(first_done);
@@ -1037,12 +1022,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
     auto src = tmp.path("shared.cpp");
 
     Stack stack;
-    std::string text;
-    text.reserve(1 << 21);
-    for(int i = 0; i < 50'000; ++i) {
-        text += std::format("int v{};\n", i);
-    }
-    auto session = stack.open(src, std::move(text));
+    auto session = stack.open(src, "int v0;\n");
 
     bool cancelled_returned = false;
     bool other_answered = false;
@@ -1072,21 +1052,13 @@ ZEST_CASE(ClientCancelSparesCompile) {
                                                           protocol::Position{0, 4});
             other_answered = result.has_value();
         };
+        auto gate = stack.gate_compile(src);
         group.spawn(cancelled_waiter());
         group.spawn(other_waiter());
-
-        for(int i = 0; i < 100 && !stack.is_compiling(session->path_id); ++i) {
-            co_await kota::sleep(10);
-        }
+        co_await parked(stack.probe, gate);
         ZASSERT(stack.is_compiling(session->path_id));
         source.cancel();
-
-        for(int i = 0; i < 600 && !other_answered; ++i) {
-            co_await kota::sleep(100);
-        }
-        if(!other_answered) {
-            group.cancel();
-        }
+        stack.probe.release(gate);
         co_await group.join();
 
         ZEXPECT(cancelled_returned);
@@ -1119,12 +1091,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
     auto src = tmp.path("stale.cpp");
 
     Stack stack;
-    std::string text;
-    text.reserve(1 << 20);
-    for(int i = 0; i < 50'000; i += 1) {
-        text += std::format("int v{};\n", i);
-    }
-    auto session = stack.open(src, std::move(text));
+    auto session = stack.open(src, "int v0;\n");
 
     bool stale = false;
     bool done = false;

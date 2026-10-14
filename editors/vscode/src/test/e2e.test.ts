@@ -10,6 +10,7 @@ import type {
     CounterpartsResult,
     CurrentContextResult,
     QueryContextResult,
+    SyncResult,
 } from "@clice/tools/protocol" with {
     "resolution-mode": "import",
 };
@@ -57,6 +58,36 @@ const scenarios: Record<string, Scenario> = {
         context: "int_host.cpp",
     },
 };
+
+/// Resolves once `ready` holds: at once, called without an event, or after
+/// one of `events`, called with it.
+/// Hang detection: fails after a minute, naming `what` it waited for.
+function until<T>(
+    events: vscode.Event<T>[],
+    ready: (event?: T) => boolean,
+    what: string,
+): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const done = () => {
+            clearTimeout(timer);
+            for (const subscription of subscriptions) {
+                subscription.dispose();
+            }
+        };
+        const check = (event?: T) => {
+            if (ready(event)) {
+                done();
+                resolve();
+            }
+        };
+        const subscriptions = events.map((event) => event(check));
+        const timer = setTimeout(() => {
+            done();
+            reject(new Error(`no ${what} within a minute`));
+        }, 60 * 1000);
+        check();
+    });
+}
 
 // Pure decoding of the inactive-modifier line runs; no server involved.
 // Entries are (deltaLine, deltaStart, length, type, modifiers) tuples.
@@ -110,7 +141,7 @@ suite("executable setting", function () {
 if (process.platform !== "win32") {
     suite("second names", function () {
         test("an editor on a second name moves to the open document", async function () {
-            this.timeout(30 * 1000);
+            this.timeout(90 * 1000);
             const root = fs.mkdtempSync(path.join(os.tmpdir(), "clice-alias-"));
             fs.mkdirSync(path.join(root, "real"));
             fs.writeFileSync(path.join(root, "real", "a.cpp"), "int a() { return 0; }\n");
@@ -138,21 +169,25 @@ if (process.platform !== "win32") {
                     selection: new vscode.Range(0, 4, 0, 5),
                     preview: false,
                 });
-                const deadline = Date.now() + 10 * 1000;
                 const tabs = () =>
                     vscode.window.tabGroups.all
                         .flatMap((group) => group.tabs)
                         .filter((tab) => tab.input instanceof vscode.TabInputText)
                         .map((tab) => (tab.input as vscode.TabInputText).uri.toString());
-                const settled = () =>
-                    !tabs().includes(second.uri.toString()) &&
-                    vscode.window.activeTextEditor?.document === first;
-                while (!settled() && Date.now() < deadline) {
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                }
-                assert.ok(!tabs().includes(second.uri.toString()), "the second name's tab closes");
+                // The redirect shows the first document, then closes the
+                // second name's tab.
+                await until<unknown>(
+                    [
+                        vscode.window.tabGroups.onDidChangeTabs,
+                        vscode.window.onDidChangeActiveTextEditor,
+                    ],
+                    () =>
+                        !tabs().includes(second.uri.toString()) &&
+                        vscode.window.activeTextEditor?.document === first,
+                    "redirect to the open document",
+                );
                 const active = vscode.window.activeTextEditor;
-                assert.strictEqual(active?.document.uri.toString(), first.uri.toString());
+                assert.ok(active);
                 assert.deepStrictEqual(active.selection.start, new vscode.Position(0, 4));
             } finally {
                 busy.dispose();
@@ -279,25 +314,21 @@ suite("clice E2E", function () {
     });
 
     test("workspace symbol indexed", async function () {
-        this.timeout(90 * 1000);
-
-        // Definition is index-based: poll workspace/symbol until the
-        // expected symbol shows up.
-        const deadline = Date.now() + 60 * 1000;
-        for (;;) {
-            const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
-                "vscode.executeWorkspaceSymbolProvider",
-                scenario.indexSymbol,
-            );
-            if (symbols.some((s) => s.name === scenario.indexSymbol)) {
-                return;
-            }
-            assert.ok(
-                Date.now() < deadline,
-                `symbol ${scenario.indexSymbol} not indexed within 60s`,
-            );
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
+        // Definition is index-based. The fixture turns the test hooks on
+        // (tools/testing/cases/copy.ts): the server answers a sync once the
+        // background index is done.
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        const client = (extension?.exports as { client: ClientHandle }).client;
+        const { pending } = await client.sendRequest<SyncResult>("clice/internal/sync", {});
+        assert.deepStrictEqual(pending, [], "the server is still busy");
+        const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+            "vscode.executeWorkspaceSymbolProvider",
+            scenario.indexSymbol,
+        );
+        assert.ok(
+            symbols.some((s) => s.name === scenario.indexSymbol),
+            `symbol ${scenario.indexSymbol} not indexed`,
+        );
     });
 
     test("hover", async function () {
@@ -319,23 +350,12 @@ suite("clice E2E", function () {
 
         // The provider path runs through the inactive-regions middleware,
         // so a decode failure or a swallowed response surfaces here as
-        // missing tokens. Poll: the provider registers dynamically after
-        // the handshake.
-        const deadline = Date.now() + 30 * 1000;
-        for (;;) {
-            const tokens = await vscode.commands.executeCommand<vscode.SemanticTokens | undefined>(
-                "vscode.provideDocumentSemanticTokens",
-                document.uri,
-            );
-            if (tokens && tokens.data.length > 0) {
-                return;
-            }
-            assert.ok(
-                Date.now() < deadline,
-                "no semantic tokens through the middleware within 30s",
-            );
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
+        // missing tokens.
+        const tokens = await vscode.commands.executeCommand<vscode.SemanticTokens | undefined>(
+            "vscode.provideDocumentSemanticTokens",
+            document.uri,
+        );
+        assert.ok(tokens && tokens.data.length > 0, "no semantic tokens through the middleware");
     });
 
     test("definition", async function () {
@@ -356,7 +376,7 @@ suite("clice E2E", function () {
     });
 
     test("compilation context requests", async function () {
-        this.timeout(60 * 1000);
+        this.timeout(180 * 1000);
         const context = scenario.context;
         if (context === undefined) {
             this.skip();
@@ -377,19 +397,11 @@ suite("clice E2E", function () {
         // keeps the document open; the server recompiles the unchanged text
         // and publishes its diagnostics anew.
         const published = () =>
-            new Promise<void>((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    subscription.dispose();
-                    reject(new Error("no diagnostics publish after the switch"));
-                }, 30 * 1000);
-                const subscription = vscode.languages.onDidChangeDiagnostics((event) => {
-                    if (event.uris.some((changed) => changed.toString() === uri)) {
-                        clearTimeout(timer);
-                        subscription.dispose();
-                        resolve();
-                    }
-                });
-            });
+            until(
+                [vscode.languages.onDidChangeDiagnostics],
+                (event) => event?.uris.some((changed) => changed.toString() === uri) ?? false,
+                "diagnostics publish after the switch",
+            );
 
         let republished = published();
         await vscode.commands.executeCommand("clice.applyContext", host, query.epoch, uri);
@@ -483,7 +495,7 @@ suite("clice E2E", function () {
     });
 
     test("refactor command applies its action", async function () {
-        this.timeout(60 * 1000);
+        this.timeout(90 * 1000);
         if (path.basename(workspaceFolder().uri.fsPath) !== "hello_world") {
             this.skip();
         }
@@ -519,19 +531,11 @@ suite("clice E2E", function () {
             await vscode.window.showTextDocument(source, {
                 selection: new vscode.Range(cursor, cursor),
             });
-            const edited = new Promise<void>((resolve, reject) => {
-                const timer = setTimeout(() => {
-                    subscription.dispose();
-                    reject(new Error("the command applied no edit"));
-                }, 30 * 1000);
-                const subscription = vscode.workspace.onDidChangeTextDocument((event) => {
-                    if (event.document === source && event.contentChanges.length > 0) {
-                        clearTimeout(timer);
-                        subscription.dispose();
-                        resolve();
-                    }
-                });
-            });
+            const edited = until(
+                [vscode.workspace.onDidChangeTextDocument],
+                (event) => event?.document === source && event.contentChanges.length > 0,
+                "edit from the command",
+            );
             await Promise.all([
                 edited,
                 vscode.commands.executeCommand("clice.refactor.rewrite.populateSwitch"),

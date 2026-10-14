@@ -4,6 +4,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { running } from "../../client/process.ts";
 import { Workspace } from "../../client/workspace.ts";
 import { withTimeout } from "../../promise.ts";
 import { runCommand, splitCommand, type CommandOptions, type CommandRun } from "../cli/run.ts";
@@ -49,6 +50,8 @@ export interface TestContext {
     /// Let `ms` pass, where time is what the test checks; `why` names the product's
     /// interval it waits out.
     elapse(ms: number, why: string): Promise<void>;
+    /// Resolves once no process has one of `pids`.
+    gone(pids: readonly number[]): Promise<void>;
 }
 
 class TestRun implements TestContext {
@@ -157,7 +160,24 @@ class TestRun implements TestContext {
 
     elapse(ms: number, why: string): Promise<void> {
         return this.steps.run(`let ${String(ms)} ms pass: ${why}`, async () => {
+            // Time is the feature: a test whose claim is about time.
             await new Promise((resolve) => setTimeout(resolve, ms));
+        });
+    }
+
+    gone(pids: readonly number[]): Promise<void> {
+        return this.steps.run(`processes ${pids.join(", ")} gone`, async () => {
+            const deadline = Date.now() + 60_000;
+            while (pids.some(running)) {
+                if (Date.now() > deadline) {
+                    throw new Error(
+                        `still running after a minute: ${pids.filter(running).join(", ")}`,
+                    );
+                }
+                // No event: the end of a process not the test's own child is
+                // announced to no one; a minute bounds the looking.
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            }
         });
     }
 

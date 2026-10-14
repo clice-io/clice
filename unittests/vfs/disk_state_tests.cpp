@@ -158,6 +158,8 @@ ZEST_CASE(TurnEndsBeforeIO) {
         results.push_back(f.disk.check(fid, hash));
         f.rewrite("src/a.h", "int b;\n");
         results.push_back(f.disk.check(fid, hash));
+        // No event: a turn ends in the loop's prepare phase, which a timer
+        // resumes after.
         co_await kota::sleep(1, loop);
         results.push_back(f.disk.check(fid, hash));
         turns.cancel();

@@ -1,4 +1,5 @@
 import tseslint from "typescript-eslint";
+import clice from "@clice/tools/lint";
 
 export default tseslint.config(
     { ignores: ["node_modules/", "dist/", "out/", ".vscode-test/"] },
@@ -11,7 +12,9 @@ export default tseslint.config(
                 tsconfigRootDir: import.meta.dirname,
             },
         },
+        plugins: { clice },
         rules: {
+            "clice/timers": "error",
             // The extension logs through the output channel and console on
             // purpose (activation notices, server diagnostics).
             "no-console": "off",

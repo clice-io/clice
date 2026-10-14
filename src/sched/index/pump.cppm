@@ -166,6 +166,10 @@ public:
         return !indexing_active && index_queue_pos >= index_queue.size();
     }
 
+    /// Wait until is_idle(): every round, requeue rounds included, has run
+    /// and saved its results.
+    kota::task<> idle();
+
     /// Number of files remaining in the indexing queue.
     std::size_t pending_files() const {
         return index_queue_pos < index_queue.size() ? index_queue.size() - index_queue_pos : 0;
@@ -266,6 +270,9 @@ private:
     llvm::DenseMap<Fid, llvm::SmallVector<AttemptWait, 2>> attempt_waits;
     bool indexing_active = false;
     bool indexing_scheduled = false;
+
+    /// Set whenever a round ends; idle() waits on it.
+    kota::event round_ended{false};
     std::shared_ptr<kota::timer> index_idle_timer;
 
     /// Pause/resume: when paused, new index tasks wait on this event.

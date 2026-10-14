@@ -19,6 +19,8 @@ export function exitOf(proc: cp.ChildProcess): Promise<void> {
 }
 
 /// Whether `proc` exits within `ms`.
+/// Time is the feature: the grace a server gets before it is signalled, or
+/// before the extension host gives up on it.
 export async function exitsWithin(proc: cp.ChildProcess, ms: number): Promise<boolean> {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<boolean>((resolve) => {

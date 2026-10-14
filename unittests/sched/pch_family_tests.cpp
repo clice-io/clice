@@ -29,6 +29,8 @@ TaskGraph graph;
 PCHFamily pch{graph, project, pool};
 
 PCHFamilyAcquisitionTEST() {
+    // Hang detection: real workers build here, slowly on a loaded machine.
+    watchdog = std::chrono::seconds(45);
     tmp.touch("a.cpp", "");
     src = tmp.path("a.cpp");
 

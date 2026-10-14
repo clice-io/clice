@@ -8,13 +8,14 @@ import :unittests.utils;
 
 namespace clice::testing {
 
-/// Wait for event-loop cancellation cascades to finish before asserting state.
+/// Wait for event-loop cascades to finish before asserting state; the test
+/// runner's timeout ends one that never does.
 template <typename Pred>
 kota::task<> wait_until(Pred pred) {
-    for(int i = 0; i < 100 && !pred(); ++i) {
+    while(!pred()) {
+        // No event: the graph announces no change of interest.
         co_await kota::sleep(1);
     }
-    ZEXPECT(pred());
 }
 
 }  // namespace clice::testing

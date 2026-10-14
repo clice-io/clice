@@ -60,6 +60,8 @@ function bundledExecutable(context: ExtensionContext): string | undefined {
     return bundled;
 }
 
+/// Hang detection: a connect that neither succeeds nor fails, to a host that
+/// drops it, is given up after 5 s.
 function connectSocket(host: string, port: number): Promise<net.Socket> {
     return new Promise((resolve, reject) => {
         const socket = net.connect(port, host);

@@ -62,10 +62,11 @@ ZEST_CASE(HandlerCancelChainsThrough) {
             auto result = co_await kota::with_token(handler(), source.token());
             handler_cancelled = result.is_cancelled();
         };
+        auto gate = w.gate(cp);
         group.spawn(wrapper());
-
-        co_await kota::sleep(50, w.loop);
+        co_await w.parked(gate);
         source.cancel();
+        w.release(gate);
         co_await group.join();
 
         // The worker must have seen the IPC cancel: an interrupted (or
@@ -88,8 +89,9 @@ ZEST_CASE(HandlerCancelChainsThrough) {
 
 // The scheduler's cooperative cancel of a stateless build is an IPC cancel
 // whose answer the sender keeps awaiting (the slot must stay busy while the
-// worker is): the stop flag it trips makes that answer arrive at the next
-// declaration boundary instead of after the whole TU.
+// worker is): the answer is the cancel's. The stop flag it trips cuts the
+// parse at the next declaration, which StatefulWorker.IpcCancelInterruptsCompile
+// pins by the AST it leaves.
 ZEST_CASE(IpcCancelStopsBuild) {
     TempDir tmp;
     std::string text;
@@ -112,22 +114,18 @@ ZEST_CASE(IpcCancelStopsBuild) {
         bp.arguments = make_args(src);
 
         kota::cancellation_source source;
-        std::chrono::steady_clock::time_point cancelled_at;
         auto build = [&]() -> kota::task<> {
             auto result = co_await w.peer->send_request(bp, {.token = source.token()});
-            auto waited = std::chrono::steady_clock::now() - cancelled_at;
             ZASSERT(!result);
             ZEXPECT(result.error().code == worker::dispatch_errc::cancelled);
-            // An uninterrupted worker would index all 200k decls first.
-            ZEXPECT(waited < std::chrono::seconds(5));
         };
 
         kota::task_group<> group;
+        auto gate = w.gate(bp);
         group.spawn(build());
-
-        co_await kota::sleep(50, w.loop);
-        cancelled_at = std::chrono::steady_clock::now();
+        co_await w.parked(gate);
         source.cancel();
+        w.release(gate);
         co_await group.join();
 
         test_done = true;

@@ -139,6 +139,10 @@ struct WorkerPoolOptions {
     std::chrono::milliseconds build_deadline{std::chrono::minutes(10)};
     std::chrono::milliseconds query_deadline{std::chrono::minutes(2)};
 
+    /// The pace of the pool's checks: deadlines, cancel grace, foreground
+    /// window, memory.
+    std::chrono::milliseconds monitor_interval{3000};
+
     /// Documents a stateful worker holds before evicting; unset leaves the
     /// worker's default.
     std::optional<std::size_t> max_documents;

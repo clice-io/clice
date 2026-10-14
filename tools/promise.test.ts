@@ -4,6 +4,7 @@ import { MessageChannel } from "node:worker_threads";
 import { expect, test } from "vitest";
 import { TimeoutError, withTimeout } from "./promise.ts";
 
+// Time is the feature: the timeout itself is tested.
 test("timeout settles with the promise or a timeout error", async () => {
     await expect(withTimeout(Promise.resolve(7), 50)).resolves.toBe(7);
 
@@ -18,6 +19,7 @@ test("timeout settles with the promise or a timeout error", async () => {
     expect((bare as Error).message).toBe("timed out after 5ms");
 });
 
+// Time is the feature: the timeout itself is tested.
 test("timeout lets I/O ready after a stall settle first", async () => {
     // From the check phase, the next turn runs the due timer before it
     // delivers the message.

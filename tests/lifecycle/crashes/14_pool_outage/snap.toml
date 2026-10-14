@@ -6,7 +6,7 @@ value = [
     "clice/worker/tuRun ${WS}/unit_5.cpp: work parked in its worker by gate 14",
     "index ${WS}/unit_5.cpp",
     "index ${WS}/unit_6.cpp",
-    "index round at 6/9, 6 files queued",
+    "index round at 5/8, 6 files queued",
 ]
 
 [test.sync]

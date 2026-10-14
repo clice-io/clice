@@ -840,7 +840,7 @@ ZEST_CASE(transient_drop_handover) {
             ZEXPECT(graph.is_compiling(a(1)));
 
             graph.update(a(1));
-            co_await kota::sleep(1);
+            co_await kota::yield();
 
             // The depender's round was respawned; the dependency kept
             // compiling throughout.

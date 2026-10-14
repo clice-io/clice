@@ -42,7 +42,8 @@ MasterServer::MasterServer(kota::event_loop& loop,
     // turn, outside it.
     files.disk.on_change = [this] {
         bg_tasks.spawn([](MasterServer& server) -> kota::task<> {
-            co_await kota::sleep(std::chrono::milliseconds(0));
+            // Time is the feature: none, or the test hook's delay.
+            co_await kota::sleep(test_jitter());
             server.drain_disk_changes();
         }(*this));
     };
@@ -670,6 +671,7 @@ kota::task<> MasterServer::poll_task() {
     constexpr auto interval = std::chrono::milliseconds(250);
     constexpr auto budget = std::chrono::milliseconds(2);
     while(true) {
+        // Time is the feature: the disk loop's pace.
         co_await kota::sleep(interval);
         if(files.disk.tick(budget) > 0) {
             probe.happened(LoopEvent::DiskChange);
@@ -895,7 +897,7 @@ kota::task<> MasterServer::wait_idle(const kota::ipc::JSONPeer& editor) {
                 co_return;
             }
         }
-        // None of them announces its end.
+        // No event: none of them announces its end.
         co_await kota::sleep(std::chrono::milliseconds(1), loop);
     }
 }
@@ -989,6 +991,7 @@ void MasterServer::watch_client(std::uint32_t pid) {
 
 kota::task<> MasterServer::client_task(std::uint32_t pid) {
     while(process_alive(pid)) {
+        // No event: the editor is no child of the server's to wait for.
         co_await kota::sleep(std::chrono::seconds(2), loop);
     }
     LOG_INFO("Client process {} exited; shutting down", pid);

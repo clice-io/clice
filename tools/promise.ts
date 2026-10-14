@@ -8,6 +8,8 @@ export class TimeoutError extends Error {}
 /// elapsed first — `what` names the operation in the message. The timer is
 /// cleared on either outcome of the promise, so a finished wait never keeps
 /// the process alive; a rejection that is not an Error is wrapped in one.
+/// Hang detection: `ms` is a bound only a hang reaches, a minute or more
+/// (the lint rule clice/timers checks a literal one).
 export function withTimeout<T>(promise: Promise<T>, ms: number, what = ""): Promise<T> {
     return new Promise<T>((resolve, reject) => {
         // A process stalled past the deadline (a loaded machine) runs its due

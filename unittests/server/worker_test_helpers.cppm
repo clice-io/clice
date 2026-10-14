@@ -12,6 +12,7 @@ module clice:unittests.server.worker_test_helpers;
 import :command.argument_parser;
 import :command.command;
 import :unittests.utils.temp_dir;
+import :worker.probe;
 import :worker.protocol;
 
 namespace clice::testing {
@@ -39,12 +40,31 @@ inline std::vector<std::string> make_args(const std::string& file_path,
     return args;
 }
 
+/// Returns once a worker parked the work behind `probe`'s gate `id`.
+inline kota::task<> parked(BuildProbe& probe, std::uint64_t id) {
+    kota::event held;
+    auto connection = probe.on_held.connect([&](std::uint64_t each) {
+        if(each == id) {
+            held.set();
+        }
+    });
+    if(llvm::none_of(probe.gates(),
+                     [&](const BuildProbe::Gate& gate) { return gate.id == id && gate.parked; })) {
+        co_await held.wait();
+    }
+}
+
 /// Helper: spawn a worker process and return a BincodePeer connected to it.
 struct WorkerHandle : kota::zest::LoopFixture {
     kota::process proc{};
     std::unique_ptr<kota::ipc::StreamTransport> transport;
     std::unique_ptr<kota::ipc::BincodePeer> peer;
     int stderr_fd = -1;
+
+    /// The gates placed, and of them the ones the worker parked at.
+    std::uint64_t gates = 0;
+    llvm::DenseSet<std::uint64_t> parked_gates;
+    kota::event gate_parked{false};
 
     WorkerHandle() {
         // Outlasts the 30s bound the cancellation tests put on a request.
@@ -90,12 +110,38 @@ struct WorkerHandle : kota::zest::LoopFixture {
         transport = std::make_unique<kota::ipc::StreamTransport>(std::move(spawn.stdout_pipe),
                                                                  std::move(spawn.stdin_pipe));
         peer = std::make_unique<kota::ipc::BincodePeer>(loop, std::move(transport));
+        peer->on_notification([this](const worker::GateParkedParams& params) {
+            parked_gates.insert(params.id);
+            gate_parked.set();
+        });
         proc = std::move(spawn.proc);
 #ifndef _WIN32
         if(stderr_fd >= 0)
             ::close(stderr_fd);
 #endif
         return true;
+    }
+
+    /// Park the work of the next request like `params` where it starts in
+    /// the worker, as the master's BuildProbe does; returns the gate's id.
+    template <typename Params>
+    std::uint64_t gate(const Params& params) {
+        gates += 1;
+        peer->send_notification(worker::GateParams{.id = gates, .tag = worker::crash_tag(params)});
+        return gates;
+    }
+
+    /// Returns once the worker parked the work behind gate `id`.
+    kota::task<> parked(std::uint64_t id) {
+        while(!parked_gates.contains(id)) {
+            gate_parked.reset();
+            co_await gate_parked.wait();
+        }
+    }
+
+    /// Let the work parked behind gate `id` go on.
+    void release(std::uint64_t id) {
+        peer->send_notification(worker::GateReleaseParams{id});
     }
 
     /// Run a coroutine on the event loop and return once the worker has

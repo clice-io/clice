@@ -22,6 +22,9 @@ function firstReached(parks: readonly Park[]): Promise<Park> {
 
 test({ errors: ["exceeded crash budget"] }, async (t) => {
     t.disk.write(generate.units(UNITS));
+    // The units join the database once every index run of theirs is
+    // parked: the round that indexes them starts after the parks.
+    t.disk.database({ "main.cpp": [] });
     const s = await t.start({
         config: {
             project: {
@@ -32,7 +35,10 @@ test({ errors: ["exceeded crash budget"] }, async (t) => {
         },
         killWorkers: true,
     });
+    await s.indexed();
     let parks = await parkAll(s);
+    t.disk.database();
+    expect(await s.poll("cdb")).toBe(1);
     s.open("main.cpp");
     // One more death than the budget of three in a row gives the slot up.
     for (let death = 0; death < 4; death++) {

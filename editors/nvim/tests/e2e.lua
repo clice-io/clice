@@ -2,7 +2,9 @@
 --
 -- Usage: nvim -l editors/nvim/tests/e2e.lua <clice-executable> <fixture-dir>
 --
--- The fixtures are copies of cases (pixi run -e editor editor-prepare).
+-- The fixtures are copies of cases (pixi run -e editor editor-prepare), with
+-- the test hooks on: the script waits for the server through
+-- clice/internal/sync. Every vim.wait bound only fails a hang.
 -- Starts clice through the shipped LSP config (../lsp/clice.lua), opens
 -- the fixture's main file, waits for diagnostics, then checks that
 -- hover, definition and completion respond with well-formed results, and
@@ -87,10 +89,10 @@ if not client_id then
     fail 'vim.lsp.start did not start clice'
 end
 
-if not vim.wait(30000, function()
+if not vim.wait(60000, function()
     return vim.lsp.buf_is_attached(buf, client_id)
 end, 100) then
-    fail 'client did not attach within 30s'
+    fail 'client did not attach within 60s'
 end
 step 'client attached'
 
@@ -114,8 +116,8 @@ local function find_position(pattern)
     fail('pattern not found in buffer: ' .. pattern)
 end
 
-local function request(method, params)
-    local responses = vim.lsp.buf_request_sync(buf, method, params, 30000)
+local function request(method, params, timeout)
+    local responses = vim.lsp.buf_request_sync(buf, method, params, timeout or 60000)
     if not responses then
         fail(method .. ' timed out')
     end
@@ -129,20 +131,23 @@ local function request(method, params)
     return response.result
 end
 
--- Definition is index-based: poll workspace/symbol until the expected
--- symbol shows up.
+-- Answers once the server has nothing left to do; its own deadline is four
+-- minutes.
+local function sync()
+    local result = request('clice/internal/sync', vim.empty_dict(), 300000)
+    if #result.pending > 0 then
+        fail('the server is still busy: ' .. table.concat(result.pending, '; '))
+    end
+end
+
+-- Definition is index-based.
 step 'wait for index'
-local indexed = vim.wait(60000, function()
-    local responses = vim.lsp.buf_request_sync(buf, 'workspace/symbol', {
-        query = scenario.index_symbol,
-    }, 5000)
-    local result = responses and responses[client_id] and responses[client_id].result
-    return result and vim.iter(result):any(function(symbol)
-        return symbol.name == scenario.index_symbol
-    end) or false
-end, 1000)
-if not indexed then
-    fail('symbol ' .. scenario.index_symbol .. ' not indexed within 60s')
+sync()
+local symbols = request('workspace/symbol', { query = scenario.index_symbol })
+if not vim.iter(symbols or {}):any(function(symbol)
+    return symbol.name == scenario.index_symbol
+end) then
+    fail('symbol ' .. scenario.index_symbol .. ' not indexed')
 end
 
 local position = find_position(scenario.symbol)
@@ -188,22 +193,25 @@ if not items or #items == 0 then
 end
 
 if scenario.context then
-    -- Polls with a deadline of its own: vim.wait does not time out while
-    -- its condition keeps running sync requests that answer at once.
-    local function wait_for_context(automatic)
-        local deadline = vim.uv.hrtime() + 10e9
-        while vim.uv.hrtime() < deadline do
-            local current = request('clice/currentContext', text_document)
-            if
-                current.automatic == automatic
-                and type(current.context) == 'table'
-                and vim.fs.basename(vim.uri_to_fname(current.context.uri)) == scenario.context
-            then
-                return true
-            end
-            vim.wait(200)
+    -- A context command ends in a request of the plugin's own; the server
+    -- then compiles the buffer anew and publishes its diagnostics. Idle
+    -- before the command, the server publishes nothing else.
+    local function after_publish(command)
+        sync()
+        got_diagnostics = false
+        command()
+        if not vim.wait(60000, function()
+            return got_diagnostics
+        end, 50) then
+            fail 'no diagnostics after the context command'
         end
-        return false
+    end
+
+    local function context_is(automatic)
+        local current = request('clice/currentContext', text_document)
+        return current.automatic == automatic
+            and type(current.context) == 'table'
+            and vim.fs.basename(vim.uri_to_fname(current.context.uri)) == scenario.context
     end
 
     local notified
@@ -213,7 +221,7 @@ if scenario.context then
     end
     step 'show context'
     vim.cmd.LspCliceShowContext()
-    if not vim.wait(10000, function()
+    if not vim.wait(60000, function()
         return notified ~= nil
     end, 50) then
         fail 'LspCliceShowContext showed nothing'
@@ -228,24 +236,24 @@ if scenario.context then
             return opts.format_item(item):find(scenario.context, 1, true) ~= nil
         end))
     end
-    vim.cmd.LspCliceSwitchContext()
-    if not wait_for_context(false) then
+    after_publish(vim.cmd.LspCliceSwitchContext)
+    if not context_is(false) then
         fail 'LspCliceSwitchContext did not switch the context'
     end
 
     step 'reset context'
-    vim.cmd.LspCliceResetContext()
-    if not wait_for_context(true) then
+    after_publish(vim.cmd.LspCliceResetContext)
+    if not context_is(true) then
         fail 'LspCliceResetContext did not reset the context'
     end
 end
 
 step 'shutdown'
 vim.lsp.get_client_by_id(client_id):stop()
-if not vim.wait(15000, function()
+if not vim.wait(60000, function()
     return vim.lsp.get_client_by_id(client_id) == nil
 end, 100) then
-    fail 'client did not stop within 15s'
+    fail 'client did not stop within 60s'
 end
 
 io.stdout:write('PASS: ' .. vim.fs.basename(fixture_dir) .. '\n')

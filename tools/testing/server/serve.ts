@@ -1251,7 +1251,7 @@ export class Serve extends Client {
                 try {
                     const { pending } = await withTimeout(
                         client.sync({ deadlineMs: 1_000 }),
-                        10_000,
+                        60_000,
                         "sync",
                     );
                     console.log(

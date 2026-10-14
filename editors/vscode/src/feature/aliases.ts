@@ -22,6 +22,8 @@ function identity(document: vscode.TextDocument): string | undefined {
 /// the window returns: VS Code sets it in the turn that reports the editor.
 /// An opener that sets the selection, or opens another file, after its open
 /// returns gets a short while more.
+/// Time is the feature: nothing tells when such an opener is done, so the
+/// redirect gives it 200 ms.
 async function requestedSelection(editor: vscode.TextEditor): Promise<vscode.Selection> {
     await vscode.commands.getCommands();
     return new Promise((resolve) => {

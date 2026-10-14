@@ -64,6 +64,7 @@ export function runProcess(
         child.on("close", finish);
         if (options.timeout !== undefined) {
             const timeout = options.timeout;
+            // Hang detection: the caller's bound on a run that never ends.
             timer = setTimeout(() => {
                 error = new Error(`${command} timed out after ${timeout}ms`);
                 child.kill("SIGTERM");
@@ -79,4 +80,18 @@ export function runProcess(
             });
         }
     });
+}
+
+/// Whether a process has the pid: signal 0 checks without sending, and
+/// ESRCH says none has.
+export function running(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") {
+            return false;
+        }
+        throw error;
+    }
 }

@@ -8,9 +8,11 @@ module;
 module clice;
 
 import :support.anomaly;
+import :support.signal;
 import :unittests.server.worker_test_helpers;
 import :unittests.utils;
 import :worker.pool;
+import :worker.probe;
 import :worker.protocol;
 
 namespace clice::testing {
@@ -20,9 +22,14 @@ struct WorkerPoolFixture {
     using SlotState = WorkerPool::SlotState;
 
     kota::event_loop loop;
+    BuildProbe probe;
     WorkerPool pool;
 
     std::vector<WorkerCrashInfo> crash_reports;
+
+    /// Set whenever a stateless slot (re)enters service.
+    kota::event serving{false};
+    Signal<>::Connection serving_connection;
 
     WorkerPoolFixture() : pool(loop) {
         // Unstarted, the pool keeps WorkerPoolOptions' defaults; lift the
@@ -32,6 +39,7 @@ struct WorkerPoolFixture {
         pool.on_crash = [this](const WorkerCrashInfo& info) {
             crash_reports.push_back(info);
         };
+        serving_connection = pool.on_stateless_capacity.connect([this] { serving.set(); });
     }
 
     ~WorkerPoolFixture() {
@@ -441,6 +449,30 @@ struct WorkerPoolFixture {
         return pool.stateless_workers[idx].state == SlotState::Alive;
     }
 
+    /// Returns once stateless slot `idx` serves: spawned, respawned, revived
+    /// or refilled.
+    kota::task<> serves(std::size_t idx) {
+        while(!worker_alive(idx)) {
+            serving.reset();
+            co_await serving.wait();
+        }
+    }
+
+    /// Returns once the pool has handled the exit of the process now in
+    /// stateless slot `idx`.
+    kota::task<> exited(std::size_t idx) {
+        auto death = pool.stateless_workers[idx].death;
+        co_await death->done.wait();
+    }
+
+    /// Park the work of the next request like `params` where it starts in
+    /// its worker (see BuildProbe::gate); returns the gate's id.
+    template <typename Params>
+    std::uint64_t gate(const Params& params) {
+        pool.probe = &probe;
+        return probe.gate(worker::crash_tag(params));
+    }
+
     int worker_pid(std::size_t idx) const {
         return pool.stateless_workers[idx].proc.pid();
     }
@@ -841,7 +873,8 @@ ZEST_CASE(ConcurrencyLimit) {
             ++concurrent;
             if(concurrent > max_concurrent)
                 max_concurrent = concurrent;
-            co_await kota::sleep(10);
+            // The others try to acquire meanwhile.
+            co_await kota::yield();
             --concurrent;
             f.release_slot(idx);
         };
@@ -944,7 +977,7 @@ ZEST_CASE(FreshAcquireRespectsQueue) {
             f.release_slot(idx);
         };
         group.spawn(fresh());
-        co_await kota::sleep(10);
+        co_await kota::yield();
 
         // The fresh acquire lined up behind the queued waiter instead of
         // acquiring the idle worker over its head.
@@ -2064,18 +2097,21 @@ ZEST_CASE(StartAndStop) {
 }
 
 ZEST_CASE(StopIsPrompt) {
-    // Regression guard: stop() must cancel the monitor loop's 3s poll
-    // sleep instead of waiting it out.
+    // Regression guard: stop() must cancel the monitor loop's sleep
+    // instead of waiting it out; this one would outlast the test.
     WorkerPoolFixture f;
-    std::chrono::milliseconds elapsed{};
+    bool stopped = false;
     f.run([&]() -> kota::task<> {
-        ZASSERT(f.start(2, 0));
-        auto begin = std::chrono::steady_clock::now();
+        WorkerPoolOptions opts;
+        opts.self_path = clice_binary();
+        opts.stateless_count = 2;
+        opts.stateful_count = 0;
+        opts.monitor_interval = std::chrono::hours(1);
+        ZASSERT(f.pool.start(opts));
         co_await f.stop();
-        elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - begin);
+        stopped = true;
     });
-    ZEXPECT(elapsed.count() < 1500);
+    ZEXPECT(stopped);
 }
 
 #ifndef _WIN32
@@ -2170,16 +2206,18 @@ ZEST_CASE(AdvisoryCancelCooperates) {
 
         kota::cancellation_source advisory;
         bool cancelled = false;
+        auto gate = f.gate(params);
         auto sender = [&]() -> kota::task<> {
             auto result =
                 co_await f.pool.send_stateless(params, worker::Priority::Low, advisory.token());
             cancelled =
                 !result.has_value() && result.error().code == worker::dispatch_errc::cancelled;
         };
+        // The build is under way in the worker when the token fires.
         auto driver = [&]() -> kota::task<> {
-            co_await kota::sleep(300);
+            co_await parked(f.probe, gate);
             advisory.cancel();
-            co_return;
+            f.probe.release(gate);
         };
         co_await kota::when_all(sender(), driver());
         ZEXPECT(cancelled);
@@ -2210,15 +2248,8 @@ ZEST_CASE(CrashAndRestart) {
         ZEXPECT(pid > 0);
 
         f.kill_worker(0);
-
-        // Wait for respawn: PID must change (not just alive, which is
-        // true before the kill is processed).
-        for(int i = 0; i < 50; ++i) {
-            co_await kota::sleep(100);
-            if(f.worker_alive(0) && f.worker_pid(0) != pid)
-                break;
-        }
-        ZEXPECT(f.worker_alive(0));
+        co_await f.exited(0);
+        co_await f.serves(0);
         ZEXPECT(f.worker_pid(0) != pid);
 
         co_await f.stop();
@@ -2240,17 +2271,11 @@ ZEST_CASE(DeadSlotRevives) {
 
         // The very first crash exceeds the zero budget: the slot dies...
         co_await f.kill_running_worker(tmp.path("slow.cpp"));
-        for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
-            co_await kota::sleep(100);
-        }
         ZEXPECT(f.slot_dead(0));
 
         // ...and is revived with a fresh budget after the cooldown: the
         // pool never stays at zero workers forever.
-        for(int i = 0; i < 100 && !f.worker_alive(0); ++i) {
-            co_await kota::sleep(100);
-        }
-        ZEXPECT(f.worker_alive(0));
+        co_await f.serves(0);
         ZEXPECT(f.crash_streak(0) == 0u);
 
         co_await f.stop();
@@ -2390,19 +2415,13 @@ ZEST_CASE(ScaleUpRevivesDead) {
         f.set_max_crash_streak(0);
 
         co_await f.kill_running_worker(tmp.path("slow.cpp"));
-        for(int i = 0; i < 50 && !f.slot_dead(0); ++i) {
-            co_await kota::sleep(100);
-        }
         ZASSERT(f.slot_dead(0));
 
         // Scale-up pressure revives the dead slot instead of appending a
         // third worker next to it.
         ZASSERT(f.scale_up());
         ZEXPECT(f.stateless_count() == 2u);
-        for(int i = 0; i < 50 && !f.worker_alive(0); ++i) {
-            co_await kota::sleep(100);
-        }
-        ZEXPECT(f.worker_alive(0));
+        co_await f.serves(0);
         ZEXPECT(f.crash_streak(0) == 0u);
 
         co_await f.stop();
@@ -2417,19 +2436,14 @@ ZEST_CASE(ScaleUpReusesRetired) {
     f.run([&]() -> kota::task<> {
         ZASSERT(f.start(2, 0));
         f.retire_idle();
-        for(int i = 0; i < 50 && !f.slot_retired(1); i += 1) {
-            co_await kota::sleep(100);
-        }
+        co_await f.exited(1);
         ZASSERT(f.slot_retired(1));
 
         // The retired slot is refilled instead of a third appended: a
         // retire/scale-up cycle must not grow the slot table.
         ZASSERT(f.scale_up());
         ZEXPECT(f.stateless_count() == 2u);
-        for(int i = 0; i < 50 && !f.worker_alive(1); i += 1) {
-            co_await kota::sleep(100);
-        }
-        ZEXPECT(f.worker_alive(1));
+        co_await f.serves(1);
 
         co_await f.stop();
         done = true;
@@ -2444,12 +2458,7 @@ ZEST_CASE(CrashNotification) {
         ZASSERT(f.start(2, 0));
 
         f.kill_worker(0);
-
-        for(int i = 0; i < 50; ++i) {
-            co_await kota::sleep(100);
-            if(!f.crash_reports.empty())
-                break;
-        }
+        co_await f.exited(0);
 
         ZASSERT(!f.crash_reports.empty());
         ZEXPECT(!f.crash_reports[0].stateful);
@@ -2520,13 +2529,10 @@ ZEST_CASE(PreemptReportsLost) {
             if(!result.has_value())
                 code = result.error().code;
         };
+        // The spawn runs the sender up to its wait for the reply; preempted
+        // within the same loop turn, the request is caught in flight.
         group.spawn(sender());
-        // Wait until the acquisition is visible, then preempt within the same
-        // loop turn: with no suspension in between, the worker's response
-        // cannot be processed first, so the preemption deterministically
-        // catches the request in flight.
-        while(f.low_busy() == 0)
-            co_await kota::sleep(1);
+        ZASSERT(f.low_busy() == 1u);
         f.preempt(1);
         co_await group.join();
         ZEXPECT(code == worker::dispatch_errc::worker_lost);
@@ -2534,12 +2540,7 @@ ZEST_CASE(PreemptReportsLost) {
         // Preemption is not a crash: no report, and the worker comes back
         // with an untouched budget.
         ZEXPECT(f.crash_reports.empty());
-        for(int i = 0; i < 50; ++i) {
-            co_await kota::sleep(100);
-            if(f.worker_alive(0))
-                break;
-        }
-        ZEXPECT(f.worker_alive(0));
+        co_await f.serves(0);
         ZEXPECT(f.crash_streak(0) == 0u);
 
         co_await f.stop();
@@ -2574,8 +2575,7 @@ ZEST_CASE(ReclaimBeatsCancel) {
                 code = result.error().code;
         };
         group.spawn(sender());
-        while(f.low_busy() == 0)
-            co_await kota::sleep(1);
+        ZASSERT(f.low_busy() == 1u);
         // A memory kill arriving before the cancelled request stopped is
         // reported as such: the request may be what exhausted memory, and a
         // free requeue would repeat the kill.
@@ -2614,8 +2614,7 @@ ZEST_CASE(CancelledCrashRetiresSlot) {
                 code = result.error().code;
         };
         group.spawn(sender());
-        while(f.low_busy() == 0)
-            co_await kota::sleep(1);
+        ZASSERT(f.low_busy() == 1u);
 
         // A cooperative cancel whose victim then dies on its own inside the
         // grace window: the request still classifies as cancelled, but the

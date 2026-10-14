@@ -205,6 +205,9 @@ void make_graph() {
 /// Run the test body, then verify the shutdown protocol leaves the graph idle.
 template <typename F>
 void execute(F&& fn) {
+    // Hang detection: the modules compile for real, slowly on a loaded
+    // machine.
+    watchdog = std::chrono::seconds(45);
     auto wrapper = [&]() -> kota::task<> {
         co_await fn();
         co_await cg->shutdown();
@@ -1308,9 +1311,8 @@ ZEST_CASE(shared_dep_fails_both) {
     execute([&]() -> kota::task<> {
         auto driver = [&]() -> kota::task<> {
             co_await shared_started.wait();
-            co_await kota::sleep(1);
             // Both chains hold interest in the same round.
-            ZEXPECT(cg->refcount(pid_shared) == 2u);
+            co_await wait_until([&] { return cg->refcount(pid_shared) == 2u; });
             shared_proceed.set();
             co_return;
         };
