@@ -242,7 +242,7 @@ The `[documentation]` section controls how clice reads documentation comments.
 | -------- | -------- | ----------- |
 | `format` | `string` | `"doxygen"` |
 
-How documentation comments are read, wherever they show (hover, signature help, `clice query`): "doxygen" reads Doxygen's commands (`@brief`, `@param`, `@return`, ...) and the Markdown Doxygen allows, along with the GTK-Doc and kernel-doc conventions; "plain" shows a comment as written.
+How documentation comments are read, wherever they show (hover, completion, signature help, `clice query`): "doxygen" reads Doxygen's commands (`@brief`, `@param`, `@return`, ...) and the Markdown Doxygen allows, along with the GTK-Doc and kernel-doc conventions; "plain" shows a comment as written.
 
 </div>
 

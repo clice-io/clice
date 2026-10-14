@@ -242,7 +242,7 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 | -------- | -------- | ----------- |
 | `format` | `string` | `"doxygen"` |
 
-文档注释的读取方式，凡是显示文档注释的地方（悬停、签名帮助、`clice query`）都按它读取："doxygen" 读取 Doxygen 的命令（`@brief`、`@param`、`@return` 等）以及 Doxygen 允许的 Markdown，同时识别 GTK-Doc 和 kernel-doc 的写法；"plain" 按原样显示注释。
+文档注释的读取方式，凡是显示文档注释的地方（悬停、代码补全、签名帮助、`clice query`）都按它读取："doxygen" 读取 Doxygen 的命令（`@brief`、`@param`、`@return` 等）以及 Doxygen 允许的 Markdown，同时识别 GTK-Doc 和 kernel-doc 的写法；"plain" 按原样显示注释。
 
 </div>
 

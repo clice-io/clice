@@ -136,56 +136,14 @@ struct DocumentationOptions {
                      choices = {"doxygen", "plain"},
                      description =
                          "How documentation comments are read, wherever they "
-                         "show (hover, signature help, `clice query`): "
-                         "\"doxygen\" reads Doxygen's commands (`@brief`, "
-                         "`@param`, `@return`, ...) and the Markdown Doxygen "
-                         "allows, along with the GTK-Doc and kernel-doc "
-                         "conventions; \"plain\" shows a comment as written.")
+                         "show (hover, completion, signature help, `clice "
+                         "query`): \"doxygen\" reads Doxygen's commands "
+                         "(`@brief`, `@param`, `@return`, ...) and the "
+                         "Markdown Doxygen allows, along with the GTK-Doc and "
+                         "kernel-doc conventions; \"plain\" shows a comment as "
+                         "written.")
     <std::string> format = "doxygen";
 
-    KOTATSU_ANNOTATE(defaulted = true,
-                     description =
-                         "An overriding method without a documentation comment "
-                         "shows the one of the method it overrides.")
-    <bool> inherit = true;
-};
-
-/// The documentation of a declaration: its comment (doc_comment) read as
-/// `options` say.
-auto documentation(CompilationUnitRef unit,
-                   const clang::NamedDecl* decl,
-                   const DocumentationOptions& options) -> Documentation;
-
-/// The same of a macro.
-auto documentation(CompilationUnitRef unit,
-                   const clang::MacroInfo* macro,
-                   const DocumentationOptions& options) -> Documentation;
-
-/// The same of an indexed symbol, from the comments in the text the index
-/// read (IndexQuery::doc_comment).
-auto documentation(const index::IndexQuery& query,
-                   index::SymbolHash hash,
-                   Fid anchor,
-                   const DocumentationOptions& options) -> Documentation;
-
-/// The names a documentation comment may give `function`'s parameter
-/// `index`: each one a declaration of the function, or of the template it
-/// was instantiated from, writes for it — a definition may rename what the
-/// documented declaration names.
-auto parameter_names(const clang::FunctionDecl& function, unsigned index)
-    -> llvm::SmallVector<std::string, 1>;
-
-/// Write after an entry — a parameter, a return value, an exception — what
-/// a documentation says of it: its direction, then its text.
-void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text);
-
-/// A documentation on its own, for a reader without the declaration at
-/// hand: its brief, its parameters, what it returns and throws, then its
-/// details.
-auto present(const Documentation& documentation) -> markup::Document;
-
-/// Corresponds to the `[hover]` section in clice.toml.
-struct HoverOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
                          "An overriding method without a documentation comment "

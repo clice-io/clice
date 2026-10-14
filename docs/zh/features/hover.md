@@ -599,7 +599,7 @@ tests/hover/directives/01_include_paths
 
 ## 文档
 
-无论在符号的哪个位置悬停，卡片都会显示其声明上的文档注释。注释按 Doxygen 的方式读取——包括其中的命令，以及注释所用的 Markdown——`clice query` 也以同样的方式读取。
+无论在符号的哪个位置悬停，卡片都会显示其声明上的文档注释。注释按 Doxygen 的方式读取——包括其中的命令，以及注释所用的 Markdown——代码补全、签名帮助和 `clice query` 也以同样的方式读取。
 
 <!-- BEGIN GENERATED ITEMS: hover/documentation -->
 

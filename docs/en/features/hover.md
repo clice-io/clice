@@ -602,7 +602,7 @@ tests/hover/directives/01_include_paths
 
 ## Documentation
 
-A declaration's documentation comment shows in its card, wherever the symbol is hovered. The comment is read the way Doxygen reads it — its commands, and the Markdown it is written in — and `clice query` reads it the same way.
+A declaration's documentation comment shows in its card, wherever the symbol is hovered. The comment is read the way Doxygen reads it — its commands, and the Markdown it is written in — and completion, signature help and `clice query` read it the same way.
 
 <!-- BEGIN GENERATED ITEMS: hover/documentation -->
 
