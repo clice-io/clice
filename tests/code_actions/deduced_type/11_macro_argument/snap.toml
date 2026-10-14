@@ -1,0 +1,44 @@
+[[answers.argument.code_actions]]
+kind = "refactor.rewrite.expandDeducedType"
+title = "Replace 'auto' with 'int'"
+compiles = true
+
+[answers.argument.code_actions.edits]
+"main.cpp" = '''
+
+ void f() {
+-    WRAP(auto a = make();)
++    WRAP(int a = make();)
+     DECLARE(b)
+     static_assert(__is_same(decltype(a), int));
+'''
+
+[[answers.argument.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'WRAP'"
+compiles = true
+
+[answers.argument.code_actions.edits]
+"main.cpp" = '''
+
+ void f() {
+-    WRAP(auto a = make();)
++    auto a = make();
+     DECLARE(b)
+     static_assert(__is_same(decltype(a), int));
+'''
+
+[[answers.body.code_actions]]
+kind = "refactor.inline.macro"
+title = "Expand macro 'DECLARE'"
+compiles = true
+
+[answers.body.code_actions.edits]
+"main.cpp" = '''
+ void f() {
+     WRAP(auto a = make();)
+-    DECLARE(b)
++    auto b = 1;
+     static_assert(__is_same(decltype(a), int));
+ }
+'''
