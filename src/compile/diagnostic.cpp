@@ -234,15 +234,17 @@ private:
                 const clang::Diagnostic& raw,
                 tidy::ClangTidyChecker* editor) {
         // A note belongs to the diagnostic before it; one ahead of every
-        // diagnostic, or after one left out, belongs to none.
+        // diagnostic, or after one left out, belongs to none. Formatting it
+        // may record diagnostics of its own (see convert): the notes still
+        // to come stay with their owner.
         if(is_note(level)) {
-            if(attach_notes) {
-                auto owner = unit.collected_diagnostics.size() - 1;
+            if(auto at = owner) {
                 auto note = convert(level, raw);
                 if(editor) {
                     editor->adjust_diag(note);
                 }
-                unit.collected_diagnostics[owner].notes.push_back(std::move(note));
+                unit.collected_diagnostics[*at].notes.push_back(std::move(note));
+                owner = at;
             }
             return;
         }
@@ -250,7 +252,7 @@ private:
         if(editor) {
             level = editor->adjust_level(level, raw);
             if(level == clang::DiagnosticsEngine::Ignored) {
-                attach_notes = false;
+                owner.reset();
                 return;
             }
         }
@@ -260,16 +262,18 @@ private:
         }
         // A check can report one finding more than once, from several
         // instantiations of a template.
-        attach_notes = diagnostic.id.source != DiagnosticSource::ClangTidy ||
-                       findings
-                           .emplace(diagnostic.fid,
-                                    diagnostic.range.begin,
-                                    diagnostic.range.end,
-                                    diagnostic.message)
-                           .second;
-        if(attach_notes) {
-            unit.collected_diagnostics.push_back(std::move(diagnostic));
+        if(diagnostic.id.source == DiagnosticSource::ClangTidy &&
+           !findings
+                .emplace(diagnostic.fid,
+                         diagnostic.range.begin,
+                         diagnostic.range.end,
+                         diagnostic.message)
+                .second) {
+            owner.reset();
+            return;
         }
+        owner = unit.collected_diagnostics.size();
+        unit.collected_diagnostics.push_back(std::move(diagnostic));
     }
 
     /// Formatting can deserialize declarations, and the AST reader reports
@@ -318,8 +322,8 @@ private:
 
     CompilationUnit& unit;
 
-    /// Whether the notes that follow belong to a recorded diagnostic.
-    bool attach_notes = false;
+    /// The recorded diagnostic the notes that follow belong to.
+    std::optional<std::size_t> owner;
 
     /// The clang-tidy findings recorded, by place and message.
     std::set<std::tuple<clang::FileID, std::uint32_t, std::uint32_t, std::string>> findings;
