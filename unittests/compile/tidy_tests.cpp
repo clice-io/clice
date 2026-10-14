@@ -313,10 +313,14 @@ int f(int value, int total) {
     ZASSERT(unit->completed());
     // Clang drops the `)` it cannot place after `1` in the definition: the
     // `(` left in the argument is no fix.
-    auto parentheses = llvm::find_if(unit->diagnostics(), [](const Diagnostic& diag) {
-        return llvm::StringRef(diag.message).starts_with("place parentheses");
+    auto assignment = llvm::find_if(unit->diagnostics(), [](const Diagnostic& diag) {
+        return diag.id.level == DiagnosticLevel::Warning;
     });
-    ZASSERT(parentheses != unit->diagnostics().end());
+    ZASSERT(assignment != unit->diagnostics().end());
+    auto parentheses = llvm::find_if(assignment->notes, [](const Diagnostic& note) {
+        return llvm::StringRef(note.message).starts_with("place parentheses");
+    });
+    ZASSERT(parentheses != assignment->notes.end());
     ZEXPECT(parentheses->fix.empty());
 
     auto typo = llvm::find_if(unit->diagnostics(), [](const Diagnostic& diag) {
