@@ -173,7 +173,8 @@ void foo() {}
     dp.params.output_file = "fake.pcm";
 
     auto unit = compile(std::move(dp.params));
-    ZASSERT(unit->completed() && !unit->has_output());
+    ZASSERT(unit->completed());
+    ZEXPECT(!unit->has_output());
 }
 
 ZEST_CASE(ASTError) {

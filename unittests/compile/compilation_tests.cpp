@@ -278,7 +278,7 @@ int main() { return preamble_func(); }
         CompilationParams reuse{.kind = CompilationKind::Content, .input = params.input};
         reuse.input.pch = {*pch_path, bound};
         auto content_unit = clice::compile(std::move(reuse));
-        ZASSERT(content_unit->setup_fail() || content_unit->fatal_error());
+        ZASSERT((content_unit->setup_fail() || content_unit->fatal_error()));
         // The blame signal the master's retraction keys on (pch_suspect):
         // a diagnostic naming the blob, or an AST-deserialization error —
         // that family's messages do not reliably carry the path ("Blob
