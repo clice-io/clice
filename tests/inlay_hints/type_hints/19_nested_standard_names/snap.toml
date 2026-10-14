@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+inlay_hints = [
+    { line = "auto timeout⟨: seconds⟩ = timeouts.get();" },
+    { line = "auto delay⟨: milliseconds⟩ = delays.get();" },
+    { line = "auto tick⟨: duration<int, milli>⟩ = ticks.get();" },
+]
