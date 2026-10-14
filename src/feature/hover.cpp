@@ -1512,16 +1512,6 @@ markup::Document HoverInfo::present() const {
         output.add_markdown(doc.brief);
     }
 
-    auto list_retvals = [&] {
-        if(doc.retvals.empty()) {
-            return;
-        }
-        auto& list = output.add_bullet_list();
-        for(const auto& retval: doc.retvals) {
-            describe(list.add_item().add_paragraph().append_code(retval.name), {}, retval.text);
-        }
-    };
-
     /// Print types on their own lines to reduce chances of getting line-wrapped
     /// by the editor, as they might be long.
     if(return_type) {
@@ -1533,7 +1523,7 @@ markup::Document HoverInfo::present() const {
         auto& paragraph =
             output.add_paragraph().append_text("→ ").append_code(llvm::to_string(*return_type));
         describe(paragraph, {}, doc.returns);
-        list_retvals();
+        add_entries(output, {}, doc.retvals);
     }
 
     /// The parameters of the signature, each with what the comment says of
@@ -1573,7 +1563,7 @@ markup::Document HoverInfo::present() const {
         if(!doc.returns.empty()) {
             output.add_paragraph().append_text("Returns: ").append_markdown(doc.returns);
         }
-        list_retvals();
+        add_entries(output, {}, doc.retvals);
     }
 
     /// Don't print the type after parameters or return type as this will just
@@ -1627,25 +1617,8 @@ markup::Document HoverInfo::present() const {
         output.add_paragraph().append_text(buffer);
     }
 
-    if(!doc.throws.empty()) {
-        output.add_paragraph().append_text("Throws: ");
-        auto& list = output.add_bullet_list();
-        for(const auto& thrown: doc.throws) {
-            describe(list.add_item().add_paragraph().append_code(thrown.name), {}, thrown.text);
-        }
-    }
-
-    if(!doc.details.empty()) {
-        if(doc.verbatim) {
-            output.add_lines(doc.details);
-        } else {
-            output.add_markdown(doc.details);
-        }
-    }
-
-    if(!doc.see.empty()) {
-        output.add_paragraph().append_text("See also: ").append_markdown(llvm::join(doc.see, ", "));
-    }
+    add_entries(output, "Throws: ", doc.throws);
+    add_details(output, doc);
 
     if(!attribute_documentation.empty()) {
         parse_rst(attribute_documentation, output);

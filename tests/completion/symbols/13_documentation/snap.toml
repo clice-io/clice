@@ -8,8 +8,9 @@ label = "read_sensor(int channel)"
 kind = "Function"
 detail = "int"
 documentation = '''
-Reads the sensor once.  
-Returns the reading in \*\*millivolts\*\*.
+Reads the sensor once.
+
+Returns the reading in **millivolts**.
 '''
 
 ["markdown client".instantiated_member.completion]

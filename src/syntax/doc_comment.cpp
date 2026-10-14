@@ -151,6 +151,19 @@ llvm::ArrayRef<LexicalInfo::Comment>
     return comments.slice(first, at - first);
 }
 
+bool DocCommentChoice::offer(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> run) {
+    if(doxygen || run.empty()) {
+        return doxygen;
+    }
+    if(is_doc_comment(text_of(content, run.front()))) {
+        text = comment_text(content, run);
+        doxygen = true;
+    } else if(text.empty()) {
+        text = comment_text(content, run);
+    }
+    return doxygen;
+}
+
 std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> comments) {
     llvm::SmallVector<llvm::StringRef> lines;
     for(auto& comment: comments) {

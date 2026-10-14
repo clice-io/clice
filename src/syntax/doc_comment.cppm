@@ -33,8 +33,8 @@ bool is_doc_comment(llvm::StringRef text);
 /// (the file's, in order): a comment after the declaration on its last
 /// line when the declaration takes one and the comment is marked as such
 /// (`///<`); else the comments ending right above it, as clang attaches
-/// them — nothing but a declaration's leading tokens between, and none of
-/// `;{}#` — except that a plain `//` or `/* */` comment a blank line
+/// them — nothing but a declaration's leading tokens between: none of
+/// `;{}#` and no label such as `public:` — except that a plain `//` or `/* */` comment a blank line
 /// separates documents nothing; else an unmarked comment after it. A
 /// comment following code on its line documents only that code. The run
 /// takes in the comments of the same style on the lines next to it. Empty
@@ -43,6 +43,34 @@ llvm::ArrayRef<LexicalInfo::Comment>
     documenting_comments(llvm::StringRef content,
                          llvm::ArrayRef<LexicalInfo::Comment> comments,
                          DocumentedDecl decl);
+
+/// Of the comments documenting the declarations of one entity, offered in
+/// order, the one documenting the entity: the first Doxygen comment, else
+/// the first of any style. Once a Doxygen comment is offered the choice
+/// stays.
+class DocCommentChoice {
+public:
+    /// Offer the comments documenting one declaration of `content`
+    /// (documenting_comments); true once the choice is made.
+    bool offer(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> run);
+
+    bool decided() const {
+        return doxygen;
+    }
+
+    bool empty() const {
+        return text.empty();
+    }
+
+    /// The text (comment_text) of the comment chosen, empty without one.
+    std::string take() && {
+        return std::move(text);
+    }
+
+private:
+    std::string text;
+    bool doxygen = false;
+};
 
 /// The text of a run of comments: the comment markers and the leading `*`
 /// of a block comment's lines taken out, the indentation the lines share

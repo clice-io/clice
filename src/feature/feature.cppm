@@ -180,6 +180,16 @@ auto parameter_names(const clang::FunctionDecl& function, unsigned index)
 /// a documentation says of it: its direction, then its text.
 void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text);
 
+/// Add what a documentation says of the values a function returns or the
+/// exceptions it throws, as a list under `title` (none when empty).
+void add_entries(markup::Document& output,
+                 llvm::StringRef title,
+                 llvm::ArrayRef<Documentation::Entry> entries);
+
+/// Add what a card shows of a documentation last: its details, then what
+/// it refers to (`@see`).
+void add_details(markup::Document& output, const Documentation& documentation);
+
 /// A documentation on its own, for a reader without the declaration at
 /// hand: its brief, its parameters, what it returns and throws, then its
 /// details.

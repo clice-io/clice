@@ -29,22 +29,40 @@ std::optional<Documentation> nothing_copied(llvm::StringRef) {
     return std::nullopt;
 }
 
-Documentation decl_documentation(CompilationUnitRef unit,
-                                 const clang::NamedDecl* decl,
-                                 const DocumentationOptions& options,
-                                 unsigned depth) {
+/// Read `text` as `options` say, each `@copydoc` taking the documentation
+/// (`document`, one level deeper) of the first of the targets it names
+/// (`targets`) that has one.
+Documentation read_copying(std::string text,
+                           const DocumentationOptions& options,
+                           unsigned depth,
+                           auto targets,
+                           auto document) {
     auto copied = [&](llvm::StringRef name) -> std::optional<Documentation> {
         if(depth == copy_depth) {
             return std::nullopt;
         }
-        for(const auto* target: copied_doc_targets(unit, decl, name)) {
-            if(auto doc = decl_documentation(unit, target, options, depth + 1); !doc.empty()) {
+        for(const auto& target: targets(name)) {
+            if(auto doc = document(target, depth + 1); !doc.empty()) {
                 return doc;
             }
         }
         return std::nullopt;
     };
-    return read(doc_comment(unit, decl, options.inherit), options, copied);
+    return read(std::move(text), options, copied);
+}
+
+Documentation decl_documentation(CompilationUnitRef unit,
+                                 const clang::NamedDecl* decl,
+                                 const DocumentationOptions& options,
+                                 unsigned depth) {
+    return read_copying(
+        doc_comment(unit, decl, options.inherit),
+        options,
+        depth,
+        [&](llvm::StringRef name) { return copied_doc_targets(unit, decl, name); },
+        [&](const clang::NamedDecl* target, unsigned next) {
+            return decl_documentation(unit, target, options, next);
+        });
 }
 
 Documentation symbol_documentation(const index::IndexQuery& query,
@@ -52,23 +70,14 @@ Documentation symbol_documentation(const index::IndexQuery& query,
                                    Fid anchor,
                                    const DocumentationOptions& options,
                                    unsigned depth) {
-    auto copied = [&](llvm::StringRef name) -> std::optional<Documentation> {
-        if(depth == copy_depth) {
-            return std::nullopt;
-        }
-        for(const auto& target: query.copied_doc_targets(hash, anchor, name)) {
-            if(auto doc = symbol_documentation(query,
-                                               target.symbol.hash,
-                                               target.site.file,
-                                               options,
-                                               depth + 1);
-               !doc.empty()) {
-                return doc;
-            }
-        }
-        return std::nullopt;
-    };
-    return read(query.doc_comment(hash, anchor, options.inherit), options, copied);
+    return read_copying(
+        query.doc_comment(hash, anchor, options.inherit),
+        options,
+        depth,
+        [&](llvm::StringRef name) { return query.copied_doc_targets(hash, anchor, name); },
+        [&](const index::IndexQuery::Located& target, unsigned next) {
+            return symbol_documentation(query, target.symbol.hash, target.site.file, options, next);
+        });
 }
 
 }  // namespace
@@ -131,6 +140,36 @@ void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringR
     }
 }
 
+void add_entries(markup::Document& output,
+                 llvm::StringRef title,
+                 llvm::ArrayRef<Documentation::Entry> entries) {
+    if(entries.empty()) {
+        return;
+    }
+    if(!title.empty()) {
+        output.add_paragraph().append_text(title);
+    }
+    auto& items = output.add_bullet_list();
+    for(const auto& entry: entries) {
+        describe(items.add_item().add_paragraph().append_code(entry.name), {}, entry.text);
+    }
+}
+
+void add_details(markup::Document& output, const Documentation& documentation) {
+    if(!documentation.details.empty()) {
+        if(documentation.verbatim) {
+            output.add_lines(documentation.details);
+        } else {
+            output.add_markdown(documentation.details);
+        }
+    }
+    if(!documentation.see.empty()) {
+        output.add_paragraph()
+            .append_text("See also: ")
+            .append_markdown(llvm::join(documentation.see, ", "));
+    }
+}
+
 auto present(const Documentation& documentation) -> markup::Document {
     markup::Document output;
     const auto& doc = documentation;
@@ -162,30 +201,9 @@ auto present(const Documentation& documentation) -> markup::Document {
     if(!doc.returns.empty()) {
         output.add_paragraph().append_text("Returns: ").append_markdown(doc.returns);
     }
-    for(auto [title, entries]: {
-            std::pair{llvm::StringRef("Return values: "), &doc.retvals},
-            std::pair{llvm::StringRef("Throws: "),        &doc.throws }
-    }) {
-        if(entries->empty()) {
-            continue;
-        }
-        output.add_paragraph().append_text(title);
-        auto& items = output.add_bullet_list();
-        for(const auto& entry: *entries) {
-            describe(items.add_item().add_paragraph().append_code(entry.name), {}, entry.text);
-        }
-    }
-
-    if(!doc.details.empty()) {
-        if(doc.verbatim) {
-            output.add_lines(doc.details);
-        } else {
-            output.add_markdown(doc.details);
-        }
-    }
-    if(!doc.see.empty()) {
-        output.add_paragraph().append_text("See also: ").append_markdown(llvm::join(doc.see, ", "));
-    }
+    add_entries(output, "Return values: ", doc.retvals);
+    add_entries(output, "Throws: ", doc.throws);
+    add_details(output, doc);
     return output;
 }
 

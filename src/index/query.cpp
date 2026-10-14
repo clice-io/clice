@@ -1087,8 +1087,7 @@ std::string IndexQuery::doc_comment(SymbolHash hash, Fid anchor, bool inherit) c
     if(kind == SymbolKind::Namespace) {
         return {};
     }
-    std::optional<std::string> doxygen;
-    std::string fallback;
+    DocCommentChoice choice;
     for(auto relation_kind: {RelationKind::Declaration, RelationKind::Definition}) {
         for_each_relation(
             hash,
@@ -1112,28 +1111,14 @@ std::string IndexQuery::doc_comment(SymbolHash hash, Fid anchor, bool inherit) c
                                                              kind == SymbolKind::EnumMember ||
                                                              kind == SymbolKind::Variable};
                 auto comments = scan_comments(content, &dialect);
-                auto run = documenting_comments(content, comments, decl);
-                if(run.empty()) {
-                    return true;
-                }
-                auto first =
-                    llvm::StringRef(content).slice(run.front().range.begin, run.front().range.end);
-                if(is_doc_comment(first)) {
-                    doxygen = comment_text(content, run);
-                    return false;
-                }
-                if(fallback.empty()) {
-                    fallback = comment_text(content, run);
-                }
-                return true;
+                return !choice.offer(content, documenting_comments(content, comments, decl));
             });
-        if(doxygen) {
-            return std::move(*doxygen);
+        if(choice.decided()) {
+            break;
         }
     }
 
-    if(inherit && fallback.empty() &&
-       (kind == SymbolKind::Method || kind == SymbolKind::Operator)) {
+    if(inherit && choice.empty() && (kind == SymbolKind::Method || kind == SymbolKind::Operator)) {
         for(auto& overridden: targets(hash, anchor, RelationKind::Interface)) {
             if(auto text = doc_comment(overridden.symbol, overridden.anchor, inherit);
                !text.empty()) {
@@ -1141,7 +1126,7 @@ std::string IndexQuery::doc_comment(SymbolHash hash, Fid anchor, bool inherit) c
             }
         }
     }
-    return fallback;
+    return std::move(choice).take();
 }
 
 auto IndexQuery::copied_doc_targets(SymbolHash hash, Fid anchor, llvm::StringRef name) const

@@ -46,7 +46,7 @@
                   "label": "read_sensor(int channel)",
                   "kind": "Function",
                   "detail": "int",
-                  "documentation": "Reads the sensor once.  \nReturns the reading in \\*\\*millivolts\\*\\*."
+                  "documentation": "Reads the sensor once.\n\nReturns the reading in **millivolts**."
                 }
               ]
             }

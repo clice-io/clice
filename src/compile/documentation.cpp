@@ -9,18 +9,16 @@ import :compile.documentation;
 import :semantic.decls;
 import :syntax.doc_comment;
 import :syntax.documentation;
+import :syntax.lexical_scan;
 
 namespace clice {
 
 namespace {
 
-struct Found {
-    std::string text;
-    bool doxygen = false;
-};
-
-/// The comment documenting this one declaration.
-Found comment_of(CompilationUnitRef unit, const clang::Decl* decl) {
+/// The comments documenting this one declaration, and the text of its
+/// file they are in.
+std::pair<llvm::StringRef, llvm::ArrayRef<LexicalInfo::Comment>>
+    documenting(CompilationUnitRef unit, const clang::Decl* decl) {
     auto range = decls::written_range(decl);
     if(decl->isImplicit() || range.isInvalid()) {
         return {};
@@ -38,11 +36,7 @@ Found comment_of(CompilationUnitRef unit, const clang::Decl* decl) {
         unit.comments(fid),
         {.range = extent,
          .trailing = llvm::isa<clang::FieldDecl, clang::EnumConstantDecl, clang::VarDecl>(decl)});
-    if(run.empty()) {
-        return {};
-    }
-    auto first = content.slice(run.front().range.begin, run.front().range.end);
-    return {comment_text(content, run), is_doc_comment(first)};
+    return {content, run};
 }
 
 }  // namespace
@@ -73,26 +67,23 @@ std::string doc_comment(CompilationUnitRef unit, const clang::NamedDecl* decl, b
         return {};
     }
 
-    std::string fallback;
+    DocCommentChoice choice;
     for(const auto* redecl: decl->getCanonicalDecl()->redecls()) {
-        auto found = comment_of(unit, redecl);
-        if(found.doxygen) {
-            return std::move(found.text);
-        }
-        if(fallback.empty()) {
-            fallback = std::move(found.text);
+        auto [content, run] = documenting(unit, redecl);
+        if(choice.offer(content, run)) {
+            break;
         }
     }
 
     if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl);
-       method && inherit && fallback.empty()) {
+       method && inherit && choice.empty()) {
         for(const auto* overridden: method->overridden_methods()) {
             if(auto text = doc_comment(unit, overridden, inherit); !text.empty()) {
                 return text;
             }
         }
     }
-    return fallback;
+    return std::move(choice).take();
 }
 
 std::string doc_comment(CompilationUnitRef unit, const clang::MacroInfo* macro) {
