@@ -49,6 +49,16 @@ jobs:
       - name: Check src/ include layering
         run: python3 scripts/check_layers.py
 
+  timers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check C++ timers carry their reason
+        run: python3 scripts/check_timers.py
+
   docs:
     runs-on: ubuntu-latest
     steps:

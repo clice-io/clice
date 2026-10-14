@@ -1,0 +1,37 @@
+name: jitter
+
+# Every night, main's suites with random delays where the server's own work
+# races a test's actions (CLICE_TEST_JITTER, tests/README.md): a case whose
+# output changes there left an order unpinned, which a loaded runner would
+# one day hit as a flake. The failing case alone under the same variable
+# reproduces it.
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x64:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      os: ubuntu-24.04
+      target: x86_64-unknown-linux-gnu
+      jitter: "50"
+
+  linux-x64-debug:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      os: ubuntu-24.04
+      target: x86_64-unknown-linux-gnu
+      build_type: Debug
+      jitter: "50"
+
+  macos-arm64:
+    uses: ./.github/workflows/test-leg.yml
+    with:
+      os: macos-15
+      target: aarch64-apple-darwin
+      jitter: "50"

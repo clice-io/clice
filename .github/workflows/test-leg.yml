@@ -40,6 +40,11 @@ on:
       compat:
         type: boolean
         default: false
+      # CLICE_TEST_JITTER for the suites: random delays of up to this many
+      # milliseconds where the server's own work races a test's actions.
+      jitter:
+        type: string
+        default: ""
 
 defaults:
   run:
@@ -121,13 +126,13 @@ jobs:
       # Bazel refreshes an entry's mtime when it reads it, so what this run
       # did not touch is what the current tree no longer needs.
       - name: Prune the disk cache
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           find "$RUNNER_TEMP/bazel-disk" -type f ! -newer "$RUNNER_TEMP/bazel-start" -delete
           du -sh "$RUNNER_TEMP"/bazel-disk "$RUNNER_TEMP"/bazel-repo /var/tmp/xclang-thinlto 2>/dev/null || true
 
       - name: Save Bazel caches
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -220,6 +225,8 @@ jobs:
 
       - name: Unit tests
         timeout-minutes: 10
+        env:
+          CLICE_TEST_JITTER: ${{ inputs.jitter }}
         run: pixi run -e test-run unit-test ${{ inputs.build_type }}
 
   cases:
@@ -245,6 +252,8 @@ jobs:
 
       - name: Cases
         timeout-minutes: 20
+        env:
+          CLICE_TEST_JITTER: ${{ inputs.jitter }}
         run: pixi run -e test-run cases-test ${{ inputs.build_type }} ${{ matrix.shard }}/${{ strategy.job-total }}
 
   editor:
