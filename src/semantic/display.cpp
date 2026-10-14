@@ -1551,9 +1551,12 @@ auto ReadableTypes::standard_alias(const clang::ClassTemplateSpecializationDecl&
             }
             name = last;
         }
+        // An alias written as another one (MSVC's `wstreampos = streampos`)
+        // does not name the type a second time.
         const auto* alias =
             scope->lookup(&context.Idents.get(name)).find_first<clang::TypedefNameDecl>();
-        if(!alias || !context.hasSameType(alias->getUnderlyingType(), type)) {
+        if(!alias || !llvm::isa<clang::TemplateSpecializationType>(alias->getUnderlyingType()) ||
+           !context.hasSameType(alias->getUnderlyingType(), type)) {
             continue;
         }
         if(found) {
