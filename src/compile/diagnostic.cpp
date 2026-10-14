@@ -212,37 +212,49 @@ public:
             unit.fatal = true;
         }
 
-        // A batch run reports the compiler's diagnostics among its
-        // findings, as clang-tidy does; the editor shape adjusts the
-        // unit's own.
-        tidy::ClangTidyChecker* editor = nullptr;
-        if(unit.checker && unit.checker->batch) {
-            unit.checker->findings.HandleDiagnostic(level, raw_diagnostic);
-        } else {
-            editor = unit.checker.get();
+        if(!unit.checker || !unit.checker->batch) {
+            record(level, raw_diagnostic, unit.checker.get());
+            return;
         }
+        record(level, raw_diagnostic, nullptr);
+        // A batch run reports the compiler's diagnostics among its findings,
+        // as clang-tidy does. They go to clang-tidy's consumer once recorded
+        // here: the formatting done meanwhile deserialized what the message
+        // names, so the diagnostics the AST reader reports doing that never
+        // reach the consumer in the middle of another, which it cannot take.
+        unit.checker->findings.HandleDiagnostic(level, raw_diagnostic);
+    }
 
+    void EndSourceFile() override {}
+
+private:
+    /// Record a diagnostic, adjusted by the editor shape's checker when
+    /// there is one.
+    void record(clang::DiagnosticsEngine::Level level,
+                const clang::Diagnostic& raw,
+                tidy::ClangTidyChecker* editor) {
         // A note belongs to the diagnostic before it; one ahead of every
         // diagnostic, or after one left out, belongs to none.
         if(is_note(level)) {
             if(attach_notes) {
-                auto note = convert(level, raw_diagnostic);
+                auto owner = unit.collected_diagnostics.size() - 1;
+                auto note = convert(level, raw);
                 if(editor) {
                     editor->adjust_diag(note);
                 }
-                unit.collected_diagnostics.back().notes.push_back(std::move(note));
+                unit.collected_diagnostics[owner].notes.push_back(std::move(note));
             }
             return;
         }
 
         if(editor) {
-            level = editor->adjust_level(level, raw_diagnostic);
+            level = editor->adjust_level(level, raw);
             if(level == clang::DiagnosticsEngine::Ignored) {
                 attach_notes = false;
                 return;
             }
         }
-        auto diagnostic = convert(level, raw_diagnostic);
+        auto diagnostic = convert(level, raw);
         if(editor) {
             editor->adjust_diag(diagnostic);
         }
@@ -260,9 +272,6 @@ public:
         }
     }
 
-    void EndSourceFile() override {}
-
-private:
     /// Formatting can deserialize declarations, and the AST reader reports
     /// the ODR mismatches it meets there as diagnostics of their own,
     /// reentrantly: the one converted here is built aside while theirs

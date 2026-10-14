@@ -516,7 +516,9 @@ kota::task<> run_lint(BatchStack& stack, const BatchLintOptions& options, BatchL
     co_await kota::with_token(run_lint_pass(stack, options, tus, pass), lifetime.token());
     // What arrived is the report, whole or cut short by an interruption.
     auto shown = [&files = project.file_table](std::string& file) {
-        file = files.display(files.intern(Spelling::absolute(file)));
+        if(!file.empty()) {
+            file = files.display(files.intern(Spelling::absolute(file)));
+        }
     };
     for(auto& finding: pass.findings) {
         shown(finding.file);
