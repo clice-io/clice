@@ -383,15 +383,16 @@ struct Stats {
     void add_tu(const index::TUIndex& tu) {
         indexed += 1;
 
-        tu.iterate_symbols(
-            [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, llvm::StringRef) {
-                auto scope = static_cast<std::uint8_t>(symbol.scope);
-                if(scope < scope_n.size()) {
-                    scope_n[scope] += 1;
-                }
-                scope_map.try_emplace(hash, symbol.scope);
-                return true;
-            });
+        tu.iterate_symbols([&](index::SymbolHash hash,
+                               const index::SymbolIdentity& symbol,
+                               llvm::ArrayRef<std::uint32_t>) {
+            auto scope = static_cast<std::uint8_t>(symbol.scope);
+            if(scope < scope_n.size()) {
+                scope_n[scope] += 1;
+            }
+            scope_map.try_emplace(hash, symbol.scope);
+            return true;
+        });
 
         for(std::uint32_t i = 0; i < tu.section_count(); i += 1) {
             const auto& shard = tu.shard_of(tu.section_path(i));
