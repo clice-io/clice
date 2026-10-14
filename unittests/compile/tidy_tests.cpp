@@ -108,7 +108,7 @@ ZEST_CASE(BatchTraversesHeaders) {
 }
 
 ZEST_CASE(HeaderNolint) {
-    auto compile_header = [](llvm::StringRef header) {
+    auto compile_header = [&](llvm::StringRef header) {
         Sources sources = {
             {"ratio.h",  header.str()            },
             {"main.cpp", "#include \"ratio.h\"\n"},
