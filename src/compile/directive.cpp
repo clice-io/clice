@@ -191,7 +191,7 @@ public:
     void moduleImport(clang::SourceLocation import_location,
                       clang::ModuleIdPath names,
                       const clang::Module* M) override {
-        auto fid = unit.file_id(unit.expansion_location(import_location));
+        auto fid = unit.produced_at(import_location).file;
         auto& import = unit.collected_directives[fid].imports.emplace_back();
         import.location = import_location;
         for(auto name: names) {
@@ -210,7 +210,7 @@ public:
             import.name_locations.push_back(start);
             return;
         }
-        auto [name_fid, offset] = unit.decompose_location(start);
+        auto [name_fid, offset] = unit.written_at(start);
         Lexer lexer(unit.file_content(name_fid).substr(offset),
                     {.lang_opts = &unit.lang_options()});
         auto token = lexer.advance();
@@ -234,7 +234,7 @@ public:
                     clang::SrcMgr::CharacteristicKind) override {
         // The filename may come from a macro's argument: record where it
         // is spelled.
-        location = unit.file_location(location);
+        location = unit.SM().getFileLoc(location);
         unit.collected_directives[unit.file_id(location)].has_includes.emplace_back(file, location);
         if(!file) {
             add_absent(file_name, is_angled, location);
@@ -243,7 +243,7 @@ public:
 
     void PragmaDirective(clang::SourceLocation loc, clang::PragmaIntroducerKind kind) override {
         if(kind != clang::PIK_HashPragma) {
-            auto fid = unit.file_id(unit.expansion_location(loc));
+            auto fid = unit.produced_at(loc).file;
             unit.collected_directives[fid].pragma_operators.push_back(loc);
         }
     }
@@ -273,7 +273,7 @@ public:
     }
 
     void add_diagnostic_pragma(DiagnosticPragma pragma) {
-        auto fid = unit.file_id(unit.expansion_location(pragma.loc));
+        auto fid = unit.produced_at(pragma.loc).file;
         unit.collected_directives[fid].diagnostic_pragmas.push_back(std::move(pragma));
     }
 

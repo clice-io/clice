@@ -31,7 +31,7 @@ namespace {
 class FoldingRangeCollector {
 public:
     explicit FoldingRangeCollector(CompilationUnit& unit) :
-        unit(unit), semantics(unit.get<Semantics>()), content(unit.main_content()) {
+        unit(unit), semantics(unit.get<Semantics>()), content(unit.focus_file().content()) {
         for(auto& directive: semantics.block_directives()) {
             block_directives.push_back(directive.range.begin);
         }
@@ -112,11 +112,9 @@ private:
                      clang::UnresolvedUsingTypenameDecl>(decl)) {
             // A declaration a macro produces spans the whole invocation,
             // which stands for every declaration it produces.
-            auto range =
-                unit.context().getSourceManager().getExpansionRange(decl->getSourceRange());
-            if(auto [fid, local] = unit.decompose_range(range.getAsRange());
-               fid == unit.main_file() && (usings.empty() || usings.back() != local)) {
-                usings.push_back(local);
+            if(auto local = unit.focus_file().produced_range(decl->getSourceRange());
+               local && (usings.empty() || usings.back() != *local)) {
+                usings.push_back(*local);
             }
             return;
         }
@@ -206,7 +204,7 @@ private:
         }
 
         if(const auto* call = llvm::dyn_cast<clang::CallExpr>(stmt)) {
-            auto tokens = unit.tokens().expanded(call->getSourceRange());
+            auto tokens = unit.focus_file().tokens().expanded(call->getSourceRange());
             if(tokens.empty() || tokens.back().kind() != clang::tok::r_paren) {
                 return;
             }
@@ -262,8 +260,8 @@ private:
             if(auto parameters_end = requirements->getRParenLoc(); parameters_end.isValid()) {
                 range.setBegin(parameters_end);
             }
-            auto tokens =
-                unit.tokens().expanded(range).drop_until([](const clang::syntax::Token& token) {
+            auto tokens = unit.focus_file().tokens().expanded(range).drop_until(
+                [](const clang::syntax::Token& token) {
                     return token.kind() == clang::tok::l_brace;
                 });
             if(!tokens.empty()) {
@@ -286,11 +284,11 @@ private:
             if(!previous) {
                 return;
             }
-            auto [header_fid, header] =
-                unit.decompose_location(unit.file_location(previous->getColonLoc()));
-            auto [next_fid, end] = unit.decompose_location(unit.file_location(next));
-            if(header_fid == unit.main_file() && next_fid == unit.main_file()) {
-                add_section(line_text_end(header), end, "accessSpecifier");
+            auto focus = unit.focus_file();
+            auto header = focus.offset(previous->getColonLoc());
+            auto end = focus.offset(next);
+            if(header && end) {
+                add_section(line_text_end(*header), *end, "accessSpecifier");
             }
         };
         for(auto* member: record->decls()) {
@@ -440,7 +438,8 @@ private:
     void add_block(const clang::Decl* decl,
                    clang::SourceLocation right_brace,
                    protocol::FoldingRangeKind kind) {
-        auto tokens = unit.tokens()
+        auto tokens = unit.focus_file()
+                          .tokens()
                           .expanded(decl->getSourceRange())
                           .drop_until([](const clang::syntax::Token& token) {
                               return token.kind() == clang::tok::l_brace;
@@ -461,9 +460,8 @@ private:
         if(!fold) {
             return;
         }
-        auto [fid, offset] = unit.decompose_location(unit.file_location(head));
-        if(fid == unit.main_file()) {
-            fold->lines = declaration_lines(content, fold->range, offset, block_directives);
+        if(auto offset = unit.focus_file().offset(head)) {
+            fold->lines = declaration_lines(content, fold->range, *offset, block_directives);
         }
     }
 
@@ -477,17 +475,18 @@ private:
 
         // What macro arguments spell folds where it is written; what a
         // macro body produces folds at the invocation.
-        auto begin = unit.file_location(range.getBegin());
-        auto end = unit.file_location(range.getEnd());
+        auto& SM = unit.context().getSourceManager();
+        auto begin = SM.getFileLoc(range.getBegin());
+        auto end = SM.getFileLoc(range.getEnd());
         if(begin == end) {
             return nullptr;
         }
 
-        auto [fid, local] = unit.decompose_range(clang::SourceRange(begin, end));
-        if(fid != unit.main_file() || !local.valid() || local.end <= local.begin) {
+        auto local = unit.focus_file().written_range({begin, end});
+        if(!local || local->end <= local->begin) {
             return nullptr;
         }
-        return add_range(local, std::move(kind), std::move(collapsed_text));
+        return add_range(*local, std::move(kind), std::move(collapsed_text));
     }
 
     FoldingRange* add_range(LocalSourceRange range,

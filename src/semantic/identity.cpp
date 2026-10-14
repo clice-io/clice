@@ -101,7 +101,7 @@ bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
         return false;
     }
     if(llvm::isa<clang::TagDecl>(decl) && !unit.context().getLangOpts().CPlusPlus &&
-       unit.host_source(unit.file_id(unit.expansion_location(decl->getLocation())))) {
+       unit.host_source(unit.produced_at(decl->getLocation()).file)) {
         return true;
     }
     auto linkage = decl->getLinkageInternal();
@@ -333,7 +333,7 @@ std::uint64_t EntityTable::entity(llvm::StringRef name, clang::SourceLocation de
     hasher.add(Tag::Macro);
     hasher.add(name);
     if(definition.isValid()) {
-        auto [fid, offset] = unit.decompose_location(definition);
+        auto [fid, offset] = unit.written_at(definition);
         if(!unit.is_builtin_file(fid)) {
             add_file(hasher, fid);
             hasher.add(static_cast<std::uint64_t>(unit.source_offset(fid, offset)));
@@ -1056,7 +1056,7 @@ void EntityTable::add_location(Hasher& hasher, clang::SourceLocation location) {
     if(location.isInvalid()) {
         return;
     }
-    auto [fid, offset] = unit.decompose_location(unit.expansion_location(location));
+    auto [fid, offset] = unit.produced_at(location);
     add_file(hasher, fid);
     hasher.add(static_cast<std::uint64_t>(unit.source_offset(fid, offset)));
     add_macro_history(hasher, location);
@@ -1080,7 +1080,7 @@ void EntityTable::add_macro_history(Hasher& hasher, clang::SourceLocation locati
             add_macro_history(hasher, spelling);
             continue;
         }
-        auto [spelling_fid, spelling_offset] = unit.decompose_location(spelling);
+        auto [spelling_fid, spelling_offset] = unit.written_at(spelling);
         hasher.add(
             static_cast<std::uint64_t>(unit.is_builtin_file(spelling_fid)
                                            ? 0
@@ -1093,7 +1093,7 @@ void EntityTable::add_path(Hasher& hasher, clang::SourceLocation location) {
     if(location.isInvalid()) {
         return;
     }
-    auto fid = unit.decompose_location(unit.expansion_location(location)).first;
+    auto fid = unit.produced_at(location).file;
     add_file(hasher, fid);
 }
 

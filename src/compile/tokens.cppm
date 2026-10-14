@@ -43,6 +43,11 @@ public:
         return spelled_tokens;
     }
 
+    /// Where `token`, one of spelled(), starts in the main file.
+    std::uint32_t offset(const clang::syntax::Token& token) const {
+        return main_offset(token.location());
+    }
+
     /// Per spelled token, whether it was preprocessed away to nothing: a
     /// directive, a disabled region, the preamble under a PCH, a macro
     /// invocation that expanded to nothing.

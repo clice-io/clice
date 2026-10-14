@@ -143,7 +143,7 @@ ZEST_CASE(Error) {
     ZEXPECT(diag.id.diagnostic_code() == "err_expected_semi_after_stmt");
     ZEXPECT(diag.id.level == DiagnosticLevel::Error);
     ZEXPECT(diag.id.source == DiagnosticSource::Clang);
-    ZEXPECT(diag.fid == unit->main_file());
+    ZEXPECT(diag.fid == unit->focus_file().file());
     ZEXPECT(diag.range.valid());
     ZEXPECT(diag.message == "expected ';' after return statement");
 };

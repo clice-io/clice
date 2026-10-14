@@ -56,10 +56,10 @@ constexpr std::array specs = {
 };
 
 void format_actions(CompilationUnit& unit, std::vector<CodeAction>& actions, std::size_t from) {
-    auto path = unit.file_path(unit.main_file());
+    auto path = unit.file_path(unit.focus_file().file());
     for(auto& action: llvm::drop_begin(actions, from)) {
         if(!action.edits.empty()) {
-            action.edits = format_edits(path, unit.main_content(), std::move(action.edits));
+            action.edits = format_edits(path, unit.focus_file().content(), std::move(action.edits));
         }
     }
 }
@@ -826,27 +826,12 @@ clang::AccessSpecifier trailing_access(const clang::CXXRecordDecl* record) {
 
 }  // namespace
 
-std::optional<LocalSourceRange> main_range(CompilationUnit& unit, clang::SourceRange range) {
-    if(range.isInvalid() || !range.getBegin().isFileID() || !range.getEnd().isFileID()) {
-        return std::nullopt;
-    }
-    auto main = unit.main_file();
-    if(unit.file_id(range.getBegin()) != main || unit.file_id(range.getEnd()) != main) {
-        return std::nullopt;
-    }
-    return unit.decompose_range(range).second;
-}
-
 std::optional<llvm::StringRef> spelled_text(CompilationUnit& unit, clang::SourceRange range) {
-    if(range.isInvalid() || !range.getBegin().isFileID() || !range.getEnd().isFileID()) {
+    auto written = unit.written_range(range);
+    if(!written || unit.is_builtin_file(written->file)) {
         return std::nullopt;
     }
-    auto fid = unit.file_id(range.getBegin());
-    if(fid != unit.file_id(range.getEnd()) || unit.is_builtin_file(fid)) {
-        return std::nullopt;
-    }
-    auto local = unit.decompose_range(range).second;
-    return unit.file_content(fid).substr(local.begin, local.length());
+    return unit.file_content(written->file).substr(written->range.begin, written->range.length());
 }
 
 llvm::StringRef line_indent(llvm::StringRef content, std::uint32_t offset) {
@@ -972,12 +957,12 @@ std::string template_heads(CompilationUnit& unit,
 std::optional<TextReplacement> insert_members(CompilationUnit& unit,
                                               const clang::CXXRecordDecl* record,
                                               llvm::ArrayRef<Member> members) {
-    auto brace = main_range(unit, record->getBraceRange().getEnd());
-    auto head = main_range(unit, record->getBeginLoc());
+    auto brace = unit.focus_file().written_range(record->getBraceRange().getEnd());
+    auto head = unit.focus_file().written_range(record->getBeginLoc());
     if(!brace || !head) {
         return std::nullopt;
     }
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     auto record_indent = line_indent(content, head->begin);
     auto begin = line_begin(content, brace->begin);
     bool own_line = content.substr(begin, brace->begin - begin).trim().empty();
@@ -987,7 +972,7 @@ std::optional<TextReplacement> insert_members(CompilationUnit& unit,
         if(member->isImplicit()) {
             continue;
         }
-        if(auto range = main_range(unit, member->getBeginLoc())) {
+        if(auto range = unit.focus_file().written_range(member->getBeginLoc())) {
             indent = line_indent(content, range->begin).str();
             break;
         }
@@ -1074,7 +1059,7 @@ auto code_actions(CompilationUnit& unit, LocalSourceRange selection) -> std::vec
     action::fix_its(unit, selection, out);
     action::add_include(unit, selection, out);
 
-    auto path = unit.file_path(unit.main_file());
+    auto path = unit.file_path(unit.focus_file().file());
     bool main_is_header = is_header_path(path);
     SelectionTree::create_each(unit, selection, [&](SelectionTree tree) {
         auto before = out.size();

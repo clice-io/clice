@@ -76,19 +76,19 @@ auto find_directive_argument(llvm::StringRef content,
 auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
     std::vector<index::DocumentLink> links;
 
-    auto main_fid = unit.main_file();
-    auto directives_it = unit.directives().find(main_fid);
+    auto focus = unit.focus_file();
+    auto directives_it = unit.directives().find(focus.file());
     if(directives_it == unit.directives().end()) {
         return links;
     }
 
-    auto content = unit.main_content();
+    auto content = focus.content();
     auto& directives = directives_it->second;
     auto* lang_opts = &unit.lang_options();
 
     auto add_link = [&](clang::SourceLocation loc, llvm::StringRef target) {
-        auto [fid, offset] = unit.decompose_location(loc);
-        if(fid != main_fid || offset >= content.size())
+        auto offset = unit.seen_at(loc).offset;
+        if(offset >= content.size())
             return;
         auto range = find_directive_argument(content, offset, lang_opts);
         if(!range)
@@ -134,13 +134,13 @@ auto document_links(CompilationUnit& unit) -> std::vector<index::DocumentLink> {
         if(definition.isInvalid() || import.name_locations.empty()) {
             continue;
         }
-        auto [fid, range] = unit.decompose_expansion_range(
+        auto range = focus.produced_range(
             clang::SourceRange(import.name_locations.front(), import.name_locations.back()));
-        if(fid != main_fid) {
+        if(!range) {
             continue;
         }
         links.push_back(index::DocumentLink{
-            .range = range,
+            .range = *range,
             .target = unit.file_path(unit.file_id(definition)).str(),
         });
     }

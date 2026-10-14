@@ -16,19 +16,11 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                               std::uint32_t end_offset) {
     InactiveScan result;
 
-    auto main_fid = unit.main_file();
-    auto content = unit.file_content(main_fid);
+    auto focus = unit.focus_file();
+    auto content = focus.content();
     if(end_offset > content.size()) {
         end_offset = static_cast<std::uint32_t>(content.size());
     }
-
-    auto local_offset = [&](clang::SourceLocation loc) -> std::optional<std::uint32_t> {
-        auto [fid, offset] = unit.decompose_location(loc);
-        if(fid != main_fid) {
-            return std::nullopt;
-        }
-        return offset;
-    };
 
     // Walk the branch directives with an explicit nesting stack, seeded
     // from a preceding preamble scan: its pending inactive levels start
@@ -68,13 +60,10 @@ InactiveScan inactive_regions(CompilationUnit& unit,
         level.inactive_begin.reset();
     };
 
-    auto directives_it = unit.directives().find(main_fid);
+    auto directives_it = unit.directives().find(focus.file());
     if(directives_it != unit.directives().end()) {
         for(const auto& condition: directives_it->second.conditions) {
-            auto offset = local_offset(condition.loc);
-            if(!offset) {
-                continue;
-            }
+            auto offset = unit.seen_at(condition.loc).offset;
 
             switch(condition.kind) {
                 case Condition::BranchKind::If:
@@ -82,7 +71,7 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                 case Condition::BranchKind::Ifndef: {
                     stack.push_back({});
                     if(is_inactive(condition)) {
-                        stack.back().inactive_begin = line_end(content, *offset);
+                        stack.back().inactive_begin = line_end(content, offset);
                     } else {
                         stack.back().taken = true;
                     }
@@ -94,9 +83,9 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(content, *offset));
+                    close_pending(stack.back(), line_begin(content, offset));
                     if(is_inactive(condition)) {
-                        stack.back().inactive_begin = line_end(content, *offset);
+                        stack.back().inactive_begin = line_end(content, offset);
                     } else {
                         stack.back().taken = true;
                     }
@@ -106,11 +95,11 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(content, *offset));
+                    close_pending(stack.back(), line_begin(content, offset));
                     // #else has no condition value: it is inactive exactly
                     // when an earlier branch of this level was taken.
                     if(stack.back().taken) {
-                        stack.back().inactive_begin = line_end(content, *offset);
+                        stack.back().inactive_begin = line_end(content, offset);
                     }
                     break;
                 }
@@ -118,7 +107,7 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                     if(stack.empty()) {
                         break;
                     }
-                    close_pending(stack.back(), line_begin(content, *offset));
+                    close_pending(stack.back(), line_begin(content, offset));
                     stack.pop_back();
                     break;
                 }

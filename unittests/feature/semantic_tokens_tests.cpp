@@ -116,7 +116,7 @@ void run_utf8(llvm::StringRef code) {
     add_main("main.cpp", code);
     ZASSERT(compile_with_pch());
     tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
 }
 
 auto find_by_range(llvm::StringRef name) -> const DecodedToken* {
@@ -212,7 +212,7 @@ int main() {
     auto utf8_tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
     auto utf16_tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF16);
 
-    auto utf8 = decode_utf8_tokens(unit->main_content(), utf8_tokens);
+    auto utf8 = decode_utf8_tokens(unit->focus_file().content(), utf8_tokens);
     auto utf16 = decode_relative_tokens(utf16_tokens);
 
     auto string_type = static_cast<std::uint32_t>(SymbolKind::String);
@@ -296,7 +296,7 @@ int y = x;
 )");
     ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);
@@ -314,7 +314,7 @@ int y = x;
 )");
     ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
 
     EXPECT_TOKEN("m0", SymbolKind::Module);
     EXPECT_TOKEN("m1", SymbolKind::Module);
@@ -345,7 +345,7 @@ import :part;
     // The preprocessor callback channel must record every import form the
     // AST records: a named import, an export-import and a partition import
     // (whose full name resolves through the owning module).
-    auto& imports = unit->directives()[unit->main_file()].imports;
+    auto& imports = unit->directives()[unit->focus_file().file()].imports;
     ZASSERT(imports.size() == 3U);
     ZASSERT(imports[0].name == "a");
     ZASSERT(imports[1].name == "b");
@@ -380,7 +380,7 @@ export §(kw)⟦import⟧ :§(part)⟦part⟧;
 )");
     ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("part", SymbolKind::Module);
@@ -398,7 +398,7 @@ int y = §(ref)⟦x⟧;
 )");
     ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     // An implementation unit declares the module its interface defines.
@@ -420,7 +420,7 @@ export §(kw)⟦import⟧ §(mod)⟦foo⟧;
 )");
     ZASSERT(compile_with_modules());
     tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->main_content(), tokens);
+    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
 
     EXPECT_TOKEN("kw", SymbolKind::Keyword);
     EXPECT_TOKEN("mod", SymbolKind::Module);

@@ -18,13 +18,10 @@ SymbolScope classify_scope(const clang::NamedDecl* decl);
 
 /// How build_tu_index shapes the TU index blob.
 struct TUIndexOptions {
-    /// Keep only the entries in the main file.
-    bool main_file_only = false;
-
-    /// Resolve a template's parameters through its only instantiation in
-    /// the unit (ResolverOptions::only_instantiation): for an open file's
-    /// index, never for a stored one.
-    bool only_instantiation = false;
+    /// Index every file a Content compile entered, not its focus file
+    /// alone: `clice inspect`'s stand-in for the server's project index.
+    /// A Whole compile always indexes every file.
+    bool all_files = false;
 
     /// Variant identities the receiver already stores, sorted. A section
     /// whose hash is among them travels as the bare hash, and an external

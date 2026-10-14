@@ -252,8 +252,8 @@ void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
         ZASSERT(range2);
 
         LocalSourceRange local_range = {
-            unit->file_offset(range2->getBegin()),
-            unit->file_offset(range2->getEnd()),
+            unit->seen_at(range2->getBegin()).offset,
+            unit->seen_at(range2->getEnd()).offset,
         };
 
         /// llvm::outs() << tree << "\n";

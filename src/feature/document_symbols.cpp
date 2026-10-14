@@ -240,15 +240,16 @@ private:
     }
 
     /// Appends the symbol at the cursor; nullptr when a range falls outside
-    /// the main file.
+    /// the focus file.
     auto add_symbol(const clang::NamedDecl& named,
                     clang::SourceRange name_range,
                     clang::SourceRange full_range) -> DocumentSymbol* {
         // Names spelled inside a macro argument (`DEFINE(name)`) select the
         // written spelling; names spelled in the macro body keep the
         // invocation site.
-        name_range = clang::SourceRange(unit.file_location(name_range.getBegin()),
-                                        unit.file_location(name_range.getEnd()));
+        auto& SM = unit.context().getSourceManager();
+        name_range = clang::SourceRange(SM.getFileLoc(name_range.getBegin()),
+                                        SM.getFileLoc(name_range.getEnd()));
 
         // Clang leaves a bound it cannot locate unset, on valid code too:
         // `short __attribute__((vector_size(16)))`, `Ts...[0]`, an unclosed
@@ -260,24 +261,25 @@ private:
             full_range.setEnd(name_range.getEnd());
         }
 
-        auto [fid, selection_range] = unit.decompose_range(name_range);
-        auto [fid2, range] = unit.decompose_expansion_range(full_range);
-        if(fid != fid2 || fid != unit.main_file() || !selection_range.valid() || !range.valid()) {
+        auto focus = unit.focus_file();
+        auto selection_range = focus.written_range(name_range);
+        auto range = focus.produced_range(full_range);
+        if(!selection_range || !range || !selection_range->valid() || !range->valid()) {
             return nullptr;
         }
 
         // LSP requires the selection range to be contained in the full
         // range; a macro invocation's expansion range may be narrower than
         // the name spelled in its argument.
-        range.begin = std::min(range.begin, selection_range.begin);
-        range.end = std::max(range.end, selection_range.end);
+        range->begin = std::min(range->begin, selection_range->begin);
+        range->end = std::max(range->end, selection_range->end);
 
         auto& symbol = cursor->emplace_back();
         symbol.kind = SymbolKind::from(&named);
         symbol.name = display::name_of(&named);
         symbol.detail = symbol_detail(unit.context(), named);
-        symbol.selection_range = selection_range;
-        symbol.range = range;
+        symbol.selection_range = *selection_range;
+        symbol.range = *range;
         symbol.deprecated = named.isDeprecated();
         return &symbol;
     }
@@ -287,7 +289,7 @@ private:
     /// AST walk never sees directives, so nesting runs by containment
     /// instead: one spelled between class members outlines under the class.
     void add_macro(LocalSourceRange directive) {
-        auto content = unit.main_content();
+        auto content = unit.focus_file().content();
         auto lexer =
             Lexer::from_line(content, directive.begin, {.lang_opts = &unit.lang_options()});
         lexer.advance();
@@ -298,7 +300,7 @@ private:
         }
 
         auto spelling = [&](const Token& token) {
-            return unit.token_spelling(unit.create_location(unit.main_file(), token.range.begin));
+            return unit.token_spelling(unit.focus_file().location(token.range.begin));
         };
 
         DocumentSymbol symbol;
@@ -348,7 +350,7 @@ private:
             }
         }
 
-        auto content = unit.main_content();
+        auto content = unit.focus_file().content();
         DocumentSymbol root{
             .range = {0, static_cast<std::uint32_t>(content.size())},
             .children = std::move(symbols),
@@ -532,7 +534,7 @@ auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
                       PositionEncoding encoding) -> std::vector<protocol::DocumentSymbol> {
     return document_symbols_to_protocol(outline(unit, inactive_regions),
-                                        unit.positions(),
+                                        unit.focus_file().positions(),
                                         encoding);
 }
 

@@ -99,16 +99,20 @@ bool glues(llvm::StringRef left, llvm::StringRef right, const clang::LangOptions
 }  // namespace
 
 void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
-    auto main = unit.main_file();
-    auto touching = unit.tokens().spelled_touching(unit.create_location(main, selection.begin));
+    auto focus = unit.focus_file();
+    auto& tokens = focus.tokens();
+    auto touching = tokens.spelled_touching(focus.location(selection.begin));
     if(touching.empty()) {
         return;
     }
     auto& SM = unit.context().getSourceManager();
     const auto& options = unit.lang_options();
-    auto content = unit.main_content();
-    auto spelled = unit.tokens().spelled();
-    for(const auto& expansion: unit.tokens().expansions_overlapping(touching)) {
+    auto content = focus.content();
+    auto spelled = tokens.spelled();
+    auto end_of = [&](const clang::syntax::Token& token) {
+        return tokens.offset(token) + token.length();
+    };
+    for(const auto& expansion: tokens.expansions_overlapping(touching)) {
         // A name the raw lexer must clean, one starting with a line splice,
         // stays raw.
         if(!llvm::is_contained({clang::tok::identifier, clang::tok::raw_identifier},
@@ -116,13 +120,12 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
             continue;
         }
         const auto& name = expansion.spelled.front();
-        auto begin = unit.file_offset(name.location());
-        auto end = unit.file_offset(expansion.spelled.back().endLocation());
+        auto begin = tokens.offset(name);
+        auto end = end_of(expansion.spelled.back());
         auto first = static_cast<std::size_t>(expansion.spelled.begin() - spelled.begin());
         auto last = first + expansion.spelled.size();
         auto gap = [&](std::size_t index) {
-            return content.slice(unit.file_offset(spelled[index - 1].endLocation()),
-                                 unit.file_offset(spelled[index].location()));
+            return content.slice(end_of(spelled[index - 1]), tokens.offset(spelled[index]));
         };
         // Macro references in a directive (`#if GUARD`) expand to nothing
         // in the token stream. The directive is the line starting with
@@ -135,10 +138,11 @@ void expand_macro(CompilationUnit& unit, LocalSourceRange selection, std::vector
             continue;
         }
         // A pragma the expansion executes leaves no token behind.
-        if(llvm::any_of(unit.directives()[main].pragma_operators, [&](clang::SourceLocation loc) {
-               auto offset = unit.file_offset(unit.expansion_location(loc));
-               return begin <= offset && offset < end;
-           })) {
+        if(llvm::any_of(unit.directives()[focus.file()].pragma_operators,
+                        [&](clang::SourceLocation loc) {
+                            auto offset = unit.produced_at(loc).offset;
+                            return begin <= offset && offset < end;
+                        })) {
             return;
         }
 

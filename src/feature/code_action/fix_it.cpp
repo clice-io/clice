@@ -47,9 +47,9 @@ std::string fix_title(llvm::StringRef content, const Diagnostic& diagnostic) {
 }  // namespace
 
 void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     for_each_diagnostic(unit, [&](const Diagnostic& main, llvm::ArrayRef<Diagnostic> notes) {
-        if(main.fid != unit.main_file() || !main.range.intersects(selection)) {
+        if(!unit.focus_file().contains(main.fid) || !main.range.intersects(selection)) {
             return;
         }
         if(!main.fix.empty()) {

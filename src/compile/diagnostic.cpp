@@ -192,11 +192,12 @@ class CompilationUnit::DiagnosticCollector : public clang::DiagnosticConsumer {
 public:
     DiagnosticCollector(CompilationUnit& unit) : unit(unit) {}
 
-    /// Decompose a file location; the preamble a PCH recorded of the main
-    /// file is the main file.
+    /// Where a file location is; the preamble a PCH recorded of the focus
+    /// file is the focus file.
     auto decompose(clang::SourceLocation location) -> std::pair<clang::FileID, std::uint32_t> {
-        auto [fid, offset] = unit.decompose_location(location);
-        return {unit.is_main_file(fid) ? unit.main_file() : fid, offset};
+        auto [fid, offset] = unit.seen_at(location);
+        auto focus = unit.focus_file();
+        return {focus.contains(fid) ? focus.file() : fid, offset};
     }
 
     /// The range in `fid` a source range covers, half-open; nullopt when it
@@ -227,8 +228,7 @@ public:
         }
 
         /// Make sure the location is file location.
-        location = unit.file_location(location);
-        assert(location.isFileID());
+        location = unit.SM().getFileLoc(location);
 
         auto [fid, offset] = decompose(location);
         for(auto range: diagnostic.getRanges()) {
@@ -275,17 +275,18 @@ public:
             if(range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
                 return {};
             }
-            auto removed = file_range(range, unit.main_file());
+            auto focus = unit.focus_file();
+            auto removed = file_range(range, focus.file());
             if(!removed) {
                 return {};
             }
             std::string text = std::move(hint.CodeToInsert);
             if(hint.InsertFromRange.isValid()) {
-                auto copied = file_range(hint.InsertFromRange, unit.main_file());
+                auto copied = file_range(hint.InsertFromRange, focus.file());
                 if(!copied) {
                     return {};
                 }
-                text = unit.main_content().substr(copied->begin, copied->length());
+                text = focus.content().substr(copied->begin, copied->length());
             }
             // An editor applies insertions at one offset in their order.
             auto at = edits.end();

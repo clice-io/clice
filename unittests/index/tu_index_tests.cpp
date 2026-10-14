@@ -1106,7 +1106,7 @@ int main() {
 }
 )");
     ZASSERT(compile_with_modules());
-    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+    decode_index(index::build_tu_index(*unit));
 
     // The main file's index declares what it names from the module, in the
     // module's file; the header behind the module is the module's to index.
@@ -1773,7 +1773,7 @@ ZEST_CASE(CanonicalFile) {
 
     // A main-file-only build keeps no header entries: a symbol the main file
     // merely uses has no declaring entry at all.
-    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+    decode_index(index::build_tu_index(*unit));
     auto used = symbol_named("header_only").second;
     ZASSERT(!has(used, index::SymbolFlags::HasDefinition));
     ZASSERT(used.file == index::no_file);
@@ -1806,7 +1806,7 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
     }
     ZASSERT(found);
 
-    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+    decode_index(index::build_tu_index(*unit));
 
     // Entries resolving into the preamble are dropped: the preamble's own
     // index covers them. Only the main file's entries remain.
@@ -1838,7 +1838,7 @@ Derived* use();
     }
     ZASSERT(found);
 
-    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+    decode_index(index::build_tu_index(*unit));
 
     ZASSERT(tu_index.file_indices.empty());
     ZASSERT(!tu_index.main_file_index.occurrences.empty());
@@ -1857,7 +1857,7 @@ int x = §(1)BAZ;
 )");
     ZASSERT(compile());
 
-    decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+    decode_index(index::build_tu_index(*unit));
     ZASSERT(tu_index.file_indices.empty());
     ZASSERT(!tu_index.main_file_index.occurrences.empty());
 }
@@ -1933,7 +1933,7 @@ ZEST_CASE(DeepExpressionChain) {
     llvm::thread index_thread(std::optional<unsigned>(2u << 20), [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = feature::inactive_regions(*unit);
-        decode_index(index::build_tu_index(*unit, {.main_file_only = true}));
+        decode_index(index::build_tu_index(*unit));
 
         // The semantic map must also serve token classification and a
         // selection at the giant expansion's invocation on this stack:
@@ -2138,7 +2138,7 @@ ZEST_CASE(ClassParametersStayUnbound) {
     // The only instantiation binds the class's parameter in an open file's
     // index, where `auto` stands for Widget; a stored index leaves it
     // unbound, as every unit shares it, and `auto` stands for `T`.
-    decode_index(index::build_tu_index(*unit, {.only_instantiation = true}));
+    decode_index(index::build_tu_index(*unit));
     ZEXPECT(spelled_in("local") == std::vector<Spelled>{
                                        {"auto", SymbolKind::Struct,   {RelationKind::Deduced}   },
                                        {"copy", SymbolKind::Variable, {RelationKind::Definition}},

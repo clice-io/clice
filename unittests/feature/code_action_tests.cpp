@@ -30,8 +30,8 @@ struct FunctionAt : clang::RecursiveASTVisitor<FunctionAt> {
 
     bool VisitFunctionDecl(clang::FunctionDecl* decl) {
         auto location = decl->getLocation();
-        if(location.isFileID() && unit.file_id(location) == unit.main_file() &&
-           unit.file_offset(location) == offset) {
+        if(location.isFileID() &&
+           unit.written_at(location) == FileOffset{unit.focus_file().file(), offset}) {
             found = decl;
         }
         return true;
@@ -77,7 +77,7 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
         return action.title == title;
     });
     ZASSERT(action != actions.end());
-    original = unit->main_content().str();
+    original = unit->focus_file().content().str();
     auto edits = action->edits;
     if(action->index) {
         auto* request = std::get_if<feature::DefineRequest>(&*action->index);
@@ -86,7 +86,7 @@ void apply(llvm::StringRef marker, llvm::StringRef title) {
             feature::assemble_definitions(request->pieces, [](std::uint64_t) { return false; });
         ZASSERT(text);
         edits =
-            feature::format_edits(unit->file_path(unit->main_file()),
+            feature::format_edits(unit->file_path(unit->focus_file().file()),
                                   original,
                                   {
                                       {request->range, request->before + *text + request->after}

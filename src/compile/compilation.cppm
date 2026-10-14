@@ -210,7 +210,24 @@ enum class CompilationStatus : std::uint8_t {
     SetupFail,
 };
 
+/// A place in one of the files of a compile.
+struct FileOffset {
+    clang::FileID file;
+
+    std::uint32_t offset = 0;
+
+    friend bool operator==(const FileOffset&, const FileOffset&) = default;
+};
+
+/// A stretch of text in one of the files of a compile.
+struct FileRange {
+    clang::FileID file;
+
+    LocalSourceRange range;
+};
+
 class CompilationUnit;
+class FocusFile;
 
 /// Run the compile `params` describes. The caller checks that the PCH and
 /// the PCMs it hands in are still fresh.
@@ -224,6 +241,10 @@ public:
     CompilationUnit& operator=(const CompilationUnit&) = delete;
 
     ~CompilationUnit();
+
+    auto kind() -> CompilationKind {
+        return params.kind;
+    }
 
     bool completed() {
         return outcome == CompilationStatus::Completed;
@@ -251,26 +272,41 @@ public:
 
     auto file_id(llvm::StringRef file) -> clang::FileID;
 
-    /// If the location represents file location, it is composed of a file id
-    /// and an offset relative to the file begin, decompose it.
-    auto decompose_location(clang::SourceLocation location)
-        -> std::pair<clang::FileID, std::uint32_t>;
-
-    /// Decompose a source range into file ID and local source range. The begin and end
-    /// of the input source range both should be `FileID`. If the range is cross multiple
-    /// files, we cut off the range at the end of the first file.
-    auto decompose_range(clang::SourceRange range) -> std::pair<clang::FileID, LocalSourceRange>;
-
-    /// Same as `decompose_range`, but will translate range to expansion range:
-    /// a range inside a macro expansion covers the whole invocation.
-    auto decompose_expansion_range(clang::SourceRange range)
-        -> std::pair<clang::FileID, LocalSourceRange>;
-
-    /// Get the file id of the file location.
+    /// The file `location` is in; for a location a macro produced, the
+    /// file of its expansion record.
     auto file_id(clang::SourceLocation location) -> clang::FileID;
 
-    /// Get the file offset of the file location.
-    auto file_offset(clang::SourceLocation location) -> std::uint32_t;
+    /// Where the token at `location` is written. Of `#define CALL(f) f(1)`
+    /// and `CALL(helper);`, `helper` is written in the argument and `(1)`
+    /// in the `#define`; a token a `##` pasted, in the scratch buffer.
+    auto written_at(clang::SourceLocation location) -> FileOffset;
+
+    /// Where the user sees `location`: a macro argument where it is
+    /// written, anything else a macro produced at the start of the
+    /// invocation. Of the example above, `helper` in the argument, `(1)` at
+    /// `CALL`.
+    auto seen_at(clang::SourceLocation location) -> FileOffset;
+
+    /// Where the macro invocation that produced `location` starts, the
+    /// location itself outside macros: all of `helper(1)` at `CALL`.
+    auto produced_at(clang::SourceLocation location) -> FileOffset;
+
+    /// The text `range` was written as, token for token: a macro argument
+    /// its tokens, a whole expansion the invocation; none when the range
+    /// takes in part of a macro's own tokens (`helper(1)` above) or runs
+    /// across files. In the focus file it is read off the tokens a Content
+    /// compile collects, elsewhere off clang's own mapping.
+    auto written_range(clang::SourceRange range) -> std::optional<FileRange>;
+
+    /// The text of the macro invocations that produced `range`, from the
+    /// one its begin is in to the one its end is in; outside macros the
+    /// range itself. Of the example above, all of `CALL(helper)` for
+    /// `helper(1)` and for `helper` alike. A range running across files
+    /// stops at the end of the first.
+    auto produced_range(clang::SourceRange range) -> FileRange;
+
+    /// The file this compile serves.
+    auto focus_file() -> FocusFile;
 
     /// The identity of the file entry (CanonicalPath), absolutized against
     /// the compile's working directory: symlinked spellings of a file
@@ -295,22 +331,9 @@ public:
     /// file_content, never falls back to a fake buffer.
     auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
 
-    /// Return clang's main file ID, the file this unit was built for.
-    auto main_file() -> clang::FileID;
-
-    /// Whether `fid` is the main file, or the preamble of it a consumed PCH
-    /// recorded — where the preamble's include locations point.
-    bool is_main_file(clang::FileID fid);
-
-    /// Get the content of main file.
-    auto main_content() -> llvm::StringRef;
-
     /// A file's positions, over line tables computed on first use and
     /// cached.
     auto positions(clang::FileID fid) -> PositionMap;
-
-    /// The main file's positions.
-    auto positions() -> PositionMap;
 
     /// A file's comments, lexed on first use and cached.
     auto comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment>;
@@ -354,27 +377,11 @@ public:
     /// was introduced by `#include`.
     auto include_location(clang::FileID fid) -> clang::SourceLocation;
 
-    /// Given a macro location, return its top level spelling location(the location
-    /// of the token that the result token is expanded from, may from macro argument
-    /// or macro definition).
-    auto spelling_location(clang::SourceLocation location) -> clang::SourceLocation;
-
-    /// Given a macro location, return its top level expansion location(the location of
-    /// macro expansion).
-    auto expansion_location(clang::SourceLocation location) -> clang::SourceLocation;
-
-    ///
-    auto file_location(clang::SourceLocation location) -> clang::SourceLocation;
-
     /// FIXME: Do we really need this function?
     auto presumed_location(clang::SourceLocation location) -> clang::PresumedLoc;
 
     /// Create a file location with given file id and offset.
     auto create_location(clang::FileID fid, std::uint32_t offset) -> clang::SourceLocation;
-
-    /// The tokens a Content compile collects, the only kind that collects
-    /// them.
-    auto tokens() -> const TokenMap&;
 
     /// Get the token length.
     auto token_length(clang::SourceLocation location) -> std::uint32_t;
@@ -441,6 +448,7 @@ public:
 
 private:
     friend std::unique_ptr<CompilationUnit> compile(CompilationParams params);
+    friend class FocusFile;
 
     class DiagnosticCollector;
     class DirectiveCollector;
@@ -561,6 +569,43 @@ private:
     std::vector<clang::Decl*> collected_decls;
 
     std::unique_ptr<tidy::ClangTidyChecker> checker;
+};
+
+/// The file a compile serves: the one the user opened, a header compiled
+/// in its host's context too. The preamble a consumed PCH holds is part of
+/// it, at the same offsets.
+class FocusFile {
+public:
+    explicit FocusFile(CompilationUnit& unit) : unit(unit) {}
+
+    auto file() -> clang::FileID;
+
+    /// Whether `fid` is this file or the preamble of it a consumed PCH
+    /// recorded, where the preamble's directives point.
+    bool contains(clang::FileID fid);
+
+    auto content() -> llvm::StringRef;
+
+    auto positions() -> PositionMap;
+
+    /// The tokens a Content compile collects, the only kind that collects
+    /// them.
+    auto tokens() -> const TokenMap&;
+
+    /// The location at `offset`.
+    auto location(std::uint32_t offset) -> clang::SourceLocation;
+
+    /// CompilationUnit::seen_at, when it is in this file.
+    auto offset(clang::SourceLocation location) -> std::optional<std::uint32_t>;
+
+    /// CompilationUnit::written_range, when it is in this file.
+    auto written_range(clang::SourceRange range) -> std::optional<LocalSourceRange>;
+
+    /// CompilationUnit::produced_range, when it is in this file.
+    auto produced_range(clang::SourceRange range) -> std::optional<LocalSourceRange>;
+
+private:
+    CompilationUnit& unit;
 };
 
 /// How a PCH built by compile() checks its inputs when loaded: by size

@@ -62,7 +62,7 @@ auto resolver() {
 void expect_tokens_match_ast() {
     auto ast = feature::semantic_tokens(*unit);
     auto projected =
-        feature::index_semantic_tokens(unit->main_content(),
+        feature::index_semantic_tokens(unit->focus_file().content(),
                                        feature::index_lang_options("main.cpp", false, "c++20"),
                                        occurrences,
                                        decls,
@@ -260,7 +260,7 @@ int compute() {
     extract_entries();
 
     auto ast = feature::folding_ranges(*unit);
-    auto projected = feature::index_folding_ranges(unit->main_content(),
+    auto projected = feature::index_folding_ranges(unit->focus_file().content(),
                                                    feature::index_lang_options("main.cpp", false),
                                                    decls,
                                                    resolver());
@@ -275,7 +275,7 @@ int compute() {
 
     // The constructor's fold anchors at its body, not the member
     // initializer's braces.
-    auto body = unit->main_content().find("{\n        value += 1;");
+    auto body = unit->focus_file().content().find("{\n        value += 1;");
     bool anchored = std::ranges::any_of(projected, [&](const feature::FoldingRange& fold) {
         return fold.range.begin == body;
     });
@@ -308,7 +308,7 @@ typedef struct {
     extract_entries();
 
     auto ast = feature::folding_ranges(*unit);
-    auto projected = feature::index_folding_ranges(unit->main_content(),
+    auto projected = feature::index_folding_ranges(unit->focus_file().content(),
                                                    feature::index_lang_options("main.cpp", false),
                                                    decls,
                                                    resolver());
@@ -337,7 +337,7 @@ int values[] =
     ZASSERT(compile());
     extract_entries();
 
-    auto projected = feature::index_folding_ranges(unit->main_content(),
+    auto projected = feature::index_folding_ranges(unit->focus_file().content(),
                                                    feature::index_lang_options("main.cpp", false),
                                                    decls,
                                                    resolver());

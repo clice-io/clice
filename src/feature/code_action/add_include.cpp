@@ -87,10 +87,11 @@ std::optional<std::size_t> call_arguments(llvm::ArrayRef<clang::syntax::Token> t
 /// None for a member named through `.` or `->`: the object's class
 /// declares it, not a header.
 std::optional<QualifiedName> qualified_name_at(CompilationUnit& unit, std::uint32_t offset) {
-    auto tokens = unit.tokens().spelled();
+    auto& token_map = unit.focus_file().tokens();
+    auto tokens = token_map.spelled();
     auto& SM = unit.context().getSourceManager();
     auto offset_of = [&](const clang::syntax::Token& token) {
-        return unit.file_offset(token.location());
+        return token_map.offset(token);
     };
     // The token under the cursor, else the one the cursor sits right
     // after: editors ask at either end of a name.
@@ -171,12 +172,13 @@ std::optional<clang::tooling::stdlib::Header>
 /// includer's context carries one line more, the include entering the
 /// synthesized rest of the includer.
 std::uint32_t text_end(CompilationUnit& unit) {
-    auto content = unit.main_content();
-    auto it = unit.directives().find(unit.main_file());
+    auto focus = unit.focus_file();
+    auto content = focus.content();
+    auto it = unit.directives().find(focus.file());
     if(it != unit.directives().end() && !it->second.includes.empty()) {
         const auto& last = it->second.includes.back();
         if(last.fid.isValid() && unit.synthesized(last.fid)) {
-            return line_begin(content, unit.file_offset(last.location));
+            return line_begin(content, unit.seen_at(last.location).offset);
         }
     }
     return content.size();
@@ -213,7 +215,7 @@ std::uint32_t after_leading_comments(llvm::StringRef content, const clang::LangO
 /// block is not. A raw lex of the text rather than the directive table: the preamble's directives
 /// are compiled into the PCH and never reach this AST.
 IncludeInsertion include_insertion(CompilationUnit& unit) {
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     auto end = text_end(unit);
 
     /// The anchors at one conditional depth: the file's own level, and
@@ -386,9 +388,9 @@ void add_include(CompilationUnit& unit, LocalSourceRange selection, std::vector<
     if(!name) {
         return;
     }
-    auto main = unit.main_file();
+    auto focus = unit.focus_file();
     bool unresolved = llvm::any_of(unit.diagnostics(), [&](const Diagnostic& diagnostic) {
-        return diagnostic.fid == main && diagnostic.range.valid() &&
+        return focus.contains(diagnostic.fid) && diagnostic.range.valid() &&
                unresolved_name(diagnostic.id.value) && diagnostic.range.intersects(name->range);
     });
     if(!unresolved) {

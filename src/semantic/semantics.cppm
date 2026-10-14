@@ -256,19 +256,12 @@ clang::SourceRange written_name(const clang::DeclarationNameInfo& name,
                                 const clang::SourceManager& SM);
 
 struct SemanticsOptions {
-    /// Traverse only the main file's top-level decls — the shape features
-    /// consume, cached on the unit, owning the main file's spelled tokens.
-    /// Without it everything the unit parsed is traversed, the transient
-    /// shape the full index projection uses; it reads no tokens, so it
-    /// builds on a compile that collected none.
-    bool main_file_only = true;
-
-    /// Also traverse template instantiations, flagged in_instantiation:
-    /// what the compiler materialized from the written templates in this
-    /// TU. Class, function and variable template instantiations hang
-    /// under the template's canonical declaration node, generic lambda
-    /// call operators under their lambda expression.
-    bool instantiations = false;
+    /// Traverse everything the unit parsed, the transient shape the full
+    /// index projection uses; it reads no tokens, so it builds on a
+    /// compile that collected none. Without it only the focus file's
+    /// top-level decls are traversed — the shape features consume, cached
+    /// on the unit, owning the focus file's spelled tokens.
+    bool all_files = false;
 };
 
 /// The semantic map of the main file, built once after a successful
@@ -302,9 +295,7 @@ public:
         /// written template, so its locations point into the pattern.
         /// Instantiations reach the table as the specializations explicit
         /// instantiation directives create (the directive itself, an
-        /// ExplicitInstantiationDecl, stays unflagged) and, under
-        /// SemanticsOptions::instantiations, as subtrees under the template's
-        /// canonical declaration node.
+        /// ExplicitInstantiationDecl, stays unflagged).
         bool in_instantiation : 1 = false;
     };
 

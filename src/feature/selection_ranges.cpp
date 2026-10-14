@@ -336,49 +336,17 @@ llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnit& unit, std::uint3
     return sides;
 }
 
-/// The characters of a `>` split off a `>>` — the parser closes two
-/// template argument lists on one token — or nothing for any other
-/// location.
-std::optional<LocalSourceRange> split_half(CompilationUnit& unit, clang::SourceLocation location) {
-    if(!location.isMacroID()) {
-        return std::nullopt;
-    }
-    auto range = unit.context().getSourceManager().getExpansionRange(location);
-    if(range.isTokenRange()) {
-        return std::nullopt;
-    }
-    auto [fid, begin] = unit.decompose_location(range.getBegin());
-    if(fid != unit.main_file()) {
-        return std::nullopt;
-    }
-    return LocalSourceRange{begin, unit.file_offset(range.getEnd())};
-}
-
-/// A node's range in the main file: the tokens a macro argument or a
+/// A node's range in the focus file: the tokens a macro argument or a
 /// whole expansion spells for it, else the invocations it spans.
-std::optional<LocalSourceRange> main_file_range(CompilationUnit& unit, clang::SourceRange range) {
+std::optional<LocalSourceRange> focus_range(CompilationUnit& unit, clang::SourceRange range) {
     if(range.isInvalid()) {
         return std::nullopt;
     }
-    if(auto half = split_half(unit, range.getEnd())) {
-        auto begin =
-            range.getBegin() == range.getEnd() ? half : main_file_range(unit, range.getBegin());
-        if(!begin) {
-            return std::nullopt;
-        }
-        return LocalSourceRange{begin->begin, half->end};
+    auto focus = unit.focus_file();
+    if(auto written = focus.written_range(range)) {
+        return written;
     }
-    if(auto spelled = unit.tokens().spelled_for(range); !spelled.empty()) {
-        return LocalSourceRange{
-            unit.file_offset(spelled.front().location()),
-            unit.file_offset(spelled.back().location()) + spelled.back().length(),
-        };
-    }
-    auto [fid, local] = unit.decompose_expansion_range(range);
-    if(fid != unit.main_file()) {
-        return std::nullopt;
-    }
-    return local;
+    return focus.produced_range(range);
 }
 
 /// Whether the `;` following a node ends the statement or declaration the
@@ -466,7 +434,7 @@ void add_ast(CompilationUnit& unit,
     for(auto anchor: anchors(unit, steps.offset)) {
         auto tree = SelectionTree::create_right(unit, anchor);
         for(const auto* node = tree.common_ancestor(); node && node->parent; node = node->parent) {
-            auto range = main_file_range(unit, node->source_range());
+            auto range = focus_range(unit, node->source_range());
             if(!range) {
                 continue;
             }
@@ -477,8 +445,8 @@ void add_ast(CompilationUnit& unit,
                 }
             }
             if(auto brackets = angles(*node); brackets && brackets->isValid()) {
-                auto left = main_file_range(unit, brackets->getBegin());
-                auto right = main_file_range(unit, brackets->getEnd());
+                auto left = focus_range(unit, brackets->getBegin());
+                auto right = focus_range(unit, brackets->getEnd());
                 if(left && right) {
                     steps.add(trimmed(content, {left->end, right->begin}));
                     steps.add({left->begin, right->end});
@@ -492,7 +460,7 @@ void add_ast(CompilationUnit& unit,
 
 auto selection_ranges(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> offsets)
     -> std::vector<std::vector<LocalSourceRange>> {
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     auto tokens = lex(content, unit.lang_options());
     auto skipped = skipped_tokens(unit, tokens);
     std::vector<std::vector<LocalSourceRange>> result;

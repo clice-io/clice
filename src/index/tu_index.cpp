@@ -310,11 +310,12 @@ bool is_completable(const clang::NamedDecl* decl) {
 class Projector {
 public:
     Projector(CompilationUnit& unit, const TUIndexOptions& options) :
-        unit(unit), main_file_only(options.main_file_only), known_variants(options.known_variants),
-        resolver(unit.context(), {.only_instantiation = options.only_instantiation}) {}
+        unit(unit), focus_only(unit.kind() == CompilationKind::Content && !options.all_files),
+        known_variants(options.known_variants),
+        resolver(unit.context(), {.only_instantiation = unit.kind() == CompilationKind::Content}) {}
 
     /// The only gate through which entries enter `file_indices`. With
-    /// main_file_only, the index covers just the main file and the
+    /// focus_only, the index covers just the focus file and the
     /// declarations project_imported adds last — yet AST nodes reachable
     /// from its top-level decls can carry locations in other files:
     /// inherited default arguments and base specifiers of classes defined
@@ -322,7 +323,7 @@ public:
     /// preamble's own index, so they are dropped here. So are the entries
     /// of a header's borrowed includer context: its host indexes them.
     FileIndex* file_index(clang::FileID fid) {
-        if((main_file_only && fid != unit.main_file() && !module_files.contains(fid)) ||
+        if((focus_only && fid != unit.focus_file().file() && !module_files.contains(fid)) ||
            unit.from_context(fid)) {
             return nullptr;
         }
@@ -337,7 +338,7 @@ public:
         auto [it, success] = symbols.try_emplace(hash);
         if(success) {
             it->second = describe(decl);
-            if(main_file_only && decl->isFromASTFile() && decl->isInNamedModule() &&
+            if(focus_only && decl->isFromASTFile() && decl->isInNamedModule() &&
                !llvm::isa<clang::NamespaceDecl>(decl)) {
                 imported.push_back(decl);
             }
@@ -409,7 +410,7 @@ public:
     }
 
     void add_occurrence(const clang::NamedDecl* decl, clang::SourceRange name) {
-        auto [fid, range] = unit.decompose_range(name);
+        auto [fid, range] = *unit.written_range(name);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -424,7 +425,7 @@ public:
             return;
         }
 
-        auto [fid, range] = unit.decompose_range(location);
+        auto [fid, range] = *unit.written_range(location);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -455,7 +456,7 @@ public:
         // last body token), like declarations do — definition-text
         // consumers decode it out of target_symbol.
         if(kind.isDeclOrDef() && def) {
-            auto [def_fid, def_range] = unit.decompose_range(
+            auto [def_fid, def_range] = *unit.written_range(
                 clang::SourceRange(def->getDefinitionLoc(), def->getDefinitionEndLoc()));
             if(def_fid == fid) {
                 relation.set_definition_range(def_range);
@@ -471,7 +472,7 @@ public:
     void add_self_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
                            clang::SourceRange name) {
-        auto [fid, range] = unit.decompose_range(name);
+        auto [fid, range] = *unit.written_range(name);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -483,7 +484,7 @@ public:
             // FIXME: why definition or declaration has invalid source range? implicit node?
             auto source_range = decls::written_range(decl);
             if(source_range.isValid()) {
-                auto [def_fid, definition_range] = unit.decompose_expansion_range(source_range);
+                auto [def_fid, definition_range] = unit.produced_range(source_range);
                 // A declaration can begin in another file, e.g. when a
                 // header-defined macro spells its leading tokens. Such a
                 // range is meaningless in this file's coordinates; leave
@@ -505,7 +506,7 @@ public:
                            clang::SourceRange anchor) {
         // The anchor only routes the relation to a file's index; symbol pairs
         // carry no range of their own.
-        auto fid = unit.decompose_expansion_range(anchor).first;
+        auto fid = unit.produced_at(anchor.getBegin()).file;
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -559,7 +560,7 @@ public:
                            unit.get<EntityTable>().entity(target)) {
             return;
         }
-        auto [fid, range] = unit.decompose_range(name);
+        auto [fid, range] = *unit.written_range(name);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -577,7 +578,7 @@ public:
                            RelationKind kind,
                            const clang::NamedDecl* target,
                            clang::SourceRange range) {
-        auto [fid, relation_range] = unit.decompose_expansion_range(range);
+        auto [fid, relation_range] = unit.produced_range(range);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -635,9 +636,9 @@ public:
             for(auto& import: directive.imports) {
                 if(import.name_locations.empty())
                     continue;
-                auto [loc_fid, range] = unit.decompose_expansion_range(
-                    clang::SourceRange(import.name_locations.front(),
-                                       import.name_locations.back()));
+                auto [loc_fid, range] =
+                    unit.produced_range(clang::SourceRange(import.name_locations.front(),
+                                                           import.name_locations.back()));
                 llvm::StringRef name = import.full_name.empty() ? import.name : import.full_name;
                 emit(name, loc_fid, range, RelationKind::Reference);
             }
@@ -660,7 +661,7 @@ public:
                 continue;
             }
             emit(module_name,
-                 unit.main_file(),
+                 unit.focus_file().file(),
                  module.name_range(),
                  unit.defines_module() ? RelationKind::Definition : RelationKind::Declaration);
             break;
@@ -754,7 +755,9 @@ public:
     /// written in a fragment the caller's body pastes in is recorded at
     /// that include.
     clang::SourceRange in_caller_file(const clang::NamedDecl* caller, clang::SourceRange range) {
-        auto include = pasted_into(caller, unit.expansion_location(range.getBegin()));
+        auto include =
+            pasted_into(caller,
+                        unit.context().getSourceManager().getExpansionLoc(range.getBegin()));
         return include.isValid() ? clang::SourceRange(include) : range;
     }
 
@@ -772,7 +775,7 @@ public:
         if(include.isInvalid()) {
             return;
         }
-        auto [fid, range] = unit.decompose_range(include);
+        auto [fid, range] = *unit.written_range(include);
         auto* index = file_index(fid);
         if(!index) {
             return;
@@ -1035,8 +1038,9 @@ public:
         if(keyword.isInvalid() || entry.flags.in_instantiation) {
             return;
         }
-        auto location = unit.file_location(keyword.getBegin());
-        if(location != unit.spelling_location(keyword.getBegin())) {
+        auto& SM = unit.context().getSourceManager();
+        auto location = SM.getFileLoc(keyword.getBegin());
+        if(location != SM.getSpellingLoc(keyword.getBegin())) {
             return;
         }
         // An init-capture's `auto` is implicit, at the captured name.
@@ -1064,7 +1068,7 @@ public:
             type = resolver.deduce(var);
         }
 
-        clang::SourceRange name(location, unit.file_location(keyword.getEnd()));
+        clang::SourceRange name(location, SM.getFileLoc(keyword.getEnd()));
         for(const auto* target: types::decls_of(types::unwrap(type), &resolver)) {
             // A closure type is declared by no name to reach.
             if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(target);
@@ -1087,18 +1091,19 @@ public:
         // body — those tokens have no meaning of their own, each
         // expansion assigns one, and projecting a TU's expansion
         // back into the shared definition is deliberately banned.
-        auto location = unit.file_location(occurrence.location);
-        auto spelled = location == unit.spelling_location(occurrence.location);
+        auto& SM = unit.context().getSourceManager();
+        auto location = SM.getFileLoc(occurrence.location);
+        auto spelled = location == SM.getSpellingLoc(occurrence.location);
 
         // A name of several tokens spans them all where they are
         // written in one file; a macro that spells part of it
         // leaves the first token alone.
         clang::SourceRange name(location);
         if(occurrence.name_end.isValid()) {
-            auto end = unit.file_location(occurrence.name_end);
-            if(spelled && end == unit.spelling_location(occurrence.name_end) &&
-               unit.file_id(end) == unit.file_id(location) &&
-               unit.file_offset(location) <= unit.file_offset(end)) {
+            auto end = SM.getFileLoc(occurrence.name_end);
+            if(spelled && end == SM.getSpellingLoc(occurrence.name_end) &&
+               SM.getFileID(end) == SM.getFileID(location) &&
+               SM.getFileOffset(location) <= SM.getFileOffset(end)) {
                 name.setEnd(end);
             }
         }
@@ -1140,7 +1145,7 @@ public:
                                                 reference.kind,
                                                 reference.location,
                                                 reference.name_end});
-                        module_files.insert(unit.file_id(unit.file_location(reference.location)));
+                        module_files.insert(unit.seen_at(reference.location).file);
                     }
                 }
             }
@@ -1204,14 +1209,14 @@ public:
 
     std::string build(const PreambleExtras* extras) {
         ScopedTimer semantics_timer;
-        // The main-file-only shape is the one features share, cached on the
+        // The focus-only shape is the one features share, cached on the
         // unit; the whole-TU shape is transient — projected and dropped.
         // Both phases below share the one build.
         std::optional<Semantics> full;
-        if(!main_file_only) {
-            full.emplace(Semantics::build(unit, {.main_file_only = false}));
+        if(!focus_only) {
+            full.emplace(Semantics::build(unit, {.all_files = true}));
         }
-        const Semantics& semantics = main_file_only ? unit.get<Semantics>() : *full;
+        const Semantics& semantics = focus_only ? unit.get<Semantics>() : *full;
         auto semantics_ms = semantics_timer.ms_f();
 
         ScopedTimer project_timer;
@@ -1246,7 +1251,7 @@ public:
         llvm::DenseMap<std::uint32_t, FileIndex> by_path;
         llvm::DenseMap<std::uint32_t, clang::FileID> path_fids;
         for(auto& [fid, index]: file_indices) {
-            if(fid != unit.main_file() && tree.node_of(fid) == no_node) {
+            if(fid != unit.focus_file().file() && tree.node_of(fid) == no_node) {
                 continue;
             }
             auto path_id = tree.path_id(fid);
@@ -1398,7 +1403,7 @@ public:
         LOG_PERF("index_detail",
                  "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} finish_ms={:.2f} "
                  "encode_ms={:.2f} pack_ms={:.2f}",
-                 main_file_only ? "main" : "full",
+                 focus_only ? "focus" : "full",
                  semantics_ms,
                  project_ms,
                  finish_ms,
@@ -1409,7 +1414,7 @@ public:
 
 private:
     CompilationUnit& unit;
-    bool main_file_only;
+    bool focus_only;
     llvm::ArrayRef<std::uint64_t> known_variants;
     types::TemplateResolver resolver;
     IncludeTree tree;
@@ -1418,7 +1423,7 @@ private:
     /// nothing outside the compilation, so it never leaves the builder;
     /// the encode step converts it through tree.path_id.
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
-    /// With main_file_only, the symbols registered that an imported
+    /// With focus_only, the symbols registered that an imported
     /// module declares, a namespace aside: every unit reopening it
     /// redeclares it.
     llvm::SmallVector<const clang::NamedDecl*> imported;
@@ -1440,9 +1445,9 @@ std::string build_preamble_index(CompilationUnit& unit,
                                  llvm::ArrayRef<std::uint8_t> open_conditionals,
                                  llvm::StringRef diagnostics) {
     // The preamble compile remaps the buffer truncated at the bound, so
-    // main_content() is exactly the preamble text the PCH was built
-    // from.
-    auto preamble_text = unit.main_content();
+    // the focus file's content is exactly the preamble text the PCH was
+    // built from.
+    auto preamble_text = unit.focus_file().content();
     PreambleExtras extras{
         .hash = llvm::xxh3_64bits(preamble_text),
         .size = static_cast<std::uint32_t>(preamble_text.size()),

@@ -258,7 +258,7 @@ public:
         clang::MultiplexConsumer(std::move(consumer)), unit(unit) {}
 
     void collect_decl(clang::Decl* decl) {
-        if(unit.file_id(unit.expansion_location(decl->getLocation())) != unit.main_file() &&
+        if(!unit.focus_file().contains(unit.produced_at(decl->getLocation()).file) &&
            !unit.encloses_main_file(decl)) {
             return;
         }

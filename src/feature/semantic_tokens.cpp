@@ -290,7 +290,7 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
 class SemanticTokensCollector {
 public:
     SemanticTokensCollector(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> inactive_regions) :
-        unit(unit), semantics(unit.get<Semantics>()), content(unit.main_content()),
+        unit(unit), semantics(unit.get<Semantics>()), content(unit.focus_file().content()),
         comments(semantics.comments()), inactive_regions(inactive_regions) {}
 
     auto collect() -> std::vector<SemanticToken> {
@@ -429,7 +429,7 @@ private:
             return std::nullopt;
         }
         if(location.isMacroID()) {
-            location = unit.spelling_location(location);
+            location = unit.context().getSourceManager().getSpellingLoc(location);
         }
 
         auto spelled = semantics.spelled_tokens();
@@ -804,14 +804,18 @@ auto semantic_tokens(CompilationUnit& unit) -> std::vector<SemanticToken> {
 }
 
 auto semantic_tokens(CompilationUnit& unit, PositionEncoding encoding) -> protocol::SemanticTokens {
-    return semantic_tokens_to_protocol(semantic_tokens(unit), unit.positions(), encoding);
+    return semantic_tokens_to_protocol(semantic_tokens(unit),
+                                       unit.focus_file().positions(),
+                                       encoding);
 }
 
 auto semantic_tokens(CompilationUnit& unit,
                      llvm::ArrayRef<std::uint32_t> inactive_regions,
                      PositionEncoding encoding) -> protocol::SemanticTokens {
     SemanticTokensCollector collector(unit, inactive_regions);
-    return semantic_tokens_to_protocol(collector.collect(), unit.positions(), encoding);
+    return semantic_tokens_to_protocol(collector.collect(),
+                                       unit.focus_file().positions(),
+                                       encoding);
 }
 
 auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,

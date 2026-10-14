@@ -38,7 +38,7 @@ void run(llvm::StringRef code,
     add_main("main.cpp", code);
     ZASSERT(compile_with_pch("-std=c++23"));
 
-    LocalSourceRange range = LocalSourceRange(0, unit->main_content().size());
+    LocalSourceRange range = LocalSourceRange(0, unit->focus_file().content().size());
     hints = feature::inlay_hints(*unit, range, options);
 
     hints_map.clear();

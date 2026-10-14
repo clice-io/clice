@@ -574,28 +574,6 @@ public:
     }
 
 private:
-    // Get the range of the main file that *exactly* corresponds to R.
-    std::optional<LocalSourceRange> hint_range(clang::SourceRange R) {
-        auto tokens = unit.tokens().spelled_for(R);
-
-        if(tokens.empty()) {
-            return std::nullopt;
-        }
-
-        auto begin = tokens.front().location();
-        auto end = tokens.back().endLocation();
-
-        auto [begin_fid, begin_offset] = unit.decompose_location(tokens.front().location());
-        auto [end_fid, end_offset] = unit.decompose_location(tokens.back().endLocation());
-
-        // Hint must be within the main file, not e.g. a non-preamble include.
-        if(begin_fid != end_fid || begin_fid != unit.main_file()) {
-            return std::nullopt;
-        }
-
-        return LocalSourceRange{begin_offset, end_offset};
-    }
-
     // Compute the LSP range to attach the block end hint to, if any allowed.
     // 1. "}" is the last non-whitespace character on the line. The range of "}"
     // is returned.
@@ -604,20 +582,20 @@ private:
     // Otherwise, the hint shouldn't be shown.
     std::optional<LocalSourceRange> compute_block_end_range(clang::SourceRange brace_range,
                                                             llvm::StringRef optional_punctuation) {
-        auto [block_begin_fid, block_begin_offset] =
-            unit.decompose_location(unit.file_location(brace_range.getBegin()));
-        auto rbrace_loc = unit.file_location(brace_range.getEnd());
-        auto [rbrace_fid, rbrace_offset] = unit.decompose_location(rbrace_loc);
+        auto focus = unit.focus_file();
+        auto block_begin = focus.offset(brace_range.getBegin());
+        auto rbrace = focus.offset(brace_range.getEnd());
 
         // Because we need to check the block satisfies the minimum line limit, we
-        // require both source location to be in the main file. This prevents hint
+        // require both source location to be in the focus file. This prevents hint
         // to be shown in weird cases like '{' is actually in a "#include", but it's
         // rare anyway.
-        if(block_begin_fid != rbrace_fid || block_begin_fid != unit.main_file()) {
+        if(!block_begin || !rbrace) {
             return std::nullopt;
         }
+        auto rbrace_offset = *rbrace;
 
-        llvm::StringRef rest_of_line = unit.main_content().substr(rbrace_offset).split('\n').first;
+        llvm::StringRef rest_of_line = focus.content().substr(rbrace_offset).split('\n').first;
         if(!rest_of_line.starts_with("}")) {
             return std::nullopt;
         }
@@ -628,8 +606,8 @@ private:
         }
 
         auto& src_mgr = unit.context().getSourceManager();
-        auto block_begin_line = src_mgr.getLineNumber(block_begin_fid, block_begin_offset);
-        auto rbrace_line = src_mgr.getLineNumber(rbrace_fid, rbrace_offset);
+        auto block_begin_line = src_mgr.getLineNumber(focus.file(), *block_begin);
+        auto rbrace_line = src_mgr.getLineNumber(focus.file(), rbrace_offset);
 
         // Don't show hint on trivial blocks like `class X {};`
         if(block_begin_line + options.min_block_lines - 1 > rbrace_line) {
@@ -647,13 +625,13 @@ private:
     /// Check whether the expr has a param name comment before it.
     /// The typical format is `/*name=*/`.
     bool has_param_name_comment(const clang::Expr* expr, llvm::StringRef name) {
-        auto location = unit.file_location(expr->getBeginLoc());
-        auto [fid, offset] = unit.decompose_location(location);
-        if(fid != unit.main_file()) {
+        auto focus = unit.focus_file();
+        auto offset = focus.offset(expr->getBeginLoc());
+        if(!offset) {
             return false;
         }
 
-        llvm::StringRef content = unit.main_content().substr(0, offset);
+        llvm::StringRef content = focus.content().substr(0, *offset);
 
         // Allow whitespace between comment and expression.
         content = content.rtrim();
@@ -920,11 +898,10 @@ private:
         }
         label += name;
 
-        auto [fid, offset] = unit.decompose_location(unit.file_location(start));
         add_end_hint(hint_range->end,
                      label,
                      options.max_length.block_end,
-                     fid == unit.main_file() ? std::optional(offset) : std::nullopt);
+                     unit.focus_file().offset(start));
     }
 
     /// `// condition` after an `#endif`, the condition of the `#if` it
@@ -943,7 +920,7 @@ private:
     }
 
     void add_endif_hint(LocalSourceRange opening, LocalSourceRange closing) {
-        auto content = unit.main_content();
+        auto content = unit.focus_file().content();
         if(content.slice(opening.begin, closing.begin).count('\n') + 1 < options.min_block_lines) {
             return;
         }
@@ -1016,7 +993,7 @@ private:
         const auto* symbol = decls::normalize(decl);
         InlayHintPart part{.value = text.str(), .symbol = unit.get<EntityTable>().entity(symbol)};
         if(index::classify_scope(symbol) != index::SymbolScope::External) {
-            part.anchor = unit.file_path(unit.file_id(unit.file_location(symbol->getLocation())));
+            part.anchor = unit.file_path(unit.seen_at(symbol->getLocation()).file);
         }
         return part;
     }
@@ -1106,7 +1083,7 @@ private:
                         llvm::StringRef prefix,
                         std::vector<InlayHintPart> label,
                         llvm::StringRef suffix) {
-        auto local_range = hint_range(range);
+        auto local_range = unit.focus_file().written_range(range);
         if(!local_range) {
             return;
         }
@@ -1836,7 +1813,7 @@ auto inlay_hints(CompilationUnit& unit, LocalSourceRange target, const InlayHint
     // Editors show a few dozen characters of hints on a line: the thousands
     // of a generated one-line table would only be sent to be dropped.
     constexpr std::size_t line_limit = 100;
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     std::uint32_t scanned = 0;
     std::size_t on_line = 0;
     std::vector<InlayHint> hints;

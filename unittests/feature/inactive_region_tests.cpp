@@ -32,7 +32,7 @@ int b();
 )cpp");
 
     ZASSERT(scan.regions.size() == 2u);
-    auto content = unit->main_content();
+    auto content = unit->focus_file().content();
     auto begin = scan.regions[0];
     auto end = scan.regions[1];
     ZEXPECT(content.substr(begin, end - begin) == "int dead();\n");
@@ -49,7 +49,7 @@ int dead();
 )cpp");
 
     ZASSERT(scan.regions.size() == 2u);
-    auto content = unit->main_content();
+    auto content = unit->focus_file().content();
     ZEXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
 }
 
@@ -72,7 +72,7 @@ int dead();
 )cpp");
 
     ZASSERT(scan.regions.size() == 2u);
-    auto content = unit->main_content();
+    auto content = unit->focus_file().content();
     ZEXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
 }
 
@@ -85,7 +85,7 @@ int b();
 )cpp");
 
     ZASSERT(scan.regions.size() == 2u);
-    auto content = unit->main_content();
+    auto content = unit->focus_file().content();
     ZEXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) == "int dead();\n");
 }
 
@@ -102,7 +102,7 @@ int b();
 )cpp");
 
     ZASSERT(scan.regions.size() == 2u);
-    auto content = unit->main_content();
+    auto content = unit->focus_file().content();
     ZEXPECT(content.substr(scan.regions[0], scan.regions[1] - scan.regions[0]) ==
             "int dead();\n#ifdef INNER\nint deeper();\n#endif\nint tail();\n");
 }

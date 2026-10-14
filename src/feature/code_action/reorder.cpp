@@ -67,22 +67,23 @@ std::optional<std::uint32_t> enclosing_branch(CompilationUnit& unit, std::uint32
 /// block.
 std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
                                                  const clang::FunctionDecl* definition) {
-    auto range = main_range(unit, written_declaration(definition)->getSourceRange());
+    auto range = unit.focus_file().written_range(written_declaration(definition)->getSourceRange());
     if(!range) {
         return std::nullopt;
     }
-    auto content = unit.main_content();
-    auto main = unit.main_file();
+    auto focus = unit.focus_file();
+    auto content = focus.content();
     auto begin = range->begin;
 
     // Attribute specifiers right before the declaration (`[[deprecated]]`
     // on a line of its own, or a macro spelling one) lie outside its
     // range.
-    auto tokens = unit.tokens().spelled();
+    auto& token_map = focus.tokens();
+    auto tokens = token_map.spelled();
     auto& SM = unit.context().getSourceManager();
     auto token_at = [&](std::uint32_t offset) {
         return std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
-            return unit.file_offset(token.location()) < offset;
+            return token_map.offset(token) < offset;
         });
     };
     auto first = token_at(begin);
@@ -120,15 +121,15 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
         if(!invocation) {
             break;
         }
-        first = token_at(unit.file_offset(*invocation));
+        first = token_at(unit.seen_at(*invocation).offset);
     }
-    begin = unit.file_offset(first->location());
+    begin = token_map.offset(*first);
 
     // Comments directly above the definition travel with it: each on
     // lines of its own, separated from what follows by nothing but
     // whitespace holding a single line break. A comment trailing the
     // previous definition's line belongs to that line.
-    auto comments = unit.comments(main);
+    auto comments = unit.comments(focus.file());
     auto it =
         std::ranges::lower_bound(comments, begin, {}, [](const LexicalInfo::Comment& comment) {
             return comment.range.begin;
@@ -213,15 +214,17 @@ llvm::SmallVector<const clang::Decl*, 4> requirements(clang::ASTContext& context
 
 /// The orders the text between the first and the last slot relies on.
 std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot> slots) {
-    auto main = unit.main_file();
+    auto focus = unit.focus_file();
     LocalSourceRange region{slots.front().range.begin, slots.back().range.end};
     auto offset_of = [&](clang::SourceLocation location) -> std::optional<std::uint32_t> {
-        location = unit.expansion_location(location);
-        if(location.isInvalid() || unit.file_id(location) != main) {
+        if(location.isInvalid()) {
             return std::nullopt;
         }
-        auto offset = unit.file_offset(location);
-        return region.contains(offset) ? std::optional(offset) : std::nullopt;
+        auto [file, offset] = unit.produced_at(location);
+        if(!focus.contains(file) || !region.contains(offset)) {
+            return std::nullopt;
+        }
+        return offset;
     };
     std::vector<Dependency> out;
     auto depend = [&](clang::SourceLocation before, clang::SourceLocation after) {
@@ -236,7 +239,7 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
     auto entries = semantics.node_entries();
     for(std::uint32_t i = 0; i < entries.size() && entries[i].node.is_ast();) {
         if(const auto* decl = entries[i].node.get<clang::Decl>()) {
-            auto range = main_range(unit, decl->getSourceRange());
+            auto range = unit.focus_file().written_range(decl->getSourceRange());
             if(range && (range->end <= region.begin || range->begin >= region.end)) {
                 i = entries[i].subtree_end;
                 continue;
@@ -283,7 +286,7 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
         }
     }
 
-    if(auto it = unit.directives().find(main); it != unit.directives().end()) {
+    if(auto it = unit.directives().find(focus.file()); it != unit.directives().end()) {
         llvm::DenseMap<const clang::MacroInfo*, llvm::SmallVector<clang::SourceLocation, 1>> undefs;
         for(const auto& macro: it->second.macros) {
             if(macro.kind == MacroRef::Undef) {
@@ -393,7 +396,7 @@ std::vector<TextReplacement> permutation(CompilationUnit& unit, std::vector<Slot
         assign();
     }
 
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     std::vector<TextReplacement> edits;
     for(auto [position, text]: llvm::enumerate(source)) {
         if(position == text) {
@@ -487,7 +490,7 @@ void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out) {
             }
             if(auto lines = definition_lines(unit, function)) {
                 slots.push_back({*lines,
-                                 unit.file_offset(canonical->getLocation()),
+                                 unit.seen_at(canonical->getLocation()).offset,
                                  function->getLexicalDeclContext(),
                                  enclosing_branch(unit, lines->begin)});
             }

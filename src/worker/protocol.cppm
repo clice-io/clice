@@ -202,7 +202,7 @@ struct CompileResult {
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;
     std::vector<DepFile> deps;
-    /// Serialized TUIndex for the main file (main_file_only=true).
+    /// Serialized TUIndex of the focus file.
     std::string tu_index_data;
 
     /// See TURunResult::index_in_file.

@@ -33,57 +33,128 @@ auto CompilationUnit::file_id(llvm::StringRef file) -> clang::FileID {
     return clang::FileID();
 }
 
-auto CompilationUnit::decompose_location(clang::SourceLocation location)
-    -> std::pair<clang::FileID, std::uint32_t> {
-    assert(location.isFileID() && "Decompose macro location is meaningless!");
-    return SM().getDecomposedLoc(location);
-}
-
-auto CompilationUnit::decompose_range(clang::SourceRange range)
-    -> std::pair<clang::FileID, LocalSourceRange> {
-    auto [begin, end] = range;
-    assert(begin.isValid() && end.isValid() && "Invalid source range");
-    assert(begin.isFileID() && end.isValid() && "Input source range should be a file range");
-
-    if(begin == end) {
-        auto [fid, offset] = decompose_location(begin);
-        return {
-            fid,
-            {offset, offset + token_length(end)}
-        };
-    } else {
-        auto [begin_fid, begin_offset] = decompose_location(begin);
-        auto [end_fid, end_offset] = decompose_location(end);
-
-        if(begin_fid == end_fid) {
-            end_offset += token_length(end);
-        } else {
-            auto content = file_content(begin_fid);
-            end_offset = content.size();
-        }
-
-        return {
-            begin_fid,
-            {begin_offset, end_offset}
-        };
-    }
-}
-
-auto CompilationUnit::decompose_expansion_range(clang::SourceRange range)
-    -> std::pair<clang::FileID, LocalSourceRange> {
-    auto [begin, end] = range;
-    // An end inside a macro expansion extends to the invocation's last
-    // token: `MAKE_FN(name)` as a whole, not its macro name alone.
-    return decompose_range(
-        clang::SourceRange(expansion_location(begin), SM().getExpansionRange(end).getEnd()));
-}
-
 auto CompilationUnit::file_id(clang::SourceLocation location) -> clang::FileID {
     return SM().getFileID(location);
 }
 
-auto CompilationUnit::file_offset(clang::SourceLocation location) -> std::uint32_t {
-    return SM().getFileOffset(location);
+static auto decompose(clang::SourceManager& SM, clang::SourceLocation location) -> FileOffset {
+    auto [fid, offset] = SM.getDecomposedLoc(location);
+    return {fid, offset};
+}
+
+auto CompilationUnit::written_at(clang::SourceLocation location) -> FileOffset {
+    return decompose(SM(), SM().getSpellingLoc(location));
+}
+
+auto CompilationUnit::seen_at(clang::SourceLocation location) -> FileOffset {
+    return decompose(SM(), SM().getFileLoc(location));
+}
+
+auto CompilationUnit::produced_at(clang::SourceLocation location) -> FileOffset {
+    return decompose(SM(), SM().getExpansionLoc(location));
+}
+
+/// The parser splits a `>>` closing two template argument lists in two:
+/// the first `>` becomes a macro location over its half of the token.
+static auto split_half(clang::SourceManager& SM, clang::SourceLocation location)
+    -> std::optional<FileRange> {
+    if(!location.isMacroID()) {
+        return std::nullopt;
+    }
+    auto range = SM.getExpansionRange(location);
+    if(range.isTokenRange()) {
+        return std::nullopt;
+    }
+    auto begin = decompose(SM, range.getBegin());
+    auto end = decompose(SM, range.getEnd());
+    return FileRange{
+        begin.file,
+        {begin.offset, end.offset}
+    };
+}
+
+auto CompilationUnit::written_range(clang::SourceRange range) -> std::optional<FileRange> {
+    if(range.isInvalid()) {
+        return std::nullopt;
+    }
+    auto& SM = this->SM();
+    if(auto half = split_half(SM, range.getEnd())) {
+        if(range.getBegin() == range.getEnd()) {
+            return half;
+        }
+        auto begin = written_range(range.getBegin());
+        if(!begin || begin->file != half->file) {
+            return std::nullopt;
+        }
+        return FileRange{
+            half->file,
+            {begin->range.begin, half->range.end}
+        };
+    }
+
+    if(range.getBegin().isFileID() && range.getEnd().isFileID()) {
+        auto begin = decompose(SM, range.getBegin());
+        auto end = decompose(SM, range.getEnd());
+        if(begin.file != end.file) {
+            return std::nullopt;
+        }
+        return FileRange{
+            begin.file,
+            {begin.offset, end.offset + token_length(range.getEnd())}
+        };
+    }
+
+    // Macros are mapped through the tokens the parse saw: only those of
+    // the focus file are collected.
+    auto main = SM.getMainFileID();
+    if(collected_tokens && SM.getFileID(SM.getExpansionLoc(range.getBegin())) == main) {
+        auto spelled = collected_tokens->spelled_for(range);
+        if(spelled.empty()) {
+            return std::nullopt;
+        }
+        return FileRange{
+            main,
+            {SM.getFileOffset(spelled.front().location()),
+              SM.getFileOffset(spelled.back().endLocation())}
+        };
+    }
+
+    auto chars = clang::Lexer::makeFileCharRange(clang::CharSourceRange::getTokenRange(range),
+                                                 SM,
+                                                 lang_options());
+    if(chars.isInvalid()) {
+        return std::nullopt;
+    }
+    auto begin = decompose(SM, chars.getBegin());
+    auto end = decompose(SM, chars.getEnd());
+    if(begin.file != end.file) {
+        return std::nullopt;
+    }
+    return FileRange{
+        begin.file,
+        {begin.offset, end.offset}
+    };
+}
+
+auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
+    auto& SM = this->SM();
+    auto begin = decompose(SM, SM.getExpansionLoc(range.getBegin()));
+    auto last = SM.getExpansionRange(range.getEnd()).getEnd();
+    auto end = decompose(SM, last);
+    if(end.file != begin.file) {
+        return {
+            begin.file,
+            {begin.offset, static_cast<std::uint32_t>(file_content(begin.file).size())}
+        };
+    }
+    return {
+        begin.file,
+        {begin.offset, end.offset + token_length(last)}
+    };
+}
+
+auto CompilationUnit::focus_file() -> FocusFile {
+    return FocusFile(*this);
 }
 
 auto CompilationUnit::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
@@ -148,18 +219,6 @@ auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<ll
     return SM().getBufferDataOrNone(fid);
 }
 
-auto CompilationUnit::main_file() -> clang::FileID {
-    return SM().getMainFileID();
-}
-
-bool CompilationUnit::is_main_file(clang::FileID fid) {
-    return fid == main_file() || (fid.isValid() && fid == SM().getPreambleFileID());
-}
-
-auto CompilationUnit::main_content() -> llvm::StringRef {
-    return file_content(main_file());
-}
-
 auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
     auto content = file_content(fid);
     auto [it, inserted] = line_tables.try_emplace(fid);
@@ -168,10 +227,6 @@ auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
         it->second.non_ascii = kota::ipc::lsp::non_ascii_lines({content.data(), content.size()});
     }
     return {content, it->second.starts, it->second.non_ascii};
-}
-
-auto CompilationUnit::positions() -> PositionMap {
-    return positions(main_file());
 }
 
 auto CompilationUnit::comments(clang::FileID fid) -> llvm::ArrayRef<LexicalInfo::Comment> {
@@ -192,18 +247,6 @@ bool CompilationUnit::is_builtin_file(clang::FileID fid) {
     }
 
     return false;
-}
-
-auto CompilationUnit::spelling_location(clang::SourceLocation loc) -> clang::SourceLocation {
-    return SM().getSpellingLoc(loc);
-}
-
-auto CompilationUnit::expansion_location(clang::SourceLocation location) -> clang::SourceLocation {
-    return SM().getExpansionLoc(location);
-}
-
-auto CompilationUnit::file_location(clang::SourceLocation location) -> clang::SourceLocation {
-    return SM().getFileLoc(location);
 }
 
 auto CompilationUnit::include_location(clang::FileID fid) -> clang::SourceLocation {
@@ -254,7 +297,7 @@ std::uint32_t CompilationUnit::source_offset(clang::FileID fid, std::uint32_t of
 
 bool CompilationUnit::host_source(clang::FileID fid) {
     if(!borrows_context()) {
-        return is_main_file(fid);
+        return focus_file().contains(fid);
     }
     if(!synthesized(fid)) {
         return false;
@@ -302,10 +345,10 @@ bool CompilationUnit::from_context(clang::FileID fid) {
 
 bool CompilationUnit::encloses_main_file(const clang::Decl* decl) {
     auto& SM = this->SM();
-    auto start = SM.getLocForStartOfFile(main_file());
+    auto start = SM.getLocForStartOfFile(SM.getMainFileID());
     // A scope left open at the end of the unit has no end.
-    auto end = expansion_location(decl->getEndLoc());
-    return SM.isBeforeInTranslationUnit(expansion_location(decl->getBeginLoc()), start) &&
+    auto end = SM.getExpansionLoc(decl->getEndLoc());
+    return SM.isBeforeInTranslationUnit(SM.getExpansionLoc(decl->getBeginLoc()), start) &&
            (end.isInvalid() || SM.isBeforeInTranslationUnit(start, end));
 }
 
@@ -318,9 +361,53 @@ auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
     return SM().getComposedLoc(fid, offset);
 }
 
-auto CompilationUnit::tokens() -> const TokenMap& {
-    assert(collected_tokens && "only a Content compile collects tokens");
-    return *collected_tokens;
+auto FocusFile::file() -> clang::FileID {
+    return unit.SM().getMainFileID();
+}
+
+bool FocusFile::contains(clang::FileID fid) {
+    return fid == file() || (fid.isValid() && fid == unit.SM().getPreambleFileID());
+}
+
+auto FocusFile::content() -> llvm::StringRef {
+    return unit.file_content(file());
+}
+
+auto FocusFile::positions() -> PositionMap {
+    return unit.positions(file());
+}
+
+auto FocusFile::tokens() -> const TokenMap& {
+    assert(unit.collected_tokens && "only a Content compile collects tokens");
+    return *unit.collected_tokens;
+}
+
+auto FocusFile::location(std::uint32_t offset) -> clang::SourceLocation {
+    return unit.SM().getComposedLoc(file(), offset);
+}
+
+auto FocusFile::offset(clang::SourceLocation location) -> std::optional<std::uint32_t> {
+    auto seen = unit.seen_at(location);
+    if(!contains(seen.file)) {
+        return std::nullopt;
+    }
+    return seen.offset;
+}
+
+auto FocusFile::written_range(clang::SourceRange range) -> std::optional<LocalSourceRange> {
+    auto written = unit.written_range(range);
+    if(!written || !contains(written->file)) {
+        return std::nullopt;
+    }
+    return written->range;
+}
+
+auto FocusFile::produced_range(clang::SourceRange range) -> std::optional<LocalSourceRange> {
+    auto produced = unit.produced_range(range);
+    if(!contains(produced.file)) {
+        return std::nullopt;
+    }
+    return produced.range;
 }
 
 auto CompilationUnit::token_length(clang::SourceLocation location) -> std::uint32_t {

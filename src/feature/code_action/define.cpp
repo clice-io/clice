@@ -165,14 +165,13 @@ public:
               DefinitionOptions options) : unit(unit), decl(decl), from(from), options(options) {}
 
     std::optional<std::string> run() {
-        auto range = written_declaration(decl)->getSourceRange();
-        auto text = spelled_text(unit, range);
-        if(!text) {
+        auto written = unit.written_range(written_declaration(decl)->getSourceRange());
+        if(!written || unit.is_builtin_file(written->file)) {
             return std::nullopt;
         }
-        fid = unit.file_id(range.getBegin());
-        base = unit.file_offset(range.getBegin());
-        source = *text;
+        fid = written->file;
+        base = written->range.begin;
+        source = unit.file_content(fid).substr(base, written->range.length());
         // Lexed here: the unit's spelled tokens cover the main file only.
         tokens = clang::syntax::tokenize(clang::syntax::FileRange(fid, base, base + source.size()),
                                          unit.context().getSourceManager(),
@@ -198,17 +197,23 @@ public:
 
 private:
     /// A location of the declaration relative to its text; nullopt when
-    /// a macro spells it.
+    /// it is written elsewhere, in a macro's own tokens.
     std::optional<std::uint32_t> offset_of(clang::SourceLocation location) {
-        if(!location.isFileID() || unit.file_id(location) != fid) {
+        auto [file, offset] = unit.written_at(location);
+        if(file != fid || offset < base || offset > base + source.size()) {
             return std::nullopt;
         }
-        return unit.file_offset(location) - base;
+        return offset - base;
     }
 
     /// The tokens all lie in the declaration's text.
     std::uint32_t offset_of(const clang::syntax::Token& token) {
-        return unit.file_offset(token.location()) - base;
+        return unit.written_at(token.location()).offset - base;
+    }
+
+    /// The length of the token written for `location`.
+    std::uint32_t length_at(clang::SourceLocation location) {
+        return unit.token_length(unit.context().getSourceManager().getSpellingLoc(location));
     }
 
     /// The end of a token at `offset`, with the spaces following it.
@@ -297,7 +302,7 @@ private:
             }
             if(auto offset = offset_of(attr->getLocation())) {
                 patches.push_back(
-                    {before_spaces(*offset), *offset + unit.token_length(attr->getLocation()), ""});
+                    {before_spaces(*offset), *offset + length_at(attr->getLocation()), ""});
             }
         }
     }
@@ -320,7 +325,7 @@ private:
         if(!equal) {
             return false;
         }
-        patches.push_back({before_spaces(*equal), *end + unit.token_length(range.getEnd()), ""});
+        patches.push_back({before_spaces(*equal), *end + length_at(range.getEnd()), ""});
         return true;
     }
 
@@ -644,7 +649,7 @@ const clang::CXXRecordDecl* outermost_record(const clang::CXXRecordDecl* record)
 /// something else follows.
 std::optional<std::uint32_t> semicolon_after(CompilationUnit& unit, clang::SourceLocation end) {
     auto& sm = unit.context().getSourceManager();
-    auto tokens = unit.tokens().expanded();
+    auto tokens = unit.focus_file().tokens().expanded();
     auto token = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
         return !sm.isBeforeInTranslationUnit(end, token.location());
     });
@@ -666,7 +671,7 @@ std::optional<std::uint32_t> semicolon_after(CompilationUnit& unit, clang::Sourc
     if(token == tokens.end() || token->kind() != clang::tok::semi) {
         return std::nullopt;
     }
-    auto range = main_range(unit, token->location());
+    auto range = unit.focus_file().written_range(token->location());
     if(!range) {
         return std::nullopt;
     }
@@ -698,11 +703,11 @@ std::optional<Placement> placement_after(CompilationUnit& unit, const clang::Dec
         }
         end = next->getEndLoc();
     }
-    auto range = main_range(unit, end);
+    auto range = unit.focus_file().written_range(end);
     if(!range) {
         return std::nullopt;
     }
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     auto offset = range->end;
     if(auto semicolon = semicolon_after(unit, end)) {
         offset = *semicolon + 1;
@@ -890,8 +895,9 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         !sm.isBeforeInTranslationUnit(outermost_record(method->getParent())->getEndLoc(),
                                       (*needed)->getEndLoc()))) {
         auto written = written_declaration(decl)->getSourceRange();
-        if(auto semicolon =
-               main_range(unit, written) ? semicolon_after(unit, written.getEnd()) : std::nullopt) {
+        if(auto semicolon = unit.focus_file().written_range(written)
+                                ? semicolon_after(unit, written.getEnd())
+                                : std::nullopt) {
             out.push_back(CodeAction{
                 .title = std::format("Define '{}' inline", name),
                 .kind = action_kind::define_inline,

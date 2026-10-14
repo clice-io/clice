@@ -188,7 +188,7 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
     index::TUIndex tu;
     auto place = [&](index::SymbolHash symbol) -> std::optional<RawLocation> {
         if(bytes.empty()) {
-            bytes = index::build_tu_index(unit, {.only_instantiation = true});
+            bytes = index::build_tu_index(unit, {.all_files = true});
             tu = index::TUIndex::from_bytes(bytes);
         }
         auto main = tu.path_count() - 1;
@@ -226,9 +226,10 @@ std::optional<kota::codec::RawValue> run_inlay_hints(CompilationUnit& unit,
             if(part.symbol) {
                 raw.label.back().location = place(part.symbol);
             } else if(part.target) {
-                auto position = unit.positions().position(*part.target, PositionEncoding::UTF16);
+                auto position =
+                    unit.focus_file().positions().position(*part.target, PositionEncoding::UTF16);
                 raw.label.back().location = RawLocation{
-                    .path = unit.file_path(unit.main_file()).str(),
+                    .path = unit.file_path(unit.focus_file().file()).str(),
                     .range = {*position, *position},
                 };
             }
@@ -259,7 +260,7 @@ std::optional<kota::codec::RawValue> run_code_action(CompilationUnit& unit,
                                                      LocalSourceRange selection,
                                                      [[maybe_unused]] const Config& config) {
     std::vector<RawCodeAction> out;
-    auto path = unit.file_path(unit.main_file());
+    auto path = unit.file_path(unit.focus_file().file());
     for(auto& action: feature::code_actions(unit, selection)) {
         RawCodeAction raw{
             .title = std::move(action.title),
@@ -274,7 +275,7 @@ std::optional<kota::codec::RawValue> run_code_action(CompilationUnit& unit,
                 auto text = feature::assemble_definitions(request->pieces, keep);
                 raw.edits = feature::format_edits(
                     path,
-                    unit.main_content(),
+                    unit.focus_file().content(),
                     {
                         {request->range, request->before + *text + request->after}
                 });
@@ -334,7 +335,7 @@ std::optional<kota::codec::RawValue> run_signature_help(CompilationParams params
 std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& unit,
                                                             std::uint32_t offset,
                                                             [[maybe_unused]] const Config& config) {
-    auto bytes = index::build_tu_index(unit, {.only_instantiation = true});
+    auto bytes = index::build_tu_index(unit);
     auto tu = index::TUIndex::from_bytes(bytes);
     const index::Shard& shard = tu.shard_of(tu.path_count() - 1);
     auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {

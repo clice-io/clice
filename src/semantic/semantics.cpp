@@ -209,7 +209,7 @@ public:
     bool TraverseDecl(clang::Decl* X) {
         if(auto* tu = llvm::dyn_cast_if_present<clang::TranslationUnitDecl>(X)) {
             /// The TU decl is not stored; its children become roots.
-            if(options.main_file_only) {
+            if(!options.all_files) {
                 for(auto decl: unit.top_level_decls()) {
                     if(!TraverseDecl(decl)) {
                         return false;
@@ -283,14 +283,6 @@ public:
         return ret;
     }
 
-    bool shouldVisitTemplateInstantiations() const {
-        return options.instantiations;
-    }
-
-    // RAV visits a generic lambda's body once, as the pattern; the call
-    // operator template's instantiations hang nowhere else, so visit them
-    // here the way RAV visits class and function template instantiations
-    // under their template.
     bool TraverseLambdaExpr(clang::LambdaExpr* S, DataRecursionQueue* queue = nullptr) {
         if(!Base::TraverseLambdaExpr(S, queue)) {
             return false;
@@ -299,18 +291,6 @@ public:
         // a declaration RAV never visits.
         for(auto* attr: S->getCallOperator()->attrs()) {
             if(!attr->isImplicit() && !TraverseAttr(attr)) {
-                return false;
-            }
-        }
-        if(!options.instantiations) {
-            return true;
-        }
-        auto* call_operator = S->getCallOperator()->getDescribedFunctionTemplate();
-        if(!call_operator) {
-            return true;
-        }
-        for(auto* specialization: call_operator->specializations()) {
-            if(!TraverseDecl(specialization)) {
                 return false;
             }
         }
@@ -468,17 +448,18 @@ private:
 
     SemanticsBuilder(Semantics& semantics, CompilationUnit& unit, SemanticsOptions options) :
         semantics(semantics), unit(unit), options(options), SM(unit.context().getSourceManager()) {
-        main_fid = unit.main_file();
+        main_fid = unit.focus_file().file();
         main_file_range =
             clang::SourceRange(SM.getLocForStartOfFile(main_fid), SM.getLocForEndOfFile(main_fid));
         semantics.file_begin = main_file_range.getBegin();
 
         // Token ownership serves the main file's features; the whole-TU
         // shape reads no tokens.
-        if(options.main_file_only) {
-            semantics.tokens = unit.tokens().spelled();
-            semantics.pp_ignored = &unit.tokens().preprocessed_away();
-            taken.resize(unit.tokens().expanded().size());
+        if(!options.all_files) {
+            auto& tokens = unit.focus_file().tokens();
+            semantics.tokens = tokens.spelled();
+            semantics.pp_ignored = &tokens.preprocessed_away();
+            taken.resize(tokens.expanded().size());
         }
 
         stack.push_back(Semantics::invalid);
@@ -662,7 +643,7 @@ private:
     // preamble-state build runs a whole-TU pass over the preamble unit, and
     // taking its entire expanded stream would be paid on every PCH build.
     void take_range(clang::SourceRange S, std::uint32_t self) {
-        if(!options.main_file_only) {
+        if(options.all_files) {
             return;
         }
 
@@ -673,16 +654,17 @@ private:
             return;
         }
 
-        auto tokens = unit.tokens().expanded(S);
+        auto& token_map = unit.focus_file().tokens();
+        auto tokens = token_map.expanded(S);
         if(tokens.empty()) {
             return;
         }
-        auto begin = static_cast<unsigned>(tokens.data() - unit.tokens().expanded().data());
+        auto begin = static_cast<unsigned>(tokens.data() - token_map.expanded().data());
         auto end = begin + static_cast<unsigned>(tokens.size());
         for(auto index = taken.find_first_unset_in(begin, end); index != -1;
             index = taken.find_first_unset_in(index + 1, end)) {
             taken.set(index);
-            if(auto spelled = unit.tokens().origin(index)) {
+            if(auto spelled = token_map.origin(index)) {
                 add_token_entry(*spelled, self);
             }
         }
@@ -771,8 +753,8 @@ private:
     // ignores them, but hover and document links see macros, includes and
     // imports as first-class nodes.
     void append_directives() {
-        semantics.lexical = lexical_scan(unit.main_content(), &unit.lang_options());
-        semantics.main_comments = unit.comments(unit.main_file());
+        semantics.lexical = lexical_scan(unit.focus_file().content(), &unit.lang_options());
+        semantics.main_comments = unit.comments(main_fid);
         filter_module_declarations();
 
         struct Entry {

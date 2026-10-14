@@ -67,12 +67,8 @@ IncludeInsertion include_insertion(CompilationUnit& unit);
 /// in a file with neither, after its leading directives.
 std::uint32_t import_insertion(llvm::StringRef content, const clang::LangOptions& options);
 
-/// The main-file byte range a source range spells; nullopt when either
-/// end is inside a macro or another file.
-std::optional<LocalSourceRange> main_range(CompilationUnit& unit, clang::SourceRange range);
-
-/// The text a file range spells, in whichever file it lies; nullopt for
-/// macro locations and ranges crossing files.
+/// The text a source range was written as (CompilationUnit::written_range),
+/// in whichever file it lies but a builtin buffer.
 std::optional<llvm::StringRef> spelled_text(CompilationUnit& unit, clang::SourceRange range);
 
 /// The whitespace opening the line containing `offset`.

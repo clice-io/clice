@@ -309,7 +309,7 @@ FileResult profile_file(llvm::StringRef file,
         // regions and builds the interested-only envelope before replying;
         // include them so parse and parse_pch bound the same work.
         feature::inactive_regions(*unit, open_conditionals, result.preamble_bound);
-        index::build_tu_index(*unit, {.main_file_only = true, .only_instantiation = true});
+        index::build_tu_index(*unit);
         return true;
     });
 

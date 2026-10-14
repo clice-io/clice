@@ -23,6 +23,10 @@ struct Tester {
     /// platforms, e.g. for snapshot tests.
     std::string triple;
 
+    /// What compile() builds the main file as: an open file's compile, or
+    /// the background index's, whose index covers every file.
+    CompilationKind kind = CompilationKind::Content;
+
     AnnotatedSources sources;
 
     /// The VFS used for compilation.

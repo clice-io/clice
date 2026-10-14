@@ -115,9 +115,9 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
         tree.file_nodes[fid] = add_include_chain(unit, fid, tree, path_table);
     }
 
-    auto main_fid = unit.main_file();
-    tree.file_nodes[main_fid] = add_include_chain(unit, main_fid, tree, path_table);
-    tree.paths.emplace_back(unit.file_path(main_fid));
+    auto focus = unit.focus_file().file();
+    tree.file_nodes[focus] = add_include_chain(unit, focus, tree, path_table);
+    tree.paths.emplace_back(unit.file_path(focus));
 
     // Hash the consumed bytes per path from the compiler's own buffers.
     // Freshness checks compare the disk against these, so they must
@@ -141,7 +141,7 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     for(auto [fid, path_id]: skipped_targets) {
         hash_fid(fid, path_id);
     }
-    hash_fid(main_fid, tree.paths.size() - 1);
+    hash_fid(focus, tree.paths.size() - 1);
     return tree;
 }
 

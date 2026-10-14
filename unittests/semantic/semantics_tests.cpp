@@ -79,7 +79,7 @@ void test() {
         return std::nullopt;
     }
     unit->get<Semantics>();
-    return unit->tokens().searches();
+    return unit->focus_file().tokens().searches();
 }
 
 ZEST_CASE(ModuleNodes) {

@@ -488,7 +488,7 @@ ZEST_CASE(OpenSessionServedByShard) {
     // Open the document with exactly the indexed content and never
     // compile it: freshness clause 4 serves it from its shard.
     auto session = store.open(main_id);
-    store.apply_open(*session, unit->main_content().str(), 1);
+    store.apply_open(*session, unit->focus_file().content().str(), 1);
     ZASSERT(!projections.index_current(session->path_id));
 
     auto cursor = query.symbol_at(main_id, point("use"));
@@ -507,7 +507,7 @@ ZEST_CASE(DivergedBufferWithdrawsShard) {
     merge_into_workspace();
 
     auto session = store.open(main_id);
-    auto edited = unit->main_content().str() + "// edited\n";
+    auto edited = unit->focus_file().content().str() + "// edited\n";
     store.apply_open(*session, edited, 1);
 
     // The buffer no longer matches the shard's content: the shard withdraws
@@ -541,7 +541,7 @@ ZEST_CASE(HeaderEdgesFromHostManifest) {
 
     // The TU's own manifest still answers for the TU itself.
     auto main_session = store.open(main_id);
-    store.apply_open(*main_session, unit->main_content().str(), 1);
+    store.apply_open(*main_session, unit->focus_file().content().str(), 1);
     auto main_edges = query.include_edges(main_session->path_id);
     ZASSERT(main_edges.size() == std::size_t(1));
     ZASSERT(llvm::StringRef(main_edges[0].target).ends_with("header.h"));
@@ -660,8 +660,8 @@ void open_buffers(CountingSessions& sessions, int buffers) {
         text += "} }\n";
         add_main(std::format("main{}.cpp", buffer), text);
         ZASSERT(compile());
-        sessions.tables.push_back(index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
-            index::build_tu_index(*unit, {.main_file_only = true}))));
+        sessions.tables.push_back(index::TUIndex::from_buffer(
+            llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit))));
     }
 }
 

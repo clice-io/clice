@@ -601,22 +601,22 @@ struct MacroCall {
 /// The innermost call of a function-like macro around `offset`. Sema has
 /// no signature for it: the parser sees only what the macro expands to.
 auto macro_call_at(CompilationUnit& unit, std::uint32_t offset) -> std::optional<MacroCall> {
-    auto directive = unit.directives().find(unit.main_file());
+    auto directive = unit.directives().find(unit.focus_file().file());
     if(directive == unit.directives().end()) {
         return std::nullopt;
     }
 
     // Clang's copy of the buffer carries a NUL at the completion point:
     // the text before it is the text as the user has it.
-    auto text = unit.main_content().take_front(offset).str();
+    auto text = unit.focus_file().content().take_front(offset).str();
 
     std::optional<MacroCall> innermost;
     std::uint32_t innermost_begin = 0;
     for(const auto& ref: directive->second.macros) {
-        if(ref.kind != MacroRef::Ref || !ref.macro->isFunctionLike() || !ref.loc.isFileID()) {
+        if(ref.kind != MacroRef::Ref || !ref.macro->isFunctionLike()) {
             continue;
         }
-        auto begin = unit.file_offset(ref.loc);
+        auto begin = unit.seen_at(ref.loc).offset;
         if(begin >= offset || (innermost && begin < innermost_begin)) {
             continue;
         }

@@ -82,34 +82,35 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     // would jump past — nothing falls into them there, and no conditional
     // directive around the first label takes them along. Either way on
     // the labels' own indentation.
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     auto anchor_loc = body->getRBracLoc();
     if(default_stmt) {
         anchor_loc = default_stmt->getKeywordLoc();
     } else if(declares_in_scope(body)) {
-        auto brace = main_range(unit, body->getLBracLoc());
+        auto brace = unit.focus_file().written_range(body->getLBracLoc());
         if(!brace) {
             return;
         }
-        auto tokens = unit.tokens().spelled();
+        auto& token_map = unit.focus_file().tokens();
+        auto tokens = token_map.spelled();
         auto after = std::ranges::partition_point(tokens, [&](const clang::syntax::Token& token) {
-            return unit.file_offset(token.location()) <= brace->begin;
+            return token_map.offset(token) <= brace->begin;
         });
         anchor_loc = after->location();
     }
-    auto anchor = main_range(unit, anchor_loc);
+    auto anchor = unit.focus_file().written_range(anchor_loc);
     if(!anchor) {
         return;
     }
     std::string indent;
     if(const auto* label = stmt->getSwitchCaseList()) {
-        auto range = main_range(unit, label->getKeywordLoc());
+        auto range = unit.focus_file().written_range(label->getKeywordLoc());
         if(!range) {
             return;
         }
         indent = line_indent(content, range->begin).str();
     } else {
-        auto range = main_range(unit, stmt->getSwitchLoc());
+        auto range = unit.focus_file().written_range(stmt->getSwitchLoc());
         if(!range) {
             return;
         }

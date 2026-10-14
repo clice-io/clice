@@ -58,7 +58,7 @@ bool is_note(const Diagnostic& diagnostic) {
 class Presenter {
 public:
     Presenter(CompilationUnit& unit, PositionEncoding encoding) :
-        unit(unit), encoding(encoding), map(unit.positions()) {}
+        unit(unit), encoding(encoding), map(unit.focus_file().positions()) {}
 
     /// A diagnostic and the notes clang attached to it, as published on the
     /// main file; nullopt when it does not concern the main file.
@@ -114,10 +114,11 @@ private:
     bool place(const Diagnostic& main,
                llvm::ArrayRef<Diagnostic> notes,
                protocol::Diagnostic& diagnostic) {
+        auto focus = unit.focus_file();
         auto in_main = [&](const Diagnostic& note) {
-            return note.fid == unit.main_file();
+            return focus.contains(note.fid);
         };
-        if(main.fid == unit.main_file()) {
+        if(focus.contains(main.fid)) {
             // A scope the main file leaves open swallows the includer's
             // remainder appended past its text: the error the buffer's end
             // raises shows where the scope opened.
@@ -202,9 +203,9 @@ private:
         if(!unit.borrows_context()) {
             return false;
         }
-        auto& includes = unit.directives()[unit.main_file()].includes;
+        auto& includes = unit.directives()[unit.focus_file().file()].includes;
         return !includes.empty() && unit.synthesized(includes.back().fid) &&
-               offset > unit.file_offset(includes.back().location);
+               offset > unit.seen_at(includes.back().location).offset;
     }
 
     /// The filename of the #include in the main file that `fid` was
@@ -213,9 +214,8 @@ private:
         for(auto location = unit.include_location(fid); location.isValid();
             location = unit.include_location(fid)) {
             fid = unit.file_id(location);
-            if(unit.is_main_file(fid)) {
-                auto offset = unit.file_offset(location);
-                return LocalSourceRange{offset, offset + unit.token_length(location)};
+            if(unit.focus_file().contains(fid)) {
+                return unit.written_range(location)->range;
             }
         }
         return std::nullopt;

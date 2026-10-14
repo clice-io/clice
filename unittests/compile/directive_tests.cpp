@@ -27,7 +27,7 @@ using u32 = std::uint32_t;
 void run(llvm::StringRef code) {
     add_files("main.cpp", code);
     ZASSERT(compile("-std=c++23"));
-    auto fid = unit->main_file();
+    auto fid = unit->focus_file().file();
     includes = unit->directives()[fid].includes;
     has_includes = unit->directives()[fid].has_includes;
     conditions = unit->directives()[fid].conditions;
@@ -39,7 +39,7 @@ void run(llvm::StringRef code) {
 
 void EXPECT_INCLUDE(u32 index, llvm::StringRef position, llvm::StringRef path) {
     auto& include = includes[index];
-    auto [_, offset] = unit->decompose_location(include.location);
+    auto [_, offset] = unit->written_at(include.location);
     ZASSERT(offset == point(position));
 
     auto target = include.skipped ? llvm::StringRef() : unit->file_path(include.fid);
@@ -48,7 +48,7 @@ void EXPECT_INCLUDE(u32 index, llvm::StringRef position, llvm::StringRef path) {
 
 void EXPECT_HAS_INL(u32 index, llvm::StringRef position, llvm::StringRef path) {
     auto& has_include = has_includes[index];
-    auto [_, offset] = unit->decompose_location(has_include.location);
+    auto [_, offset] = unit->written_at(has_include.location);
     ZASSERT(offset == point(position));
 
     auto target = has_include.file ? unit->file_path(*has_include.file) : llvm::StringRef();
@@ -57,21 +57,21 @@ void EXPECT_HAS_INL(u32 index, llvm::StringRef position, llvm::StringRef path) {
 
 void EXPECT_CON(u32 index, Condition::BranchKind kind, llvm::StringRef pos) {
     auto& condition = conditions[index];
-    auto [_, offset] = unit->decompose_location(condition.loc);
+    auto [_, offset] = unit->written_at(condition.loc);
     ZASSERT(int(condition.kind) == int(kind));
     ZASSERT(offset == point(pos));
 }
 
 void EXPECT_MACRO(u32 index, MacroRef::Kind kind, llvm::StringRef position) {
     auto& macro = macros[index];
-    auto [_, offset] = unit->decompose_location(macro.loc);
+    auto [_, offset] = unit->written_at(macro.loc);
     ZASSERT(int(macro.kind) == int(kind));
     ZASSERT(offset == point(position));
 }
 
 void EXPECT_EMBED(u32 index, llvm::StringRef position, llvm::StringRef filename) {
     auto& embed = embeds[index];
-    auto [_, offset] = unit->decompose_location(embed.loc);
+    auto [_, offset] = unit->written_at(embed.loc);
     ZASSERT(offset == point(position));
     ZASSERT(embed.file);
     ZASSERT(embed.file_name == filename);
@@ -82,7 +82,7 @@ void EXPECT_HAS_EMBED(u32 index,
                       llvm::StringRef filename,
                       bool exists = true) {
     auto& has_embed = has_embeds[index];
-    auto [_, offset] = unit->decompose_location(has_embed.loc);
+    auto [_, offset] = unit->written_at(has_embed.loc);
     ZASSERT(offset == point(position));
     ZASSERT(has_embed.file.has_value() == exists);
     ZASSERT(has_embed.file_name == filename);
@@ -237,8 +237,7 @@ ZEST_CASE(DiagnosticPragma) {
 
     ZASSERT(diagnostic_pragmas.size() == 4U);
     for(u32 index = 0; index < 4; index += 1) {
-        auto [_, offset] =
-            unit->decompose_location(unit->expansion_location(diagnostic_pragmas[index].loc));
+        auto [_, offset] = unit->produced_at(diagnostic_pragmas[index].loc);
         ZEXPECT(offset == point(std::to_string(index)));
     }
     ZEXPECT(diagnostic_pragmas[0].kind == DiagnosticPragma::Push);

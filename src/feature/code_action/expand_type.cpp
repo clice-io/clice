@@ -70,7 +70,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         }
         written.setEnd(reference.getSigilLoc());
     }
-    auto range = main_range(unit, written);
+    auto range = unit.focus_file().written_range(written);
     if(!range) {
         return;
     }
@@ -88,7 +88,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
     // nothing but spaces between them; one parted from it by other
     // specifiers, or possibly spelled by a macro among them, is out of
     // reach.
-    auto content = unit.main_content();
+    auto content = unit.focus_file().content();
     // The deduced type prints through the sugar of another deduction and
     // of decltype, and a nullability attribute after the `*` it qualifies.
     auto declarator = deduced;
@@ -96,16 +96,17 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         declarator = declarator->getLocallyUnqualifiedSingleStepDesugaredType();
     }
     if(llvm::isa<clang::PointerType, clang::MemberPointerType>(declarator)) {
-        auto tokens = unit.tokens().spelled();
+        auto& token_map = unit.focus_file().tokens();
+        auto tokens = token_map.spelled();
         const auto* at = llvm::partition_point(tokens, [&](const clang::syntax::Token& token) {
-            return unit.file_offset(token.location()) < range->begin;
+            return token_map.offset(token) < range->begin;
         });
         const auto* first = at;
         while(first != tokens.begin() && is_cv(*std::prev(first))) {
             first -= 1;
         }
         auto starts_expansion = [&](const clang::syntax::Token& token) {
-            auto expansions = unit.tokens().expansions_overlapping(llvm::ArrayRef(token));
+            auto expansions = token_map.expansions_overlapping(llvm::ArrayRef(token));
             return !expansions.empty() && expansions.front().spelled.begin() == &token;
         };
         for(const auto* it = first; it != tokens.begin(); it -= 1) {
@@ -118,8 +119,8 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
             }
         }
         for(const auto* it = first; it != at; it += 1) {
-            auto end = unit.file_offset(it->endLocation());
-            auto next = it + 1 == at ? range->begin : unit.file_offset((it + 1)->location());
+            auto end = token_map.offset(*it) + it->length();
+            auto next = it + 1 == at ? range->begin : token_map.offset(*(it + 1));
             if(!content.substr(end, next - end).trim().empty()) {
                 return;
             }
@@ -131,7 +132,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
                 printed += clang::tok::getKeywordSpelling(it->kind());
             }
         }
-        range->begin = unit.file_offset(first->location());
+        range->begin = token_map.offset(*first);
     }
     out.push_back(CodeAction{
         .title = std::format("Replace '{}' with '{}'",

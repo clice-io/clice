@@ -235,8 +235,9 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
         // PCM cache key embeds no content: only the deps see the source
         // change. Named by its identity like every other dep: the command
         // spells it as written, which consumers cannot stat reliably.
-        deps.emplace_back(std::string(unit->file_path(unit->main_file())),
-                          llvm::xxh3_64bits(unit->main_content()));
+        auto focus = unit->focus_file();
+        deps.emplace_back(std::string(unit->file_path(focus.file())),
+                          llvm::xxh3_64bits(focus.content()));
     }
 
     std::vector<std::string> errors;
@@ -288,7 +289,7 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
 static void collect_tidy_diagnostics(CompilationUnit& unit,
                                      const tidy::TidyParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
-    auto main_fid = unit.main_file();
+    auto focus = unit.focus_file();
     std::optional<llvm::Regex> keep;
     if(!params.header_filter.empty()) {
         keep.emplace(params.header_filter);
@@ -327,7 +328,7 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
             continue;
         }
         auto file = unit.file_path(raw.fid);
-        if(raw.fid != main_fid && !clang_error) {
+        if(!focus.contains(raw.fid) && !clang_error) {
             if(raw.in_system && !params.system_headers) {
                 continue;
             }

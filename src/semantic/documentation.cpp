@@ -23,10 +23,10 @@ std::pair<llvm::StringRef, llvm::ArrayRef<LexicalInfo::Comment>>
     if(decl->isImplicit() || range.isInvalid()) {
         return {};
     }
-    auto [fid, extent] = unit.decompose_expansion_range(range);
+    auto [fid, extent] = unit.produced_range(range);
     // The specialization Sema matches an explicit specialization with takes
     // the explicit one's name but keeps the template's extent.
-    auto [name_fid, name] = unit.decompose_expansion_range(decl->getLocation());
+    auto [name_fid, name] = unit.produced_range(decl->getLocation());
     if(name_fid != fid || name.begin < extent.begin || name.begin > extent.end) {
         return {};
     }
@@ -87,7 +87,7 @@ std::string doc_comment(CompilationUnit& unit, const clang::NamedDecl* decl, boo
 }
 
 std::string doc_comment(CompilationUnit& unit, const clang::MacroInfo* macro) {
-    auto [fid, extent] = unit.decompose_range(
+    auto [fid, extent] = *unit.written_range(
         clang::SourceRange(macro->getDefinitionLoc(), macro->getDefinitionEndLoc()));
     auto content = unit.file_content(fid);
     auto run = documenting_comments(content, unit.comments(fid), documented_macro(content, extent));
@@ -117,8 +117,7 @@ llvm::SmallVector<const clang::NamedDecl*> copied_doc_targets(CompilationUnit& u
         if(!function) {
             return false;
         }
-        auto [fid, range] =
-            unit.decompose_expansion_range(function->getNameInfo().getSourceRange());
+        auto [fid, range] = unit.produced_range(function->getNameInfo().getSourceRange());
         return declares_parameters(unit.file_content(fid), range.end, *copied->parameters);
     };
 

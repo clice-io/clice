@@ -65,7 +65,7 @@ bool Tester::try_compile() {
 }
 
 void Tester::prepare(llvm::StringRef standard) {
-    params = CompilationParams{.kind = CompilationKind::Content};
+    params = CompilationParams{.kind = kind};
     unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
 
@@ -308,7 +308,7 @@ LocalSourceRange Tester::range(llvm::StringRef name, llvm::StringRef file) {
 }
 
 void Tester::prepare_driver(llvm::StringRef standard) {
-    params = CompilationParams{.kind = CompilationKind::Content};
+    params = CompilationParams{.kind = kind};
     unit.reset();
     vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     for(auto& [file, source]: sources.all_files) {

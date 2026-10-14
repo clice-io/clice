@@ -453,7 +453,7 @@ auto decl_hover(const clang::NamedDecl* decl,
         declaration = binding->getDecomposedDecl();
     }
     info.definition = display::definition(declaration, options, [&](clang::SourceRange range) {
-        return unit.tokens().expanded(range).size();
+        return unit.focus_file().tokens().expanded(range).size();
     });
     if(decls::is_exported(decl)) {
         info.definition.insert(0, "export ");
@@ -771,13 +771,13 @@ auto attr_hover(const clang::Attr* attr, clang::ASTContext& context) -> std::opt
 }
 
 auto file_directive_hover(CompilationUnit& unit, std::uint32_t offset) -> std::optional<HoverInfo> {
-    auto main_fid = unit.main_file();
-    auto directives_it = unit.directives().find(main_fid);
+    auto focus = unit.focus_file();
+    auto directives_it = unit.directives().find(focus.file());
     if(directives_it == unit.directives().end()) {
         return std::nullopt;
     }
 
-    auto content = unit.main_content();
+    auto content = focus.content();
     auto* lang_opts = &unit.lang_options();
 
     auto file_name = [&](LocalSourceRange range) -> std::string {
@@ -799,13 +799,13 @@ auto file_directive_hover(CompilationUnit& unit, std::uint32_t offset) -> std::o
                              llvm::StringRef target) -> std::optional<HoverInfo> {
         if(target.empty())
             return std::nullopt;
-        auto [fid, directive_offset] = unit.decompose_location(loc);
+        auto directive_offset = unit.seen_at(loc).offset;
         /// FIXME: A directive continued with an escaped newline may have its
         /// keyword and argument on different physical lines. This check then
         /// rejects a cursor inside the argument before find_directive_argument()
         /// can match its range. Remove the same-line restriction once continued
         /// directive hover also handles the spliced argument spelling and range.
-        if(fid != main_fid || directive_offset < line_start || directive_offset >= line_end)
+        if(directive_offset < line_start || directive_offset >= line_end)
             return std::nullopt;
         auto range = find_directive_argument(content, directive_offset, lang_opts);
         if(!range || offset >= range->end || offset < range->begin)
@@ -893,8 +893,8 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
     std::string preview;
     constexpr std::size_t preview_limit = 1024;
     llvm::DenseSet<clang::SourceLocation> seen;
-    for(auto& expansion:
-        unit.tokens().expansions_overlapping(unit.tokens().spelled_touching(name))) {
+    auto& tokens = unit.focus_file().tokens();
+    for(auto& expansion: tokens.expansions_overlapping(tokens.spelled_touching(name))) {
         for(const auto& token: expansion.expanded) {
             auto at = produced(token.location());
             if(at.isInvalid() || !seen.insert(at).second) {
@@ -906,7 +906,7 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
             /// Lex at the token's spelling site — getSpelling stays at the
             /// depth it is given, and only the spelling carries the written
             /// bytes.
-            auto spelling = unit.token_spelling(unit.spelling_location(token.location()));
+            auto spelling = unit.token_spelling(sources.getSpellingLoc(token.location()));
             if(auto remaining = preview_limit - preview.size(); spelling.size() >= remaining) {
                 preview.append(spelling, 0, remaining);
                 preview += " ...";
@@ -924,17 +924,13 @@ auto expansion_preview(CompilationUnit& unit, clang::SourceLocation name) -> std
 auto macro_hover(CompilationUnit& unit,
                  std::uint32_t offset,
                  const DocumentationOptions& documentation_options) -> std::optional<HoverInfo> {
-    auto directives_it = unit.directives().find(unit.main_file());
+    auto directives_it = unit.directives().find(unit.focus_file().file());
     if(directives_it == unit.directives().end()) {
         return std::nullopt;
     }
 
     for(const auto& macro: directives_it->second.macros) {
-        /// A reference inside another expansion has no written token here.
-        if(macro.loc.isMacroID()) {
-            continue;
-        }
-        auto [fid, range] = unit.decompose_range(macro.loc);
+        auto range = unit.written_range(macro.loc)->range;
         if(offset < range.begin || offset >= range.end) {
             continue;
         }
@@ -948,8 +944,8 @@ auto macro_hover(CompilationUnit& unit,
         /// Its file can be synthetic (`-D` macros live in <command line>),
         /// which still has real `#define` lines as content.
         auto [def_fid, def_range] =
-            unit.decompose_range(clang::SourceRange(macro.macro->getDefinitionLoc(),
-                                                    macro.macro->getDefinitionEndLoc()));
+            *unit.written_range(clang::SourceRange(macro.macro->getDefinitionLoc(),
+                                                   macro.macro->getDefinitionEndLoc()));
         auto def_text =
             unit.file_content(def_fid).substr(def_range.begin, def_range.end - def_range.begin);
         info.definition = "#define " + def_text.str();
@@ -1047,12 +1043,11 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touche
         if(occurrence.name_end.isInvalid() || !occurrence.owns_whole_name()) {
             return false;
         }
-        auto [fid, offset] = unit.decompose_location(token);
-        auto [begin_fid, begin_offset] =
-            unit.decompose_location(unit.spelling_location(occurrence.location));
-        auto [end_fid, end_offset] =
-            unit.decompose_location(unit.spelling_location(occurrence.name_end));
-        return fid == begin_fid && fid == end_fid && begin_offset < offset && offset <= end_offset;
+        auto at = unit.written_at(token);
+        auto begin = unit.written_at(occurrence.location);
+        auto end = unit.written_at(occurrence.name_end);
+        return at.file == begin.file && at.file == end.file && begin.offset < at.offset &&
+               at.offset <= end.offset;
     };
 
     for(const auto& token: llvm::reverse(touched)) {
@@ -1086,7 +1081,7 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touche
 
                 for(auto& occurrence:
                     resolve_occurrences(semantics, n, &unit.get<types::TemplateResolver>())) {
-                    if(unit.spelling_location(occurrence.location) == token.location()) {
+                    if(unit.written_at(occurrence.location) == unit.written_at(token.location())) {
                         if(seen.insert(occurrence.decl).second) {
                             decls.push_back(occurrence.decl);
                         }
@@ -1640,8 +1635,9 @@ auto hover_info(CompilationUnit& unit,
     display::ReadableTypes readable(context, display_options);
     display_options.readable = &readable;
 
-    auto location = unit.create_location(unit.main_file(), offset);
-    auto tokens = unit.tokens().spelled_touching(location);
+    auto focus = unit.focus_file();
+    auto& token_map = focus.tokens();
+    auto tokens = token_map.spelled_touching(focus.location(offset));
 
     /// Early exit if there were no tokens around the cursor.
     if(tokens.empty()) {
@@ -1649,7 +1645,7 @@ auto hover_info(CompilationUnit& unit,
     }
 
     auto token_range = [&](const clang::syntax::Token& token) {
-        auto begin = unit.file_offset(token.location());
+        auto begin = token_map.offset(token);
         return LocalSourceRange(begin, begin + token.length());
     };
 
@@ -1741,7 +1737,7 @@ auto hover(CompilationUnit& unit,
         return std::nullopt;
     }
 
-    return to_protocol_hover(*info, kind, unit.positions(), encoding);
+    return to_protocol_hover(*info, kind, focus.positions(), encoding);
 }
 
 }  // namespace clice::feature

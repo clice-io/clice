@@ -975,7 +975,7 @@ struct §(ctx)ctx { int x; };
         {
          .path = prefix,
          .content = marker + copied + "#line 9 \"elsewhere.c\"\n",
-         .origin = {.source = unit->file_path(unit->main_file()).str(),
+         .origin = {.source = unit->file_path(unit->focus_file().file()).str(),
                        .runs = {{.offset = static_cast<std::uint32_t>(marker.size()),
                                  .source_offset = 1,
                                  .length = static_cast<std::uint32_t>(copied.size())}}},

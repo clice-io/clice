@@ -29,8 +29,8 @@ std::string text(llvm::ArrayRef<clang::syntax::Token> tokens) {
 
 /// The spelled tokens that survived preprocessing, or not.
 std::string spelled_where(bool away) {
-    auto spelled = unit->tokens().spelled();
-    auto& flags = unit->tokens().preprocessed_away();
+    auto spelled = unit->focus_file().tokens().spelled();
+    auto& flags = unit->focus_file().tokens().preprocessed_away();
     std::vector<clang::syntax::Token> picked;
     for(std::size_t i = 0; i < spelled.size(); i += 1) {
         if(flags[i] == away) {
@@ -43,7 +43,7 @@ std::string spelled_where(bool away) {
 /// The `nth` expanded token spelled `spelling`.
 const clang::syntax::Token& expanded(llvm::StringRef spelling, std::size_t nth = 0) {
     auto& SM = unit->context().getSourceManager();
-    for(auto& token: unit->tokens().expanded()) {
+    for(auto& token: unit->focus_file().tokens().expanded()) {
         if(token.text(SM) == spelling) {
             if(nth == 0) {
                 return token;
@@ -61,14 +61,14 @@ std::string spelled_for(llvm::StringRef sequence) {
     auto& SM = unit->context().getSourceManager();
     llvm::SmallVector<llvm::StringRef> words;
     sequence.split(words, ' ');
-    auto stream = unit->tokens().expanded();
+    auto stream = unit->focus_file().tokens().expanded();
     for(std::size_t i = 0; i + words.size() <= stream.size(); i += 1) {
         auto run = stream.slice(i, words.size());
         if(llvm::equal(run, words, [&](const clang::syntax::Token& token, llvm::StringRef word) {
                return token.text(SM) == word;
            })) {
             auto range = clang::SourceRange(run.front().location(), run.back().location());
-            return text(unit->tokens().spelled_for(range));
+            return text(unit->focus_file().tokens().spelled_for(range));
         }
     }
     ZASSERT(false);
@@ -77,7 +77,8 @@ std::string spelled_for(llvm::StringRef sequence) {
 
 std::string expansions() {
     std::string out;
-    for(auto& expansion: unit->tokens().expansions_overlapping(unit->tokens().spelled())) {
+    for(auto& expansion:
+        unit->focus_file().tokens().expansions_overlapping(unit->focus_file().tokens().spelled())) {
         out += std::format("[{} => {}]", text(expansion.spelled), text(expansion.expanded));
     }
     return out;
@@ -87,13 +88,13 @@ std::string expansions() {
 /// (`?` for none).
 std::string origins() {
     auto& SM = unit->context().getSourceManager();
-    auto spelled = unit->tokens().spelled();
+    auto spelled = unit->focus_file().tokens().spelled();
     std::string out;
-    for(auto [index, token]: llvm::enumerate(unit->tokens().expanded())) {
+    for(auto [index, token]: llvm::enumerate(unit->focus_file().tokens().expanded())) {
         if(token.kind() == clang::tok::eof) {
             continue;
         }
-        auto origin = unit->tokens().origin(static_cast<std::uint32_t>(index));
+        auto origin = unit->focus_file().tokens().origin(static_cast<std::uint32_t>(index));
         out += std::format("{}{}:{}",
                            out.empty() ? "" : " ",
                            token.text(SM),
@@ -106,13 +107,13 @@ std::string origins() {
 /// spelled `spelling` stands for.
 std::optional<std::uint32_t> origin_offset(llvm::StringRef spelling, std::size_t nth) {
     auto& token = expanded(spelling, nth);
-    auto index = static_cast<std::uint32_t>(&token - unit->tokens().expanded().data());
-    auto origin = unit->tokens().origin(index);
+    auto index = static_cast<std::uint32_t>(&token - unit->focus_file().tokens().expanded().data());
+    auto origin = unit->focus_file().tokens().origin(index);
     if(!origin) {
         return std::nullopt;
     }
     auto& SM = unit->context().getSourceManager();
-    return SM.getFileOffset(unit->tokens().spelled()[*origin].location());
+    return SM.getFileOffset(unit->focus_file().tokens().spelled()[*origin].location());
 }
 
 ZEST_CASE(PreprocessedAway) {
@@ -210,7 +211,8 @@ int v = __has_cpp_attribute(ATTR);
 )cpp");
     ZASSERT(compile());
     auto& SM = unit->context().getSourceManager();
-    auto expansions = unit->tokens().expansions_overlapping(unit->tokens().spelled());
+    auto expansions =
+        unit->focus_file().tokens().expansions_overlapping(unit->focus_file().tokens().spelled());
     ZASSERT(expansions.size() == 2U);
     ZEXPECT(text(expansions[0].spelled) == "__has_cpp_attribute");
     ZASSERT(expansions[0].expanded.size() == 1U);
@@ -274,9 +276,9 @@ int m;
 )cpp");
     ZASSERT(compile());
     ZEXPECT(origins() == "int:int m:m ;:; int:? h:? ;:? int:? hm:? ;:?");
-    auto eof = static_cast<std::uint32_t>(unit->tokens().expanded().size() - 1);
-    ZEXPECT(unit->tokens().expanded()[eof].kind() == clang::tok::eof);
-    ZEXPECT(!unit->tokens().origin(eof));
+    auto eof = static_cast<std::uint32_t>(unit->focus_file().tokens().expanded().size() - 1);
+    ZEXPECT(unit->focus_file().tokens().expanded()[eof].kind() == clang::tok::eof);
+    ZEXPECT(!unit->focus_file().tokens().origin(eof));
 }
 
 ZEST_CASE(TouchingFileEnd) {
@@ -284,7 +286,7 @@ ZEST_CASE(TouchingFileEnd) {
     ZASSERT(compile());
     auto& SM = unit->context().getSourceManager();
     auto end = SM.getLocForEndOfFile(SM.getMainFileID());
-    ZEXPECT(text(unit->tokens().spelled_touching(end)) == "x");
+    ZEXPECT(text(unit->focus_file().tokens().spelled_touching(end)) == "x");
 }
 
 ZEST_CASE(SplitShiftRange) {
@@ -293,7 +295,7 @@ ZEST_CASE(SplitShiftRange) {
     auto& shift = expanded(">>");
     auto range =
         clang::SourceRange(expanded("A", 2).location(), shift.location().getLocWithOffset(1));
-    ZEXPECT(text(unit->tokens().expanded(range)) == "A < int >>");
+    ZEXPECT(text(unit->focus_file().tokens().expanded(range)) == "A < int >>");
 }
 
 ZEST_CASE(PreambleAway) {
@@ -313,9 +315,9 @@ ZEST_CASE(AssemblerComment) {
     *language = "assembler-with-cpp";
     ZASSERT(try_compile());
     ZEXPECT(spelled_where(false) == "# comment . text");
-    ZEXPECT(llvm::none_of(unit->tokens().expanded(), [](const clang::syntax::Token& token) {
-        return token.kind() == clang::tok::eod;
-    }));
+    ZEXPECT(llvm::none_of(
+        unit->focus_file().tokens().expanded(),
+        [](const clang::syntax::Token& token) { return token.kind() == clang::tok::eod; }));
     unit->get<Semantics>();
 }
 
@@ -328,8 +330,8 @@ module :private;
 module :§(live)⟦private⟧;
 )cpp");
     ZASSERT(compile());
-    for(bool main_file_only: {true, false}) {
-        auto semantics = Semantics::build(*unit, {.main_file_only = main_file_only});
+    for(bool all_files: {false, true}) {
+        auto semantics = Semantics::build(*unit, {.all_files = all_files});
         auto modules = semantics.module_declarations();
         ZASSERT(modules.size() == 2U);
         ZEXPECT(modules[1].kind == LexicalInfo::ModuleDeclaration::Kind::PrivateFragment);

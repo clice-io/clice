@@ -83,9 +83,8 @@ void open_with_overlay(std::source_location location = std::source_location::cur
 
     auto& entry = projections.entries[path_id];
     auto projection = std::make_shared<ASTProjection>();
-    projection->index = std::make_shared<index::TUIndex>(
-        index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
-            index::build_tu_index(*unit, {.main_file_only = true}))));
+    projection->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
+        llvm::MemoryBuffer::getMemBufferCopy(index::build_tu_index(*unit))));
     projection->pch_key = "key";
     entry.projection = std::move(projection);
     entry.current = true;

@@ -2315,7 +2315,7 @@ auto code_complete(CompilationParams params,
         .list = completion_list(std::move(items), includes ? 0U : options.limit.value)};
     if(includes) {
         // Clang's copy of the buffer carries a NUL at the completion point.
-        auto buffer = unit->main_content();
+        auto buffer = unit->focus_file().content();
         auto content = buffer.take_front(offset).str() + buffer.drop_front(offset + 1).str();
         auto insertion = action::include_insertion(*unit);
         if(insertion.offset > offset) {

@@ -96,7 +96,7 @@ ZEST_CASE(BatchTraversesHeaders) {
     for(auto& diag: unit->diagnostics()) {
         header_finding |= diag.id.source == DiagnosticSource::ClangTidy &&
                           diag.id.name == "bugprone-integer-division" &&
-                          diag.fid != unit->main_file();
+                          diag.fid != unit->focus_file().file();
     }
     ZASSERT(header_finding);
 
