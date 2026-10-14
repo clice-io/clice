@@ -1,0 +1,6 @@
+[test."$ clice lint --workers 2"]
+stdout = '''
+${WS}/main.cpp:2:9: warning: unused variable 'reported' [clang-diagnostic-unused-variable]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1
