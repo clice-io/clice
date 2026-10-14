@@ -53,6 +53,10 @@ public:
     /// The context of the clang-tidy checker.
     clang::tidy::ClangTidyContext context;
 
+    /// A batch run's findings, the checks' and the compiler's, kept or left
+    /// out as clang-tidy keeps them (see configure).
+    clang::tidy::ClangTidyDiagnosticConsumer findings{context};
+
     /// The engine the checks report through in a batch run (see
     /// configure); the compiler's otherwise.
     std::unique_ptr<clang::DiagnosticsEngine> engine;
@@ -73,22 +77,26 @@ public:
     ClangTidyChecker(std::unique_ptr<clang::tidy::ClangTidyOptionsProvider> provider,
                      clang::ast_matchers::MatchFinder::MatchFinderOptions options);
 
+    /// The editor shape's level for a diagnostic: Ignored when a suppression
+    /// comment in the main file or a system macro hides it, Error for a
+    /// warning WarningsAsErrors names.
     clang::DiagnosticsEngine::Level adjust_level(clang::DiagnosticsEngine::Level level,
                                                  const clang::Diagnostic& diag);
 
+    /// Name a check's diagnostic after its check, in the editor shape.
     void adjust_diag(Diagnostic& diag);
 };
 
 /// Configure clang-tidy over the compile `instance` runs. The batch shape
-/// is clang-tidy's own: every configured check, the whole TU traversed,
-/// suppression comments honored in every file, header findings kept for
-/// the consumer's header filter, and a compiler warning a finding only
-/// when Checks enables its clang-diagnostic-* name. Otherwise the editor
-/// shape, clangd's: checks classified fast only, minus those unusable on
-/// code mid-edit, over the main file's top-level declarations,
-/// suppression comments read there only. `preamble_inactive` holds the
-/// inactive regions of the consumed PCH's preamble share (flat begin/end
-/// offset pairs), whose `#include`s the preamble replay skips.
+/// is clang-tidy's own: every configured check over the whole TU, and
+/// clang-tidy's consumer collecting the findings, which applies the
+/// suppression comments, the header filters and the Checks a compiler
+/// warning needs to be a finding. Otherwise the editor shape, clangd's:
+/// checks classified fast only, minus those unusable on code mid-edit,
+/// over the main file's top-level declarations, suppression comments read
+/// there only. `preamble_inactive` holds the inactive regions of the
+/// consumed PCH's preamble share (flat begin/end offset pairs), whose
+/// `#include`s the preamble replay skips.
 std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
                                             const TidyParams& params,
                                             bool batch,

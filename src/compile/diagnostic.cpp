@@ -212,26 +212,39 @@ public:
             unit.fatal = true;
         }
 
+        // A batch run reports the compiler's diagnostics among its
+        // findings, as clang-tidy does; the editor shape adjusts the
+        // unit's own.
+        tidy::ClangTidyChecker* editor = nullptr;
+        if(unit.checker && unit.checker->batch) {
+            unit.checker->findings.HandleDiagnostic(level, raw_diagnostic);
+        } else {
+            editor = unit.checker.get();
+        }
+
         // A note belongs to the diagnostic before it; one ahead of every
         // diagnostic, or after one left out, belongs to none.
         if(is_note(level)) {
             if(attach_notes) {
                 auto note = convert(level, raw_diagnostic);
+                if(editor) {
+                    editor->adjust_diag(note);
+                }
                 unit.collected_diagnostics.back().notes.push_back(std::move(note));
             }
             return;
         }
 
-        if(unit.checker) {
-            level = unit.checker->adjust_level(level, raw_diagnostic);
+        if(editor) {
+            level = editor->adjust_level(level, raw_diagnostic);
             if(level == clang::DiagnosticsEngine::Ignored) {
                 attach_notes = false;
                 return;
             }
         }
         auto diagnostic = convert(level, raw_diagnostic);
-        if(unit.checker) {
-            unit.checker->adjust_diag(diagnostic);
+        if(editor) {
+            editor->adjust_diag(diagnostic);
         }
         // A check can report one finding more than once, from several
         // instantiations of a template.
@@ -285,9 +298,6 @@ private:
             auto [fid, range] = *pair;
             diagnostic.fid = fid;
             diagnostic.range = range;
-            if(raw.hasSourceManager()) {
-                diagnostic.in_system = raw.getSourceManager().isInSystemHeader(raw.getLocation());
-            }
         }
 
         // One from the command line has no source to fix.

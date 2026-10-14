@@ -360,15 +360,9 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
     if(!params.warnings_as_errors.empty()) {
         opts.WarningsAsErrors = params.warnings_as_errors;
     }
-    if(!params.header_filter.empty()) {
-        opts.HeaderFilterRegex = params.header_filter;
-    }
-    if(!params.exclude_header_filter.empty()) {
-        opts.ExcludeHeaderFilterRegex = params.exclude_header_filter;
-    }
-    if(params.system_headers) {
-        opts.SystemHeaders = true;
-    }
+    opts.HeaderFilterRegex = params.header_filter;
+    opts.ExcludeHeaderFilterRegex = params.exclude_header_filter;
+    opts.SystemHeaders = params.system_headers;
     if(params.header_file_extensions) {
         opts.HeaderFileExtensions = params.header_file_extensions;
     }
@@ -550,38 +544,24 @@ clang::DiagnosticsEngine::Level
     if(checks.empty()) {
         return level;
     }
-    // Compiler warnings carry their clang-diagnostic-* name too. A batch
-    // run neither suppresses nor promotes the ones Checks leaves out: they
-    // are no findings of its, as in clang-tidy.
     std::string tidy_diag = context.getCheckName(diag.getID());
-    if(tidy_diag.empty() || (batch && context.isCompilerDiagnostic(diag.getID()) &&
-                             !context.isCheckEnabled(tidy_diag))) {
+    if(tidy_diag.empty()) {
         return level;
     }
-    // Check for suppression comment. The interactive shape skips
-    // diagnostics outside the main file and forbids I/O: that
-    // function would otherwise read the source buffers of preamble
-    // files. The batch shape reads every file, as clang-tidy does.
-    // We let suppression comments take precedence over warning-as-error
-    // to match clang-tidy's behaviour.
-    bool in_main_file =
-        diag.hasSourceManager() && is_inside_main_file(diag.getLocation(), diag.getSourceManager());
+    // Check for suppression comment. Skip checking diagnostics outside the
+    // main file and forbid I/O: that function would otherwise read the
+    // source buffers of preamble files. A NOLINT comment that pairs with
+    // none is an error of clang-tidy's own, which the editor leaves out,
+    // as clangd does. We let suppression comments take precedence over
+    // warning-as-error to match clang-tidy's behaviour.
     llvm::SmallVector<clang::tooling::Diagnostic, 1> tidy_suppressed_errors;
-    bool suppressed =
-        (in_main_file || batch) && context.shouldSuppressDiagnostic(level,
-                                                                    diag,
-                                                                    tidy_suppressed_errors,
-                                                                    /*AllowIO=*/batch,
-                                                                    /*EnableNolintBlocks=*/true);
-    // A NOLINT comment that pairs with none is an error of clang-tidy's
-    // own, reported once per file. The editor leaves them out, as clangd
-    // does.
-    if(batch) {
-        for(auto& error: tidy_suppressed_errors) {
-            context.diag(error);
-        }
-    }
-    if(suppressed) {
+    if(diag.hasSourceManager() &&
+       is_inside_main_file(diag.getLocation(), diag.getSourceManager()) &&
+       context.shouldSuppressDiagnostic(level,
+                                        diag,
+                                        tidy_suppressed_errors,
+                                        /*AllowIO=*/false,
+                                        /*EnableNolintBlocks=*/true)) {
         return clang::DiagnosticsEngine::Ignored;
     }
     // The compiler decides its own diagnostics in system macros: an error
@@ -601,10 +581,8 @@ clang::DiagnosticsEngine::Level
 
 void ClangTidyChecker::adjust_diag(Diagnostic& diag) {
     std::string tidy_diag = context.getCheckName(diag.id.value);
-    // A compiler diagnostic stays the compiler's, but for a batch run's
-    // finding.
-    if(tidy_diag.empty() || (context.isCompilerDiagnostic(diag.id.value) &&
-                             !(batch && context.isCheckEnabled(tidy_diag)))) {
+    // A compiler diagnostic stays the compiler's.
+    if(tidy_diag.empty() || context.isCompilerDiagnostic(diag.id.value)) {
         return;
     }
     diag.id.name = names.save(tidy_diag);
@@ -621,12 +599,7 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
                                             const TidyParams& params,
                                             bool batch,
                                             llvm::ArrayRef<std::uint32_t> preamble_inactive) {
-    auto& input = instance.getFrontendOpts().Inputs[0];
-
-    if(!input.isFile()) {
-        return nullptr;
-    }
-    auto file_name = input.getFile();
+    auto file_name = instance.getFrontendOpts().Inputs[0].getFile();
     tidy::ClangTidyOptions opts = create_options(params, batch);
 
     {
@@ -681,15 +654,18 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     // A batch run's checks report through an engine of their own, as in
     // clang-tidy: the compiler's stops reporting after a fatal error (a
     // missing header) and applies the command's -Werror and -w to them.
+    // The compiler's diagnostics reach the findings through the unit's
+    // collector.
     if(batch) {
         auto options = std::make_unique<clang::DiagnosticOptions>();
         checker->engine =
             std::make_unique<clang::DiagnosticsEngine>(instance.getDiagnostics().getDiagnosticIDs(),
                                                        *options,
-                                                       instance.getDiagnostics().getClient(),
+                                                       &checker->findings,
                                                        /*ShouldOwnClient=*/false);
         checker->engine->setSourceManager(&instance.getSourceManager());
         checker->context.setDiagnosticsEngine(std::move(options), checker->engine.get());
+        checker->findings.BeginSourceFile(instance.getLangOpts(), &instance.getPreprocessor());
     } else {
         checker->context.setDiagnosticsEngine(
             std::make_unique<clang::DiagnosticOptions>(instance.getDiagnosticOpts()),
@@ -750,3 +726,12 @@ TidyResolution resolve_tidy_params(llvm::StringRef file) {
 }
 
 }  // namespace clice::tidy
+
+namespace clice {
+
+auto CompilationUnit::take_tidy_findings() -> std::vector<clang::tidy::ClangTidyError> {
+    assert(checker && checker->batch && "take_tidy_findings: no batch clang-tidy run");
+    return checker->findings.take();
+}
+
+}  // namespace clice

@@ -405,8 +405,15 @@ public:
     /// implementation unit's (`module M;`) names a module defined elsewhere.
     bool defines_module();
 
-    /// Return all diagnostics in the process of compilation.
+    /// The diagnostics the compile reported, each with its notes: the
+    /// compiler's, and clang-tidy's findings in the editor shape. Those a
+    /// suppression comment hides are left out, and a finding reported more
+    /// than once is kept once.
     auto diagnostics() -> llvm::ArrayRef<Diagnostic>;
+
+    /// The findings of a batch clang-tidy run, the compiler's diagnostics
+    /// among them, as clang-tidy reports them; taken once.
+    auto take_tidy_findings() -> std::vector<clang::tidy::ClangTidyError>;
 
     auto top_level_decls() -> llvm::ArrayRef<clang::Decl*>;
 

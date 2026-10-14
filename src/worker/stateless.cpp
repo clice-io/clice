@@ -13,6 +13,7 @@ import :feature.feature;
 import :index.include_tree;
 import :index.tu_index;
 import :support.logging;
+import :syntax.position;
 import :support.process;
 import :vfs.file_system;
 import :worker.common;
@@ -274,91 +275,60 @@ static worker::ArtifactBuildResult handle_build_pcm(const worker::BuildPCMParams
                            /*internal_error=*/false);
 }
 
-/// Collect the tidy pass's findings with real per-file locations: unlike
-/// the LSP path, which folds header diagnostics onto their include line,
-/// the CLI reports them where they are. clang-tidy's header-filter
-/// contract is applied here — our diagnostic path has no
-/// ClangTidyDiagnosticConsumer to apply it: main-file findings always
-/// report; a header finding needs HeaderFilterRegex to match (empty =
-/// main file only) and must not match ExcludeHeaderFilterRegex; system
-/// headers report only under SystemHeaders. Compiler errors are kept
-/// regardless of location, as clang-tidy keeps them: a parse can complete
-/// with a usable AST despite errors, and a run that discarded them would
-/// pass broken code.
+/// The batch tidy pass's findings, each where it is: unlike the LSP path,
+/// which folds header diagnostics onto their include line, the CLI reports
+/// them in their own files. Lines and columns count from 1, columns in
+/// bytes, as compilers count them; a finding no file holds (the command
+/// line's, the configuration's) has neither.
 static void collect_tidy_diagnostics(CompilationUnit& unit,
-                                     const tidy::TidyParams& params,
                                      std::vector<worker::TidyDiagnostic>& out) {
-    auto focus = unit.focus_file();
-    std::optional<llvm::Regex> keep;
-    if(!params.header_filter.empty()) {
-        keep.emplace(params.header_filter);
-    }
-    std::optional<llvm::Regex> drop;
-    if(!params.exclude_header_filter.empty()) {
-        drop.emplace(params.exclude_header_filter);
-    }
+    struct File {
+        llvm::StringRef path;
+        llvm::StringRef content;
+        std::vector<std::uint32_t> lines;
+    };
 
-    for(const auto& raw: unit.diagnostics()) {
-        bool clang_error =
-            raw.id.source == DiagnosticSource::Clang &&
-            (raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal);
-        if(!clang_error && raw.id.source != DiagnosticSource::ClangTidy) {
-            continue;
+    // By the name clang-tidy reports a file by: the one its lookup reached
+    // it by.
+    llvm::StringMap<File> files;
+    auto locate = [&](const clang::tooling::DiagnosticMessage& message) {
+        worker::TidyNote located{.message = message.Message};
+        if(message.FilePath.empty()) {
+            return located;
         }
-        if(raw.fid.isInvalid() || !raw.range.valid()) {
-            continue;
+        auto [it, inserted] = files.try_emplace(message.FilePath);
+        auto& file = it->second;
+        if(inserted) {
+            auto& sm = unit.context().getSourceManager();
+            auto entry = sm.getFileManager().getOptionalFileRef(message.FilePath);
+            file.path = unit.file_path(*entry);
+            file.content = sm.getMemoryBufferForFileOrNone(*entry)->getBuffer();
+            file.lines = kota::ipc::lsp::line_starts(file.content);
         }
-        auto file = unit.file_path(raw.fid);
-        if(!focus.contains(raw.fid) && !clang_error) {
-            if(raw.in_system && !params.system_headers) {
-                continue;
-            }
-            // Matched like clang-tidy does: against the name the lookup
-            // reached the header by, not its identity; a buffer no file
-            // backs is kept.
-            auto entry = unit.context().getSourceManager().getFileEntryRefForID(raw.fid);
-            if(entry && (!keep || !keep->match(entry->getName()) ||
-                         (drop && drop->match(entry->getName())))) {
-                continue;
-            }
-        }
-        // Columns count bytes, as compilers count them.
-        auto start = unit.positions(raw.fid).position(raw.range.begin, PositionEncoding::UTF8);
-        if(!start) {
-            continue;
-        }
-        // clang-tidy's name for a compiler error: its warning's, for one
-        // -Werror raises.
-        std::string check(raw.id.name);
-        if(clang_error) {
-            auto option =
-                unit.context().getDiagnostics().getDiagnosticIDs()->getWarningOptionForDiag(
-                    raw.id.value);
-            check = std::format("clang-diagnostic-{}", option.empty() ? "error" : option);
-        }
-        out.push_back({
-            .file = std::string(file),
-            .line = start->line + 1,
-            .column = start->character + 1,
+        auto position = PositionMap(file.content, file.lines)
+                            .position(message.FileOffset, PositionEncoding::UTF8);
+        located.file = file.path.str();
+        located.line = position->line + 1;
+        located.column = position->character + 1;
+        return located;
+    };
+
+    for(auto& finding: unit.take_tidy_findings()) {
+        auto location = locate(finding.Message);
+        auto& diagnostic = out.emplace_back(worker::TidyDiagnostic{
+            .file = std::move(location.file),
+            .line = location.line,
+            .column = location.column,
             .error =
-                raw.id.level == DiagnosticLevel::Error || raw.id.level == DiagnosticLevel::Fatal,
-            .compiler_error = clang_error,
-            .message = raw.message,
-            .check = std::move(check),
+                finding.DiagLevel == clang::tooling::Diagnostic::Error || finding.IsWarningAsError,
+            .compiler_error =
+                finding.DiagLevel == clang::tooling::Diagnostic::Error &&
+                llvm::StringRef(finding.DiagnosticName).starts_with("clang-diagnostic-"),
+            .message = std::move(location.message),
+            .check = std::move(finding.DiagnosticName),
         });
-        for(const auto& note: raw.notes) {
-            if(note.fid.isInvalid() || !note.range.valid()) {
-                continue;
-            }
-            if(auto start =
-                   unit.positions(note.fid).position(note.range.begin, PositionEncoding::UTF8)) {
-                out.back().notes.push_back({
-                    .file = std::string(unit.file_path(note.fid)),
-                    .line = start->line + 1,
-                    .column = start->character + 1,
-                    .message = note.message,
-                });
-            }
+        for(auto& note: finding.Notes) {
+            diagnostic.notes.push_back(locate(note));
         }
     }
 }
@@ -438,7 +408,7 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     }
     auto index_ms = index_timer.ms();
     if(params.tidy) {
-        collect_tidy_diagnostics(*unit, *params.tidy, result.tidy_diagnostics);
+        collect_tidy_diagnostics(*unit, result.tidy_diagnostics);
     }
 
     // AST teardown for a large TU is material work that belongs to this

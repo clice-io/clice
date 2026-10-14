@@ -39,17 +39,26 @@ struct LintOptions {
     LogLevelOption log;
 };
 
+/// Where a finding or a note is, as compilers print it; nothing for one no
+/// file holds.
+std::string location(llvm::StringRef file, std::uint32_t line, std::uint32_t column) {
+    if(file.empty()) {
+        return {};
+    }
+    return std::format("{}:{}:{}: ", file, line, column);
+}
+
 void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
     for(auto& d: diagnostics) {
-        driver::println("{}:{}:{}: {}: {} [{}]",
-                        d.file,
-                        d.line,
-                        d.column,
+        driver::println("{}{}: {} [{}]",
+                        location(d.file, d.line, d.column),
                         d.error ? "error" : "warning",
                         d.message,
                         d.check);
         for(auto& note: d.notes) {
-            driver::println("{}:{}:{}: note: {}", note.file, note.line, note.column, note.message);
+            driver::println("{}note: {}",
+                            location(note.file, note.line, note.column),
+                            note.message);
         }
     }
 }
