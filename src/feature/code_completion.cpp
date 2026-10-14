@@ -425,9 +425,14 @@ auto dedup_priority(protocol::CompletionItemKind kind, bool is_macro) -> int {
 /// Extract the function signature (parameter list) from a CodeCompletionString,
 /// followed by the function's qualifiers when `qualifiers` is set. Returns
 /// something like "(int x, float y = 1) const" for display in
-/// labelDetails.detail; parameters with a default show it.
-auto extract_signature(const clang::CodeCompletionString& ccs, bool qualifiers) -> std::string {
+/// labelDetails.detail; parameters with a default show it. `parameters`, when
+/// given, receives where the parameter list opens, after the template
+/// arguments a call must write (`<typename U>(U value)`); npos for none.
+auto extract_signature(const clang::CodeCompletionString& ccs,
+                       bool qualifiers,
+                       std::size_t* parameters = nullptr) -> std::string {
     std::string signature;
+    std::size_t opened = std::string::npos;
     bool in_parens = false;
     bool in_angles = false;
     bool closed = false;
@@ -438,6 +443,7 @@ auto extract_signature(const clang::CodeCompletionString& ccs, bool qualifiers) 
             switch(chunk.Kind) {
                 case CK::CK_LeftParen:
                     in_parens = true;
+                    opened = std::min(opened, signature.size());
                     signature += '(';
                     break;
                 case CK::CK_RightParen:
@@ -472,6 +478,7 @@ auto extract_signature(const clang::CodeCompletionString& ccs, bool qualifiers) 
                     llvm::StringRef text = chunk.Text ? chunk.Text : "";
                     if(text == "(") {
                         in_parens = true;
+                        opened = std::min(opened, signature.size());
                     }
                     if(in_parens || (closed && qualifiers)) {
                         signature += text;
@@ -503,6 +510,9 @@ auto extract_signature(const clang::CodeCompletionString& ccs, bool qualifiers) 
     };
     extract(ccs);
 
+    if(parameters) {
+        *parameters = opened;
+    }
     return signature;
 }
 
@@ -1733,7 +1743,8 @@ public:
             // Clang gives a variable holding a lambda the signature of its
             // call operator, whose `const` is no part of calling it.
             bool method = llvm::isa_and_present<clang::CXXMethodDecl>(declaration->getAsFunction());
-            item.signature = extract_signature(ccs, /*qualifiers=*/method);
+            std::size_t parameters;
+            item.signature = extract_signature(ccs, /*qualifiers=*/method, &parameters);
             item.return_type = extract_return_type(ccs);
             // Where Sema gives a parameter list and a type, they are printed
             // as every feature prints them.
@@ -1742,15 +1753,10 @@ public:
                 display_options.readable = &*readable;
             }
             const auto* function = declaration->getAsFunction();
-            if(function) {
-                // A function template whose arguments a call cannot deduce
-                // lists them first, `<typename U>(...)`.
-                auto list = item.signature.starts_with("<") ? item.signature.find(">(") + 1 : 0;
-                if(list < item.signature.size() && item.signature[list] == '(') {
-                    item.signature.replace(list,
-                                           std::string::npos,
-                                           call_signature(*function, display_options));
-                }
+            if(function && parameters != std::string::npos) {
+                item.signature.replace(parameters,
+                                       std::string::npos,
+                                       call_signature(*function, display_options));
             }
             if(!item.return_type.empty()) {
                 clang::QualType type;

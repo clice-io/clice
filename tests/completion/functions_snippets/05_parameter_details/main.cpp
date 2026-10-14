@@ -27,6 +27,14 @@ struct vector {
 
 std::vector<std::string> names;
 
+template <typename T>
+constexpr int size_of() {
+    return sizeof(T);
+}
+
+template <decltype(size_of<int>()) N>
+void frob(int count);
+
 template <typename... Ts>
 void emit(Ts... values);
 void total(int values[4]);
@@ -40,4 +48,5 @@ void use() {
     names.a§(standard_alias);
     emi§(pack);
     tota§(array);
+    fro§(template_expression);
 }

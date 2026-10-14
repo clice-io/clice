@@ -34,3 +34,8 @@ items = [
 items = [
     { label = "total(int values[4])", kind = "Function", detail = "void" },
 ]
+
+[answers.template_expression.completion]
+items = [
+    { label = "frob<decltype(size_of<int>()) N>(int count)", kind = "Function", detail = "void" },
+]
