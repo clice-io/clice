@@ -349,17 +349,8 @@ auto parameter_documentation(CompilationUnitRef unit,
     if(!function_parameter) {
         param = owner_documentation.template_param(decl->getName());
     } else {
-        // A parameter of a function pointer's type is no parameter of the
-        // function around it.
-        const auto* parm = llvm::cast<clang::ParmVarDecl>(decl);
-        const auto* function = llvm::dyn_cast<clang::FunctionDecl>(owner);
-        auto index = parm->getFunctionScopeIndex();
-        auto names =
-            function && index < function->getNumParams() && function->getParamDecl(index) == parm
-                ? parameter_names(*function, index)
-                : llvm::SmallVector<std::string, 1>{parm->getName().str()};
-        for(const auto& name: names) {
-            if((param = owner_documentation.param(name))) {
+        for(const auto* named: decls::named_parameters(*llvm::cast<clang::ParmVarDecl>(decl))) {
+            if((param = owner_documentation.param(named->getName()))) {
                 break;
             }
         }
@@ -1499,18 +1490,7 @@ markup::Document HoverInfo::present() const {
     output.add_ruler();
 
     const auto& doc = documentation;
-    if(deprecation || doc.deprecated) {
-        auto& paragraph = output.add_paragraph().append_text("Deprecated");
-        if(deprecation && !deprecation->empty()) {
-            paragraph.append_text(": " + *deprecation);
-        } else if(doc.deprecated && !doc.deprecated->empty()) {
-            paragraph.append_text(": ").append_markdown(*doc.deprecated);
-        }
-    }
-
-    if(!doc.brief.empty()) {
-        output.add_markdown(doc.brief);
-    }
+    add_summary(output, doc, deprecation);
 
     /// Print types on their own lines to reduce chances of getting line-wrapped
     /// by the editor, as they might be long.
@@ -1526,38 +1506,16 @@ markup::Document HoverInfo::present() const {
         add_entries(output, {}, doc.retvals);
     }
 
-    /// The parameters of the signature, each with what the comment says of
-    /// it, then those only the comment names.
-    auto list_parameters = [&](llvm::StringRef title,
-                               const std::optional<std::vector<display::Param>>& signature,
-                               llvm::ArrayRef<Documentation::Param> documented) {
-        output.add_paragraph().append_text(title);
-        auto& list = output.add_bullet_list();
-        llvm::SmallVector<bool> shown(documented.size());
-        for(const auto& param: signature.value_or(std::vector<display::Param>{})) {
-            auto& entry = list.add_item().add_paragraph().append_code(llvm::to_string(param));
-            auto it = llvm::find_if(documented, [&](const Documentation::Param& documented) {
-                return param.name && documented.name == *param.name;
-            });
-            if(it != documented.end()) {
-                shown[it - documented.begin()] = true;
-                describe(entry, it->direction, it->text);
-            }
-        }
-        for(auto [index, param]: llvm::enumerate(documented)) {
-            if(!shown[index]) {
-                describe(list.add_item().add_paragraph().append_code(param.name),
-                         param.direction,
-                         param.text);
-            }
-        }
+    auto listed = [](const std::optional<std::vector<display::Param>>& params) {
+        return params ? llvm::ArrayRef(*params) : llvm::ArrayRef<display::Param>();
     };
-    if((parameters && !parameters->empty()) || !doc.params.empty()) {
-        list_parameters("Parameters: ", parameters, doc.params);
-    }
     if(!doc.template_params.empty()) {
-        list_parameters("Template parameters: ", template_parameters, doc.template_params);
+        add_parameters(output,
+                       "Template parameters: ",
+                       listed(template_parameters),
+                       doc.template_params);
     }
+    add_parameters(output, "Parameters: ", listed(parameters), doc.params);
 
     if(!return_type) {
         if(!doc.returns.empty()) {
@@ -1667,11 +1625,14 @@ auto hover_info(CompilationUnitRef unit,
     }
 
     auto& context = unit.context();
+    display::ReadableTypes readable(unit.context());
     display::Options display_options = {
         .terse = true,
         .polish_for_declaration = true,
         .constants_as_written = true,
         .suppress_ctor_template_args = true,
+        .clean_uglified = true,
+        .readable = &readable,
         .resolve_decltype = true,
         .tag_keyword_prefix = true,
         .show_aka = options.show_aka,

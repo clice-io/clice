@@ -1,6 +1,7 @@
 [answers."main.cpp"]
 inlay_hints = [
     { line = "resize(⟨width:⟩800, ⟨height:⟩600);" },
-    { line = "fill(⟨value:⟩1, ⟨count:⟩2);" },
+    { line = "fill(⟨_value:⟩1, ⟨count:⟩2);" },
     { line = "scale(⟨good:⟩7);" },
+    { line = "blend(⟨alpha:⟩1, ⟨beta:⟩2);" },
 ]

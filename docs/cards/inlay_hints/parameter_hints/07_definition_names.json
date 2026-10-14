@@ -2,15 +2,15 @@
   "id": "inlay_hints/parameter_hints/07_definition_names",
   "topic": "inlay_hints",
   "subtopic": "parameter_hints",
-  "title": "Names from definitions",
-  "summary": "Unnamed declaration parameters take the definition's names; leading underscores strip",
-  "prose": "When both the declaration and the definition name a parameter, the declaration wins.",
+  "title": "Names from other declarations",
+  "summary": "Unnamed declaration parameters take the names another declaration or the definition gives them; a reserved name drops its leading underscores",
+  "prose": "When both the declaration and the definition name a parameter, the declaration wins. A reserved name like `__count` shows as `count`; `_value`, an ordinary name, stays as written.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "void resize(int, int);\n\nvoid fill(int _value, int __count);\n\nint scale(int good);\n\nvoid use() {\n    resize(800, 600);\n    fill(1, 2);\n    scale(7);\n}\n\nvoid resize(int width, int height) {}\n\nint scale(int bad) {\n    return bad;\n}\n",
+      "text": "void resize(int, int);\n\nvoid fill(int _value, int __count);\n\nint scale(int good);\n\nvoid blend(int, int);\nvoid blend(int alpha, int beta);\n\nvoid use() {\n    resize(800, 600);\n    fill(1, 2);\n    scale(7);\n    blend(1, 2);\n}\n\nvoid blend(int, int) {}\n\nvoid resize(int width, int height) {}\n\nint scale(int bad) {\n    return bad;\n}\n",
       "markers": []
     }
   ],
@@ -28,11 +28,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 10,
                       "character": 4
                     },
                     "end": {
-                      "line": 7,
+                      "line": 10,
                       "character": 21
                     }
                   }
@@ -40,15 +40,15 @@
               },
               {
                 "line": {
-                  "$place": "fill(⟨value:⟩1, ⟨count:⟩2);",
+                  "$place": "fill(⟨_value:⟩1, ⟨count:⟩2);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 8,
+                      "line": 11,
                       "character": 4
                     },
                     "end": {
-                      "line": 8,
+                      "line": 11,
                       "character": 15
                     }
                   }
@@ -60,12 +60,28 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 9,
+                      "line": 12,
                       "character": 4
                     },
                     "end": {
-                      "line": 9,
+                      "line": 12,
                       "character": 13
+                    }
+                  }
+                }
+              },
+              {
+                "line": {
+                  "$place": "blend(⟨alpha:⟩1, ⟨beta:⟩2);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 16
                     }
                   }
                 }

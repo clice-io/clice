@@ -26,6 +26,14 @@ test("index cards carry documentation", async (t) => {
     expect((await s.counts()).pch).toBe(0);
 });
 
+test("index cards of template parameters", async (t) => {
+    const s = await t.start({ config: { project: { readonly: "on" } } });
+    s.open("main.cpp", { pull: false });
+    s.open("header.h", { pull: false });
+    await s.sync();
+    await t.show("template_parameter", s.hover(t.marker("template_parameter")));
+});
+
 test("index cards follow the options", async (t) => {
     const s = await t.start({
         config: { project: { readonly: "on" }, documentation: { format: "plain", inherit: false } },

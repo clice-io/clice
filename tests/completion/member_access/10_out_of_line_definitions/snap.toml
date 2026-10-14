@@ -2,7 +2,7 @@
 items = [
     { label = "Account", kind = "Class" },
     { label = "audit()", kind = "Method", detail = "void" },
-    { label = "balance()", kind = "Method", detail = "int" },
+    { label = "balance() const", kind = "Method", detail = "int" },
     { label = "deposit(int cents)", kind = "Method", detail = "void" },
     { label = "operator=(…) +1 overload", kind = "Method" },
     { label = "~Account()", kind = "Method", detail = "void" },

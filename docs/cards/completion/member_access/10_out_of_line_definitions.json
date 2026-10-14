@@ -41,7 +41,7 @@
                   "detail": "void"
                 },
                 {
-                  "label": "balance()",
+                  "label": "balance() const",
                   "kind": "Method",
                   "detail": "int"
                 },

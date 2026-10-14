@@ -9,6 +9,7 @@ module;
 
 module clice;
 
+import :semantic.decls;
 import :semantic.display;
 import :semantic.types;
 import :support.format;
@@ -16,22 +17,6 @@ import :support.format;
 namespace clice::display {
 
 namespace {
-
-/// Derive the printing policy for the policy-driven renderers: the
-/// context's policy with the option-selected flags applied on top.
-auto derive_policy(clang::ASTContext& context, const Options& options) -> clang::PrintingPolicy {
-    clang::PrintingPolicy policy = context.getPrintingPolicy();
-    policy.SuppressScope = options.suppress_scope;
-    policy.SuppressUnwrittenScope = options.suppress_unwritten_scope;
-    policy.TerseOutput = options.terse;
-    policy.PolishForDeclaration = options.polish_for_declaration;
-    policy.ConstantsAsWritten = options.constants_as_written;
-    policy.SuppressTemplateArgsInCXXConstructors = options.suppress_ctor_template_args;
-    policy.AnonymousTagNameStyle = std::to_underlying(
-        options.anonymous_tag_locations ? clang::PrintingPolicy::AnonymousTagMode::SourceLocation
-                                        : clang::PrintingPolicy::AnonymousTagMode::Plain);
-    return policy;
-}
 
 llvm::StringRef simple_name(const clang::DeclarationName& name) {
     if(clang::IdentifierInfo* identifier = name.getAsIdentifierInfo()) {
@@ -591,6 +576,25 @@ auto namespace_scope(const clang::Decl* decl) -> std::string {
     return llvm::join(llvm::reverse(names), "::");
 }
 
+auto printing_policy(clang::ASTContext& context, const Options& options) -> clang::PrintingPolicy {
+    clang::PrintingPolicy policy = context.getPrintingPolicy();
+    policy.SuppressScope = options.suppress_scope;
+    policy.SuppressUnwrittenScope = options.suppress_unwritten_scope;
+    policy.TerseOutput = options.terse;
+    policy.PolishForDeclaration = options.polish_for_declaration;
+    policy.ConstantsAsWritten = options.constants_as_written;
+    policy.SuppressTemplateArgsInCXXConstructors = options.suppress_ctor_template_args;
+    policy.CleanUglifiedParameters = options.clean_uglified;
+    policy.AnonymousTagNameStyle =
+        std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
+    // As clang's diagnostics do: C's `_Bool` reads `bool` where a macro
+    // (<stdbool.h>) spells it so.
+    if(!policy.Bool) {
+        policy.Bool = context.getBoolName()->hasMacroDefinition();
+    }
+    return policy;
+}
+
 auto restored_scope(clang::QualType type, const Options& options) -> clang::NestedNameSpecifier {
     /// Complex cases (pointers/references, cv-qualifiers) are not
     /// attempted, mirroring the tag-keyword special case of type().
@@ -614,8 +618,15 @@ auto restored_scope(clang::QualType type, const Options& options) -> clang::Nest
     return type->getPrefix();
 }
 
-auto type(clang::ASTContext& context, clang::QualType type, const Options& options) -> Type {
-    clang::PrintingPolicy policy = derive_policy(context, options);
+auto type(clang::ASTContext& context,
+          clang::QualType type,
+          const Options& options,
+          llvm::StringRef declarator) -> Type {
+    clang::PrintingPolicy policy = printing_policy(context, options);
+    auto written = type;
+    if(options.readable && !type.isNull()) {
+        type = options.readable->readable(type);
+    }
 
     if(options.resolve_decltype) {
         /// TypePrinter doesn't resolve decltypes, so resolve them here.
@@ -631,12 +642,12 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
     Type result;
     llvm::raw_string_ostream os(result.text);
 
-    /// Special case: if the outer type is a canonical tag type, then include
-    /// the tag for extra clarity. This isn't very idiomatic, so don't attempt
-    /// it for complex cases, including pointers/references, template
-    /// specializations, etc.
+    /// Special case: if the outer type is written as a canonical tag type,
+    /// then include the tag for extra clarity. This isn't very idiomatic, so
+    /// don't attempt it for complex cases, including pointers/references,
+    /// template specializations, etc.
     if(options.tag_keyword_prefix && !type.isNull() && !type.hasQualifiers() &&
-       policy.SuppressTagKeyword) {
+       policy.SuppressTagKeyword && written.getTypePtr() == type.getTypePtr()) {
         if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr());
            tag && tag->isCanonicalUnqualified()) {
             /// A closure type's name, `(lambda)`, already says what it is.
@@ -649,7 +660,7 @@ auto type(clang::ASTContext& context, clang::QualType type, const Options& optio
     if(auto scope = restored_scope(type, options)) {
         scope.print(os, policy);
     }
-    type.print(os, policy);
+    type.print(os, policy, declarator);
 
     if(!type.isNull() && options.show_aka) {
         /// A placeholder prints as the type deduced for it, and only that
@@ -847,25 +858,18 @@ auto param_type(const clang::TemplateTemplateParmDecl& param, const Options& opt
     return result;
 }
 
-}  // namespace
-
-auto default_argument(const clang::ParmVarDecl* param, const Options& options)
-    -> std::optional<std::string> {
-    const clang::Expr* arg = default_arg(param);
-    if(!arg) {
-        return std::nullopt;
-    }
-
-    auto& context = param->getASTContext();
+/// `expr` as the source writes it, on one line.
+auto as_written(clang::ASTContext& context, const clang::Expr* expr, const Options& options)
+    -> std::string {
     auto range = clang::Lexer::makeFileCharRange(
-        clang::CharSourceRange::getTokenRange(arg->getSourceRange()),
+        clang::CharSourceRange::getTokenRange(expr->getSourceRange()),
         context.getSourceManager(),
         context.getLangOpts());
     std::string text;
     if(range.isValid()) {
-        auto written =
+        auto source =
             clang::Lexer::getSourceText(range, context.getSourceManager(), context.getLangOpts());
-        for(auto line: llvm::split(written, '\n')) {
+        for(auto line: llvm::split(source, '\n')) {
             line = line.trim();
             if(line.empty()) {
                 continue;
@@ -880,22 +884,81 @@ auto default_argument(const clang::ParmVarDecl* param, const Options& options)
 
     // Written in a macro's body: the source holds the macro's text, not
     // this declaration's.
-    auto policy = derive_policy(context, options);
+    auto policy = printing_policy(context, options);
     policy.ConstantsAsWritten = true;
     llvm::raw_string_ostream os(text);
-    arg->printPretty(os, nullptr, policy, 0, "\n", &context);
+    expr->printPretty(os, nullptr, policy, 0, "\n", &context);
     return text;
+}
+
+}  // namespace
+
+auto default_argument(const clang::ParmVarDecl* param, const Options& options)
+    -> std::optional<std::string> {
+    const clang::Expr* arg = default_arg(param);
+    if(!arg) {
+        return std::nullopt;
+    }
+    return as_written(param->getASTContext(), arg, options);
+}
+
+auto default_initializer(const clang::FieldDecl& field, const Options& options)
+    -> std::optional<std::string> {
+    const clang::Expr* init = field.getInClassInitializer();
+    if(!init) {
+        return std::nullopt;
+    }
+    return as_written(field.getASTContext(), init, options);
+}
+
+auto method_qualifiers(const clang::CXXMethodDecl& method) -> std::string {
+    std::string text;
+    if(auto qualifiers = method.getMethodQualifiers(); !qualifiers.empty()) {
+        text += " " + qualifiers.getAsString();
+    }
+    if(method.getRefQualifier() == clang::RQ_LValue) {
+        text += " &";
+    } else if(method.getRefQualifier() == clang::RQ_RValue) {
+        text += " &&";
+    }
+    return text;
+}
+
+auto parameter_name(const clang::FunctionDecl& function, unsigned index) -> llvm::StringRef {
+    auto named = decls::named_parameters(function, index);
+    return named.empty() ? llvm::StringRef() : named.front()->getIdentifier()->deuglifiedName();
 }
 
 auto param(const clang::ParmVarDecl* param, const Options& options) -> Param {
     assert(param);
     Param result;
     result.type = type(param->getASTContext(), param->getType(), options);
-    if(!param->getName().empty()) {
-        result.name = param->getNameAsString();
+    if(auto named = decls::named_parameters(*param); !named.empty()) {
+        result.name = named.front()->getIdentifier()->deuglifiedName().str();
+        for(const auto* declaration: named) {
+            result.written.push_back(declaration->getName().str());
+        }
     }
     result.default_value = default_argument(param, options);
     return result;
+}
+
+auto parameter(const clang::ParmVarDecl& param, llvm::StringRef name, const Options& options)
+    -> std::string {
+    // Implicit special members write no type.
+    auto written =
+        param.getTypeSourceInfo() ? param.getTypeSourceInfo()->getType() : param.getType();
+    std::string declarator;
+    if(const auto* expansion = written->getAs<clang::PackExpansionType>()) {
+        written = expansion->getPattern();
+        declarator = "...";
+    }
+    declarator += name;
+    auto text = type(param.getASTContext(), written, options, declarator).text;
+    if(auto value = default_argument(&param, options)) {
+        text += " = " + *value;
+    }
+    return text;
 }
 
 auto template_params(const clang::TemplateParameterList* params, const Options& options)
@@ -916,7 +979,7 @@ auto template_params(const clang::TemplateParameterList* params, const Options& 
                 param.default_value.emplace();
                 llvm::raw_string_ostream out(*param.default_value);
                 type_param->getDefaultArgument().getArgument().print(
-                    derive_policy(type_param->getASTContext(), options),
+                    printing_policy(type_param->getASTContext(), options),
                     out,
                     /*IncludeType=*/false);
             }
@@ -932,7 +995,7 @@ auto template_params(const clang::TemplateParameterList* params, const Options& 
                 param.default_value.emplace();
                 llvm::raw_string_ostream out(*param.default_value);
                 non_type_param->getDefaultArgument().getArgument().print(
-                    derive_policy(non_type_param->getASTContext(), options),
+                    printing_policy(non_type_param->getASTContext(), options),
                     out,
                     /*IncludeType=*/false);
             }
@@ -948,7 +1011,7 @@ auto template_params(const clang::TemplateParameterList* params, const Options& 
                 param.default_value.emplace();
                 llvm::raw_string_ostream out(*param.default_value);
                 template_param->getDefaultArgument().getArgument().print(
-                    derive_policy(template_param->getASTContext(), options),
+                    printing_policy(template_param->getASTContext(), options),
                     out,
                     /*IncludeType=*/false);
             }
@@ -1257,7 +1320,7 @@ auto definition(const clang::Decl* decl,
                 const Options& options,
                 llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string {
     assert(decl);
-    clang::PrintingPolicy policy = derive_policy(decl->getASTContext(), options);
+    clang::PrintingPolicy policy = printing_policy(decl->getASTContext(), options);
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
        var && hides_initializer(var->getInit(), policy, token_count)) {
         policy.SuppressInitializers = true;
@@ -1329,6 +1392,22 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Param& param) {
         os << " (aka " << *param.type->aka << ")";
     }
     return os;
+}
+
+auto ReadableTypes::written_scope(const clang::NamedDecl* decl) const
+    -> clang::NestedNameSpecifier {
+    // The namespaces the code names it through: an inline one is not written.
+    clang::NestedNameSpecifier scope = std::nullopt;
+    llvm::SmallVector<const clang::NamespaceDecl*> namespaces;
+    for(const auto* parent = decl->getDeclContext(); parent; parent = parent->getParent()) {
+        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(parent); ns && !ns->isInline()) {
+            namespaces.push_back(ns);
+        }
+    }
+    for(const auto* ns: llvm::reverse(namespaces)) {
+        scope = clang::NestedNameSpecifier(context, ns, scope);
+    }
+    return scope;
 }
 
 bool ReadableTypes::reserved(const clang::NamedDecl* decl) const {
@@ -1415,7 +1494,7 @@ auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
             if(auto it = standard_aliases().find(context.getCanonicalType(type).getTypePtr());
                it != standard_aliases().end() && it->second) {
                 return qualified(context.getTypedefType(clang::ElaboratedTypeKeyword::None,
-                                                        /*Qualifier=*/std::nullopt,
+                                                        written_scope(it->second),
                                                         it->second));
             }
         }

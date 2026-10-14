@@ -69,11 +69,11 @@ tests/inlay_hints/parameter_hints/06_forwarding
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**来自定义的参数名**
+**来自其他声明的参数名**
 
-声明中的未命名参数会采用定义中的参数名；参数名开头的下划线会去掉
+声明中的未命名参数会采用其他声明或定义给出的参数名；保留名称会去掉开头的下划线
 
-声明和定义都为参数命名时，采用声明中的名称。
+声明和定义都为参数命名时，采用声明中的名称。`__count` 这样的保留名称会显示为 `count`；`_value` 是普通名称，按原样显示。
 
 ```case
 tests/inlay_hints/parameter_hints/07_definition_names

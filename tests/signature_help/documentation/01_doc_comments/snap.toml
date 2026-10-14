@@ -1,13 +1,7 @@
 [shown.parameter.signature_help]
 signatures = ["open(const char *path, ⟦int mode⟧) -> int"]
 active = 0
-documentation = '''
-Opens a file for reading.
-
-Parameters:
-- path — The file to open, relative to the working directory.
-- mode — Permission bits for a file the call creates.
-'''
+documentation = "Opens a file for reading."
 parameter_documentation = "Permission bits for a file the call creates."
 
 [shown.function.signature_help]

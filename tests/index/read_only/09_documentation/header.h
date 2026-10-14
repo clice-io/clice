@@ -17,8 +17,9 @@ struct Square : Shape {
 };
 
 /// Makes a copy of a value.
+/// @tparam T The copied type.
 template <typename T, typename = decltype(T{})>
-T copy(T value);
+§(template_parameter)T copy(T value);
 
 #define LIMIT 4 ///< The most it takes.
 

@@ -55,6 +55,24 @@ auto only_instantiation(clang::NamedDecl* templated_decl) -> clang::NamedDecl*;
 /// parameter in the template's only instantiation.
 auto only_instantiation(clang::ParmVarDecl* param) -> clang::ParmVarDecl*;
 
+/// The declaration `function` was instantiated from. A member template of a
+/// class template's specialization keeps no link of its own: its template
+/// does.
+auto function_pattern(const clang::FunctionDecl& function) -> const clang::FunctionDecl*;
+
+/// The parameter `index` of each declaration of `function` that names it,
+/// then of each declaration of the one it was instantiated from: a name
+/// left out of one declaration is written in another (a definition, a
+/// forward declaration such as libstdc++'s `std::max`), and a definition may
+/// name differently what the documented declaration names.
+auto named_parameters(const clang::FunctionDecl& function, unsigned index)
+    -> llvm::SmallVector<const clang::ParmVarDecl*, 2>;
+
+/// The same of a function's parameter; one of a function pointer's type,
+/// no parameter of the function around it, names only itself.
+auto named_parameters(const clang::ParmVarDecl& param)
+    -> llvm::SmallVector<const clang::ParmVarDecl*, 2>;
+
 /// Returns the template parameter pack type that this parameter was
 /// expanded from (if in the Args... or Args&... or Args&&... form), if
 /// this is the case, nullptr otherwise.

@@ -7,3 +7,19 @@ items = [
 items = [
     { label = "printf_like(const char *fmt, ...)", kind = "Function", detail = "int" },
 ]
+
+[answers.several_lines.completion]
+items = [
+    { label = "listen(int port = 8000 + 80)", kind = "Function", detail = "void" },
+]
+
+[answers.macro_body.completion]
+items = [
+    { label = "retry(int attempts = 3)", kind = "Function", detail = "void" },
+    { label = "DECLARE_RETRY(name)", kind = "Function" },
+]
+
+[answers.standard_alias.completion]
+items = [
+    { label = "at(int index)", kind = "Method", detail = "std::string &" },
+]

@@ -169,16 +169,24 @@ auto documentation(const index::IndexQuery& query,
                    Fid anchor,
                    const DocumentationOptions& options) -> Documentation;
 
-/// The names a documentation comment may give `function`'s parameter
-/// `index`: each one a declaration of the function, or of the template it
-/// was instantiated from, writes for it — a definition may rename what the
-/// documented declaration names.
-auto parameter_names(const clang::FunctionDecl& function, unsigned index)
-    -> llvm::SmallVector<std::string, 1>;
-
 /// Write after an entry — a parameter, a return value, an exception — what
 /// a documentation says of it: its direction, then its text.
 void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text);
+
+/// Add what a card shows of a documentation first: that the entity is
+/// deprecated, with the message of its attribute (`attribute`) or of its
+/// comment, then the brief.
+void add_summary(markup::Document& output,
+                 const Documentation& documentation,
+                 const std::optional<std::string>& attribute);
+
+/// Add a list of parameters under `title`: each of the `signature`'s with
+/// what the comment says of it, then the ones only the comment names;
+/// nothing when both are empty.
+void add_parameters(markup::Document& output,
+                    llvm::StringRef title,
+                    llvm::ArrayRef<display::Param> signature,
+                    llvm::ArrayRef<Documentation::Param> documented);
 
 /// Add what a documentation says of the values a function returns or the
 /// exceptions it throws, as a list under `title` (none when empty).

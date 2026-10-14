@@ -144,7 +144,7 @@
           "value": {
             "signature_help": {
               "signatures": [
-                "at(⟦int index⟧) -> string &"
+                "at(⟦int index⟧) -> std::string &"
               ],
               "active": 0
             }

@@ -123,20 +123,6 @@ private:
     llvm::DenseMap<const clang::Type*, clang::QualType> types;
 };
 
-// for a ParmVarDecl from a function declaration, returns the corresponding
-// ParmVarDecl from the definition if possible, nullptr otherwise.
-const clang::ParmVarDecl* param_definition(const clang::ParmVarDecl* param) {
-    if(auto* callee = dyn_cast<clang::FunctionDecl>(param->getDeclContext())) {
-        if(auto* def = callee->getDefinition()) {
-            auto i = std::distance(callee->param_begin(), llvm::find(callee->parameters(), param));
-            if(i < (int)callee->getNumParams()) {
-                return def->getParamDecl(i);
-            }
-        }
-    }
-    return nullptr;
-}
-
 bool is_setter(const clang::FunctionDecl* callee,
                const llvm::SmallVector<llvm::StringRef, 8>& names) {
     if(names.size() != 1) {
@@ -774,28 +760,15 @@ private:
                 // non-pack parameter, then hinting as foo(args: 1, args: 2, args: 3) is
                 // unlikely to be useful.
                 param_names.emplace_back();
+            } else if(auto names = decls::named_parameters(*param); !names.empty()) {
+                param = names.front();
+                param_names.emplace_back(param->getIdentifier()->deuglifiedName());
             } else {
-                llvm::StringRef simple_name = display::identifier_of(param);
-                // If the parameter is unnamed in the declaration:
-                // attempt to get its name from the definition
-                if(simple_name.empty()) {
-                    if(const auto* def = param_definition(param)) {
-                        simple_name = display::identifier_of(def);
-                        param = def;
-                    }
-                }
-                // Still unnamed: an empty entry, the hint is dropped later.
-                param_names.emplace_back(simple_name);
+                // Unnamed: an empty entry, the hint is dropped later.
+                param_names.emplace_back();
             }
             named.push_back(param);
         }
-
-        // Standard library functions often have parameter names that start
-        // with underscores, which makes the hints noisy, so strip them out.
-        for(auto& name: param_names) {
-            name = name.ltrim('_');
-        }
-
         return param_names;
     }
 
@@ -1812,7 +1785,7 @@ private:
     // anonymous tag locations stay off so lambda locations don't print.
     // Not setting PrintCanonicalTypes for "auto" allows
     // SuppressDefaultTemplateArgs (set by default) to have an effect.
-    display::Options display_options = {.suppress_scope = true};
+    display::Options display_options = {.suppress_scope = true, .clean_uglified = true};
 
     // If/else chains are tricky.
     //   if (cond1) {

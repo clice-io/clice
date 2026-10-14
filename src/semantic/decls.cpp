@@ -170,6 +170,50 @@ bool explicitly_specialized(const Spec* spec) {
     return false;
 }
 
+auto function_pattern(const clang::FunctionDecl& function) -> const clang::FunctionDecl* {
+    if(const auto* pattern = function.getTemplateInstantiationPattern()) {
+        return pattern;
+    }
+    if(const auto* described = function.getDescribedFunctionTemplate()) {
+        if(const auto* member = described->getInstantiatedFromMemberTemplate()) {
+            return member->getTemplatedDecl();
+        }
+    }
+    return nullptr;
+}
+
+auto named_parameters(const clang::FunctionDecl& function, unsigned index)
+    -> llvm::SmallVector<const clang::ParmVarDecl*, 2> {
+    llvm::SmallVector<const clang::ParmVarDecl*, 2> named;
+    auto add = [&](const clang::FunctionDecl& declaration) {
+        for(const auto* redecl: declaration.redecls()) {
+            // A C declaration without a prototype has no parameters.
+            if(index < redecl->getNumParams() && redecl->getParamDecl(index)->getIdentifier()) {
+                named.push_back(redecl->getParamDecl(index));
+            }
+        }
+    };
+    add(function);
+    if(const auto* pattern = function_pattern(function);
+       pattern && pattern->getNumParams() == function.getNumParams()) {
+        add(*pattern);
+    }
+    return named;
+}
+
+auto named_parameters(const clang::ParmVarDecl& param)
+    -> llvm::SmallVector<const clang::ParmVarDecl*, 2> {
+    auto index = param.getFunctionScopeIndex();
+    if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(param.getDeclContext());
+       function && index < function->getNumParams() && function->getParamDecl(index) == &param) {
+        return named_parameters(*function, index);
+    }
+    if(param.getIdentifier()) {
+        return {&param};
+    }
+    return {};
+}
+
 auto instantiated_from(const clang::NamedDecl* decl) -> const clang::NamedDecl* {
     assert(decl);
     if(auto CTSD = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(decl)) {

@@ -24,7 +24,7 @@
             "inlay_hints": [
               {
                 "line": {
-                  "$place": "auto& first⟨: string &⟩ = names.front();",
+                  "$place": "auto& first⟨: std::string &⟩ = names.front();",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -88,7 +88,7 @@
               },
               {
                 "line": {
-                  "$place": "std::tuple⟨<string, int>⟩ both(names.front(), 1);",
+                  "$place": "std::tuple⟨<std::string, int>⟩ both(names.front(), 1);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -104,7 +104,7 @@
               },
               {
                 "line": {
-                  "$place": "auto inner⟨: Outer::Inner<string>⟩ = inners.front();",
+                  "$place": "auto inner⟨: Outer::Inner<std::string>⟩ = inners.front();",
                   "path": "main.cpp",
                   "range": {
                     "start": {

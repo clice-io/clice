@@ -1,5 +1,5 @@
 [answers.aggregate.signature_help]
-signatures = ["Point{int x, ⟦int y⟧}"]
+signatures = ["Point{int x, ⟦int y = 0⟧}"]
 active = 0
 
 [answers.ctor.signature_help]

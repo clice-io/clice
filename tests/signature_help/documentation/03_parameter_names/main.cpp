@@ -15,6 +15,11 @@ void copy_bytes(char* to, const char* from);
 
 void copy_bytes(char* destination, const char* source) {}
 
+/// Reads a value.
+/// @param[out] value Where it goes.
+/// @param count How many it reads.
+void read_value(int* value);
+
 /// Logs through the macro.
 /// @param format The printf format.
 /// @param ... The values it formats.
@@ -25,4 +30,5 @@ int main() {
     open_file(§(uglified)"a", 0);
     copy_bytes(nullptr, §(redeclared)"x");
     LOG_ALL("%d", §(macro_variadic)1);
+    read_value(§(direction)nullptr);
 }

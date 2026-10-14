@@ -23,5 +23,5 @@ signatures = ["append(int first, ⟦Extra ...rest⟧) -> void"]
 active = 0
 
 [answers.standard_alias.signature_help]
-signatures = ["at(⟦int index⟧) -> string &"]
+signatures = ["at(⟦int index⟧) -> std::string &"]
 active = 0

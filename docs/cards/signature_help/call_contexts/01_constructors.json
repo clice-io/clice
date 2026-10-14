@@ -3,7 +3,7 @@
   "topic": "signature_help",
   "subtopic": "call_contexts",
   "title": "Constructors and aggregates",
-  "summary": "A constructor call lists the constructors without a return type, and braced aggregate initialization lists the fields",
+  "summary": "A constructor call lists the constructors without a return type, and braced aggregate initialization lists the fields with their defaults",
   "prose": "Written with braces, the constructors show with braces too.",
   "status": "supported",
   "issues": [
@@ -12,24 +12,24 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Point {\n    int x;\n    int y;\n};\n\nstruct Widget {\n    Widget(int a, double b);\n};\n\nint main() {\n    Point p{1, 2};\n    Widget w(3, 4.0);\n    Widget braced{3, 4.0};\n}\n",
+      "text": "struct Point {\n    int x;\n    int y = 0;\n};\n\nstruct Widget {\n    Widget(int a, double b);\n};\n\nint main() {\n    Point p{1, 2};\n    Widget w(3, 4.0);\n    Widget braced{3, 4.0};\n}\n",
       "markers": [
         {
           "name": "aggregate",
-          "begin": 118,
-          "end": 118,
+          "begin": 122,
+          "end": 122,
           "range": false
         },
         {
           "name": "ctor",
-          "begin": 135,
-          "end": 135,
+          "begin": 139,
+          "end": 139,
           "range": false
         },
         {
           "name": "braced",
-          "begin": 162,
-          "end": 162,
+          "begin": 166,
+          "end": 166,
           "range": false
         }
       ]
@@ -45,7 +45,7 @@
           "value": {
             "signature_help": {
               "signatures": [
-                "Point{int x, ⟦int y⟧}"
+                "Point{int x, ⟦int y = 0⟧}"
               ],
               "active": 0
             }

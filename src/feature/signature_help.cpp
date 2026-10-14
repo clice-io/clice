@@ -8,6 +8,7 @@ import :compile.compilation;
 import :compile.compilation_unit;
 import :compile.directive;
 import :feature.feature;
+import :semantic.decls;
 import :semantic.display;
 import :support.markup;
 import :syntax.documentation;
@@ -91,51 +92,12 @@ const clang::FunctionDecl* shown(const clang::FunctionDecl* function) {
     return function;
 }
 
-/// The declaration `function` was instantiated from. A member template of a
-/// class template's specialization keeps no link of its own: its template
-/// does.
-const clang::FunctionDecl* pattern_of(const clang::FunctionDecl& function) {
-    if(auto* pattern = function.getTemplateInstantiationPattern()) {
-        return pattern;
-    }
-    if(auto* described = function.getDescribedFunctionTemplate()) {
-        if(auto* member = described->getInstantiatedFromMemberTemplate()) {
-            return member->getTemplatedDecl();
-        }
-    }
-    return nullptr;
-}
-
-/// The name of `function`'s parameter `index`. A declaration that leaves
-/// it out borrows it from another declaration of the function, or of the
-/// one it was instantiated from.
-llvm::StringRef parameter_name(const clang::FunctionDecl& function, unsigned index) {
-    auto named = [index](const clang::FunctionDecl& declaration) -> llvm::StringRef {
-        for(auto* redecl: declaration.redecls()) {
-            // A C declaration without a prototype has no parameters.
-            if(index >= redecl->getNumParams()) {
-                continue;
-            }
-            if(auto* identifier = redecl->getParamDecl(index)->getIdentifier()) {
-                return identifier->deuglifiedName();
-            }
-        }
-        return {};
-    };
-    auto name = named(function);
-    if(auto* pattern = pattern_of(function);
-       name.empty() && pattern && pattern->getNumParams() == function.getNumParams()) {
-        name = named(*pattern);
-    }
-    return name;
-}
-
 /// The parameters an instantiation expanded from a pack of the
 /// declaration it was instantiated from, as indices [begin, end): each
 /// is named after the pack, which names none of them. A member template
 /// of a class template's specialization keeps its own pack.
 std::pair<unsigned, unsigned> expanded_pack(const clang::FunctionDecl& function) {
-    auto* pattern = pattern_of(function);
+    auto* pattern = decls::function_pattern(function);
     if(!pattern) {
         return {};
     }
@@ -232,15 +194,10 @@ public:
         help.signatures.reserve(candidate_count);
         help.active_signature = 0;
 
-        readable.emplace(sema.getASTContext());
-        policy = sema.getPrintingPolicy();
-        policy.AnonymousTagNameStyle =
-            std::to_underlying(clang::PrintingPolicy::AnonymousTagMode::Plain);
-        policy.SuppressStrongLifetime = true;
-        policy.SuppressUnwrittenScope = true;
-        policy.SuppressScope = true;
-        policy.CleanUglifiedParameters = true;
-        policy.SuppressTemplateArgsInCXXConstructors = true;
+        context = &sema.getASTContext();
+        readable.emplace(*context);
+        options.readable = &*readable;
+        policy = display::printing_policy(*context, options);
 
         bool ranked = object_written(sema, open_paren);
         llvm::SmallVector<const clang::FunctionDecl*> listed;
@@ -282,8 +239,9 @@ public:
                     for(auto* param: location.getParams()) {
                         auto* identifier = param->getIdentifier();
                         auto name = identifier ? identifier->deuglifiedName() : "";
-                        signature.parameter(
-                            [&](llvm::raw_ostream& os) { print_parameter(os, *param, name); });
+                        signature.parameter([&](llvm::raw_ostream& os) {
+                            os << display::parameter(*param, name, options);
+                        });
                     }
                     variadic(signature, location.getTypePtr()->isVariadic());
                     stream << ") -> ";
@@ -309,14 +267,14 @@ public:
                         stream << " -> " << cls->getTemplatedDecl()->getKindName();
                     } else if(auto* fn = llvm::dyn_cast<clang::FunctionTemplateDecl>(declaration)) {
                         stream << "() -> ";
-                        fn->getTemplatedDecl()->getReturnType().print(stream, policy);
+                        print(stream, fn->getTemplatedDecl()->getReturnType());
                     } else if(auto* alias =
                                   llvm::dyn_cast<clang::TypeAliasTemplateDecl>(declaration)) {
                         stream << " -> ";
-                        alias->getTemplatedDecl()->getUnderlyingType().print(stream, policy);
+                        print(stream, alias->getTemplatedDecl()->getUnderlyingType());
                     } else if(auto* var = llvm::dyn_cast<clang::VarTemplateDecl>(declaration)) {
                         stream << " -> ";
-                        var->getTemplatedDecl()->getType().print(stream, policy);
+                        print(stream, var->getTemplatedDecl()->getType());
                     } else if(llvm::isa<clang::TemplateTemplateParmDecl>(declaration)) {
                         stream << " -> type";
                     } else if(llvm::isa<clang::ConceptDecl>(declaration)) {
@@ -347,31 +305,9 @@ public:
     }
 
 private:
-    /// Prints `type` as a reader knows it, around `declarator`.
-    void print(llvm::raw_ostream& stream,
-               clang::QualType type,
-               const llvm::Twine& declarator = "") {
-        readable->readable(type).print(stream, policy, declarator);
-    }
-
-    /// A function parameter as its declaration writes it, under `name`.
-    void print_parameter(llvm::raw_ostream& stream,
-                         const clang::ParmVarDecl& param,
-                         llvm::StringRef name) {
-        // The type as written: an array parameter does not decay. Implicit
-        // special members write none.
-        auto type =
-            param.getTypeSourceInfo() ? param.getTypeSourceInfo()->getType() : param.getType();
-        std::string declarator;
-        if(auto* expansion = type->getAs<clang::PackExpansionType>()) {
-            type = expansion->getPattern();
-            declarator = "...";
-        }
-        declarator += name;
-        print(stream, type, declarator);
-        if(auto value = display::default_argument(&param)) {
-            stream << " = " << *value;
-        }
+    /// Prints `type` as every feature shows it, around `declarator`.
+    void print(llvm::raw_ostream& stream, clang::QualType type, llvm::StringRef declarator = {}) {
+        stream << display::type(*context, type, options, declarator).text;
     }
 
     /// A C-style `...` takes every argument past the named parameters.
@@ -396,12 +332,18 @@ private:
         auto [pack_begin, pack_end] = expanded_pack(function);
         for(unsigned index = first; index < last; index += 1) {
             bool expanded = index >= pack_begin && index < pack_end;
-            auto name = expanded ? "" : parameter_name(function, index);
+            auto name = expanded ? "" : display::parameter_name(function, index);
+            llvm::SmallVector<std::string, 1> names;
+            if(!expanded) {
+                for(const auto* named: decls::named_parameters(function, index)) {
+                    names.push_back(named->getName().str());
+                }
+            }
             signature.parameter(
                 [&](llvm::raw_ostream& os) {
-                    print_parameter(os, *function.getParamDecl(index), name);
+                    os << display::parameter(*function.getParamDecl(index), name, options);
                 },
-                expanded ? llvm::SmallVector<std::string, 1>() : parameter_names(function, index));
+                std::move(names));
         }
     }
 
@@ -447,14 +389,7 @@ private:
         // call named as the object leaves out; a lambda's is const unless the
         // lambda is mutable, which is no part of calling it.
         if(method && name.empty() && !lambda) {
-            if(auto qualifiers = method->getMethodQualifiers(); !qualifiers.empty()) {
-                stream << " " << qualifiers.getAsString(policy);
-            }
-            if(method->getRefQualifier() == clang::RQ_LValue) {
-                stream << " &";
-            } else if(method->getRefQualifier() == clang::RQ_RValue) {
-                stream << " &&";
-            }
+            stream << display::method_qualifiers(*method);
         }
 
         if(!llvm::isa<clang::CXXConstructorDecl, clang::CXXDestructorDecl>(function)) {
@@ -473,7 +408,12 @@ private:
             }
         }
         for(auto* field: record.fields()) {
-            signature.parameter([&](llvm::raw_ostream& os) { field->print(os, policy); });
+            signature.parameter([&](llvm::raw_ostream& os) {
+                print(os, field->getType(), field->getName());
+                if(auto value = display::default_initializer(*field, options)) {
+                    os << " = " << *value;
+                }
+            });
         }
     }
 
@@ -629,8 +569,19 @@ private:
 
     /// What documents each signature of `help`, in its order.
     std::vector<Documented>& sources;
-    clang::PrintingPolicy policy{clang::LangOptions()};
+
+    clang::ASTContext* context = nullptr;
     std::optional<display::ReadableTypes> readable;
+
+    /// Short names, as a popup has little room: no scopes, no
+    /// uglification.
+    display::Options options = {
+        .suppress_scope = true,
+        .suppress_unwritten_scope = true,
+        .suppress_ctor_template_args = true,
+        .clean_uglified = true,
+    };
+    clang::PrintingPolicy policy{clang::LangOptions()};
     clang::CodeCompletionTUInfo info;
 };
 
@@ -702,25 +653,32 @@ auto macro_call_at(CompilationUnitRef unit, std::uint32_t offset) -> std::option
     return innermost;
 }
 
-/// Shows `doc` with `signature` as plain text, and each parameter's
-/// `@param` beside it; `names` are the parameters' (Signature::names).
+/// Shows `doc` with `signature` as plain text, each parameter's `@param`
+/// beside that parameter instead; `names` are the parameters'
+/// (Signature::names).
 void document(protocol::SignatureInformation& signature,
               const Documentation& doc,
               llvm::ArrayRef<llvm::SmallVector<std::string, 1>> names) {
-    if(doc.empty()) {
-        return;
-    }
-    signature.documentation = present(doc).as_plain_text();
-    if(!signature.parameters) {
-        return;
-    }
-    for(auto [parameter, written]: llvm::zip_equal(*signature.parameters, names)) {
-        for(const auto& name: written) {
-            if(const auto* param = doc.param(name); param && !param->text.empty()) {
-                parameter.documentation = param->text;
+    auto shown = doc;
+    if(signature.parameters) {
+        for(auto [parameter, written]: llvm::zip_equal(*signature.parameters, names)) {
+            for(const auto& name: written) {
+                const auto* param = doc.param(name);
+                if(!param || param->text.empty()) {
+                    continue;
+                }
+                parameter.documentation = param->direction.empty()
+                                              ? param->text
+                                              : "(" + param->direction + ") " + param->text;
+                llvm::erase_if(shown.params, [&](const Documentation::Param& listed) {
+                    return listed.name == param->name;
+                });
                 break;
             }
         }
+    }
+    if(!shown.empty()) {
+        signature.documentation = present(shown).as_plain_text();
     }
 }
 
