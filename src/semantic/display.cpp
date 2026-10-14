@@ -1438,43 +1438,130 @@ bool ReadableTypes::internal(const clang::NamedDecl* decl) const {
     return false;
 }
 
-auto ReadableTypes::standard_aliases()
-    -> const llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>& {
-    if(aliases) {
-        return *aliases;
+namespace {
+
+/// The typedefs the standard declares for specializations of its class
+/// templates, by the template they name; one in a namespace of std is
+/// written under it.
+struct StandardTypedefs {
+    llvm::StringLiteral pattern;
+    llvm::StringLiteral names;
+};
+
+constexpr StandardTypedefs standard_typedefs[] = {
+    {"basic_string",
+     "string wstring u8string u16string u32string pmr::string pmr::wstring pmr::u8string "
+     "pmr::u16string pmr::u32string"},
+    {"basic_string_view", "string_view wstring_view u8string_view u16string_view u32string_view"},
+    {"basic_ios", "ios wios"},
+    {"basic_streambuf", "streambuf wstreambuf"},
+    {"basic_istream", "istream wistream"},
+    {"basic_ostream", "ostream wostream"},
+    {"basic_iostream", "iostream wiostream"},
+    {"basic_stringbuf", "stringbuf wstringbuf"},
+    {"basic_istringstream", "istringstream wistringstream"},
+    {"basic_ostringstream", "ostringstream wostringstream"},
+    {"basic_stringstream", "stringstream wstringstream"},
+    {"basic_spanbuf", "spanbuf wspanbuf"},
+    {"basic_ispanstream", "ispanstream wispanstream"},
+    {"basic_ospanstream", "ospanstream wospanstream"},
+    {"basic_spanstream", "spanstream wspanstream"},
+    {"basic_filebuf", "filebuf wfilebuf"},
+    {"basic_ifstream", "ifstream wifstream"},
+    {"basic_ofstream", "ofstream wofstream"},
+    {"basic_fstream", "fstream wfstream"},
+    {"basic_syncbuf", "syncbuf wsyncbuf"},
+    {"basic_osyncstream", "osyncstream wosyncstream"},
+    {"fpos", "streampos wstreampos u8streampos u16streampos u32streampos"},
+    {"basic_regex", "regex wregex"},
+    {"sub_match", "csub_match wcsub_match ssub_match wssub_match"},
+    {"match_results",
+     "cmatch wcmatch smatch wsmatch pmr::cmatch pmr::wcmatch pmr::smatch pmr::wsmatch"},
+    {"regex_iterator", "cregex_iterator wcregex_iterator sregex_iterator wsregex_iterator"},
+    {"regex_token_iterator",
+     "cregex_token_iterator wcregex_token_iterator sregex_token_iterator "
+     "wsregex_token_iterator"},
+    {"basic_format_context", "format_context wformat_context"},
+    {"basic_format_parse_context", "format_parse_context wformat_parse_context"},
+    {"basic_format_args", "format_args wformat_args"},
+    {"basic_stacktrace", "stacktrace pmr::stacktrace"},
+    {"integral_constant", "true_type false_type"},
+    {"ratio",
+     "quecto ronto yocto zepto atto femto pico nano micro milli centi deci deca hecto kilo mega "
+     "giga tera peta exa zetta yotta ronna quetta"},
+    {"duration",
+     "chrono::nanoseconds chrono::microseconds chrono::milliseconds chrono::seconds "
+     "chrono::minutes chrono::hours chrono::days chrono::weeks chrono::months chrono::years"},
+    {"time_point",
+     "chrono::sys_seconds chrono::sys_days chrono::local_seconds chrono::local_days "
+     "chrono::utc_seconds chrono::tai_seconds chrono::gps_seconds filesystem::file_time_type"},
+    {"atomic",
+     "atomic_bool atomic_char atomic_schar atomic_uchar atomic_short atomic_ushort atomic_int "
+     "atomic_uint atomic_long atomic_ulong atomic_llong atomic_ullong atomic_char8_t "
+     "atomic_char16_t atomic_char32_t atomic_wchar_t atomic_int8_t atomic_uint8_t atomic_int16_t "
+     "atomic_uint16_t atomic_int32_t atomic_uint32_t atomic_int64_t atomic_uint64_t "
+     "atomic_int_least8_t atomic_uint_least8_t atomic_int_least16_t atomic_uint_least16_t "
+     "atomic_int_least32_t atomic_uint_least32_t atomic_int_least64_t atomic_uint_least64_t "
+     "atomic_int_fast8_t atomic_uint_fast8_t atomic_int_fast16_t atomic_uint_fast16_t "
+     "atomic_int_fast32_t atomic_uint_fast32_t atomic_int_fast64_t atomic_uint_fast64_t "
+     "atomic_intptr_t atomic_uintptr_t atomic_size_t atomic_ptrdiff_t atomic_intmax_t "
+     "atomic_uintmax_t atomic_signed_lock_free atomic_unsigned_lock_free"},
+    {"linear_congruential_engine", "minstd_rand0 minstd_rand"},
+    {"mersenne_twister_engine", "mt19937 mt19937_64"},
+    {"subtract_with_carry_engine", "ranlux24_base ranlux48_base"},
+    {"discard_block_engine", "ranlux24 ranlux48"},
+    {"shuffle_order_engine", "knuth_b"},
+    {"philox_engine", "philox4x32 philox4x64"},
+    {"coroutine_handle", "noop_coroutine_handle"},
+    {"counting_semaphore", "binary_semaphore"},
+};
+
+}  // namespace
+
+auto ReadableTypes::standard_alias(const clang::ClassTemplateSpecializationDecl& spec)
+    -> const clang::TypedefNameDecl* {
+    auto [cached, inserted] = aliases.try_emplace(spec.getCanonicalDecl(), nullptr);
+    if(!inserted) {
+        return cached->second;
     }
-    auto& collected = aliases.emplace();
-    llvm::SmallVector<const clang::NamespaceDecl*> namespaces;
-    for(auto* found: context.getTranslationUnitDecl()->lookup(&context.Idents.get("std"))) {
-        if(auto* std = llvm::dyn_cast<clang::NamespaceDecl>(found)) {
-            llvm::append_range(namespaces, std->redecls());
+    const auto* typedefs = llvm::find_if(standard_typedefs, [&](const StandardTypedefs& entry) {
+        return entry.pattern == spec.getSpecializedTemplate()->getName();
+    });
+    const clang::NamespaceDecl* std = nullptr;
+    for(const auto* scope = spec.getDeclContext(); scope; scope = scope->getParent()) {
+        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(scope)) {
+            std = ns;
         }
     }
-    while(!namespaces.empty()) {
-        for(auto* decl: namespaces.pop_back_val()->decls()) {
-            if(auto* inner = llvm::dyn_cast<clang::NamespaceDecl>(decl)) {
-                if(inner->isInline() || !reserved(inner)) {
-                    namespaces.push_back(inner);
-                }
-                continue;
-            }
-            auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(decl);
-            if(!alias || reserved(alias) ||
-               !llvm::isa<clang::TemplateSpecializationType>(alias->getUnderlyingType())) {
-                continue;
-            }
-            auto canonical = context.getCanonicalType(alias->getUnderlyingType());
-            if(!llvm::isa<clang::RecordType>(canonical)) {
-                continue;
-            }
-            auto [it, inserted] = collected.try_emplace(canonical.getTypePtr(), alias);
-            if(!inserted && it->second &&
-               it->second->getCanonicalDecl() != alias->getCanonicalDecl()) {
-                it->second = nullptr;
-            }
-        }
+    if(typedefs == std::end(standard_typedefs) || !std || !std->isStdNamespace()) {
+        return nullptr;
     }
-    return collected;
+
+    auto type = context.getCanonicalTagType(&spec);
+    const clang::TypedefNameDecl* found = nullptr;
+    for(auto name: llvm::split(typedefs->names, ' ')) {
+        const clang::DeclContext* scope = std;
+        auto [outer, last] = name.rsplit("::");
+        if(!last.empty()) {
+            scope = scope->lookup(&context.Idents.get(outer)).find_first<clang::NamespaceDecl>();
+            if(!scope) {
+                continue;
+            }
+            name = last;
+        }
+        const auto* alias =
+            scope->lookup(&context.Idents.get(name)).find_first<clang::TypedefNameDecl>();
+        if(!alias || !llvm::isa<clang::TemplateSpecializationType>(alias->getUnderlyingType()) ||
+           !context.hasSameType(alias->getUnderlyingType(), type)) {
+            continue;
+        }
+        if(found && found->getCanonicalDecl() != alias->getCanonicalDecl()) {
+            return nullptr;
+        }
+        found = alias;
+    }
+    aliases[spec.getCanonicalDecl()] = found;
+    return found;
 }
 
 auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
@@ -1512,20 +1599,15 @@ auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
         name = TST->getTemplateName();
         arguments = TST->template_arguments();
     } else if(const auto* record = llvm::dyn_cast<clang::RecordType>(T)) {
-        // Collecting the aliases reads all of namespace std, which a unit
-        // built on a PCH pays for once per request; another class has none.
-        if(record->getDecl()->isInStdNamespace()) {
-            if(auto it = standard_aliases().find(context.getCanonicalType(type).getTypePtr());
-               it != standard_aliases().end() && it->second) {
-                auto scope = scoped ? written_scope(it->second) : std::nullopt;
-                return qualified(
-                    context.getTypedefType(clang::ElaboratedTypeKeyword::None, scope, it->second));
-            }
-        }
         const auto* spec =
             llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(record->getDecl());
         if(!spec) {
             return type;
+        }
+        if(const auto* alias = standard_alias(*spec)) {
+            auto scope = scoped ? written_scope(alias) : std::nullopt;
+            return qualified(
+                context.getTypedefType(clang::ElaboratedTypeKeyword::None, scope, alias));
         }
         name = clang::TemplateName(spec->getSpecializedTemplate());
         // A member template keeps the class around it (`Outer::Inner`).

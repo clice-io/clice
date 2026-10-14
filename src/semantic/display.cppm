@@ -183,7 +183,7 @@ auto maybe_desugar(clang::ASTContext& context, clang::QualType type) -> clang::Q
 /// the namespaces the code writes it with
 /// (`std::string`) unless the options suppress scopes. libc++ marks those
 /// aliases as preferred names, which the printer honors; libstdc++ only
-/// declares them. One per request: the aliases are collected once, on first
+/// declares them. One per request: each alias is looked up once, on first
 /// use.
 class ReadableTypes {
 public:
@@ -205,14 +205,15 @@ private:
     /// The scope the code names a namespace member through, `std::pmr::`.
     auto written_scope(const clang::NamedDecl* decl) const -> clang::NestedNameSpecifier;
 
-    /// The standard aliases by the canonical type they name; two aliases
-    /// of one type name none.
-    auto standard_aliases()
-        -> const llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>&;
+    /// The alias the standard names a specialization of its class templates
+    /// with, looked up by name; null when it gives none, or two.
+    auto standard_alias(const clang::ClassTemplateSpecializationDecl& spec)
+        -> const clang::TypedefNameDecl*;
 
     clang::ASTContext& context;
     bool scoped;
-    std::optional<llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*>> aliases;
+    llvm::DenseMap<const clang::ClassTemplateSpecializationDecl*, const clang::TypedefNameDecl*>
+        aliases;
 };
 
 /// Evaluate an expression and render its value: enums symbolically, big
