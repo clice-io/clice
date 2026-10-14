@@ -4,9 +4,9 @@ module;
 
 module clice;
 
-import :compile.selection;
-import :unittests.utils;
+import :semantic.selection;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice {
 

@@ -5,9 +5,9 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.selection;
-import :compile.semantics;
 import :feature.feature;
+import :semantic.selection;
+import :semantic.semantics;
 import :syntax.lexer;
 
 namespace clice::feature {
@@ -264,7 +264,7 @@ std::vector<Token> lex(llvm::StringRef content, const clang::LangOptions& lang_o
 /// spelled tokens do not start at (a comment, a directive's end) shares
 /// the flag of the one before.
 llvm::SmallVector<bool, 0> skipped_tokens(CompilationUnit& unit, llvm::ArrayRef<Token> tokens) {
-    const auto& semantics = unit.semantics();
+    const auto& semantics = unit.get<Semantics>();
     auto count = static_cast<std::uint32_t>(semantics.spelled_tokens().size());
     llvm::SmallVector<bool, 0> skipped(tokens.size());
     std::uint32_t spelled = 0;
@@ -288,7 +288,7 @@ llvm::SmallVector<bool, 0> skipped_tokens(CompilationUnit& unit, llvm::ArrayRef<
 /// a qualifier). The selection never counts `;`, comments, qualifiers and
 /// what was preprocessed away, so they anchor nothing.
 llvm::SmallVector<LocalSourceRange, 2> anchors(CompilationUnit& unit, std::uint32_t offset) {
-    const auto& semantics = unit.semantics();
+    const auto& semantics = unit.get<Semantics>();
     auto tokens = semantics.spelled_tokens();
     auto range_of = [&](std::uint32_t i) {
         auto begin = semantics.token_offset(i);

@@ -5,9 +5,9 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.semantics;
 import :feature.feature;
 import :semantic.display;
+import :semantic.semantics;
 import :semantic.symbol;
 import :syntax.lexer;
 
@@ -126,7 +126,7 @@ public:
         unit(unit), inactive_regions(inactive_regions) {}
 
     auto collect() -> std::vector<DocumentSymbol> {
-        auto nodes = unit.semantics().node_entries();
+        auto nodes = unit.get<Semantics>().node_entries();
         std::uint32_t index = 0;
         while(index < nodes.size()) {
             const Semantics::Node& entry = nodes[index];
@@ -161,7 +161,7 @@ public:
             }
         }
 
-        for(auto directive: unit.semantics().macro_definitions()) {
+        for(auto directive: unit.get<Semantics>().macro_definitions()) {
             if(!inactive(directive.begin)) {
                 add_macro(directive);
             }
@@ -342,7 +342,7 @@ private:
     /// its end; `#pragma mark Name` is an entry of its own.
     void add_marks() {
         llvm::SmallVector<LexicalInfo::PragmaMark> marks;
-        for(const auto& mark: unit.semantics().pragma_marks()) {
+        for(const auto& mark: unit.get<Semantics>().pragma_marks()) {
             if(!inactive(mark.range.begin)) {
                 marks.push_back(mark);
             }

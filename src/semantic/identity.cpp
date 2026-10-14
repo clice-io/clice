@@ -4,10 +4,10 @@ module;
 
 module clice;
 
-import :compile.identity;
 import :semantic.decls;
 import :semantic.expr_hash;
 import :semantic.hasher;
+import :semantic.identity;
 import :vfs.path;
 
 namespace clice {
@@ -340,6 +340,11 @@ std::uint64_t EntityTable::entity(llvm::StringRef name, clang::SourceLocation de
         }
     }
     return hasher.finish();
+}
+
+std::uint64_t EntityTable::entity(const clang::MacroInfo* macro) {
+    auto location = macro->getDefinitionLoc();
+    return entity(unit.token_spelling(location), location);
 }
 
 std::uint64_t EntityTable::module_entity(llvm::StringRef name) {

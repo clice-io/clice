@@ -4,11 +4,7 @@ module;
 
 module clice:index.include_tree;
 
-namespace clice {
-
-class CompilationUnit;
-
-}
+import :compile.compilation;
 
 namespace clice::index {
 

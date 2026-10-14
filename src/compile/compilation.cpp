@@ -10,11 +10,8 @@ import :command.command;
 import :command.invocation;
 import :compile.compilation;
 import :compile.diagnostic;
-import :compile.identity;
-import :compile.semantics;
 import :compile.tidy;
 import :compile.tokens;
-import :semantic.decls;
 import :support.logging;
 import :vfs.file_system;
 
@@ -26,6 +23,7 @@ CompilationUnit::CompilationUnit(CompilationParams params) : params(std::move(pa
 }
 
 CompilationUnit::~CompilationUnit() {
+    derived.clear();
     if(action) {
         // We already notified the pp of end-of-file earlier, so detach it first.
         // We must keep it alive until after EndSourceFile(), Sema relies on this.
@@ -241,6 +239,19 @@ void CompilationUnit::run_tidy() {
 }
 
 /// A wrapper ast consumer, so that we can cancel the ast parse
+/// Sema hands the functions it instantiates to the consumer too.
+static bool implicitly_instantiated(const clang::Decl* decl) {
+    auto kind = clang::TSK_Undeclared;
+    if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        kind = function->getTemplateSpecializationKind();
+    } else if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        kind = record->getTemplateSpecializationKind();
+    } else if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        kind = var->getTemplateSpecializationKind();
+    }
+    return kind == clang::TSK_ImplicitInstantiation;
+}
+
 class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
     ParseConsumer(std::unique_ptr<clang::ASTConsumer> consumer, CompilationUnit& unit) :
@@ -252,10 +263,8 @@ public:
             return;
         }
 
-        if(const clang::NamedDecl* named_decl = dyn_cast<clang::NamedDecl>(decl)) {
-            if(decls::is_implicit_instantiation(named_decl)) {
-                return;
-            }
+        if(implicitly_instantiated(decl)) {
+            return;
         }
 
         // Sema hands a function template specialization over again for every
@@ -454,10 +463,6 @@ CompilationStatus CompilationUnit::run() {
     }
 
     run_tidy();
-
-    if(instance->hasASTContext()) {
-        template_resolver.emplace(instance->getASTContext());
-    }
 
     return CompilationStatus::Completed;
 }

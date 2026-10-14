@@ -2,13 +2,12 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:compile.selection;
+module clice:semantic.selection;
 
+import :compile.compilation;
 import :syntax.token;
 
 namespace clice {
-
-class CompilationUnit;
 
 /// A selection can partially or completely cover several AST nodes.
 /// The SelectionTree contains nodes that are covered, and their parents.

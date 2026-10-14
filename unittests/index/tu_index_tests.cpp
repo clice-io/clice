@@ -7,15 +7,16 @@ module;
 module clice;
 
 import :compile.diagnostic;
-import :compile.selection;
 import :feature.feature;
 import :index.serialization;
 import :index.shard;
 import :index.tu_index;
+import :semantic.identity;
+import :semantic.selection;
 import :support.logging;
+import :unittests.utils.tester;
 import :unittests.utils.tu_index_mirror;
 import :unittests.utils;
-import :unittests.utils.tester;
 
 namespace clice::testing {
 
@@ -999,7 +1000,7 @@ ZEST_CASE(ModuleName) {
     auto& index = tu_index.main_file_index;
     auto occs = select("m");
     ZASSERT(!occs.empty());
-    ZASSERT(occs.front().target == unit->module_entity("foo"));
+    ZASSERT(occs.front().target == unit->get<EntityTable>().module_entity("foo"));
     ZASSERT(symbol_named("foo").second.kind.value() == SymbolKind(SymbolKind::Module).value());
 
     auto it = index.relations.find(occs.front().target);

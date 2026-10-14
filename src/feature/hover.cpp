@@ -8,12 +8,12 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.selection;
-import :compile.semantics;
 import :feature.feature;
 import :semantic.decls;
 import :semantic.display;
 import :semantic.resolver;
+import :semantic.selection;
+import :semantic.semantics;
 import :semantic.symbol;
 import :semantic.types;
 import :syntax.documentation;
@@ -275,10 +275,10 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnit& unit) -> clan
     }
     if(const auto* var = llvm::dyn_cast<clang::VarDecl>(value);
        var && (var->getInit() || var->isCXXForRangeDecl()) && type->getContainedAutoType()) {
-        auto deduced = unit.resolver().deduce(var);
+        auto deduced = unit.get<types::TemplateResolver>().deduce(var);
         return deduced.isNull() ? type : deduced;
     }
-    return unit.resolver().resolve(type);
+    return unit.get<types::TemplateResolver>().resolve(type);
 }
 
 /// What the `auto` of a variable a dependent initializer leaves undeduced
@@ -286,8 +286,9 @@ auto resolved_type(const clang::ValueDecl* value, CompilationUnit& unit) -> clan
 /// the variable's resolved type with the declarator's pointers, references
 /// and qualifiers taken off.
 auto resolved_auto(const clang::VarDecl* var, CompilationUnit& unit) -> clang::QualType {
-    auto resolved = var->getInit() || var->isCXXForRangeDecl() ? unit.resolver().deduce(var)
-                                                               : clang::QualType();
+    auto resolved = var->getInit() || var->isCXXForRangeDecl()
+                        ? unit.get<types::TemplateResolver>().deduce(var)
+                        : clang::QualType();
     if(resolved.isNull() || !types::writable(resolved)) {
         return {};
     }
@@ -1034,7 +1035,7 @@ void add_layout_info(const clang::NamedDecl& decl, HoverInfo& info) {
 /// follows: `for(auto& x: xs)` hovered right after `x` is `x`.
 auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touched)
     -> llvm::SmallVector<const clang::NamedDecl*, 4> {
-    const Semantics& semantics = unit.semantics();
+    const Semantics& semantics = unit.get<Semantics>();
     auto spelled = semantics.spelled_tokens();
     llvm::SmallVector<const clang::NamedDecl*, 4> decls;
     llvm::SmallVector<const clang::NamedDecl*, 4> separated;
@@ -1083,7 +1084,8 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<clang::syntax::Token> touche
                     continue;
                 }
 
-                for(auto& occurrence: resolve_occurrences(semantics, n, &unit.resolver())) {
+                for(auto& occurrence:
+                    resolve_occurrences(semantics, n, &unit.get<types::TemplateResolver>())) {
                     if(unit.spelling_location(occurrence.location) == token.location()) {
                         if(seen.insert(occurrence.decl).second) {
                             decls.push_back(occurrence.decl);

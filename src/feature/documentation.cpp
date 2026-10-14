@@ -5,10 +5,10 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.documentation;
 import :feature.feature;
 import :index.query;
 import :semantic.display;
+import :semantic.documentation;
 import :support.markup;
 import :syntax.documentation;
 

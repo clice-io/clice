@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :feature.code_action.action;
 import :semantic.display;
+import :semantic.identity;
 
 namespace clice::feature::action {
 
@@ -850,7 +851,7 @@ std::optional<Placement> placement_past(CompilationUnit& unit,
 
 std::uint64_t container_entity(CompilationUnit& unit, const clang::FunctionDecl* decl) {
     if(auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
-        return unit.entity(outermost_record(method->getParent()));
+        return unit.get<EntityTable>().entity(outermost_record(method->getParent()));
     }
     return 0;
 }
@@ -872,7 +873,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         return;
     }
     auto& unit = ctx.unit;
-    auto entity = unit.entity(decl);
+    auto entity = unit.get<EntityTable>().entity(decl);
     auto name = function_name(decl);
     auto qualified = [&](const clang::DeclContext* from) {
         return qualifier_at(decl->getDeclContext(), from) + name;
@@ -988,7 +989,7 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
             }
             if(auto text =
                    definition_text(unit, function, from, {.mark_inline = !host && header_once})) {
-                pieces.push_back({unit.entity(function), std::move(*text)});
+                pieces.push_back({unit.get<EntityTable>().entity(function), std::move(*text)});
             }
         }
         return pieces;
@@ -1009,7 +1010,8 @@ void define_missing(const Context& ctx, std::vector<CodeAction>& out) {
             out.push_back(CodeAction{
                 .title = title,
                 .kind = action_kind::define_missing,
-                .index = DefineInHostRequest{.container = unit.entity(outermost_record(record)),
+                .index = DefineInHostRequest{.container = unit.get<EntityTable>().entity(
+                                                 outermost_record(record)),
                                              .pieces = std::move(host)},
             });
         }

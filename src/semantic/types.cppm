@@ -4,12 +4,12 @@ module;
 
 module clice:semantic.types;
 
+import :semantic.resolver;
+
 /// Type-centric AST helpers: mapping types to the declarations they refer
 /// to (dependent or not), type unwrapping and deduction queries.
 /// Declaration navigation lives in decls.h, rendering in display.h.
 namespace clice::types {
-
-class TemplateResolver;
 
 /// The declarations a (possibly dependent) type refers to.
 ///

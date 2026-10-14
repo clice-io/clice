@@ -5,8 +5,8 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.selection;
-import :compile.semantics;
+import :semantic.selection;
+import :semantic.semantics;
 
 namespace clice {
 
@@ -164,7 +164,7 @@ SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) :
     print_policy.TerseOutput = true;
     print_policy.IncludeNewlines = false;
 
-    const Semantics& semantics = unit.semantics();
+    const Semantics& semantics = unit.get<Semantics>();
     auto tokens = semantics.spelled_tokens();
     auto [begin, end] = range;
 

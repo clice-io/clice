@@ -28,14 +28,14 @@ Distilled from real correction history — these mistakes keep recurring:
 
 ## Source Layout
 
-`src/` is one C++20 module, `clice`, in layers that import only downward — core (`support` ← `vfs` ← `command` ← `syntax` ← `semantic` ← `compile` ← `index` ← `feature`) ← `config` ← {`project`, `worker`} ← `sched` ← `server`, `project` ← `analysis`, {`analysis`, `server`} ← `driver`. `pixi run check-layers` checks it, as CI does.
+`src/` is one C++20 module, `clice`, in layers that import only downward — core (`support` ← `vfs` ← `command` ← `syntax` ← `compile` ← `semantic` ← `index` ← `feature`) ← `config` ← {`project`, `worker`} ← `sched` ← `server`, `project` ← `analysis`, {`analysis`, `server`} ← `driver`. `pixi run check-layers` checks it, as CI does.
 
 - `src/support/` — utilities: logging, JSON, text, processes, fuzzy matching
 - `src/vfs/` — disk access: reads, statuses, writes, directory walks; the file table and its freshness checks; the on-disk cache store
 - `src/command/` — compile commands: compiler argument parsing, the compilation database, toolchain queries, NVCC
 - `src/syntax/` — lexer, scanner, tokens, include resolution, dependency graph
-- `src/semantic/` — semantic analysis over the AST: symbol kinds, relations, template resolver, declaration, type and expression helpers
-- `src/compile/` — compilation: compilation unit, directives, diagnostics, clang-tidy; the per-unit semantic map (AST visitor), selection and entity identities
+- `src/compile/` — compilation: compilation unit, tokens, directives, diagnostics, clang-tidy
+- `src/semantic/` — semantic analysis over the AST: symbol kinds, relations, template resolver, declaration, type and expression helpers; the per-unit semantic map (AST visitor), selection, entity identities and doc comments
 - `src/index/` — symbol indexing: TU index, project index, shards, the database, queries, rename
 - `src/feature/` — LSP features: hover, completion, document links, semantic tokens, etc.
 - `src/config/` — the `clice.toml` configuration

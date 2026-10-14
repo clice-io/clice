@@ -4,6 +4,8 @@ module;
 
 module clice:semantic.resolver;
 
+import :compile.compilation;
+
 namespace clice::types {
 
 /// What a parameter of the template a query is inside of stands for when
@@ -38,6 +40,8 @@ class TemplateResolver {
 public:
     explicit TemplateResolver(clang::ASTContext& context, ResolverOptions options = {}) :
         context(context), options(std::move(options)) {}
+
+    explicit TemplateResolver(CompilationUnit& unit) : TemplateResolver(unit.context()) {}
 
     clang::QualType resolve(clang::QualType type);
 

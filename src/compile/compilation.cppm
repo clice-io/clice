@@ -9,7 +9,6 @@ import :compile.diagnostic;
 import :compile.directive;
 import :compile.tidy;
 import :compile.tokens;
-import :semantic.resolver;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.preamble_synthesis;
@@ -18,9 +17,6 @@ import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
-
-class EntityTable;
-class Semantics;
 
 enum class CompilationKind : std::uint8_t {
     /// Only preprocess the source file: directives are available, AST
@@ -353,12 +349,6 @@ public:
 
     clang::ASTContext& context();
 
-    types::TemplateResolver& resolver();
-
-    /// The semantic map of the main file (token → owning node), built
-    /// lazily on first use and cached for the unit's lifetime.
-    const Semantics& semantics();
-
     llvm::DenseMap<clang::FileID, Directive>& directives();
 
     clang::TranslationUnitDecl* tu();
@@ -372,19 +362,22 @@ public:
     /// hold no file: creating one changes what this compilation would see.
     std::vector<std::string> absent();
 
-    /// The entity of a declaration (semantic/identity.h), memoized for the
-    /// unit's lifetime.
-    std::uint64_t entity(const clang::NamedDecl* decl);
-
-    /// The entity of a macro definition.
-    std::uint64_t entity(const clang::MacroInfo* macro);
-
-    /// The entity of a named module.
-    std::uint64_t module_entity(llvm::StringRef name);
-
-    /// The entity of the symbol a declaration is named in (its parent in a
-    /// qualified name), 0 at the translation unit.
-    std::uint64_t parent(const clang::NamedDecl* decl);
+    /// What a reader derives from the AST, such as the semantic map or the
+    /// entity table: built as `T(unit)` on first use and kept until the
+    /// unit is destroyed, then released before the AST.
+    template <typename T>
+    T& get() {
+        for(auto& entry: derived) {
+            if(entry.key == &derived_key<T>) {
+                return static_cast<Derived<T>&>(*entry.data).value;
+            }
+        }
+        // Building one may get another: store it only once it is built.
+        auto data = std::make_unique<Derived<T>>(*this);
+        auto& value = data->value;
+        derived.push_back({&derived_key<T>, std::move(data)});
+        return value;
+    }
 
 private:
     friend std::unique_ptr<CompilationUnit> compile(CompilationParams params);
@@ -421,6 +414,28 @@ private:
     /// destroyed later.
     void run_tidy();
 
+    struct DerivedBase {
+        virtual ~DerivedBase() = default;
+    };
+
+    template <typename T>
+    struct Derived : DerivedBase {
+        explicit Derived(CompilationUnit& unit) : value(unit) {}
+
+        T value;
+    };
+
+    struct DerivedEntry {
+        const void* key;
+
+        std::unique_ptr<DerivedBase> data;
+    };
+
+    /// One per type, its address the type's key in `derived`. Not const:
+    /// the linker may fold equal constants into one address.
+    template <typename T>
+    inline static char derived_key = 0;
+
     CompilationParams params;
 
     CompilationStatus outcome = CompilationStatus::SetupFail;
@@ -456,11 +471,8 @@ private:
     /// lifecycle of all objects during the compilation process.
     std::unique_ptr<clang::CompilerInstance> instance;
 
-    /// The template resolver used to resolve dependent name.
-    std::optional<types::TemplateResolver> template_resolver;
-
-    /// Lazily built semantic map, see CompilationUnit::semantics().
-    std::unique_ptr<Semantics> semantics_cache;
+    /// See get, in the order they were built.
+    llvm::SmallVector<DerivedEntry, 4> derived;
 
     /// The tokens a Content compile collects for the features.
     std::optional<TokenMap> collected_tokens;
@@ -470,9 +482,6 @@ private:
 
     /// Cache for file path. It is used to avoid multiple file path lookup.
     llvm::DenseMap<clang::FileEntryRef, llvm::StringRef> path_cache;
-
-    /// Lazily built, see CompilationUnit::entity().
-    std::unique_ptr<EntityTable> entity_table;
 
     struct LineTables {
         std::vector<std::uint32_t> starts;

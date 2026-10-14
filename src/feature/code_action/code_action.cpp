@@ -6,9 +6,9 @@ module clice;
 
 import :command.command;
 import :compile.compilation;
-import :compile.semantics;
 import :feature.code_action.action;
 import :semantic.display;
+import :semantic.semantics;
 
 namespace clice::feature {
 
@@ -1023,7 +1023,7 @@ std::optional<TextReplacement> insert_members(CompilationUnit& unit,
 
 void for_each_file_scope_decl(CompilationUnit& unit,
                               llvm::function_ref<void(const clang::Decl*)> visit) {
-    auto entries = unit.semantics().node_entries();
+    auto entries = unit.get<Semantics>().node_entries();
     for(std::uint32_t i = 0; i < entries.size();) {
         const auto& node = entries[i];
         if(!node.node.is_ast()) {

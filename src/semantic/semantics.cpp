@@ -5,9 +5,9 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.semantics;
 import :semantic.decls;
 import :semantic.resolver;
+import :semantic.semantics;
 import :semantic.types;
 
 namespace clice {

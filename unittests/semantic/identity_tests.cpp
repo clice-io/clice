@@ -7,9 +7,10 @@ module;
 module clice;
 
 import :semantic.decls;
+import :semantic.identity;
 import :support.logging;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 
@@ -64,7 +65,8 @@ const clang::NamedDecl* find_decl(Tester& tester, llvm::StringRef file, llvm::St
 
 /// The symbol identity an occurrence of the marked declaration gets.
 std::uint64_t entity_at(Tester& tester, llvm::StringRef file, llvm::StringRef marker) {
-    return tester.unit->entity(decls::normalize(find_decl(tester, file, marker)));
+    return tester.unit->get<EntityTable>().entity(
+        decls::normalize(find_decl(tester, file, marker)));
 }
 
 std::uint64_t macro_entity(Tester& tester, llvm::StringRef file, llvm::StringRef name) {
@@ -74,7 +76,7 @@ std::uint64_t macro_entity(Tester& tester, llvm::StringRef file, llvm::StringRef
         }
         for(auto& macro: directive.macros) {
             if(macro.kind == MacroRef::Def && tester.unit->token_spelling(macro.loc) == name) {
-                return tester.unit->entity(macro.macro);
+                return tester.unit->get<EntityTable>().entity(macro.macro);
             }
         }
     }
@@ -367,7 +369,8 @@ struct S {
     auto* decl = find_decl(*this, "main.cpp", "1");
     auto* wrapper = llvm::dyn_cast<clang::VarTemplateDecl>(decl);
     ZASSERT(wrapper != nullptr);
-    ZEXPECT(unit->entity(wrapper) == unit->entity(wrapper->getTemplatedDecl()));
+    ZEXPECT(unit->get<EntityTable>().entity(wrapper) ==
+            unit->get<EntityTable>().entity(wrapper->getTemplatedDecl()));
 }
 
 ZEST_CASE(MemberPointerOverloads) {
@@ -605,7 +608,7 @@ ZEST_CASE(MacroRedefinition) {
     for(auto& [fid, directive]: unit->directives()) {
         for(auto& macro: directive.macros) {
             if(macro.kind == MacroRef::Def) {
-                entities.push_back(unit->entity(macro.macro));
+                entities.push_back(unit->get<EntityTable>().entity(macro.macro));
             }
         }
     }
@@ -689,7 +692,7 @@ struct §(s)S { int x; };
         auto* record = llvm::cast<clang::CXXRecordDecl>(find_decl(tester, "s.h", "s"));
         for(auto* ctor: record->ctors()) {
             if(ctor->isCopyConstructor()) {
-                return tester.unit->entity(ctor);
+                return tester.unit->get<EntityTable>().entity(ctor);
             }
         }
         LOG_FATAL("no copy constructor declared");
@@ -811,7 +814,7 @@ void f() {
     auto* record = llvm::cast<clang::CXXRecordDecl>(find_decl(*this, "main.cpp", "s"));
     std::set<std::uint64_t> entities;
     for(auto* ctor: record->ctors()) {
-        entities.insert(unit->entity(ctor));
+        entities.insert(unit->get<EntityTable>().entity(ctor));
     }
     ZEXPECT(entities.size() == 3U);
 }
@@ -841,7 +844,7 @@ ID(TWO)
     for(auto* decl: unit->tu()->decls()) {
         if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
            function && function->getName() == "f") {
-            entities.insert(unit->entity(decls::normalize(function)));
+            entities.insert(unit->get<EntityTable>().entity(decls::normalize(function)));
         }
     }
     ZEXPECT(entities.size() == 2U);
@@ -899,7 +902,8 @@ template<PARAMS> struct §(x)X { T1 a; T2 b; };
     auto* parameters = llvm::cast<clang::ClassTemplateDecl>(find_decl(*this, "main.cpp", "x"))
                            ->getTemplateParameters();
     ZASSERT(parameters->size() == 2U);
-    ZEXPECT(unit->entity(parameters->getParam(0)) != unit->entity(parameters->getParam(1)));
+    ZEXPECT(unit->get<EntityTable>().entity(parameters->getParam(0)) !=
+            unit->get<EntityTable>().entity(parameters->getParam(1)));
 }
 
 ZEST_CASE(FileScopeTypedefs) {
@@ -1156,7 +1160,7 @@ void §(global)global();
     ZASSERT(compile());
 
     auto parent = [&](llvm::StringRef marker) {
-        return unit->parent(find_decl(*this, "main.cpp", marker));
+        return unit->get<EntityTable>().parent(find_decl(*this, "main.cpp", marker));
     };
     ZEXPECT(parent("global") == 0u);
     ZEXPECT(parent("ns") == 0u);
@@ -1176,8 +1180,10 @@ ZEST_CASE(ModuleEntity) {
     other.add_main("main.cpp", "int y;");
     ZASSERT(other.compile());
 
-    ZEXPECT(unit->module_entity("foo") == other.unit->module_entity("foo"));
-    ZEXPECT(unit->module_entity("foo") != unit->module_entity("foo:part"));
+    ZEXPECT(unit->get<EntityTable>().module_entity("foo") ==
+            other.unit->get<EntityTable>().module_entity("foo"));
+    ZEXPECT(unit->get<EntityTable>().module_entity("foo") !=
+            unit->get<EntityTable>().module_entity("foo:part"));
 }
 
 };  // ZEST_SUITE(identity)

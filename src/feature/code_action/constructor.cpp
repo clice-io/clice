@@ -6,6 +6,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.code_action.action;
+import :semantic.resolver;
 
 namespace clice::feature::action {
 
@@ -185,8 +186,8 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
         bool moves = type->isRValueReferenceType();
         if(!type->isReferenceType()) {
             type = type.getUnqualifiedType();
-            const auto* tag =
-                llvm::dyn_cast_if_present<clang::CXXRecordDecl>(unit.resolver().resolve_tag(type));
+            const auto* tag = llvm::dyn_cast_if_present<clang::CXXRecordDecl>(
+                unit.get<types::TemplateResolver>().resolve_tag(type));
             const auto* member = tag ? tag->getDefinition() : nullptr;
             bool copies = !member || copy_constructible(member, record);
             if(!copies && !move_constructible(member, record)) {

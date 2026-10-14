@@ -49,8 +49,8 @@ Wraps the Clang compiler, abstracting Clang APIs into safe, unified compilation 
 
 - `CompilationUnit`: one compilation's AST, what Clang reported while it ran (diagnostics, preprocessor directives, tokens, dependencies), and the helpers that read them, such as source location mappings. `compile()` returns it, and it is the primary input for `src/feature/` and `src/index/`.
 - `CompilationParams`: Describes a single compilation: its kind (Preprocess / Preamble / ModuleInterface / Content / Whole / Completion), its input (the command, the files served from memory, the PCH and PCMs it loads), and what else runs over the parse, such as clang-tidy.
-- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node and its token ownership; selection, feature projections, and index production are pure queries over the map rather than separate AST walks
 - Diagnostic and clang-tidy collection during compilation.
+- What the layers above derive from the AST, such as the semantic map, is built on first use and kept with the unit (`CompilationUnit::get`).
 
 ### `src/syntax/` — Lightweight Syntax Processing
 
@@ -67,8 +67,10 @@ See [Dependency Scanning](dependency-scanning.md).
 
 ### `src/semantic/` — Semantic Analysis
 
-Semantic analysis capabilities beyond Clang's native APIs, over the AST itself: the compilation layer builds on them.
+Semantic analysis capabilities beyond Clang's native APIs, over the AST of a compilation unit.
 
+- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node and its token ownership; selection, feature projections, and index production are pure queries over the map rather than separate AST walks
+- `EntityTable`: The identity of a declaration, equal across translation units for the declarations the compiler would merge
 - `TemplateResolver`: Resolves dependent names through pseudo-instantiation, enabling semantic analysis to see through template contexts. See [Template Resolver](template-resolver.md).
 - `SymbolKind` / `RelationKind`: Fine-grained symbol kinds and relation types
 

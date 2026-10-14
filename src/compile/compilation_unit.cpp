@@ -5,8 +5,6 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.identity;
-import :compile.semantics;
 import :compile.tokens;
 import :syntax.lexical_scan;
 import :vfs.file_system;
@@ -460,53 +458,12 @@ std::vector<std::string> CompilationUnit::absent() {
     return result;
 }
 
-std::uint64_t CompilationUnit::entity(const clang::NamedDecl* decl) {
-    if(!entity_table) {
-        entity_table = std::make_unique<EntityTable>(*this);
-    }
-    return entity_table->entity(decl);
-}
-
-std::uint64_t CompilationUnit::entity(const clang::MacroInfo* macro) {
-    if(!entity_table) {
-        entity_table = std::make_unique<EntityTable>(*this);
-    }
-    auto location = macro->getDefinitionLoc();
-    return entity_table->entity(token_spelling(location), location);
-}
-
-std::uint64_t CompilationUnit::module_entity(llvm::StringRef name) {
-    if(!entity_table) {
-        entity_table = std::make_unique<EntityTable>(*this);
-    }
-    return entity_table->module_entity(name);
-}
-
-std::uint64_t CompilationUnit::parent(const clang::NamedDecl* decl) {
-    if(!entity_table) {
-        entity_table = std::make_unique<EntityTable>(*this);
-    }
-    return entity_table->parent(decl);
-}
-
 clang::TranslationUnitDecl* CompilationUnit::tu() {
     return instance->getASTContext().getTranslationUnitDecl();
 }
 
 llvm::DenseMap<clang::FileID, Directive>& CompilationUnit::directives() {
     return collected_directives;
-}
-
-types::TemplateResolver& CompilationUnit::resolver() {
-    assert(template_resolver && "Template resolver is not available");
-    return *template_resolver;
-}
-
-const Semantics& CompilationUnit::semantics() {
-    if(!semantics_cache) {
-        semantics_cache = std::make_unique<Semantics>(Semantics::build(*this));
-    }
-    return *semantics_cache;
 }
 
 clang::ASTContext& CompilationUnit::context() {

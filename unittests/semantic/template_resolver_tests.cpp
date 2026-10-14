@@ -4,9 +4,10 @@ module;
 
 module clice;
 
-import :compile.semantics;
-import :unittests.utils;
+import :semantic.resolver;
+import :semantic.semantics;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 
@@ -63,7 +64,7 @@ void expect_resolved() {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     auto target = finder.expect;
     ZASSERT(!(input.isNull() || target.isNull()));
     ZEXPECT(input.getCanonicalType() == target.getCanonicalType());
@@ -1958,7 +1959,7 @@ ZEST_CASE(UnresolvedMemberLookup) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto members = unit->resolver().lookup(finder.expr);
+    auto members = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZEXPECT(std::ranges::distance(members) == 2);
 }
 
@@ -1990,7 +1991,7 @@ ZEST_CASE(NamespaceOverloadLookup) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto members = unit->resolver().lookup(finder.expr);
+    auto members = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZEXPECT(std::ranges::distance(members) == 2);
 }
 
@@ -2051,7 +2052,7 @@ ZEST_CASE(CallArityFilter) {
 
     /// One argument: `foo(int, int)` is filtered out, both single-parameter
     /// overloads survive.
-    auto candidates = unit->resolver().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZEXPECT(candidates.size() == 2u);
 }
 
@@ -2119,7 +2120,7 @@ ZEST_CASE(VoidReference) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     if(input->isReferenceType()) {
         ZEXPECT(!input->getPointeeType()->isVoidType());
@@ -2263,7 +2264,7 @@ ZEST_CASE(PointerToReference) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
     /// Degrading returns the written `T*`; fabricating `X& *` would not.
@@ -2685,7 +2686,7 @@ ZEST_CASE(QualifiedCallArity) {
 
     /// One argument: `foo(int, int)` is filtered out, both single-parameter
     /// overloads survive.
-    auto candidates = unit->resolver().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZEXPECT(candidates.size() == 2u);
 }
 
@@ -2720,7 +2721,7 @@ ZEST_CASE(PackArgumentCall) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto candidates = unit->resolver().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZEXPECT(candidates.size() == 2u);
 }
 
@@ -2743,7 +2744,7 @@ ZEST_CASE(AtomicReference) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     if(auto AT = input->getAs<clang::AtomicType>()) {
         ZEXPECT(!AT->getValueType()->isReferenceType());
@@ -2881,7 +2882,7 @@ ZEST_CASE(ArrowWithoutPointer) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto candidates = unit->resolver().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZEXPECT(candidates.empty());
 }
 
@@ -2921,7 +2922,7 @@ ZEST_CASE(ArrowThroughSmartPointer) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto candidates = unit->resolver().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZASSERT(!candidates.empty());
     ZEXPECT(llvm::isa<clang::FieldDecl>(*candidates.begin()));
 }
@@ -2945,8 +2946,8 @@ ZEST_CASE(RecordOfMemberAlias) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto* record =
-        llvm::dyn_cast_or_null<clang::CXXRecordDecl>(unit->resolver().resolve_tag(finder.input));
+    auto* record = llvm::dyn_cast_or_null<clang::CXXRecordDecl>(
+        unit->get<types::TemplateResolver>().resolve_tag(finder.input));
     ZASSERT(record != nullptr);
     ZEXPECT(record->getName() == "Vec");
     ZEXPECT(record->getDescribedClassTemplate() != nullptr);
@@ -2972,7 +2973,7 @@ ZEST_CASE(RecordOfPartialPattern) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto* record = unit->resolver().resolve_tag(finder.input);
+    auto* record = unit->get<types::TemplateResolver>().resolve_tag(finder.input);
     ZASSERT(record != nullptr);
     ZEXPECT(llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(record));
 }
@@ -2990,7 +2991,7 @@ ZEST_CASE(RecordOfParameter) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    ZEXPECT(unit->resolver().resolve_tag(finder.input) == nullptr);
+    ZEXPECT(unit->get<types::TemplateResolver>().resolve_tag(finder.input) == nullptr);
 }
 
 ZEST_CASE(MixedPackCandidate) {
@@ -3081,7 +3082,7 @@ ZEST_CASE(NegativeArrayBound) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(!input->isConstantArrayType());
 }
@@ -3148,7 +3149,7 @@ ZEST_CASE(CompoundValueDegrade) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -3284,7 +3285,7 @@ ZEST_CASE(AmbiguousPartials) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
     ZEXPECT(!(input->isVoidType() || input->isBuiltinType()));
@@ -3543,7 +3544,7 @@ ZEST_CASE(VoidFunctionParam) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
         for(auto param: FPT->getParamTypes()) {
@@ -3573,7 +3574,7 @@ ZEST_CASE(VoidMemberPointee) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     if(auto MPT = input->getAs<clang::MemberPointerType>()) {
         ZEXPECT(!MPT->getPointeeType()->isVoidType());
@@ -3645,7 +3646,7 @@ ZEST_CASE(SurplusArguments) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     if(auto TST = input->getAs<clang::TemplateSpecializationType>()) {
         auto TD = TST->getTemplateName().getAsTemplateDecl();
@@ -3717,7 +3718,7 @@ ZEST_CASE(FunctionReturnArray) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     if(auto FPT = input->getAs<clang::FunctionProtoType>()) {
         ZEXPECT(!FPT->getReturnType()->isArrayType());
@@ -3869,7 +3870,7 @@ ZEST_CASE(ExplicitObjectArity) {
 
     /// One written argument plus the unspelled object: only the
     /// two-parameter explicit-object overload survives.
-    auto candidates = unit->resolver().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZEXPECT(candidates.size() == 1u);
 }
 
@@ -3896,7 +3897,8 @@ ZEST_CASE(CallArityOccurrences) {
     bool found = false;
     for(std::uint32_t i = 0; i < entries.size(); i += 1) {
         if(entries[i].node.get<clang::UnresolvedMemberExpr>()) {
-            auto occurrences = resolve_occurrences(semantics, i, &unit->resolver());
+            auto occurrences =
+                resolve_occurrences(semantics, i, &unit->get<types::TemplateResolver>());
             ZEXPECT(occurrences.size() == 2);
             found = true;
         }
@@ -4127,7 +4129,7 @@ ZEST_CASE(DependentTemplateHead) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4176,7 +4178,7 @@ ZEST_CASE(CompoundValueUnverified) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4279,7 +4281,7 @@ ZEST_CASE(ConstrainedUnknownDegrades) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4366,7 +4368,7 @@ ZEST_CASE(AtomicConstraintUnverified) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4425,7 +4427,7 @@ ZEST_CASE(DependentConditionalValue) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
 }
@@ -4459,7 +4461,7 @@ ZEST_CASE(SignedOverflowValue) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(!input->isSpecificBuiltinType(clang::BuiltinType::Int));
 }
@@ -4489,7 +4491,7 @@ ZEST_CASE(AmbiguousBaseMember) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4638,7 +4640,7 @@ ZEST_CASE(MemberChainLookup) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.outer != nullptr);
 
-    auto members = unit->resolver().lookup(finder.outer);
+    auto members = unit->get<types::TemplateResolver>().lookup(finder.outer);
     ZASSERT(std::ranges::distance(members) == 1);
     ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
@@ -4672,7 +4674,7 @@ ZEST_CASE(PackParameterMember) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto members = unit->resolver().lookup(finder.expr);
+    auto members = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZASSERT(std::ranges::distance(members) == 1);
     ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
@@ -4703,7 +4705,7 @@ ZEST_CASE(ReferenceParameterMember) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto members = unit->resolver().lookup(finder.expr);
+    auto members = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZASSERT(std::ranges::distance(members) == 1);
     ZEXPECT(llvm::isa<clang::FieldDecl>(members.front()));
 }
@@ -4783,7 +4785,7 @@ ZEST_CASE(DecltypeDeducedTemplateCall) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4851,7 +4853,7 @@ ZEST_CASE(DecltypeCallNeedsADL) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4885,7 +4887,7 @@ ZEST_CASE(MutableValueDefault) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4956,7 +4958,7 @@ ZEST_CASE(OpenDefaultDifferentBases) {
     InputFinder finder(*unit);
     finder.TraverseAST(unit->context());
 
-    auto input = unit->resolver().resolve(finder.input);
+    auto input = unit->get<types::TemplateResolver>().resolve(finder.input);
     ZASSERT(!input.isNull());
     ZEXPECT(input->isDependentType());
 }
@@ -4985,7 +4987,7 @@ ZEST_CASE(ResolvedCallee) {
     finder.TraverseAST(unit->context());
     ZASSERT(finder.expr != nullptr);
 
-    auto candidates = unit->resolver().lookup(finder.expr);
+    auto candidates = unit->get<types::TemplateResolver>().lookup(finder.expr);
     ZASSERT(candidates.size() == 1u);
     ZEXPECT(candidates.front()->getName() == "take");
 }
@@ -5050,7 +5052,7 @@ ZEST_CASE(BrokenCodeScan) {
             visited += 1;
             return true;
         }
-    } scanner(unit->resolver());
+    } scanner(unit->get<types::TemplateResolver>());
 
     scanner.TraverseAST(unit->context());
     ZEXPECT(scanner.visited > 0);
@@ -5095,7 +5097,7 @@ ZEST_CASE(StandardScan) {
             visited += 1;
             return true;
         }
-    } scanner(unit->resolver());
+    } scanner(unit->get<types::TemplateResolver>());
 
     scanner.TraverseAST(unit->context());
     ZEXPECT(scanner.visited > 0);
@@ -5139,7 +5141,7 @@ ZEST_CASE(ScopedBindingStaysLocal) {
     finder.TraverseAST(unit->context());
     ZASSERT(!finder.input.isNull());
 
-    auto& resolver = unit->resolver();
+    auto& resolver = unit->get<types::TemplateResolver>();
     auto deduced = resolver.deduce(variables.first);
     ZASSERT(!deduced.isNull());
     ZEXPECT(deduced.getCanonicalType() == unit->context().IntTy);

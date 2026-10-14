@@ -5,10 +5,11 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.semantics;
 import :feature.feature;
 import :feature.lexical_classify;
 import :semantic.decls;
+import :semantic.resolver;
+import :semantic.semantics;
 import :semantic.symbol;
 import :syntax.lexer;
 import :syntax.token;
@@ -289,7 +290,7 @@ Classified classify_decl(const clang::NamedDecl* decl, RelationKind relation) {
 class SemanticTokensCollector {
 public:
     SemanticTokensCollector(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> inactive_regions) :
-        unit(unit), semantics(unit.semantics()), content(unit.main_content()),
+        unit(unit), semantics(unit.get<Semantics>()), content(unit.main_content()),
         comments(semantics.comments()), inactive_regions(inactive_regions) {}
 
     auto collect() -> std::vector<SemanticToken> {
@@ -586,7 +587,7 @@ private:
                     for(auto& occurrence:
                         resolve_occurrences(semantics,
                                             static_cast<std::uint32_t>(entry_index),
-                                            &unit.resolver())) {
+                                            &unit.get<types::TemplateResolver>())) {
                         /// `override`, `final` and `new` spell none of the
                         /// declarations they lead to.
                         if(occurrence.kind.is_one_of(RelationKind::Implied)) {

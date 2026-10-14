@@ -5,8 +5,8 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.documentation;
 import :semantic.decls;
+import :semantic.documentation;
 import :syntax.doc_comment;
 import :syntax.documentation;
 import :syntax.lexical_scan;

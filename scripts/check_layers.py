@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Enforce the src/ include layering: core <- config <- {project, worker} <- sched <- server,
 project <- analysis and {analysis, server} <- driver; inside core, support <- vfs <-
-command <- syntax <- semantic <- compile <- index <- feature.
+command <- syntax <- compile <- semantic <- index <- feature.
 
 Each layer may include, or import the partitions of, downward only: clice is one
 module, clice, whose partitions are named by their path under src/
@@ -21,8 +21,8 @@ CORE = [
     "vfs",
     "command",
     "syntax",
-    "semantic",
     "compile",
+    "semantic",
     "index",
     "feature",
 ]

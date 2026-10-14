@@ -5,14 +5,15 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.semantics;
 import :feature.feature;
 import :index.tu_index;
 import :index.types;
 import :semantic.decls;
 import :semantic.designators;
 import :semantic.display;
+import :semantic.identity;
 import :semantic.resolver;
+import :semantic.semantics;
 import :semantic.types;
 import :syntax.lexer;
 
@@ -525,7 +526,7 @@ public:
         result(result), unit(unit), restrict_range(restrict_range), options(options) {}
 
     void run() {
-        auto nodes = unit.semantics().node_entries();
+        auto nodes = unit.get<Semantics>().node_entries();
         std::uint32_t index = 0;
         while(index < nodes.size()) {
             const Semantics::Node& entry = nodes[index];
@@ -931,7 +932,7 @@ private:
     /// it consumed, nor those in a skipped branch.
     void add_endif_hints() {
         llvm::SmallVector<LocalSourceRange> opened;
-        for(const auto& directive: unit.semantics().block_directives()) {
+        for(const auto& directive: unit.get<Semantics>().block_directives()) {
             if(directive.kind == LexicalInfo::BlockDirective::Kind::If) {
                 opened.push_back(directive.range);
             } else if(directive.kind == LexicalInfo::BlockDirective::Kind::EndIf &&
@@ -1013,7 +1014,7 @@ private:
             decl = written_param(param);
         }
         const auto* symbol = decls::normalize(decl);
-        InlayHintPart part{.value = text.str(), .symbol = unit.entity(symbol)};
+        InlayHintPart part{.value = text.str(), .symbol = unit.get<EntityTable>().entity(symbol)};
         if(index::classify_scope(symbol) != index::SymbolScope::External) {
             part.anchor = unit.file_path(unit.file_id(unit.file_location(symbol->getLocation())));
         }
@@ -1450,8 +1451,8 @@ private:
             // resolver tells the type where the template's only instantiation
             // or a class template's members do, else as the template writes it.
             auto deduced = !type->isDependentType() ? type
-                           : var->getInit()         ? unit.resolver().deduce(var)
-                                                    : clang::QualType();
+                           : var->getInit() ? unit.get<types::TemplateResolver>().deduce(var)
+                                            : clang::QualType();
             if(!deduced.isNull() && types::writable(deduced) &&
                (options.spelled_types || !var->getInit() ||
                 !spells_type(var->getInit(), deduced))) {
@@ -1544,7 +1545,7 @@ private:
             // resolver's arity-filtered candidate set stands in; only a
             // unique candidate gives trustworthy parameter names — with
             // several overloads left we must not pick one arbitrarily.
-            auto candidates = unit.resolver().lookup(expr);
+            auto candidates = unit.get<types::TemplateResolver>().lookup(expr);
             if(candidates.size() != 1) {
                 return;
             }

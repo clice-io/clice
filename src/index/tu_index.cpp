@@ -7,13 +7,14 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.semantics;
 import :index.serialization;
 import :index.shard;
 import :index.tu_index;
 import :semantic.decls;
 import :semantic.display;
+import :semantic.identity;
 import :semantic.resolver;
+import :semantic.semantics;
 import :semantic.types;
 import :support.logging;
 import :support.timer;
@@ -332,7 +333,7 @@ public:
     /// writer: name lookups need the entry even when a symbol has only
     /// relations.
     index::SymbolHash ensure_symbol(const clang::NamedDecl* decl) {
-        auto hash = unit.entity(decl);
+        auto hash = unit.get<EntityTable>().entity(decl);
         auto [it, success] = symbols.try_emplace(hash);
         if(success) {
             it->second = describe(decl);
@@ -363,7 +364,7 @@ public:
             flags |= SymbolFlags::Unnamed;
         }
         symbol.args = display::template_args(*decl);
-        symbol.parent = unit.parent(decl);
+        symbol.parent = unit.get<EntityTable>().parent(decl);
         symbol.kind = SymbolKind::from(decl);
         symbol.scope = classify_scope(decl);
         if(decls::is_templated(decl)) {
@@ -429,7 +430,7 @@ public:
             return;
         }
 
-        auto hash = unit.entity(def);
+        auto hash = unit.get<EntityTable>().entity(def);
         // Macros get a symbol-table entry like declarations do; without it
         // build() would default-construct a nameless entry when recording
         // reference files, and every name lookup for the macro would come
@@ -554,7 +555,8 @@ public:
         }
         target = decls::normalize(target);
         auto* declared = type_definition_of(llvm::cast<clang::ValueDecl>(pattern), resolver);
-        if(declared && unit.entity(decls::normalize(declared)) == unit.entity(target)) {
+        if(declared && unit.get<EntityTable>().entity(decls::normalize(declared)) ==
+                           unit.get<EntityTable>().entity(target)) {
             return;
         }
         auto [fid, range] = unit.decompose_range(name);
@@ -602,7 +604,7 @@ public:
             auto* index = file_index(fid);
             if(!index)
                 return;
-            auto hash = unit.module_entity(name);
+            auto hash = unit.get<EntityTable>().module_entity(name);
 
             index->occurrences.emplace_back(range, hash);
             Relation relation{
@@ -1209,7 +1211,7 @@ public:
         if(!main_file_only) {
             full.emplace(Semantics::build(unit, {.main_file_only = false}));
         }
-        const Semantics& semantics = main_file_only ? unit.semantics() : *full;
+        const Semantics& semantics = main_file_only ? unit.get<Semantics>() : *full;
         auto semantics_ms = semantics_timer.ms_f();
 
         ScopedTimer project_timer;

@@ -4,10 +4,10 @@ module;
 
 module clice;
 
-import :compile.semantics;
+import :semantic.semantics;
 import :syntax.lexical_scan;
-import :unittests.utils;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 
@@ -316,7 +316,7 @@ ZEST_CASE(AssemblerComment) {
     ZEXPECT(llvm::none_of(unit->tokens().expanded(), [](const clang::syntax::Token& token) {
         return token.kind() == clang::tok::eod;
     }));
-    unit->semantics();
+    unit->get<Semantics>();
 }
 
 ZEST_CASE(PrivateFragmentAnchor) {

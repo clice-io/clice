@@ -2,7 +2,7 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:compile.documentation;
+module clice:semantic.documentation;
 
 import :compile.compilation;
 

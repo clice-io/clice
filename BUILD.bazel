@@ -28,8 +28,8 @@ CORE = [
     "vfs",
     "command",
     "syntax",
-    "semantic",
     "compile",
+    "semantic",
     "index",
     "feature",
 ]

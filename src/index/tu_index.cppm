@@ -4,16 +4,11 @@ module;
 
 module clice:index.tu_index;
 
+import :compile.compilation;
 import :index.include_tree;
 import :index.manifest;
 import :index.shard;
 import :index.types;
-
-namespace clice {
-
-class CompilationUnit;
-
-}
 
 namespace clice::index {
 

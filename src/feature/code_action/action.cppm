@@ -10,8 +10,8 @@ module;
 
 module clice:feature.code_action.action;
 
-import :compile.selection;
 import :feature.feature;
+import :semantic.selection;
 import :support.text;
 
 namespace clice::feature::action {

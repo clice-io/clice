@@ -9,7 +9,7 @@ module;
 /// specialization arguments). The rules live in the identity objective
 /// document; this header only names the pieces.
 
-module clice:compile.identity;
+module clice:semantic.identity;
 
 import :compile.compilation;
 
@@ -35,6 +35,9 @@ public:
     /// file's portable name (path::portable) and the offset in it. A
     /// builtin or command-line macro has no file and is its name alone.
     std::uint64_t entity(llvm::StringRef name, clang::SourceLocation definition);
+
+    /// The entity of a macro definition, named as it is spelled there.
+    std::uint64_t entity(const clang::MacroInfo* macro);
 
     /// The entity of a named module, from its full name.
     std::uint64_t module_entity(llvm::StringRef name);

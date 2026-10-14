@@ -5,8 +5,8 @@ module;
 module clice;
 
 import :compile.compilation;
-import :compile.semantics;
 import :feature.code_action.action;
+import :semantic.semantics;
 import :syntax.lexical_scan;
 
 namespace clice::feature::action {
@@ -34,7 +34,7 @@ struct Slot {
 /// preamble's conditionals are compiled into the PCH and never reach it.
 std::optional<std::uint32_t> enclosing_branch(CompilationUnit& unit, std::uint32_t offset) {
     llvm::SmallVector<std::uint32_t, 4> open;
-    for(const auto& directive: unit.semantics().block_directives()) {
+    for(const auto& directive: unit.get<Semantics>().block_directives()) {
         auto at = directive.range.begin;
         if(at >= offset) {
             break;
@@ -151,7 +151,7 @@ std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
     LocalSourceRange lines{begin, line_end(content, range->end - 1)};
 
     using enum LexicalInfo::BlockDirective::Kind;
-    if(llvm::any_of(unit.semantics().block_directives(), [&](const auto& directive) {
+    if(llvm::any_of(unit.get<Semantics>().block_directives(), [&](const auto& directive) {
            return llvm::is_contained({If, Else, EndIf}, directive.kind) &&
                   directive.range.begin >= lines.begin && directive.range.begin < lines.end;
        })) {
@@ -232,7 +232,7 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
         }
     };
 
-    const auto& semantics = unit.semantics();
+    const auto& semantics = unit.get<Semantics>();
     auto entries = semantics.node_entries();
     for(std::uint32_t i = 0; i < entries.size() && entries[i].node.is_ast();) {
         if(const auto* decl = entries[i].node.get<clang::Decl>()) {

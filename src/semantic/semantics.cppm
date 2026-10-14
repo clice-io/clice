@@ -2,22 +2,16 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:compile.semantics;
+module clice:semantic.semantics;
 
+import :compile.compilation;
 import :compile.directive;
+import :semantic.resolver;
 import :semantic.symbol;
 import :syntax.lexical_scan;
 import :syntax.token;
 
 namespace clice {
-
-class CompilationUnit;
-
-namespace types {
-
-class TemplateResolver;
-
-}
 
 /// The single currency for "what a token belongs to": the AST node kinds our
 /// traversal records, plus preprocessor and lexical entities, flattened into
@@ -335,6 +329,9 @@ public:
     /// Build the semantics of the unit: one full traversal taking tokens
     /// innermost-first, plus one pass over the preprocessor directives.
     static Semantics build(CompilationUnit& unit, SemanticsOptions options = {});
+
+    /// The shape features share, what CompilationUnit::get builds.
+    explicit Semantics(CompilationUnit& unit) : Semantics(build(unit)) {}
 
     /// All recorded nodes in one index space: first the AST segment in DFS
     /// pre-order (a parent always precedes its children), then preprocessor

@@ -4,9 +4,9 @@ module;
 
 module clice;
 
-import :compile.semantics;
-import :unittests.utils;
+import :semantic.semantics;
 import :unittests.utils.tester;
+import :unittests.utils;
 
 namespace clice::testing {
 
@@ -78,7 +78,7 @@ void test() {
     if(!compile() || !unit->diagnostics().empty()) {
         return std::nullopt;
     }
-    unit->semantics();
+    unit->get<Semantics>();
     return unit->tokens().searches();
 }
 
@@ -90,7 +90,7 @@ export int value = 1;
 module :private;
 )cpp");
     ZASSERT(compile());
-    auto& semantics = unit->semantics();
+    auto& semantics = unit->get<Semantics>();
 
     auto modules = semantics.module_declarations();
     ZASSERT(modules.size() == 3U);
@@ -113,7 +113,7 @@ module :private;
 ZEST_CASE(CommentNodes) {
     add_main("main.cpp", "// note\nint x = 1; /* tail */\n");
     ZASSERT(compile());
-    auto& semantics = unit->semantics();
+    auto& semantics = unit->get<Semantics>();
 
     auto comments = semantics.comments();
     ZASSERT(comments.size() == 2U);
@@ -143,7 +143,7 @@ export module app;
 #endif
 )cpp");
     ZASSERT(compile());
-    auto& semantics = unit->semantics();
+    auto& semantics = unit->get<Semantics>();
 
     auto modules = semantics.module_declarations();
     ZASSERT(modules.size() == 1U);
@@ -156,7 +156,7 @@ ZEST_CASE(NoModuleNoNodes) {
     // candidates (if any) must not survive the compiler cross-check.
     add_main("main.cpp", "int module = 1;\nvoid f() { module = 2; }\n");
     ZASSERT(compile());
-    auto& semantics = unit->semantics();
+    auto& semantics = unit->get<Semantics>();
 
     ZASSERT(semantics.module_declarations().size() == 0U);
     for(auto& entry: semantics.node_entries()) {
