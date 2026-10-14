@@ -12,7 +12,14 @@ void copy(char* to, int __count);
 
 void copy(char* destination, int __count) {}
 
+/// Moves a point.
+/// @param x The horizontal step.
+/// @param y The vertical step.
+void step(int x, int y);
+void step(int z, int x);
+
 int main() {
     char buffer[4];
     §(renamed)copy(buffer, 4);
+    §(swapped)step(1, 2);
 }

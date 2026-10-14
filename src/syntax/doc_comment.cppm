@@ -34,7 +34,8 @@ bool is_doc_comment(llvm::StringRef text);
 /// line when the declaration takes one and the comment is marked as such
 /// (`///<`); else the comments ending right above it, as clang attaches
 /// them — nothing but a declaration's leading tokens between: none of
-/// `;{}#` and no label such as `public:` — except that a plain `//` or `/* */` comment a blank line
+/// `;{}#`, no label such as `public:` and no list left open such as
+/// `template <` — except that a plain `//` or `/* */` comment a blank line
 /// separates documents nothing; else an unmarked comment after it. A
 /// comment following code on its line documents only that code. The run
 /// takes in the comments of the same style on the lines next to it. Empty

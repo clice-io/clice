@@ -663,21 +663,25 @@ void document(protocol::SignatureInformation& signature,
         return;
     }
     auto shown = doc;
+    llvm::SmallVector<bool> claimed(doc.params.size());
+    // Each `@param` documents one parameter: declarations may give one name
+    // to two of them.
+    auto claim = [&](protocol::ParameterInformation& parameter,
+                     llvm::ArrayRef<std::string> written) {
+        for(const auto& name: written) {
+            for(auto [index, param]: llvm::enumerate(doc.params)) {
+                if(!claimed[index] && param.name == name && !param.text.empty()) {
+                    claimed[index] = true;
+                    parameter.documentation = param.text;
+                    shown.params[index].name = written.front();
+                    return;
+                }
+            }
+        }
+    };
     if(signature.parameters) {
         for(auto [parameter, written]: llvm::zip_equal(*signature.parameters, names)) {
-            for(const auto& name: written) {
-                const auto* param = doc.param(name);
-                if(!param || param->text.empty()) {
-                    continue;
-                }
-                parameter.documentation = param->text;
-                for(auto& listed: shown.params) {
-                    if(listed.name == param->name) {
-                        listed.name = written.front();
-                    }
-                }
-                break;
-            }
+            claim(parameter, written);
         }
     }
     signature.documentation = present(shown).as_plain_text();

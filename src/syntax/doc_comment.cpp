@@ -60,7 +60,9 @@ bool has_blank_line(llvm::StringRef text) {
 
 /// Whether code between a comment and a declaration ends what the comment
 /// is about: a statement, a block, a directive or a label such as
-/// `public:` (`::` is no label).
+/// `public:` (`::` is no label). A list the code leaves open, a template's
+/// parameters (`template <`) or a function's (`f(`), holds the declaration:
+/// the comment is about what owns the list.
 bool separates(llvm::StringRef gap) {
     if(gap.find_first_of(";{}#") != llvm::StringRef::npos) {
         return true;
@@ -71,7 +73,17 @@ bool separates(llvm::StringRef gap) {
             return true;
         }
     }
-    return false;
+    llvm::SmallVector<char> open;
+    for(char c: gap) {
+        if(c == '(' || c == '<') {
+            open.push_back(c);
+        } else if(c == ')') {
+            while(!open.empty() && open.pop_back_val() != '(') {}
+        } else if(c == '>' && !open.empty() && open.back() == '<') {
+            open.pop_back();
+        }
+    }
+    return !open.empty();
 }
 
 /// A line made only of the characters banners are drawn with.

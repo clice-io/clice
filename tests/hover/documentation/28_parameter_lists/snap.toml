@@ -40,3 +40,23 @@ void copy(char *destination, int __count)
 ```
 '''
 range = "⟦copy⟧(buffer, 4);"
+
+[answers.swapped.hover]
+markdown = '''
+### function `step`
+
+---
+
+Moves a point.
+
+→ `void`
+Parameters:
+- `int z` — The horizontal step.
+- `int x` — The vertical step.
+
+---
+```cpp
+void step(int z, int x)
+```
+'''
+range = "⟦step⟧(1, 2);"

@@ -57,3 +57,15 @@ Parameters:
 - count — How many it reads.
 '''
 parameter_documentation = "Where it goes."
+
+[answers.swapped.signature_help]
+signatures = ["step(int z, ⟦int x⟧) -> void"]
+active = 0
+documentation = '''
+Moves a point.
+
+Parameters:
+- z — The horizontal step.
+- x — The vertical step.
+'''
+parameter_documentation = "The vertical step."

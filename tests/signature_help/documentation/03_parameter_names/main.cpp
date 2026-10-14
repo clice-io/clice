@@ -15,6 +15,12 @@ void copy_bytes(char* to, const char* from);
 
 void copy_bytes(char* destination, const char* source) {}
 
+/// Moves a point.
+/// @param x The horizontal step.
+/// @param y The vertical step.
+void step(int x, int y);
+void step(int z, int x);
+
 /// Reads a value.
 /// @param[out] value Where it goes.
 /// @param count How many it reads.
@@ -31,4 +37,5 @@ int main() {
     copy_bytes(nullptr, §(redeclared)"x");
     LOG_ALL("%d", §(macro_variadic)1);
     read_value(§(direction)nullptr);
+    step(1, §(swapped)2);
 }

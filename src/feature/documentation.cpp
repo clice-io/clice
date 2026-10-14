@@ -108,21 +108,14 @@ auto documentation(const index::IndexQuery& query,
         const auto* param = owner.param(info->name);
         return param ? Documentation{.brief = param->text} : Documentation();
     }
-    auto own = symbol_documentation(query, hash, anchor, options, 0);
     if(info && info->parent != 0 &&
        (info->kind == SymbolKind::Type || info->kind == SymbolKind::Variable)) {
         auto owner = symbol_documentation(query, info->parent, anchor, options, 0);
         if(const auto* param = owner.template_param(info->name)) {
             return Documentation{.brief = param->text};
         }
-        // A template parameter, which stays in its file, sits in its
-        // template's header right under the template's comment, which
-        // documents the template alone.
-        if(info->scope == index::SymbolScope::FileLocal && own == owner) {
-            return {};
-        }
     }
-    return own;
+    return symbol_documentation(query, hash, anchor, options, 0);
 }
 
 void describe(markup::Paragraph& entry, llvm::StringRef direction, llvm::StringRef text) {
@@ -192,13 +185,15 @@ void add_parameters(markup::Document& output,
     llvm::SmallVector<bool> shown(documented.size());
     for(const auto& param: signature) {
         auto& entry = list.add_item().add_paragraph().append_code(llvm::to_string(param));
-        auto it = llvm::find_if(documented, [&](const Documentation::Param& documented) {
-            return llvm::is_contained(param.written, documented.name) ||
-                   (param.name && documented.name == *param.name);
-        });
-        if(it != documented.end()) {
-            shown[it - documented.begin()] = true;
-            describe(entry, it->direction, it->text);
+        // Each entry documents one parameter: declarations may give one name
+        // to two of them.
+        for(auto [index, described]: llvm::enumerate(documented)) {
+            if(!shown[index] && (llvm::is_contained(param.written, described.name) ||
+                                 (param.name && described.name == *param.name))) {
+                shown[index] = true;
+                describe(entry, described.direction, described.text);
+                break;
+            }
         }
     }
     for(auto [index, param]: llvm::enumerate(documented)) {

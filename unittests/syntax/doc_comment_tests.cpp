@@ -47,6 +47,16 @@ ZEST_CASE(SomethingBetween) {
     ZEXPECT(documenting("/// Doc.\n[[gnu::cold]] int f();\n", "int f()") == "Doc.");
 }
 
+ZEST_CASE(InsideList) {
+    llvm::StringRef content = "/// Copies.\ntemplate <typename T, int N>\nT copy(T value);\n";
+    ZEXPECT(documenting(content, "typename T") == "");
+    ZEXPECT(documenting(content, "int N") == "");
+    ZEXPECT(documenting(content, "T value") == "");
+    ZEXPECT(documenting("/// Picks.\ntemplate <int N = (1 > 0)>\nint pick();\n", "int pick()") ==
+            "Picks.");
+    ZEXPECT(documenting("/// Holds.\nstd::vector<int> values;\n", "values") == "Holds.");
+}
+
 ZEST_CASE(Trailing) {
     llvm::StringRef content = "struct S {\n    int x; ///< The x.\n    int y; // y note\n};\n";
     ZEXPECT(documenting(content, "int x", true) == "The x.");
