@@ -1,6 +1,7 @@
-// A declaration written in a macro argument is the argument's text: the
-// edit replaces the `auto` written there. Nothing a macro body spells
-// can be edited this way.
+// Code a macro takes part in is left as written, a declaration in a macro
+// argument too: the argument may be expanded more than once, a comma the
+// edit brings splits it, and the macro's own tokens around it change what
+// the edit means.
 
 #define WRAP(declaration) declaration
 #define DECLARE(name) auto name = 1;

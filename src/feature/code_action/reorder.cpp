@@ -67,7 +67,7 @@ std::optional<std::uint32_t> enclosing_branch(CompilationUnit& unit, std::uint32
 /// block.
 std::optional<LocalSourceRange> definition_lines(CompilationUnit& unit,
                                                  const clang::FunctionDecl* definition) {
-    auto range = unit.focus_file().written_range(written_declaration(definition)->getSourceRange());
+    auto range = editable_range(unit, written_declaration(definition)->getSourceRange());
     if(!range) {
         return std::nullopt;
     }
@@ -239,7 +239,7 @@ std::vector<Dependency> dependencies(CompilationUnit& unit, llvm::ArrayRef<Slot>
     auto entries = semantics.node_entries();
     for(std::uint32_t i = 0; i < entries.size() && entries[i].node.is_ast();) {
         if(const auto* decl = entries[i].node.get<clang::Decl>()) {
-            auto range = unit.focus_file().written_range(decl->getSourceRange());
+            auto range = editable_range(unit, decl->getSourceRange());
             if(range && (range->end <= region.begin || range->begin >= region.end)) {
                 i = entries[i].subtree_end;
                 continue;

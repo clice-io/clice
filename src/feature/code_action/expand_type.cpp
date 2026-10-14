@@ -70,7 +70,7 @@ void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out) {
         }
         written.setEnd(reference.getSigilLoc());
     }
-    auto range = unit.focus_file().written_range(written);
+    auto range = editable_range(unit, written);
     if(!range) {
         return;
     }

@@ -826,6 +826,13 @@ clang::AccessSpecifier trailing_access(const clang::CXXRecordDecl* record) {
 
 }  // namespace
 
+std::optional<LocalSourceRange> editable_range(CompilationUnit& unit, clang::SourceRange range) {
+    if(range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
+        return std::nullopt;
+    }
+    return editable_range(unit, range);
+}
+
 std::optional<llvm::StringRef> spelled_text(CompilationUnit& unit, clang::SourceRange range) {
     auto written = unit.written_range(range);
     if(!written || unit.is_builtin_file(written->file)) {
@@ -957,8 +964,8 @@ std::string template_heads(CompilationUnit& unit,
 std::optional<TextReplacement> insert_members(CompilationUnit& unit,
                                               const clang::CXXRecordDecl* record,
                                               llvm::ArrayRef<Member> members) {
-    auto brace = unit.focus_file().written_range(record->getBraceRange().getEnd());
-    auto head = unit.focus_file().written_range(record->getBeginLoc());
+    auto brace = editable_range(unit, record->getBraceRange().getEnd());
+    auto head = editable_range(unit, record->getBeginLoc());
     if(!brace || !head) {
         return std::nullopt;
     }
@@ -972,7 +979,7 @@ std::optional<TextReplacement> insert_members(CompilationUnit& unit,
         if(member->isImplicit()) {
             continue;
         }
-        if(auto range = unit.focus_file().written_range(member->getBeginLoc())) {
+        if(auto range = editable_range(unit, member->getBeginLoc())) {
             indent = line_indent(content, range->begin).str();
             break;
         }

@@ -87,7 +87,7 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
     if(default_stmt) {
         anchor_loc = default_stmt->getKeywordLoc();
     } else if(declares_in_scope(body)) {
-        auto brace = unit.focus_file().written_range(body->getLBracLoc());
+        auto brace = editable_range(unit, body->getLBracLoc());
         if(!brace) {
             return;
         }
@@ -98,19 +98,19 @@ void populate_switch(const Context& ctx, std::vector<CodeAction>& out) {
         });
         anchor_loc = after->location();
     }
-    auto anchor = unit.focus_file().written_range(anchor_loc);
+    auto anchor = editable_range(unit, anchor_loc);
     if(!anchor) {
         return;
     }
     std::string indent;
     if(const auto* label = stmt->getSwitchCaseList()) {
-        auto range = unit.focus_file().written_range(label->getKeywordLoc());
+        auto range = editable_range(unit, label->getKeywordLoc());
         if(!range) {
             return;
         }
         indent = line_indent(content, range->begin).str();
     } else {
-        auto range = unit.focus_file().written_range(stmt->getSwitchLoc());
+        auto range = editable_range(unit, stmt->getSwitchLoc());
         if(!range) {
             return;
         }

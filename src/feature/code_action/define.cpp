@@ -671,7 +671,7 @@ std::optional<std::uint32_t> semicolon_after(CompilationUnit& unit, clang::Sourc
     if(token == tokens.end() || token->kind() != clang::tok::semi) {
         return std::nullopt;
     }
-    auto range = unit.focus_file().written_range(token->location());
+    auto range = editable_range(unit, token->location());
     if(!range) {
         return std::nullopt;
     }
@@ -703,7 +703,7 @@ std::optional<Placement> placement_after(CompilationUnit& unit, const clang::Dec
         }
         end = next->getEndLoc();
     }
-    auto range = unit.focus_file().written_range(end);
+    auto range = editable_range(unit, end);
     if(!range) {
         return std::nullopt;
     }
@@ -895,9 +895,8 @@ void define(const Context& ctx, std::vector<CodeAction>& out) {
         !sm.isBeforeInTranslationUnit(outermost_record(method->getParent())->getEndLoc(),
                                       (*needed)->getEndLoc()))) {
         auto written = written_declaration(decl)->getSourceRange();
-        if(auto semicolon = unit.focus_file().written_range(written)
-                                ? semicolon_after(unit, written.getEnd())
-                                : std::nullopt) {
+        if(auto semicolon = editable_range(unit, written) ? semicolon_after(unit, written.getEnd())
+                                                          : std::nullopt) {
             out.push_back(CodeAction{
                 .title = std::format("Define '{}' inline", name),
                 .kind = action_kind::define_inline,

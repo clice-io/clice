@@ -482,7 +482,8 @@ private:
             return nullptr;
         }
 
-        auto local = unit.focus_file().written_range({begin, end});
+        // A block an included file closes folds to the end of this one.
+        auto local = unit.focus_file().produced_range({begin, end});
         if(!local || local->end <= local->begin) {
             return nullptr;
         }
