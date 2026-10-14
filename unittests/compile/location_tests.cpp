@@ -116,7 +116,8 @@ void f() §(body)⟦{
             function = candidate;
         }
     }
-    ZASSERT(function && function->getBody());
+    ZASSERT(function);
+    ZASSERT(function->getBody());
 
     // The block ends at the eof, which the written text leaves out.
     ZEXPECT(unit->focus_file().written_range(function->getBody()->getSourceRange()) ==
