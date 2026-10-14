@@ -762,13 +762,20 @@ private:
                 param_names.emplace_back();
             } else if(auto names = decls::named_parameters(*param); !names.empty()) {
                 param = names.front();
-                param_names.emplace_back(param->getIdentifier()->deuglifiedName());
+                param_names.emplace_back(param->getName());
             } else {
                 // Unnamed: an empty entry, the hint is dropped later.
                 param_names.emplace_back();
             }
             named.push_back(param);
         }
+
+        // Standard library functions often have parameter names that start
+        // with underscores, which makes the hints noisy, so strip them out.
+        for(auto& name: param_names) {
+            name = name.ltrim('_');
+        }
+
         return param_names;
     }
 
@@ -1784,7 +1791,7 @@ private:
     // type in other cases. Suppress scopes to keep type names short.
     // Not setting PrintCanonicalTypes for "auto" allows
     // SuppressDefaultTemplateArgs (set by default) to have an effect.
-    display::Options display_options = {.suppress_scope = true, .clean_uglified = true};
+    display::Options display_options = {.suppress_scope = true};
 
     // If/else chains are tricky.
     //   if (cond1) {

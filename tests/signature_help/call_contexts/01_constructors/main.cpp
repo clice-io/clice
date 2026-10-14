@@ -1,6 +1,6 @@
 struct Point {
     int x;
-    int y = 0;
+    int y;
 };
 
 struct Widget {

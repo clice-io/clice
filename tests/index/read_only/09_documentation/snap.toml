@@ -131,9 +131,6 @@ markdown = '''
 
 Makes a copy of a value.
 
-Template parameters:
-- `T` — The copied type.
-
 ---
 ```cpp
 template <typename T, typename = decltype(T{})>
@@ -163,14 +160,14 @@ markdown = '''
 
 ---
 
-The copied type.
+The replaced type.
 
 ---
 ```cpp
 typename T
 ```
 '''
-range = "⟦T⟧ copy(T value);"
+range = "⟦T⟧ exchange(T& target, T value);"
 
 ["index cards of template parameters".undocumented_parameter.hover]
 markdown = '''

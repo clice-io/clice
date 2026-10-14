@@ -29,7 +29,7 @@ inlay_hints = [
             {
                 label = "value:",
                 links = [
-                    { value = "value", target = "void fill(int ⟦__value⟧);" },
+                    { value = "value", target = "void fill(int ⟦_value⟧);" },
                 ],
             },
         ],

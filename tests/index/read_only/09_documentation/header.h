@@ -17,9 +17,13 @@ struct Square : Shape {
 };
 
 /// Makes a copy of a value.
-/// @tparam T The copied type.
 template <typename T, typename = decltype(T{})>
-§(template_parameter)T copy(T value);
+T copy(T value);
+
+/// Replaces a value.
+/// @tparam T The replaced type.
+template <typename T>
+§(template_parameter)T exchange(T& target, T value);
 
 /// Repeats a value.
 template <typename U>

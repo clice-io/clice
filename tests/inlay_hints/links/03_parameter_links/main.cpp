@@ -3,7 +3,7 @@
 // spelling it strips, the callee a pack forwards to, and a parameter after
 // a pack.
 void resize(int, int);
-void fill(int __value);
+void fill(int _value);
 
 template <typename... Args>
 void wrap(Args... args) {
