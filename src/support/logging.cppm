@@ -14,8 +14,8 @@ import :support.format;
 ///
 ///   situation                                   → channel
 ///   ─────────────────────────────────────────────────────────────────────
-///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY   (anomaly.cppm)
-///   the user must fix their setup or config     → LOG_GUIDANCE  (anomaly.cppm)
+///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY   (anomaly.macros.h)
+///   the user must fix their setup or config     → LOG_GUIDANCE  (anomaly.macros.h)
 ///     ... and it is tied to a specific file     →   + a published diagnostic
 ///   a request cannot be served                  → LSP error response
 ///   an operation failed but is expected in       → LOG_WARN / LOG_ERROR

@@ -444,6 +444,8 @@ std::string code_span(llvm::StringRef text) {
     while(text.contains(fence)) {
         fence += '`';
     }
+    // Markdown drops one space at each end, so it shows none of the padding;
+    // it only keeps a backtick at an edge from joining the fence.
     auto padding = text.starts_with("`") || text.ends_with("`") ? " " : "";
     return fence + padding + text.str() + padding + fence;
 }
