@@ -207,27 +207,30 @@ ZEST_CASE(PrefixIncludeOptions) {
                                      prefix13.c_str(),
                                      "-iwithprefix",
                                      "include",
+                                     "-isystem",
+                                     tmp.c_path("sys"),
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
-    // -iwithprefixbefore → Angled, -iwithprefix → After
-    ZASSERT(config.dirs.size() == 3u);
+    // -iwithprefixbefore → Angled, -iwithprefix → After, behind System.
+    ZASSERT(config.dirs.size() == 4u);
     ZEXPECT(config.angled_start_idx == 0u);
     ZEXPECT(config.system_start_idx == 1u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "gcc/12/include"));
-    ZEXPECT(config.dirs[1].path == spelled(tmp, "gcc/12/lib"));
-    ZEXPECT(config.dirs[2].path == spelled(tmp, "gcc/13/include"));
+    ZEXPECT(config.dirs[1].path == spelled(tmp, "sys"));
+    ZEXPECT(config.dirs[2].path == spelled(tmp, "gcc/12/lib"));
+    ZEXPECT(config.dirs[3].path == spelled(tmp, "gcc/13/include"));
 }
 
 ZEST_CASE(DirafterGroup) {
     TempDir tmp;
     std::vector<const char*> args = {"clang++",
+                                     "-idirafter",
+                                     tmp.c_path("fallback"),
                                      "-I",
                                      tmp.c_path("user"),
                                      "-isystem",
                                      tmp.c_path("sys"),
-                                     "-idirafter",
-                                     tmp.c_path("fallback"),
                                      "main.cpp"};
     auto config = extract(args, tmp.root.str());
 
