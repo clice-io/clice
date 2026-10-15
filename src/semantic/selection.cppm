@@ -133,13 +133,6 @@ public:
         return *root_node;
     }
 
-    void print(llvm::raw_ostream& os, const Node& node, int indent) const;
-
-    friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const SelectionTree& tree) {
-        tree.print(os, tree.root(), 1);
-        return os;
-    }
-
 private:
     // Creates a selection tree for the given range in the main file.
     // The range includes bytes [Start, End).
@@ -149,8 +142,6 @@ private:
     std::deque<Node> nodes;
 
     const Node* root_node;
-
-    clang::PrintingPolicy print_policy;
 };
 
 }  // namespace clice

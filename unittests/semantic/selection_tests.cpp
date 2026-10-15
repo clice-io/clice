@@ -256,9 +256,6 @@ void EXPECT_SELECT(llvm::StringRef code, const char* kind) {
             unit->seen_at(range2->getEnd()).offset,
         };
 
-        /// llvm::outs() << tree << "\n";
-        /// tree.print(llvm::outs(), *node, 2);
-
         ZASSERT(node->kind() == llvm::StringRef(kind));
         ZASSERT(local_range == range());
     });

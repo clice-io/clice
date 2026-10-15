@@ -49,63 +49,18 @@ void update(SelectionTree::SelectionKind& result, SelectionTree::SelectionKind n
     }
 }
 
-// Show the type of a node for debugging.
-void print_node_kind(llvm::raw_ostream& os, const clang::DynTypedNode& node) {
-    if(const clang::TypeLoc* TL = node.get<clang::TypeLoc>()) {
+}  // namespace
+
+std::string SelectionTree::Node::kind() const {
+    if(const clang::TypeLoc* TL = data.get<clang::TypeLoc>()) {
         // TypeLoc is a hierarchy, but has only a single ASTNodeKind.
         // Synthesize the name from the Type subclass (except for QualifiedTypeLoc).
         if(TL->getTypeLocClass() == clang::TypeLoc::Qualified) {
-            os << "QualifiedTypeLoc";
-        } else {
-            os << TL->getType()->getTypeClassName() << "TypeLoc";
+            return "QualifiedTypeLoc";
         }
-    } else {
-        os << node.getNodeKind().asStringRef();
+        return std::format("{}TypeLoc", TL->getType()->getTypeClassName());
     }
-}
-
-llvm::SmallString<256> abbreviated_string(clang::DynTypedNode node,
-                                          const clang::PrintingPolicy& printing_policy) {
-    llvm::SmallString<256> result;
-    {
-        llvm::raw_svector_ostream os(result);
-        node.print(os, printing_policy);
-    }
-
-    auto pos = result.find('\n');
-    if(pos != llvm::StringRef::npos) {
-        bool more_text = !llvm::all_of(result.str().drop_front(pos), llvm::isSpace);
-        result.resize(pos);
-        if(more_text) {
-            result.append(" …");
-        }
-    }
-    return result;
-}
-
-}  // namespace
-
-void SelectionTree::print(llvm::raw_ostream& os,
-                          const SelectionTree::Node& node,
-                          int indent) const {
-    if(node.selected) {
-        os.indent(indent - 1) << (node.selected == SelectionTree::Complete ? '*' : '.');
-    } else {
-        os.indent(indent);
-    }
-
-    print_node_kind(os, node.data);
-    os << ' ' << abbreviated_string(node.data, print_policy) << "\n";
-    for(const Node* child: node.children) {
-        print(os, *child, indent + 2);
-    }
-}
-
-std::string SelectionTree::Node::kind() const {
-    std::string S;
-    llvm::raw_string_ostream OS(S);
-    print_node_kind(OS, data);
-    return std::move(OS.str());
+    return data.getNodeKind().asStringRef().str();
 }
 
 bool SelectionTree::create_each(CompilationUnit& unit,
@@ -160,11 +115,7 @@ SelectionTree SelectionTree::create_right(CompilationUnit& unit, LocalSourceRang
     return std::move(*result);
 }
 
-SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) :
-    print_policy(unit.context().getLangOpts()) {
-    print_policy.TerseOutput = true;
-    print_policy.IncludeNewlines = false;
-
+SelectionTree::SelectionTree(CompilationUnit& unit, LocalSourceRange range) {
     const Semantics& semantics = unit.get<Semantics>();
     auto tokens = semantics.spelled_tokens();
     auto [begin, end] = range;
