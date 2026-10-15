@@ -147,10 +147,11 @@ void print_summary(const ScanOutput& output, const ScanReport& scan) {
     }
 }
 
-/// The smallest and the median of `times`, which it sorts.
+/// The smallest and the median of `times`, which it sorts; an even count
+/// takes the lower middle, as the benchmarks' statistics do.
 std::pair<std::int64_t, std::int64_t> spread(std::vector<std::int64_t>& times) {
     std::ranges::sort(times);
-    return {times.front(), times[times.size() / 2]};
+    return {times.front(), times[(times.size() - 1) / 2]};
 }
 
 /// Scan `runs` times, each cold from a fresh load and warm over what it
