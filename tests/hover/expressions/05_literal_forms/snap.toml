@@ -90,3 +90,24 @@ Length: 17
 Size: 18 bytes
 '''
 range = 'static_assert(sizeof(int) == 4, ⟦"int is four bytes"⟧);'
+
+[answers.long_text.hover]
+markdown = '''
+**literal** `"中文中文中文中文中文中文中...`
+
+Type: `const char[49]`
+Length: 48
+Size: 49 bytes
+'''
+range = 'auto long_text = ⟦"中文中文中文中文中文中文中文中文"⟧;'
+
+[answers.negative_imaginary.hover]
+markdown = '''
+**variable** `conjugate`
+
+```cpp
+constexpr _Complex double conjugate = 1.0 - 2.0i
+```
+Value: `1-2i`
+'''
+range = "constexpr _Complex double ⟦conjugate⟧ = 1.0 - 2.0i;"

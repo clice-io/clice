@@ -728,7 +728,7 @@ auto quoted(const clang::ASTContext& context,
     text += '"';
     auto width = context.getTypeSize(element);
     for(std::size_t index = 0; index < characters.size(); index += 1) {
-        if(index == limit) {
+        if(index >= limit) {
             text += "...";
             break;
         }
@@ -831,7 +831,11 @@ auto string_value(const clang::ASTContext& context,
         for(unsigned index = 0; index < literal->getLength(); index += 1) {
             characters.push_back(literal->getCodeUnit(index));
         }
-        return quoted(context, type->getPointeeType().getUnqualifiedType(), characters);
+        /// The pointer may have another type, `const void*`.
+        return quoted(
+            context,
+            context.getAsArrayType(literal->getType())->getElementType().getUnqualifiedType(),
+            characters);
     }
     return std::nullopt;
 }
@@ -908,8 +912,9 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
     }
     /// As clang prints a complex integer, `0+6i`.
     if(constant.Val.isComplexFloat()) {
-        return float_text(constant.Val.getComplexFloatReal()) + "+" +
-               float_text(constant.Val.getComplexFloatImag()) + "i";
+        auto imaginary = float_text(constant.Val.getComplexFloatImag());
+        return float_text(constant.Val.getComplexFloatReal()) +
+               (llvm::StringRef(imaginary).starts_with("-") ? "" : "+") + imaginary + "i";
     }
 
     /// Show enums symbolically, not numerically like APValue::printPretty().
@@ -1634,9 +1639,20 @@ auto definition(const clang::Decl* decl,
     } else if(var && var->isInitCapture()) {
         /// Clang prints the capture as a variable of its deduced type,
         /// `auto` left in front.
-        os << "auto " << (var->getType()->isReferenceType() ? "&" : "") << var->getName();
+        auto type = var->getType();
+        if(const auto* expansion = type->getAs<clang::PackExpansionType>()) {
+            type = expansion->getPattern();
+        }
+        os << "auto " << (type->isReferenceType() ? "&" : "")
+           << (var->isParameterPack() ? "..." : "") << var->getName();
         if(var->getInit() && !policy.SuppressInitializers) {
-            os << " = " << as_written(context, var->getInit(), options);
+            auto init = as_written(context, var->getInit(), options);
+            switch(var->getInitStyle()) {
+                case clang::VarDecl::CInit: os << " = " << init; break;
+                case clang::VarDecl::CallInit: os << "(" << init << ")"; break;
+                case clang::VarDecl::ListInit:
+                case clang::VarDecl::ParenListInit: os << init; break;
+            }
         }
     } else if(alias && declares_tag(*alias)) {
         /// Clang prints the tag under the alias's name, `typedef struct Point
@@ -1657,7 +1673,20 @@ auto definition(const clang::Decl* decl,
         if(var && var->isInlineSpecified()) {
             os << "inline ";
         }
-        decl->print(os, policy);
+        /// An `= init` as written: clang prints a string's bytes past ASCII
+        /// as octal escapes. Not a range-for's, which the loop writes, nor a
+        /// lambda, whose body the card leaves out.
+        if(var && var->getInit() && var->getInitStyle() == clang::VarDecl::CInit &&
+           !var->isCXXForRangeDecl() &&
+           !llvm::isa<clang::LambdaExpr>(var->getInit()->IgnoreImplicit()) &&
+           !policy.SuppressInitializers) {
+            auto bare = policy;
+            bare.SuppressInitializers = true;
+            decl->print(os, bare);
+            os << " = " << as_written(context, var->getInit(), options);
+        } else {
+            decl->print(os, policy);
+        }
         if(const auto* function = decl->getAsFunction()) {
             print_name(definition, *function, policy);
         }

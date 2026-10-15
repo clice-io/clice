@@ -13,3 +13,11 @@ struct Dot final : Circle {
 struct Square : Base {
     void dr§(implicit_override)aw();
 };
+
+struct Printable {
+    virtual void draw() = 0;
+};
+
+struct Label : Base, Printable {
+    void dr§(two_bases)aw() override;
+};

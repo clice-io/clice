@@ -505,9 +505,10 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
     if(std::string message; entity->isDeprecated(&message)) {
         info.deprecation = std::move(message);
     }
-    if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(entity);
-       method && method->size_overridden_methods() != 0) {
-        info.overrides = (*method->begin_overridden_methods())->getQualifiedNameAsString();
+    if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(entity)) {
+        for(const auto* overridden: method->overridden_methods()) {
+            info.overrides.push_back(overridden->getQualifiedNameAsString());
+        }
     }
 
     /// A template prints from its `template` keyword on.
@@ -815,10 +816,15 @@ auto literal_text(CompilationUnit& unit, const clang::Expr& literal) -> std::str
     }
     auto text = unit.file_content(range->file)
                     .substr(range->range.begin, range->range.end - range->range.begin);
-    if(text.size() > limit) {
-        return text.take_front(limit).str() + "...";
+    if(text.size() <= limit) {
+        return text.str();
     }
-    return text.str();
+    /// Not inside a UTF-8 sequence.
+    auto cut = limit;
+    while(cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) {
+        cut -= 1;
+    }
+    return text.take_front(cut).str() + "...";
 }
 
 /// The card of a literal: its type and value, a string's length and size.
@@ -1726,8 +1732,14 @@ markup::Document HoverInfo::present() const {
         output.add_paragraph().append_text(
             llvm::formatv("Not defined yet here: defined on line {0}", *defined_on_line).str());
     }
-    if(overrides) {
-        output.add_paragraph().append_text("Overrides: ").append_code(*overrides);
+    if(!overrides.empty()) {
+        auto& line = output.add_paragraph().append_text("Overrides: ");
+        for(auto [index, overridden]: llvm::enumerate(overrides)) {
+            if(index != 0) {
+                line.append_text(", ");
+            }
+            line.append_code(overridden);
+        }
     }
     if(offset) {
         output.add_paragraph().append_text("Offset: " + format_offset(*offset));

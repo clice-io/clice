@@ -1,6 +1,6 @@
 // Names introduced without a type of their own: structured bindings, of a
 // tuple-like class too, a range-for variable, a lambda capture, init
-// captures.
+// captures in each initialization form and as packs.
 
 namespace std {
 template <typename T> struct tuple_size;
@@ -57,4 +57,17 @@ void bindings() {
         return limit + bound;
     };
     (void)scaled;
+    auto forms = [§(braced_init_capture)count{4}, §(parenthesized_init_capture)total(5)] {
+        return count + total;
+    };
+    (void)forms;
+}
+
+template <typename... Ts> void forward_all(Ts... args) {
+    auto packed = [...§(pack_init_capture)copies = args, &...§(reference_pack_init_capture)views = args] {};
+    (void)packed;
+}
+
+void forward_two() {
+    forward_all(1, 2);
 }

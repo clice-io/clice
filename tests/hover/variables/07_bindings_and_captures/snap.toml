@@ -107,3 +107,47 @@ auto &bound = threshold
 Type: `int &`
 '''
 range = "auto scaled = [limit = threshold * 2, &⟦bound⟧ = threshold] {"
+
+[answers.braced_init_capture.hover]
+markdown = '''
+**variable** `count` · lambda in function `bindings`
+
+```cpp
+auto count{4}
+```
+Type: `int`
+Value: `4`
+'''
+range = "auto forms = [⟦count⟧{4}, total(5)] {"
+
+[answers.parenthesized_init_capture.hover]
+markdown = '''
+**variable** `total` · lambda in function `bindings`
+
+```cpp
+auto total(5)
+```
+Type: `int`
+Value: `5`
+'''
+range = "auto forms = [count{4}, ⟦total⟧(5)] {"
+
+[answers.pack_init_capture.hover]
+markdown = '''
+**variable** `copies` · lambda in function `forward_all`
+
+```cpp
+auto... copies = args
+```
+'''
+range = "auto packed = [...⟦copies⟧ = args, &...views = args] {};"
+
+[answers.reference_pack_init_capture.hover]
+markdown = '''
+**variable** `views` · lambda in function `forward_all`
+
+```cpp
+auto &...views = args
+```
+'''
+range = "auto packed = [...copies = args, &...⟦views⟧ = args] {};"

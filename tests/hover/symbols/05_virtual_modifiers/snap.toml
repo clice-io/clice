@@ -6,7 +6,7 @@ markdown = '''
 virtual void draw() = 0
 ```
 '''
-range = "virtual void ⟦draw⟧() = 0;"
+range = "virtual void ⟦draw⟧() = 0; @+0"
 
 [answers.override_method.hover]
 markdown = '''
@@ -17,7 +17,7 @@ void draw() override
 ```
 Overrides: `Base::draw`
 '''
-range = "void ⟦draw⟧() override;"
+range = "void ⟦draw⟧() override; @+0"
 
 [answers.final_method.hover]
 markdown = '''
@@ -40,3 +40,14 @@ void draw()
 Overrides: `Base::draw`
 '''
 range = "void ⟦draw⟧();"
+
+[answers.two_bases.hover]
+markdown = '''
+**method** `draw` · struct `Label`
+
+```cpp
+void draw() override
+```
+Overrides: `Base::draw`, `Printable::draw`
+'''
+range = "void ⟦draw⟧() override; @+0"

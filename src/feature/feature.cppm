@@ -314,8 +314,9 @@ struct HoverInfo {
     /// its definition is on.
     std::optional<std::uint32_t> defined_on_line;
 
-    /// The method an overriding method overrides, qualified.
-    std::optional<std::string> overrides;
+    /// The methods an overriding method overrides, qualified: one in each
+    /// base that declares it.
+    std::vector<std::string> overrides;
 
     /// Layout in bits: the size of a type or a field, a field's offset, its
     /// alignment, and the padding after a field or inside a type.

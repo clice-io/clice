@@ -112,7 +112,7 @@ markdown = '''
 **variable** `raw` · namespace `string_values`
 
 ```cpp
-constexpr char raw[] = "\377\376"
+constexpr char raw[] = "\xff\xfe"
 ```
 Value: `"\377\376"`
 '''
@@ -128,6 +128,28 @@ constexpr unsigned char table[] = {0, 10, 20}
 Value: `{0, 10, 20}`
 '''
 range = "constexpr unsigned char ⟦table⟧[] = {0, 10, 20};"
+
+[answers.untyped_pointer.hover]
+markdown = '''
+**variable** `opaque` · namespace `string_values`
+
+```cpp
+constexpr const void *opaque = u"\U0001F600"
+```
+Value: `u"😀"`
+'''
+range = 'constexpr const void* ⟦opaque⟧ = u"\U0001F600";'
+
+[answers.utf8_text.hover]
+markdown = '''
+**variable** `greeting` · namespace `string_values`
+
+```cpp
+const char *greeting = "你好，世界"
+```
+Value: `"你好，世界"`
+'''
+range = 'const char* ⟦greeting⟧ = "你好，世界";'
 
 [answers.whole_double.hover]
 markdown = '''
