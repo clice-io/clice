@@ -661,9 +661,10 @@ struct FileScanner {
 
 /// The scan from the build's units, wave by wave — breadth first, so a
 /// header takes its context from an includer nearest a unit, the same one
-/// every run. A file reached for the first time starts its read and lex
-/// on the thread pool at once, overlapping the rest of its wave's
-/// recording, unless the quick scans still pin its bytes.
+/// every run. A file reached for the first time gets a read-and-lex task
+/// unless the quick scans still pin its bytes. A kota::queue task starts
+/// when awaited: a wave's reads run together on the thread pool, after
+/// the previous wave has recorded.
 struct FullScan {
     /// The files one wave records, in the order they were reached: the
     /// units under every command they compile with, a header under the
@@ -765,7 +766,7 @@ struct FullScan {
             tasks.push_back(kota::queue(
                 [dir = entry.getKey().str()]() -> Listed { return {dir, vfs::list(dir)}; }));
         }
-        LOG_INFO("Launched {} dir cache tasks (running in background)", tasks.size());
+        LOG_INFO("Queued {} directory listings", tasks.size());
         return tasks;
     }
 
@@ -794,8 +795,7 @@ struct FullScan {
         // probe — N groups often yield just 1-2 subprocess calls.
         cdb.warm(graph.groups());
 
-        // The listings run beside the first wave's reads; the first
-        // recording is their first consumer.
+        // The first recording reads the listings: they are awaited first.
         auto listings = list_directories();
         Wave wave;
         for(auto& [fid, contexts]: unit_contexts) {
@@ -839,7 +839,7 @@ struct FullScan {
                 }
             }
 
-            LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms | next={} prefetch={}",
+            LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms | next={} reads={}",
                      report.waves,
                      wave.files.size(),
                      p1,
