@@ -175,41 +175,24 @@ void add_summary(markup::Document& output,
 
 void add_parameters(markup::Document& output,
                     llvm::StringRef title,
-                    llvm::ArrayRef<display::Param> signature,
                     llvm::ArrayRef<Documentation::Param> documented) {
-    if(signature.empty() && documented.empty()) {
+    if(documented.empty()) {
         return;
     }
     output.add_paragraph().append_text(title);
     auto& list = output.add_bullet_list();
-    llvm::SmallVector<bool> shown(documented.size());
-    for(const auto& param: signature) {
-        auto& entry = list.add_item().add_paragraph().append_code(llvm::to_string(param));
-        // Each entry documents one parameter: declarations may give one name
-        // to two of them.
-        for(auto [index, described]: llvm::enumerate(documented)) {
-            if(!shown[index] && (llvm::is_contained(param.written, described.name) ||
-                                 (param.name && described.name == *param.name))) {
-                shown[index] = true;
-                describe(entry, described.direction, described.text);
-                break;
-            }
-        }
-    }
-    for(auto [index, param]: llvm::enumerate(documented)) {
-        if(!shown[index]) {
-            describe(list.add_item().add_paragraph().append_code(param.name),
-                     param.direction,
-                     param.text);
-        }
+    for(const auto& param: documented) {
+        describe(list.add_item().add_paragraph().append_code(param.name),
+                 param.direction,
+                 param.text);
     }
 }
 
 auto present(const Documentation& documentation) -> markup::Document {
     markup::Document output;
     add_summary(output, documentation, std::nullopt);
-    add_parameters(output, "Template parameters: ", {}, documentation.template_params);
-    add_parameters(output, "Parameters: ", {}, documentation.params);
+    add_parameters(output, "Template parameters: ", documentation.template_params);
+    add_parameters(output, "Parameters: ", documentation.params);
     if(!documentation.returns.empty()) {
         output.add_paragraph().append_text("Returns: ").append_markdown(documentation.returns);
     }

@@ -13,15 +13,14 @@ SymbolKind SymbolKind::from(const clang::Decl* decl) {
         return SymbolKind::Namespace;
     } else if(llvm::isa<clang::TypedefNameDecl,
                         clang::TemplateTypeParmDecl,
-                        clang::TemplateTemplateParmDecl,
-                        clang::UnresolvedUsingTypenameDecl>(decl)) {
+                        clang::TemplateTemplateParmDecl>(decl)) {
         return SymbolKind::Type;
     } else if(auto TD = llvm::dyn_cast<clang::TagDecl>(decl)) {
         return TD->isEnum()     ? SymbolKind::Enum
                : TD->isStruct() ? SymbolKind::Struct
                : TD->isUnion()  ? SymbolKind::Union
                                 : SymbolKind::Class;
-    } else if(llvm::isa<clang::FieldDecl, clang::IndirectFieldDecl, clang::MSPropertyDecl>(decl)) {
+    } else if(llvm::isa<clang::FieldDecl, clang::MSPropertyDecl>(decl)) {
         return SymbolKind::Field;
     } else if(llvm::isa<clang::EnumConstantDecl>(decl)) {
         return SymbolKind::EnumMember;

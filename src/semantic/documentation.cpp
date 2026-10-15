@@ -7,6 +7,7 @@ module clice;
 import :compile.compilation;
 import :semantic.decls;
 import :semantic.documentation;
+import :support.text;
 import :syntax.doc_comment;
 import :syntax.documentation;
 import :syntax.lexical_scan;
@@ -24,12 +25,18 @@ std::pair<llvm::StringRef, llvm::ArrayRef<LexicalInfo::Comment>>
         return {};
     }
     /// The declaration's range starts after the attributes leading it, whose
-    /// arguments may hold anything, as a `;` in a deprecation message.
+    /// arguments may hold anything, as a `;` in a deprecation message. One
+    /// `#pragma clang attribute` applies is written on the pragma's line.
     auto& sources = decl->getASTContext().getSourceManager();
     for(const auto* attr: decl->attrs()) {
         auto begin = attr->getRange().getBegin();
-        if(!attr->isImplicit() && !attr->isInherited() && begin.isValid() &&
-           sources.isBeforeInTranslationUnit(begin, range.getBegin())) {
+        if(attr->isImplicit() || attr->isInherited() || begin.isInvalid() ||
+           !sources.isBeforeInTranslationUnit(begin, range.getBegin())) {
+            continue;
+        }
+        auto [file, offset] = sources.getDecomposedExpansionLoc(begin);
+        auto content = sources.getBufferData(file);
+        if(!content.substr(line_begin(content, offset)).ltrim(" \t").starts_with("#")) {
             range.setBegin(begin);
         }
     }

@@ -1,6 +1,6 @@
 // A function's card at its uses: through a pointer, a call, a call before
-// the definition, a call taking a default template argument, and a call
-// leaving default arguments out.
+// the definition, a call taking a default template argument, a call leaving
+// default arguments out, and a member defined out of line.
 
 namespace address_use {
 void schedule(long) {}
@@ -36,4 +36,14 @@ int compute(int a, int b = 10, int c = 20);
 
 int result = comp§(call_site)ute(1);
 
+}
+
+namespace out_of_line {
+struct Buffer {
+    using size_type = unsigned long;
+    size_type size() const;
+};
+Buffer::size_type Buffer::§(out_of_line_definition)size() const {
+    return 0;
+}
 }

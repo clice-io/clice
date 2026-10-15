@@ -81,3 +81,12 @@ Type: `int`
 Value: `99 (0x63)`
 '''
 range = "auto integer = ⟦99⟧;"
+
+[answers.unevaluated_string.hover]
+markdown = '''
+**literal** `"int is four bytes"`
+
+Length: 17
+Size: 18 bytes
+'''
+range = 'static_assert(sizeof(int) == 4, ⟦"int is four bytes"⟧);'

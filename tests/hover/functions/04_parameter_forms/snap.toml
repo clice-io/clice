@@ -8,6 +8,37 @@ int attempt(int)
 '''
 range = "void retry(int ⟦attempt⟧(int));"
 
+[answers.noexcept_function_type.hover]
+markdown = '''
+**parameter** `attempt` · function `function_type::retry_quietly`
+
+```cpp
+int attempt(int) noexcept
+```
+'''
+range = "void retry_quietly(int ⟦attempt⟧(int) noexcept);"
+
+[answers.returns_function_pointer.hover]
+markdown = '''
+**parameter** `handler` · function `function_type::install`
+
+```cpp
+void (*handler(int))(double)
+```
+'''
+range = "void install(void (*⟦handler⟧(int))(double));"
+
+[answers.alias_function_type.hover]
+markdown = '''
+**parameter** `callback` · function `function_type::subscribe`
+
+```cpp
+Callback callback
+```
+`Callback` is `void (int)`
+'''
+range = "void subscribe(Callback ⟦callback⟧);"
+
 [answers.explicit_object.hover]
 markdown = '''
 **parameter** `self` · method `explicit_object::Widget::resize`

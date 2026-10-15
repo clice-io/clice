@@ -27,3 +27,23 @@ Undeclared member
 ```
 '''
 range = "Undeclared ⟦member⟧;"
+
+[answers.broken_default.hover]
+markdown = '''
+**parameter** `delay` · function `reconnect`
+
+```cpp
+int delay
+```
+'''
+range = "void reconnect(int ⟦delay⟧ = undeclared_delay);"
+
+[answers.broken_initializer.hover]
+markdown = '''
+**field** `ceiling` · struct `Limits`
+
+```cpp
+int ceiling
+```
+'''
+range = "int ⟦ceiling⟧ = undeclared_ceiling;"

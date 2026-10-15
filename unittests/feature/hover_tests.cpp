@@ -323,7 +323,6 @@ ZEST_CASE(structured_no_crash) {
              hi.name = "x";
              hi.kind = SymbolKind::Variable;
              hi.definition = "auto [x] = 1";
-             hi.type = "NULL TYPE";
          }},
         // Don't crash on invalid decl with invalid init expr; show it as
         // written, not as the `int abc` clang recovers.
@@ -436,7 +435,7 @@ ZEST_CASE(spaceship_doc_no_crash) {
 
 ZEST_CASE(parameter_defaults) {
     // A parameter's value is the caller's: its default shows in its
-    // declaration alone, and one that does not compile not at all.
+    // declaration alone, as written, whether it compiles or not.
     run_info(R"cpp(
         // error-ok testing behavior on invalid decl
         class Foo {};
@@ -444,6 +443,7 @@ ZEST_CASE(parameter_defaults) {
         )cpp");
     ZASSERT(info);
     ZEXPECT(!info->value.has_value());
+    ZEXPECT(info->definition == "Foo param = nullptr");
 
     run_info(R"cpp(
         class Foo {};

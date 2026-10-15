@@ -3,7 +3,7 @@
   "topic": "hover",
   "subtopic": "aliases",
   "title": "Type aliases",
-  "summary": "A type spelled through an alias shows what it stands for, as `Alias (aka int)`",
+  "summary": "A type spelled through an alias shows what it stands for, as \"`Alias` is `int`\"",
   "prose": "With `show_aka = false` the card keeps the alias alone.",
   "status": "supported",
   "issues": [],

@@ -726,12 +726,13 @@ auto quoted(const clang::ASTContext& context,
         text = "L";
     }
     text += '"';
-    bool narrow = context.getTypeSize(element) == 8;
-    for(auto [index, c]: llvm::enumerate(characters)) {
+    auto width = context.getTypeSize(element);
+    for(std::size_t index = 0; index < characters.size(); index += 1) {
         if(index == limit) {
             text += "...";
             break;
         }
+        auto c = characters[index];
         switch(c) {
             case '"': text += R"(\")"; continue;
             case '\\': text += R"(\\)"; continue;
@@ -739,18 +740,50 @@ auto quoted(const clang::ASTContext& context,
             case '\t': text += R"(\t)"; continue;
             default: break;
         }
-        if(c < 0x20 || c == 0x7f) {
-            text += R"(\x)";
-            text += llvm::utohexstr(c, /*LowerCase=*/true, /*Width=*/2);
-        } else if(narrow) {
-            // UTF-8 code units pass through as the bytes they are.
-            text += static_cast<char>(c);
-        } else {
-            std::array<char, 4> buffer;
-            char* end = buffer.data();
-            if(llvm::ConvertCodePointToUTF8(c, end)) {
-                text.append(buffer.data(), end);
+        // Octal, three digits at most: a hex escape would run on into a hex
+        // digit after it.
+        auto escape = [&] {
+            text += '\\';
+            for(auto shift: {6, 3, 0}) {
+                text += static_cast<char>('0' + ((c >> shift) & 7));
             }
+        };
+        if(c < 0x20 || c == 0x7f) {
+            escape();
+            continue;
+        }
+        if(width == 8) {
+            /// A UTF-8 sequence passes through as the bytes it is; any other
+            /// byte past ASCII is escaped.
+            auto length = llvm::getNumBytesForUTF8(static_cast<llvm::UTF8>(c));
+            std::array<llvm::UTF8, 4> sequence{};
+            if(length > sequence.size() || index + length > characters.size()) {
+                escape();
+                continue;
+            }
+            for(unsigned offset = 0; offset < length; offset += 1) {
+                sequence[offset] = static_cast<llvm::UTF8>(characters[index + offset]);
+            }
+            if(!llvm::isLegalUTF8Sequence(sequence.data(), sequence.data() + length)) {
+                escape();
+                continue;
+            }
+            text.append(reinterpret_cast<const char*>(sequence.data()), length);
+            index += length - 1;
+            continue;
+        }
+        if(width == 16 && c >= 0xD800 && c < 0xDC00 && index + 1 < characters.size() &&
+           characters[index + 1] >= 0xDC00 && characters[index + 1] < 0xE000) {
+            c = 0x10000 + ((c - 0xD800) << 10) + (characters[index + 1] - 0xDC00);
+            index += 1;
+        }
+        std::array<char, 4> buffer;
+        char* end = buffer.data();
+        if(llvm::ConvertCodePointToUTF8(c, end)) {
+            text.append(buffer.data(), end);
+        } else {
+            text += c > 0xFFFF ? "\\U" : "\\u";
+            text += llvm::utohexstr(c, /*LowerCase=*/true, /*Width=*/c > 0xFFFF ? 8 : 4);
         }
     }
     text += '"';
@@ -764,8 +797,11 @@ auto string_value(const clang::ASTContext& context,
                   const clang::APValue& value,
                   clang::QualType type) -> std::optional<std::string> {
     if(value.isArray()) {
+        /// `signed char` and `unsigned char` (`std::uint8_t`) hold bytes.
         const auto* array = context.getAsArrayType(type);
-        if(!array || !array->getElementType()->isAnyCharacterType()) {
+        if(!array || !array->getElementType()->isAnyCharacterType() ||
+           array->getElementType()->isSpecificBuiltinType(clang::BuiltinType::SChar) ||
+           array->getElementType()->isSpecificBuiltinType(clang::BuiltinType::UChar)) {
             return std::nullopt;
         }
         llvm::SmallVector<std::uint32_t> characters;
@@ -801,19 +837,31 @@ auto string_value(const clang::ASTContext& context,
 }
 
 /// The shortest text that reads back as the same value: `3.14` rather than
-/// `3.1400000000000001`, the digits a double holds.
+/// `3.1400000000000001`, the digits a double holds. APFloat writes too few
+/// digits for a whole number in exponent form (`1.5E+3` for 1500), so one
+/// without the exponent is taken if more digits give it.
 auto float_text(const llvm::APFloat& value) -> std::string {
     llvm::SmallString<32> text;
+    std::string shortest;
     if(value.isFinite()) {
         for(unsigned precision = 1; precision < 40; precision += 1) {
             text.clear();
             value.toString(text, precision);
             llvm::APFloat read(value.getSemantics());
             llvm::cantFail(read.convertFromString(text, llvm::APFloat::rmNearestTiesToEven));
-            if(read.bitwiseIsEqual(value)) {
+            if(!read.bitwiseIsEqual(value)) {
+                continue;
+            }
+            if(!text.contains('E')) {
                 return text.str().str();
             }
+            if(shortest.empty()) {
+                shortest = text.str();
+            }
         }
+    }
+    if(!shortest.empty()) {
+        return shortest;
     }
     text.clear();
     value.toString(text);
@@ -1036,9 +1084,6 @@ auto param(const clang::ParmVarDecl* param, const Options& options) -> Param {
     auto named = decls::named_parameters(*param);
     if(!named.empty()) {
         result.name = named.front()->getName().str();
-        for(const auto* declaration: named) {
-            result.written.push_back(declaration->getName().str());
-        }
     }
     result.default_value = default_argument(param, options);
     result.declaration = parameter(*param, result.name.value_or(""), options);
@@ -1056,22 +1101,14 @@ auto parameter(const clang::ParmVarDecl& param, llvm::StringRef name, const Opti
         declarator = "...";
     }
     declarator += name;
-    std::string text;
-    /// A parameter of function type, `int callback(int)`: clang would put
-    /// the name in parentheses, `int (callback)(int)`.
-    if(const auto* function = written->getAs<clang::FunctionProtoType>();
-       function && !name.empty()) {
-        auto& context = param.getASTContext();
-        text = type(context, function->getReturnType(), options).text + " " + declarator + "(";
-        llvm::raw_string_ostream os(text);
-        llvm::interleave(
-            function->getParamTypes(),
-            os,
-            [&](clang::QualType param_type) { os << type(context, param_type, options).text; },
-            ", ");
-        os << (function->isVariadic() ? (function->getNumParams() ? ", ...)" : "...)") : ")");
-    } else {
-        text = type(param.getASTContext(), written, options, declarator).text;
+    auto text = type(param.getASTContext(), written, options, declarator).text;
+    /// A parameter of function type, `int callback(int)`: clang puts the
+    /// name in parentheses, `int (callback)(int)`.
+    if(written->getAs<clang::FunctionProtoType>() && !name.empty()) {
+        auto parenthesized = "(" + declarator + ")";
+        if(auto at = text.find(parenthesized); at != std::string::npos) {
+            text.replace(at, parenthesized.size(), declarator);
+        }
     }
     if(auto value = default_argument(&param, options)) {
         text += " = " + *value;
@@ -1536,9 +1573,15 @@ void print_name(std::string& text,
         clang::printTemplateArgumentList(name_os, args->asArray(), policy);
     }
 
-    if(printed != name) {
-        if(auto at = text.find(printed); at != std::string::npos) {
+    if(printed == name) {
+        return;
+    }
+    /// The name, not a return type it begins (`Buffer::size_type Buffer::size()`).
+    for(auto at = text.find(printed); at != std::string::npos; at = text.find(printed, at + 1)) {
+        auto end = at + printed.size();
+        if(end == text.size() || !clang::isAsciiIdentifierContinue(text[end])) {
             text.replace(at, printed.size(), name);
+            return;
         }
     }
 }

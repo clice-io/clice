@@ -41,3 +41,14 @@ std::size_t
 `std::size_t` is `unsigned long`
 '''
 range = "⟦auto⟧ size = sizeof(names);"
+
+[answers.difference_type.hover]
+markdown = '''
+**auto**
+
+```cpp
+std::ptrdiff_t
+```
+`std::ptrdiff_t` is `long`
+'''
+range = "⟦auto⟧ distance = &names - &names;"

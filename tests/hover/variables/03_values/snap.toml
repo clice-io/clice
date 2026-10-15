@@ -84,3 +84,58 @@ inline int shared = 4
 Value: `4`
 '''
 range = "inline int ⟦shared⟧ = 4;"
+
+[answers.control_characters.hover]
+markdown = '''
+**variable** `bytes` · namespace `string_values`
+
+```cpp
+constexpr char bytes[] = {1, 'a', 0}
+```
+Value: `"\001a"`
+'''
+range = "constexpr char ⟦bytes⟧[] = {1, 'a', 0};"
+
+[answers.surrogate_pair.hover]
+markdown = '''
+**variable** `face` · namespace `string_values`
+
+```cpp
+constexpr char16_t face[] = u"\U0001F600!"
+```
+Value: `u"😀!"`
+'''
+range = 'constexpr char16_t ⟦face⟧[] = u"\U0001F600!";'
+
+[answers.invalid_utf8.hover]
+markdown = '''
+**variable** `raw` · namespace `string_values`
+
+```cpp
+constexpr char raw[] = "\377\376"
+```
+Value: `"\377\376"`
+'''
+range = 'constexpr char ⟦raw⟧[] = "\xff\xfe";'
+
+[answers.byte_array.hover]
+markdown = '''
+**variable** `table` · namespace `string_values`
+
+```cpp
+constexpr unsigned char table[] = {0, 10, 20}
+```
+Value: `{0, 10, 20}`
+'''
+range = "constexpr unsigned char ⟦table⟧[] = {0, 10, 20};"
+
+[answers.whole_double.hover]
+markdown = '''
+**variable** `total` · namespace `string_values`
+
+```cpp
+constexpr double total = 1500.0
+```
+Value: `1500`
+'''
+range = "constexpr double ⟦total⟧ = 1500.0;"

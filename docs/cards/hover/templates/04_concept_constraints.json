@@ -100,7 +100,7 @@
           "marker": "concept_ref",
           "value": {
             "hover": {
-              "markdown": "**concept** `Addable` · namespace `concept_constraints`\n\n```cpp\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```",
+              "markdown": "**concept** `Addable` · namespace `concept_constraints`\n\n```cpp\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```\nValue: `true`",
               "range": {
                 "$place": "auto flag = ⟦Addable⟧<int>;",
                 "path": "main.cpp",

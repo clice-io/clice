@@ -79,7 +79,7 @@ range = "Mode current = ⟦Write⟧;"
 
 [answers.anon_enumerator.hover]
 markdown = '''
-**enumerator** `Complete` · enum `(anonymous enum)`
+**enumerator** `Complete` · unnamed enum in namespace `anonymous_enumerator`
 
 ```cpp
 Complete = 8
@@ -126,7 +126,7 @@ range = "⟦protocol⟧::Client::connect();"
 
 [answers.anon_struct_field.hover]
 markdown = '''
-**field** `total` · struct `(anonymous struct)`
+**field** `total` · unnamed struct in namespace `anonymous_structure`
 
 ```cpp
 long total
@@ -138,7 +138,7 @@ range = "metrics.⟦total⟧++;"
 
 [answers.anon_union_field.hover]
 markdown = '''
-**field** `count` · union `(anonymous union)`
+**field** `count` · unnamed union in struct `anonymous_union::Result`
 
 ```cpp
 long count
@@ -187,9 +187,6 @@ template <> struct Wrapper<Wrapper<Wrapper<long>>> {}
 Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Wrapper⟧<Wrapper<Wrapper<long>>> value; @+0"
-
-[answers.forward_struct_value]
-wrong = "a type's card shows the value of the cast it is named in"
 
 [answers.forward_struct_value.hover]
 markdown = '''

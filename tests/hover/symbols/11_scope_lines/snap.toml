@@ -89,7 +89,7 @@ range = "int ⟦brushes⟧ = 0;"
 
 [answers.anon_struct_field.hover]
 markdown = '''
-**field** `mode` · struct `(anonymous struct)`
+**field** `mode` · unnamed struct in namespace `studio::(anonymous)`
 
 ```cpp
 char mode

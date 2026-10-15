@@ -41,7 +41,7 @@ tests/hover/symbols/02_scopes
 
 **访问权限**
 
-成员的定义会显示其 `public`、`protected` 或 `private` 访问权限
+成员的访问权限为 `protected` 或 `private` 时，卡片标题会标明该访问权限
 
 ```case
 tests/hover/symbols/03_access
@@ -221,7 +221,7 @@ tests/hover/members/01_type_members
 
 **类型别名**
 
-以别名表示的类型会显示该别名所代表的类型，格式为 `Alias (aka int)`
+以别名表示的类型会显示该别名所代表的类型，格式为“`Alias` is `int`”
 
 设置 `show_aka = false` 后，卡片仅保留别名。
 
@@ -247,7 +247,7 @@ tests/hover/aliases/02_alias_targets
 
 **C 中匿名结构体的 typedef**
 
-在 C 中，仅通过 typedef 命名的结构体会以该 typedef 的名称显示，其定义按源码写法显示
+在 C 中，仅通过 typedef 命名的结构体会以该 typedef 的名称显示，格式为 `typedef struct { ... } Point`
 
 ```case
 tests/hover/aliases/03_c_anonymous_structs
@@ -465,7 +465,7 @@ tests/hover/arguments/04_record_arguments
 
 ## 表达式
 
-字面量会显示其类型和值，`this` 会显示它所指向的类型。
+数值会显示其类型和值，字符串会显示其类型、长度和大小，`this` 会显示它所指向的类型。
 
 <!-- BEGIN GENERATED ITEMS: hover/expressions -->
 
@@ -903,7 +903,7 @@ tests/hover/attributes/01_attributes
 
 **无内容可显示**
 
-关键字或空代码块内部不会显示卡片
+内置类型、`const` 或 `virtual` 这类关键字，以及空代码块内部，都不会显示卡片
 
 ```case
 tests/hover/no_card/01_meaningless_tokens

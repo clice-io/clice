@@ -3,7 +3,7 @@
   "topic": "hover",
   "subtopic": "no_card",
   "title": "Nothing to show",
-  "summary": "A keyword or the inside of an empty body shows no card",
+  "summary": "A builtin type, a keyword like `const` or `virtual`, or the inside of an empty body shows no card",
   "prose": "",
   "status": "supported",
   "issues": [],

@@ -1,3 +1,3 @@
 # Access
 
-A member's definition reads its `public`, `protected` or `private` access
+A member's title names its access when it is `protected` or `private`

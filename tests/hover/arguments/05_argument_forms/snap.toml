@@ -74,6 +74,26 @@ Passed as `distance` by const reference, converted to `double`
 '''
 range = "measure(⟦10⟧);"
 
+[answers.bool_literal_arg.hover]
+markdown = '''
+**literal** `true`
+
+Type: `bool`
+Value: `true`
+Passed as `enabled` by value
+'''
+range = "configure(⟦true⟧, nullptr);"
+
+[answers.null_pointer_arg.hover]
+markdown = '''
+**literal** `nullptr`
+
+Type: `std::nullptr_t`
+Value: `nullptr`
+Passed as `limit` by value
+'''
+range = "configure(true, ⟦nullptr⟧);"
+
 [answers.method_arg_default.hover]
 markdown = '''
 **variable** `level` · function `method_argument::run`

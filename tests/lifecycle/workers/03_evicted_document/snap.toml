@@ -1,6 +1,3 @@
-[test.hover]
-wrong = "a hover the index answers lacks the return type and parameters a compile shows"
-
 [test.hover.hover]
 markdown = '''
 **function** `unit_00`

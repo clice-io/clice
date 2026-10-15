@@ -41,7 +41,7 @@ tests/hover/symbols/02_scopes
 
 **Access**
 
-A member's definition reads its `public`, `protected` or `private` access
+A member's title names its access when it is `protected` or `private`
 
 ```case
 tests/hover/symbols/03_access
@@ -221,7 +221,7 @@ A type spelled through an alias shows what the alias stands for.
 
 **Type aliases**
 
-A type spelled through an alias shows what it stands for, as `Alias (aka int)`
+A type spelled through an alias shows what it stands for, as "`Alias` is `int`"
 
 With `show_aka = false` the card keeps the alias alone.
 
@@ -247,7 +247,7 @@ tests/hover/aliases/02_alias_targets
 
 **C anonymous struct typedefs**
 
-In C, a struct named only by its typedef shows under the typedef's name, its definition as written
+In C, a struct named only by its typedef shows under the typedef's name, as `typedef struct { ... } Point`
 
 ```case
 tests/hover/aliases/03_c_anonymous_structs
@@ -467,7 +467,7 @@ tests/hover/arguments/04_record_arguments
 
 ## Expressions
 
-A literal shows its type and value, and `this` the type it points to.
+A number shows its type and value, a string its type, length and size, and `this` the type it points to.
 
 <!-- BEGIN GENERATED ITEMS: hover/expressions -->
 
@@ -908,7 +908,7 @@ Where there is nothing worth a card, none appears.
 
 **Nothing to show**
 
-A keyword or the inside of an empty body shows no card
+A builtin type, a keyword like `const` or `virtual`, or the inside of an empty body shows no card
 
 ```case
 tests/hover/no_card/01_meaningless_tokens

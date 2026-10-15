@@ -270,7 +270,7 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 | ---------- | ------ | ------ |
 | `show_aka` | `bool` | `true` |
 
-显示类型的去糖形式，例如 `vector<int>::size_type (aka unsigned long)`。
+显示类型别名所代表的类型，例如“`size_type` is `unsigned long`”。
 
 </div>
 

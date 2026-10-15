@@ -114,7 +114,8 @@ ZEST_CASE(UnmarkedBlockLines) {
 ZEST_CASE(Javadoc) {
     ZEXPECT(text_of("/**\n * Brief.\n *\n *   indented\n */") == "Brief.\n\n  indented");
     ZEXPECT(text_of("/** Block comment documentation.\n *  Second line.\n */") ==
-            "Block comment documentation.\nSecond line.");
+            "Block comment documentation.\n Second line.");
+    ZEXPECT(text_of("/** Example:\n *\n *     int x = 42;\n */") == "Example:\n\n    int x = 42;");
 }
 
 ZEST_CASE(QtBlock) {

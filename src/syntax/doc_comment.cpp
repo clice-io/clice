@@ -181,8 +181,9 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
     struct Line {
         llvm::StringRef text;
 
-        /// The line a block comment opens on: its text starts after the
-        /// opener, at no column the lines below it are indented to.
+        /// The line an undecorated block comment opens on: its text starts
+        /// after the opener, at no column the lines below it are indented
+        /// to. Javadoc's ` * ` lines are measured from their star.
         bool opens_block = false;
     };
 
@@ -221,7 +222,7 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
                 line = line.ltrim();
                 line.consume_front("*");
             }
-            lines.push_back({.text = line.rtrim(), .opens_block = index == 0});
+            lines.push_back({.text = line.rtrim(), .opens_block = index == 0 && !decorated});
         }
     }
 

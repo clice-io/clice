@@ -49,5 +49,6 @@ markdown = '''
 template <typename T>
 concept Ordered = true
 ```
+Value: `true`
 '''
 range = "constexpr bool ordered_int = ⟦Ordered⟧<int>;"

@@ -1,0 +1,20 @@
+[answers.no_prototype.hover]
+markdown = '''
+**function** `legacy`
+
+```cpp
+int legacy()
+```
+'''
+range = "int ⟦legacy⟧();"
+
+[answers.typeof_return.hover]
+markdown = '''
+**function** `ratio`
+
+```cpp
+typeof(1.) ratio()
+```
+Type: `typeof (1.) ()` (aka `double ()`)
+'''
+range = "__typeof__(1.0) ⟦ratio⟧();"

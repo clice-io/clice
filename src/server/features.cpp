@@ -16,6 +16,7 @@ import :server.features;
 import :server.format;
 import :server.lsp_projection;
 import :server.query_commands;
+import :support.text;
 import :syntax.completion;
 import :syntax.include_resolver;
 import :syntax.scan;
@@ -612,9 +613,7 @@ Features::RawResult Features::hover(Ticket ticket,
     std::optional<LocalSourceRange> argument;
     if(offset) {
         llvm::StringRef text = session->text;
-        auto line_start = text.rfind('\n', *offset);
-        line_start = line_start == llvm::StringRef::npos ? 0 : line_start + 1;
-        if(text.substr(line_start).ltrim(" \t").starts_with("#")) {
+        if(text.substr(line_begin(text, *offset)).ltrim(" \t").starts_with("#")) {
             argument =
                 feature::find_directive_argument(text, *offset, &index_lang_options(*session));
         }

@@ -1,6 +1,6 @@
 // Argument cards past the plain cases: through a forwarding template, through a
-// converting constructor, at a literal and an expression, at a call that leaves
-// a default argument out.
+// converting constructor, at a literal and an expression, at `true` and
+// `nullptr`, at a call that leaves a default argument out.
 
 namespace forwarded_argument {
 struct Record {
@@ -58,6 +58,13 @@ namespace converted_literal {
 void measure(const double& distance);
 void run() {
     measure(§(converted_literal)10);
+}
+}
+
+namespace keyword_literals {
+void configure(bool enabled, const int* limit);
+void run() {
+    configure(§(bool_literal_arg)true, §(null_pointer_arg)nullptr);
 }
 }
 

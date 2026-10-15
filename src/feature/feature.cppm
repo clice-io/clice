@@ -174,12 +174,10 @@ void add_summary(markup::Document& output,
                  const Documentation& documentation,
                  std::optional<llvm::StringRef> attribute);
 
-/// Add a list of parameters under `title`: each of the `signature`'s with
-/// what the comment says of it, then the ones only the comment names;
-/// nothing when both are empty.
+/// Add the parameters a comment documents under `title`, each with what it
+/// says of it; nothing when it documents none.
 void add_parameters(markup::Document& output,
                     llvm::StringRef title,
-                    llvm::ArrayRef<display::Param> signature,
                     llvm::ArrayRef<Documentation::Param> documented);
 
 /// Add what a documentation says of the values a function returns or the
@@ -201,8 +199,8 @@ auto present(const Documentation& documentation) -> markup::Document;
 struct HoverOptions {
     KOTATSU_ANNOTATE(defaulted = true,
                      description =
-                         "Show the desugared form of a type, e.g. "
-                         "`vector<int>::size_type (aka unsigned long)`.")
+                         "Show what a type alias stands for, e.g. "
+                         "`size_type` is `unsigned long`.")
     <bool> show_aka = true;
 
     KOTATSU_ANNOTATE(defaulted = true,

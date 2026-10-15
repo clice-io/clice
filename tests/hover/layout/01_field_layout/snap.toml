@@ -1,3 +1,17 @@
+[default.class_layout.hover]
+markdown = '''
+**struct** `Frame`
+
+```cpp
+struct Frame {
+  char kind;
+  long sequence;
+}
+```
+Size: 16 bytes (7 bytes padding), alignment 8 bytes
+'''
+range = "struct ⟦Frame⟧ {"
+
 [default.plain_field.hover]
 markdown = '''
 **field** `kind` · struct `Frame`
@@ -45,6 +59,19 @@ Offset: 0 bytes and 1 bit
 Size: 1 bit (+30 bits padding), alignment 4 bytes
 '''
 range = "unsigned int ⟦last⟧ : 1;"
+
+["layout off".class_layout.hover]
+markdown = '''
+**struct** `Frame`
+
+```cpp
+struct Frame {
+  char kind;
+  long sequence;
+}
+```
+'''
+range = "struct ⟦Frame⟧ {"
 
 ["layout off".plain_field.hover]
 markdown = '''

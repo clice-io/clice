@@ -229,7 +229,7 @@
             "properties": {
                 "show_aka": {
                     "type": "boolean",
-                    "description": "Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.",
+                    "description": "Show what a type alias stands for, e.g. `size_type` is `unsigned long`.",
                     "default": true
                 },
                 "max_members": {

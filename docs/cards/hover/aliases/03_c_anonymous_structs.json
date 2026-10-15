@@ -3,7 +3,7 @@
   "topic": "hover",
   "subtopic": "aliases",
   "title": "C anonymous struct typedefs",
-  "summary": "In C, a struct named only by its typedef shows under the typedef's name, its definition as written",
+  "summary": "In C, a struct named only by its typedef shows under the typedef's name, as `typedef struct { ... } Point`",
   "prose": "",
   "status": "supported",
   "issues": [

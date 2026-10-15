@@ -1,7 +1,9 @@
 // Layout facts at the edges: tail padding, a union member (no offset), a
 // bitfield in bits, a bitfield after another member, an empty class, a member
-// of anonymous structs and unions (at its offset in the class around them),
-// an array and a function pointer field hovered right after their names.
+// of anonymous structs and unions (at its offset in the class around them)
+// and of anonymous unions outside a class, an array and a function pointer
+// field hovered right after their names, a polymorphic class (its vtable
+// pointer is no padding), a class with a virtual base (no padding told).
 
 namespace studio::detail {
 class Canvas {
@@ -41,4 +43,27 @@ struct Message {
 struct Buffers {
     int slots§(array_field_end)[4];
     void (*notify§(pointer_field_end))(int);
+};
+
+static union {
+    int §(namespace_union_member)raw;
+    float real;
+};
+
+int read_local() {
+    union {
+        int §(local_union_member)bits;
+        float value;
+    };
+    bits = 1;
+    return bits;
+}
+
+struct §(polymorphic)Shape {
+    virtual void draw();
+    char tag;
+};
+
+struct §(virtual_base)Shared : virtual Shape {
+    int id;
 };

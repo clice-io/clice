@@ -91,3 +91,51 @@ Offset: 16 bytes
 Size: 8 bytes, alignment 8 bytes
 '''
 range = "void (*⟦notify⟧)(int);"
+
+[answers.namespace_union_member.hover]
+markdown = '''
+**field** `raw`
+
+```cpp
+int raw
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "int ⟦raw⟧;"
+
+[answers.local_union_member.hover]
+markdown = '''
+**field** `bits` · function `read_local`
+
+```cpp
+int bits
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "int ⟦bits⟧;"
+
+[answers.polymorphic.hover]
+markdown = '''
+**struct** `Shape`
+
+```cpp
+struct Shape {
+  char tag;
+}
+```
+Size: 16 bytes (7 bytes padding), alignment 8 bytes
+'''
+range = "struct ⟦Shape⟧ {"
+
+[answers.virtual_base.hover]
+markdown = '''
+**struct** `Shared`
+
+```cpp
+struct Shared : virtual Shape {
+  int id;
+}
+```
+Size: 32 bytes, alignment 8 bytes
+'''
+range = "struct ⟦Shared⟧ : virtual Shape {"

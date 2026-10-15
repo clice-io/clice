@@ -270,7 +270,7 @@ The `[hover]` section controls how hover cards render.
 | ---------- | ------ | ------- |
 | `show_aka` | `bool` | `true`  |
 
-Show the desugared form of a type, e.g. `vector<int>::size_type (aka unsigned long)`.
+Show what a type alias stands for, e.g. `size_type` is `unsigned long`.
 
 </div>
 

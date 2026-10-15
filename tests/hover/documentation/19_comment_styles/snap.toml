@@ -71,3 +71,15 @@ int legacy_open(int minor)
 ```
 '''
 range = '[[deprecated("use kernel_open; it checks the minor")]] int ⟦legacy_open⟧(int minor);'
+
+[answers.under_pragma.hover]
+markdown = '''
+**function** `kernel_close`
+
+Closes the device.
+
+```cpp
+int kernel_close(int minor)
+```
+'''
+range = "int ⟦kernel_close⟧(int minor);"

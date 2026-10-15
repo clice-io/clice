@@ -97,10 +97,6 @@ struct Param {
     /// std::nullopt for unnamed parameters.
     std::optional<std::string> name;
 
-    /// The names its declarations write for it (decls::named_parameters), as
-    /// written: a documentation comment names it by one of them.
-    std::vector<std::string> written;
-
     /// std::nullopt if no default is provided.
     std::optional<std::string> default_value;
 

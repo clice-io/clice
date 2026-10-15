@@ -1,4 +1,4 @@
-struct Frame {
+struct §(class_layout)Frame {
     char ki§(plain_field)nd;
     long seque§(padded_field)nce;
 };

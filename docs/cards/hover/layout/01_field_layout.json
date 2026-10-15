@@ -13,6 +13,12 @@
       "text": "struct Frame {\n    char kind;\n    long sequence;\n};\n\nstruct Options {\n    unsigned int enabled : 1;\n    unsigned int last : 1;\n};\n",
       "markers": [
         {
+          "name": "class_layout",
+          "begin": 7,
+          "end": 7,
+          "range": false
+        },
+        {
           "name": "plain_field",
           "begin": 26,
           "end": 26,
@@ -43,6 +49,29 @@
     {
       "name": "default",
       "blocks": [
+        {
+          "label": "class_layout",
+          "marker": "class_layout",
+          "value": {
+            "hover": {
+              "markdown": "**struct** `Frame`\n\n```cpp\nstruct Frame {\n  char kind;\n  long sequence;\n}\n```\nSize: 16 bytes (7 bytes padding), alignment 8 bytes",
+              "range": {
+                "$place": "struct ⟦Frame⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
         {
           "label": "plain_field",
           "marker": "plain_field",
@@ -145,6 +174,29 @@
         }
       },
       "blocks": [
+        {
+          "label": "class_layout",
+          "marker": "class_layout",
+          "value": {
+            "hover": {
+              "markdown": "**struct** `Frame`\n\n```cpp\nstruct Frame {\n  char kind;\n  long sequence;\n}\n```",
+              "range": {
+                "$place": "struct ⟦Frame⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 12
+                  }
+                }
+              }
+            }
+          }
+        },
         {
           "label": "plain_field",
           "marker": "plain_field",
