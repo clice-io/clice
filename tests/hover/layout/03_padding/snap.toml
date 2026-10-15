@@ -67,3 +67,27 @@ Offset: 16 bytes
 Size: 8 bytes, alignment 8 bytes
 '''
 range = "long ⟦count⟧;"
+
+[answers.array_field_end.hover]
+markdown = '''
+**field** `slots` · struct `Buffers`
+
+```cpp
+int slots[4]
+```
+Offset: 0 bytes
+Size: 16 bytes, alignment 4 bytes
+'''
+range = "int ⟦slots⟧[4];"
+
+[answers.pointer_field_end.hover]
+markdown = '''
+**field** `notify` · struct `Buffers`
+
+```cpp
+void (*notify)(int)
+```
+Offset: 16 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "void (*⟦notify⟧)(int);"

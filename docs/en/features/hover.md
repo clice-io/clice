@@ -61,11 +61,11 @@ tests/hover/symbols/04_definitions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2474 -->
+<!-- BEGIN CAPABILITY: supported clangd#2474 -->
 
 **Virtual methods**
 
-A method's definition reads `virtual`, `override` or `final` as written, so an override written without them gives no sign it is virtual
+A method's definition reads `virtual`, `override` or `final` as written, and an override names the method it overrides, the keyword written or not
 
 ```case
 tests/hover/symbols/05_virtual_modifiers
@@ -123,7 +123,7 @@ A function's card shows its signature.
 
 **Function signatures**
 
-A function's card lists its return type and each parameter with its name and default
+A function's card shows its signature, each parameter with its name and default
 
 ```case
 tests/hover/functions/01_signatures
@@ -231,11 +231,11 @@ tests/hover/aliases/01_aka
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2020 -->
+<!-- BEGIN CAPABILITY: supported clangd#2020 -->
 
 **Aliases of structs**
 
-An alias names the struct it stands for, but does not show its members yet
+An alias names the struct it stands for and shows its members
 
 ```case
 tests/hover/aliases/02_alias_targets
@@ -243,14 +243,11 @@ tests/hover/aliases/02_alias_targets
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2219 -->
+<!-- BEGIN CAPABILITY: supported clangd#2219 -->
 
 **C anonymous struct typedefs**
 
-In C, a struct named only by its typedef shows under the typedef's name
-
-The definition line still spells it `struct Point`, a name C does not
-know for it.
+In C, a struct named only by its typedef shows under the typedef's name, its definition as written
 
 ```case
 tests/hover/aliases/03_c_anonymous_structs
@@ -340,11 +337,11 @@ tests/hover/templates/01_template_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#230 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Template arguments**
 
-A use of a template shows the types it is instantiated with, but not which parameter each argument binds yet
+A use of a template shows the arguments it is instantiated with
 
 ```case
 tests/hover/templates/02_instantiation_arguments
@@ -352,11 +349,11 @@ tests/hover/templates/02_instantiation_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#435 -->
+<!-- BEGIN CAPABILITY: supported clangd#435 -->
 
 **Deduced class arguments**
 
-A variable whose class template arguments are deduced shows them, while the class name beside it shows the template alone
+A declaration that deduces its class template arguments shows them, at the class name and at the variable
 
 ```case
 tests/hover/templates/03_deduced_class_arguments
@@ -364,11 +361,11 @@ tests/hover/templates/03_deduced_class_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Concept constraints**
 
-A concept and a constrained parameter show the constraint, but an `Addable auto` placeholder shows only the deduced type
+A concept and a constrained parameter show the constraint; an `Addable auto` placeholder shows the type it deduces
 
 ```case
 tests/hover/templates/04_concept_constraints
@@ -390,32 +387,22 @@ Fields and classes show their size, alignment and padding as the compiler lays t
 
 A field shows its offset, size and alignment, and the padding after it
 
+`layout` is on by default; `false` leaves these facts out, a class's size too.
+
 ```case
 tests/hover/layout/01_field_layout
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1763 -->
+<!-- BEGIN CAPABILITY: supported clangd#1763 -->
 
 **Type layout**
 
-A class shows its size and alignment, but not how much of it is padding yet
+A class shows its size and alignment, and how much of the size is padding
 
 ```case
 tests/hover/layout/02_type_layout
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#1771 -->
-
-**Vtable slots**
-
-A virtual method does not show its slot in the vtable yet
-
-```case
-tests/hover/layout/03_vtable_slots
 ```
 
 <!-- END CAPABILITY -->
@@ -464,11 +451,11 @@ tests/hover/arguments/03_conversions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1622 -->
+<!-- BEGIN CAPABILITY: supported clangd#1622 -->
 
 **Record arguments**
 
-A record passed to a call that is evaluated at compile time shows the call's value as its own
+A record passed to a call evaluated at compile time does not take the call's value as its own
 
 ```case
 tests/hover/arguments/04_record_arguments
@@ -484,13 +471,13 @@ A literal shows its type and value, and `this` the type it points to.
 
 <!-- BEGIN GENERATED ITEMS: hover/expressions -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1016 clangd#1669 -->
+<!-- BEGIN CAPABILITY: supported clangd#1016 clangd#1669 -->
 
 **Literals**
 
-A string literal shows its type and size, while a number shows nothing yet
+A number shows its type and value, a string its type, length and size
 
-The size counts the terminating null; the string's length is not shown.
+The length leaves the terminating null out; the size counts it.
 
 ```case
 tests/hover/expressions/01_literals
@@ -518,11 +505,11 @@ A macro shows its `#define`, and a use of it what it expands to.
 
 <!-- BEGIN GENERATED ITEMS: hover/macros -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2642 -->
+<!-- BEGIN CAPABILITY: supported clangd#2642 -->
 
 **Use before definition**
 
-A macro name used above its own `#define` has no card, while a use below it does
+A macro name used above its own `#define` shows that definition and the line it is on
 
 ```case
 tests/hover/macros/01_use_before_definition
@@ -777,7 +764,7 @@ tests/hover/documentation/13_latex_formulas
 
 **Doxygen commands**
 
-`@brief` heads the card, and each `@param` and `@return` shows beside what it describes
+`@brief` heads the card, and each `@param`, `@return` and `@retval` shows beside what it describes
 
 ```case
 tests/hover/documentation/18_doxygen_commands
@@ -909,18 +896,6 @@ tests/hover/attributes/01_attributes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
-
-**Keywords**
-
-Hovering a keyword such as `const` or `virtual` shows nothing yet
-
-```case
-tests/hover/attributes/02_keywords
-```
-
-<!-- END CAPABILITY -->
-
 <!-- END GENERATED ITEMS -->
 
 ## Nothing to Show
@@ -933,7 +908,7 @@ Where there is nothing worth a card, none appears.
 
 **Nothing to show**
 
-A builtin type keyword or the inside of an empty body shows no card
+A keyword or the inside of an empty body shows no card
 
 ```case
 tests/hover/no_card/01_meaningless_tokens

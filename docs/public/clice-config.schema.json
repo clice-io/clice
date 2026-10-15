@@ -48,7 +48,8 @@
             "description": "The [hover] section: hover rendering options.",
             "default": {
                 "show_aka": true,
-                "max_members": 20
+                "max_members": 20,
+                "layout": true
             }
         },
         "inlay_hints": {
@@ -237,6 +238,11 @@
                     "maximum": 4294967295,
                     "description": "Maximum number of members the definition of a hovered class or enum lists: data members and member types, or enumerators; member functions are left out. `0` shows the declaration alone.",
                     "default": 20
+                },
+                "layout": {
+                    "type": "boolean",
+                    "description": "Show how the compiler lays out a class or a field wherever it is hovered: size, alignment, a field's offset, and the padding.",
+                    "default": true
                 }
             },
             "additionalProperties": false

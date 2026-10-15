@@ -3,7 +3,7 @@
   "topic": "hover",
   "subtopic": "aliases",
   "title": "Aliases of structs",
-  "summary": "An alias names the struct it stands for, but does not show its members yet",
+  "summary": "An alias names the struct it stands for and shows its members",
   "prose": "",
   "status": "supported",
   "issues": [

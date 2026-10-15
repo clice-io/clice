@@ -61,11 +61,11 @@ tests/hover/symbols/04_definitions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2474 -->
+<!-- BEGIN CAPABILITY: supported clangd#2474 -->
 
 **虚函数**
 
-成员函数的定义按源码显示 `virtual`、`override` 或 `final`，因此重写的成员函数若未写出这些关键字，就不会显示出它是虚函数
+成员函数的定义按源码显示 `virtual`、`override` 或 `final`；重写的成员函数无论是否写出这些关键字，都会标明它重写的是哪个函数
 
 ```case
 tests/hover/symbols/05_virtual_modifiers
@@ -115,7 +115,7 @@ tests/hover/symbols/14_header_symbols
 
 ## 函数
 
-函数卡片列出返回类型和参数。
+函数卡片显示其签名。
 
 <!-- BEGIN GENERATED ITEMS: hover/functions -->
 
@@ -123,7 +123,7 @@ tests/hover/symbols/14_header_symbols
 
 **函数签名**
 
-函数卡片列出返回类型和各个参数，并显示参数的名称与默认值
+函数卡片显示其签名，各个参数均带有名称与默认值
 
 ```case
 tests/hover/functions/01_signatures
@@ -231,11 +231,11 @@ tests/hover/aliases/01_aka
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2020 -->
+<!-- BEGIN CAPABILITY: supported clangd#2020 -->
 
 **结构体别名**
 
-别名会显示其所代表的结构体名称，但目前尚不显示结构体的成员
+别名会显示其所代表的结构体名称及该结构体的成员
 
 ```case
 tests/hover/aliases/02_alias_targets
@@ -243,13 +243,11 @@ tests/hover/aliases/02_alias_targets
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2219 -->
+<!-- BEGIN CAPABILITY: supported clangd#2219 -->
 
 **C 中匿名结构体的 typedef**
 
-在 C 中，仅通过 typedef 命名的结构体会以该 typedef 的名称显示
-
-定义行仍写作 `struct Point`，但在 C 中，该结构体并无此名称。
+在 C 中，仅通过 typedef 命名的结构体会以该 typedef 的名称显示，其定义按源码写法显示
 
 ```case
 tests/hover/aliases/03_c_anonymous_structs
@@ -337,11 +335,11 @@ tests/hover/templates/01_template_parameters
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#230 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **模板实参**
 
-模板的使用处会显示实例化时采用的类型，但尚未显示各实参绑定到哪个形参
+模板的使用处会显示实例化时采用的实参
 
 ```case
 tests/hover/templates/02_instantiation_arguments
@@ -349,11 +347,11 @@ tests/hover/templates/02_instantiation_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#435 -->
+<!-- BEGIN CAPABILITY: supported clangd#435 -->
 
 **推导出的类模板实参**
 
-类模板实参通过推导确定的变量会显示这些实参，而旁边的类名只显示模板本身
+推导类模板实参的声明在类名处和变量处都会显示这些实参
 
 ```case
 tests/hover/templates/03_deduced_class_arguments
@@ -361,11 +359,11 @@ tests/hover/templates/03_deduced_class_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Concept 约束**
 
-Concept 和受约束的形参会显示约束，但 `Addable auto` 占位符只显示推导出的类型
+Concept 和受约束的形参会显示约束；`Addable auto` 占位符会显示它推导出的类型
 
 ```case
 tests/hover/templates/04_concept_constraints
@@ -377,7 +375,7 @@ tests/hover/templates/04_concept_constraints
 
 ## 布局
 
-字段和类会显示编译器为其确定的大小和对齐要求。
+无论在何处悬停，字段和类都会显示编译器为其确定的大小、对齐要求和填充。
 
 <!-- BEGIN GENERATED ITEMS: hover/layout -->
 
@@ -387,32 +385,22 @@ tests/hover/templates/04_concept_constraints
 
 字段会显示其偏移量、大小、对齐要求以及后面的填充
 
+`layout` 默认开启；设为 `false` 时不显示这些信息，类的大小也不显示。
+
 ```case
 tests/hover/layout/01_field_layout
 ```
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1763 -->
+<!-- BEGIN CAPABILITY: supported clangd#1763 -->
 
 **类型布局**
 
-类会显示其大小和对齐要求，但尚未显示其中有多少空间用于填充
+类会显示其大小和对齐要求，以及其中有多少空间是填充
 
 ```case
 tests/hover/layout/02_type_layout
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#1771 -->
-
-**虚函数表（vtable）槽位**
-
-虚成员函数尚未显示其在虚函数表中的槽位
-
-```case
-tests/hover/layout/03_vtable_slots
 ```
 
 <!-- END CAPABILITY -->
@@ -461,11 +449,11 @@ tests/hover/arguments/03_conversions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1622 -->
+<!-- BEGIN CAPABILITY: supported clangd#1622 -->
 
 **记录类型（record）实参**
 
-若调用在编译期求值，传入的记录类型实参会将该调用的值显示为自身的值
+若调用在编译期求值，传入的记录类型实参不会把该调用的值当作自身的值
 
 ```case
 tests/hover/arguments/04_record_arguments
@@ -477,17 +465,17 @@ tests/hover/arguments/04_record_arguments
 
 ## 表达式
 
-字面量和 `this` 会显示各自的信息。
+字面量会显示其类型和值，`this` 会显示它所指向的类型。
 
 <!-- BEGIN GENERATED ITEMS: hover/expressions -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1016 clangd#1669 -->
+<!-- BEGIN CAPABILITY: supported clangd#1016 clangd#1669 -->
 
 **字面量**
 
-字符串字面量会显示其类型和大小，而数值字面量尚未显示任何信息
+数值会显示其类型和值，字符串会显示其类型、长度和大小
 
-大小包括末尾的空字符；不显示字符串的长度。
+长度不计末尾的空字符，大小则计入。
 
 ```case
 tests/hover/expressions/01_literals
@@ -515,11 +503,11 @@ tests/hover/expressions/02_this
 
 <!-- BEGIN GENERATED ITEMS: hover/macros -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2642 -->
+<!-- BEGIN CAPABILITY: supported clangd#2642 -->
 
 **在定义前使用**
 
-宏名在自身的 `#define` 之前使用时没有悬停卡片，在之后使用时则有
+宏名在自身的 `#define` 之前使用时，会显示该定义及其所在的行
 
 ```case
 tests/hover/macros/01_use_before_definition
@@ -771,7 +759,7 @@ tests/hover/documentation/13_latex_formulas
 
 **Doxygen 命令**
 
-`@brief` 位于卡片开头，每个 `@param` 和 `@return` 显示在它所描述的内容旁边
+`@brief` 位于卡片开头，每个 `@param`、`@return` 和 `@retval` 显示在它所描述的内容旁边
 
 ```case
 tests/hover/documentation/18_doxygen_commands
@@ -885,9 +873,9 @@ tests/hover/modules/04_documented_exports
 
 <!-- END GENERATED ITEMS -->
 
-## 属性与关键字
+## 属性
 
-属性以及 `const`、`virtual` 等关键字各有其含义，可由卡片加以说明。
+属性的卡片会显示它在代码中的写法及其含义。
 
 <!-- BEGIN GENERATED ITEMS: hover/attributes -->
 
@@ -899,18 +887,6 @@ tests/hover/modules/04_documented_exports
 
 ```case
 tests/hover/attributes/01_attributes
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: unsupported clangd#1862 -->
-
-**关键字**
-
-在 `const`、`virtual` 等关键字上悬停时，目前还不会显示任何内容
-
-```case
-tests/hover/attributes/02_keywords
 ```
 
 <!-- END CAPABILITY -->
@@ -927,7 +903,7 @@ tests/hover/attributes/02_keywords
 
 **无内容可显示**
 
-内置类型关键字或空代码块内部不会显示卡片
+关键字或空代码块内部不会显示卡片
 
 ```case
 tests/hover/no_card/01_meaningless_tokens

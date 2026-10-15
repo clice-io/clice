@@ -89,6 +89,7 @@ markdown = '''
 template <typename T> struct Box {
   using value_type = T;
   T value;
+  static constexpr int limit = 4;
   template <typename U> static constexpr bool holds = false;
   template <typename U> struct Rebind;
   struct Inner;
@@ -105,6 +106,7 @@ markdown = '''
 template <typename T> struct Box {
   using value_type = T;
   T value;
+  static constexpr int limit = 4;
   template <typename U> static constexpr bool holds = false;
   template <typename U> struct Rebind;
   struct Inner;
@@ -121,7 +123,8 @@ markdown = '''
 template <> struct Box<int> {
   using value_type = int;
   int value;
-  template <typename U> static constexpr bool holds;
+  static constexpr int limit = 4;
+  template <typename U> static constexpr bool holds = false;
   template <typename U> struct Rebind;
   struct Inner;
 }

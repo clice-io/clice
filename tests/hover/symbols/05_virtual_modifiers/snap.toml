@@ -30,9 +30,6 @@ Overrides: `Circle::draw`
 '''
 range = "void ⟦draw⟧() final;"
 
-[answers.implicit_override]
-wrong = "draw overrides Base::draw, but without the override keyword the card gives no sign it is virtual (clangd#2474)"
-
 [answers.implicit_override.hover]
 markdown = '''
 **method** `draw` · struct `Square`

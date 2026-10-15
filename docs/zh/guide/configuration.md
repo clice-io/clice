@@ -284,6 +284,16 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 
 </div>
 
+<div class="config-option">
+
+| 选项     | 类型   | 默认值 |
+| -------- | ------ | ------ |
+| `layout` | `bool` | `true` |
+
+无论在何处悬停类或字段，都显示编译器为其确定的布局：大小、对齐要求、字段的偏移量，以及填充。
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## `[inlay_hints]`

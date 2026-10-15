@@ -4,4 +4,4 @@ issues: [clangd#2474]
 
 # Virtual methods
 
-A method's definition reads `virtual`, `override` or `final` as written, so an override written without them gives no sign it is virtual
+A method's definition reads `virtual`, `override` or `final` as written, and an override names the method it overrides, the keyword written or not

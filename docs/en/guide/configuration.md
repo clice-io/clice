@@ -284,6 +284,16 @@ Maximum number of members the definition of a hovered class or enum lists: data 
 
 </div>
 
+<div class="config-option">
+
+| Option   | Type   | Default |
+| -------- | ------ | ------- |
+| `layout` | `bool` | `true`  |
+
+Show how the compiler lays out a class or a field wherever it is hovered: size, alignment, a field's offset, and the padding.
+
+</div>
+
 <!-- END GENERATED CONFIG -->
 
 ## `[inlay_hints]`

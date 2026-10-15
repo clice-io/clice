@@ -3,8 +3,8 @@
   "topic": "hover",
   "subtopic": "aliases",
   "title": "C anonymous struct typedefs",
-  "summary": "In C, a struct named only by its typedef shows under the typedef's name",
-  "prose": "The definition line still spells it `struct Point`, a name C does not\nknow for it.",
+  "summary": "In C, a struct named only by its typedef shows under the typedef's name, its definition as written",
+  "prose": "",
   "status": "supported",
   "issues": [
     "clangd#2219"

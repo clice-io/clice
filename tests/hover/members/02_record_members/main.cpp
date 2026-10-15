@@ -86,6 +86,7 @@ namespace templates {
 template <typename T> struct Box {
     using value_type = T;
     T value;
+    static constexpr int limit = 4;
     template <typename U> static constexpr bool holds = false;
     template <typename U> static constexpr bool holds<U*> = true;
     template <typename U> struct Rebind {};

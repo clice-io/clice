@@ -1405,17 +1405,23 @@ struct MemberPrinter {
         }
     }
 
-    /// The initializer of a class template's static data member, for an
-    /// instantiation that has none of its own yet: clang instantiates it
-    /// only where it is used. One that depends on the template's arguments
-    /// says nothing until then.
+    /// The initializer of a class template's static data member or member
+    /// variable template, for an instantiation that has none of its own
+    /// yet: clang instantiates it only where it is used. One that depends
+    /// on the template's arguments says nothing until then.
     static auto template_initializer(const clang::Decl& member) -> const clang::Expr* {
         const auto* var = llvm::dyn_cast<clang::VarDecl>(&member);
-        if(!var || var->getInit()) {
+        const clang::VarDecl* pattern = var ? var->getInstantiatedFromStaticDataMember() : nullptr;
+        if(const auto* var_template = llvm::dyn_cast<clang::VarTemplateDecl>(&member)) {
+            var = var_template->getTemplatedDecl();
+            if(const auto* from = var_template->getInstantiatedFromMemberTemplate()) {
+                pattern = from->getTemplatedDecl();
+            }
+        }
+        if(!pattern || var->getInit()) {
             return nullptr;
         }
-        const auto* pattern = var->getInstantiatedFromStaticDataMember();
-        const auto* init = pattern ? pattern->getInit() : nullptr;
+        const auto* init = pattern->getInit();
         return init && !init->isValueDependent() ? init : nullptr;
     }
 };

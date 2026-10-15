@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "symbols",
   "title": "Virtual methods",
-  "summary": "A method's definition reads `virtual`, `override` or `final` as written, so an override written without them gives no sign it is virtual",
+  "summary": "A method's definition reads `virtual`, `override` or `final` as written, and an override names the method it overrides, the keyword written or not",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [
     "clangd#2474"
   ],
@@ -118,7 +118,6 @@
           "label": "implicit_override",
           "marker": "implicit_override",
           "value": {
-            "wrong": "draw overrides Base::draw, but without the override keyword the card gives no sign it is virtual (clangd#2474)",
             "hover": {
               "markdown": "**method** `draw` · struct `Square`\n\n```cpp\nvoid draw()\n```\nOverrides: `Base::draw`",
               "range": {

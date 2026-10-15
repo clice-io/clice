@@ -57,3 +57,17 @@ Parameters:
 Returns a descriptor, or a negative error code.
 '''
 range = "int ⟦kernel_open⟧(int minor);"
+
+[answers.before_attribute.hover]
+markdown = '''
+**function** `legacy_open`
+
+Deprecated: use kernel_open; it checks the minor
+
+Opens the legacy device.
+
+```cpp
+int legacy_open(int minor)
+```
+'''
+range = '[[deprecated("use kernel_open; it checks the minor")]] int ⟦legacy_open⟧(int minor);'
