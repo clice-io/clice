@@ -36,5 +36,9 @@ exit = 2
 stderr = "error: ${WS}/missing: not a directory"
 exit = 1
 
+["a missing workspace"."$ clice scan --workspace missing"]
+stderr = "error: ${WS}/missing: not a directory"
+exit = 1
+
 ["a missing workspace"."left behind"]
 value = []

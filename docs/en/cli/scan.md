@@ -6,11 +6,11 @@
 
 **Usage**: `clice scan [--workspace <dir>] [--configuration <tag>] [--json | --runs <n>]`
 
-The build is loaded as `clice index` loads it: the databases the rules name, else every `compile_commands.json` below the workspace. The summary counts the files the scan reached, the translation units among them and the includes it resolved, and lists every include no search found. `--json` prints every scanned file instead: whether it is a translation unit, the modules it provides, the headers it includes and the includes it could not resolve, as written.
+The build is the one its compilation databases list: the databases the rules name, else every `compile_commands.json` below the workspace. The summary counts the files the scan reached, the translation units among them and the includes it resolved, and lists every include no search found. `--json` prints every scanned file instead: whether it is a translation unit, the modules it provides, the headers it includes and the includes it could not resolve, as written.
 
 `--runs <n>` times the scan: each run loads the build from scratch and scans it (cold, as at startup), then scans it again over what the first scan kept (warm, as after a database reload), and prints both times; the last line gives their minimum and median.
 
-The exit code is 0 after a scan; 1 when there is nothing to scan (the workspace or the configuration does not exist, or no database lists a file under the workspace) or the arguments ask for two outputs at once or for no run; 2 when they do not parse.
+The exit code is 0 after a scan; 1 when there is nothing to scan (the workspace or the configuration does not exist, or no database is found or lists a file) or the arguments ask for two outputs at once or for no run; 2 when they do not parse.
 
 ## Examples
 
@@ -68,6 +68,26 @@ When the database lists one file under several commands, the scan resolves its i
 
 ```case
 tests/scan/commands/01_several_commands
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+### Timing
+
+<!-- BEGIN GENERATED ITEMS: scan/timing -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Time the scan**
+
+Each run scans the build cold, from a fresh load, then warm, over what the cold scan kept
+
+The cold scan is what a server pays at startup: it reads and lexes every file. The warm one is what a reload of the compilation database pays: it reuses the scans of the files whose bytes did not change, at the cost of one status call each. The last line gives the minimum and the median of both.
+
+```case
+tests/scan/timing/01_cold_and_warm
 ```
 
 <!-- END CAPABILITY -->

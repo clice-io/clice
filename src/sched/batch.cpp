@@ -14,6 +14,7 @@ import :feature.feature;
 import :project.command_resolver;
 import :project.configuration;
 import :project.index_store;
+import :project.load;
 import :project.project;
 import :sched.batch;
 import :sched.bootstrap;
@@ -764,13 +765,9 @@ BatchFormatResult run_batch_format(const BatchFormatOptions& options) {
         // Like the other batch commands, which open no file: every
         // database under the workspace applies when no rule names one,
         // and one that cannot be loaded makes the file set incomplete.
-        auto databases = project.build.declared_sources();
-        if(databases.empty()) {
-            auto& cache_dir = project.config.project.cache_dir;
-            databases = compile_commands_below(
-                options.root,
-                cache_dir.empty() ? CanonicalPath() : CanonicalPath(Spelling::absolute(cache_dir)));
-        }
+        auto databases = project.build.declares_sources()
+                             ? project.build.declared_sources()
+                             : compile_commands_in_tree(project, options.root, configuration);
         if(databases.empty()) {
             result.exit_code = 2;
             result.error = std::format("Nothing to format: no compile_commands.json found under {}",

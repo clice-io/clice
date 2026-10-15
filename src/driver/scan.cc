@@ -106,7 +106,8 @@ ScanOutput describe(const Loaded& loaded) {
     for(auto fid: graph.all_files()) {
         auto& file = output.files.emplace_back();
         file.path = files.display(fid);
-        file.source = llvm::is_contained(loaded.load.members, fid);
+        file.source =
+            llvm::any_of(graph.contexts(fid), [](ScanContext context) { return context.unit; });
         if(auto it = modules.find(fid); it != modules.end()) {
             file.modules = std::move(it->second);
             std::ranges::sort(file.modules);
@@ -204,7 +205,7 @@ int run_scan(const ScanOptions& opts) {
 
     auto first = load(root, config, configuration);
     if(first.load.members.empty()) {
-        LOG_ERROR("No compilation database lists a file under {}", root.str());
+        LOG_ERROR("Nothing to scan: no compilation database found for {} lists a file", root.str());
         return 1;
     }
     auto output = describe(first);

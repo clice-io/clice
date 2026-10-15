@@ -1,3 +1,3 @@
 [test."$ clice scan"]
-stderr = "error: No compilation database lists a file under ${WS}"
+stderr = "error: Nothing to scan: no compilation database found for ${WS} lists a file"
 exit = 1

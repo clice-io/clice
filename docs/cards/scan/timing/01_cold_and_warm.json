@@ -1,0 +1,36 @@
+{
+  "id": "scan/timing/01_cold_and_warm",
+  "topic": "scan",
+  "subtopic": "timing",
+  "title": "Time the scan",
+  "summary": "Each run scans the build cold, from a fresh load, then warm, over what the cold scan kept",
+  "prose": "The cold scan is what a server pays at startup: it reads and lexes every file. The warm one is what a reload of the compilation database pays: it reuses the scans of the files whose bytes did not change, at the cost of one status call each. The last line gives the minimum and the median of both.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#include \"shape.h\"\n\nint main() {\n    return area(Square{2});\n}\n",
+      "markers": []
+    },
+    {
+      "path": "shape.h",
+      "text": "#pragma once\n\nstruct Square {\n    int side;\n};\n\ninline int area(Square square) {\n    return square.side * square.side;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice scan --runs 2",
+          "value": {
+            "stdout": "Scanned 2 files (1 source, 1 header) in #ms: 1 of 1 include resolved.\nRun 1: cold #ms, warm #ms\nRun 2: cold #ms, warm #ms\nCold: min #ms, median #ms. Warm: min #ms, median #ms.",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

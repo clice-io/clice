@@ -8,7 +8,13 @@ test("log level", async (t) => {
 });
 
 test("a missing workspace", async (t) => {
-    for (const command of ["query --method projectFiles", "format --check", "lint", "index"]) {
+    for (const command of [
+        "query --method projectFiles",
+        "format --check",
+        "lint",
+        "index",
+        "scan",
+    ]) {
         await t.cli(`${command} --workspace missing`);
     }
     // What the runs left where the workspace was named.

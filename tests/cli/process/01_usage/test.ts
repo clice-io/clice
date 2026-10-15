@@ -10,6 +10,7 @@ const COMMANDS = [
     "lint",
     "format",
     "inspect",
+    "scan",
     "analyze",
     "modularize",
     "worker",

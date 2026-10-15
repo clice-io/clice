@@ -1,0 +1,3 @@
+[test."$ clice scan --configuration missing"]
+stderr = "error: --configuration missing names no configuration: no rule declares one"
+exit = 1

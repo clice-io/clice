@@ -1,0 +1,8 @@
+[test."$ clice scan --runs 2"]
+stdout = '''
+Scanned 2 files (1 source, 1 header) in #ms: 1 of 1 include resolved.
+Run 1: cold #ms, warm #ms
+Run 2: cold #ms, warm #ms
+Cold: min #ms, median #ms. Warm: min #ms, median #ms.
+'''
+exit = 0
