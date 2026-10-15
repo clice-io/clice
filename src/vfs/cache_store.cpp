@@ -95,23 +95,6 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
     return (*tmp_buf)->getBuffer() == (*final_buf)->getBuffer();
 }
 
-/// Remove directory children whose name parses as a dead pid: the
-/// `tmp/{pid}` directories crashed instances left behind.
-void remove_dead_pid_dirs(llvm::StringRef dir, std::uint32_t self_pid) {
-    for(auto& entry: vfs::read_dir(dir).value_or(std::vector<vfs::Entry>())) {
-        std::uint32_t pid = 0;
-        auto name = path::filename(entry.path);
-        if(name.getAsInteger(10, pid)) {
-            continue;
-        }
-        if(pid == self_pid || process_alive(pid)) {
-            continue;
-        }
-        vfs::remove_all(entry.path);
-        LOG_DEBUG("CacheStore: removed dead instance directory {}", entry.path);
-    }
-}
-
 /// Whether a live process is working inside this cache layout: every
 /// writable open creates `tmp/{pid}` and keeps it until shutdown.
 bool has_live_instance(llvm::StringRef base) {
@@ -160,8 +143,6 @@ struct CacheStore::State {
 
     /// `{base}/tmp/{pid}` — this instance's in-flight writes.
     std::string tmp_dir;
-
-    std::uint32_t self_pid = 0;
 
     llvm::StringMap<Namespace> namespaces;
 
@@ -237,7 +218,6 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     assert(!root.empty() && "cache root must not be empty");
 
     auto state = std::make_unique<State>();
-    state->self_pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId());
     state->read_only = read_only;
 
     auto parent = path::join(root, "cache");
@@ -332,10 +312,19 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // The only crash residue are in-flight tmp files; committed blobs are
     // complete by construction (atomic rename).  Remove tmp directories of
     // instances that no longer exist.
+    auto self_pid = static_cast<std::uint32_t>(llvm::sys::Process::getProcessId());
     auto tmp_parent = path::join(state->base, "tmp");
-    remove_dead_pid_dirs(tmp_parent, state->self_pid);
+    for(auto& entry: vfs::read_dir(tmp_parent).value_or(std::vector<vfs::Entry>())) {
+        std::uint32_t pid = 0;
+        if(path::filename(entry.path).getAsInteger(10, pid) || pid == self_pid ||
+           process_alive(pid)) {
+            continue;
+        }
+        vfs::remove_all(entry.path);
+        LOG_DEBUG("CacheStore: removed dead instance directory {}", entry.path);
+    }
 
-    state->tmp_dir = path::join(tmp_parent, std::to_string(state->self_pid));
+    state->tmp_dir = path::join(tmp_parent, std::to_string(self_pid));
     vfs::remove_all(state->tmp_dir);
     if(auto ec = vfs::create_directories(state->tmp_dir)) {
         return std::unexpected(ec);
@@ -557,10 +546,6 @@ std::string CacheStore::next_tmp_path(llvm::StringRef extension) {
 }
 
 std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pending) {
-    if(pending.tmp_path.empty()) {
-        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
-    }
-
     auto status = vfs::status(pending.tmp_path);
     if(!status) {
         return std::unexpected(status.error());
@@ -576,9 +561,7 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     {
         std::lock_guard guard(state->mutex);
         auto* ns_state = state->find_namespace(pending.ns);
-        if(!ns_state) {
-            return std::unexpected(std::make_error_code(std::errc::invalid_argument));
-        }
+        assert(ns_state && "commit of an entry begin_store did not hand out");
         // An aux blob attaches to a live entry; without one (primary commit
         // failed, or the entry was evicted in between) it would be an
         // orphan — refuse, the caller rebuilds the pair.
@@ -609,9 +592,9 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
                 // Benign collision: an identical blob is already published
                 // (Windows, destination currently open).  Keep the survivor
                 // and account for it.  This is verified by comparison, not
-                // assumed from the key: even LRU keys are not fully
-                // content-addressed (a dependency edit changes the PCH
-                // content without changing its key input).
+                // assumed from the key: keys are not fully content-addressed
+                // (a dependency edit changes the PCH content without
+                // changing its key input).
                 vfs::remove(pending.tmp_path);
                 status = vfs::status(final_path);
                 if(!status) {

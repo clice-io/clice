@@ -51,7 +51,6 @@ void register_paired(CacheStore& store, std::uint64_t max_bytes = 0) {
 std::string
     put_aux(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store_aux(ns, key);
-    require(!pending.tmp_path.empty(), "begin_store_aux returned no tmp path");
     require(!vfs::write(pending.tmp_path, content), "tmp write failed");
     auto committed = store.commit(std::move(pending));
     require(committed.has_value(), "aux commit failed");
@@ -62,7 +61,6 @@ std::string
 std::string
     put(CacheStore& store, llvm::StringRef ns, llvm::StringRef key, llvm::StringRef content) {
     auto pending = store.begin_store(ns, key);
-    require(!pending.tmp_path.empty(), "begin_store returned no tmp path");
     require(!vfs::write(pending.tmp_path, content), "tmp write failed");
     auto committed = store.commit(std::move(pending));
     require(committed.has_value(), "commit failed");

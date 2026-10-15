@@ -251,15 +251,13 @@ extern "C++" int main(int argc, const char** argv) {
 
     // Summary statistics.
     if(runs > 1) {
-        auto stats = [](std::vector<std::int64_t>& v) {
-            std::ranges::sort(v);
-            auto sum = std::accumulate(v.begin(), v.end(), std::int64_t{0});
-            return std::tuple{v.front(), sum / static_cast<std::int64_t>(v.size()), v.back()};
-        };
-        auto [e_min, e_avg, e_max] = stats(elapsed_times);
-
+        std::ranges::sort(elapsed_times);
+        auto sum = std::accumulate(elapsed_times.begin(), elapsed_times.end(), std::int64_t{0});
         std::println("\n  Summary ({} runs)             min    avg    max", runs);
-        std::println("    Total:              {:>7} {:>6} {:>6}", e_min, e_avg, e_max);
+        std::println("    Total:              {:>7} {:>6} {:>6}",
+                     elapsed_times.front(),
+                     sum / runs,
+                     elapsed_times.back());
     }
 
     // Export dependency graph as JSON if requested.
