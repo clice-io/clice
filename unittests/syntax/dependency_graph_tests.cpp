@@ -6,6 +6,7 @@ module clice;
 
 import :command.command;
 import :syntax.dependency_graph;
+import :syntax.scan;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.temp_dir;
 import :unittests.utils;
@@ -844,6 +845,30 @@ ZEST_CASE(RescanScansNewHeader) {
     rescan_dependency_graph(cdb, graph, main);
     ZEXPECT(graph.get_all_includes(b) == llvm::SmallVector<Fid>{c});
     ZEXPECT(graph.reaches_import(main));
+}
+
+ZEST_CASE(RescanLeavesUnreachedOut) {
+    // A save of a file the scan never reached records nothing: no unit
+    // compiles it, so its import syntax opens no gate.
+    TempDir tmp;
+    tmp.touch("src/main.cpp", "int main() { return 0; }\n");
+    tmp.touch("src/scratch.h", "import m;\n");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    write_cdb(tmp,
+              cdb,
+              build_cdb_json({
+                  {tmp.root, tmp.path("src/main.cpp"), {}}
+    }));
+    scan_all(cdb, graph);
+    graph.build_reverse_map();
+    auto scratch = file_table.intern(Spelling::absolute(tmp.path("src/scratch.h")));
+
+    rescan_dependency_graph(cdb, graph, scratch);
+    ZEXPECT(!graph.has_import_candidates());
+    ZEXPECT(!graph.scanned(scratch, scan_quick("import m;\n").directives_hash));
 }
 
 ZEST_CASE(RescanTracksPartitionKind) {

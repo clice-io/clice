@@ -485,7 +485,6 @@ struct FileScanner {
                 declared.push_back(std::move(module));
             }
         }
-        graph.record_scan(path_id, scan);
         return declared;
     }
 
@@ -513,6 +512,7 @@ struct FileScanner {
                 reached(header.path_id, header.found_dir_idx);
             }
         }
+        graph.record_scan(path_id, scan);
 
         // Quoted includes start from the directory the build reaches the
         // includer through, as clang's do.
@@ -668,13 +668,18 @@ struct FullScan {
             Fid fid;
             llvm::SmallVector<ScanContext, 1> contexts;
 
-            /// The quick scan of the bytes the disk still holds; else the
-            /// task reading the file is `tasks[task]`.
-            std::optional<ScannedText> warm;
-            std::size_t task = 0;
+            /// Its scan: `warm[scan]`, the quick scan of the bytes the
+            /// disk still holds, else what the task `tasks[scan]` reads.
+            bool warm = false;
+            std::size_t scan = 0;
         };
 
         std::vector<File> files;
+
+        /// Kept apart from the files: SmallVector's move is not noexcept,
+        /// so a growing vector of files copies them, as it would every
+        /// scan they held.
+        std::vector<std::optional<ScannedText>> warm;
         std::vector<kota::task<std::optional<ScannedText>>> tasks;
     };
 
@@ -693,11 +698,14 @@ struct FullScan {
             .fid = fid,
             .contexts = {contexts.begin(), contexts.end()}
         });
-        if((file.warm = warm(fid))) {
+        if(auto scanned = warm(fid)) {
             report.scan_cache_hits += 1;
+            file.warm = true;
+            file.scan = wave.warm.size();
+            wave.warm.push_back(std::move(scanned));
             return;
         }
-        file.task = wave.tasks.size();
+        file.scan = wave.tasks.size();
         auto path = files.resolve(fid).data();
         wave.tasks.push_back(kota::queue([path] { return read_and_scan(path); }));
     }
@@ -804,7 +812,7 @@ struct FullScan {
             };
             for(auto& file: wave.files) {
                 report.total_files += 1;
-                auto& scanned = file.warm ? file.warm : read[file.task];
+                auto& scanned = file.warm ? wave.warm[file.scan] : read[file.scan];
                 if(!scanned) {
                     LOG_WARN("Failed to read file for scanning: {}", files.resolve(file.fid));
                     continue;
