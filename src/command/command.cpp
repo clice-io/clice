@@ -1073,14 +1073,13 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
 
     const auto& cfg = config(id);
     bool is_nvcc = cfg.family == CompilerFamily::NVCC;
-    llvm::StringRef directory = cfg.directory;
 
     /// Rule flags for an NVCC entry arrive in the same nvcc spellings as
     /// the command they edit — rewrite them like the command itself.
     /// Appends translate as one command edit, so an appended default state
     /// (`-rdc=false` over an rdc base) cancels the base's translated state
-    /// instead of vanishing. The files the flags name are read relative to
-    /// the rule's `anchor`.
+    /// instead of vanishing. Relative paths in the flags, and in the files
+    /// they name, are relative to the rule's `anchor`.
     auto translate_rule_flags =
         [&](llvm::ArrayRef<std::string> rule_flags, const Spelling& anchor, bool edit) {
             std::vector<std::string> flags(rule_flags.begin(), rule_flags.end());
@@ -1094,7 +1093,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                 argv.push_back(flag.c_str());
             }
             expand_response_files(argv, anchor, cfg.family, saver);
-            auto translated = translate_nvcc_command(argv, directory, edit);
+            auto translated = translate_nvcc_command(argv, anchor.str(), edit);
             flags.assign(std::make_move_iterator(translated.begin() + 1),
                          std::make_move_iterator(translated.end()));
             return flags;
@@ -1243,7 +1242,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                        append_args);
         }
     }
-    auto entry_directory = Spelling::absolute(directory);
+    auto entry_directory = Spelling::absolute(cfg.directory);
     parse_edit(options.extra_append, entry_directory, append_args);
 
     std::vector<LocalArg> prepend_args;

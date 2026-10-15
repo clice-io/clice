@@ -608,10 +608,10 @@ ZEST_CASE(RuleFlagsTranslated) {
 }
 
 ZEST_CASE(RuleOptionsFileExpanded) {
-    // An options file a rule names expands like one in the command, read
-    // relative to the rule's directory like its other paths.
+    // An options file a rule names expands like one in the command; it and
+    // the paths in it are relative to the rule's directory.
     TempDir tmp;
-    tmp.touch("rules/opts.rsp", "-DFROM_RULE=1\n");
+    tmp.touch("rules/opts.rsp", "-DFROM_RULE=1 -ccbin=tc/g++\n");
     FileTable file_table;
     CompilationDatabase db{file_table};
     auto entry = db.add_command(tmp.root, "kern.cu", "nvcc -c kern.cu"sv);
@@ -626,6 +626,8 @@ ZEST_CASE(RuleOptionsFileExpanded) {
     auto flags = db.render_full(db.apply_rules(entry->config, options));
     ZEXPECT(std::ranges::contains(flags, llvm::StringRef("FROM_RULE=1")));
     ZEXPECT(!std::ranges::contains(flags, llvm::StringRef("--options-file")));
+    auto ccbin = "-ccbin=" + path::join(Spelling::absolute(tmp.path("rules")).str(), "tc/g++");
+    ZEXPECT(std::ranges::contains(flags, llvm::StringRef(ccbin)));
 }
 
 ZEST_CASE(AppendOverridesBase) {
