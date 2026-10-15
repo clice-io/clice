@@ -31,12 +31,9 @@ public:
     /// apart from its template.
     std::uint64_t entity(const clang::NamedDecl* decl);
 
-    /// The entity of a macro: its name and where the `#define` sits, as the
-    /// file's portable name (path::portable) and the offset in it. A
-    /// builtin or command-line macro has no file and is its name alone.
-    std::uint64_t entity(llvm::StringRef name, clang::SourceLocation definition);
-
-    /// The entity of a macro definition, named as it is spelled there.
+    /// The entity of a macro definition: its name and where the `#define`
+    /// sits, as the file's portable name (path::portable) and the offset in
+    /// it. A builtin or command-line macro has no file and is its name alone.
     std::uint64_t entity(const clang::MacroInfo* macro);
 
     /// The entity of a named module, from its full name.
@@ -50,6 +47,7 @@ public:
     /// an entity it skips anonymous namespaces and knows no modules.
     std::uint64_t parent(const clang::NamedDecl* decl);
 
+private:
     /// The hash of a type, taken canonically.
     std::uint64_t type_hash(clang::QualType type);
 
@@ -57,7 +55,6 @@ public:
     /// leaves (ExprHasher).
     std::uint64_t expr_hash(const clang::Expr* expr);
 
-private:
     class Hasher;
     class Leaves;
 

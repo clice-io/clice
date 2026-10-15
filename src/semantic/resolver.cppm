@@ -86,14 +86,6 @@ public:
         return lookup(expr->getQualifier(), expr->getNameInfo().getName());
     }
 
-    lookup_result lookup(const clang::UnresolvedLookupExpr* expr);
-
-    /// Resolve the base type through pseudo-instantiation, then look the
-    /// member up in the resolved record. Complements the candidates clang
-    /// already stores on the expression: pseudo-instantiation can reach
-    /// members of matching partial specializations.
-    lookup_result lookup(const clang::UnresolvedMemberExpr* expr);
-
     /// A dependent call's candidate set: the callee clang resolved itself
     /// when it did, else the resolved overload set filtered down to
     /// overloads whose parameter list can accept the call's argument count,

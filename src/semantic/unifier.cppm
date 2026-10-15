@@ -2,10 +2,6 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:semantic.unifier;
-
-namespace clice::types {
-
 /// Sema-free structural unification of template argument lists, replacing
 /// `Sema::DeduceTemplateArguments` and `Sema::getMoreSpecializedPartialSpecialization`
 /// for pseudo-instantiation.
@@ -19,87 +15,10 @@ namespace clice::types {
 ///   - Skips conformance corners irrelevant to lookup (reference collapsing
 ///     adjustments, array bound promotion). Failure means "this pattern
 ///     doesn't match", which degrades to an unresolved name.
-class Unifier {
-public:
-    using TemplateArguments = llvm::ArrayRef<clang::TemplateArgument>;
 
-    /// `open` are value arguments that may hold any value — defaults that
-    /// do not fold: a value pattern meeting one is undecided. Any other
-    /// argument whose value is not known matches no value a pattern fixes.
-    explicit Unifier(clang::ASTContext& context,
-                     unsigned depth,
-                     unsigned size,
-                     llvm::ArrayRef<const clang::Expr*> open = {}) :
-        context(context), depth(depth), bindings(size), open(open) {}
+module clice:semantic.unifier;
 
-    /// Unify `patterns` (a partial specialization's argument pattern or a
-    /// primary template's injected arguments) against `arguments`. On success,
-    /// every deduced parameter at `depth` is recorded in `bindings`.
-    bool unify(TemplateArguments patterns, TemplateArguments arguments);
-
-    /// The deduced arguments, indexed by parameter index. Unbound parameters
-    /// hold a null TemplateArgument.
-    TemplateArguments results() const {
-        return bindings;
-    }
-
-    /// A compound expression pattern (`N + 1`) and the argument it met.
-    /// Unification cannot deduce from it; it constrains the match only once
-    /// the bindings are substituted in, which deduce_arguments checks.
-    struct Deferred {
-        const clang::Expr* pattern;
-        clang::TemplateArgument argument;
-    };
-
-    llvm::ArrayRef<Deferred> deferred() const {
-        return deferred_checks;
-    }
-
-    /// Whether a value pattern met an open argument: the match then holds
-    /// or not once its value is known.
-    bool undecided() const {
-        return undecided_values;
-    }
-
-private:
-    bool unify(const clang::TemplateArgument& pattern, const clang::TemplateArgument& argument);
-
-    bool unify(clang::QualType pattern, clang::QualType argument);
-
-    /// Extract a template-id (template + arguments) view of `type`, looking
-    /// through TST, ClassTemplateSpecializationDecl records and injected class
-    /// names. Returns false if `type` is not a template-id.
-    bool template_id(clang::QualType type,
-                     clang::TemplateName& name,
-                     TemplateArguments& arguments) const;
-
-    /// Argument equality for repeated bindings: canonical structural
-    /// equality, with bare references to the same NTTP compared by decl
-    /// (canonical dependent expressions keep distinct node identities).
-    bool equivalent(const clang::TemplateArgument& lhs, const clang::TemplateArgument& rhs) const;
-
-    bool bind(unsigned index, const clang::TemplateArgument& argument);
-
-    /// Record one element of a pack parameter's binding while matching a
-    /// structured pack expansion pattern (`box<Us>...`) element-wise.
-    bool collect(unsigned index, const clang::TemplateArgument& argument);
-
-    clang::ASTContext& context;
-    unsigned depth;
-    llvm::SmallVector<clang::TemplateArgument, 4> bindings;
-    llvm::ArrayRef<const clang::Expr*> open;
-    llvm::SmallVector<Deferred, 1> deferred_checks;
-    bool undecided_values = false;
-
-    /// Element-wise matching state for a structured pack expansion pattern:
-    /// while `expanding`, pack parameters accumulate one element per matched
-    /// argument instead of binding directly. `element_ordinal` is the index
-    /// of the argument currently being matched, so repeated pack references
-    /// within one element are checked for consistency instead of appended.
-    bool expanding = false;
-    unsigned element_ordinal = 0;
-    llvm::SmallVector<llvm::SmallVector<clang::TemplateArgument, 2>, 2> elements;
-};
+namespace clice::types {
 
 /// The outcome of deduce_arguments.
 enum class Deduction : std::uint8_t {

@@ -1933,68 +1933,6 @@ ZEST_CASE(PackZipDeduce) {
     )code");
 }
 
-ZEST_CASE(UnresolvedMemberLookup) {
-    add_main("main.cpp", R"code(
-        template <typename T>
-        struct S {
-            int foo(int);
-            int foo(char);
-
-            void call(T t) {
-                foo(t);
-            }
-        };
-    )code");
-    ZASSERT(compile());
-
-    struct Finder : clang::RecursiveASTVisitor<Finder> {
-        const clang::UnresolvedMemberExpr* expr = nullptr;
-
-        bool VisitUnresolvedMemberExpr(clang::UnresolvedMemberExpr* e) {
-            expr = e;
-            return true;
-        }
-    } finder;
-
-    finder.TraverseAST(unit->context());
-    ZASSERT(finder.expr != nullptr);
-
-    auto members = unit->get<types::TemplateResolver>().lookup(finder.expr);
-    ZEXPECT(std::ranges::distance(members) == 2);
-}
-
-ZEST_CASE(NamespaceOverloadLookup) {
-    add_main("main.cpp", R"code(
-        namespace ns {
-            template <typename T>
-            int f(T);
-
-            int f(int);
-        }
-
-        template <typename T>
-        void g(T t) {
-            ns::f<T>(t);
-        }
-    )code");
-    ZASSERT(compile());
-
-    struct Finder : clang::RecursiveASTVisitor<Finder> {
-        const clang::UnresolvedLookupExpr* expr = nullptr;
-
-        bool VisitUnresolvedLookupExpr(clang::UnresolvedLookupExpr* e) {
-            expr = e;
-            return true;
-        }
-    } finder;
-
-    finder.TraverseAST(unit->context());
-    ZASSERT(finder.expr != nullptr);
-
-    auto members = unit->get<types::TemplateResolver>().lookup(finder.expr);
-    ZEXPECT(std::ranges::distance(members) == 2);
-}
-
 ZEST_CASE(RecursiveDetectorProbe) {
     run(R"code(
         template <typename... Ts>

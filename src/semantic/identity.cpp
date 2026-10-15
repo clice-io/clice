@@ -291,10 +291,11 @@ std::uint64_t EntityTable::entity(const clang::NamedDecl* decl) {
     return result;
 }
 
-std::uint64_t EntityTable::entity(llvm::StringRef name, clang::SourceLocation definition) {
+std::uint64_t EntityTable::entity(const clang::MacroInfo* macro) {
+    auto definition = macro->getDefinitionLoc();
     Hasher hasher;
     hasher.add(Tag::Macro);
-    hasher.add(name);
+    hasher.add(unit.token_spelling(definition));
     if(definition.isValid()) {
         auto [fid, offset] = unit.written_at(definition);
         if(!unit.is_builtin_file(fid)) {
@@ -303,11 +304,6 @@ std::uint64_t EntityTable::entity(llvm::StringRef name, clang::SourceLocation de
         }
     }
     return hasher.finish();
-}
-
-std::uint64_t EntityTable::entity(const clang::MacroInfo* macro) {
-    auto location = macro->getDefinitionLoc();
-    return entity(unit.token_spelling(location), location);
 }
 
 std::uint64_t EntityTable::module_entity(llvm::StringRef name) {

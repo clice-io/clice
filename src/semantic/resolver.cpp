@@ -3378,13 +3378,6 @@ TemplateResolver::lookup_result
     return instantiator.lookup_member(instantiator.member_object(expr), expr->getMember());
 }
 
-TemplateResolver::lookup_result TemplateResolver::lookup(const clang::UnresolvedMemberExpr* expr) {
-    PseudoInstantiator instantiator(context, resolved, options);
-    return instantiator.lookup_member(
-        instantiator.member_object(expr->getBaseType(), expr->isArrow()),
-        expr->getMemberName());
-}
-
 TemplateResolver::lookup_result
     TemplateResolver::lookup(const clang::TemplateSpecializationType* type) {
     auto dependent = type->getTemplateName().getAsDependentTemplateName();
@@ -3398,27 +3391,6 @@ TemplateResolver::lookup_result
     }
     return lookup(dependent->getQualifier(),
                   context.DeclarationNames.getCXXOperatorName(name.getOperator()));
-}
-
-TemplateResolver::lookup_result TemplateResolver::lookup(const clang::UnresolvedLookupExpr* expr) {
-    /// A qualified name resolves through its scope, which yields the full
-    /// overload set from the named context.
-    if(auto NNS = expr->getQualifier()) {
-        if(auto members = lookup(NNS, expr->getName()); !members.empty()) {
-            return members;
-        }
-    }
-
-    /// TODO: Unqualified overload sets cannot be returned as a lookup_result
-    /// (the candidates have no contiguous storage); fall back to the first
-    /// template declaration.
-    for(auto decl: expr->decls()) {
-        if(auto TD = llvm::dyn_cast<clang::TemplateDecl>(decl)) {
-            return lookup_result(TD);
-        }
-    }
-
-    return {};
 }
 
 llvm::SmallVector<const clang::NamedDecl*, 4>
