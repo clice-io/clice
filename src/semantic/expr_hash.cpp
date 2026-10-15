@@ -17,6 +17,36 @@ void ExprHasher::visit_stmt_class(const Stmt* stmt) {
     id.AddInteger(stmt->getStmtClass());
 }
 
+void ExprHasher::visit_decl(const Decl* decl) {
+    id.AddInteger(decl ? decl->getKind() : 0);
+    if(auto* parameter = dyn_cast_if_present<NonTypeTemplateParmDecl>(decl)) {
+        id.AddInteger(parameter->getDepth());
+        id.AddInteger(parameter->getIndex());
+        id.AddBoolean(parameter->isParameterPack());
+        leaves.add_type(decl->getASTContext().getUnconstrainedType(parameter->getType()));
+        return;
+    }
+    if(auto* parameter = dyn_cast_if_present<ParmVarDecl>(decl)) {
+        leaves.add_type(parameter->getType());
+        id.AddInteger(parameter->getFunctionScopeDepth());
+        id.AddInteger(parameter->getFunctionScopeIndex());
+        return;
+    }
+    if(auto* parameter = dyn_cast_if_present<TemplateTypeParmDecl>(decl)) {
+        id.AddInteger(parameter->getDepth());
+        id.AddInteger(parameter->getIndex());
+        id.AddBoolean(parameter->isParameterPack());
+        return;
+    }
+    if(auto* parameter = dyn_cast_if_present<TemplateTemplateParmDecl>(decl)) {
+        id.AddInteger(parameter->getDepth());
+        id.AddInteger(parameter->getIndex());
+        id.AddBoolean(parameter->isParameterPack());
+        return;
+    }
+    leaves.add_decl(decl);
+}
+
 void ExprHasher::VisitStmt(const Stmt* node) {
     assert(node && "Requires non-null Stmt pointer");
 
@@ -33,7 +63,7 @@ void ExprHasher::VisitStmt(const Stmt* node) {
 void ExprHasher::VisitDeclStmt(const DeclStmt* node) {
     VisitStmt(node);
     for(const auto* decl: node->decls())
-        leaves.add_decl(decl);
+        visit_decl(decl);
 }
 
 void ExprHasher::VisitNullStmt(const NullStmt* node) {
@@ -54,7 +84,7 @@ void ExprHasher::VisitDefaultStmt(const DefaultStmt* node) {
 
 void ExprHasher::VisitLabelStmt(const LabelStmt* node) {
     VisitStmt(node);
-    leaves.add_decl(node->getDecl());
+    visit_decl(node->getDecl());
 }
 
 void ExprHasher::VisitAttributedStmt(const AttributedStmt* node) {
@@ -63,17 +93,17 @@ void ExprHasher::VisitAttributedStmt(const AttributedStmt* node) {
 
 void ExprHasher::VisitIfStmt(const IfStmt* node) {
     VisitStmt(node);
-    leaves.add_decl(node->getConditionVariable());
+    visit_decl(node->getConditionVariable());
 }
 
 void ExprHasher::VisitSwitchStmt(const SwitchStmt* node) {
     VisitStmt(node);
-    leaves.add_decl(node->getConditionVariable());
+    visit_decl(node->getConditionVariable());
 }
 
 void ExprHasher::VisitWhileStmt(const WhileStmt* node) {
     VisitStmt(node);
-    leaves.add_decl(node->getConditionVariable());
+    visit_decl(node->getConditionVariable());
 }
 
 void ExprHasher::VisitDoStmt(const DoStmt* node) {
@@ -86,7 +116,7 @@ void ExprHasher::VisitForStmt(const ForStmt* node) {
 
 void ExprHasher::VisitGotoStmt(const GotoStmt* node) {
     VisitStmt(node);
-    leaves.add_decl(node->getLabel());
+    visit_decl(node->getLabel());
 }
 
 void ExprHasher::VisitIndirectGotoStmt(const IndirectGotoStmt* node) {
@@ -129,7 +159,7 @@ void ExprHasher::VisitGCCAsmStmt(const GCCAsmStmt* node) {
         Visit(node->getClobberExpr(i));
     id.AddInteger(node->getNumLabels());
     for(auto* label: node->labels())
-        leaves.add_decl(label->getLabel());
+        visit_decl(label->getLabel());
 }
 
 void ExprHasher::VisitMSAsmStmt(const MSAsmStmt* node) {
@@ -199,7 +229,7 @@ void ExprHasher::VisitConstantExpr(const ConstantExpr* node) {
 
 void ExprHasher::VisitDeclRefExpr(const DeclRefExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getDecl());
+    visit_decl(node->getDecl());
 }
 
 void ExprHasher::VisitSYCLUniqueStableNameExpr(const SYCLUniqueStableNameExpr* node) {
@@ -281,7 +311,7 @@ void ExprHasher::VisitOffsetOfExpr(const OffsetOfExpr* node) {
                 // Expressions handled below.
                 break;
 
-            case OffsetOfNode::Field: leaves.add_decl(component.getField()); break;
+            case OffsetOfNode::Field: visit_decl(component.getField()); break;
 
             case OffsetOfNode::Identifier: leaves.add_identifier(component.getFieldName()); break;
 
@@ -323,7 +353,7 @@ void ExprHasher::VisitCallExpr(const CallExpr* node) {
 
 void ExprHasher::VisitMemberExpr(const MemberExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getMemberDecl());
+    visit_decl(node->getMemberDecl());
     id.AddBoolean(node->isArrow());
 }
 
@@ -365,7 +395,7 @@ void ExprHasher::VisitBinaryConditionalOperator(const BinaryConditionalOperator*
 
 void ExprHasher::VisitAddrLabelExpr(const AddrLabelExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getLabel());
+    visit_decl(node->getLabel());
 }
 
 void ExprHasher::VisitStmtExpr(const StmtExpr* node) {
@@ -455,7 +485,7 @@ void ExprHasher::VisitMatrixElementExpr(const MatrixElementExpr* node) {
 
 void ExprHasher::VisitBlockExpr(const BlockExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getBlockDecl());
+    visit_decl(node->getBlockDecl());
 }
 
 void ExprHasher::VisitGenericSelectionExpr(const GenericSelectionExpr* node) {
@@ -488,7 +518,7 @@ void ExprHasher::VisitAtomicExpr(const AtomicExpr* node) {
 
 void ExprHasher::VisitConceptSpecializationExpr(const ConceptSpecializationExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getNamedConcept());
+    visit_decl(node->getNamedConcept());
     for(const TemplateArgument& argument: node->getTemplateArguments())
         VisitTemplateArgument(argument);
 }
@@ -497,7 +527,7 @@ void ExprHasher::VisitRequiresExpr(const RequiresExpr* node) {
     VisitExpr(node);
     id.AddInteger(node->getLocalParameters().size());
     for(ParmVarDecl* local_parameter: node->getLocalParameters())
-        leaves.add_decl(local_parameter);
+        visit_decl(local_parameter);
     id.AddInteger(node->getRequirements().size());
     for(concepts::Requirement* requirement: node->getRequirements()) {
         if(auto* type_requirement = dyn_cast<concepts::TypeRequirement>(requirement)) {
@@ -779,7 +809,7 @@ void ExprHasher::VisitCXXUuidofExpr(const CXXUuidofExpr* node) {
 
 void ExprHasher::VisitMSPropertyRefExpr(const MSPropertyRefExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getPropertyDecl());
+    visit_decl(node->getPropertyDecl());
 }
 
 void ExprHasher::VisitMSPropertySubscriptExpr(const MSPropertySubscriptExpr* node) {
@@ -798,28 +828,28 @@ void ExprHasher::VisitCXXThrowExpr(const CXXThrowExpr* node) {
 
 void ExprHasher::VisitCXXDefaultArgExpr(const CXXDefaultArgExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getParam());
+    visit_decl(node->getParam());
 }
 
 void ExprHasher::VisitCXXDefaultInitExpr(const CXXDefaultInitExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getField());
+    visit_decl(node->getField());
 }
 
 void ExprHasher::VisitCXXBindTemporaryExpr(const CXXBindTemporaryExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getTemporary()->getDestructor());
+    visit_decl(node->getTemporary()->getDestructor());
 }
 
 void ExprHasher::VisitCXXConstructExpr(const CXXConstructExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getConstructor());
+    visit_decl(node->getConstructor());
     id.AddBoolean(node->isElidable());
 }
 
 void ExprHasher::VisitCXXInheritedCtorInitExpr(const CXXInheritedCtorInitExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getConstructor());
+    visit_decl(node->getConstructor());
 }
 
 void ExprHasher::VisitCXXFunctionalCastExpr(const CXXFunctionalCastExpr* node) {
@@ -834,7 +864,7 @@ void ExprHasher::VisitLambdaExpr(const LambdaExpr* node) {
 
     // C++20 [temp.over.link]p5:
     //   Two lambda-expressions are never considered equivalent.
-    leaves.add_decl(node->getLambdaClass());
+    visit_decl(node->getLambdaClass());
 }
 
 void ExprHasher::VisitCXXReflectExpr(const CXXReflectExpr*) {
@@ -845,14 +875,14 @@ void ExprHasher::VisitCXXDeleteExpr(const CXXDeleteExpr* node) {
     VisitExpr(node);
     id.AddBoolean(node->isGlobalDelete());
     id.AddBoolean(node->isArrayForm());
-    leaves.add_decl(node->getOperatorDelete());
+    visit_decl(node->getOperatorDelete());
 }
 
 void ExprHasher::VisitCXXNewExpr(const CXXNewExpr* node) {
     VisitExpr(node);
     leaves.add_type(node->getAllocatedType());
-    leaves.add_decl(node->getOperatorNew());
-    leaves.add_decl(node->getOperatorDelete());
+    visit_decl(node->getOperatorNew());
+    visit_decl(node->getOperatorDelete());
     id.AddBoolean(node->isArray());
     id.AddInteger(node->getNumPlacementArgs());
     id.AddBoolean(node->isGlobalNew());
@@ -879,7 +909,7 @@ void ExprHasher::VisitOverloadExpr(const OverloadExpr* node) {
     bool describing_dependent_var_template =
         node->getNumDecls() == 1 && isa<VarTemplateDecl>(*node->decls_begin());
     if(describing_dependent_var_template) {
-        leaves.add_decl(*node->decls_begin());
+        visit_decl(*node->decls_begin());
     } else {
         leaves.add_nested_name_specifier(node->getQualifier());
         leaves.add_name(node->getName(), /*treat_as_decl=*/true);
@@ -970,7 +1000,7 @@ void ExprHasher::VisitSizeOfPackExpr(const SizeOfPackExpr* node) {
         for(const auto& argument: arguments)
             VisitTemplateArgument(argument);
     } else {
-        leaves.add_decl(node->getPack());
+        visit_decl(node->getPack());
         id.AddInteger(0);
     }
 }
@@ -990,7 +1020,7 @@ void ExprHasher::VisitPackIndexingExpr(const PackIndexingExpr* expr) {
 void ExprHasher::VisitSubstNonTypeTemplateParmPackExpr(
     const SubstNonTypeTemplateParmPackExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getParameterPack());
+    visit_decl(node->getParameterPack());
     VisitTemplateArgument(node->getArgumentPack());
 }
 
@@ -1000,10 +1030,10 @@ void ExprHasher::VisitSubstNonTypeTemplateParmExpr(const SubstNonTypeTemplatePar
 
 void ExprHasher::VisitFunctionParmPackExpr(const FunctionParmPackExpr* node) {
     VisitExpr(node);
-    leaves.add_decl(node->getParameterPack());
+    visit_decl(node->getParameterPack());
     id.AddInteger(node->getNumExpansions());
     for(FunctionParmPackExpr::iterator i = node->begin(), end = node->end(); i != end; ++i)
-        leaves.add_decl(*i);
+        visit_decl(*i);
 }
 
 void ExprHasher::VisitMaterializeTemporaryExpr(const MaterializeTemporaryExpr* node) {
@@ -1099,7 +1129,7 @@ void ExprHasher::VisitTemplateArgument(const TemplateArgument& argument) {
         case TemplateArgument::Declaration:
             leaves.add_type(argument.getParamTypeForDecl());
 
-            leaves.add_decl(argument.getAsDecl());
+            visit_decl(argument.getAsDecl());
             break;
 
         case TemplateArgument::NullPtr: leaves.add_type(argument.getNullPtrType()); break;

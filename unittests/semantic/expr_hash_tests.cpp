@@ -26,41 +26,6 @@ struct PointerLeaves : ExprHashLeaves {
         id(id), context(context) {}
 
     void add_decl(const Decl* decl) override {
-        id.AddInteger(decl ? decl->getKind() : 0);
-
-        if(decl) {
-            if(const NonTypeTemplateParmDecl* nttp = dyn_cast<NonTypeTemplateParmDecl>(decl)) {
-                id.AddInteger(nttp->getDepth());
-                id.AddInteger(nttp->getIndex());
-                id.AddBoolean(nttp->isParameterPack());
-
-                add_type(context.getUnconstrainedType(nttp->getType()));
-                return;
-            }
-
-            if(const ParmVarDecl* param = dyn_cast<ParmVarDecl>(decl)) {
-                add_type(param->getType());
-                id.AddInteger(param->getFunctionScopeDepth());
-                id.AddInteger(param->getFunctionScopeIndex());
-                return;
-            }
-
-            if(const TemplateTypeParmDecl* template_param = dyn_cast<TemplateTypeParmDecl>(decl)) {
-                id.AddInteger(template_param->getDepth());
-                id.AddInteger(template_param->getIndex());
-                id.AddBoolean(template_param->isParameterPack());
-                return;
-            }
-
-            if(const TemplateTemplateParmDecl* template_param =
-                   dyn_cast<TemplateTemplateParmDecl>(decl)) {
-                id.AddInteger(template_param->getDepth());
-                id.AddInteger(template_param->getIndex());
-                id.AddBoolean(template_param->isParameterPack());
-                return;
-            }
-        }
-
         id.AddPointer(decl ? decl->getCanonicalDecl() : nullptr);
     }
 

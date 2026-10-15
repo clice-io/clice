@@ -194,52 +194,15 @@ public:
 
 /// The stable leaves of an expression profile: what ExprHasher hands out
 /// as pointers upstream becomes an entity, a type hash or a string here.
-/// The template-parameter and function-parameter cases mirror
-/// StmtProfilerWithPointers so the walk's structure stays identical.
 class EntityTable::Leaves : public ExprHashLeaves {
 public:
     Leaves(EntityTable& table, llvm::FoldingSetNodeID& id) : table(table), id(id) {}
 
     void add_decl(const clang::Decl* decl) override {
-        id.AddInteger(decl ? decl->getKind() : 0);
-        if(!decl) {
-            return;
-        }
-
-        if(auto* parameter = llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(decl)) {
-            id.AddInteger(parameter->getDepth());
-            id.AddInteger(parameter->getIndex());
-            id.AddBoolean(parameter->isParameterPack());
-            auto& context = table.unit.context();
-            id.AddInteger(table.type_hash(context.getUnconstrainedType(parameter->getType())));
-            return;
-        }
-
-        if(auto* parameter = llvm::dyn_cast<clang::ParmVarDecl>(decl)) {
-            id.AddInteger(table.type_hash(parameter->getType()));
-            id.AddInteger(parameter->getFunctionScopeDepth());
-            id.AddInteger(parameter->getFunctionScopeIndex());
-            return;
-        }
-
-        if(auto* parameter = llvm::dyn_cast<clang::TemplateTypeParmDecl>(decl)) {
-            id.AddInteger(parameter->getDepth());
-            id.AddInteger(parameter->getIndex());
-            id.AddBoolean(parameter->isParameterPack());
-            return;
-        }
-
-        if(auto* parameter = llvm::dyn_cast<clang::TemplateTemplateParmDecl>(decl)) {
-            id.AddInteger(parameter->getDepth());
-            id.AddInteger(parameter->getIndex());
-            id.AddBoolean(parameter->isParameterPack());
-            return;
-        }
-
         /// A declaration statement inside a statement expression can hold
         /// unnamed declarations (static_assert, empty declarations); their
-        /// kind above is all they have.
-        if(auto* named = llvm::dyn_cast<clang::NamedDecl>(decl)) {
+        /// kind is all they have.
+        if(auto* named = llvm::dyn_cast_if_present<clang::NamedDecl>(decl)) {
             id.AddInteger(table.entity(named));
         }
     }

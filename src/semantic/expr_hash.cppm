@@ -33,10 +33,8 @@ namespace clice {
 struct ExprHashLeaves {
     virtual ~ExprHashLeaves() = default;
 
-    /// A referenced declaration, possibly null. Upstream encodes template
-    /// parameters and function parameters by depth and index before falling
-    /// back to the canonical declaration's pointer; every implementation
-    /// keeps that split.
+    /// A referenced declaration other than a template or function
+    /// parameter, which the walk encodes by depth and index; possibly null.
     virtual void add_decl(const clang::Decl* decl) = 0;
 
     /// A referenced type, possibly null; profiled canonically.
@@ -225,6 +223,9 @@ public:
 private:
     /// The statement class alone; upstream's VisitStmtNoChildren.
     void visit_stmt_class(const clang::Stmt* stmt);
+
+    /// A referenced declaration, possibly null; upstream's VisitDecl.
+    void visit_decl(const clang::Decl* decl);
 
     llvm::FoldingSetNodeID& id;
     ExprHashLeaves& leaves;
