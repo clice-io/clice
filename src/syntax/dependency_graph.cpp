@@ -520,15 +520,22 @@ struct FileScanner {
         llvm::StringRef includer_dir = includer_spelling;
         auto* includer_listing = &scope.list(includer_dir);
 
-        // An angled include resolves the same from every includer under
-        // one group: resolve it once per scan.
-        auto& memo = angled[context.group];
         llvm::SmallVector<IncludeEdge> edges;
         edges.reserve(scan.includes.size());
         for(auto& include: scan.includes) {
+            // An angled include resolves the same from every includer
+            // under one group: resolve it once per scan. Most groups hold
+            // one unit, so the memo is one map keyed by group and name.
             bool memoized = include.is_angled && !include.is_include_next;
+            llvm::SmallString<80> key;
+            if(memoized) {
+                key.append(reinterpret_cast<const char*>(&context.group),
+                           reinterpret_cast<const char*>(&context.group) + sizeof(std::uint32_t));
+                key += include.path;
+            }
+
             CachedInclude resolved;
-            if(auto it = memoized ? memo.find(include.path) : memo.end(); it != memo.end()) {
+            if(auto it = memoized ? angled.find(key) : angled.end(); it != angled.end()) {
                 resolved = it->second;
             } else {
                 auto found = resolve_include(include.path,
@@ -544,7 +551,7 @@ struct FileScanner {
                                                  .found_dir_idx = found->found_dir_idx}
                                  : CachedInclude{};
                 if(memoized) {
-                    memo.try_emplace(include.path, resolved);
+                    angled.try_emplace(key, resolved);
                 }
             }
 
@@ -640,7 +647,7 @@ struct FileScanner {
     vfs::Scope scope;
     llvm::DenseMap<std::uint32_t, std::unique_ptr<Search>> searches;
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<CachedInclude>> forced_cache;
-    llvm::DenseMap<std::uint32_t, llvm::StringMap<CachedInclude>> angled;
+    llvm::StringMap<CachedInclude> angled;
 
     /// For the scan report: #include directives resolved, and not.
     std::size_t includes_resolved = 0;
