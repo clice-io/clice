@@ -62,3 +62,11 @@ struct {
 } state;
 }
 }
+
+namespace api {
+inline namespace v1 {
+void run() {
+    int §(inline_namespace_local)attempts = 1;
+}
+}
+}

@@ -98,3 +98,14 @@ Offset: 0 bytes
 Size: 1 byte, alignment 1 byte
 '''
 range = "char ⟦mode⟧;"
+
+[answers.inline_namespace_local.hover]
+markdown = '''
+**variable** `attempts` · function `api::run`
+
+```cpp
+int attempts = 1
+```
+Value: `1`
+'''
+range = "int ⟦attempts⟧ = 1;"

@@ -1,6 +1,6 @@
 // Parameter cards for the forms clang prints apart from how they are written:
 // parameters of function type, written as one or through an alias, explicit
-// object parameters, a definition that
+// object parameters, a parameter with an attribute, a definition that
 // inherits its default argument from the declaration before it.
 
 namespace function_type {
@@ -21,4 +21,8 @@ struct Widget {
 namespace inherited_default {
 void open(int mode = 0644);
 void open(int §(inherited_default)mode) {}
+}
+
+namespace attributed {
+void report([[maybe_unused]] int §(attributed)code);
 }

@@ -63,3 +63,28 @@ Offset: 0 bytes
 Size: 4 bytes, alignment 4 bytes
 '''
 range = "return point->⟦x⟧;"
+
+[answers.flexible.hover]
+markdown = '''
+**struct** `Message`
+
+```cpp
+struct Message {
+  int length;
+  char text[];
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "struct ⟦Message⟧ {"
+
+[answers.flexible_member.hover]
+markdown = '''
+**field** `text` · struct `Message`
+
+```cpp
+char text[]
+```
+Offset: 4 bytes
+'''
+range = "char ⟦text⟧[];"

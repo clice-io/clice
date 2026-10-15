@@ -68,3 +68,13 @@ int mode
 ```
 '''
 range = "void open(int ⟦mode⟧) {}"
+
+[answers.attributed.hover]
+markdown = '''
+**parameter** `code` · function `attributed::report`
+
+```cpp
+[[maybe_unused]] int code
+```
+'''
+range = "void report([[maybe_unused]] int ⟦code⟧);"

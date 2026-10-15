@@ -316,8 +316,15 @@ auto scope_of(const clang::Decl* decl, const display::Options& options) -> Scope
         }
 
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(context)) {
-            return {.kind = kind_noun(card_kind(function)).str(),
-                    .name = function->getQualifiedNameAsString()};
+            /// Without the inline namespaces code does not write, as
+            /// namespace_path() leaves them out.
+            clang::PrintingPolicy policy(function->getASTContext().getLangOpts());
+            policy.SuppressInlineNamespace =
+                llvm::to_underlying(clang::PrintingPolicy::SuppressInlineNamespaceMode::All);
+            std::string name;
+            llvm::raw_string_ostream os(name);
+            function->printQualifiedName(os, policy);
+            return {.kind = kind_noun(card_kind(function)).str(), .name = std::move(name)};
         }
     }
     return {};
@@ -624,8 +631,10 @@ auto used_bits(const clang::RecordDecl& record, const clang::ASTContext& context
         std::uint64_t size = 0;
         if(field->isBitField()) {
             size = field->getBitWidthValue();
-        } else if(!field->isZeroSize(context)) {
-            size = context.getTypeSize(field->getType());
+        } else if(auto known = context.getTypeSizeInCharsIfKnown(field->getType());
+                  known && !field->isZeroSize(context)) {
+            /// A flexible array member has no size.
+            size = context.toBits(*known);
         }
         used = record.isUnion() ? std::max(used, size) : used + size;
     }

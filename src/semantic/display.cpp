@@ -1622,6 +1622,18 @@ auto definition(const clang::Decl* decl,
     if(const auto* decomposition = llvm::dyn_cast<clang::DecompositionDecl>(decl)) {
         print_decomposition(*decomposition, policy, os);
     } else if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(decl)) {
+        /// Its attributes and storage class are no part of its type.
+        for(const auto* attr: param->attrs()) {
+            if(!attr->isImplicit() && !attr->isInherited()) {
+                std::string printed;
+                llvm::raw_string_ostream attr_os(printed);
+                attr->printPretty(attr_os, policy);
+                os << llvm::StringRef(printed).trim() << ' ';
+            }
+        }
+        if(param->getStorageClass() == clang::SC_Register) {
+            os << "register ";
+        }
         if(param->isExplicitObjectParameter()) {
             os << "this ";
         }

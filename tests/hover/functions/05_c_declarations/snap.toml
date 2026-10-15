@@ -18,3 +18,13 @@ typeof(1.) ratio()
 Type: `typeof (1.) ()` (aka `double ()`)
 '''
 range = "__typeof__(1.0) ⟦ratio⟧();"
+
+[answers.register_parameter.hover]
+markdown = '''
+**parameter** `count` · function `drain`
+
+```cpp
+register int count
+```
+'''
+range = "void drain(register int ⟦count⟧);"

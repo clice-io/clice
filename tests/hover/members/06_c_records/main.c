@@ -35,3 +35,8 @@ struct §(inner_tags)Packed packed;
 int width(struct Point* point) {
     return point->§(field_use)x;
 }
+
+struct §(flexible)Message {
+    int length;
+    char §(flexible_member)text[];
+};
