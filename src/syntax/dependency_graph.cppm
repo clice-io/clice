@@ -105,7 +105,8 @@ public:
     }
 
     /// Record how the scan reached a file; a unit has one context per
-    /// command, any other file the first one that reached it.
+    /// scan group its commands fall in, any other file the first one that
+    /// reached it.
     void add_context(Fid path_id, ScanContext context);
     llvm::ArrayRef<ScanContext> contexts(Fid path_id) const;
 
@@ -247,7 +248,7 @@ struct ScanReport {
     };
 
     /// The includes not resolved, in scan order; a file scanned under
-    /// several commands lists one again for each that misses it.
+    /// several groups lists one again for each that misses it.
     std::vector<Unresolved> unresolved;
 
     /// Files whose lexical scan was reused instead of read and lexed again.

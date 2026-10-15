@@ -667,7 +667,7 @@ struct FileScanner {
 /// the previous wave has recorded.
 struct FullScan {
     /// The files one wave records, in the order they were reached: the
-    /// units under every command they compile with, a header under the
+    /// units under every group their commands fall in, a header under the
     /// context it was first reached by.
     struct Wave {
         struct File {
