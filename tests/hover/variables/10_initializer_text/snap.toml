@@ -1,0 +1,67 @@
+[answers.spread.hover]
+markdown = '''
+**variable** `spread` · namespace `initializer_text`
+
+```cpp
+int spread = 1 + 2 + 3
+```
+Value: `6`
+'''
+range = "int ⟦spread⟧ = 1 +"
+
+[answers.raw.hover]
+markdown = '''
+**variable** `raw` · namespace `initializer_text`
+
+```cpp
+const char *raw = R"(a "quoted"
+line)"
+```
+Value: `"a \"quoted\"\nline"`
+'''
+range = 'const char* ⟦raw⟧ = R"(a "quoted"'
+
+[answers.continued.hover]
+markdown = '''
+**variable** `continued` · namespace `initializer_text`
+
+```cpp
+int continued = TWICE(4) + 1
+```
+Value: `9`
+'''
+range = 'int ⟦continued⟧ = TWICE(4) \'
+
+[answers.lambda.hover]
+markdown = '''
+**variable** `square` · namespace `initializer_text`
+
+```cpp
+auto square = [](int value) { ... }
+```
+Type: `int (int)`
+'''
+range = "auto ⟦square⟧ = [](int value) {"
+
+[answers.member_lambda.hover]
+markdown = '''
+**field** `callback` · struct `initializer_text::Widget`
+
+```cpp
+int (*callback)(int) = [](int value) { ... }
+```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "int (*⟦callback⟧)(int) = [](int value) { return value + 1; };"
+
+[answers.directive.hover]
+markdown = '''
+**variable** `configured` · namespace `initializer_text`
+
+```cpp
+int configured[2]
+```
+Value: `{1, 3}`
+'''
+range = "int ⟦configured⟧[] = {"

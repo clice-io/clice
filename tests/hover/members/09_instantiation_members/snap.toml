@@ -1,0 +1,91 @@
+[answers.instantiation.hover]
+markdown = '''
+**struct** `Cache<long, 4>` · namespace `instantiation_members`
+
+```cpp
+template <> struct alignas(64) Cache<long, 4> final : Base {
+  struct Node;
+  enum Kind : int;
+  enum class State : int;
+  using value_type = long;
+  [[no_unique_address]] Empty tag;
+  alignas(32) long slots[4];
+  value_type *cursor;
+  State state = State::Idle;
+}
+```
+Size: 128 bytes (80 bytes padding), alignment 64 bytes
+'''
+range = "⟦Cache⟧<long, 4> cache;"
+
+[answers.reserved_members.hover]
+markdown = '''
+**struct** `Hidden<int>` · namespace `instantiation_members`
+
+```cpp
+template <> struct Hidden<int> {
+  // ...
+}
+```
+Size: 8 bytes, alignment 4 bytes
+'''
+range = "⟦Hidden⟧<int> hidden;"
+
+[answers.nested_types.hover]
+markdown = '''
+**struct** `Wrapper<char>` · namespace `instantiation_members::inner`
+
+```cpp
+template <> struct Wrapper<char> {
+  struct Item;
+  Item item;
+  Item *next;
+}
+```
+Size: 16 bytes (7 bytes padding), alignment 8 bytes
+'''
+range = "inner::⟦Wrapper⟧<char> wrapper;"
+
+[answers.parameter_value.hover]
+markdown = '''
+**struct** `Constant<int, 7>` · namespace `instantiation_members`
+
+```cpp
+template <> struct Constant<int, 7> {
+  static constexpr int value = 7;
+  using size_type = unsigned long;
+  size_type count = 0;
+}
+```
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "⟦Constant⟧<int, 7> seven;"
+
+[answers.pack_size.hover]
+markdown = '''
+**struct** `Pack<int, long, char>` · namespace `instantiation_members`
+
+```cpp
+template <> struct Pack<int, long, char> {
+  using Table = Slots<3>;
+}
+```
+Size: 1 byte, alignment 1 byte
+'''
+range = "⟦Pack⟧<int, long, char> pack;"
+
+[answers.dependent_initializer]
+wrong = "clang instantiates the initializer only where the member is used, and it computes from the arguments"
+
+[answers.dependent_initializer.hover]
+markdown = '''
+**struct** `Doubled<4>` · namespace `instantiation_members`
+
+```cpp
+template <> struct Doubled<4> {
+  static constexpr int capacity;
+}
+```
+Size: 1 byte, alignment 1 byte
+'''
+range = "⟦Doubled⟧<4> doubled;"

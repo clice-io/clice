@@ -3,7 +3,7 @@ markdown = '''
 **auto**
 
 ```cpp
-lambda_auto_params::Point
+Point
 ```
 '''
 range = "auto norm = [](⟦auto⟧ point) {"
@@ -15,7 +15,7 @@ markdown = '''
 ```cpp
 auto point
 ```
-Type: `lambda_auto_params::Point`
+Type: `Point`
 '''
 range = "auto norm = [](auto ⟦point⟧) {"
 
@@ -26,7 +26,7 @@ markdown = '''
 ```cpp
 auto point
 ```
-Type: `lambda_auto_params::Point`
+Type: `Point`
 '''
 range = "return ⟦point⟧.x + point.y;"
 

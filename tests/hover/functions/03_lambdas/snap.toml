@@ -36,7 +36,7 @@ markdown = '''
 **variable** `above` · function `local_closure::inspect`
 
 ```cpp
-auto above = [&threshold](int value) {}
+auto above = [&threshold](int value) { ... }
 ```
 Type: `bool (int)`
 '''

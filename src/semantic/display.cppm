@@ -56,9 +56,20 @@ struct Options {
     /// type(): attach the desugared form as `aka` when it differs.
     bool show_aka = false;
 
+    /// type(): name a class template inside it as code there does, `Box`,
+    /// not by its own specialization (`Box<T>`, whose unnamed parameters
+    /// print canonically, `value-parameter-0-2`).
+    bool injected_as_written = false;
+
     /// definition(): how many members, at most, the body of a class or enum
     /// definition lists — nested ones count too; 0 prints no body.
     std::uint32_t max_members = 0;
+
+    /// type(): the scope the type is shown in. Through options.readable, a
+    /// type named in another scope is named as code here names it
+    /// (`std::vector<int>::iterator`, not the `iterator` the vector writes);
+    /// null for the global scope.
+    const clang::DeclContext* scope = nullptr;
 };
 
 /// A pretty-printed type, optionally with its desugared form.
@@ -180,7 +191,11 @@ public:
     ReadableTypes(clang::ASTContext& context, const Options& options) :
         context(context), scoped(!options.suppress_scope) {}
 
-    auto readable(clang::QualType type) -> clang::QualType;
+    /// `type` as a reader knows it, shown in `scope`: a type named in
+    /// another scope gets the qualifier that names it from there. Without a
+    /// scope, a name keeps the qualifier it is written with.
+    auto readable(clang::QualType type, const clang::DeclContext* scope = nullptr)
+        -> clang::QualType;
 
     /// A reserved name a library keeps to itself, within namespace std or a
     /// reserved one (`_NonArray`, `__gnu_cxx::__alloc_traits`). One outside
@@ -188,7 +203,13 @@ public:
     bool internal(const clang::NamedDecl* decl) const;
 
 private:
-    auto readable(const clang::TemplateArgument& argument) -> clang::TemplateArgument;
+    auto readable(const clang::TemplateArgument& argument, const clang::DeclContext* scope)
+        -> clang::TemplateArgument;
+
+    /// The qualifier that names `decl`, a type's declaration, from `scope`;
+    /// null when its name alone does.
+    auto qualifier(const clang::NamedDecl& decl, const clang::DeclContext* scope)
+        -> clang::NestedNameSpecifier;
 
     bool reserved(const clang::NamedDecl* decl) const;
 
@@ -196,9 +217,6 @@ private:
     /// difference with (`std::size_t`, else `size_t`); null when it declares
     /// none.
     auto standard_name(const clang::PredefinedSugarType& type) -> const clang::TypedefNameDecl*;
-
-    /// The scope the code names a namespace member through, `std::pmr::`.
-    auto written_scope(const clang::NamedDecl* decl) const -> clang::NestedNameSpecifier;
 
     /// The alias the standard names a specialization of its class templates
     /// with, looked up by name; null when it gives none, or two.
@@ -254,14 +272,36 @@ auto field(const clang::FieldDecl& field, const Options& options) -> std::string
 /// "template <...> class" for template template parameters.
 auto template_param_type(const clang::NamedDecl* param, const Options& options = {}) -> Type;
 
-/// Pretty-print the declaration itself. A class or enum with a visible
-/// definition prints that definition, its body summarized as
-/// options.max_members asks. Initializers longer than 200 tokens, counted by
-/// `token_count` over a range, are suppressed — such lists are not useful in
-/// a hover card and are catastrophically expensive to print.
+/// An attribute specifier as the source writes it: `[[nodiscard]]`,
+/// `__attribute__((packed))`, `alignas(8)`.
+auto attribute(const clang::Attr& attr, const clang::ASTContext& context) -> std::string;
+
+/// A declaration as code: its template head, the attributes written before
+/// it, and the rest, which a reader takes in apart.
+struct Definition {
+    /// `template <...>`, when the attributes come between it and the rest.
+    std::string head;
+
+    /// The attribute specifiers written before the declaration, on a line of
+    /// their own; empty for none.
+    std::string attributes;
+
+    std::string text;
+
+    /// The macros the declaration's attributes are written with, each with
+    /// the attributes it expands to.
+    std::vector<Type> attribute_macros;
+};
+
+/// Pretty-print the declaration itself, its attributes as written. A class
+/// or enum with a visible definition prints that definition, its body
+/// summarized as options.max_members asks. Initializers longer than 200
+/// tokens, counted by `token_count` over a range, are suppressed — such lists
+/// are not useful in a hover card and are catastrophically expensive to
+/// print.
 auto definition(const clang::Decl* decl,
                 const Options& options,
-                llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string;
+                llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> Definition;
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os, const Type& type);
 

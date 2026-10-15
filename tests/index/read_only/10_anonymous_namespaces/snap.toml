@@ -1,0 +1,104 @@
+[test.top]
+kind = "markdown"
+text = '''
+**variable** `hidden` · namespace `(anonymous)`  
+
+```cpp
+int hidden = 1
+```
+'''
+
+[test.top.range]
+path = "main.cpp"
+
+[test.top.range.range.start]
+line = 1
+character = 4
+
+[test.top.range.range.end]
+line = 1
+character = 10
+
+[test.member]
+kind = "markdown"
+text = '''
+**field** `count` · struct `(anonymous namespace)::Impl`  
+
+```cpp
+int count
+```
+'''
+
+[test.member.range]
+path = "main.cpp"
+
+[test.member.range.range.start]
+line = 4
+character = 8
+
+[test.member.range.range.end]
+line = 4
+character = 13
+
+[test.union_member]
+kind = "markdown"
+text = '''
+**field** `raw` · namespace `(anonymous)`  
+
+```cpp
+int raw
+```
+'''
+
+[test.union_member.range]
+path = "main.cpp"
+
+[test.union_member.range.range.start]
+line = 8
+character = 8
+
+[test.union_member.range.range.end]
+line = 8
+character = 11
+
+[test.nested]
+kind = "markdown"
+text = '''
+**variable** `nested` · namespace `outer::(anonymous)`  
+
+```cpp
+int nested = 2
+```
+'''
+
+[test.nested.range]
+path = "main.cpp"
+
+[test.nested.range.range.start]
+line = 14
+character = 4
+
+[test.nested.range.range.end]
+line = 14
+character = 10
+
+[test.inside]
+kind = "markdown"
+text = '''
+**variable** `deep` · namespace `outer::(anonymous)::inner`  
+
+```cpp
+int deep = 3
+```
+'''
+
+[test.inside.range]
+path = "main.cpp"
+
+[test.inside.range.range.start]
+line = 17
+character = 4
+
+[test.inside.range.range.end]
+line = 17
+character = 8

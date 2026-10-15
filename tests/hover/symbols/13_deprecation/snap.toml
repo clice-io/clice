@@ -4,6 +4,7 @@ markdown = '''
 
 Deprecated: use open_v2
 ```cpp
+[[deprecated("use open_v2")]]
 void open_v1()
 ```
 '''
@@ -15,6 +16,7 @@ markdown = '''
 
 Deprecated: use open_v2
 ```cpp
+[[deprecated("use open_v2")]]
 void open_v1()
 ```
 '''

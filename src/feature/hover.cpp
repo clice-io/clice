@@ -483,6 +483,61 @@ auto written_text(CompilationUnit& unit, const clang::Decl* decl) -> std::option
     return text.str();
 }
 
+/// Lay out code a card shows, a printed declaration or an expansion, in the
+/// LLVM style: it is printed as one line, not as anyone wrote it.
+void reformat(std::string& code) {
+    if(code.empty()) {
+        return;
+    }
+    auto replacements = clang::format::reformat(clang::format::getLLVMStyle(),
+                                                code,
+                                                {clang::tooling::Range(0, code.size())});
+    auto formatted = clang::tooling::applyAllReplacements(code, replacements);
+    if(!formatted) {
+        llvm::consumeError(formatted.takeError());
+        return;
+    }
+    code = std::move(*formatted);
+}
+
+/// A declaration as its card shows it, laid out: the attributes written
+/// before it on a line of their own, after its template head.
+auto layout(display::Definition definition, bool exported) -> std::string {
+    std::string prefix = exported ? "export " : "";
+    if(definition.attributes.empty()) {
+        auto text = prefix + definition.head + definition.text;
+        reformat(text);
+        return text;
+    }
+    std::string text;
+    if(!definition.head.empty()) {
+        auto head = prefix + definition.head;
+        reformat(head);
+        text = head + "\n";
+        prefix.clear();
+    }
+    auto attributes = prefix + definition.attributes;
+    reformat(attributes);
+    reformat(definition.text);
+    return text + attributes + "\n" + definition.text;
+}
+
+/// Note the attribute macros a definition shows, once each, with what they
+/// expand to.
+void add_macros(HoverInfo& info,
+                const display::Definition& definition,
+                const display::Options& options) {
+    if(!options.show_aka) {
+        return;
+    }
+    for(const auto& macro: definition.attribute_macros) {
+        if(llvm::none_of(info.attribute_macros,
+                         [&](const display::Type& known) { return known.text == macro.text; })) {
+            info.attribute_macros.push_back(macro);
+        }
+    }
+}
+
 /// The card of a declaration.
 auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverInfo {
     HoverInfo info;
@@ -490,6 +545,9 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
     auto& context = decl->getASTContext();
     const auto& options = request.display;
     const auto* entity = templated(decl);
+    /// The types the card states, named as code where it is names them.
+    auto shown = options;
+    shown.scope = decl->getDeclContext();
 
     if(auto access = decl->getAccess();
        access == clang::AS_private || access == clang::AS_protected) {
@@ -550,44 +608,44 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
             if(index != 0) {
                 info.target_definition += '\n';
             }
-            info.target_definition +=
-                display::definition(target,
-                                    options,
-                                    [&](clang::SourceRange range) {
-                                        return unit.focus_file().tokens().expanded(range).size();
-                                    }) +
-                ";";
+            auto definition = display::definition(target, options, [&](clang::SourceRange range) {
+                return unit.focus_file().tokens().expanded(range).size();
+            });
+            add_macros(info, definition, options);
+            info.target_definition += layout(std::move(definition), false) + ";";
         }
     } else if(const auto* function = underlying_function(entity)) {
-        add_function(info, entity, *function, options);
+        add_function(info, entity, *function, shown);
     } else if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(entity)) {
         if(auto type = binding_type(*binding); !type.isNull()) {
-            info.type = display::type(context, type, options);
+            info.type = display::type(context, type, shown);
         }
     } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(entity)) {
         auto type = resolved_type(value, unit);
         if(!spells_type(*value)) {
-            info.type = display::type(context, type, options);
+            info.type = display::type(context, type, shown);
         } else if(type != value->getType()) {
             /// The resolver named what a dependent type stands for.
-            info.aliases.push_back({display::type(context, value->getType(), options).text,
-                                    display::type(context, type, options).text});
+            info.aliases.push_back({display::type(context, value->getType(), shown).text,
+                                    display::type(context, type, shown).text});
         } else if(!llvm::isa<clang::EnumConstantDecl>(value)) {
-            add_alias(info, context, type, options);
+            add_alias(info, context, type, shown);
         }
     } else if(const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(entity)) {
         /// The alias's own target: through the readable types, a standard
         /// alias would name itself.
-        auto plain = options;
+        auto plain = shown;
         plain.readable = nullptr;
         add_alias(info, context, alias->getUnderlyingType(), plain);
         const auto* tag = alias->getUnderlyingType()->getAsTagDecl();
         if(tag && tag->getDefinition() && tag->getTypedefNameForAnonDecl() != alias &&
            !llvm::isa<clang::ClassTemplateSpecializationDecl>(tag)) {
-            info.target_definition =
+            auto definition =
                 display::definition(tag->getDefinition(), options, [&](clang::SourceRange range) {
                     return unit.focus_file().tokens().expanded(range).size();
                 });
+            add_macros(info, definition, options);
+            info.target_definition = layout(std::move(definition), false);
         }
     }
 
@@ -608,18 +666,21 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
     if(const auto* binding = llvm::dyn_cast<clang::BindingDecl>(decl)) {
         declaration = binding->getDecomposedDecl();
     }
-    std::optional<std::string> written;
     if(declaration->isInvalidDecl()) {
-        written = written_text(unit, declaration);
+        if(auto written = written_text(unit, declaration)) {
+            info.definition = std::move(*written);
+            if(decls::is_exported(decl)) {
+                info.definition.insert(0, "export ");
+            }
+            reformat(info.definition);
+            return info;
+        }
     }
-    info.definition =
-        written ? std::move(*written)
-                : display::definition(declaration, options, [&](clang::SourceRange range) {
-                      return unit.focus_file().tokens().expanded(range).size();
-                  });
-    if(decls::is_exported(decl)) {
-        info.definition.insert(0, "export ");
-    }
+    auto definition = display::definition(declaration, options, [&](clang::SourceRange range) {
+        return unit.focus_file().tokens().expanded(range).size();
+    });
+    add_macros(info, definition, options);
+    info.definition = layout(std::move(definition), decls::is_exported(decl));
     return info;
 }
 
@@ -807,9 +868,11 @@ void add_pass(const SelectionTree::Node& node, HoverInfo& info, const display::O
                 type.getNonReferenceType().isConstQualified() ? PassMode::ConstRef : PassMode::Ref;
         }
         if(converts(node, argument)) {
+            auto shown = options;
+            shown.scope = param->getDeclContext();
             info.converted_to = display::type(param->getASTContext(),
                                               type.getNonReferenceType().getUnqualifiedType(),
-                                              options)
+                                              shown)
                                     .text;
         }
         return;
@@ -913,6 +976,7 @@ auto this_hover(const clang::CXXThisExpr& expr,
                           clang::QualType(written.getTypePtr(), pointee.getCVRQualifiers())),
                       options)
             .text;
+    reformat(info.definition);
     return info;
 }
 
@@ -965,28 +1029,8 @@ auto attr_hover(CompilationUnit& unit, const clang::Attr& attr) -> HoverInfo {
     if(attr.hasScope()) {
         info.name = (attr.getScopeName()->getName() + "::" + info.name).str();
     }
-
-    std::string written;
-    if(auto range = unit.written_range(attr.getRange())) {
-        written = unit.file_content(range->file)
-                      .substr(range->range.begin, range->range.end - range->range.begin)
-                      .str();
-    }
-    /// A keyword's range is the keyword alone (`alignas`) or its argument
-    /// alone (`asm("name")`'s); clang prints keywords as written.
-    if(written.empty() || attr.isKeywordAttribute()) {
-        llvm::raw_string_ostream os(info.definition);
-        attr.printPretty(os, unit.context().getPrintingPolicy());
-    } else if(attr.isCXX11Attribute() || attr.isC23Attribute()) {
-        info.definition = "[[" + written + "]]";
-    } else if(attr.isGNUAttribute()) {
-        info.definition = "__attribute__((" + written + "))";
-    } else if(attr.isDeclspecAttribute()) {
-        info.definition = "__declspec(" + written + ")";
-    } else {
-        info.definition = std::move(written);
-    }
-
+    info.definition = display::attribute(attr, unit.context());
+    reformat(info.definition);
     info.attribute_documentation = clang::Attr::getDocumentation(attr.getKind()).str();
     return info;
 }
@@ -994,8 +1038,10 @@ auto attr_hover(CompilationUnit& unit, const clang::Attr& attr) -> HoverInfo {
 /// The card of `auto` or `decltype`: the type it stands for, with the
 /// documentation of what that names: an alias's own, not that of the class
 /// behind it, which may be a library's internal one.
-auto deduced_hover(clang::QualType type, const clang::syntax::Token& token, const Request& request)
-    -> HoverInfo {
+auto deduced_hover(clang::QualType type,
+                   const clang::syntax::Token& token,
+                   const clang::DeclContext* scope,
+                   const Request& request) -> HoverInfo {
     HoverInfo info;
     /// FIXME: distinguish decltype(auto) vs decltype(expr).
     info.name = clang::tok::getTokenName(token.kind());
@@ -1004,9 +1050,12 @@ auto deduced_hover(clang::QualType type, const clang::syntax::Token& token, cons
         return info;
     }
 
-    auto shown = display::type(request.unit.context(), type, request.display);
+    auto options = request.display;
+    options.scope = scope;
+    auto shown = display::type(request.unit.context(), type, options);
     info.definition = shown.text;
-    add_alias(info, request.unit.context(), type, request.display);
+    reformat(info.definition);
+    add_alias(info, request.unit.context(), type, options);
     const clang::NamedDecl* named = nullptr;
     if(const auto* alias = type->getAs<clang::TypedefType>()) {
         named = alias->getDecl();
@@ -1601,21 +1650,16 @@ void parse_rst(llvm::StringRef input, markup::Document& output) {
     flush();
 }
 
-/// Lay out code a card shows, a printed declaration or an expansion, in the
-/// LLVM style: it is printed as one line, not as anyone wrote it.
-void reformat(std::string& code) {
-    if(code.empty()) {
-        return;
-    }
-    auto replacements = clang::format::reformat(clang::format::getLLVMStyle(),
-                                                code,
-                                                {clang::tooling::Range(0, code.size())});
-    auto formatted = clang::tooling::applyAllReplacements(code, replacements);
-    if(!formatted) {
-        llvm::consumeError(formatted.takeError());
-        return;
-    }
-    code = std::move(*formatted);
+auto card_display(const HoverOptions& options) -> display::Options {
+    return {
+        .terse = true,
+        .polish_for_declaration = true,
+        .constants_as_written = true,
+        .suppress_ctor_template_args = true,
+        .resolve_decltype = true,
+        .show_aka = options.show_aka,
+        .max_members = options.max_members,
+    };
 }
 
 }  // namespace
@@ -1804,6 +1848,12 @@ markup::Document HoverInfo::present() const {
         output.add_ruler();
         add_details(output, documentation);
     }
+    if(!attribute_macros.empty()) {
+        output.add_spacing();
+    }
+    for(const auto& macro: attribute_macros) {
+        output.add_paragraph().append_code(macro.text).append_text(" is ").append_code(*macro.aka);
+    }
     return output;
 }
 
@@ -1822,15 +1872,7 @@ auto hover_info(CompilationUnit& unit,
     }
 
     auto& context = unit.context();
-    display::Options display_options = {
-        .terse = true,
-        .polish_for_declaration = true,
-        .constants_as_written = true,
-        .suppress_ctor_template_args = true,
-        .resolve_decltype = true,
-        .show_aka = options.show_aka,
-        .max_members = options.max_members,
-    };
+    auto display_options = card_display(options);
     display::ReadableTypes readable(context, display_options);
     display_options.readable = &readable;
     Request request{
@@ -1886,7 +1928,11 @@ auto hover_info(CompilationUnit& unit,
                     }
                 }
                 if(!deduced.isNull()) {
-                    info = deduced_hover(deduced, token, request);
+                    const auto* owner = node->owning_decl();
+                    info = deduced_hover(deduced,
+                                         token,
+                                         owner ? owner->getDeclContext() : nullptr,
+                                         request);
                     highlight_range = token_range(token);
                     break;
                 }
@@ -1934,9 +1980,23 @@ auto hover_info(CompilationUnit& unit,
         return std::nullopt;
     }
 
-    reformat(info->definition);
-    reformat(info->target_definition);
     info->symbol_range = highlight_range;
+    return info;
+}
+
+auto hover_info(CompilationUnit& unit,
+                const clang::NamedDecl& decl,
+                const HoverOptions& options,
+                const DocumentationOptions& documentation) -> HoverInfo {
+    auto display_options = card_display(options);
+    display::ReadableTypes readable(unit.context(), display_options);
+    display_options.readable = &readable;
+    auto info =
+        decl_hover(&decl,
+                   {.unit = unit, .documentation = documentation, .display = display_options});
+    if(options.layout) {
+        add_layout(*templated(&decl), info);
+    }
     return info;
 }
 

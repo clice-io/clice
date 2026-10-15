@@ -66,15 +66,17 @@ struct Value {
     int y;
   } position, *previous;
   struct Named named;
-  union {
+  alignas(8) union {
     int bits;
     float real;
-  } aligned[2] alignas(8);
+  } aligned[2];
   typedef struct {
     int first;
     int second;
   } Pair;
-  static struct(unnamed) shared;
+  static struct {
+    int count;
+  } shared;
 }
 ```
 Size: 48 bytes (8 bytes padding), alignment 8 bytes
@@ -173,7 +175,7 @@ template <> struct Expected<long> {
     long low;
     long high;
   } range, *last;
-  enum { capacity = sizeof(long) };
+  enum { capacity = 8 };
   struct {
     // ...
   } *lazy;

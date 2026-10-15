@@ -205,7 +205,7 @@ markdown = '''
 
 ```cpp
 template <typename T> struct Link {
-  Link<T> *next;
+  Link *next;
 }
 ```
 '''

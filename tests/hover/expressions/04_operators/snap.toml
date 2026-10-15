@@ -23,7 +23,7 @@ markdown = '''
 **function** `operator new`
 
 ```cpp
-void *operator new(__size_t)
+void *operator new(unsigned long)
 ```
 '''
 range = "Record* record = ::⟦new⟧ Record(4);"

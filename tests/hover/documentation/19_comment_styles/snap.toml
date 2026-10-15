@@ -67,6 +67,7 @@ Deprecated: use kernel_open; it checks the minor
 Opens the legacy device.
 
 ```cpp
+[[deprecated("use kernel_open; it checks the minor")]]
 int legacy_open(int minor)
 ```
 '''

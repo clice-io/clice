@@ -3,7 +3,7 @@ markdown = '''
 **variable** `values`
 
 ```cpp
-int values[]
+int values[256]
 ```
 Value: `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`
 '''

@@ -116,6 +116,9 @@ enum class SymbolFlags : std::uint16_t {
     /// An anonymous struct or union, or an unscoped enum without a name:
     /// the enclosing scope names its members.
     AnonymousScope = 1 << 13,
+    /// Declared in an anonymous namespace inside the scope its qualified
+    /// name starts from, which the parent chain skips.
+    AnonymousNamespace = 1 << 14,
 };
 
 constexpr SymbolFlags operator|(SymbolFlags lhs, SymbolFlags rhs) {

@@ -57,7 +57,7 @@
           "marker": "placeholder",
           "value": {
             "hover": {
-              "markdown": "**auto**\n\n```cpp\nlambda_auto_params::Point\n```",
+              "markdown": "**auto**\n\n```cpp\nPoint\n```",
               "range": {
                 "$place": "auto norm = [](⟦auto⟧ point) {",
                 "path": "main.cpp",
@@ -80,7 +80,7 @@
           "marker": "parameter",
           "value": {
             "hover": {
-              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\nType: `lambda_auto_params::Point`",
+              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\nType: `Point`",
               "range": {
                 "$place": "auto norm = [](auto ⟦point⟧) {",
                 "path": "main.cpp",
@@ -103,7 +103,7 @@
           "marker": "parameter_use",
           "value": {
             "hover": {
-              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\nType: `lambda_auto_params::Point`",
+              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\nType: `Point`",
               "range": {
                 "$place": "return ⟦point⟧.x + point.y;",
                 "path": "main.cpp",

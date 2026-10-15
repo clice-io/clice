@@ -1,0 +1,147 @@
+[answers.macro_attribute.hover]
+markdown = '''
+**function** `compute` · namespace `written_attributes`
+
+```cpp
+NODISCARD
+int compute()
+```
+
+`NODISCARD` is `[[nodiscard]]`
+'''
+range = "NODISCARD int ⟦compute⟧();"
+
+[answers.macro_arguments.hover]
+markdown = '''
+**function** `run` · namespace `written_attributes`
+
+Deprecated: use run_v2
+```cpp
+DEPRECATED("use run_v2")
+void run()
+```
+
+`DEPRECATED("use run_v2")` is `[[deprecated("use run_v2")]]`
+'''
+range = 'DEPRECATED("use run_v2") void ⟦run⟧();'
+
+[answers.macro_on_class.hover]
+markdown = '''
+**struct** `Header` · namespace `written_attributes`
+
+```cpp
+struct PACKED Header {
+  char tag;
+  int size;
+}
+```
+Size: 5 bytes, alignment 1 byte
+
+`PACKED` is `__attribute__((packed))`
+'''
+range = "struct PACKED ⟦Header⟧ {"
+
+[answers.macro_group.hover]
+markdown = '''
+**function** `spin` · namespace `written_attributes`
+
+```cpp
+HOT_PATH
+void spin()
+```
+
+`HOT_PATH` is `__attribute__((hot)) __attribute__((noinline))`
+'''
+range = "HOT_PATH void ⟦spin⟧();"
+
+[answers.mixed_syntaxes.hover]
+markdown = '''
+**function** `rarely` · namespace `written_attributes`
+
+```cpp
+[[nodiscard]] __attribute__((cold))
+int rarely()
+```
+'''
+range = "[[nodiscard]] __attribute__((cold)) int ⟦rarely⟧();"
+
+[answers.after_signature.hover]
+markdown = '''
+**function** `fail` · namespace `written_attributes`
+
+```cpp
+void fail() __attribute__((cold)) __attribute__((noreturn))
+```
+'''
+range = "void ⟦fail⟧() __attribute__((noreturn, cold));"
+
+[answers.after_declarator.hover]
+markdown = '''
+**variable** `counter` · namespace `written_attributes`
+
+```cpp
+int counter [[maybe_unused]] = 0
+```
+Value: `0`
+'''
+range = "int ⟦counter⟧ [[maybe_unused]] = 0;"
+
+[answers.after_template_head.hover]
+markdown = '''
+**function** `make` · namespace `written_attributes`
+
+```cpp
+template <typename T>
+[[nodiscard]]
+T make()
+```
+'''
+range = "template <typename T> [[nodiscard]] T ⟦make⟧();"
+
+[answers.member_attributes.hover]
+markdown = '''
+**struct** `Holder` · namespace `written_attributes`
+
+```cpp
+struct Holder {
+  [[no_unique_address]] Empty empty;
+  alignas(64) int counter;
+}
+```
+Size: 128 bytes (116 bytes padding), alignment 64 bytes
+'''
+range = "struct ⟦Holder⟧ {"
+
+[answers.using_prefix.hover]
+markdown = '''
+**attribute** `gnu::hot`
+
+```cpp
+[[gnu::hot]]
+```
+
+---
+`__attribute__((hot))` marks a function as hot, as a manual alternative to PGO hotness data. If PGO data is available, the annotation `__attribute__((hot))` overrides the profile count based hotness (unlike `__attribute__((cold))`).
+'''
+range = "[[using gnu: noinline, ⟦hot⟧]] void tuned();"
+
+[answers.macro_with_specifiers.hover]
+markdown = '''
+**function** `twice` · namespace `written_attributes`
+
+```cpp
+__attribute__((always_inline))
+static inline int twice(int x)
+```
+'''
+range = "FORCE_INLINE int ⟦twice⟧(int x) {"
+
+[answers.pragma_region.hover]
+markdown = '''
+**function** `rarely_called` · namespace `written_attributes`
+
+```cpp
+void rarely_called()
+```
+'''
+range = "void ⟦rarely_called⟧();"

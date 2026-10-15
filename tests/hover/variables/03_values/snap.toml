@@ -14,7 +14,7 @@ markdown = '''
 **variable** `value` · struct `evaluated_static_member::Offset<10>`
 
 ```cpp
-static constexpr long value = Base + 6
+static constexpr long value = 16
 ```
 Value: `16 (0x10)`
 '''

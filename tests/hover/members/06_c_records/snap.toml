@@ -42,9 +42,9 @@ markdown = '''
 ```cpp
 struct Packed {
   char raw[16];
-  typeof(struct(unnamed)) typed;
-  void (*callback)(struct(unnamed) *);
-  _Atomic(struct(unnamed)) atomic;
+  typeof(struct { int t; }) typed;
+  void (*callback)(struct { int x; } *);
+  _Atomic(struct { int value; }) atomic;
   int tail;
 }
 ```

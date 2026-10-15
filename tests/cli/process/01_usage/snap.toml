@@ -150,7 +150,7 @@ usage: clice inspect <feature> <path> [OPTIONS]
 Options:
   -h|--help                       display this help and exit
   --config-schema                 Print the JSON schema of the clice configuration and exit
-  <FEATURE> <PATH>...             Feature to run (code_action, code_completion, document_highlight, document_links, document_symbol, folding_range, hover, inlay_hint, selection_range, semantic_tokens, signature_help) and a source file
+  <FEATURE> <PATH>...             Feature to run (code_action, code_completion, document_highlight, document_links, document_symbol, folding_range, hover, hover_check, inlay_hint, selection_range, semantic_tokens, signature_help) and a source file
   --markers <value>               JSON file of the markers in the inspected source file, at byte offsets: {"points": {"name": 12}, "ranges": {"name": {"begin": 3, "end": 7}}}; results are keyed by these names
   --flags <value>                 Compile flags for the file as a JSON string array; replaces the compile_commands.json lookup
   --config <value>                Configuration overlay as a JSON object of clice.toml sections, over the workspace's configuration

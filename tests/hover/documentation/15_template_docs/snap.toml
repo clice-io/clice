@@ -42,7 +42,7 @@ markdown = '''
 Holds one payload.
 
 ```cpp
-template_docs::Packet<long>
+Packet<long>
 ```
 '''
 range = "⟦auto⟧ count = counter<Packet<long>>;"

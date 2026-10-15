@@ -510,17 +510,18 @@ int run_stats(Project& project, llvm::ArrayRef<Fid> dropped, std::uint32_t top, 
 std::string flag_names(index::SymbolFlags flags) {
     llvm::SmallVector<llvm::StringRef> names;
     constexpr std::pair<index::SymbolFlags, llvm::StringRef> bits[] = {
-        {index::SymbolFlags::HasDefinition,   "HasDefinition"  },
-        {index::SymbolFlags::Template,        "Template"       },
-        {index::SymbolFlags::Specialization,  "Specialization" },
-        {index::SymbolFlags::Deprecated,      "Deprecated"     },
-        {index::SymbolFlags::InlineNamespace, "InlineNamespace"},
-        {index::SymbolFlags::Unnamed,         "Unnamed"        },
-        {index::SymbolFlags::SpelledInMacro,  "SpelledInMacro" },
-        {index::SymbolFlags::SystemHeader,    "SystemHeader"   },
-        {index::SymbolFlags::Completable,     "Completable"    },
-        {index::SymbolFlags::Exported,        "Exported"       },
-        {index::SymbolFlags::AnonymousScope,  "AnonymousScope" },
+        {index::SymbolFlags::HasDefinition,      "HasDefinition"     },
+        {index::SymbolFlags::Template,           "Template"          },
+        {index::SymbolFlags::Specialization,     "Specialization"    },
+        {index::SymbolFlags::Deprecated,         "Deprecated"        },
+        {index::SymbolFlags::InlineNamespace,    "InlineNamespace"   },
+        {index::SymbolFlags::Unnamed,            "Unnamed"           },
+        {index::SymbolFlags::SpelledInMacro,     "SpelledInMacro"    },
+        {index::SymbolFlags::SystemHeader,       "SystemHeader"      },
+        {index::SymbolFlags::Completable,        "Completable"       },
+        {index::SymbolFlags::Exported,           "Exported"          },
+        {index::SymbolFlags::AnonymousScope,     "AnonymousScope"    },
+        {index::SymbolFlags::AnonymousNamespace, "AnonymousNamespace"},
     };
     for(auto [bit, name]: bits) {
         if(index::has_flag(flags, bit)) {

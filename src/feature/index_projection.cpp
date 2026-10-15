@@ -646,13 +646,30 @@ auto index_hover(const index::SymbolRef& info,
     HoverInfo hover;
     hover.name = info.display_name();
     hover.kind = info.kind;
-    if(!scopes.empty()) {
+    /// The parent chain skips anonymous namespaces, which the card names as
+    /// the AST card does: a namespace path as `(anonymous)`, the scope of a
+    /// class or function as clang prints it.
+    auto anonymous = [](const index::SymbolRef& symbol) {
+        return index::has_flag(symbol.flags, index::SymbolFlags::AnonymousNamespace);
+    };
+    if(anonymous(info)) {
+        hover.scope_kind = "namespace";
+    } else if(!scopes.empty()) {
         hover.scope_kind = kind_noun(scopes.back().kind).str();
-        hover.scope = llvm::join(
-            llvm::map_range(scopes,
-                            [](const index::SymbolRef& scope) { return scope.display_name(); }),
-            "::");
     }
+    llvm::StringRef unnamed =
+        hover.scope_kind == "namespace" ? "(anonymous)" : "(anonymous namespace)";
+    llvm::SmallVector<std::string> names;
+    for(const auto& scope: scopes) {
+        if(anonymous(scope)) {
+            names.push_back(unnamed.str());
+        }
+        names.push_back(scope.display_name());
+    }
+    if(anonymous(info)) {
+        names.push_back(unnamed.str());
+    }
+    hover.scope = llvm::join(names, "::");
     hover.documentation = std::move(documentation);
     /// The index keeps that a symbol is deprecated, not the message.
     if(index::has_flag(info.flags, index::SymbolFlags::Deprecated)) {

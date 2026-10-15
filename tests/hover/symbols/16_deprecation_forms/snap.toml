@@ -14,7 +14,7 @@ markdown = '''
 
 Deprecated
 ```cpp
-struct LegacyConfig {}
+struct [[deprecated]] LegacyConfig {}
 ```
 Size: 1 byte, alignment 1 byte
 '''
@@ -38,6 +38,7 @@ markdown = '''
 
 Deprecated: use limit_v2
 ```cpp
+__attribute__((deprecated("use limit_v2")))
 extern int limit_v1
 ```
 '''
@@ -49,6 +50,7 @@ markdown = '''
 
 Deprecated: use reset_all
 ```cpp
+[[deprecated("use reset_all")]]
 void reset()
 ```
 '''
@@ -60,7 +62,7 @@ markdown = '''
 
 Deprecated: use Box
 ```cpp
-template <typename T> struct OldBox {}
+template <typename T> struct [[deprecated("use Box")]] OldBox {}
 ```
 '''
 range = "Uses<⟦OldBox⟧> uses;"

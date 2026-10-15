@@ -36,7 +36,7 @@
           "marker": "declaration",
           "value": {
             "hover": {
-              "markdown": "**function** `open_v1`\n\nDeprecated: use open_v2\n```cpp\nvoid open_v1()\n```",
+              "markdown": "**function** `open_v1`\n\nDeprecated: use open_v2\n```cpp\n[[deprecated(\"use open_v2\")]]\nvoid open_v1()\n```",
               "range": {
                 "$place": "[[deprecated(\"use open_v2\")]] void ⟦open_v1⟧();",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "call",
           "value": {
             "hover": {
-              "markdown": "**function** `open_v1`\n\nDeprecated: use open_v2\n```cpp\nvoid open_v1()\n```",
+              "markdown": "**function** `open_v1`\n\nDeprecated: use open_v2\n```cpp\n[[deprecated(\"use open_v2\")]]\nvoid open_v1()\n```",
               "range": {
                 "$place": "⟦open_v1⟧();",
                 "path": "main.cpp",

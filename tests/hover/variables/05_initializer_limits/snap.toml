@@ -3,7 +3,7 @@ markdown = '''
 **variable** `embedded`
 
 ```cpp
-static const byte embedded[]
+static const byte embedded[630]
 ```
 `byte` is `unsigned char`
 Value: `{84, 104, 101, 32, 113, 117, 105, 99, 107, 32, ...}`
@@ -15,7 +15,7 @@ markdown = '''
 **variable** `literal`
 
 ```cpp
-const char literal[]
+const char literal[601]
 ```
 Value: `"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx..."`
 '''
@@ -26,7 +26,7 @@ markdown = '''
 **variable** `values`
 
 ```cpp
-int values[]
+int values[128]
 ```
 Value: `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`
 '''

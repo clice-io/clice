@@ -1,0 +1,21 @@
+[answers.keyword.hover]
+markdown = '''
+**auto**
+
+```cpp
+std::vector<int>::iterator
+```
+`std::vector<int>::iterator` is `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`
+'''
+range = "⟦auto⟧ it = values.begin();"
+
+[answers.variable.hover]
+markdown = '''
+**variable** `it` · function `app::use`
+
+```cpp
+auto it = values.begin()
+```
+Type: `std::vector<int>::iterator` (aka `__gnu_cxx::__normal_iterator<int *, std::vector<int>>`)
+'''
+range = "auto ⟦it⟧ = values.begin();"

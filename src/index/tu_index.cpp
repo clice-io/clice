@@ -51,6 +51,34 @@ SymbolScope classify_scope(const clang::NamedDecl* decl) {
 
 namespace {
 
+/// Whether an anonymous namespace sits between a declaration and the scope
+/// its qualified name starts from, past the scopes such a name skips.
+bool in_anonymous_namespace(const clang::NamedDecl* decl) {
+    if(auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(decl)) {
+        decl = shadow->getTargetDecl();
+    }
+    for(const auto* context = decl->getDeclContext(); !context->isTranslationUnit();
+        context = context->getParent()) {
+        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
+            if(ns->isAnonymousNamespace()) {
+                return true;
+            }
+            if(!ns->isInline()) {
+                return false;
+            }
+        } else if(const auto* record = llvm::dyn_cast<clang::RecordDecl>(context);
+                  record && record->isAnonymousStructOrUnion()) {
+            continue;
+        } else if(const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(context);
+                  enumeration && !enumeration->isScoped() && !enumeration->getIdentifier()) {
+            continue;
+        } else if(llvm::isa<clang::NamedDecl>(context)) {
+            return false;
+        }
+    }
+    return false;
+}
+
 /// One file's index in the TU index blob: a self-contained single-variant shard
 /// blob (index/shard.h). `hash` is xxh3 of `blob` — the variant's
 /// identity — so the master can skip blobs it already stores without
@@ -389,6 +417,9 @@ public:
         if(auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(decl);
            enumeration && !enumeration->isScoped() && !enumeration->getIdentifier()) {
             flags |= SymbolFlags::AnonymousScope;
+        }
+        if(in_anonymous_namespace(decl)) {
+            flags |= SymbolFlags::AnonymousNamespace;
         }
         // `FWD(Expr)` forward-declares a class defined by hand.
         if(llvm::all_of(decl->redecls(), [](const clang::Decl* redecl) {
