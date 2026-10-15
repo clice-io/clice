@@ -111,7 +111,7 @@ struct Pairing {
         }
         auto& scans = ctx.project.dep_graph.quick_scans.results;
         auto it = scans.find({unit, *hash});
-        return it != scans.end() ? &it->second : nullptr;
+        return it != scans.end() ? it->second.get() : nullptr;
     }
 
     std::uint32_t distance_to(CanonicalRef other) const {

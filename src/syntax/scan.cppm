@@ -132,13 +132,16 @@ ScanResult scan_quick(llvm::StringRef content);
 /// version id so the scan (which runs before the persisted id space
 /// loads) never allocates ids. Raw results only — a module name a
 /// preprocessor run resolves is configuration output and must not enter
-/// a content-keyed slot.
+/// a content-keyed slot. Shared, so a scan of unchanged bytes records
+/// them without a copy.
 struct QuickScanCache {
-    llvm::DenseMap<std::pair<Fid, std::uint64_t>, ScanResult> results;
+    llvm::DenseMap<std::pair<Fid, std::uint64_t>, std::shared_ptr<const ScanResult>> results;
 
     /// The scan of exactly these bytes, whose hash the caller proved to be
     /// `content_hash` (a paired read), computed on first sight.
-    const ScanResult& scan_of(Fid fid, std::uint64_t content_hash, llvm::StringRef content);
+    std::shared_ptr<const ScanResult> scan_of(Fid fid,
+                                              std::uint64_t content_hash,
+                                              llvm::StringRef content);
 };
 
 /// Precise preprocessing-based scan: runs the real preprocessor, so

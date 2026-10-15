@@ -299,12 +299,12 @@ void scan_with_preprocessor(
 
 }  // namespace
 
-const ScanResult& QuickScanCache::scan_of(Fid fid,
-                                          std::uint64_t content_hash,
-                                          llvm::StringRef content) {
+std::shared_ptr<const ScanResult> QuickScanCache::scan_of(Fid fid,
+                                                          std::uint64_t content_hash,
+                                                          llvm::StringRef content) {
     auto [it, inserted] = results.try_emplace({fid, content_hash});
     if(inserted) {
-        it->second = scan_quick(content);
+        it->second = std::make_shared<const ScanResult>(scan_quick(content));
     }
     return it->second;
 }

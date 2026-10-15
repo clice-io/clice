@@ -432,7 +432,7 @@ namespace {
 /// the workspace's first disk observation.
 struct ScannedText {
     DiskObservation obs;
-    ScanResult result;
+    std::shared_ptr<const ScanResult> result;
 };
 
 /// Read and lex the file at `path`, a stable pointer from the FileTable
@@ -443,7 +443,10 @@ std::optional<ScannedText> read_and_scan(const char* path) {
     if(!observed) {
         return std::nullopt;
     }
-    return ScannedText{.obs = observed->obs, .result = scan_quick(observed->content->getBuffer())};
+    return ScannedText{
+        .obs = observed->obs,
+        .result = std::make_shared<const ScanResult>(scan_quick(observed->content->getBuffer())),
+    };
 }
 
 /// A resolved include: the file, and the search dir it was found in.
@@ -474,7 +477,7 @@ struct FileScanner {
     /// A file it includes or forces in that the scan reaches for the first
     /// time gets its context and goes to `reach`.
     llvm::SmallVector<ProvidedModule, 1> record(Fid path_id,
-                                                ScanResult scan,
+                                                std::shared_ptr<const ScanResult> scan,
                                                 std::uint64_t hash,
                                                 llvm::ArrayRef<ScanContext> contexts,
                                                 llvm::function_ref<void(Fid, ScanContext)> reach) {
@@ -492,7 +495,7 @@ struct FileScanner {
     /// the disk moved and rebuild `scan` and `hash` from the bytes it read.
     ProvidedModule record_under(Fid path_id,
                                 ScanContext context,
-                                ScanResult& scan,
+                                std::shared_ptr<const ScanResult>& scan,
                                 std::uint64_t& hash,
                                 llvm::function_ref<void(Fid, ScanContext)> reach) {
         auto reached = [&](Fid target, std::optional<unsigned> found_dir_idx) {
@@ -512,7 +515,7 @@ struct FileScanner {
                 reached(header.path_id, header.found_dir_idx);
             }
         }
-        graph.record_scan(path_id, scan);
+        graph.record_scan(path_id, *scan);
 
         // Quoted includes start from the directory the build reaches the
         // includer through, as clang's do.
@@ -521,8 +524,8 @@ struct FileScanner {
         auto* includer_listing = &scope.list(includer_dir);
 
         llvm::SmallVector<IncludeEdge> edges;
-        edges.reserve(scan.includes.size());
-        for(auto& include: scan.includes) {
+        edges.reserve(scan->includes.size());
+        for(auto& include: scan->includes) {
             // An angled include resolves the same from every includer
             // under one group: resolve it once per scan. Most groups hold
             // one unit, so the memo is one map keyed by group and name.
@@ -615,9 +618,11 @@ struct FileScanner {
     /// preprocessor conditionals is beyond the lexical scan: a
     /// preprocessor run under the unit's own group command resolves it —
     /// only its flags (a define unguarding the declaration) can.
-    ProvidedModule
-        module_of(Fid path_id, ScanContext context, ScanResult& scan, std::uint64_t& hash) {
-        if(scan.need_preprocess) {
+    ProvidedModule module_of(Fid path_id,
+                             ScanContext context,
+                             std::shared_ptr<const ScanResult>& scan,
+                             std::uint64_t& hash) {
+        if(scan->need_preprocess) {
             if(auto observed = vfs::read_observed(files.resolve(path_id))) {
                 // The preprocessor must consume the bytes that produced
                 // this scan. When the disk moved under the scan, the whole
@@ -638,7 +643,7 @@ struct FileScanner {
                 return {declared.provided_module().str(), declared.is_internal_partition()};
             }
         }
-        return {scan.provided_module().str(), scan.is_internal_partition()};
+        return {scan->provided_module().str(), scan->is_internal_partition()};
     }
 
     CompilationDatabase& cdb;
@@ -666,19 +671,19 @@ struct FullScan {
     struct Wave {
         struct File {
             Fid fid;
-            llvm::SmallVector<ScanContext, 1> contexts;
+
+            /// Its contexts: `contexts[first, first + count)`.
+            std::uint32_t first = 0;
+            std::uint32_t count = 0;
 
             /// Its scan: `warm[scan]`, the quick scan of the bytes the
             /// disk still holds, else what the task `tasks[scan]` reads.
             bool warm = false;
-            std::size_t scan = 0;
+            std::uint32_t scan = 0;
         };
 
         std::vector<File> files;
-
-        /// Kept apart from the files: SmallVector's move is not noexcept,
-        /// so a growing vector of files copies them, as it would every
-        /// scan they held.
+        std::vector<ScanContext> contexts;
         std::vector<std::optional<ScannedText>> warm;
         std::vector<kota::task<std::optional<ScannedText>>> tasks;
     };
@@ -696,16 +701,18 @@ struct FullScan {
     void add(Wave& wave, Fid fid, llvm::ArrayRef<ScanContext> contexts) {
         auto& file = wave.files.emplace_back(Wave::File{
             .fid = fid,
-            .contexts = {contexts.begin(), contexts.end()}
+            .first = static_cast<std::uint32_t>(wave.contexts.size()),
+            .count = static_cast<std::uint32_t>(contexts.size()),
         });
+        wave.contexts.insert(wave.contexts.end(), contexts.begin(), contexts.end());
         if(auto scanned = warm(fid)) {
             report.scan_cache_hits += 1;
             file.warm = true;
-            file.scan = wave.warm.size();
+            file.scan = static_cast<std::uint32_t>(wave.warm.size());
             wave.warm.push_back(std::move(scanned));
             return;
         }
-        file.scan = wave.tasks.size();
+        file.scan = static_cast<std::uint32_t>(wave.tasks.size());
         auto path = files.resolve(fid).data();
         wave.tasks.push_back(kota::queue([path] { return read_and_scan(path); }));
     }
@@ -822,10 +829,11 @@ struct FullScan {
                     graph.quick_scans.results.try_emplace({file.fid, scanned->obs.hash},
                                                           scanned->result);
                 }
+                auto contexts = llvm::ArrayRef(wave.contexts).slice(file.first, file.count);
                 for(auto& module: scanner.record(file.fid,
                                                  std::move(scanned->result),
                                                  scanned->obs.hash,
-                                                 file.contexts,
+                                                 contexts,
                                                  reach)) {
                     graph.add_module(module.name, file.fid, module.internal);
                 }
