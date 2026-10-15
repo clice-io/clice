@@ -685,7 +685,7 @@ struct FullScan {
         std::vector<File> files;
         std::vector<ScanContext> contexts;
 
-        /// `files[i]`'s scan; a read lands once `reads` has joined.
+        /// `files[i]`'s scan; a read's is there once `reads` has joined.
         std::vector<std::optional<ScannedText>> scans;
         kota::task_group<> reads;
     };
