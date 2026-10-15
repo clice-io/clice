@@ -188,9 +188,10 @@ private:
 bool should_ignore_token(const clang::syntax::Token& token);
 
 /// A declaration a node refers to: the decl, its role, and the location of
-/// the token spelling its name — invalid for an implicit construction, which
-/// no token spells. A name written with several tokens also has the
-/// location of its last one (see written_name).
+/// the token spelling its name — invalid for a use no token spells (an
+/// implicit construction, the implicit `operator bool` call of `if(x)`). A
+/// name written with several tokens also has the location of its last one
+/// (see written_name).
 struct Reference {
     const clang::NamedDecl* decl;
 
