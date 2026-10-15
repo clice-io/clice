@@ -107,6 +107,18 @@ Value: `u"😀!"`
 '''
 range = 'constexpr char16_t ⟦face⟧[] = u"\U0001F600!";'
 
+[answers.lone_surrogate.hover]
+markdown = '''
+**variable** `lone` · namespace `string_values`
+
+```cpp
+constexpr char16_t lone[] = u"\xD800"
+                            "A"
+```
+Value: `u"\xd800\101"`
+'''
+range = 'constexpr char16_t ⟦lone⟧[] = u"\xD800" "A";'
+
 [answers.invalid_utf8.hover]
 markdown = '''
 **variable** `raw` · namespace `string_values`

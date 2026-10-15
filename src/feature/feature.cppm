@@ -333,9 +333,9 @@ struct HoverInfo {
     /// parameter's type.
     std::optional<std::string> converted_to;
 
-    /// The macros the declaration's attributes are written with, each with
-    /// the attributes it expands to; shown last.
-    std::vector<display::Type> attribute_macros;
+    /// The macros the declaration's attributes are written with; shown
+    /// last.
+    std::vector<display::AttributeMacro> attribute_macros;
 
     markup::Document present() const;
 };
@@ -764,10 +764,8 @@ auto hover_info(CompilationUnit& unit,
 
 /// The card of a declaration of any file of the unit, as hovering its name
 /// shows it.
-auto hover_info(CompilationUnit& unit,
-                const clang::NamedDecl& decl,
-                const HoverOptions& options = {},
-                const DocumentationOptions& documentation = {}) -> HoverInfo;
+auto hover_info(CompilationUnit& unit, const clang::NamedDecl& decl, const HoverOptions& options)
+    -> HoverInfo;
 
 /// Render structured hover information as `kind` and convert its byte range
 /// through the caller's current line map.

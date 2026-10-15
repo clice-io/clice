@@ -14,6 +14,14 @@ line)";
 int §(continued)continued = TWICE(4) \
     + 1;
 
+int §(parenthesized)parenthesized(5);
+
+struct Box {
+    int size;
+};
+Box make_box();
+Box §(parenthesized_call)made(make_box());
+
 auto §(lambda)square = [](int value) {
     return value * value;
 };

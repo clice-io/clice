@@ -86,6 +86,17 @@ Value: `0`
 '''
 range = "int ⟦counter⟧ [[maybe_unused]] = 0;"
 
+[answers.braced_after_declarator.hover]
+markdown = '''
+**variable** `braced` · namespace `written_attributes`
+
+```cpp
+int braced [[maybe_unused]]{0}
+```
+Value: `0`
+'''
+range = "int ⟦braced⟧ [[maybe_unused]]{0};"
+
 [answers.after_template_head.hover]
 markdown = '''
 **function** `make` · namespace `written_attributes`
@@ -124,6 +135,30 @@ markdown = '''
 `__attribute__((hot))` marks a function as hot, as a manual alternative to PGO hotness data. If PGO data is available, the annotation `__attribute__((hot))` overrides the profile count based hotness (unlike `__attribute__((cold))`).
 '''
 range = "[[using gnu: noinline, ⟦hot⟧]] void tuned();"
+
+[answers.using_arguments.hover]
+markdown = '''
+**attribute** `gnu::aligned`
+
+```cpp
+[[gnu::aligned(8)]]
+```
+
+---
+No documentation.
+'''
+range = "[[using gnu: used, ⟦aligned⟧(8)]] static int aligned_value;"
+
+[answers.using_declaration.hover]
+markdown = '''
+**variable** `aligned_value` · namespace `written_attributes`
+
+```cpp
+[[gnu::used]] [[gnu::aligned(8)]]
+static int aligned_value
+```
+'''
+range = "[[using gnu: used, aligned(8)]] static int ⟦aligned_value⟧;"
 
 [answers.macro_with_specifiers.hover]
 markdown = '''

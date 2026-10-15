@@ -1075,24 +1075,24 @@ auto token_text(const clang::ASTContext& context,
         }
     }
 
+    /// The lexer reads up to the buffer's terminating null.
     clang::Lexer lexer(sources.getLocForStartOfFile(fid),
                        context.getLangOpts(),
                        buffer.begin(),
                        buffer.begin() + begin,
-                       buffer.begin() + end);
+                       buffer.end());
     std::string text;
     std::uint32_t previous_end = begin;
     clang::Token token;
-    bool last = false;
-    while(!last) {
-        last = lexer.LexFromRawLexer(token);
-        if(token.is(clang::tok::eof)) {
+    for(bool done = false; !done;) {
+        done = lexer.LexFromRawLexer(token);
+        auto offset = sources.getFileOffset(token.getLocation());
+        if(token.is(clang::tok::eof) || offset >= end) {
             break;
         }
         if(token.is(clang::tok::hash) && token.isAtStartOfLine()) {
             return std::nullopt;
         }
-        auto offset = sources.getFileOffset(token.getLocation());
         const auto* body = llvm::find_if(skipped, [&](const auto& skip) {
             return skip.first <= offset && offset <= skip.second;
         });
@@ -1346,44 +1346,44 @@ void unnamed_tags(clang::QualType type, llvm::SmallVectorImpl<const clang::TagDe
     if(type.isNull()) {
         return;
     }
-    const auto* T = type.getTypePtr();
-    if(const auto* tag = llvm::dyn_cast<clang::TagType>(T)) {
+    const auto* node = type.getTypePtr();
+    if(const auto* tag = llvm::dyn_cast<clang::TagType>(node)) {
         const auto* decl = tag->getDecl();
         const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
         if(!decl->getDeclName() && !decl->getTypedefNameForAnonDecl() &&
            !(record && record->isLambda())) {
             tags.push_back(decl);
         }
-    } else if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(T)) {
+    } else if(const auto* pointer = llvm::dyn_cast<clang::PointerType>(node)) {
         unnamed_tags(pointer->getPointeeType(), tags);
-    } else if(const auto* reference = llvm::dyn_cast<clang::ReferenceType>(T)) {
+    } else if(const auto* reference = llvm::dyn_cast<clang::ReferenceType>(node)) {
         unnamed_tags(reference->getPointeeTypeAsWritten(), tags);
-    } else if(const auto* member = llvm::dyn_cast<clang::MemberPointerType>(T)) {
+    } else if(const auto* member = llvm::dyn_cast<clang::MemberPointerType>(node)) {
         unnamed_tags(member->getPointeeType(), tags);
-    } else if(const auto* array = llvm::dyn_cast<clang::ArrayType>(T)) {
+    } else if(const auto* array = llvm::dyn_cast<clang::ArrayType>(node)) {
         unnamed_tags(array->getElementType(), tags);
-    } else if(const auto* function = llvm::dyn_cast<clang::FunctionType>(T)) {
+    } else if(const auto* function = llvm::dyn_cast<clang::FunctionType>(node)) {
         unnamed_tags(function->getReturnType(), tags);
         if(const auto* prototype = llvm::dyn_cast<clang::FunctionProtoType>(function)) {
             for(auto param: prototype->param_types()) {
                 unnamed_tags(param, tags);
             }
         }
-    } else if(const auto* paren = llvm::dyn_cast<clang::ParenType>(T)) {
+    } else if(const auto* paren = llvm::dyn_cast<clang::ParenType>(node)) {
         unnamed_tags(paren->getInnerType(), tags);
-    } else if(const auto* atomic = llvm::dyn_cast<clang::AtomicType>(T)) {
+    } else if(const auto* atomic = llvm::dyn_cast<clang::AtomicType>(node)) {
         unnamed_tags(atomic->getValueType(), tags);
-    } else if(const auto* type_of = llvm::dyn_cast<clang::TypeOfType>(T)) {
+    } else if(const auto* type_of = llvm::dyn_cast<clang::TypeOfType>(node)) {
         unnamed_tags(type_of->getUnmodifiedType(), tags);
-    } else if(const auto* attributed = llvm::dyn_cast<clang::AttributedType>(T)) {
+    } else if(const auto* attributed = llvm::dyn_cast<clang::AttributedType>(node)) {
         unnamed_tags(attributed->getModifiedType(), tags);
-    } else if(const auto* macro = llvm::dyn_cast<clang::MacroQualifiedType>(T)) {
+    } else if(const auto* macro = llvm::dyn_cast<clang::MacroQualifiedType>(node)) {
         unnamed_tags(macro->getUnderlyingType(), tags);
-    } else if(const auto* adjusted = llvm::dyn_cast<clang::AdjustedType>(T)) {
+    } else if(const auto* adjusted = llvm::dyn_cast<clang::AdjustedType>(node)) {
         unnamed_tags(adjusted->getOriginalType(), tags);
-    } else if(const auto* expansion = llvm::dyn_cast<clang::PackExpansionType>(T)) {
+    } else if(const auto* expansion = llvm::dyn_cast<clang::PackExpansionType>(node)) {
         unnamed_tags(expansion->getPattern(), tags);
-    } else if(const auto* id = llvm::dyn_cast<clang::TemplateSpecializationType>(T)) {
+    } else if(const auto* id = llvm::dyn_cast<clang::TemplateSpecializationType>(node)) {
         for(const auto& argument: id->template_arguments()) {
             if(argument.getKind() == clang::TemplateArgument::Type) {
                 unnamed_tags(argument.getAsType(), tags);
@@ -1422,7 +1422,7 @@ struct DeclarationPrinter {
     std::uint32_t budget;
 
     /// The macros printed attributes are written with.
-    std::vector<Type>& macros;
+    std::vector<AttributeMacro>& macros;
 
     /// The declaration whose attributes written before it go apart, on a
     /// line of their own.
@@ -1572,13 +1572,13 @@ struct DeclarationPrinter {
                         return entry.first == location;
                     });
                     if(use != uses.end()) {
-                        macros[use->second].aka->append(" " + printed(*attr));
+                        macros[use->second].attributes += " " + printed(*attr);
                         continue;
                     }
                     text = clang::Lexer::getSourceText(expansion, sources, context.getLangOpts())
                                .str();
-                    auto known = llvm::find_if(macros, [&](const Type& macro) {
-                        return macro.text == text;
+                    auto known = llvm::find_if(macros, [&](const AttributeMacro& macro) {
+                        return macro.use == text;
                     });
                     if(known == macros.end()) {
                         uses.emplace_back(location, macros.size());
@@ -1594,8 +1594,11 @@ struct DeclarationPrinter {
                         sources.isBeforeInTranslationUnit(sources.getExpansionLoc(location), name)
                     ? before
                     : after;
+            /// By where each ends: an attribute with arguments in
+            /// `[[using gnu: used, aligned(8)]]` starts at the scope.
             if(llvm::none_of(side, [&](const auto& entry) { return entry.second == text; })) {
-                side.emplace_back(location, std::move(text));
+                side.emplace_back(attr->getRange().isValid() ? attr->getRange().getEnd() : location,
+                                  std::move(text));
             }
         }
         auto ordered = [&](Placed& side) {
@@ -1744,14 +1747,19 @@ struct DeclarationPrinter {
         if(!param) {
             return std::nullopt;
         }
-        auto from = spec->getSpecializedTemplateOrPartial();
-        const auto* params =
-            llvm::isa<clang::ClassTemplateDecl*>(from)
-                ? llvm::cast<clang::ClassTemplateDecl*>(from)->getTemplateParameters()
-                : llvm::cast<clang::ClassTemplatePartialSpecializationDecl*>(from)
-                      ->getTemplateParameters();
+        /// A parameter of the template the class is instantiated from, not
+        /// of a template around it.
+        const auto* record = spec->getTemplateInstantiationPattern();
+        const clang::TemplateParameterList* params = nullptr;
+        if(const auto* partial =
+               llvm::dyn_cast_if_present<clang::ClassTemplatePartialSpecializationDecl>(record)) {
+            params = partial->getTemplateParameters();
+        } else if(const auto* described = record ? record->getDescribedClassTemplate() : nullptr) {
+            params = described->getTemplateParameters();
+        }
         const auto& arguments = spec->getTemplateInstantiationArgs();
-        if(param->getDepth() != params->getDepth() || param->getIndex() >= arguments.size() ||
+        if(!params || param->getIndex() >= params->size() ||
+           params->getParam(param->getIndex()) != param || param->getIndex() >= arguments.size() ||
            arguments[param->getIndex()].getKind() != clang::TemplateArgument::Integral) {
             return std::nullopt;
         }
@@ -1803,8 +1811,28 @@ struct DeclarationPrinter {
            sources.isBeforeInTranslationUnit(declarator_end, written->getTypeLoc().getEndLoc())) {
             declarator_end = written->getTypeLoc().getEndLoc();
         }
+        /// Past the attributes after the declarator, which the declarator
+        /// shows already, and the brackets closing them.
+        bool attributed = false;
+        for(const auto* attr: var.attrs()) {
+            auto end = sources.getExpansionRange(attr->getRange()).getEnd();
+            if(!attr->isImplicit() && sources.isBeforeInTranslationUnit(declarator_end, end) &&
+               sources.isBeforeInTranslationUnit(end,
+                                                 sources.getExpansionLoc(init->getBeginLoc()))) {
+                declarator_end = end;
+                attributed = true;
+            }
+        }
+        /// A scalar's parentheses are no part of its initializer: `int x(5)`.
+        auto init_end = sources.getExpansionLoc(init->getEndLoc());
+        if(var.getInitStyle() == clang::VarDecl::CallInit) {
+            if(auto next = clang::Lexer::findNextToken(init_end, sources, context.getLangOpts());
+               next && next->is(clang::tok::r_paren)) {
+                init_end = next->getLocation();
+            }
+        }
         auto range = clang::Lexer::makeFileCharRange(
-            clang::CharSourceRange::getTokenRange(declarator_end, init->getEndLoc()),
+            clang::CharSourceRange::getTokenRange(declarator_end, init_end),
             sources,
             context.getLangOpts());
         if(!instance && range.isValid()) {
@@ -1817,7 +1845,7 @@ struct DeclarationPrinter {
             if(auto text = token_text(context,
                                       clang::CharSourceRange::getCharRange(start, range.getEnd()),
                                       bodies)) {
-                return *text;
+                return attributed ? llvm::StringRef(*text).ltrim(" ])").str() : *text;
             }
             return {};
         }
@@ -2365,15 +2393,28 @@ auto attribute(const clang::Attr& attr, const clang::ASTContext& context) -> std
         return llvm::StringRef(printed).trim().str();
     }
     if(attr.isCXX11Attribute() || attr.isC23Attribute()) {
-        /// `[[using gnu: hot, cold]]` writes the scope once, before the list.
-        if(attr.hasScope()) {
-            auto scope = attr.getScopeName()->getName();
-            llvm::StringRef rest = written;
-            if(rest.consume_front(scope) && rest.ltrim().starts_with(":") &&
-               !rest.ltrim().starts_with("::")) {
-                written = (scope + "::" + rest.ltrim().drop_front().ltrim()).str();
-            } else if(!llvm::StringRef(written).starts_with(scope)) {
-                written = (scope + "::" + written).str();
+        /// `[[using gnu: hot, aligned(8)]]` writes the scope once, before the
+        /// list, where the range of an attribute may start: the attribute
+        /// is its last name outside parentheses on.
+        if(attr.hasScope() && attr.getAttrName()) {
+            llvm::StringRef text = written;
+            auto name = attr.getAttrName()->getName();
+            auto start = llvm::StringRef::npos;
+            int depth = 0;
+            for(std::size_t index = 0; index < text.size(); index += 1) {
+                if(text[index] == '(') {
+                    depth += 1;
+                } else if(text[index] == ')') {
+                    depth -= 1;
+                } else if(depth == 0 && text.substr(index).starts_with(name) &&
+                          (index == 0 || !clang::isAsciiIdentifierContinue(text[index - 1])) &&
+                          (index + name.size() == text.size() ||
+                           !clang::isAsciiIdentifierContinue(text[index + name.size()]))) {
+                    start = index;
+                }
+            }
+            if(start != llvm::StringRef::npos) {
+                written = (attr.getScopeName()->getName() + "::" + text.substr(start)).str();
             }
         }
         return "[[" + written + "]]";
@@ -2620,6 +2661,17 @@ bool ReadableTypes::internal(const clang::NamedDecl* decl) const {
 }
 
 namespace {
+
+/// Whether an instantiation substituted a template parameter into `expr`.
+bool substituted(const clang::Stmt& expr) {
+    if(llvm::isa<clang::SubstNonTypeTemplateParmExpr,
+                 clang::SubstNonTypeTemplateParmPackExpr,
+                 clang::SizeOfPackExpr>(expr)) {
+        return true;
+    }
+    return llvm::any_of(expr.children(),
+                        [](const clang::Stmt* child) { return child && substituted(*child); });
+}
 
 /// The typedefs the standard declares for specializations of its class
 /// templates, by the template they name; one in a namespace of std is
@@ -2918,17 +2970,6 @@ auto ReadableTypes::readable(clang::QualType type, const clang::DeclContext* sco
                                                            rewritten,
                                                            canonical,
                                                            context.getCanonicalType(type)));
-}
-
-/// Whether an instantiation substituted a template parameter into `expr`.
-static bool substituted(const clang::Stmt& expr) {
-    if(llvm::isa<clang::SubstNonTypeTemplateParmExpr,
-                 clang::SubstNonTypeTemplateParmPackExpr,
-                 clang::SizeOfPackExpr>(expr)) {
-        return true;
-    }
-    return llvm::any_of(expr.children(),
-                        [](const clang::Stmt* child) { return child && substituted(*child); });
 }
 
 auto ReadableTypes::readable(const clang::TemplateArgument& argument,

@@ -13,10 +13,8 @@ test(async (t) => {
     ast.open("main.cpp");
     await ast.sync();
     for (const name of markers) {
-        const card = await index.hover(t.marker(name));
-        const compiled = await ast.hover(t.marker(name));
-        expect(card?.text.split("\n")[0]).toBe(compiled?.text.split("\n")[0]);
-        await t.show(name, card);
+        const m = t.marker(name);
+        await t.show(name, { index: index.hover(m), ast: ast.hover(m) });
     }
     expect((await index.counts()).pch).toBe(0);
 });

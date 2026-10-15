@@ -22,6 +22,8 @@ void §(after_signature)fail() __attribute__((noreturn, cold));
 
 int §(after_declarator)counter [[maybe_unused]] = 0;
 
+int §(braced_after_declarator)braced [[maybe_unused]]{0};
+
 template <typename T> [[nodiscard]] T §(after_template_head)make();
 
 struct Empty {};
@@ -34,6 +36,8 @@ struct §(member_attributes)Holder {
 };
 
 [[using gnu: noinline, §(using_prefix)hot]] void tuned();
+
+[[using gnu: used, §(using_arguments)aligned(8)]] static int §(using_declaration)aligned_value;
 
 FORCE_INLINE int §(macro_with_specifiers)twice(int x) {
     return x * 2;

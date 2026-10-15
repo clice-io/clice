@@ -531,8 +531,9 @@ void add_macros(HoverInfo& info,
         return;
     }
     for(const auto& macro: definition.attribute_macros) {
-        if(llvm::none_of(info.attribute_macros,
-                         [&](const display::Type& known) { return known.text == macro.text; })) {
+        if(llvm::none_of(info.attribute_macros, [&](const display::AttributeMacro& known) {
+               return known.use == macro.use;
+           })) {
             info.attribute_macros.push_back(macro);
         }
     }
@@ -545,7 +546,8 @@ auto decl_hover(const clang::NamedDecl* decl, const Request& request) -> HoverIn
     auto& context = decl->getASTContext();
     const auto& options = request.display;
     const auto* entity = templated(decl);
-    /// The types the card states, named as code where it is names them.
+    /// The types the card states, named as code in the declaration's scope
+    /// names them.
     auto shown = options;
     shown.scope = decl->getDeclContext();
 
@@ -1852,7 +1854,8 @@ markup::Document HoverInfo::present() const {
         output.add_spacing();
     }
     for(const auto& macro: attribute_macros) {
-        output.add_paragraph().append_code(macro.text).append_text(" is ").append_code(*macro.aka);
+        output.add_paragraph().append_code(macro.use).append_text(" is ").append_code(
+            macro.attributes);
     }
     return output;
 }
@@ -1928,10 +1931,9 @@ auto hover_info(CompilationUnit& unit,
                     }
                 }
                 if(!deduced.isNull()) {
-                    const auto* owner = node->owning_decl();
                     info = deduced_hover(deduced,
                                          token,
-                                         owner ? owner->getDeclContext() : nullptr,
+                                         node->owning_decl()->getDeclContext(),
                                          request);
                     highlight_range = token_range(token);
                     break;
@@ -1984,10 +1986,9 @@ auto hover_info(CompilationUnit& unit,
     return info;
 }
 
-auto hover_info(CompilationUnit& unit,
-                const clang::NamedDecl& decl,
-                const HoverOptions& options,
-                const DocumentationOptions& documentation) -> HoverInfo {
+auto hover_info(CompilationUnit& unit, const clang::NamedDecl& decl, const HoverOptions& options)
+    -> HoverInfo {
+    DocumentationOptions documentation;
     auto display_options = card_display(options);
     display::ReadableTypes readable(unit.context(), display_options);
     display_options.readable = &readable;

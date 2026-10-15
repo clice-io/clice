@@ -68,7 +68,7 @@ struct Options {
     /// type(): the scope the type is shown in. Through options.readable, a
     /// type named in another scope is named as code here names it
     /// (`std::vector<int>::iterator`, not the `iterator` the vector writes);
-    /// null for the global scope.
+    /// without one, a name keeps the qualifier it is written with.
     const clang::DeclContext* scope = nullptr;
 };
 
@@ -276,6 +276,13 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options =
 /// `__attribute__((packed))`, `alignas(8)`.
 auto attribute(const clang::Attr& attr, const clang::ASTContext& context) -> std::string;
 
+/// A macro a declaration writes attributes with, `NODISCARD`, and the
+/// attributes it expands to, `[[nodiscard]]`.
+struct AttributeMacro {
+    std::string use;
+    std::string attributes;
+};
+
 /// A declaration as code: its template head, the attributes written before
 /// it, and the rest, which a reader takes in apart.
 struct Definition {
@@ -288,9 +295,7 @@ struct Definition {
 
     std::string text;
 
-    /// The macros the declaration's attributes are written with, each with
-    /// the attributes it expands to.
-    std::vector<Type> attribute_macros;
+    std::vector<AttributeMacro> attribute_macros;
 };
 
 /// Pretty-print the declaration itself, its attributes as written. A class

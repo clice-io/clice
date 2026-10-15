@@ -74,6 +74,22 @@ Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Pack⟧<int, long, char> pack;"
 
+[answers.outer_parameter]
+wrong = "clang instantiates the initializer only where the member is used, and it names a parameter of the template around"
+
+[answers.outer_parameter.hover]
+markdown = '''
+**struct** `Nested<2>` · struct `instantiation_members::Level<1>`
+
+```cpp
+template <> struct Nested<2> {
+  static constexpr int outer;
+}
+```
+Size: 1 byte, alignment 1 byte
+'''
+range = "Level<1>::⟦Nested⟧<2> nested;"
+
 [answers.dependent_initializer]
 wrong = "clang instantiates the initializer only where the member is used, and it computes from the arguments"
 

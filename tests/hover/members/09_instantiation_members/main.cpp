@@ -56,6 +56,14 @@ template <typename... Ts> struct Pack {
 
 §(pack_size)Pack<int, long, char> pack;
 
+template <int Outer> struct Level {
+    template <int Inner> struct Nested {
+        static constexpr int outer = Outer;
+    };
+};
+
+Level<1>::§(outer_parameter)Nested<2> nested;
+
 template <int Size> struct Doubled {
     static constexpr int capacity = Size * 2;
 };

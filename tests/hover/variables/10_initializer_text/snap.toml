@@ -32,6 +32,27 @@ Value: `9`
 '''
 range = 'int ⟦continued⟧ = TWICE(4) \'
 
+[answers.parenthesized.hover]
+markdown = '''
+**variable** `parenthesized` · namespace `initializer_text`
+
+```cpp
+int parenthesized(5)
+```
+Value: `5`
+'''
+range = "int ⟦parenthesized⟧(5);"
+
+[answers.parenthesized_call.hover]
+markdown = '''
+**variable** `made` · namespace `initializer_text`
+
+```cpp
+Box made(make_box())
+```
+'''
+range = "Box ⟦made⟧(make_box());"
+
 [answers.lambda.hover]
 markdown = '''
 **variable** `square` · namespace `initializer_text`

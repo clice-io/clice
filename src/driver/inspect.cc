@@ -332,7 +332,7 @@ struct HoverCheckReport {
     /// How many cards were checked.
     std::uint32_t checked = 0;
 
-    /// How many twins, or their originals, the second compile does not
+    /// How many twins, or their originals, the compiles with the twins do not
     /// declare where they were put.
     std::uint32_t unmatched = 0;
 
@@ -402,6 +402,12 @@ struct Twin {
 struct LambdaBodies : clang::RecursiveASTVisitor<LambdaBodies> {
     const clang::ASTContext& context;
     std::vector<std::string> bodies;
+
+    /// A card prints no function's body.
+    bool TraverseDecl(clang::Decl* decl) {
+        return llvm::isa_and_present<clang::FunctionDecl>(decl) ||
+               clang::RecursiveASTVisitor<LambdaBodies>::TraverseDecl(decl);
+    }
 
     bool TraverseLambdaExpr(clang::LambdaExpr* lambda) {
         auto range = clang::Lexer::makeFileCharRange(
@@ -1531,9 +1537,8 @@ auto check_hover_definitions(const CompilationInput& input,
     // A twin uses what its original uses.
     first_input.arguments.push_back("-Wno-deprecated-declarations");
     auto unit = compile({.kind = CompilationKind::Content, .input = first_input});
-    if(!unit->completed()) {
-        return report;
-    }
+    // The input compiled once already, for the clean-code gate.
+    assert(unit->completed());
     auto& context = unit->context();
 
     Collector collector;
@@ -1718,9 +1723,9 @@ auto check_hover_definitions(const CompilationInput& input,
         }
     }
 
-    // A second compile with every twin; a twin clang's recovery from
-    // another one's errors swallowed goes in a third, with the others it
-    // lost.
+    // A compile with every twin; a twin clang's recovery from another
+    // one's errors swallowed goes in another, with the others it lost, up to
+    // three rounds.
     std::set<std::string> known;
     for(const auto& diagnostic: unit->diagnostics()) {
         known.insert(diagnostic.message);
@@ -1772,8 +1777,9 @@ auto check_hover_definitions(const CompilationInput& input,
         }
         probe_input.arguments = first_input.arguments;
         auto probe = compile({.kind = CompilationKind::Content, .input = probe_input});
+        // A twin the compile stops at leaves all of them unmatched.
         if(!probe->completed()) {
-            return {};
+            return round.vec();
         }
 
         auto& probe_context = probe->context();

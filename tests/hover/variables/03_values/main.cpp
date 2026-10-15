@@ -2,9 +2,9 @@
 // instantiation, a constexpr function's call, a string pointer, a dependent
 // constructor argument, a class behind inline and anonymous namespaces, auto
 // of an incomplete template argument, an inline variable, strings of control
-// characters, of characters outside UTF-16's basic plane and of bytes no
-// UTF-8 reads, of a pointer of another type, of text past ASCII, bytes, a
-// whole number in a double.
+// characters, of characters outside UTF-16's basic plane, of a lone
+// surrogate and of bytes no UTF-8 reads, of a pointer of another type, of
+// text past ASCII, bytes, a whole number in a double.
 
 namespace symbolic_enum_value {
 enum class Status { Idle = -4, Ready = 12 };
@@ -75,6 +75,7 @@ namespace string_values {
 
 constexpr char §(control_characters)bytes[] = {1, 'a', 0};
 constexpr char16_t §(surrogate_pair)face[] = u"\U0001F600!";
+constexpr char16_t §(lone_surrogate)lone[] = u"\xD800" "A";
 constexpr char §(invalid_utf8)raw[] = "\xff\xfe";
 constexpr unsigned char §(byte_array)table[] = {0, 10, 20};
 constexpr const void* §(untyped_pointer)opaque = u"\U0001F600";
