@@ -10,7 +10,7 @@ The build is loaded as `clice index` loads it: the databases the rules name, els
 
 `--runs <n>` times the scan: each run loads the build from scratch and scans it (cold, as at startup), then scans it again over what the first scan kept (warm, as after a database reload), and prints both times; the last line gives their minimum and median.
 
-The exit code is 0 after a scan, 1 when no database lists a file under the workspace or the arguments ask for two outputs at once, 2 when they do not parse.
+The exit code is 0 after a scan; 1 when there is nothing to scan (the workspace or the configuration does not exist, or no database lists a file under the workspace) or the arguments ask for two outputs at once or for no run; 2 when they do not parse.
 
 ## Examples
 
