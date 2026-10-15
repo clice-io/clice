@@ -1079,24 +1079,26 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
     /// the command they edit — rewrite them like the command itself.
     /// Appends translate as one command edit, so an appended default state
     /// (`-rdc=false` over an rdc base) cancels the base's translated state
-    /// instead of vanishing.
-    auto translate_rule_flags = [&](llvm::ArrayRef<std::string> rule_flags, bool edit) {
-        std::vector<std::string> flags(rule_flags.begin(), rule_flags.end());
-        if(flags.empty() || !is_nvcc) {
+    /// instead of vanishing. The files the flags name are read relative to
+    /// the rule's `anchor`.
+    auto translate_rule_flags =
+        [&](llvm::ArrayRef<std::string> rule_flags, const Spelling& anchor, bool edit) {
+            std::vector<std::string> flags(rule_flags.begin(), rule_flags.end());
+            if(flags.empty() || !is_nvcc) {
+                return flags;
+            }
+            llvm::BumpPtrAllocator allocator;
+            llvm::StringSaver saver(allocator);
+            llvm::SmallVector<const char*, 32> argv = {cfg.driver};
+            for(auto& flag: flags) {
+                argv.push_back(flag.c_str());
+            }
+            expand_response_files(argv, anchor, cfg.family, saver);
+            auto translated = translate_nvcc_command(argv, directory, edit);
+            flags.assign(std::make_move_iterator(translated.begin() + 1),
+                         std::make_move_iterator(translated.end()));
             return flags;
-        }
-        llvm::BumpPtrAllocator allocator;
-        llvm::StringSaver saver(allocator);
-        llvm::SmallVector<const char*, 32> argv = {cfg.driver};
-        for(auto& flag: flags) {
-            argv.push_back(flag.c_str());
-        }
-        expand_response_files(argv, Spelling::absolute(directory), cfg.family, saver);
-        auto translated = translate_nvcc_command(argv, directory, edit);
-        flags.assign(std::make_move_iterator(translated.begin() + 1),
-                     std::make_move_iterator(translated.end()));
-        return flags;
-    };
+        };
 
     auto remove_parse_options =
         kota::option::ParseOptions{.visibility = family_visibility(cfg.family)};
@@ -1149,6 +1151,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                     count = 2;
                 }
                 auto pattern = translate_rule_flags(llvm::ArrayRef(remove_source).slice(i, count),
+                                                    anchor,
                                                     /*edit=*/false);
                 remove_flags.insert(remove_flags.end(),
                                     std::make_move_iterator(pattern.begin()),
@@ -1235,7 +1238,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
             });
             remove_args.insert(remove_args.end(), removes.begin(), removes.end());
         } else {
-            parse_edit(translate_rule_flags(edit.flags, /*edit=*/true),
+            parse_edit(translate_rule_flags(edit.flags, edit.directory, /*edit=*/true),
                        edit.directory,
                        append_args);
         }

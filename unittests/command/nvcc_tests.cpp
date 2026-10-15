@@ -609,16 +609,18 @@ ZEST_CASE(RuleFlagsTranslated) {
 
 ZEST_CASE(RuleOptionsFileExpanded) {
     // An options file a rule names expands like one in the command, read
-    // relative to the compile directory.
+    // relative to the rule's directory like its other paths.
     TempDir tmp;
-    tmp.touch("opts.rsp", "-DFROM_RULE=1\n");
+    tmp.touch("rules/opts.rsp", "-DFROM_RULE=1\n");
     FileTable file_table;
     CompilationDatabase db{file_table};
     auto entry = db.add_command(tmp.root, "kern.cu", "nvcc -c kern.cu"sv);
     ZASSERT(entry);
 
     std::vector<CommandEdit> edits = {
-        {CommandEdit::Kind::Append, {"--options-file", "opts.rsp"}},
+        {CommandEdit::Kind::Append,
+         {"--options-file", "opts.rsp"},
+         Spelling::absolute(tmp.path("rules"))},
     };
     CommandOptions options{.edits = edits};
     auto flags = db.render_full(db.apply_rules(entry->config, options));
