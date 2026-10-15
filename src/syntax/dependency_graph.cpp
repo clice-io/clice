@@ -773,21 +773,28 @@ struct FullScan {
     kota::task<> run(llvm::ArrayRef<CommandRef> units) {
         ScopedTimer timer;
 
-        // One scan group per unique (effective config, input language) —
+        // One scan group per unique (command identity, input language) —
         // the SearchConfig granularity: different -I sets resolve
         // differently, and the same flags compiled as C and C++ pull
-        // different implicit include sets.
+        // different implicit include sets. The identity is the entry
+        // hash, not the config: a config keeps the per-file flags the
+        // compile drops (-o), which would give every unit its own group.
         llvm::MapVector<Fid, llvm::SmallVector<ScanContext, 1>> unit_contexts;
-        llvm::DenseMap<std::pair<std::uint32_t, const char*>, std::uint32_t> group_ids;
+        llvm::DenseMap<std::pair<std::uint64_t, const char*>, std::uint32_t> group_ids;
         for(auto& unit: units) {
             auto [it, inserted] =
-                group_ids.try_emplace({static_cast<std::uint32_t>(unit.config), unit.input.value});
+                group_ids.try_emplace({cdb.entry_hash(unit.config), unit.input.value});
             if(inserted) {
                 it->second = graph.add_group(unit);
             }
+            auto& contexts = unit_contexts[unit.file];
+            if(llvm::any_of(contexts,
+                            [&](ScanContext known) { return known.group == it->second; })) {
+                continue;
+            }
             ScanContext context{.group = it->second, .unit = true};
             graph.add_context(unit.file, context);
-            unit_contexts[unit.file].push_back(context);
+            contexts.push_back(context);
         }
 
         // Pre-warm the toolchain cache: probes key by non-user-content

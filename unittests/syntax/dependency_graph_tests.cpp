@@ -460,6 +460,31 @@ export module m1;
     ZEXPECT(graph.lookup_module("m2").size() == 1u);
 }
 
+ZEST_CASE(OutputsShareScanGroup) {
+    /// Commands that differ only in their output resolve includes alike:
+    /// they share one scan group, and a file listed under both is one
+    /// context.
+    TempDir tmp;
+    tmp.touch("inc/h.h", R"(int h;)");
+    tmp.touch("src/a.cpp", R"(#include "h.h")");
+    tmp.touch("src/b.cpp", R"(#include "h.h")");
+
+    FileTable file_table;
+    CompilationDatabase cdb{file_table};
+    DependencyGraph graph;
+    auto json = build_cdb_json({
+        {tmp.root, tmp.path("src/a.cpp"), {"-I", tmp.path("inc"), "-o", "a.o"} },
+        {tmp.root, tmp.path("src/b.cpp"), {"-I", tmp.path("inc"), "-o", "b.o"} },
+        {tmp.root, tmp.path("src/a.cpp"), {"-I", tmp.path("inc"), "-o", "a2.o"}},
+    });
+    write_cdb(tmp, cdb, json);
+    scan_all(cdb, graph);
+
+    ZEXPECT(graph.groups().size() == 1u);
+    auto a = file_table.intern(Spelling::absolute(tmp.path("src/a.cpp")));
+    ZEXPECT(graph.contexts(a).size() == 1u);
+}
+
 ZEST_CASE(SingleFileNoIncludes) {
     TempDir tmp;
     tmp.touch("src/main.cpp", R"(int main() { return 0; })");
