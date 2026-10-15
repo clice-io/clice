@@ -522,7 +522,7 @@ private:
     std::unique_ptr<llvm::BumpPtrAllocator> allocator = std::make_unique<llvm::BumpPtrAllocator>();
 
     /// Keep all strings (arguments, directories, etc.).
-    StringSet strings{allocator.get()};
+    llvm::UniqueStringSaver strings{*allocator};
 
     ObjectSet<CompileConfig> configs{allocator.get()};
 

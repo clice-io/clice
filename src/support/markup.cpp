@@ -250,38 +250,6 @@ std::string escape_markdown(llvm::StringRef text) {
     return result;
 }
 
-/// Renders \p input as an inline block of code in markdown. The returned value
-/// is surrounded by backticks and the inner contents are properly escaped.
-std::string render_inline_block(llvm::StringRef input) {
-    std::string result;
-    // Double all backticks to make sure we don't close the inline block early.
-    for(std::size_t from = 0; from < input.size();) {
-        std::size_t next = input.find("`", from);
-        result += input.substr(from, next - from);
-        if(next == llvm::StringRef::npos) {
-            break;
-        }
-        result += "``";  // Double the found backtick.
-
-        from = next + 1;
-    }
-
-    // If results starts with a backtick, add spaces on both sides. The spaces
-    // are ignored by markdown renderers.
-    if(llvm::StringRef(result).starts_with("`") || llvm::StringRef(result).ends_with("`")) {
-        return "` " + std::move(result) + " `";
-    }
-
-    // Markdown render should ignore first and last space if both are there. We
-    // add an extra pair of spaces in that case to make sure we render what the
-    // user intended.
-    if(llvm::StringRef(result).starts_with(" ") && llvm::StringRef(result).ends_with(" ")) {
-        return "` " + std::move(result) + " `";
-    }
-
-    return "`" + std::move(result) + "`";
-}
-
 /// Get marker required for \p input to represent a markdown codeblock. It
 /// consists of at least 3 backticks(`). Although markdown also allows to use
 /// tilde(~) for code blocks, they are never used.
@@ -362,10 +330,6 @@ public:
         os << '\n';
     }
 
-    std::unique_ptr<Block> clone() const override {
-        return std::make_unique<Ruler>(*this);
-    }
-
     bool is_ruler() const override {
         return true;
     }
@@ -388,10 +352,6 @@ public:
         os << '\n' << contents << "\n\n";
     }
 
-    std::unique_ptr<Block> clone() const override {
-        return std::make_unique<CodeBlock>(*this);
-    }
-
 private:
     std::string contents;
     std::string language;
@@ -407,10 +367,6 @@ public:
 
     void render_plain_text(llvm::raw_ostream& os) const override {
         os << '\n' << text << "\n\n";
-    }
-
-    std::unique_ptr<Block> clone() const override {
-        return std::make_unique<MarkdownBlock>(*this);
     }
 
 private:
@@ -434,10 +390,6 @@ public:
 
     void render_plain_text(llvm::raw_ostream& os) const override {
         os << '\n' << text << "\n\n";
-    }
-
-    std::unique_ptr<Block> clone() const override {
-        return std::make_unique<Lines>(*this);
     }
 
 private:
@@ -469,11 +421,6 @@ public:
         Paragraph::render_markdown(os);
     }
 
-    /// Paragraph::clone would slice off the heading level.
-    std::unique_ptr<Block> clone() const override {
-        return std::make_unique<Heading>(*this);
-    }
-
 private:
     std::size_t level;
 };
@@ -491,6 +438,15 @@ llvm::StringRef choose_marker(llvm::ArrayRef<llvm::StringRef> options, llvm::Str
 }
 
 }  // namespace
+
+std::string code_span(llvm::StringRef text) {
+    std::string fence = "`";
+    while(text.contains(fence)) {
+        fence += '`';
+    }
+    auto padding = text.starts_with("`") || text.ends_with("`") ? " " : "";
+    return fence + padding + text.str() + padding + fence;
+}
 
 std::string Block::as_markdown() const {
     std::string result;
@@ -516,7 +472,7 @@ void Paragraph::render_markdown(llvm::raw_ostream& os) const {
 
         switch(chunk.kind) {
             case Chunk::PlainText: os << render_text(chunk.contents, !has_chunks); break;
-            case Chunk::InlineCode: os << render_inline_block(chunk.contents); break;
+            case Chunk::InlineCode: os << code_span(chunk.contents); break;
             case Chunk::Markdown: os << escape_markdown(chunk.contents); break;
         }
 
@@ -545,10 +501,6 @@ void Paragraph::render_plain_text(llvm::raw_ostream& os) const {
         needs_space = chunk.space_after;
     }
     os << '\n';
-}
-
-std::unique_ptr<Block> Paragraph::clone() const {
-    return std::make_unique<Paragraph>(*this);
 }
 
 Paragraph& Paragraph::append_space() {
@@ -621,28 +573,8 @@ void BulletList::render_plain_text(llvm::raw_ostream& os) const {
     }
 }
 
-std::unique_ptr<Block> BulletList::clone() const {
-    return std::make_unique<BulletList>(*this);
-}
-
 Document& BulletList::add_item() {
     return items.emplace_back();
-}
-
-Document& Document::operator=(const Document& other) {
-    if(this == &other) {
-        return *this;
-    }
-
-    children.clear();
-    for(const auto& child: other.children) {
-        children.push_back(child->clone());
-    }
-    return *this;
-}
-
-void Document::append(Document other) {
-    std::ranges::move(other.children, std::back_inserter(children));
 }
 
 Paragraph& Document::add_paragraph() {

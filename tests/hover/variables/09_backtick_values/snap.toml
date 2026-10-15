@@ -1,0 +1,29 @@
+[answers.one_tick.hover]
+markdown = '''
+### variable `command`
+
+---
+Type: `const char *`
+Value = ``&"run `make`"[0]``
+
+---
+```cpp
+const char *command = "run `make`"
+```
+'''
+range = 'const char* ⟦command⟧ = "run `make`";'
+
+[answers.tick_run.hover]
+markdown = '''
+### variable `fence`
+
+---
+Type: `const char *`
+Value = ```&"``"[0]```
+
+---
+```cpp
+const char *fence = "``"
+```
+'''
+range = 'const char* ⟦fence⟧ = "``";'
