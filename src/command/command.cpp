@@ -1085,12 +1085,13 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         if(flags.empty() || !is_nvcc) {
             return flags;
         }
-        std::vector<const char*> argv;
-        argv.reserve(flags.size() + 1);
-        argv.push_back(cfg.driver);
+        llvm::BumpPtrAllocator allocator;
+        llvm::StringSaver saver(allocator);
+        llvm::SmallVector<const char*, 32> argv = {cfg.driver};
         for(auto& flag: flags) {
             argv.push_back(flag.c_str());
         }
+        expand_response_files(argv, Spelling::absolute(directory), cfg.family, saver);
         auto translated = translate_nvcc_command(argv, directory, edit);
         flags.assign(std::make_move_iterator(translated.begin() + 1),
                      std::make_move_iterator(translated.end()));

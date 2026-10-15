@@ -364,7 +364,8 @@ public:
     };
 
     /// What the source's last load read: the database first, then the
-    /// response files (`@file`) its commands name, readable or not — a
+    /// response files (`@file`, nvcc's options files) its commands name,
+    /// readable or not — a
     /// change to one changes the commands as much as an edit of the
     /// database itself. A load that could not parse the database read it
     /// alone, its entries staying those of the load before; a source never

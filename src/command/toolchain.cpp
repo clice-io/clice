@@ -1022,7 +1022,7 @@ std::vector<std::string> Toolchain::parse_cc1(llvm::StringRef content) {
             // avoids CompilerInvocation::CreateFromArgs failures on new values.
             if(is_codegen_option(r->id))
                 continue;
-            for(std::uint32_t i = r->index; i < r->next_index; ++i)
+            for(std::uint32_t i = r->index; i < r->next_index; i += 1)
                 cc1_args.emplace_back(raw[i]);
         }
         return cc1_args;

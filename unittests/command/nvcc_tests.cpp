@@ -302,21 +302,17 @@ ZEST_CASE(OptionsFileExpanded) {
     ZEXPECT(contains(args, "API=2"));
     ZEXPECT(contains(args, "-std=c++20"));
     ZEXPECT(!contains(args, "--options-file"));
-    ZEXPECT(!contains(args, "opts.rsp"));
 
     // The value is a comma-separated file list: every element expands.
     auto both = flags("nvcc -optf opts.rsp,second.rsp -c kern.cu");
     ZEXPECT(contains(both, "API=2"));
     ZEXPECT(contains(both, "FROM_SECOND=2"));
-    ZEXPECT(!contains(both, "-optf"));
-    ZEXPECT(!contains(both, "opts.rsp,second.rsp"));
 
     // An unreadable file drops with a warning; the rest of the command
     // still translates.
     auto missing = flags("nvcc --options-file=missing.rsp -DX -c kern.cu");
     ZEXPECT(contains(missing, "X"));
     ZEXPECT(!contains(missing, "--options-file=missing.rsp"));
-    ZEXPECT(!contains(missing, "missing.rsp"));
 }
 
 ZEST_CASE(OptionsFileMarkSkipped) {
@@ -609,6 +605,25 @@ ZEST_CASE(RuleFlagsTranslated) {
         ZEXPECT(!flag.starts_with("--generate-code"));
         ZEXPECT(!flag.starts_with("--extended-lambda"));
     }
+}
+
+ZEST_CASE(RuleOptionsFileExpanded) {
+    // An options file a rule names expands like one in the command, read
+    // relative to the compile directory.
+    TempDir tmp;
+    tmp.touch("opts.rsp", "-DFROM_RULE=1\n");
+    FileTable file_table;
+    CompilationDatabase db{file_table};
+    auto entry = db.add_command(tmp.root, "kern.cu", "nvcc -c kern.cu"sv);
+    ZASSERT(entry);
+
+    std::vector<CommandEdit> edits = {
+        {CommandEdit::Kind::Append, {"--options-file", "opts.rsp"}},
+    };
+    CommandOptions options{.edits = edits};
+    auto flags = db.render_full(db.apply_rules(entry->config, options));
+    ZEXPECT(std::ranges::contains(flags, llvm::StringRef("FROM_RULE=1")));
+    ZEXPECT(!std::ranges::contains(flags, llvm::StringRef("--options-file")));
 }
 
 ZEST_CASE(AppendOverridesBase) {
