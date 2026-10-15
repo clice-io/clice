@@ -5,6 +5,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :command.command;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -72,8 +73,8 @@ ZEST_CASE(ParseError) {
 };
 
 ZEST_CASE(CLVisibility) {
-    auto cl_vis = default_visibility("clang-cl");
-    auto gcc_vis = default_visibility("clang++");
+    auto cl_vis = family_visibility(CompilerFamily::ClangCL);
+    auto gcc_vis = family_visibility(CompilerFamily::Clang);
 
     auto parse_with_vis = [](std::vector<std::string> args, unsigned vis) -> unsigned {
         auto options = kota::option::ParseOptions{.dash_dash_parsing = true, .visibility = vis};

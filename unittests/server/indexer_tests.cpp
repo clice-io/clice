@@ -1279,7 +1279,7 @@ ZEST_CASE(CreatedHeaderStales) {
     auto tu = f.project.file_table.intern(Spelling::absolute(indexed.tu_path));
     auto gen = f.project.file_table.intern(Spelling::absolute(tmp.path("gen.h")));
     ZASSERT(f.project.project_index.probed.lookup(gen).contains(tu));
-    ZASSERT(f.project.file_table.seen_missing(gen));
+    ZASSERT(f.project.file_table.disk.seen_missing(gen));
     ZASSERT(!f.need_update(src));
 
     tmp.touch("gen.h", "int make();\n");
@@ -2955,7 +2955,7 @@ ZEST_CASE(HeaderModePersisted) {
         IndexerFixture f;
         open_store(tmp, f.project);
         auto id = f.project.file_table.intern(Spelling::absolute(path));
-        auto disk = f.project.file_table.current(id);
+        auto disk = f.project.file_table.disk.current(id);
         ZASSERT(disk);
         f.commands.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);
         f.project.mark_artifacts_dirty();

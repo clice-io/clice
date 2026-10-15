@@ -37,7 +37,7 @@ struct HostedHeader {
         project.dep_graph.set_includes(host, 0, {{header}});
         project.dep_graph.build_reverse_map();
 
-        auto disk = project.file_table.current(header);
+        auto disk = project.file_table.disk.current(header);
         ZASSERT(disk);
         commands.record_header_mode(header, HeaderMode::NeedsContext, disk->hash);
     }

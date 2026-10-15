@@ -186,14 +186,7 @@ auto CompilationUnit::file_path(clang::FileEntryRef entry) -> llvm::StringRef {
         }
     }
     auto path = CanonicalPath(Spelling::absolute(spelled)).str();
-
-    /// Allocate the path in the storage.
-    auto size = path.size();
-    auto data = path_storage.Allocate<char>(size + 1);
-    memcpy(data, path.data(), size);
-    data[size] = '\0';
-
-    auto [it, inserted] = path_cache.try_emplace(entry, llvm::StringRef(data, size));
+    auto [it, inserted] = path_cache.try_emplace(entry, llvm::StringSaver(path_storage).save(path));
     assert(inserted && "File path already exists");
     return it->second;
 }

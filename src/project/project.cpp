@@ -215,7 +215,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
         // a file there is a change.
         if(file.absent) {
             dep.missing = true;
-            files.current(dep.path_id);
+            files.disk.current(dep.path_id);
             continue;
         }
 
@@ -229,7 +229,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             // recovery is the DiskRemoved cascade's job, not this
             // snapshot's).
             dep.missing = true;
-            files.saw_missing(dep.path_id);
+            files.disk.saw_missing(dep.path_id);
             continue;
         }
 
@@ -245,7 +245,7 @@ DepsSnapshot capture_deps_snapshot(FileTable& files,
             // bytes, so their hash can be taken from the last reliable read
             // — or one read, unless the file moved between the stat and the
             // read, which voids the proof.
-            auto obs = files.observe_for(dep.path_id, *status);
+            auto obs = files.disk.observe_for(dep.path_id, *status);
             if(!obs || obs->stamp != status->stamp) {
                 continue;
             }
@@ -281,7 +281,7 @@ bool deps_changed(FileTable& files, const DepsSnapshot& snap) {
         // Gone at build time: reappearing is the change; still-missing
         // stays unchanged (see the capture).
         if(dep.missing) {
-            return files.present(dep.path_id);
+            return files.disk.present(dep.path_id);
         }
         // No version names the consumed bytes: rebuild once to converge.
         if(!dep.version.valid()) {

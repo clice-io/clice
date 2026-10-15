@@ -74,7 +74,7 @@ void register_control(ProjectServer& srv, kota::ipc::JSONPeer& peer) {
         // shard still describes older bytes.
         for(auto file: files) {
             auto shard = srv.project.project_index.shards.find(file);
-            auto disk = srv.project.file_table.current(file);
+            auto disk = srv.project.file_table.disk.current(file);
             bool current = shard != srv.project.project_index.shards.end() && disk &&
                            shard->second.content_hash() == disk->hash;
             if(!current) {

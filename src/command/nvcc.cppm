@@ -16,6 +16,15 @@ namespace clice {
 /// build's real toolchain.
 bool is_nvcc_probe_flag(llvm::StringRef arg);
 
+/// The files an nvcc options-file argument at `arguments[i]` names —
+/// `-optf` or `--options-file`, its value separate or after `=`, a
+/// comma-separated list with `\,` for a literal comma — advancing `i` past
+/// a separate value; nullopt when the argument is no such option. Their
+/// arguments splice in where it stood, like a response file's (CMake
+/// routes long CUDA include lists through one).
+std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<const char*> arguments,
+                                                            std::size_t& i);
+
 /// Rewrite an nvcc driver command into flags clang's option table parses,
 /// so the regular CDB classification (canonical / user-content / discarded)
 /// applies unchanged:
@@ -38,9 +47,8 @@ bool is_nvcc_probe_flag(llvm::StringRef arg);
 ///   their exact macro effect. `--use_fast_math` becomes clang's
 ///   `-fgpu-approx-transcendentals`, which selects the same fast
 ///   transcendentals in the math wrapper.
-/// - `--options-file` response files are expanded in place, resolved
-///   against `directory` like a relative `-ccbin` — nvcc resolves both
-///   against its working directory.
+/// - A path-shaped `-ccbin` resolves against `directory`, the working
+///   directory nvcc resolves it against.
 /// - Remaining nvcc-only options are dropped, together with their values
 ///   when those could be mistaken for host flags (`-Xptxas -O3`).
 ///
@@ -66,12 +74,12 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
 /// oldest architecture instead of the newest.
 ///
 /// The caller hands the arch-flag values in command order (the value of
-/// each --cuda-gpu-arch= / --offload-arch= / --no-offload-arch= argument)
-/// and erases the returned indices. nullopt means a value outside the
-/// ranking (a raw clang spelling like --offload-arch=native) was present —
-/// leave the whole command to clang's own semantics.
+/// each --offload-arch= / --no-offload-arch= argument; --cuda-gpu-arch=
+/// parses as the former) and erases the returned indices. nullopt means a
+/// value outside the ranking (a raw clang spelling like
+/// --offload-arch=native) was present — leave the whole command to clang's
+/// own semantics.
 enum class ArchFlagKind : std::uint8_t {
-    GpuArch,
     OffloadArch,
     NoOffloadArch,
 };

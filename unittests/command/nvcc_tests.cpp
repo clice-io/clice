@@ -8,6 +8,7 @@ import :command.command;
 import :command.nvcc;
 import :command.toolchain;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.path;
 
@@ -280,50 +281,53 @@ ZEST_CASE(ListValuesSplit) {
 }
 
 ZEST_CASE(OptionsFileExpanded) {
-    auto file = vfs::temp_file("clice-nvcc", "rsp");
-    ZASSERT(file);
-    ZASSERT(!vfs::write(*file, "-Igenerated -DAPI=2 -std=c++20\n"));
+    // Options files splice in where they stood and translate with the
+    // rest, read relative to the compile directory.
+    TempDir tmp;
+    tmp.touch("opts.rsp", "-Igenerated -DAPI=2 -std=c++20\n");
+    tmp.touch("second.rsp", "-DFROM_SECOND=2\n");
+    FileTable file_table;
+    CompilationDatabase db{file_table};
+    auto flags = [&](llvm::StringRef command) {
+        auto entry = db.add_command(tmp.root, "kern.cu", command);
+        std::vector<std::string> rendered;
+        for(llvm::StringRef flag: db.render_full(entry->config)) {
+            rendered.push_back(flag.str());
+        }
+        return rendered;
+    };
 
-    auto args = translate({"nvcc", "--options-file", file->c_str()});
-    auto joined = llvm::join(args, " ");
-    ZEXPECT(llvm::StringRef(joined).contains("-I generated"));
-    ZEXPECT(llvm::StringRef(joined).contains("-D API=2"));
+    auto args = flags("nvcc --options-file opts.rsp -c kern.cu");
+    ZEXPECT(contains(args, Spelling::absolute(tmp.path("generated")).str()));
+    ZEXPECT(contains(args, "API=2"));
     ZEXPECT(contains(args, "-std=c++20"));
     ZEXPECT(!contains(args, "--options-file"));
-    ZEXPECT(!llvm::StringRef(joined).contains(*file));
+    ZEXPECT(!contains(args, "opts.rsp"));
 
     // The value is a comma-separated file list: every element expands.
-    auto second = vfs::temp_file("clice-nvcc", "rsp");
-    ZASSERT(second);
-    ZASSERT(!vfs::write(*second, "-DFROM_SECOND=2\n"));
-
-    auto pair = *file + "," + *second;
-    auto both = llvm::join(translate({"nvcc", "-optf", pair.c_str()}), " ");
-    ZEXPECT(llvm::StringRef(both).contains("-D API=2"));
-    ZEXPECT(llvm::StringRef(both).contains("-D FROM_SECOND=2"));
-    ZEXPECT(!llvm::StringRef(both).contains("-optf"));
-    ZEXPECT(!llvm::StringRef(both).contains(*file));
-    ZEXPECT(!llvm::StringRef(both).contains(*second));
+    auto both = flags("nvcc -optf opts.rsp,second.rsp -c kern.cu");
+    ZEXPECT(contains(both, "API=2"));
+    ZEXPECT(contains(both, "FROM_SECOND=2"));
+    ZEXPECT(!contains(both, "-optf"));
+    ZEXPECT(!contains(both, "opts.rsp,second.rsp"));
 
     // An unreadable file drops with a warning; the rest of the command
     // still translates.
-    auto missing = translate({"nvcc", "--options-file=missing.rsp", "-DX"}, "/clice-nonexistent");
+    auto missing = flags("nvcc --options-file=missing.rsp -DX -c kern.cu");
     ZEXPECT(contains(missing, "X"));
     ZEXPECT(!contains(missing, "--options-file=missing.rsp"));
     ZEXPECT(!contains(missing, "missing.rsp"));
-
-    vfs::remove(*file);
-    vfs::remove(*second);
 }
 
 ZEST_CASE(OptionsFileMarkSkipped) {
     // A byte order mark does not glue itself to the first option.
-    auto file = vfs::temp_file("clice-nvcc", "rsp");
-    ZASSERT(file);
-    ZASSERT(!vfs::write(*file, "\xEF\xBB\xBF-DMARKED=1\n"));
-    auto joined = llvm::join(translate({"nvcc", "--options-file", file->c_str()}), " ");
-    ZEXPECT(llvm::StringRef(joined).contains("-D MARKED=1"));
-    vfs::remove(*file);
+    TempDir tmp;
+    tmp.touch("marked.rsp", "\xEF\xBB\xBF-DMARKED=1\n");
+    FileTable file_table;
+    CompilationDatabase db{file_table};
+    auto entry = db.add_command(tmp.root, "kern.cu", "nvcc --options-file marked.rsp -c kern.cu"sv);
+    ZASSERT(entry);
+    ZEXPECT(std::ranges::contains(db.render_full(entry->config), llvm::StringRef("MARKED=1")));
 }
 
 ZEST_CASE(StdNormalized) {
@@ -729,10 +733,10 @@ ZEST_CASE(CollapseHonorsNegatives) {
     // the survivors wins (dropping the rest).
     auto dropped = collapse_gpu_archs({
         {
-         {K::GpuArch, "sm_90"},
+         {K::OffloadArch, "sm_90"},
          {K::NoOffloadArch, "sm_90"},
-         {K::GpuArch, "sm_75"},
-         {K::GpuArch, "sm_86"},
+         {K::OffloadArch, "sm_75"},
+         {K::OffloadArch, "sm_86"},
          }
     });
     ZASSERT(dropped);
@@ -742,9 +746,9 @@ ZEST_CASE(CollapseHonorsNegatives) {
     // A single survivor leaves nothing to collapse.
     auto single = collapse_gpu_archs({
         {
-         {K::GpuArch, "sm_90"},
+         {K::OffloadArch, "sm_90"},
          {K::NoOffloadArch, "sm_90"},
-         {K::GpuArch, "sm_75"},
+         {K::OffloadArch, "sm_75"},
          }
     });
     ZASSERT(single);
@@ -753,9 +757,9 @@ ZEST_CASE(CollapseHonorsNegatives) {
     // An unrankable negative leaves the whole command to clang.
     auto native = collapse_gpu_archs({
         {
-         {K::GpuArch, "sm_90"},
+         {K::OffloadArch, "sm_90"},
          {K::NoOffloadArch, "native"},
-         {K::GpuArch, "sm_75"},
+         {K::OffloadArch, "sm_75"},
          }
     });
     ZEXPECT(!native.has_value());

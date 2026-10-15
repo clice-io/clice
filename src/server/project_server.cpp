@@ -339,7 +339,7 @@ void ProjectServer::close_session(Fid path_id) {
     // (IndexPump::compiled_by_session); the disk's turn again, unless it
     // was deleted meanwhile or its index run failed for good, which waits
     // for a change.
-    if(!project.file_table.seen_missing(path_id) && !sched.pump.failed().contains(path_id) &&
+    if(!project.file_table.disk.seen_missing(path_id) && !sched.pump.failed().contains(path_id) &&
        sched.pump.enqueue(path_id, ReindexReason::DepsOnly)) {
         sched.pump.schedule(false);
     }
@@ -371,7 +371,7 @@ void ProjectServer::open_session(Fid path_id, std::string text, int version) {
     }
     // What the disk holds under the buffer: a later save or outside
     // write is then a change from it, even for a file nothing else knew.
-    project.file_table.current(path_id);
+    project.file_table.disk.current(path_id);
     if(!started) {
         return;
     }

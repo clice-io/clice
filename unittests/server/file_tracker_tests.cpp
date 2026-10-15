@@ -717,7 +717,7 @@ ZEST_CASE(WorkspaceTickStateMachine) {
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     // A first look is no change.
-    project.file_table.current(header);
+    project.file_table.disk.current(header);
     ZASSERT(workspace_tick(tracker, files).empty());
 
     // Content change is confirmed by hash and reported once. The new
@@ -769,7 +769,7 @@ ZEST_CASE(WorkspaceTickKeepsListedMember) {
     }));
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     auto both = project.file_table.intern(Spelling::absolute(tmp.path("src/both.cpp")));
-    project.file_table.current(both);
+    project.file_table.disk.current(both);
     ZASSERT(workspace_tick(tracker, files).empty());
 
     vfs::remove_all(tmp.path("src/both.cpp"));
@@ -791,7 +791,7 @@ ZEST_CASE(WorkspaceTickSeesOpen) {
     SessionStore store;
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
     store.open(header);
-    project.file_table.current(header);
+    project.file_table.disk.current(header);
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
     ZASSERT(workspace_tick(tracker, files).empty());
 
@@ -819,7 +819,7 @@ ZEST_CASE(WorkspaceTickAfterScan) {
     Project project{files};
     SessionStore store;
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
-    project.file_table.read(header);
+    project.file_table.disk.read(header);
     tmp.touch("header.h", R"(int x = 2222;)");
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
@@ -875,7 +875,7 @@ ZEST_CASE(CheckoutMakesWorkspaceDue) {
     Project project{files};
     SessionStore store;
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("header.h")));
-    project.file_table.current(header);
+    project.file_table.disk.current(header);
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.root)));
 
     tmp.touch("header.h", R"(int x = 2222;)");
@@ -903,7 +903,7 @@ ZEST_CASE(LinkedWorktreeWatched) {
     Project project{files};
     SessionStore store;
     auto header = project.file_table.intern(Spelling::absolute(tmp.path("wt/header.h")));
-    project.file_table.current(header);
+    project.file_table.disk.current(header);
     FileTracker tracker(project, store, CanonicalPath(Spelling::absolute(tmp.path("wt"))));
 
     tmp.touch("wt/header.h", R"(int x = 2222;)");

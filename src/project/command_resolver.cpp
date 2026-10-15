@@ -143,7 +143,7 @@ void CommandResolver::load_mode_slices(
             continue;
         // The result is tied to the header's contents — a file edited
         // while the server was down must re-earn its trial.
-        auto disk = project.file_table.current(*id);
+        auto disk = project.file_table.disk.current(*id);
         if(!disk || disk->hash != entry.content_hash)
             continue;
         header_results[*id] = {.mode = HeaderMode::NeedsContext,
@@ -242,7 +242,8 @@ bool CommandResolver::fill_header_context_args(Fid path_id,
         opts.preamble = ctx_ptr->synthesized->prefix.c_str();
     }
     directory = project.cdb.config(ref.config).directory;
-    arguments = to_strings(project.cdb.render(ref, opts));
+    auto argv = project.cdb.render(ref, opts);
+    arguments.assign(argv.begin(), argv.end());
     resolution.host = ctx_ptr->host_path_id;
     resolution.ref = ref;
     resolution.synthesized = ctx_ptr->synthesized;
@@ -276,7 +277,8 @@ Resolution CommandResolver::resolve_command(Fid path_id,
                                          request.extra_prepend,
                                          request.extra_append);
         directory = project.cdb.config(ref.config).directory;
-        arguments = to_strings(project.cdb.render(ref));
+        auto argv = project.cdb.render(ref);
+        arguments.assign(argv.begin(), argv.end());
         resolution.ref = ref;
     };
 
@@ -481,7 +483,7 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
             .content = chain_contents.back(),
             .line = host->lines.empty() ? 0 : host->lines[i],
         });
-        project.file_table.observe(chain[i], observed->obs);
+        project.file_table.disk.observe(chain[i], observed->obs);
         deps.push_back(
             {.path_id = chain[i],
              .version = project.file_table.intern_version(chain[i], observed->obs.hash)});
@@ -496,7 +498,7 @@ std::expected<HeaderContext, Fid> CommandResolver::resolve_header_context(Fid he
     auto target_observed = vfs::read_observed(target_path);
     if(target_observed) {
         target_content = target_observed->content->getBuffer();
-        project.file_table.observe(chain.back(), target_observed->obs);
+        project.file_table.disk.observe(chain.back(), target_observed->obs);
     }
 
     auto target_spelling = project.file_table.spelling(chain.back());

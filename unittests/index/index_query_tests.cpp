@@ -549,7 +549,7 @@ ZEST_CASE(StaleContributionSuppressed) {
     // Entries of text the disk no longer holds point nowhere: the file's
     // contribution disappears from cross-file results until its index
     // describes the disk again.
-    project.file_table.observe(main_id, DiskObservation{.hash = 1});
+    project.file_table.disk.observe(main_id, DiskObservation{.hash = 1});
     ZASSERT(query.sites(symbol, Fid{}, RelationKind::Reference).empty());
 }
 
@@ -584,7 +584,7 @@ ZEST_CASE(UndefinedBesideStaleUse) {
 
     // A file using the symbol moved on; nothing defines the symbol, so the
     // declaration still places it.
-    project.file_table.observe(main_id, DiskObservation{.hash = 1});
+    project.file_table.disk.observe(main_id, DiskObservation{.hash = 1});
     auto results = search("external");
     ZASSERT(results.size() == 1U);
     ZASSERT(results.front().site.path.ends_with("header.h"));
@@ -620,7 +620,7 @@ ZEST_CASE(DeletedDefinitionFallsBack) {
         int kept() { return removed(); }
     )");
     index_workspace();
-    project.file_table.observe(use_id, DiskObservation{.hash = 1});
+    project.file_table.disk.observe(use_id, DiskObservation{.hash = 1});
 
     auto results = search("removed");
     ZASSERT(results.size() == 1U);

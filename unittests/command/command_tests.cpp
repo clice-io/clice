@@ -505,6 +505,35 @@ ZEST_CASE(ResponseFilesRecorded) {
     ZEXPECT(database.inputs(id).size() == 2u);
 };
 
+ZEST_CASE(OptionsFilesRecorded) {
+    /// An nvcc command's options files are load inputs like response
+    /// files: editing one changes the commands as much as the database.
+    TempDir tmp;
+    tmp.touch("opts.rsp", "-DFROM_OPTIONS=1\n");
+    tmp.touch("more.rsp", "-DFROM_MORE=1\n");
+    tmp.touch(
+        "compile_commands.json",
+        std::format(
+            R"([{{"directory": "{}", "file": "kern.cu", "command": "nvcc -optf opts.rsp,missing.rsp --options-file=more.rsp -c kern.cu"}}])",
+            json_escape(tmp.root)));
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    auto id = database.add_source(Spelling::absolute(tmp.path("compile_commands.json")));
+    ZASSERT(database.load_source(id));
+    auto recorded = database.inputs(id);
+    ZASSERT(recorded.size() == 4u);
+    auto names = [&](std::size_t i, llvm::StringRef name) {
+        return file_table.resolve(recorded[i].file) ==
+               CanonicalPath(Spelling::absolute(path::join(tmp.root, name)));
+    };
+    ZEXPECT(names(1, "opts.rsp"));
+    ZEXPECT(recorded[1].hash);
+    ZEXPECT(names(2, "missing.rsp"));
+    ZEXPECT(!recorded[2].hash.has_value());
+    ZEXPECT(names(3, "more.rsp"));
+    ZEXPECT(recorded[3].hash);
+};
+
 ZEST_CASE(DriverModeFromRsp) {
     /// --driver-mode=cl inside a response file still switches on CL option
     /// visibility (clang interprets the mode after expansion).
@@ -659,12 +688,11 @@ ZEST_CASE(InternedCommand) {
     /// input slot synthesized at the end.
     FileTable file_table;
     CompilationDatabase database{file_table};
-    auto tokens = tokenize_command("clang++ -std=c++20 -Iinclude");
-    llvm::SmallVector<const char*> tokenized;
-    for(auto& token: tokens) {
-        tokenized.push_back(token.c_str());
-    }
-    auto spelled = *database.intern_command(Spelling::absolute("/ws"), tokenized);
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver saver(allocator);
+    auto spelled =
+        *database.intern_command(Spelling::absolute("/ws"),
+                                 tokenize_command("clang++ -std=c++20 -Iinclude", saver));
     llvm::SmallVector<const char*> argv = {"clang++", "-std=c++20", "-Iinclude"};
     ZEXPECT(spelled == *database.intern_command(Spelling::absolute("/ws"), argv));
     ZEXPECT(spelled != *database.intern_command(Spelling::absolute("/other"), argv));

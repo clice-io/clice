@@ -105,7 +105,7 @@ struct Pairing {
 
     /// The module declaration of a unit's text as the build last saw it.
     const ScanResult* declaration_of(Fid unit) {
-        auto hash = ctx.project.file_table.seen_hash(unit);
+        auto hash = ctx.project.file_table.disk.seen_hash(unit);
         if(!hash) {
             return nullptr;
         }

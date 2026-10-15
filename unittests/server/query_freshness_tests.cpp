@@ -143,7 +143,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     // The disk was seen holding other text: the file's contribution is
     // skipped until its shard describes the disk again; other files' shards
     // are unaffected.
-    project.file_table.observe(main_id, DiskObservation{.hash = 1});
+    project.file_table.disk.observe(main_id, DiskObservation{.hash = 1});
     ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
     ZASSERT(index_query.first_site(hash, Fid{}, RelationKind::Definition));
 
@@ -152,7 +152,7 @@ ZEST_CASE(GateWithholdsStaleShard) {
     ZASSERT(disk_query.locate(by_line).empty());
 
     // A changed definition file drops out of definition lookups.
-    project.file_table.observe(header_id, DiskObservation{.hash = 1});
+    project.file_table.disk.observe(header_id, DiskObservation{.hash = 1});
     ZASSERT(!index_query.first_site(hash, Fid{}, RelationKind::Definition).has_value());
 
     // With background indexing disabled nothing would ever catch up:
@@ -174,7 +174,7 @@ ZEST_CASE(DeletedFileWithdrawsIndex) {
     ZASSERT(std::ranges::contains(reference_files(hash), "main.cpp"));
 
     // The index of a file seen gone points at text that is gone with it.
-    project.file_table.saw_missing(main_id);
+    project.file_table.disk.saw_missing(main_id);
     ZASSERT(!std::ranges::contains(reference_files(hash), "main.cpp"));
 }
 

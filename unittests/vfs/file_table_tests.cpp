@@ -49,13 +49,13 @@ ZEST_CASE(HardlinksReadApart) {
     auto a_id = pool.intern(Spelling::absolute(a));
     auto b_id = pool.intern(Spelling::absolute(b));
     ZASSERT(a_id != b_id);
-    ZASSERT(pool.read(a_id));
+    ZASSERT(pool.disk.read(a_id));
 
     auto stamp = stamp_of(b);
-    ZASSERT(pool.cached_hash(a_id, stamp));
-    ZASSERT(!pool.cached_hash(b_id, stamp).has_value());
-    ZASSERT(pool.read(b_id));
-    ZASSERT(pool.cached_hash(b_id, stamp));
+    ZASSERT(pool.disk.cached_hash(a_id, stamp));
+    ZASSERT(!pool.disk.cached_hash(b_id, stamp).has_value());
+    ZASSERT(pool.disk.read(b_id));
+    ZASSERT(pool.disk.cached_hash(b_id, stamp));
 }
 
 ZEST_CASE(RenameSaveReads) {
@@ -69,7 +69,7 @@ ZEST_CASE(RenameSaveReads) {
 
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
-    auto first = pool.read(fid);
+    auto first = pool.disk.read(fid);
     ZASSERT(first);
 
     tmp.touch("f.h.tmp", "int v2();\n");
@@ -79,12 +79,12 @@ ZEST_CASE(RenameSaveReads) {
     auto stamp = stamp_of(f);
     ZASSERT(stamp.size == first->stamp.size);
     ZASSERT(stamp.mtime_ns == first->stamp.mtime_ns);
-    ZASSERT(!pool.cached_hash(fid, stamp).has_value());
+    ZASSERT(!pool.disk.cached_hash(fid, stamp).has_value());
 
-    auto reread = pool.read(fid);
+    auto reread = pool.disk.read(fid);
     ZASSERT(reread);
     ZASSERT(reread->hash != first->hash);
-    ZASSERT(pool.cached_hash(fid, reread->stamp));
+    ZASSERT(pool.disk.cached_hash(fid, reread->stamp));
 }
 
 ZEST_CASE(FastPathChecksIdentity) {
@@ -98,10 +98,10 @@ ZEST_CASE(FastPathChecksIdentity) {
 
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
-    auto read = pool.read(fid);
+    auto read = pool.disk.read(fid);
     ZASSERT(read);
     auto vid = pool.intern_version(fid, read->hash);
-    ZASSERT(pool.cached_hash(fid, read->stamp));
+    ZASSERT(pool.disk.cached_hash(fid, read->stamp));
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ZASSERT(!vfs::rename(tmp.path("f.h.tmp"), f));
@@ -121,12 +121,12 @@ ZEST_CASE(PairNeedsSameFile) {
 
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
-    auto read = pool.read(fid);
+    auto read = pool.disk.read(fid);
     ZASSERT(read);
     auto other = read->stamp;
     other.device += 1;
     other.file += 1;
-    ZASSERT(!pool.cached_hash(fid, other).has_value());
+    ZASSERT(!pool.disk.cached_hash(fid, other).has_value());
 }
 
 #ifndef _WIN32
@@ -192,12 +192,12 @@ ZEST_CASE(FreshReadNotConfirmed) {
 
     FileTable pool;
     auto fid = pool.intern(Spelling::absolute(f));
-    auto read = pool.read(fid);
+    auto read = pool.disk.read(fid);
     ZASSERT(read);
     auto vid = pool.intern_version(fid, read->hash);
 
     ZASSERT(pool.check_version(vid) == vfs::DiskState::CheckResult::Fresh);
-    ZASSERT(!pool.cached_hash(fid, read->stamp).has_value());
+    ZASSERT(!pool.disk.cached_hash(fid, read->stamp).has_value());
 }
 
 ZEST_CASE(ReadDropsBom) {

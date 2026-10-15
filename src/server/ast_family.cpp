@@ -263,7 +263,7 @@ ASTFamily::PCHPlan ASTFamily::plan_pch(Fid path_id,
                               directory,
                               path::parent_path(path),
                               preamble_text,
-                              canonicalize(arguments, ArgsProfile::Frontend),
+                              canonicalize(arguments),
                               pcm_keys});
     // The text first: freshness checks every dependency of the key.
     if(!is_preamble_complete(text, bound) && !pch.fresh(pch_key)) {

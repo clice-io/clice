@@ -399,7 +399,7 @@ void MasterServer::close_session(Fid path_id) {
     owners.erase(path_id);
     // Like an open and a save, a close is a moment to look at the disk: the
     // editor stops showing its buffer in place of the file.
-    files.current(path_id);
+    files.disk.current(path_id);
     drain_disk_changes();
 }
 

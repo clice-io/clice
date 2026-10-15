@@ -79,31 +79,15 @@ bool is_xclang_option(unsigned id);
 /// preprocessing.
 bool is_diagnostics_option(unsigned id);
 
-/// Which subset of a compile command matters when deriving a cache key.
-enum class ArgsProfile : std::uint8_t {
-    /// Options that can influence preprocessing: include paths, macros,
-    /// language dialect and target (predefined macros).  Computed
-    /// subtractively as Frontend minus diagnostics-presentation options,
-    /// because nearly every language option can define a feature macro —
-    /// over-inclusion only costs sharing, under-inclusion costs correctness.
-    Preprocessing,
-
-    /// All frontend-semantic options: preprocessing + language + warnings.
-    /// Excludes codegen-only options and options clice manages itself.
-    Frontend,
-
-    /// Every recognized option, including codegen and inputs.
-    Full,
-};
-
-/// Render the subset of `args` selected by `profile` into a stable string
-/// suitable for hashing (fragments are NUL-separated).  This is a pure
-/// filter: the relative order of kept options is preserved because it is
-/// semantically significant (-I/-D ordering).  args[0] must be the driver;
-/// it is always kept since it affects language defaults.  Arguments that
-/// fail to parse are kept verbatim — over-keying is safe, under-keying is
-/// not.
-std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile);
+/// Render the frontend-semantic options of `args` — preprocessing,
+/// language and warnings, without codegen-only options and those clice
+/// manages itself — into a stable string suitable for hashing (fragments
+/// are NUL-separated).  This is a pure filter: the relative order of kept
+/// options is preserved because it is semantically significant (-I/-D
+/// ordering).  args[0] must be the driver; it is always kept since it
+/// affects language defaults.  Arguments that fail to parse are kept
+/// verbatim — over-keying is safe, under-keying is not.
+std::string canonicalize(llvm::ArrayRef<std::string> args);
 
 /// Get the resource directory for clang builtin headers. Computed once
 /// from the current executable path using Driver::GetResourcesPath.
@@ -111,12 +95,6 @@ llvm::StringRef resource_dir();
 
 /// Format an argument list as a human-readable string: "[arg1 arg2 ...]".
 std::string print_argv(llvm::ArrayRef<const char*> args);
-
-/// Return the visibility mask to exclude MSVC cl.exe-style options (/U, /D,
-/// /I, etc.) unless the driver is cl.exe.  This prevents Unix absolute paths
-/// like /Users/... from being misparsed as /U sers/... on macOS/Linux.
-/// Defined out-of-line in argument_parser.cpp (needs ClangVisibility enum).
-unsigned default_visibility(llvm::StringRef driver);
 
 /// Check if a filename has a C/C++/ObjC/CUDA/etc. extension accepted by clang.
 /// Returns false for .rc (Windows resource), .asm, .def, and other non-C-family files.

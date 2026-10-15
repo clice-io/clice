@@ -84,7 +84,7 @@ ZEST_CASE(ModeSliceContentGate) {
     tmp.touch("h.h", "int x;\n");
     auto path = tmp.path("h.h");
     auto id = project.file_table.intern(Spelling::absolute(path));
-    auto disk = project.file_table.current(id);
+    auto disk = project.file_table.disk.current(id);
     ZASSERT(disk);
 
     resolver.record_header_mode(id, HeaderMode::NeedsContext, disk->hash);

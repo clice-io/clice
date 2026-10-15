@@ -117,7 +117,7 @@ workarounds for them do not belong in clice's Bazel files.
 
 - **The toolchain query finds no cc1 line in `clang++ -###`.** xclang's tools
   are one multi-call `llvm` binary: the line reads
-  `"…/bin/llvm" "clang" "-cc1" …`, and `parse_cc1_output` skips the tool name
+  `"…/bin/llvm" "clang" "-cc1" …`, and `Toolchain::parse_cc1` skips the tool name
   before `-cc1`. Check: `ToolchainTests.ParseCC1MultiCall`.
 - **A `g++` command, queried through the in-process driver, gets libc++'s
   headers** (no `<print>`). xclang 23.1.2.1 built clang with

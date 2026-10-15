@@ -2,13 +2,9 @@ module;
 
 #include "modules/prelude.h"
 
-#include "support/logging.macros.h"
-
 module clice;
 
 import :command.nvcc;
-import :support.logging;
-import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -130,73 +126,29 @@ void split_list(llvm::StringRef value, llvm::SmallVectorImpl<std::string>& out) 
         out.push_back(std::move(piece));
 }
 
-/// `--options-file` pulls additional nvcc arguments from a response file —
-/// CMake routes long CUDA include lists through one — so dropping it would
-/// lose every -I inside. Each pass splices all response files in place;
-/// repeated passes resolve nested files, with a small cap as a cycle guard.
-std::vector<std::string> expand_options_files(llvm::ArrayRef<const char*> arguments,
-                                              llvm::StringRef directory) {
-    std::vector<std::string> args(arguments.begin(), arguments.end());
-
-    for(int depth = 0; depth < 4; depth += 1) {
-        bool expanded = false;
-        std::vector<std::string> next;
-        next.reserve(args.size());
-
-        for(std::size_t i = 0; i < args.size(); i += 1) {
-            llvm::StringRef arg = args[i];
-            llvm::StringRef value;
-
-            if(arg == "-optf" || arg == "--options-file") {
-                if(i + 1 < args.size()) {
-                    i += 1;
-                    value = args[i];
-                }
-            } else if(arg.consume_front("-optf=") || arg.consume_front("--options-file=")) {
-                value = arg;
-            } else {
-                next.emplace_back(std::move(args[i]));
-                continue;
-            }
-
-            expanded = true;
-            /// The value is a comma-separated file list (`-optf a.rsp,b.rsp`
-            /// reads both); a literal comma in a path arrives escaped as
-            /// `\,`, so the split leaves native Windows paths intact.
-            llvm::SmallVector<std::string> files;
-            split_list(value, files);
-            for(llvm::StringRef file: files) {
-                auto file_path = absolutize(file, directory);
-                auto buffer = vfs::read(file_path);
-                if(!buffer) {
-                    LOG_WARN("Cannot read nvcc options file {}: {}",
-                             file_path,
-                             buffer.error().message());
-                    continue;
-                }
-
-                llvm::BumpPtrAllocator alloc;
-                llvm::StringSaver saver(alloc);
-                llvm::SmallVector<const char*> tokens;
-                llvm::cl::TokenizeGNUCommandLine((*buffer)->getBuffer(), saver, tokens);
-                for(llvm::StringRef token: tokens)
-                    next.emplace_back(token);
-            }
-        }
-
-        args = std::move(next);
-        if(!expanded)
-            break;
-    }
-
-    return args;
-}
-
 }  // namespace
 
 bool is_nvcc_probe_flag(llvm::StringRef arg) {
     return arg.starts_with(ccbin_prefix) || arg == allow_unsupported_flag ||
            arg.starts_with(target_directory_prefix) || arg.starts_with(gpu_arch_prefix);
+}
+
+std::optional<llvm::SmallVector<std::string>> options_files(llvm::ArrayRef<const char*> arguments,
+                                                            std::size_t& i) {
+    llvm::StringRef arg = arguments[i];
+    llvm::SmallVector<std::string> files;
+    if(arg == "-optf" || arg == "--options-file") {
+        if(i + 1 < arguments.size()) {
+            i += 1;
+            split_list(arguments[i], files);
+        }
+        return files;
+    }
+    if(arg.consume_front("-optf=") || arg.consume_front("--options-file=")) {
+        split_list(arg, files);
+        return files;
+    }
+    return std::nullopt;
 }
 
 std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> arguments,
@@ -224,7 +176,7 @@ std::vector<std::string> translate_nvcc_command(llvm::ArrayRef<const char*> argu
     bool device_debug = false;
     bool use_fast_math = false;
 
-    auto args = expand_options_files(arguments.drop_front(), directory);
+    llvm::ArrayRef<const char*> args = arguments.drop_front();
 
     /// Match `-opt value` / `-opt=value` for any of the spellings, advancing
     /// past a separate value. A spelling at the end of the command matches

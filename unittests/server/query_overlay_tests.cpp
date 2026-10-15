@@ -352,8 +352,9 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     // The disk was seen holding other text for the header: its overlay
     // entries describe text that no longer exists (freshness contract,
     // clause 2), exactly like a shard contribution.
-    project.file_table.observe(project.file_table.intern(Spelling::absolute(header_path("foo.h"))),
-                               DiskObservation{.hash = 1});
+    project.file_table.disk.observe(
+        project.file_table.intern(Spelling::absolute(header_path("foo.h"))),
+        DiskObservation{.hash = 1});
     ZEXPECT(!index_query.first_site(hash_of("foo"), Fid{}, RelationKind::Definition).has_value());
 }
 

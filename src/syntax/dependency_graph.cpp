@@ -630,7 +630,7 @@ struct FileScanner {
                 // and module name out of one version, never a chimera of
                 // two.
                 if(observed->obs.hash != hash) {
-                    files.observe(path_id, observed->obs);
+                    files.disk.observe(path_id, observed->obs);
                     hash = observed->obs.hash;
                     scan = graph.quick_scans.scan_of(path_id, hash, observed->content->getBuffer());
                 }
@@ -724,7 +724,7 @@ struct FullScan {
         if(!status) {
             return std::nullopt;
         }
-        auto hash = files.cached_hash(fid, status->stamp);
+        auto hash = files.disk.cached_hash(fid, status->stamp);
         if(!hash) {
             return std::nullopt;
         }
@@ -834,7 +834,7 @@ struct FullScan {
                     continue;
                 }
                 if(!file.warm) {
-                    files.observe(file.fid, scanned->obs);
+                    files.disk.observe(file.fid, scanned->obs);
                     graph.quick_scans.results.try_emplace({file.fid, scanned->obs.hash},
                                                           scanned->result);
                 }
@@ -900,7 +900,7 @@ void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, F
         if(!observed) {
             return;
         }
-        files.observe(fid, observed->obs);
+        files.disk.observe(fid, observed->obs);
         auto declared = scanner.record(
             fid,
             graph.quick_scans.scan_of(fid, observed->obs.hash, observed->content->getBuffer()),

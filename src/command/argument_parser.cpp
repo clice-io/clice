@@ -5,6 +5,8 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :command.command;
+import :command.toolchain;
 
 namespace clice {
 
@@ -233,8 +235,7 @@ bool names_path(unsigned id, llvm::StringRef value) {
         case OPT_fprofile_sample_use_EQ:
         case OPT_fprofile_remapping_file_EQ:
         case OPT_fbuild_session_file:
-        case OPT_working_directory:
-        case OPT_working_directory_EQ: return true;
+        case OPT_working_directory: return true;
         case OPT_config: return value.contains('/') || value.contains('\\');
         default: return false;
     }
@@ -293,7 +294,6 @@ bool is_codegen_option(unsigned id) {
         case OPT_fno_data_sections:
         case OPT_ffunction_sections:
         case OPT_fno_function_sections:
-        case OPT_flto:
         case OPT_flto_EQ:
         case OPT_fno_lto:
         case OPT_fsemantic_interposition:
@@ -322,7 +322,7 @@ bool is_diagnostics_option(unsigned id) {
     return false;
 }
 
-std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile) {
+std::string canonicalize(llvm::ArrayRef<std::string> args) {
     std::string buf;
     if(args.empty()) {
         return buf;
@@ -337,43 +337,18 @@ std::string canonicalize(llvm::ArrayRef<std::string> args, ArgsProfile profile) 
     append(args[0]);
 
     std::vector<std::string> parse_args(args.begin() + 1, args.end());
-    auto options = kota::option::ParseOptions{.dash_dash_parsing = true,
-                                              .visibility = default_visibility(args[0])};
+    auto options = kota::option::ParseOptions{
+        .dash_dash_parsing = true,
+        .visibility = family_visibility(Toolchain::driver_family(args[0]))};
     for(auto& result: option::table().parse(parse_args, options)) {
-        if(!result.has_value()) {
-            /// Unparseable arguments are kept verbatim: dropping an option
-            /// we don't understand could merge keys that must differ.
-            auto index = result.error().index;
-            if(index < parse_args.size()) {
-                append(parse_args[index]);
-            }
+        /// Unparseable and unknown arguments are kept verbatim: dropping an
+        /// option we don't understand could merge keys that must differ.
+        if(!result || result->id == OPT_UNKNOWN) {
+            append(parse_args[result ? result->index : result.error().index]);
             continue;
         }
-
-        auto& arg = *result;
-
-        /// Unknown options are kept verbatim, same rationale as parse errors.
-        if(arg.id == OPT_UNKNOWN) {
-            if(arg.index < parse_args.size()) {
-                append(parse_args[arg.index]);
-            }
-            continue;
-        }
-
-        bool keep = false;
-        switch(profile) {
-            case ArgsProfile::Full: keep = true; break;
-            case ArgsProfile::Frontend:
-                keep = !is_discarded_option(arg.id) && !is_codegen_option(arg.id);
-                break;
-            case ArgsProfile::Preprocessing:
-                keep = !is_discarded_option(arg.id) && !is_codegen_option(arg.id) &&
-                       !is_diagnostics_option(arg.id);
-                break;
-        }
-
-        if(keep) {
-            option::table().render(arg, append);
+        if(!is_discarded_option(result->id) && !is_codegen_option(result->id)) {
+            option::table().render(*result, append);
         }
     }
 
@@ -398,24 +373,6 @@ std::string print_argv(llvm::ArrayRef<const char*> args) {
         os << '"';
     }
     return std::move(os.str());
-}
-
-unsigned default_visibility(llvm::StringRef driver) {
-    auto name = llvm::sys::path::filename(driver);
-    name.consume_back(".exe");
-
-    auto is_cl = [](llvm::StringRef s) {
-        return s.equals_insensitive("cl") || s.equals_insensitive("clang-cl");
-    };
-
-    /// cl.exe and clang-cl.exe both need MSVC-style /options.
-    /// Also handle versioned names like clang-cl-17, clang-cl-17.0.1.
-    if(is_cl(name) || is_cl(name.rtrim("0123456789.-"))) {
-        return ~0u;
-    }
-    /// Exclude the slash-prefixed CL and DXC options (/D and /I carry both
-    /// bits) to prevent /U, /D, /I from matching Unix paths.
-    return ~static_cast<unsigned>(CLOption | DXCOption);
 }
 
 bool is_c_family_file(llvm::StringRef filename) {

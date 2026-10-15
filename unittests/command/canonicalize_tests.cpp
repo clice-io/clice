@@ -11,8 +11,8 @@ namespace clice::testing {
 
 namespace {
 
-std::string canon(std::vector<std::string> args, ArgsProfile profile = ArgsProfile::Frontend) {
-    return canonicalize(args, profile);
+std::string canon(std::vector<std::string> args) {
+    return canonicalize(args);
 }
 
 ZEST_SUITE(Canonicalize) {
@@ -23,8 +23,8 @@ ZEST_CASE(StableForSameArgs) {
 }
 
 ZEST_CASE(CodegenFlagsIgnored) {
-    // The point of the Frontend profile: pure codegen flags must not
-    // change the key.  Note -O* is deliberately NOT here: it defines
+    // The point of the key: pure codegen flags must not change it.
+    // Note -O* is deliberately NOT here: it defines
     // __OPTIMIZE__ and is kept by is_codegen_option() on purpose.
     auto base = canon({"clang++", "-std=c++20", "-DFOO", "main.cpp"});
     ZASSERT(base == canon({"clang++", "-g", "-std=c++20", "-DFOO", "main.cpp"}));
@@ -87,26 +87,9 @@ ZEST_CASE(UnknownOptionKept) {
     ZASSERT(canon({"clang++", "-DFOO"}) != canon({"clang++", "-DFOO", "-fplugin-arg-x-y"}));
 }
 
-ZEST_CASE(PreprocessingDropsWarnings) {
-    auto base = canon({"clang++", "-std=c++20", "-DFOO"}, ArgsProfile::Preprocessing);
-    ZASSERT(base == canon({"clang++", "-std=c++20", "-Wall", "-DFOO"}, ArgsProfile::Preprocessing));
-    ZASSERT(base ==
-            canon({"clang++", "-std=c++20", "-DFOO", "-Werror", "-w"}, ArgsProfile::Preprocessing));
-    ZASSERT(base ==
-            canon({"clang++", "-pedantic", "-std=c++20", "-DFOO"}, ArgsProfile::Preprocessing));
-    // But preprocessing-relevant options still matter.
-    ZASSERT(base != canon({"clang++", "-std=c++20", "-DBAR"}, ArgsProfile::Preprocessing));
-    ZASSERT(base != canon({"clang++", "-std=c++17", "-DFOO"}, ArgsProfile::Preprocessing));
-}
-
 ZEST_CASE(FrontendKeepsWarnings) {
     // Warnings affect diagnostics, which an LSP must reproduce.
     ZASSERT(canon({"clang++", "-DFOO"}) != canon({"clang++", "-Wall", "-DFOO"}));
-}
-
-ZEST_CASE(FullKeepsCodegen) {
-    ZASSERT(canon({"clang++", "-DFOO"}, ArgsProfile::Full) !=
-            canon({"clang++", "-O2", "-DFOO"}, ArgsProfile::Full));
 }
 
 };  // ZEST_SUITE(Canonicalize)

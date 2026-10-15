@@ -199,10 +199,10 @@ bool FreshnessGate::stale(Fid file, std::uint64_t content_hash) const {
         return false;
     }
     if(options.check_disk && checked.insert(file).second) {
-        files.current(file);
+        files.disk.current(file);
     }
-    if(!files.seen_missing(file)) {
-        auto seen = files.seen_hash(file);
+    if(!files.disk.seen_missing(file)) {
+        auto seen = files.disk.seen_hash(file);
         if(!seen || *seen == content_hash) {
             return false;
         }
@@ -656,7 +656,7 @@ std::optional<IndexQuery::Placed> IndexQuery::canonical_placed(SymbolHash hash, 
         bool unavailable = false;
         each_disk_file(hash, anchor, [&](Fid file) {
             auto* shard = index.shard(file);
-            if(unavailable || !shard || serving(file) || files.seen_missing(file)) {
+            if(unavailable || !shard || serving(file) || files.disk.seen_missing(file)) {
                 return;
             }
             shard->lookup(hash, RelationKind::Definition, [&](const Relation&) {

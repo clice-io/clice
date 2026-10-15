@@ -32,9 +32,6 @@ public:
         const char* driver = nullptr;
 
         /// Frontend-level args (cc1): render as `driver -cc1 <args>`.
-        /// False for driver-level results (cl mode).
-        bool is_cc1 = false;
-
         llvm::ArrayRef<Arg> args;
     };
 

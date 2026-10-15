@@ -20,9 +20,10 @@ namespace {
 
 namespace ranges = std::ranges;
 
-std::expected<void, std::string> query_driver(
-    llvm::ArrayRef<const char*> arguments,
-    llvm::function_ref<void(const char* driver, llvm::ArrayRef<const char*> cc1_args)> callback) {
+/// The driver followed by the arguments of the clang job it builds for
+/// `arguments`, which start with -cc1.
+std::expected<std::vector<std::string>, std::string>
+    query_driver(llvm::ArrayRef<const char*> arguments) {
     /// FIXME: collect diagnostic here ...
     clang::DiagnosticOptions options;
     clang::DiagnosticsEngine engine(new clang::DiagnosticIDs(),
@@ -75,64 +76,9 @@ std::expected<void, std::string> query_driver(
         return std::unexpected(std::format("No clang job found for {}", arguments[0]));
     }
 
-    callback(arguments[0], cmd->getArguments());
-    return {};
-}
-
-/// Parse the first `-cc1` line from clang `-###` output. Only the first line
-/// is used: with multiple inputs the driver emits one job per input, and the
-/// first corresponds to the first input file.
-std::vector<std::string> parse_cc1_output(llvm::StringRef content) {
-    llvm::SmallVector<llvm::StringRef> lines;
-    content.split(lines, '\n', -1, false);
-
-    for(llvm::StringRef line: lines) {
-        line = line.trim();
-        if(line.empty() || line.front() != '"')
-            continue;
-
-        llvm::SmallVector<const char*, 256> args;
-        llvm::BumpPtrAllocator alloc;
-        llvm::StringSaver saver(alloc);
-        llvm::cl::TokenizeGNUCommandLine(line, saver, args);
-
-        using namespace std::string_view_literals;
-        // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
-        // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
-        std::size_t cc1 = args.size() > 2 && args[1] != "-cc1"sv && args[2] == "-cc1"sv ? 2 : 1;
-        if(args.size() <= cc1 || args[cc1] != "-cc1"sv)
-            continue;
-
-        std::vector<std::string> cc1_args;
-        cc1_args.emplace_back(args[0]);
-        cc1_args.emplace_back(args[cc1]);
-
-        // Parse with CC1 visibility: the external driver may be newer than the
-        // linked clang, so flags it emits that our cc1 does not understand
-        // parse as unknown and are dropped. greedy_unknown makes an unknown
-        // option consume its trailing values, so they are dropped along with
-        // it instead of being misparsed as input files. Raw tokens are copied
-        // through to preserve the exact spelling the driver emitted.
-        // FIXME: Long-term we should unify the command pipeline so the driver
-        // version always matches the embedded LLVM.
-        std::vector<std::string> raw(args.begin() + cc1 + 1, args.end());
-        auto options =
-            kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
-        for(auto& r: option::table().parse(raw, options)) {
-            if(!r.has_value() || r->id == option::OPT_UNKNOWN)
-                continue;
-            // A newer external driver may emit known options with values our
-            // linked clang cannot parse (e.g. -mframe-pointer=non-leaf-no-reserve).
-            // Codegen options are irrelevant for syntax analysis; stripping them
-            // avoids CompilerInvocation::CreateFromArgs failures on new values.
-            if(is_codegen_option(r->id))
-                continue;
-            for(std::uint32_t i = r->index; i < r->next_index; ++i)
-                cc1_args.emplace_back(raw[i]);
-        }
-        return cc1_args;
-    }
-    return {};
+    std::vector<std::string> cc1_args{arguments[0]};
+    cc1_args.insert(cc1_args.end(), cmd->getArguments().begin(), cmd->getArguments().end());
+    return cc1_args;
 }
 
 /// The two flags that pin a gcc-style toolchain for our driver: the target
@@ -271,8 +217,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     args.append(spec.argv.begin() + 1, spec.argv.end());
     args.insert(args.begin() + spec.slot, src_path->c_str());
 
-    std::vector<std::string> cc1_args;
-
+    std::expected<std::vector<std::string>, std::string> queried;
     switch(spec.family) {
         // Query g++ or mingw toolchain info. We detect the target and corresponding
         // gcc toolchain install path as default behavior.
@@ -286,16 +231,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
             gcc_args.emplace_back(gcc->target.c_str());
             gcc_args.emplace_back(gcc->install_dir.c_str());
             gcc_args.append(args.begin() + 1, args.end());
-
-            auto queried =
-                query_driver(gcc_args, [&](const char* d, llvm::ArrayRef<const char*> cc1) {
-                    cc1_args.emplace_back(d);
-                    cc1_args.emplace_back("-cc1");
-                    for(auto arg: cc1)
-                        cc1_args.emplace_back(arg);
-                });
-            if(!queried)
-                co_return std::unexpected(std::move(queried.error()));
+            queried = query_driver(gcc_args);
             break;
         }
 
@@ -325,7 +261,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
             if(!content)
                 co_return std::unexpected(std::move(content.error()));
 
-            cc1_args = parse_cc1_output(*content);
+            queried = Toolchain::parse_cc1(*content);
             break;
         }
 
@@ -337,17 +273,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
             /// We don't need to add extra flag.
             msvc_args.emplace_back("--driver-mode=cl");
             msvc_args.append(args.begin() + 1, args.end());
-
-            // No "-cc1" is inserted here: --driver-mode=cl only selects the
-            // driver mode, the clang driver itself handles the rest.
-            auto queried =
-                query_driver(msvc_args, [&](const char* d, llvm::ArrayRef<const char*> cc1) {
-                    cc1_args.emplace_back(d);
-                    for(auto arg: cc1)
-                        cc1_args.emplace_back(arg);
-                });
-            if(!queried)
-                co_return std::unexpected(std::move(queried.error()));
+            queried = query_driver(msvc_args);
             break;
         }
 
@@ -463,11 +389,11 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
                 /// the forwarded flags.
                 std::optional<bool> selected_host;
                 for(llvm::StringRef arg: args) {
-                    /// The structured render spells aliases unaliased
-                    /// (--offload-*-only); accept both forms.
-                    if(arg == "--cuda-host-only" || arg == "--offload-host-only")
+                    /// The structured render spells aliases unaliased:
+                    /// --cuda-host-only arrives as --offload-host-only.
+                    if(arg == "--offload-host-only")
                         selected_host = true;
-                    else if(arg == "--cuda-device-only" || arg == "--offload-device-only")
+                    else if(arg == "--offload-device-only")
                         selected_host = false;
                 }
                 bool host_view = selected_host.value_or(false);
@@ -482,8 +408,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
 
                 /// An `-arch=` probe token is an explicit selection too: its
                 /// resolution replaces it in place below.
-                if(!contains_prefix({"--cuda-gpu-arch=", "--offload-arch=", "-arch="}) &&
-                   !info->default_arch.empty())
+                if(!contains_prefix({"--offload-arch=", "-arch="}) && !info->default_arch.empty())
                     cuda_args.push_back("--cuda-gpu-arch=" + info->default_arch);
             } else {
                 /// The single host step still carries nvcc's identity
@@ -510,16 +435,7 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
             cuda_argv.reserve(cuda_args.size());
             for(auto& arg: cuda_args)
                 cuda_argv.push_back(arg.c_str());
-
-            auto queried =
-                query_driver(cuda_argv, [&](const char* d, llvm::ArrayRef<const char*> cc1) {
-                    cc1_args.emplace_back(d);
-                    cc1_args.emplace_back("-cc1");
-                    for(auto arg: cc1)
-                        cc1_args.emplace_back(arg);
-                });
-            if(!queried)
-                co_return std::unexpected(std::move(queried.error()));
+            queried = query_driver(cuda_argv);
             break;
         }
 
@@ -529,17 +445,12 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
                       kota::meta::enum_name(spec.family),
                       driver);
 
-            auto queried = query_driver(args, [&](const char* d, llvm::ArrayRef<const char*> cc1) {
-                cc1_args.emplace_back(d);
-                cc1_args.emplace_back("-cc1");
-                for(auto arg: cc1)
-                    cc1_args.emplace_back(arg);
-            });
-            if(!queried)
-                co_return std::unexpected(std::move(queried.error()));
+            queried = query_driver(args);
             break;
         }
     }
+    if(!queried)
+        co_return std::move(queried);
 
     // Strip the temporary probe file so results contain no input path
     // (render appends the real source file at the end). Also strip module
@@ -548,15 +459,15 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     // they reference the deleted temp file and clice manages outputs itself.
     // The probe path uses an exact match: all supported drivers echo input
     // paths verbatim, without canonicalizing them.
-    std::erase_if(cc1_args, [&](const std::string& arg) {
+    std::erase_if(*queried, [&](const std::string& arg) {
         llvm::StringRef s(arg);
         return s == *src_path || s == "-fmodules-reduced-bmi" || s.starts_with("-fmodule-output");
     });
 
-    if(cc1_args.empty())
+    if(queried->empty())
         co_return std::unexpected(std::format("No cc1 args produced for kind {}", spec.kind));
 
-    co_return cc1_args;
+    co_return std::move(queried);
 }
 
 /// Every component of a search-path-style environment value is absolute and
@@ -717,18 +628,8 @@ std::expected<std::vector<std::string>, std::string>
 
     /// The kind is a clang language name ("cuda", "c++"), the convention
     /// every consumer speaks (`spec.kind == "cuda"`, temp_suffix_for's -x
-    /// table). `.cuh` is absent from clang's extension table; a raw
-    /// extension only survives when there is no mapping at all.
-    auto ext = path::extension(file);
-    ext.consume_front(".");
-    auto lang = clang::driver::types::lookupTypeForExtension(ext);
-    if(ext == "cuh") {
-        spec.kind = "cuda";
-    } else if(lang != clang::driver::types::TY_INVALID) {
-        spec.kind = clang::driver::types::getTypeName(lang);
-    } else {
-        spec.kind = ext.str();
-    }
+    /// table).
+    spec.kind = extension_language(file, /*cxx=*/false);
     for(std::size_t i = 0; i + 1 < arguments.size(); i += 1) {
         if(llvm::StringRef(arguments[i]) == "-x")
             spec.kind = arguments[i + 1];
@@ -846,66 +747,22 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
 
     Resolved resolved;
     resolved.driver = tokens[0];
-    tokens = tokens.drop_front();
 
-    resolved.is_cc1 = ranges::contains(tokens, llvm::StringRef("-cc1"), [](const char* token) {
-        return llvm::StringRef(token);
-    });
+    /// The driver, then -cc1.
+    std::vector<std::string> parse_args(tokens.begin() + 2, tokens.end());
+    auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
 
-    std::vector<std::string> parse_args;
-    parse_args.reserve(tokens.size());
-    for(llvm::StringRef token: tokens) {
-        if(token != "-cc1") {
-            parse_args.push_back(token.str());
-        }
-    }
-
-    auto parse_options = kota::option::ParseOptions{
-        .visibility = resolved.is_cc1 ? static_cast<unsigned>(option::CC1Option)
-                                      : family_visibility(config.family)};
-
-    struct Staged {
-        std::uint32_t opt_id;
-        ArgClass cls;
-        const char* spelling = nullptr;
-        llvm::SmallVector<const char*, 2> values;
-    };
-
-    std::vector<Staged> staged;
-    staged.reserve(parse_args.size());
+    std::vector<LocalArg> staged;
     for(auto& parsed: option::table().parse(parse_args, parse_options)) {
-        if(!parsed.has_value()) {
-            auto index = parsed.error().index;
-            if(index < parse_args.size()) {
-                staged.push_back({.opt_id = option::OPT_UNKNOWN,
-                                  .cls = ArgClass::Unknown,
-                                  .spelling = db.strings.save(parse_args[index]).data()});
-            }
-            continue;
-        }
-        auto& arg = *parsed;
         /// -main-file-name is per-input identity; render re-injects it with
         /// the real file's basename. A leftover input token cannot reach
         /// the compile argv (the probe input was erased by exact match; a
         /// canonicalized echo would slip through here).
-        if(arg.id == option::OPT_main_file_name || arg.id == option::OPT_INPUT) {
+        if(parsed &&
+           (parsed->id == option::OPT_main_file_name || parsed->id == option::OPT_INPUT)) {
             continue;
         }
-        if(arg.id == option::OPT_UNKNOWN) {
-            if(arg.index < parse_args.size()) {
-                staged.push_back({.opt_id = option::OPT_UNKNOWN,
-                                  .cls = ArgClass::Unknown,
-                                  .spelling = db.strings.save(parse_args[arg.index]).data()});
-            }
-            continue;
-        }
-        Staged local;
-        local.opt_id = arg.id;
-        for(llvm::StringRef value: arg.values) {
-            local.values.push_back(db.strings.save(value).data());
-        }
-        local.cls = is_user_content_option(arg.id) ? ArgClass::UserContent : ArgClass::Semantic;
-        staged.push_back(std::move(local));
+        staged.push_back(db.local_arg(parsed, parse_args));
     }
 
     /// Preserve a real LLVM-MinGW resource tree (a matched installation:
@@ -919,9 +776,7 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
     if(!resource_dir().empty()) {
         llvm::StringRef old_resource_dir;
         for(auto& arg: staged) {
-            if((arg.opt_id == option::OPT_resource_dir ||
-                arg.opt_id == option::OPT_resource_dir_EQ) &&
-               arg.values.size() == 1) {
+            if(arg.opt_id == option::OPT_resource_dir && arg.values.size() == 1) {
                 // A trailing separator on the command's -resource-dir reaches
                 // cc1 verbatim while the derived paths append without doubling it.
                 old_resource_dir = llvm::StringRef(arg.values[0]).rtrim("/\\");
@@ -963,23 +818,15 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
     /// — they never fed the probe. Structured already; no re-parse.
     for(auto& arg: config.args) {
         if(arg.cls == ArgClass::UserContent) {
-            Staged local;
-            local.opt_id = arg.opt_id;
-            local.cls = ArgClass::UserContent;
-            local.spelling = arg.spelling;
-            local.values.assign(arg.values.begin(), arg.values.end());
-            staged.push_back(std::move(local));
+            staged.push_back({
+                .opt_id = arg.opt_id,
+                .cls = arg.cls,
+                .spelling = arg.spelling,
+                .values = {arg.values.begin(), arg.values.end()}
+            });
         }
     }
-
-    auto* args = db.allocator->Allocate<Arg>(staged.size());
-    for(std::size_t i = 0; i < staged.size(); i += 1) {
-        args[i] = Arg{.opt_id = staged[i].opt_id,
-                      .cls = staged[i].cls,
-                      .spelling = staged[i].spelling,
-                      .values = db.persist_strings(staged[i].values)};
-    }
-    resolved.args = {args, staged.size()};
+    resolved.args = db.persist(staged);
 
     resolved_configs.push_back(resolved);
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
@@ -1128,8 +975,59 @@ void Toolchain::warm(llvm::ArrayRef<std::pair<ConfigID, InputKind>> pairs) {
     LOG_INFO("Toolchain cache warmed: {} succeeded, {} failed", succeeded, total - succeeded);
 }
 
+/// Only the first line is used: with multiple inputs the driver emits one
+/// job per input, and the first corresponds to the first input file.
 std::vector<std::string> Toolchain::parse_cc1(llvm::StringRef content) {
-    return parse_cc1_output(content);
+    llvm::SmallVector<llvm::StringRef> lines;
+    content.split(lines, '\n', -1, false);
+
+    for(llvm::StringRef line: lines) {
+        line = line.trim();
+        if(line.empty() || line.front() != '"')
+            continue;
+
+        llvm::SmallVector<const char*, 256> args;
+        llvm::BumpPtrAllocator alloc;
+        llvm::StringSaver saver(alloc);
+        llvm::cl::TokenizeGNUCommandLine(line, saver, args);
+
+        using namespace std::string_view_literals;
+        // A multi-call llvm (LLVM_TOOL_LLVM_DRIVER_BUILD, as in xclang) runs
+        // cc1 as `llvm clang -cc1`: the tool's name comes before -cc1.
+        std::size_t cc1 = args.size() > 2 && args[1] != "-cc1"sv && args[2] == "-cc1"sv ? 2 : 1;
+        if(args.size() <= cc1 || args[cc1] != "-cc1"sv)
+            continue;
+
+        std::vector<std::string> cc1_args;
+        cc1_args.emplace_back(args[0]);
+        cc1_args.emplace_back(args[cc1]);
+
+        // Parse with CC1 visibility: the external driver may be newer than the
+        // linked clang, so flags it emits that our cc1 does not understand
+        // parse as unknown and are dropped. greedy_unknown makes an unknown
+        // option consume its trailing values, so they are dropped along with
+        // it instead of being misparsed as input files. Raw tokens are copied
+        // through to preserve the exact spelling the driver emitted.
+        // FIXME: Long-term we should unify the command pipeline so the driver
+        // version always matches the embedded LLVM.
+        std::vector<std::string> raw(args.begin() + cc1 + 1, args.end());
+        auto options =
+            kota::option::ParseOptions{.greedy_unknown = true, .visibility = option::CC1Option};
+        for(auto& r: option::table().parse(raw, options)) {
+            if(!r.has_value() || r->id == option::OPT_UNKNOWN)
+                continue;
+            // A newer external driver may emit known options with values our
+            // linked clang cannot parse (e.g. -mframe-pointer=non-leaf-no-reserve).
+            // Codegen options are irrelevant for syntax analysis; stripping them
+            // avoids CompilerInvocation::CreateFromArgs failures on new values.
+            if(is_codegen_option(r->id))
+                continue;
+            for(std::uint32_t i = r->index; i < r->next_index; ++i)
+                cc1_args.emplace_back(raw[i]);
+        }
+        return cc1_args;
+    }
+    return {};
 }
 
 }  // namespace clice

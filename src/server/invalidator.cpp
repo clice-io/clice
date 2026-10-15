@@ -20,9 +20,9 @@ Invalidator::Invalidator(Project& project,
 
 llvm::SmallVector<FileEvent> take_disk_events(FileTable& files) {
     llvm::SmallVector<FileEvent> events;
-    for(auto path_id: files.take_changes()) {
-        events.push_back(files.seen_missing(path_id) ? FileEvent::disk_removed(path_id)
-                                                     : FileEvent::disk_changed(path_id));
+    for(auto path_id: files.disk.take_changes()) {
+        events.push_back(files.disk.seen_missing(path_id) ? FileEvent::disk_removed(path_id)
+                                                          : FileEvent::disk_changed(path_id));
     }
     return events;
 }

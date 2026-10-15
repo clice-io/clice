@@ -188,7 +188,10 @@ void Config::finalize(CanonicalRef workspace_root) {
         // A string spelling is tokenized before `${workspace}` is
         // substituted, so a root with spaces stays one argument.
         if(auto* spelling = std::get_if<std::string>(&rule.default_command)) {
-            compiled.default_command = tokenize_command(*spelling);
+            llvm::BumpPtrAllocator allocator;
+            llvm::StringSaver saver(allocator);
+            auto arguments = tokenize_command(*spelling, saver);
+            compiled.default_command.assign(arguments.begin(), arguments.end());
         } else {
             compiled.default_command = std::get<std::vector<std::string>>(rule.default_command);
         }

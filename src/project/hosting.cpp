@@ -83,8 +83,9 @@ std::optional<llvm::SmallVector<Host>> tree_enterings(Project& project,
     using CheckResult = vfs::DiskState::CheckResult;
     auto& files = project.file_table;
     if(files.check_version(root) != CheckResult::Fresh ||
-       llvm::any_of(absent,
-                    [&](VersionID place) { return files.present(files.version(place).fid); })) {
+       llvm::any_of(absent, [&](VersionID place) {
+           return files.disk.present(files.version(place).fid);
+       })) {
         return std::nullopt;
     }
     auto file_of = [&](std::uint32_t node) {

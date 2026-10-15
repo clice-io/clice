@@ -77,6 +77,19 @@ struct Arg {
     }
 };
 
+/// An argument on its way into a config: its values are interned, their
+/// array stays local until the config is saved.
+struct LocalArg {
+    std::uint32_t opt_id = 0;
+    ArgClass cls = ArgClass::Semantic;
+    const char* spelling = nullptr;
+    llvm::SmallVector<const char*, 2> values;
+
+    Arg view() const {
+        return {.opt_id = opt_id, .cls = cls, .spelling = spelling, .values = values};
+    }
+};
+
 /// A driver-level compile configuration, parsed and classified once at load.
 /// Deduped via ObjectSet — identity is the ConfigID. Wrapper prefixes
 /// (ccache etc.) are entry provenance, not part of the config: `ccache
@@ -109,6 +122,12 @@ constexpr inline ConfigID invalid_config = ConfigID(~0u);
 /// TY_INVALID when it has none — `.cuh`, which clang does not list, and
 /// unknown suffixes alike.
 clang::driver::types::ID suffix_type(llvm::StringRef path);
+
+/// The clang language name of a file by its extension ("c++", "cuda",
+/// ...), a C source or header taken as C++ under a C++ driver (`cxx`);
+/// `.cuh`, missing from clang's table, is CUDA; the raw extension itself
+/// when nothing maps it.
+llvm::StringRef extension_language(llvm::StringRef path, bool cxx);
 
 /// Whether the extension names a header — or nothing clang knows, which a
 /// file only ever included usually is: a `.inc` or `.cuh`, the standard
@@ -257,9 +276,6 @@ void render_driver_arg(const Arg& arg,
 /// are not misparsed.
 unsigned family_visibility(CompilerFamily family);
 
-/// Owned copy of a rendered argv (worker IPC and other string-owning edges).
-std::vector<std::string> to_strings(llvm::ArrayRef<const char*> argv);
-
 /// Per-file delta of the build's commands — a compilation database
 /// reload's, and the provisional members' and rule sources' that follow
 /// it. Path ids are the shared file table's fids (stable across reloads).
@@ -370,7 +386,7 @@ public:
     /// Reload one source and report the per-file delta of the whole
     /// database against its state before the reload.
     ///
-    /// Entry identity is the entry hash (Frontend profile + directory), the
+    /// Entry identity is the entry hash (Frontend view + directory), the
     /// same identity the rest of the system uses to pin a CDB entry (e.g.
     /// clice/switchContext). A change confined to codegen-only flags (-g,
     /// -fPIC, -flto, ...) is therefore not reported as `changed` — this is
@@ -497,17 +513,26 @@ private:
 
     std::optional<ConfigID> normalize(const Spelling& directory, Fid file, llvm::StringRef command);
 
-    /// Expand @file tokens in place, driver-mode aware (CL commands
-    /// tokenize with Windows rules).
+    /// Expand @file tokens, and an NVCC command's options files, in place,
+    /// driver-mode aware (CL commands tokenize with Windows rules).
     void expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
                                const Spelling& directory,
                                CompilerFamily family,
                                llvm::StringSaver& saver,
                                unsigned depth = 0);
 
-    ConfigID save_config(CompileConfig config, llvm::ArrayRef<Arg> local_args);
+    /// One parse result of `tokens` as a local arg: a token the table
+    /// cannot parse, does not know or reads as an input stays verbatim
+    /// (OPT_UNKNOWN, ArgClass::Unknown), a known option keeps its id and
+    /// its values, classified.
+    LocalArg
+        local_arg(const std::expected<kota::option::ParsedArg, kota::option::ParseError>& parsed,
+                  llvm::ArrayRef<std::string> tokens);
 
-    llvm::ArrayRef<const char*> persist_strings(llvm::ArrayRef<const char*> values);
+    /// Dedup the config; its args are persisted only when it is new.
+    ConfigID save_config(CompileConfig config, llvm::ArrayRef<LocalArg> args);
+
+    llvm::ArrayRef<Arg> persist(llvm::ArrayRef<LocalArg> args);
 
     /// Append the Frontend-view fragments of `id` (the hash input) to out.
     void render_identity(ConfigID id, std::string& out);

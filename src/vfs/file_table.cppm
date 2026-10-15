@@ -22,11 +22,6 @@ namespace clice {
 /// are raw bytes; a non-UTF-8 path survives interning but breaks
 /// downstream where it is embedded into JSON (worker IPC, the query
 /// protocol) or percent-decoded by clients that interpret URIs as UTF-8.
-///
-/// FIXME: NVCC option files are read during CDB parsing but are not
-/// among the load's inputs (CompilationDatabase::inputs) — editing one
-/// changes commands without touching compile_commands.json, so nothing
-/// notices until the CDB itself changes.
 struct FileTable {
     llvm::BumpPtrAllocator allocator;
     llvm::SmallVector<llvm::StringRef> spellings;
@@ -108,42 +103,6 @@ struct FileTable {
     /// looks saw.
     vfs::DiskState disk{spellings};
 
-    std::optional<std::uint64_t> seen_hash(Fid fid) const {
-        return disk.seen_hash(fid);
-    }
-
-    bool seen_missing(Fid fid) const {
-        return disk.seen_missing(fid);
-    }
-
-    llvm::SmallVector<Fid> take_changes() {
-        return disk.take_changes();
-    }
-
-    void saw_missing(Fid fid) {
-        disk.saw_missing(fid);
-    }
-
-    void observe(Fid fid, const DiskObservation& obs) {
-        disk.observe(fid, obs);
-    }
-
-    std::optional<DiskObservation> read(Fid fid) {
-        return disk.read(fid);
-    }
-
-    std::optional<DiskObservation> current(Fid fid) {
-        return disk.current(fid);
-    }
-
-    std::optional<DiskObservation> observe_for(Fid fid, const vfs::Status& status) {
-        return disk.observe_for(fid, status);
-    }
-
-    std::optional<std::uint64_t> cached_hash(Fid fid, const vfs::Stamp& stamp) {
-        return disk.cached_hash(fid, stamp);
-    }
-
     /// A content version of a file: `content_hash` names the bytes (for
     /// build artifacts, the bytes the build consumed — reported by the
     /// worker, never replaced by a later disk read). Whether the disk still
@@ -178,12 +137,6 @@ struct FileTable {
     /// Whether the disk still holds a version's bytes, looked at once per
     /// turn.
     vfs::DiskState::CheckResult check_version(VersionID vid);
-
-    /// Whether a place a build found empty holds a readable file now,
-    /// looked at once per turn.
-    bool present(Fid fid) {
-        return disk.present(fid);
-    }
 };
 
 }  // namespace clice

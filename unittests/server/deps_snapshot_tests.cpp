@@ -39,7 +39,7 @@ void age_file(llvm::StringRef path) {
 /// Whether the file table answers the file's current stat without a read.
 bool confirmed(FileTable& pool, llvm::StringRef path) {
     auto status = vfs::status(path);
-    return status && pool.cached_hash(pool.intern(Spelling::absolute(path)), status->stamp);
+    return status && pool.disk.cached_hash(pool.intern(Spelling::absolute(path)), status->stamp);
 }
 
 ZEST_SUITE(DepsSnapshot) {
@@ -118,8 +118,8 @@ ZEST_CASE(EveryChangeFound) {
     age_file(b);
 
     FileTable pool;
-    pool.read(pool.intern(Spelling::absolute(a)));
-    pool.read(pool.intern(Spelling::absolute(b)));
+    pool.disk.read(pool.intern(Spelling::absolute(a)));
+    pool.disk.read(pool.intern(Spelling::absolute(b)));
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{a, consumed_hash(a)},
@@ -129,7 +129,7 @@ ZEST_CASE(EveryChangeFound) {
     tmp.touch("a.h", "int a2();\n");
     tmp.touch("b.h", "int b2();\n");
     ZASSERT(deps_changed(pool, snap));
-    ZASSERT(pool.take_changes().size() == 2u);
+    ZASSERT(pool.disk.take_changes().size() == 2u);
 }
 
 ZEST_CASE(BackdatedEditDetected) {
@@ -142,7 +142,7 @@ ZEST_CASE(BackdatedEditDetected) {
     age_file(dep);
 
     FileTable pool;
-    pool.read(pool.intern(Spelling::absolute(dep)));
+    pool.disk.read(pool.intern(Spelling::absolute(dep)));
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed_hash(dep)}
@@ -163,7 +163,7 @@ ZEST_CASE(TouchRepairsFastPath) {
     age_file(dep);
 
     FileTable pool;
-    pool.read(pool.intern(Spelling::absolute(dep)));
+    pool.disk.read(pool.intern(Spelling::absolute(dep)));
     auto snap = capture_deps_snapshot(pool,
                                       {
                                           DepFile{dep, consumed_hash(dep)}
@@ -210,7 +210,7 @@ ZEST_CASE(StalePairRereads) {
 
     FileTable pool;
     age_file(dep);
-    pool.read(pool.intern(Spelling::absolute(dep)));
+    pool.disk.read(pool.intern(Spelling::absolute(dep)));
 
     tmp.touch("dep.h", "int v2();\n");
     age_file(dep);
@@ -247,7 +247,7 @@ ZEST_CASE(MissingTransitions) {
     // Appearing is a change, and the file table saw it.
     tmp.touch("ghost.h", "int f();\n");
     ZASSERT(deps_changed(pool, snap));
-    ZASSERT(!pool.seen_missing(pool.intern(Spelling::absolute(dep))));
+    ZASSERT(!pool.disk.seen_missing(pool.intern(Spelling::absolute(dep))));
 }
 
 ZEST_CASE(AbsentPlaceFilled) {

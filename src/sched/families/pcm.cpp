@@ -221,7 +221,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
                                           project.build.active_configuration(),
                                           bp.directory,
                                           file_path,
-                                          canonicalize(bp.arguments, ArgsProfile::Frontend)}));
+                                          canonicalize(bp.arguments)}));
 
     // Check if cached PCM is still valid.
     llvm::StringRef pcm_miss = "no_entry";

@@ -349,7 +349,6 @@ ZEST_CASE(WarmPartialFailure, skip = Windows) {
 
     auto resolved = f.db.toolchain().resolve(good.config, good.input);
     ZASSERT(resolved);
-    ZEXPECT(f.db.toolchain().resolved(*resolved).is_cc1);
     ZEXPECT(!f.db.toolchain().resolve(bad.config, bad.input).has_value());
     ZEXPECT(f.db.toolchain().failed_count() == std::size_t(1));
 }
@@ -591,7 +590,6 @@ ZEST_CASE(ResolveAttachesUserContent, skip = Windows) {
                      {driver->c_str(), "-std=c++23", inc_flag.c_str(), "-DFOO=1", "/tmp/a.cpp"});
     auto resolved = f.db.toolchain().resolve(ref.config, ref.input);
     ZASSERT(resolved);
-    ZEXPECT(f.db.toolchain().resolved(*resolved).is_cc1);
 
     // The probe never sees user content; the render puts it back on the
     // driver's cc1 line.
@@ -633,7 +631,6 @@ ZEST_CASE(WarmDedupesProbes, skip = Windows) {
     ZASSERT(!vfs::remove(*driver));
     auto resolved = f.db.toolchain().resolve(ref1.config, ref1.input);
     ZASSERT(resolved);
-    ZEXPECT(f.db.toolchain().resolved(*resolved).is_cc1);
 }
 
 };  // ZEST_SUITE(ToolchainTests)

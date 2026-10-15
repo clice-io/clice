@@ -11,6 +11,7 @@ import :command.nvcc;
 import :command.search_config;
 import :command.toolchain;
 import :support.logging;
+import :support.shell;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -21,6 +22,17 @@ clang::driver::types::ID suffix_type(llvm::StringRef path) {
     auto ext = path::extension(path);
     ext.consume_front(".");
     return ext.empty() ? types::TY_INVALID : types::lookupTypeForExtension(ext);
+}
+
+llvm::StringRef extension_language(llvm::StringRef path, bool cxx) {
+    namespace types = clang::driver::types;
+    auto type = suffix_type(path);
+    if(type == types::TY_INVALID) {
+        auto ext = path::extension(path);
+        ext.consume_front(".");
+        return ext == "cuh" ? "cuda" : ext;
+    }
+    return types::getTypeName(cxx ? types::lookupCXXTypeForCType(type) : type);
 }
 
 bool is_header_path(llvm::StringRef path) {
@@ -47,15 +59,6 @@ namespace ranges = std::ranges;
 /// wholesale on schema changes even when old and new renders happen to
 /// produce the same bytes.
 constexpr llvm::StringRef identity_salt = "clice-cmd-v9";
-
-/// Pre-dedup form of an argument: value storage owned locally until the
-/// config wins insertion into the pool.
-struct LocalArg {
-    std::uint32_t opt_id = 0;
-    ArgClass cls = ArgClass::Semantic;
-    const char* spelling = nullptr;
-    llvm::SmallVector<const char*, 2> values;
-};
 
 /// `value` spelled against `anchor` when it names a path (names_path),
 /// else `value` itself.
@@ -149,7 +152,6 @@ void collapse_gpu_arch_args(std::vector<LocalArg>& args) {
         auto& arg = args[i];
         std::optional<ArchFlagKind> kind;
         switch(arg.opt_id) {
-            case option::OPT_cuda_gpu_arch_EQ: kind = ArchFlagKind::GpuArch; break;
             case option::OPT_offload_arch_EQ: kind = ArchFlagKind::OffloadArch; break;
             case option::OPT_no_offload_arch_EQ: kind = ArchFlagKind::NoOffloadArch; break;
         }
@@ -192,10 +194,6 @@ std::size_t wrapper_prefix_len(llvm::ArrayRef<const char*> argv) {
         }
     }
     return i;
-}
-
-std::uint64_t hash_bytes(llvm::StringRef bytes) {
-    return llvm::xxh3_64bits(bytes);
 }
 
 }  // namespace
@@ -288,15 +286,6 @@ unsigned family_visibility(CompilerFamily family) {
     return ~static_cast<unsigned>(option::CLOption | option::DXCOption);
 }
 
-std::vector<std::string> to_strings(llvm::ArrayRef<const char*> argv) {
-    std::vector<std::string> result;
-    result.reserve(argv.size());
-    for(const char* arg: argv) {
-        result.emplace_back(arg);
-    }
-    return result;
-}
-
 CompilationDatabase::CompilationDatabase(FileTable& files) :
     file_table(files), chain(std::make_unique<Toolchain>(*this)) {}
 
@@ -310,32 +299,44 @@ const CompileConfig& CompilationDatabase::config(ConfigID id) const {
     return *configs.get(static_cast<std::uint32_t>(id));
 }
 
-llvm::ArrayRef<const char*>
-    CompilationDatabase::persist_strings(llvm::ArrayRef<const char*> values) {
-    if(values.empty()) {
-        return {};
+LocalArg CompilationDatabase::local_arg(
+    const std::expected<kota::option::ParsedArg, kota::option::ParseError>& parsed,
+    llvm::ArrayRef<std::string> tokens) {
+    if(!parsed || parsed->id == option::OPT_UNKNOWN || parsed->id == option::OPT_INPUT) {
+        auto index = parsed ? parsed->index : parsed.error().index;
+        return {.opt_id = option::OPT_UNKNOWN,
+                .cls = ArgClass::Unknown,
+                .spelling = strings.save(tokens[index]).data()};
     }
-    auto* buf = allocator->Allocate<const char*>(values.size());
-    ranges::copy(values, buf);
-    return {buf, values.size()};
+    LocalArg local{.opt_id = parsed->id};
+    for(llvm::StringRef value: parsed->values) {
+        local.values.push_back(strings.save(value).data());
+    }
+    local.cls = classify(local.opt_id, local.values);
+    return local;
 }
 
-ConfigID CompilationDatabase::save_config(CompileConfig config, llvm::ArrayRef<Arg> local_args) {
-    config.args = local_args;
+ConfigID CompilationDatabase::save_config(CompileConfig config, llvm::ArrayRef<LocalArg> args) {
+    llvm::SmallVector<Arg, 32> view;
+    for(auto& arg: args) {
+        view.push_back(arg.view());
+    }
+    config.args = view;
     auto id = configs.get(config);
     auto stored = configs.get(id);
-    if(stored->args.data() == local_args.data()) {
-        /// Freshly inserted: deep-persist the argument array (values are
-        /// interned strings already; their arrays still live in the local
-        /// staging storage).
-        auto* args = allocator->Allocate<Arg>(local_args.size());
-        for(std::size_t i = 0; i < local_args.size(); i += 1) {
-            args[i] = local_args[i];
-            args[i].values = persist_strings(local_args[i].values);
-        }
-        stored->args = {args, local_args.size()};
+    if(stored->args.data() == view.data()) {
+        stored->args = persist(args);
     }
     return ConfigID(id);
+}
+
+llvm::ArrayRef<Arg> CompilationDatabase::persist(llvm::ArrayRef<LocalArg> args) {
+    auto* persisted = allocator->Allocate<Arg>(args.size());
+    for(std::size_t i = 0; i < args.size(); i += 1) {
+        persisted[i] = args[i].view();
+        persisted[i].values = persisted[i].values.copy(*allocator);
+    }
+    return {persisted, args.size()};
 }
 
 std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory,
@@ -427,9 +428,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
     /// entry directory, moved by `-working-directory`.
     auto anchor = directory;
     for(auto& parsed: staged) {
-        if(parsed && parsed->values.size() == 1 &&
-           (parsed->id == option::OPT_working_directory ||
-            parsed->id == option::OPT_working_directory_EQ)) {
+        if(parsed && parsed->id == option::OPT_working_directory && parsed->values.size() == 1) {
             anchor = Spelling(parsed->values[0], directory);
         }
     }
@@ -465,30 +464,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
     };
 
     for(auto& parsed: staged) {
-        if(!parsed.has_value()) {
-            /// Unparseable tokens keep their verbatim spelling: dropping an
-            /// option we don't understand could merge identities that must
-            /// differ. They never reach a compile render.
-            auto index = parsed.error().index;
-            if(index < parse_args.size()) {
-                args.push_back({.opt_id = option::OPT_UNKNOWN,
-                                .cls = ArgClass::Unknown,
-                                .spelling = strings.save(parse_args[index]).data()});
-            }
-            continue;
-        }
-
-        auto& arg = *parsed;
-        auto id = arg.id;
-
-        if(id == option::OPT_UNKNOWN) {
-            if(arg.index < parse_args.size()) {
-                args.push_back({.opt_id = option::OPT_UNKNOWN,
-                                .cls = ArgClass::Unknown,
-                                .spelling = strings.save(parse_args[arg.index]).data()});
-            }
-            continue;
-        }
+        auto id = parsed ? parsed->id : option::OPT_UNKNOWN;
 
         /// The entry's own input token becomes the slot, preserving its
         /// position (language selectors before it govern it). Other inputs
@@ -504,8 +480,8 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
             if(config.family == CompilerFamily::NVCC) {
                 continue;
             }
-            llvm::StringRef token =
-                arg.values.empty() ? llvm::StringRef(arg.spelling) : llvm::StringRef(arg.values[0]);
+            llvm::StringRef token = parsed->values.empty() ? llvm::StringRef(parsed->spelling)
+                                                           : llvm::StringRef(parsed->values[0]);
             if(!slot_placed && matches_entry(token)) {
                 place_slot();
             }
@@ -513,7 +489,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
         }
 
         if(id == option::OPT__SLASH_Tc || id == option::OPT__SLASH_Tp) {
-            if(!slot_placed && arg.values.size() == 1 && matches_entry(arg.values[0])) {
+            if(!slot_placed && parsed->values.size() == 1 && matches_entry(parsed->values[0])) {
                 /// Rewritten to the equivalent global selector: a slot
                 /// attribute keyed by the file would break the
                 /// (config, rule set) memo — the same config can serve
@@ -533,30 +509,24 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
         /// The PCH may be produced by GCC or a different clang version we
         /// cannot load; the plain -include survives and our own preamble
         /// PCH covers it.
-        if(is_xclang_option(id) && arg.values.size() == 1) {
+        if(is_xclang_option(id) && parsed->values.size() == 1) {
             if(remove_pch) {
                 remove_pch = false;
                 continue;
             }
-            if(std::string_view(arg.values[0]) == "-include-pch") {
+            if(std::string_view(parsed->values[0]) == "-include-pch") {
                 remove_pch = true;
                 continue;
             }
         }
 
-        LocalArg local;
-        local.opt_id = id;
-        for(llvm::StringRef value: arg.values) {
-            local.values.push_back(strings.save(value).data());
-        }
-        local.cls = classify(id, local.values);
+        auto local = local_arg(parsed, parse_args);
 
         /// Path values absolutize where the compile runs, so the config
         /// keeps meaning when consumed away from it: the toolchain probe
         /// runs elsewhere.
         // The working directory itself is relative to the entry's.
-        bool working =
-            id == option::OPT_working_directory || id == option::OPT_working_directory_EQ;
+        bool working = id == option::OPT_working_directory;
         for(auto& value: local.values) {
             value = anchored(id, value, working ? directory : anchor, strings).data();
         }
@@ -567,19 +537,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
     if(!slot_placed) {
         place_slot();
     }
-
-    /// Build the pointer-stable Arg view over the staging storage; the
-    /// values arrays are deep-persisted only if the config wins insertion.
-    llvm::SmallVector<Arg, 32> local_args;
-    local_args.reserve(args.size());
-    for(auto& local: args) {
-        local_args.push_back({.opt_id = local.opt_id,
-                              .cls = local.cls,
-                              .spelling = local.spelling,
-                              .values = local.values});
-    }
-
-    return save_config(config, local_args);
+    return save_config(config, args);
 }
 
 std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory,
@@ -587,20 +545,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
                                                        llvm::StringRef command) {
     llvm::BumpPtrAllocator local;
     llvm::StringSaver saver(local);
-
-    llvm::SmallVector<const char*, 32> arguments;
-
-#ifdef _WIN32
-    llvm::cl::TokenizeWindowsCommandLineFull(command, saver, arguments);
-#else
-    llvm::cl::TokenizeGNUCommandLine(command, saver, arguments);
-#endif
-
-    if(arguments.empty()) {
-        return std::nullopt;
-    }
-
-    return normalize(directory, file, arguments);
+    return normalize(directory, file, tokenize_command(command, saver));
 }
 
 void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char*>& tokens,
@@ -609,23 +554,20 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
                                                 llvm::StringSaver& saver,
                                                 unsigned depth) {
     /// Depth cap breaks @a → @b → @a cycles.
-    if(depth >= 8 || ranges::none_of(tokens, [](const char* token) { return token[0] == '@'; })) {
+    if(depth >= 8) {
         return;
     }
 
     llvm::SmallVector<const char*, 32> expanded;
-    for(const char* token: tokens) {
-        llvm::StringRef ref(token);
-        if(!ref.starts_with("@")) {
-            expanded.push_back(token);
-            continue;
-        }
 
-        Spelling full(ref.drop_front(), directory);
+    /// Splice the arguments of the file `name`, false when it cannot be
+    /// read. Read or not, it is among the load's inputs.
+    auto splice = [&](llvm::StringRef name) {
+        Spelling full(name, directory);
         auto file = file_table.intern(full);
         auto observed = vfs::read_observed(file_table.resolve(file));
         if(observed) {
-            file_table.observe(file, observed->obs);
+            file_table.disk.observe(file, observed->obs);
         }
         if(loading) {
             source_files[static_cast<std::size_t>(*loading)].inputs.push_back(
@@ -633,10 +575,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
                  .hash = observed ? std::optional(observed->obs.hash) : std::nullopt});
         }
         if(!observed) {
-            /// Unreadable response file: the token survives verbatim (the
-            /// real compile would fail the same way).
-            expanded.push_back(token);
-            continue;
+            return false;
         }
 
         /// UTF-16 response files (MSVC tooling emits them) convert first.
@@ -647,8 +586,7 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
             llvm::ArrayRef<char> bytes(text.data(), text.size());
             if(!llvm::convertUTF16ToUTF8String(bytes, utf8)) {
                 LOG_WARN("Cannot decode UTF-16 response file {}", full);
-                expanded.push_back(token);
-                continue;
+                return false;
             }
             text = utf8;
         }
@@ -661,6 +599,32 @@ void CompilationDatabase::expand_response_files(llvm::SmallVectorImpl<const char
         }
         expand_response_files(inner, directory, family, saver, depth + 1);
         expanded.append(inner.begin(), inner.end());
+        return true;
+    };
+
+    for(std::size_t i = 0; i < tokens.size(); i += 1) {
+        llvm::StringRef token(tokens[i]);
+        if(token.consume_front("@")) {
+            /// Unreadable response file: the token survives verbatim (the
+            /// real compile would fail the same way).
+            if(!splice(token)) {
+                expanded.push_back(tokens[i]);
+            }
+            continue;
+        }
+        if(family == CompilerFamily::NVCC) {
+            if(auto files = options_files(tokens, i)) {
+                /// nvcc warns about an options file it cannot read and
+                /// compiles without it.
+                for(auto& name: *files) {
+                    if(!splice(name)) {
+                        LOG_WARN("Cannot read nvcc options file {}", name);
+                    }
+                }
+                continue;
+            }
+        }
+        expanded.push_back(tokens[i]);
     }
     tokens = std::move(expanded);
 }
@@ -719,7 +683,7 @@ std::uint64_t CompilationDatabase::entry_hash(ConfigID id) {
     render_identity(id, buf);
     llvm::SmallString<256> storage;
     buf += path::portable(config(id).directory, workspace_root, storage);
-    it->second = hash_bytes(buf);
+    it->second = llvm::xxh3_64bits(buf);
     return it->second;
 }
 
@@ -815,7 +779,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         return std::nullopt;
     }
     auto database = file_table.intern(CanonicalPath(Spelling::absolute(source.path)));
-    file_table.observe(database, observed->obs);
+    file_table.disk.observe(database, observed->obs);
     source.inputs = {
         {.file = database, .hash = observed->obs.hash}
     };
@@ -1069,27 +1033,11 @@ bool CompilationDatabase::forces_c_family(ConfigID id) const {
 
 InputKind CompilationDatabase::input_kind(ConfigID id, llvm::StringRef file) {
     auto state = language_state_at_slot(config(id).args);
-    if(!state.empty()) {
-        return {strings.save(state).data()};
-    }
-
-    auto ext = path::extension(file);
-    ext.consume_front(".");
-    /// CUDA's header convention is missing from clang's extension table.
-    if(ext == "cuh") {
-        return {strings.save("cuda").data()};
-    }
-    namespace types = clang::driver::types;
-    if(auto type = suffix_type(file); type != types::TY_INVALID) {
-        if(cxx_driver(config(id))) {
-            type = types::lookupCXXTypeForCType(type);
-        }
-        return {strings.save(types::getTypeName(type)).data()};
-    }
-    /// No mapping: the raw extension keys the probe (the driver sees a
+    /// With no mapping the raw extension keys the probe (the driver sees a
     /// temp file with the same extension, exactly as confused as it would
     /// be by the real file).
-    return {strings.save(ext).data()};
+    auto language = state.empty() ? extension_language(file, cxx_driver(config(id))) : state;
+    return {strings.save(language).data()};
 }
 
 ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& options) {
@@ -1262,34 +1210,13 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
                           std::vector<LocalArg>& out) {
         std::vector<std::string> flags(edit_flags.begin(), edit_flags.end());
         for(auto& parsed: option::table().parse(flags, remove_parse_options)) {
-            if(!parsed.has_value()) {
-                auto index = parsed.error().index;
-                if(index < flags.size()) {
-                    out.push_back({.opt_id = option::OPT_UNKNOWN,
-                                   .cls = ArgClass::Semantic,
-                                   .spelling = strings.save(flags[index]).data()});
-                }
-                continue;
+            auto& local = out.emplace_back(local_arg(parsed, flags));
+            if(local.opt_id == option::OPT_UNKNOWN) {
+                local.cls = ArgClass::Semantic;
             }
-            auto& arg = *parsed;
-            if(arg.id == option::OPT_INPUT || arg.id == option::OPT_UNKNOWN) {
-                if(arg.index < flags.size()) {
-                    out.push_back({.opt_id = option::OPT_UNKNOWN,
-                                   .cls = ArgClass::Semantic,
-                                   .spelling = strings.save(flags[arg.index]).data()});
-                }
-                continue;
-            }
-            LocalArg local;
-            local.opt_id = arg.id;
-            for(llvm::StringRef value: arg.values) {
-                local.values.push_back(strings.save(value).data());
-            }
-            local.cls = classify(arg.id, local.values);
             for(auto& value: local.values) {
-                value = anchored(arg.id, value, anchor, strings).data();
+                value = anchored(local.opt_id, value, anchor, strings).data();
             }
-            out.push_back(std::move(local));
         }
     };
 
@@ -1344,12 +1271,12 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         if(matches_remove(arg)) {
             continue;
         }
-        LocalArg local;
-        local.opt_id = arg.opt_id;
-        local.cls = arg.cls;
-        local.spelling = arg.spelling;
-        local.values.assign(arg.values.begin(), arg.values.end());
-        edited.push_back(std::move(local));
+        edited.push_back({
+            .opt_id = arg.opt_id,
+            .cls = arg.cls,
+            .spelling = arg.spelling,
+            .values = {arg.values.begin(), arg.values.end()}
+        });
     }
 
     /// An appended -gencode adds its architecture next to the base's, the
@@ -1358,17 +1285,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
         collapse_gpu_arch_args(edited);
     }
 
-    llvm::SmallVector<Arg, 32> local_args;
-    local_args.reserve(edited.size());
-    for(auto& local: edited) {
-        local_args.push_back({.opt_id = local.opt_id,
-                              .cls = local.cls,
-                              .spelling = local.spelling,
-                              .values = local.values});
-    }
-
-    CompileConfig result = cfg;
-    auto result_id = save_config(result, local_args);
+    auto result_id = save_config(cfg, edited);
     rule_applied[{static_cast<std::uint32_t>(id), rule_set_id}] =
         static_cast<std::uint32_t>(result_id);
     return result_id;
@@ -1410,7 +1327,7 @@ std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& re
     // Inject our resource dir if the command names none, so the embedded
     // frontend and its builtin headers stay version-matched.
     bool has_resource_dir = ranges::any_of(cfg.args, [](const Arg& arg) {
-        return arg.opt_id == option::OPT_resource_dir || arg.opt_id == option::OPT_resource_dir_EQ;
+        return arg.opt_id == option::OPT_resource_dir;
     });
     if(!has_resource_dir && !resource_dir().empty()) {
         argv.push_back("-resource-dir");
@@ -1500,13 +1417,11 @@ std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
     std::vector<const char*> argv;
     argv.reserve(rc.args.size() + 8);
     argv.push_back(rc.driver);
-    if(rc.is_cc1) {
-        argv.push_back("-cc1");
-        argv.push_back("-main-file-name");
-        // path::filename returns a suffix of the interned path (a pointer
-        // into the same buffer), so .data() is null-terminated.
-        argv.push_back(path::filename(source).data());
-    }
+    argv.push_back("-cc1");
+    argv.push_back("-main-file-name");
+    // path::filename returns a suffix of the interned path (a pointer
+    // into the same buffer), so .data() is null-terminated.
+    argv.push_back(path::filename(source).data());
 
     auto emit = [&](llvm::StringRef fragment) {
         argv.push_back(strings.save(fragment).data());

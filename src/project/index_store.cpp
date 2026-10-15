@@ -543,7 +543,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
                 // the last reliable read — or one read, unless the file
                 // moved between the stat and the read, which voids the
                 // proof.
-                auto obs = project.file_table.observe_for(file_ids_map[i], *status);
+                auto obs = project.file_table.disk.observe_for(file_ids_map[i], *status);
                 if(obs && obs->stamp == status->stamp) {
                     hash = obs->hash;
                 }
@@ -573,7 +573,7 @@ std::expected<IndexStore::Report, IndexStore::MergeError>
     Report report;
     for(std::uint32_t i = 0; i < view.absent_count(); i += 1) {
         auto fid = project.file_table.intern(Spelling::absolute(view.absent(i)));
-        if(project.file_table.current(fid)) {
+        if(project.file_table.disk.current(fid)) {
             report.add_reindex(tu_path_id);
         }
         manifest.absent.push_back(project.file_table.intern_version(fid, 0));
@@ -1910,7 +1910,7 @@ bool IndexStore::need_update(Fid file) {
         return true;
     }
     return llvm::any_of(manifest.absent, [&](VersionID fv) {
-        return project.file_table.present(project.file_table.version(fv).fid);
+        return project.file_table.disk.present(project.file_table.version(fv).fid);
     });
 }
 

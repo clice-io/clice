@@ -34,7 +34,7 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
         }
         if(arg.opt_id == OPT_isysroot) {
             isysroot = arg.values[0];
-        } else if(arg.opt_id == OPT__sysroot_EQ || arg.opt_id == OPT__sysroot) {
+        } else if(arg.opt_id == OPT__sysroot_EQ) {
             sysroot = arg.values[0];
         }
     }
