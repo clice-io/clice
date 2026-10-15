@@ -9,14 +9,10 @@ pushes = [
     ],
 ]
 
-["hover alone pauses"."hover while paused"]
-wrong = "a hover the index answers lacks the return type and parameters a compile shows"
-
 ["hover alone pauses"."hover while paused".hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
 ```cpp
 int add(int a, int b)
 ```

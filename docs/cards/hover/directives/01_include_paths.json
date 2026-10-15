@@ -35,7 +35,7 @@
           "marker": "include_path",
           "value": {
             "hover": {
-              "markdown": "### `own_header.h`\n\n---\n```cpp\n${WS}/own_header.h\n```",
+              "markdown": "**header** `own_header.h`\n\n`${WS}/own_header.h`",
               "range": {
                 "$place": "#include ⟦\"own_header.h\"⟧",
                 "path": "main.cpp",
@@ -63,7 +63,7 @@
           "marker": "include_path",
           "value": {
             "hover": {
-              "plaintext": "own_header.h\n\n${WS}/own_header.h",
+              "plaintext": "header own_header.h\n\n${WS}/own_header.h",
               "range": {
                 "$place": "#include ⟦\"own_header.h\"⟧",
                 "path": "main.cpp",

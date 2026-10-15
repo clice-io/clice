@@ -1,18 +1,10 @@
 ["declaration first".at_decl.hover]
 markdown = '''
-### function `process`
-
----
+**function** `process` · namespace `decldef`
 
 Public API documentation.
 
-→ `void`
-Parameters:
-- `int x`
-
----
 ```cpp
-// In namespace decldef
 void process(int x)
 ```
 '''
@@ -20,19 +12,11 @@ range = "void ⟦process⟧(int x);"
 
 ["declaration first".at_def.hover]
 markdown = '''
-### function `process`
-
----
+**function** `process` · namespace `decldef`
 
 Public API documentation.
 
-→ `void`
-Parameters:
-- `int x`
-
----
 ```cpp
-// In namespace decldef
 void process(int x)
 ```
 '''
@@ -40,19 +24,11 @@ range = "void ⟦process⟧(int x) { (void)x; }"
 
 ["definition first".at_def.hover]
 markdown = '''
-### function `process`
-
----
+**function** `process` · namespace `decldef`
 
 Public API documentation.
 
-→ `void`
-Parameters:
-- `int x`
-
----
 ```cpp
-// In namespace decldef
 void process(int x)
 ```
 '''
@@ -60,19 +36,11 @@ range = "void ⟦process⟧(int x) { (void)x; }"
 
 ["definition first".at_decl.hover]
 markdown = '''
-### function `process`
-
----
+**function** `process` · namespace `decldef`
 
 Public API documentation.
 
-→ `void`
-Parameters:
-- `int x`
-
----
 ```cpp
-// In namespace decldef
 void process(int x)
 ```
 '''

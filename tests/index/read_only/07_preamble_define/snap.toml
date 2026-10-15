@@ -1,8 +1,7 @@
 [test.define.hover]
 markdown = '''
-### macro `LIMIT`
+**macro** `LIMIT`
 
----
 ```cpp
 #define LIMIT 10
 ```

@@ -3,7 +3,7 @@
   "topic": "hover",
   "subtopic": "functions",
   "title": "Function signatures",
-  "summary": "A function's card lists its return type and each parameter with its name and default",
+  "summary": "A function's card shows its signature, each parameter with its name and default",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -42,7 +42,7 @@
           "marker": "params",
           "value": {
             "hover": {
-              "markdown": "### function `add`\n\n---\n→ `int`\nParameters:\n- `int lhs`\n- `int rhs`\n\n---\n```cpp\n// In namespace function_signature\nint add(int lhs, int rhs)\n```",
+              "markdown": "**function** `add` · namespace `function_signature`\n\n```cpp\nint add(int lhs, int rhs)\n```",
               "range": {
                 "$place": "int ⟦add⟧(int lhs, int rhs);",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "defaults",
           "value": {
             "hover": {
-              "markdown": "### function `configure`\n\n---\n→ `void`\nParameters:\n- `int width`\n- `bool visible = true`\n\n---\n```cpp\n// In namespace function_signature\nvoid configure(int width, bool visible = true)\n```",
+              "markdown": "**function** `configure` · namespace `function_signature`\n\n```cpp\nvoid configure(int width, bool visible = true)\n```",
               "range": {
                 "$place": "void ⟦configure⟧(int width, bool visible = true);",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "written_defaults",
           "value": {
             "hover": {
-              "markdown": "### function `open_file`\n\n---\n→ `void`\nParameters:\n- `int mode = 0644`\n- `int timeout = DEFAULT_TIMEOUT`\n\n---\n```cpp\n// In namespace function_signature\nvoid open_file(int mode = 0644, int timeout = DEFAULT_TIMEOUT)\n```",
+              "markdown": "**function** `open_file` · namespace `function_signature`\n\n```cpp\nvoid open_file(int mode = 0644, int timeout = DEFAULT_TIMEOUT)\n```",
               "range": {
                 "$place": "void ⟦open_file⟧(int mode = 0644, int timeout = DEFAULT_TIMEOUT);",
                 "path": "main.cpp",

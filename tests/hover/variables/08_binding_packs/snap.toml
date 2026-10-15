@@ -1,14 +1,10 @@
 [answers.head.hover]
 markdown = '''
-### variable `head`
+**variable** `head` · function `binding_packs::count`
 
----
-Type: `<dependent type>`
-
----
 ```cpp
-// In count
 auto [head, ... tail] = value
 ```
+Type: `<dependent type>`
 '''
 range = "auto [⟦head⟧, ...tail] = value;"

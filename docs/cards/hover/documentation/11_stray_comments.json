@@ -32,7 +32,7 @@
           "marker": "misattributed_note",
           "value": {
             "hover": {
-              "markdown": "### variable `counter`\n\n---\nType: `int`\n\n---\n```cpp\n// In namespace suppression\nint counter\n```",
+              "markdown": "**variable** `counter` · namespace `suppression`\n\n```cpp\nint counter\n```",
               "range": {
                 "$place": "int ⟦counter⟧;",
                 "path": "main.cpp",

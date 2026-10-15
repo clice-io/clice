@@ -1,47 +1,27 @@
 [answers.operator_new.hover]
 markdown = '''
-### method `operator new`
+**method** `operator new` · struct `custom_allocation::ArenaObject`
 
----
-→ `void *`
-Parameters:
-- `unsigned long count`
-
----
 ```cpp
-// In ArenaObject
-public: static void *operator new(unsigned long count)
+static void *operator new(unsigned long count)
 ```
 '''
 range = "ArenaObject* object = ⟦new⟧ ArenaObject;"
 
 [answers.operator_delete.hover]
 markdown = '''
-### method `operator delete`
+**method** `operator delete` · struct `custom_allocation::ArenaObject`
 
----
-→ `void`
-Parameters:
-- `void *memory`
-
----
 ```cpp
-// In ArenaObject
-public: static void operator delete(void *memory) noexcept
+static void operator delete(void *memory) noexcept
 ```
 '''
 range = "⟦delete⟧ object;"
 
 [answers.global_new.hover]
 markdown = '''
-### function `operator new`
+**function** `operator new`
 
----
-→ `void *`
-Parameters:
-- `__size_t (aka unsigned long)`
-
----
 ```cpp
 void *operator new(__size_t)
 ```
@@ -50,69 +30,41 @@ range = "Record* record = ::⟦new⟧ Record(4);"
 
 [answers.ctor_paren.hover]
 markdown = '''
-### method `Record`
+**method** `Record` · struct `qualified_allocation::Record`
 
----
-Parameters:
-- `long`
-
----
 ```cpp
-// In Record
-public: Record(long)
+Record(long)
 ```
 '''
-range = "Record ⟦direct⟧(5);"
+range = "Record direct⟦(⟧5);"
 
 [answers.op_call.hover]
 markdown = '''
-### method `operator()`
+**method** `operator()` · struct `overloaded_punctuation::Table`
 
----
-→ `int`
-Parameters:
-- `int row`
-
----
 ```cpp
-// In Table
-public: int operator()(int row)
+int operator()(int row)
 ```
 '''
-range = "return ⟦table⟧(3) + table[4];"
+range = "return table⟦(⟧3) + table[4];"
 
 [answers.op_subscript.hover]
 markdown = '''
-### method `operator[]`
+**method** `operator[]` · struct `overloaded_punctuation::Table`
 
----
-→ `int`
-Parameters:
-- `int row`
-
----
 ```cpp
-// In Table
-public: int operator[](int row)
+int operator[](int row)
 ```
 '''
-range = "return table(3) + ⟦table⟧[4];"
+range = "return table(3) + table⟦[⟧4];"
 
 [answers.spaceship_neq.hover]
 markdown = '''
-### method `operator==`
+**method** `operator==` · struct `Revision`
 
----
-→ `bool`
-Parameters:
-- `const Revision &`
-
-Value = `true`
-
----
 ```cpp
-// In Revision
-public: bool operator==(const Revision &) const noexcept = default
+bool operator==(const Revision &) const noexcept = default
 ```
+Value: `true`
 '''
 range = "bool changed = Revision{2} ⟦!=⟧ Revision{3};"

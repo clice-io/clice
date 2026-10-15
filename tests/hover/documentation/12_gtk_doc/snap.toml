@@ -1,18 +1,15 @@
 [answers.documented.hover]
 markdown = '''
-### function `gtk_widget_show`
-
----
+**function** `gtk_widget_show`
 
 Flags a widget to be displayed.
 
-→ `void`
-Parameters:
-- `GtkWidget *widget (aka struct _GtkWidget *)` — a `GtkWidget`
-
----
 ```cpp
 void gtk_widget_show(GtkWidget *widget)
 ```
+`GtkWidget` is `struct _GtkWidget`
+
+Parameters:
+- `widget` — a `GtkWidget`
 '''
 range = "void ⟦gtk_widget_show⟧(GtkWidget *widget);"

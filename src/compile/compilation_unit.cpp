@@ -437,6 +437,21 @@ bool CompilationUnit::defines_module() {
     return pp.isInNamedModule() && !pp.isInImplementationUnit();
 }
 
+auto CompilationUnit::macro_definitions(llvm::StringRef name)
+    -> llvm::SmallVector<const clang::MacroInfo*> {
+    auto& pp = instance->getPreprocessor();
+    llvm::SmallVector<const clang::MacroInfo*> definitions;
+    for(const auto* directive = pp.getLocalMacroDirectiveHistory(pp.getIdentifierInfo(name));
+        directive;
+        directive = directive->getPrevious()) {
+        if(const auto* definition = llvm::dyn_cast<clang::DefMacroDirective>(directive)) {
+            definitions.push_back(definition->getInfo());
+        }
+    }
+    std::ranges::reverse(definitions);
+    return definitions;
+}
+
 auto CompilationUnit::diagnostics() -> llvm::ArrayRef<Diagnostic> {
     return collected_diagnostics;
 }

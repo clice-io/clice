@@ -1,8 +1,7 @@
 [answers.this_specialization.hover]
 markdown = '''
-### `this`
+**this**
 
----
 ```cpp
 full_specialization::Holder<long> *
 ```
@@ -11,9 +10,8 @@ range = "return ⟦this⟧; @+0"
 
 [answers.this_partial_specialization.hover]
 markdown = '''
-### `this`
+**this**
 
----
 ```cpp
 const partial_specialization::Pair<long, U> *
 ```

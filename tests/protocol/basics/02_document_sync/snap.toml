@@ -16,15 +16,8 @@ diagnostics = [
 
 ["every change applies".hover.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```

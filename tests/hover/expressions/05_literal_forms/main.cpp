@@ -1,6 +1,6 @@
-// A character and a string literal, sizeof and alignof have cards; so do
-// both halves of a user-defined literal, the digits and the suffix. Numeric
-// literals have none yet.
+// Every literal has a card: a character, a string, a floating, an imaginary
+// and an integer one, both halves of a user-defined literal, the digits and
+// the suffix; so do sizeof and alignof.
 
 auto delimiter = '§(char_literal):';
 auto greeting = §(string_literal)"welcome";

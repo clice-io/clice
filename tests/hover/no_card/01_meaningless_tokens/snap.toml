@@ -1,5 +1,11 @@
 [answers.builtin_type]
 hover = {}
 
+[answers.const_kw]
+hover = {}
+
+[answers.virtual_kw]
+hover = {}
+
 [answers.empty_braces]
 hover = {}

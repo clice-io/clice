@@ -9,16 +9,11 @@ document_symbols = [
 
 [test.hover.hover]
 markdown = '''
-### enumerator `NotFound`
+**enumerator** `NotFound` · enum `Code`
 
----
-Type: `enum Code`
-Value = `404`
-
----
 ```cpp
-// In Code
 NotFound = 404
 ```
+Value: `404`
 '''
 range = "ERROR(⟦NotFound⟧, 404)"

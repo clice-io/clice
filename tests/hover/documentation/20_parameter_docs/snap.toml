@@ -1,16 +1,10 @@
 [answers.template_param.hover]
 markdown = '''
-### type `T`
-
----
+**type** `T` · function `params::scale`
 
 The arithmetic type.
 
-Type: `typename`
-
----
 ```cpp
-// In scale
 typename T
 ```
 '''
@@ -18,17 +12,11 @@ range = "⟦T⟧ scale(T value, T factor) {"
 
 [answers.declared.hover]
 markdown = '''
-### parameter `value`
-
----
+**parameter** `value` · function `params::scale`
 
 The value to scale.
 
-Type: `T`
-
----
 ```cpp
-// In scale
 T value
 ```
 '''
@@ -36,17 +24,11 @@ range = "T scale(T ⟦value⟧, T factor) {"
 
 [answers.used.hover]
 markdown = '''
-### parameter `factor`
-
----
+**parameter** `factor` · function `params::scale`
 
 How much to scale by.
 
-Type: `T`
-
----
 ```cpp
-// In scale
 T factor
 ```
 '''
@@ -54,17 +36,11 @@ range = "return value * ⟦factor⟧;"
 
 [answers.out_of_line.hover]
 markdown = '''
-### parameter `width`
-
----
+**parameter** `width` · method `params::Box::resize`
 
 The new width.
 
-Type: `int`
-
----
 ```cpp
-// In Box::resize
 int width
 ```
 '''

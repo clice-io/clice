@@ -11,9 +11,8 @@ document_links = [
 
 [test.hover.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
 ```cpp
 int add(int a, int b)
 ```

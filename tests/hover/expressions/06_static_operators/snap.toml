@@ -1,0 +1,29 @@
+[answers.qualified_call.hover]
+markdown = '''
+**method** `operator()` · struct `Table`
+
+```cpp
+static int operator()(int row)
+```
+'''
+range = "int row = Table::⟦operator⟧()(1);"
+
+[answers.qualified_subscript.hover]
+markdown = '''
+**method** `operator[]` · struct `Table`
+
+```cpp
+static int operator[](int row)
+```
+'''
+range = "int cell = Table::⟦operator⟧[](2);"
+
+[answers.call.hover]
+markdown = '''
+**method** `operator()` · struct `Table`
+
+```cpp
+static int operator()(int row)
+```
+'''
+range = "int called = Table{}⟦(⟧3);"

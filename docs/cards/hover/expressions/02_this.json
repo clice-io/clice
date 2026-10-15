@@ -36,7 +36,7 @@
           "marker": "plain_this",
           "value": {
             "hover": {
-              "markdown": "### `this`\n\n---\n```cpp\nthis_hover::Widget *\n```",
+              "markdown": "**this**\n\n```cpp\nthis_hover::Widget *\n```",
               "range": {
                 "$place": "return ⟦this⟧; @+0",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "template_this",
           "value": {
             "hover": {
-              "markdown": "### `this`\n\n---\n```cpp\nconst this_hover::Box<T> *\n```",
+              "markdown": "**this**\n\n```cpp\nconst this_hover::Box<T> *\n```",
               "range": {
                 "$place": "return ⟦this⟧; @+0",
                 "path": "main.cpp",

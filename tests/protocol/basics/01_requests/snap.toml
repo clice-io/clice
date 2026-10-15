@@ -1,14 +1,7 @@
 ["before the compile".hover.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```
@@ -23,15 +16,8 @@ diagnostics = []
 
 ["after the compile".hover.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```

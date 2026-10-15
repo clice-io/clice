@@ -1,11 +1,7 @@
 ["first line".user3.hover]
 markdown = '''
-### function `user3`
+**function** `user3`
 
----
-→ `int`
-
----
 ```cpp
 int user3()
 ```

@@ -75,7 +75,7 @@
           "label": "size",
           "value": {
             "hover": {
-              "markdown": "### macro `SIZE`\n\n---\n```cpp\n#define SIZE 8\n\n// Expands to\n8\n```",
+              "markdown": "**macro** `SIZE`\n\n```cpp\n#define SIZE 8\n```\nExpands to:\n```cpp\n8\n```",
               "range": {
                 "$place": ".quad ⟦SIZE⟧",
                 "path": "entry.S",

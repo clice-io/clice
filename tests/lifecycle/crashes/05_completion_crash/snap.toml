@@ -1,14 +1,7 @@
 [test.hover.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```
@@ -37,15 +30,8 @@ items = []
 
 [test."hover while paused".hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```

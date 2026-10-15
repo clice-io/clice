@@ -6,15 +6,8 @@ diagnostics = [
 
 [test.hover.hover]
 markdown = '''
-### function `ratio`
+**function** `ratio`
 
----
-→ `double`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 double ratio(int a, int b)
 ```

@@ -70,7 +70,7 @@
           "label": "hover",
           "value": {
             "hover": {
-              "markdown": "### function `main`\n\n---\n→ `int`\n\n---\n```cpp\nint main()\n```",
+              "markdown": "**function** `main`\n\n```cpp\nint main()\n```",
               "range": {
                 "$place": "int ⟦main⟧() {",
                 "path": "main.cpp",

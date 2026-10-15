@@ -10,16 +10,13 @@ document_symbols = [
 
 ["in the editor".hover.hover]
 markdown = '''
-### field `field_a`
+**field** `field_a` · struct `Record`
 
----
-Type: `int`
-
----
 ```cpp
-// In Record
-public: int field_a
+int field_a
 ```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "int sum() const { return ⟦field_a⟧ + field_b; }"
 

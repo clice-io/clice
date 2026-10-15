@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "arguments",
   "title": "Record arguments",
-  "summary": "A record passed to a call that is evaluated at compile time shows the call's value as its own",
+  "summary": "A record passed to a call evaluated at compile time does not take the call's value as its own",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#1622"
   ],
@@ -31,9 +31,8 @@
           "label": "record_arg",
           "marker": "record_arg",
           "value": {
-            "wrong": "the card shows the call's value 7 as the variable's own (clangd#1622)",
             "hover": {
-              "markdown": "### variable `t`\n\n---\nType: `Tag`\nValue = `7`\nPassed by value\n\n---\n```cpp\n// In demo\nTag t\n```",
+              "markdown": "**variable** `t` · function `record_value_misleading::demo`\n\n```cpp\nTag t\n```\nPassed by value",
               "range": {
                 "$place": "int r = rank(⟦t⟧);",
                 "path": "main.cpp",

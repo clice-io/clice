@@ -1,63 +1,43 @@
 [answers.constexpr_call.hover]
 markdown = '''
-### variable `from_call`
+**variable** `from_call` · namespace `evaluated_context`
 
----
-Type: `long`
-Value = `27 (0x1b)`
-
----
 ```cpp
-// In namespace evaluated_context
 long from_call = cube(3)
 ```
+Value: `27 (0x1b)`
 '''
 range = "long ⟦from_call⟧ = cube(3);"
 
 [answers.sizeof.hover]
 markdown = '''
-### variable `from_size`
+**variable** `from_size` · namespace `evaluated_context`
 
----
-Type: `long`
-Value = `8`
-
----
 ```cpp
-// In namespace evaluated_context
 long from_size = sizeof(double)
 ```
+Value: `8`
 '''
 range = "long ⟦from_size⟧ = sizeof(double);"
 
 [answers.enumerator.hover]
 markdown = '''
-### enumerator `Online`
+**enumerator** `Online` · enum `evaluated_context::State`
 
----
-Type: `enum evaluated_context::State`
-Value = `6`
-
----
 ```cpp
-// In State
 Online = 6
 ```
+Value: `6`
 '''
 range = "State selected = State::⟦Online⟧;"
 
 [answers.static_member.hover]
 markdown = '''
-### variable `from_member`
+**variable** `from_member` · namespace `evaluated_context`
 
----
-Type: `long`
-Value = `20 (0x14)`
-
----
 ```cpp
-// In namespace evaluated_context
 long from_member = Product<4, 5>::value
 ```
+Value: `20 (0x14)`
 '''
 range = "long ⟦from_member⟧ = Product<4, 5>::value;"

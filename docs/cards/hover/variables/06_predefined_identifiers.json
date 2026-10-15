@@ -36,7 +36,7 @@
           "marker": "func_name",
           "value": {
             "hover": {
-              "markdown": "### variable `__func__`\n\n---\n\nName of the current function (predefined variable)\n\nType: `const char[8]`\nValue = `\"current\"`",
+              "markdown": "**variable** `__func__`\n\nName of the current function (predefined variable)\n\nType: `const char[8]`\nValue: `\"current\"`",
               "range": {
                 "$place": "const char* name = ⟦__func__⟧; @+0",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "func_dependent",
           "value": {
             "hover": {
-              "markdown": "### variable `__func__`\n\n---\n\nName of the current function (predefined variable)\n\nType: `const char[]`",
+              "markdown": "**variable** `__func__`\n\nName of the current function (predefined variable)\n\nType: `const char[]`",
               "range": {
                 "$place": "const char* name = ⟦__func__⟧; @+0",
                 "path": "main.cpp",

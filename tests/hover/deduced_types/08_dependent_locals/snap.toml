@@ -1,23 +1,18 @@
 [answers.copy.hover]
 markdown = '''
-### variable `first`
+**variable** `first` · function `walk`
 
----
-Type: `struct Points`
-
----
 ```cpp
-// In walk
 auto first = points
 ```
+Type: `Points`
 '''
 range = "auto ⟦first⟧ = points;"
 
 [answers.element_auto.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 Point
 ```
@@ -26,30 +21,22 @@ range = "for (⟦auto⟧ point : points) {"
 
 [answers.element.hover]
 markdown = '''
-### variable `point`
+**variable** `point` · function `walk`
 
----
-Type: `Point`
-
----
 ```cpp
-// In walk
 auto point
 ```
+Type: `Point`
 '''
 range = "for (auto ⟦point⟧ : points) {"
 
 [answers.member.hover]
 markdown = '''
-### variable `copy`
+**variable** `copy` · method `Holder::reset`
 
----
-Type: `struct Point`
-
----
 ```cpp
-// In Holder<T>::reset
 auto copy = T()
 ```
+Type: `Point`
 '''
 range = "auto ⟦copy⟧ = T();"

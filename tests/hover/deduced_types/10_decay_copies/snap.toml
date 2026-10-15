@@ -1,0 +1,19 @@
+[answers.parenthesized.hover]
+markdown = '''
+**auto**
+
+```cpp
+const long *
+```
+'''
+range = "auto first = ⟦auto⟧(limits);"
+
+[answers.braced.hover]
+markdown = '''
+**auto**
+
+```cpp
+long
+```
+'''
+range = "auto second = ⟦auto⟧{limits[0]};"

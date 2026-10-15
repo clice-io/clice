@@ -48,7 +48,7 @@
           "marker": "template_param",
           "value": {
             "hover": {
-              "markdown": "### type `T`\n\n---\n\nThe arithmetic type.\n\nType: `typename`\n\n---\n```cpp\n// In scale\ntypename T\n```",
+              "markdown": "**type** `T` · function `params::scale`\n\nThe arithmetic type.\n\n```cpp\ntypename T\n```",
               "range": {
                 "$place": "⟦T⟧ scale(T value, T factor) {",
                 "path": "main.cpp",
@@ -71,7 +71,7 @@
           "marker": "declared",
           "value": {
             "hover": {
-              "markdown": "### parameter `value`\n\n---\n\nThe value to scale.\n\nType: `T`\n\n---\n```cpp\n// In scale\nT value\n```",
+              "markdown": "**parameter** `value` · function `params::scale`\n\nThe value to scale.\n\n```cpp\nT value\n```",
               "range": {
                 "$place": "T scale(T ⟦value⟧, T factor) {",
                 "path": "main.cpp",
@@ -94,7 +94,7 @@
           "marker": "used",
           "value": {
             "hover": {
-              "markdown": "### parameter `factor`\n\n---\n\nHow much to scale by.\n\nType: `T`\n\n---\n```cpp\n// In scale\nT factor\n```",
+              "markdown": "**parameter** `factor` · function `params::scale`\n\nHow much to scale by.\n\n```cpp\nT factor\n```",
               "range": {
                 "$place": "return value * ⟦factor⟧;",
                 "path": "main.cpp",
@@ -117,7 +117,7 @@
           "marker": "out_of_line",
           "value": {
             "hover": {
-              "markdown": "### parameter `width`\n\n---\n\nThe new width.\n\nType: `int`\n\n---\n```cpp\n// In Box::resize\nint width\n```",
+              "markdown": "**parameter** `width` · method `params::Box::resize`\n\nThe new width.\n\n```cpp\nint width\n```",
               "range": {
                 "$place": "void Box::resize(int ⟦width⟧) {}",
                 "path": "main.cpp",

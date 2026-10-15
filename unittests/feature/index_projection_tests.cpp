@@ -597,19 +597,19 @@ ZEST_CASE(LinksFromEdges) {
 
 ZEST_CASE(HoverDefinitionShape) {
     // The stored extent is the whole definition; the card shows what the
-    // AST card prints, except that a type keeps an empty body: the AST
+    // AST card prints, except that a type's members are left out: the AST
     // card's member summary needs the AST.
     auto card = [](SymbolKind::Kind kind,
                    llvm::StringRef text,
                    index::SymbolFlags flags = index::SymbolFlags::None) {
         index::SymbolRef info{.name = "name", .kind = kind, .flags = flags};
-        return feature::index_hover(info, text, {}).definition;
+        return feature::index_hover(info, {}, text, {}).definition;
     };
     ZASSERT(card(SymbolKind::Function, "int twice(int x) {\n    return x * 2;\n}") ==
             "int twice(int x)");
     ZASSERT(card(SymbolKind::Function, "int open() { // }\n    return 0;\n}") == "int open()");
     ZASSERT(card(SymbolKind::Method, "Holder() = default") == "Holder() = default");
-    ZASSERT(card(SymbolKind::Struct, "struct Point {\n    int x;\n}") == "struct Point {}");
+    ZASSERT(card(SymbolKind::Struct, "struct Point {\n    int x;\n}") == "struct Point { ... }");
     ZASSERT(card(SymbolKind::Namespace, "namespace app {\nint value;\n}") == "namespace app {}");
     ZASSERT(card(SymbolKind::Macro, "LIMIT 10") == "#define LIMIT 10");
     ZASSERT(card(SymbolKind::Variable, "int values[] = {1, 2}") == "int values[] = {1, 2}");

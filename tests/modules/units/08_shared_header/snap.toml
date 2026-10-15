@@ -1,27 +1,21 @@
 [answers.type.hover]
 markdown = '''
-### struct `Point`
+**struct** `Point`
 
----
 ```cpp
 struct Point {
   int x;
   int y;
 }
 ```
+Size: 8 bytes, alignment 4 bytes
 '''
 range = "⟦Point⟧ p{1, 2};"
 
 [answers.imported.hover]
 markdown = '''
-### function `length`
+**function** `length`
 
----
-→ `int`
-Parameters:
-- `Point p`
-
----
 ```cpp
 export int length(Point p)
 ```
@@ -30,14 +24,8 @@ range = "return ⟦length⟧(p) + norm(p);"
 
 [answers.included.hover]
 markdown = '''
-### function `norm`
+**function** `norm`
 
----
-→ `int`
-Parameters:
-- `Point p`
-
----
 ```cpp
 inline int norm(Point p)
 ```

@@ -44,7 +44,7 @@
           "marker": "object_like",
           "value": {
             "hover": {
-              "markdown": "### macro `BUFFER_LIMIT`\n\n---\n\nThe largest buffer, in bytes.\n\n---\n```cpp\n#define BUFFER_LIMIT 4096\n\n// Expands to\n4096\n```",
+              "markdown": "**macro** `BUFFER_LIMIT`\n\nThe largest buffer, in bytes.\n\n```cpp\n#define BUFFER_LIMIT 4096\n```\nExpands to:\n```cpp\n4096\n```",
               "range": {
                 "$place": "int limit = ⟦BUFFER_LIMIT⟧;",
                 "path": "main.cpp",
@@ -67,7 +67,7 @@
           "marker": "function_like",
           "value": {
             "hover": {
-              "markdown": "### macro `CLAMP`\n\n---\n\nClamps a value to a range.\n\nParameters:\n- `x` — The value to clamp.\n\nReturns: The value, at least `lo` and at most `hi`.\n\n---\n```cpp\n#define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))\n\n// Expands to\n( ( 5 ) < ( 0 ) ? ( 0 ) : ( 5 ) > ( 10 ) ? ( 10 ) : ( 5 ) )\n```",
+              "markdown": "**macro** `CLAMP`\n\nClamps a value to a range.\n\n```cpp\n#define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))\n```\nExpands to:\n```cpp\n((5) < (0) ? (0) : (5) > (10) ? (10) : (5))\n```\n\nParameters:\n- `x` — The value to clamp.\n\nReturns: The value, at least `lo` and at most `hi`.",
               "range": {
                 "$place": "int clamped = ⟦CLAMP⟧(5, 0, 10);",
                 "path": "main.cpp",
@@ -90,7 +90,7 @@
           "marker": "trailing",
           "value": {
             "hover": {
-              "markdown": "### macro `RETRIES`\n\n---\n\nHow many times a request is tried.\n\n---\n```cpp\n#define RETRIES 3\n\n// Expands to\n3\n```",
+              "markdown": "**macro** `RETRIES`\n\nHow many times a request is tried.\n\n```cpp\n#define RETRIES 3\n```\nExpands to:\n```cpp\n3\n```",
               "range": {
                 "$place": "int retries = ⟦RETRIES⟧;",
                 "path": "main.cpp",

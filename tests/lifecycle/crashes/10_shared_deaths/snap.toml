@@ -14,15 +14,8 @@ pushes = []
 
 [test."hovers asked again"."a.cpp"]
 markdown = '''
-### function `add_a`
+**function** `add_a`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add_a(int a, int b)
 ```
@@ -31,15 +24,8 @@ range = "int ⟦add_a⟧(int a, int b) {"
 
 [test."hovers asked again"."b.cpp"]
 markdown = '''
-### function `add_b`
+**function** `add_b`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add_b(int a, int b)
 ```
@@ -48,15 +34,8 @@ range = "int ⟦add_b⟧(int a, int b) {"
 
 [test."hovers asked again"."c.cpp"]
 markdown = '''
-### function `add_c`
+**function** `add_c`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add_c(int a, int b)
 ```

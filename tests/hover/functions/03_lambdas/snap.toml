@@ -1,88 +1,54 @@
 [answers.lambda_ptr_ptr.hover]
 markdown = '''
-### variable `outer`
+**variable** `outer` · function `pointer_chain::inspect`
 
----
-Type: `(lambda) **`
-
----
 ```cpp
-// In inspect
 auto *outer = &pointer
 ```
+Type: `(lambda) **`
 '''
 range = "auto* ⟦outer⟧ = &pointer;"
 
 [answers.lambda_decltype_ref_param.hover]
 markdown = '''
-### parameter `callable`
+**parameter** `callable` · function `reference_parameter::invoke`
 
----
-→ `bool`
-Parameters:
-- `long value`
-- `bool ready`
-
----
 ```cpp
-// In invoke
 decltype(operation) &callable
 ```
+Type: `bool (long, bool)`
 '''
 range = "⟦callable⟧(1, true); @+0"
 
-[answers.lambda_decltype_param]
-wrong = "the card shows the value of the call around the parameter as the parameter's own"
-
 [answers.lambda_decltype_param.hover]
 markdown = '''
-### parameter `callable`
+**parameter** `callable` · function `value_parameter::invoke`
 
----
-→ `bool`
-Parameters:
-- `long value`
-- `bool ready`
-
-Value = `true`
-
----
 ```cpp
-// In invoke
 decltype(operation) callable
 ```
+Type: `bool (long, bool)`
 '''
 range = "⟦callable⟧(1, true); @+0"
 
 [answers.lambda_variable.hover]
 markdown = '''
-### variable `above`
+**variable** `above` · function `local_closure::inspect`
 
----
-→ `bool`
-Parameters:
-- `int value`
-
----
 ```cpp
-// In inspect
 auto above = [&threshold](int value) {}
 ```
+Type: `bool (int)`
 '''
 range = "return ⟦above⟧(9);"
 
 [answers.local_in_lambda.hover]
 markdown = '''
-### variable `local`
+**variable** `local` · lambda in function `closure_body::inspect`
 
----
-Type: `long`
-Value = `1`
-
----
 ```cpp
-// In inspect::(anonymous class)::operator()
 long local = 1
 ```
+Value: `1`
 '''
 range = "long ⟦local⟧ = 1;"

@@ -1,50 +1,35 @@
 [answers.value.hover]
 markdown = '''
-### variable `count`
+**variable** `count` · function `argument_transfer::apply`
 
----
-Type: `long`
-Value = `1`
-Passed as value
-
----
 ```cpp
-// In apply
 long count = 1
 ```
+Value: `1`
+Passed as `value` by value
 '''
 range = "consume(⟦count⟧);"
 
 [answers.ref.hover]
 markdown = '''
-### variable `count`
+**variable** `count` · function `argument_transfer::apply`
 
----
-Type: `long`
-Value = `1`
-Passed by reference as value
-
----
 ```cpp
-// In apply
 long count = 1
 ```
+Value: `1`
+Passed as `value` by reference
 '''
 range = "mutate(⟦count⟧);"
 
 [answers.const_ref.hover]
 markdown = '''
-### variable `count`
+**variable** `count` · function `argument_transfer::apply`
 
----
-Type: `long`
-Value = `1`
-Passed by const reference as value
-
----
 ```cpp
-// In apply
 long count = 1
 ```
+Value: `1`
+Passed as `value` by const reference
 '''
 range = "observe(⟦count⟧);"

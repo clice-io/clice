@@ -4,11 +4,10 @@ type_definition = ["widget.h │ struct ⟦Widget⟧ {};"]
 
 [test.auto.hover]
 markdown = '''
-### struct `Widget`
+**struct** `Widget`
 
----
 ```cpp
-struct Widget {}
+struct Widget { ... }
 ```
 '''
 range = "⟦auto⟧ widget = make();"

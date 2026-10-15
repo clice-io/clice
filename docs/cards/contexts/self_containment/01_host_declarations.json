@@ -41,7 +41,7 @@
           "marker": "macro",
           "value": {
             "hover": {
-              "markdown": "### macro `SCALE`\n\n---\n```cpp\n#define SCALE 3\n\n// Expands to\n3\n```",
+              "markdown": "**macro** `SCALE`\n\n```cpp\n#define SCALE 3\n```\nExpands to:\n```cpp\n3\n```",
               "range": {
                 "$place": "return Meters{⟦SCALE⟧ * 0.5};",
                 "path": "ruler.h",
@@ -64,7 +64,7 @@
           "marker": "variable",
           "value": {
             "hover": {
-              "markdown": "### variable `unit_length`\n\n---\nType: `Meters`\n\n---\n```cpp\nMeters unit_length{1.0}\n```",
+              "markdown": "**variable** `unit_length`\n\n```cpp\ninline Meters unit_length{1.0}\n```",
               "range": {
                 "$place": "inline Meters ⟦unit_length⟧{1.0};",
                 "path": "ruler.h",

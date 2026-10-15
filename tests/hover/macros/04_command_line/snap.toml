@@ -1,12 +1,12 @@
 [answers.cli_use.hover]
 markdown = '''
-### macro `FROM_CLI`
+**macro** `FROM_CLI`
 
----
 ```cpp
 #define FROM_CLI 7
-
-// Expands to
+```
+Expands to:
+```cpp
 7
 ```
 '''

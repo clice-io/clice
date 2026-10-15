@@ -1,0 +1,29 @@
+[answers.variable.hover]
+markdown = '''
+**variable** `missing`
+
+```cpp
+Unknown missing
+```
+'''
+range = "Unknown ⟦missing⟧;"
+
+[answers.parameter.hover]
+markdown = '''
+**parameter** `value` · function `consume`
+
+```cpp
+Missing value
+```
+'''
+range = "void consume(Missing ⟦value⟧);"
+
+[answers.field.hover]
+markdown = '''
+**field** `member` · struct `Record`
+
+```cpp
+Undeclared member
+```
+'''
+range = "Undeclared ⟦member⟧;"

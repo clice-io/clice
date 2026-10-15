@@ -54,7 +54,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "### function `join`\n\n---\n\nJoins two counters.\n\n→ `long`\nParameters:\n- `long left`\n- `long right`\n\n---\n```cpp\n// In namespace reference_docs\nlong join(long left, long right)\n```",
+              "markdown": "**function** `join` · namespace `reference_docs`\n\nJoins two counters.\n\n```cpp\nlong join(long left, long right)\n```",
               "range": {
                 "$place": "long ⟦join⟧(long left, long right);",
                 "path": "main.cpp",
@@ -77,7 +77,7 @@
           "marker": "primary_def",
           "value": {
             "hover": {
-              "markdown": "### struct `Store`\n\n---\n\nStores an ordinary value.\n\n---\n```cpp\n// In namespace reference_docs\ntemplate <typename T> struct Store {}\n```",
+              "markdown": "**struct** `Store` · namespace `reference_docs`\n\nStores an ordinary value.\n\n```cpp\ntemplate <typename T> struct Store {}\n```",
               "range": {
                 "$place": "template <typename T> struct ⟦Store⟧ {};",
                 "path": "main.cpp",
@@ -100,7 +100,7 @@
           "marker": "spec_def",
           "value": {
             "hover": {
-              "markdown": "### struct `Store<T *>`\n\n---\n\nStores an indirect value.\n\n---\n```cpp\n// In namespace reference_docs\ntemplate <typename T> struct Store<T *> {}\n```",
+              "markdown": "**struct** `Store<T *>` · namespace `reference_docs`\n\nStores an indirect value.\n\n```cpp\ntemplate <typename T> struct Store<T *> {}\n```",
               "range": {
                 "$place": "template <typename T> struct ⟦Store⟧<T*> {};",
                 "path": "main.cpp",
@@ -123,7 +123,7 @@
           "marker": "primary_ref",
           "value": {
             "hover": {
-              "markdown": "### struct `Store<long>`\n\n---\n\nStores an ordinary value.\n\n---\n```cpp\n// In namespace reference_docs\ntemplate <> struct Store<long> {}\n```",
+              "markdown": "**struct** `Store<long>` · namespace `reference_docs`\n\nStores an ordinary value.\n\n```cpp\ntemplate <> struct Store<long> {}\n```\nSize: 1 byte, alignment 1 byte",
               "range": {
                 "$place": "⟦Store⟧<long> ordinary;",
                 "path": "main.cpp",
@@ -146,7 +146,7 @@
           "marker": "spec_ref",
           "value": {
             "hover": {
-              "markdown": "### struct `Store<long *>`\n\n---\n\nStores an indirect value.\n\n---\n```cpp\n// In namespace reference_docs\ntemplate <> struct Store<long *> {}\n```",
+              "markdown": "**struct** `Store<long *>` · namespace `reference_docs`\n\nStores an indirect value.\n\n```cpp\ntemplate <> struct Store<long *> {}\n```\nSize: 1 byte, alignment 1 byte",
               "range": {
                 "$place": "⟦Store⟧<long*> indirect;",
                 "path": "main.cpp",

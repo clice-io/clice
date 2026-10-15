@@ -115,7 +115,7 @@ tests/hover/symbols/14_header_symbols
 
 ## Functions
 
-A function's card lists its return type and its parameters.
+A function's card shows its signature.
 
 <!-- BEGIN GENERATED ITEMS: hover/functions -->
 
@@ -380,7 +380,7 @@ tests/hover/templates/04_concept_constraints
 
 ## Layout
 
-Fields and classes show their size and alignment as the compiler lays them out.
+Fields and classes show their size, alignment and padding as the compiler lays them out, wherever they are hovered.
 
 <!-- BEGIN GENERATED ITEMS: hover/layout -->
 
@@ -480,7 +480,7 @@ tests/hover/arguments/04_record_arguments
 
 ## Expressions
 
-Literals and `this` show what they are.
+A literal shows its type and value, and `this` the type it points to.
 
 <!-- BEGIN GENERATED ITEMS: hover/expressions -->
 
@@ -891,9 +891,9 @@ tests/hover/modules/04_documented_exports
 
 <!-- END GENERATED ITEMS -->
 
-## Attributes and Keywords
+## Attributes
 
-Attributes and keywords such as `const` or `virtual` have meanings of their own for a card to explain.
+An attribute's card shows how the code writes it and what it means.
 
 <!-- BEGIN GENERATED ITEMS: hover/attributes -->
 

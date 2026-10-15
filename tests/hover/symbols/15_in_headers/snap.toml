@@ -1,31 +1,26 @@
 [answers.parameter_type.hover]
 markdown = '''
-### struct `Square`
-
----
+**struct** `Square`
 
 A square with integer sides.
 
----
 ```cpp
 struct Square {
   int side;
 }
 ```
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "inline int area(⟦Square⟧ square) {"
 
 [answers.member.hover]
 markdown = '''
-### field `side`
+**field** `side` · struct `Square`
 
----
-Type: `int`
-
----
 ```cpp
-// In Square
-public: int side
+int side
 ```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "return square.⟦side⟧ * square.side;"

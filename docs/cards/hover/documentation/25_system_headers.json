@@ -35,7 +35,7 @@
           "marker": "system",
           "value": {
             "hover": {
-              "markdown": "### function `release_all`\n\n---\n\nReleases every buffer the library holds.\n\n→ `void`\n\n---\n```cpp\nvoid release_all()\n```",
+              "markdown": "**function** `release_all`\n\nReleases every buffer the library holds.\n\n```cpp\nvoid release_all()\n```",
               "range": {
                 "$place": "⟦release_all⟧();",
                 "path": "main.cpp",

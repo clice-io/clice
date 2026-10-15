@@ -1,15 +1,11 @@
 [answers.after.hover]
 markdown = '''
-### variable `after`
+**variable** `after`
 
----
-Type: `int`
-Value = `1`
-
----
 ```cpp
 int after = 1
 ```
+Value: `1`
 '''
 range = 'const char* label = "caf�"; int ⟦after⟧ = 1;'
 

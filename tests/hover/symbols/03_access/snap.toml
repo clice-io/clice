@@ -1,50 +1,35 @@
 [answers.public_field.hover]
 markdown = '''
-### field `balance`
+**field** `balance` · class `Account`
 
----
-Type: `int`
+```cpp
+int balance
+```
 Offset: 0 bytes
 Size: 4 bytes, alignment 4 bytes
-
----
-```cpp
-// In Account
-public: int balance
-```
 '''
 range = "int ⟦balance⟧;"
 
 [answers.protected_field.hover]
 markdown = '''
-### field `limit`
+**protected field** `limit` · class `Account`
 
----
-Type: `int`
+```cpp
+int limit
+```
 Offset: 4 bytes
 Size: 4 bytes, alignment 4 bytes
-
----
-```cpp
-// In Account
-protected: int limit
-```
 '''
 range = "int ⟦limit⟧;"
 
 [answers.private_field.hover]
 markdown = '''
-### field `pin`
+**private field** `pin` · class `Account`
 
----
-Type: `int`
+```cpp
+int pin
+```
 Offset: 8 bytes
 Size: 4 bytes, alignment 4 bytes
-
----
-```cpp
-// In Account
-private: int pin
-```
 '''
 range = "int ⟦pin⟧;"

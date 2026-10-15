@@ -126,7 +126,10 @@ bool is_implicit(const clang::Stmt* statement) {
         if(auto* VD = llvm::dyn_cast<clang::VarDecl>(DRE->getDecl()); VD && VD->isImplicit()) {
             return true;
         }
-        if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(DRE->getDecl())) {
+        // A qualified one names a static call or subscript operator as
+        // written: `W::operator()(3)`, `&W::operator[]`.
+        if(auto* FD = llvm::dyn_cast<clang::FunctionDecl>(DRE->getDecl());
+           FD && !DRE->hasQualifier()) {
             switch(FD->getOverloadedOperator()) {
                 case clang::OO_Call:
                 case clang::OO_Subscript: return true;
@@ -290,7 +293,7 @@ public:
         // The attributes written on the lambda belong to its call operator,
         // a declaration RAV never visits.
         for(auto* attr: S->getCallOperator()->attrs()) {
-            if(!attr->isImplicit() && !TraverseAttr(attr)) {
+            if(!TraverseAttr(attr)) {
                 return false;
             }
         }
@@ -343,7 +346,9 @@ public:
     }
 
     bool TraverseAttr(clang::Attr* X) {
-        if(!X) {
+        // An implicit attribute, as the inheritance model MSVC targets give a
+        // class whose member pointers are formed, is written nowhere.
+        if(!X || X->isImplicit()) {
             return true;
         }
 

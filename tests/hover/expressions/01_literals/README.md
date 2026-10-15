@@ -4,6 +4,6 @@ issues: [clangd#1016, clangd#1669]
 
 # Literals
 
-A string literal shows its type and size, while a number shows nothing yet
+A number shows its type and value, a string its type, length and size
 
-The size counts the terminating null; the string's length is not shown.
+The length leaves the terminating null out; the size counts it.

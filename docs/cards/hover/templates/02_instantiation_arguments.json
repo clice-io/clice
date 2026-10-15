@@ -3,12 +3,10 @@
   "topic": "hover",
   "subtopic": "templates",
   "title": "Template arguments",
-  "summary": "A use of a template shows the types it is instantiated with, but not which parameter each argument binds yet",
+  "summary": "A use of a template shows the arguments it is instantiated with",
   "prose": "",
-  "status": "unsupported",
-  "issues": [
-    "clangd#230"
-  ],
+  "status": "supported",
+  "issues": [],
   "files": [
     {
       "path": "main.cpp",
@@ -37,9 +35,8 @@
           "label": "type_use",
           "marker": "type_use",
           "value": {
-            "wrong": "the card does not say which argument each template parameter is bound to, T = int (clangd#230)",
             "hover": {
-              "markdown": "### struct `Wrapper<int>`\n\n---\n```cpp\n// In namespace instantiation_args\ntemplate <> struct Wrapper<int> {\n  int value;\n}\n```",
+              "markdown": "**struct** `Wrapper<int>` · namespace `instantiation_args`\n\n```cpp\ntemplate <> struct Wrapper<int> {\n  int value;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "⟦Wrapper⟧<int> holder;",
                 "path": "main.cpp",
@@ -61,9 +58,8 @@
           "label": "call",
           "marker": "call",
           "value": {
-            "wrong": "the card does not say which argument each template parameter is bound to, T = int (clangd#230)",
             "hover": {
-              "markdown": "### function `identity`\n\n---\n→ `int`\nParameters:\n- `int x`\n\n---\n```cpp\n// In namespace instantiation_args\ntemplate <> int identity<int>(int x)\n```",
+              "markdown": "**function** `identity` · namespace `instantiation_args`\n\n```cpp\ntemplate <> int identity<int>(int x)\n```",
               "range": {
                 "$place": "int r = ⟦identity⟧(42);",
                 "path": "main.cpp",

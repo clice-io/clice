@@ -4,16 +4,12 @@ message = "test hooks are not enabled"
 
 ["a flood never wedges".hover.hover]
 markdown = '''
-### variable `value`
+**variable** `value`
 
----
-Type: `int`
-Value = `42 (0x2a)`
-
----
 ```cpp
 int value = 42
 ```
+Value: `42 (0x2a)`
 '''
 range = "int ⟦value⟧ = 42;"
 

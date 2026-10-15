@@ -1,14 +1,10 @@
 [answers.typedef_chain.hover]
 markdown = '''
-### type `integer`
+**type** `integer` · namespace `alias_selection`
 
----
-Type: `long`
-
----
 ```cpp
-// In namespace alias_selection
 using integer = selected<true, long, double>
 ```
+`selected<true, long, double>` is `long`
 '''
 range = "using ⟦integer⟧ = selected<true, long, double>;"

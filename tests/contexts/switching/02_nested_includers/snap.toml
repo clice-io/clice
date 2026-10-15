@@ -19,14 +19,8 @@ diagnostics = []
 
 ["a switch is current".hover.hover]
 markdown = '''
-### function `calc`
+**function** `calc`
 
----
-→ `int`
-Parameters:
-- `Point p`
-
----
 ```cpp
 inline int calc(Point p)
 ```
@@ -38,12 +32,8 @@ diagnostics = []
 
 ["a nested header switches".hover.hover]
 markdown = '''
-### function `inner_origin`
+**function** `inner_origin`
 
----
-→ `Point`
-
----
 ```cpp
 inline Point inner_origin()
 ```

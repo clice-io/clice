@@ -3,14 +3,14 @@
   "topic": "hover",
   "subtopic": "no_card",
   "title": "Nothing to show",
-  "summary": "A builtin type keyword or the inside of an empty body shows no card",
+  "summary": "A keyword or the inside of an empty body shows no card",
   "prose": "",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace negatives {\n\nint counter = 0;\n\nvoid noop() {}\n\n}\n",
+      "text": "namespace negatives {\n\nint counter = 0;\n\nconst int limit = 42;\n\nstruct Widget {\n    virtual void draw();\n};\n\nvoid noop() {}\n\n}\n",
       "markers": [
         {
           "name": "builtin_type",
@@ -19,9 +19,21 @@
           "range": false
         },
         {
+          "name": "const_kw",
+          "begin": 43,
+          "end": 43,
+          "range": false
+        },
+        {
+          "name": "virtual_kw",
+          "begin": 87,
+          "end": 87,
+          "range": false
+        },
+        {
           "name": "empty_braces",
-          "begin": 54,
-          "end": 54,
+          "begin": 122,
+          "end": 122,
           "range": false
         }
       ]
@@ -34,6 +46,20 @@
         {
           "label": "builtin_type",
           "marker": "builtin_type",
+          "value": {
+            "hover": {}
+          }
+        },
+        {
+          "label": "const_kw",
+          "marker": "const_kw",
+          "value": {
+            "hover": {}
+          }
+        },
+        {
+          "label": "virtual_kw",
+          "marker": "virtual_kw",
           "value": {
             "hover": {}
           }

@@ -36,7 +36,7 @@
           "marker": "arithmetic",
           "value": {
             "hover": {
-              "markdown": "### variable `n`\n\n---\nType: `int`\nValue = `0`\nPassed as x (converted to float)\n\n---\n```cpp\n// In demo\nint n = 0\n```",
+              "markdown": "**variable** `n` · function `implicit_conversion::demo`\n\n```cpp\nint n = 0\n```\nValue: `0`\nPassed as `x` by value, converted to `float`",
               "range": {
                 "$place": "take_float(⟦n⟧);",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "user_defined",
           "value": {
             "hover": {
-              "markdown": "### variable `n`\n\n---\nType: `int`\nValue = `0`\nPassed as w (converted to Wrapper)\n\n---\n```cpp\n// In demo\nint n = 0\n```",
+              "markdown": "**variable** `n` · function `implicit_conversion::demo`\n\n```cpp\nint n = 0\n```\nValue: `0`\nPassed as `w` by value, converted to `Wrapper`",
               "range": {
                 "$place": "take_wrapper(⟦n⟧);",
                 "path": "main.cpp",

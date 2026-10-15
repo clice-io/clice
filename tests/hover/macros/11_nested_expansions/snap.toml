@@ -1,12 +1,12 @@
 [answers.outer.hover]
 markdown = '''
-### macro `TWICE`
+**macro** `TWICE`
 
----
 ```cpp
 #define TWICE(x) x + x
-
-// Expands to
+```
+Expands to:
+```cpp
 99 + 99
 ```
 '''
@@ -14,13 +14,13 @@ range = "int twice = ⟦TWICE⟧(LIMIT);"
 
 [answers.used_twice.hover]
 markdown = '''
-### macro `LIMIT`
+**macro** `LIMIT`
 
----
 ```cpp
 #define LIMIT 99
-
-// Expands to
+```
+Expands to:
+```cpp
 99
 ```
 '''
@@ -28,27 +28,27 @@ range = "int twice = TWICE(⟦LIMIT⟧);"
 
 [answers.function_like.hover]
 markdown = '''
-### macro `SCALE`
+**macro** `SCALE`
 
----
 ```cpp
 #define SCALE(v) (v * 2)
-
-// Expands to
-( 3 * 2 )
+```
+Expands to:
+```cpp
+(3 * 2)
 ```
 '''
 range = "int scaled = ECHO(⟦SCALE⟧(3));"
 
 [answers.two_levels.hover]
 markdown = '''
-### macro `LIMIT`
+**macro** `LIMIT`
 
----
 ```cpp
 #define LIMIT 99
-
-// Expands to
+```
+Expands to:
+```cpp
 99
 ```
 '''
@@ -56,13 +56,13 @@ range = "int deep = ECHO(ECHO(⟦LIMIT⟧));"
 
 [answers.body_macro.hover]
 markdown = '''
-### macro `DOUBLE_LIMIT`
+**macro** `DOUBLE_LIMIT`
 
----
 ```cpp
 #define DOUBLE_LIMIT LIMIT * 2
-
-// Expands to
+```
+Expands to:
+```cpp
 99 * 2
 ```
 '''

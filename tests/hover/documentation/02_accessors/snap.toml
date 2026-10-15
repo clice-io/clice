@@ -1,37 +1,23 @@
 [answers.getter.hover]
 markdown = '''
-### method `getReading`
-
----
+**method** `getReading` · struct `generated_docs::Meter`
 
 Trivial accessor for `reading`.
 
-→ `long`
-
----
 ```cpp
-// In Meter
-public: long getReading()
+long getReading()
 ```
 '''
 range = "long ⟦getReading⟧() { return reading; }"
 
 [answers.setter.hover]
 markdown = '''
-### method `setReading`
-
----
+**method** `setReading` · struct `generated_docs::Meter`
 
 Trivial setter for `reading`.
 
-→ `void`
-Parameters:
-- `long next`
-
----
 ```cpp
-// In Meter
-public: void setReading(long next)
+void setReading(long next)
 ```
 '''
 range = "void ⟦setReading⟧(long next) { reading = next; }"

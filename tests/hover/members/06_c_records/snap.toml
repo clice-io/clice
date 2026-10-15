@@ -1,8 +1,7 @@
 [answers.struct.hover]
 markdown = '''
-### struct `Point`
+**struct** `Point`
 
----
 ```cpp
 struct Point {
   int x;
@@ -17,14 +16,14 @@ struct Point {
   enum { Small = 0, Large = 1 } scale;
 }
 ```
+Size: 20 bytes, alignment 4 bytes
 '''
 range = "struct ⟦Point⟧ point;"
 
 [answers.mentions.hover]
 markdown = '''
-### struct `ops`
+**struct** `ops`
 
----
 ```cpp
 struct ops {
   int (*open)(struct inode *, struct file *);
@@ -32,14 +31,14 @@ struct ops {
   int count;
 }
 ```
+Size: 24 bytes (4 bytes padding), alignment 8 bytes
 '''
 range = "struct ⟦ops⟧ table;"
 
 [answers.inner_tags.hover]
 markdown = '''
-### struct `Packed`
+**struct** `Packed`
 
----
 ```cpp
 struct Packed {
   char raw[16];
@@ -49,5 +48,18 @@ struct Packed {
   int tail;
 }
 ```
+Size: 40 bytes (4 bytes padding), alignment 8 bytes
 '''
 range = "struct ⟦Packed⟧ packed;"
+
+[answers.field_use.hover]
+markdown = '''
+**field** `x` · struct `Point`
+
+```cpp
+int x
+```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "return point->⟦x⟧;"

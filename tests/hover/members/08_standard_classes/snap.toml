@@ -1,0 +1,33 @@
+[answers.vector.hover]
+markdown = '''
+**class** `vector<int>` · namespace `std`
+
+A standard container which offers fixed time access to individual elements in any order.
+
+```cpp
+template <> class vector<int> {
+public:
+  typedef int value_type;
+  typedef int &reference;
+  typedef unsigned long size_type;
+}
+```
+Size: 24 bytes, alignment 8 bytes
+'''
+range = "void fill(std::⟦vector⟧<int>& values) {"
+
+[answers.push_back.hover]
+markdown = '''
+**method** `push_back` · class `std::vector<int>`
+
+Add data to the end of the vector.
+
+```cpp
+void push_back(const value_type &__x)
+```
+`value_type` is `int`
+
+Parameters:
+- `__x` — Data to be added.
+'''
+range = "values.⟦push_back⟧(1);"

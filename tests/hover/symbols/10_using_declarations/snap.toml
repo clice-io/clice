@@ -1,42 +1,46 @@
 [answers.using_function.hover]
 markdown = '''
-### function `open`
+**function** `open` · namespace `imported_function::library`
 
----
-→ `void`
-
----
 ```cpp
-// In namespace imported_function::library
 void open()
 ```
 '''
 range = "⟦open⟧();"
 
+[answers.using_overloads_site.hover]
+markdown = '''
+**function** `write` · namespace `imported_overloads`
+
+```cpp
+using library::write
+```
+```cpp
+void write(long);
+void write(char);
+```
+'''
+range = "using library::⟦write⟧;"
+
 [answers.using_overloads.hover]
 markdown = '''
-### `write`
+**function** `write` · namespace `imported_overloads`
 
----
 ```cpp
-// In namespace imported_overloads
 using library::write
+```
+```cpp
+void write(long);
+void write(char);
 ```
 '''
 range = "⟦write⟧(T{});"
 
 [answers.using_decl_site.hover]
 markdown = '''
-### function `close`
+**function** `close` · namespace `declaration_site::library`
 
----
-→ `void`
-Parameters:
-- `long`
-
----
 ```cpp
-// In namespace declaration_site::library
 void close(long)
 ```
 '''
@@ -44,27 +48,34 @@ range = "using library::⟦close⟧;"
 
 [answers.using_type.hover]
 markdown = '''
-### type `index_type`
+**type** `index_type` · struct `imported_type::Base`
 
----
-Type: `long`
-
----
 ```cpp
-// In Base
-public: using index_type = long
+using index_type = long
 ```
 '''
 range = "⟦index_type⟧ index;"
 
 [answers.alias_directive.hover]
 markdown = '''
-### namespace `api`
+**namespace** `api` · namespace `namespace_alias`
 
----
 ```cpp
-// In namespace namespace_alias
 namespace api = implementation
 ```
 '''
 range = "using namespace ⟦api⟧;"
+
+[answers.inherited_constructors.hover]
+markdown = '''
+**method** `Base` · struct `inherited_overloads::Derived`
+
+```cpp
+using Base::Base
+```
+```cpp
+Base(int value);
+Base(double value);
+```
+'''
+range = "using Base::⟦Base⟧;"

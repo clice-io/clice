@@ -38,7 +38,7 @@
           "marker": "anon_var",
           "value": {
             "hover": {
-              "markdown": "### variable `hidden`\n\n---\nType: `int`\nValue = `1`\n\n---\n```cpp\n// In namespace (anonymous)\nint hidden = 1\n```",
+              "markdown": "**variable** `hidden` · namespace `(anonymous)`\n\n```cpp\nint hidden = 1\n```\nValue: `1`",
               "range": {
                 "$place": "int ⟦hidden⟧ = 1;",
                 "path": "main.cpp",
@@ -61,7 +61,7 @@
           "marker": "nested_anon_var",
           "value": {
             "hover": {
-              "markdown": "### variable `nested`\n\n---\nType: `int`\nValue = `2`\n\n---\n```cpp\n// In namespace outer::(anonymous)\nint nested = 2\n```",
+              "markdown": "**variable** `nested` · namespace `outer::(anonymous)`\n\n```cpp\nint nested = 2\n```\nValue: `2`",
               "range": {
                 "$place": "int ⟦nested⟧ = 2;",
                 "path": "main.cpp",

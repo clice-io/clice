@@ -41,7 +41,7 @@
           "marker": "type",
           "value": {
             "hover": {
-              "markdown": "### struct `Point`\n\n---\n\nA point in the plane.\n\n---\n```cpp\n// In namespace geometry\nstruct Point {\n  int x;\n  int y;\n}\n```",
+              "markdown": "**struct** `Point` · namespace `geometry`\n\nA point in the plane.\n\n```cpp\nstruct Point {\n  int x;\n  int y;\n}\n```\nSize: 8 bytes, alignment 4 bytes",
               "range": {
                 "$place": "geometry::⟦Point⟧ corner{3, 4};",
                 "path": "main.cpp",
@@ -64,7 +64,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "### function `norm`\n\n---\n\nDistance from the origin, in taxicab steps.\n\n→ `int`\nParameters:\n- `Point p`\n\n---\n```cpp\n// In namespace geometry\nint norm(Point p)\n```",
+              "markdown": "**function** `norm` · namespace `geometry`\n\nDistance from the origin, in taxicab steps.\n\n```cpp\nint norm(Point p)\n```",
               "range": {
                 "$place": "return geometry::⟦norm⟧(corner);",
                 "path": "main.cpp",

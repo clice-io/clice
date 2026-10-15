@@ -1,77 +1,47 @@
 [answers.getter.hover]
 markdown = '''
-### method `getLevel`
-
----
+**method** `getLevel` · struct `accessors::Gauge`
 
 Trivial accessor for `level`.
 
-→ `double`
-
----
 ```cpp
-// In Gauge
-public: double getLevel()
+double getLevel()
 ```
 '''
 range = "double ⟦getLevel⟧() { return level; }"
 
 [answers.setter.hover]
 markdown = '''
-### method `setAngle`
-
----
+**method** `setAngle` · struct `accessors::Dial`
 
 Trivial setter for `angle`.
 
-→ `void`
-Parameters:
-- `double value`
-
----
 ```cpp
-// In Dial
-public: void setAngle(double value)
+void setAngle(double value)
 ```
 '''
 range = "void ⟦setAngle⟧(double value) { angle = value; }"
 
 [answers.setter_builder.hover]
 markdown = '''
-### method `setWidth`
-
----
+**method** `setWidth` · struct `accessors::Builder`
 
 Trivial setter for `width`.
 
-→ `Builder &`
-Parameters:
-- `double value`
-
----
 ```cpp
-// In Builder
-public: Builder &setWidth(double value)
+Builder &setWidth(double value)
 ```
 '''
 range = "Builder& ⟦setWidth⟧(double value) {"
 
 [answers.setter_move.hover]
 markdown = '''
-### method `setOffset`
-
----
+**method** `setOffset` · struct `accessors::Mover`
 
 Trivial setter for `offset`.
 
-→ `void`
-Parameters:
-- `double value`
-
----
 ```cpp
-// In Mover
-public: void setOffset(double value)
+void setOffset(double value)
 ```
 '''
 range = "void ⟦setOffset⟧(double value) { offset = std::move(value); }"

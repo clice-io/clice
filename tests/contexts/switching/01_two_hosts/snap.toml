@@ -8,12 +8,8 @@ host = "int_host.cpp"
 
 ["each host gives the header its own reading".automatic.hover]
 markdown = '''
-### function `get_value`
+**function** `get_value`
 
----
-→ `int`
-
----
 ```cpp
 int get_value()
 ```
@@ -30,12 +26,8 @@ host = "real_host.cpp"
 
 ["each host gives the header its own reading"."real host".hover]
 markdown = '''
-### function `get_value`
+**function** `get_value`
 
----
-→ `float`
-
----
 ```cpp
 float get_value()
 ```
@@ -52,12 +44,8 @@ host = "int_host.cpp"
 
 ["each host gives the header its own reading"."int host".hover]
 markdown = '''
-### function `get_value`
+**function** `get_value`
 
----
-→ `int`
-
----
 ```cpp
 int get_value()
 ```
@@ -74,12 +62,8 @@ host = "int_host.cpp"
 
 ["each host gives the header its own reading".reset.hover]
 markdown = '''
-### function `get_value`
+**function** `get_value`
 
----
-→ `int`
-
----
 ```cpp
 int get_value()
 ```

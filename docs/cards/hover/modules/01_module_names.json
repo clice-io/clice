@@ -42,7 +42,7 @@
           "marker": "import_name",
           "value": {
             "hover": {
-              "markdown": "### module `math`\n\n---\n```cpp\n${WS}/math.cppm\n```",
+              "markdown": "**module** `math`\n\n`${WS}/math.cppm`",
               "range": {
                 "$place": "import ⟦math⟧;",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "declared_name",
           "value": {
             "hover": {
-              "markdown": "### module `math`\n\n---\n```cpp\n${WS}/math.cppm\n```",
+              "markdown": "**module** `math`\n\n`${WS}/math.cppm`",
               "range": {
                 "$place": "export module ⟦math⟧;",
                 "path": "math.cppm",

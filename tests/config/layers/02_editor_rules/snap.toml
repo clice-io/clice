@@ -13,13 +13,13 @@ diagnostics = [
 
 ["rules in both clients".macro.hover]
 markdown = '''
-### macro `FROM_EDITOR`
+**macro** `FROM_EDITOR`
 
----
 ```cpp
 #define FROM_EDITOR 1
-
-// Expands to
+```
+Expands to:
+```cpp
 1
 ```
 '''

@@ -1,10 +1,7 @@
 ["folder opened through a symlink".hover.hover]
 markdown = '''
-### `late.h`
+**header** `late.h`
 
----
-```cpp
-${WS}/ws/inc/late.h
-```
+`${WS}/ws/inc/late.h`
 '''
 range = '#include ⟦"late.h"⟧'

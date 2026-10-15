@@ -7,13 +7,13 @@ diagnostics = [
 
 [open.size.hover]
 markdown = '''
-### macro `SIZE`
+**macro** `SIZE`
 
----
 ```cpp
 #define SIZE 8
-
-// Expands to
+```
+Expands to:
+```cpp
 8
 ```
 '''

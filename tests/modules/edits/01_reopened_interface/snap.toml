@@ -1,11 +1,7 @@
 [reopened.before.hover]
 markdown = '''
-### function `leaf`
+**function** `leaf`
 
----
-→ `int`
-
----
 ```cpp
 export int leaf()
 ```
@@ -14,12 +10,8 @@ range = "return ⟦leaf⟧() + 1;"
 
 [reopened.after.hover]
 markdown = '''
-### function `leaf`
+**function** `leaf`
 
----
-→ `long`
-
----
 ```cpp
 export long leaf()
 ```
@@ -28,12 +20,8 @@ range = "return ⟦leaf⟧() + 1;"
 
 [reopened.recompiled.hover]
 markdown = '''
-### function `leaf`
+**function** `leaf`
 
----
-→ `long`
-
----
 ```cpp
 export long leaf()
 ```
@@ -42,12 +30,8 @@ range = "return ⟦leaf⟧() + 1;"
 
 ["changed on disk".after.hover]
 markdown = '''
-### function `leaf`
+**function** `leaf`
 
----
-→ `long`
-
----
 ```cpp
 export long leaf()
 ```
@@ -56,12 +40,8 @@ range = "return ⟦leaf⟧() + 1;"
 
 ["changed on disk".recompiled.hover]
 markdown = '''
-### function `leaf`
+**function** `leaf`
 
----
-→ `long`
-
----
 ```cpp
 export long leaf()
 ```

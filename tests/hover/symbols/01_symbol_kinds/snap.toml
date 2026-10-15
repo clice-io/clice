@@ -1,8 +1,7 @@
 [answers.namespace.hover]
 markdown = '''
-### namespace `kinds`
+**namespace** `kinds`
 
----
 ```cpp
 namespace kinds {}
 ```
@@ -11,62 +10,47 @@ range = "namespace ⟦kinds⟧ {"
 
 [answers.struct.hover]
 markdown = '''
-### struct `Point`
+**struct** `Point` · namespace `kinds`
 
----
-Size: 4 bytes, alignment 4 bytes
-
----
 ```cpp
-// In namespace kinds
 struct Point {
   int x;
 }
 ```
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "struct ⟦Point⟧ {"
 
 [answers.field.hover]
 markdown = '''
-### field `x`
+**field** `x` · struct `kinds::Point`
 
----
-Type: `int`
+```cpp
+int x
+```
 Offset: 0 bytes
 Size: 4 bytes, alignment 4 bytes
-
----
-```cpp
-// In Point
-public: int x
-```
 '''
 range = "int ⟦x⟧;"
 
 [answers.union.hover]
 markdown = '''
-### union `Packet`
+**union** `Packet` · namespace `kinds`
 
----
-Size: 4 bytes, alignment 4 bytes
-
----
 ```cpp
-// In namespace kinds
 union Packet {
   int raw;
 }
 ```
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "union ⟦Packet⟧ {"
 
 [answers.enum.hover]
 markdown = '''
-### enum `Color`
+**enum** `Color` · namespace `kinds`
 
----
 ```cpp
-// In namespace kinds
 enum class Color : int { Red = 0 }
 ```
 '''
@@ -74,47 +58,36 @@ range = "enum class ⟦Color⟧ {"
 
 [answers.enumerator.hover]
 markdown = '''
-### enumerator `Red`
+**enumerator** `Red` · enum `kinds::Color`
 
----
-Type: `enum kinds::Color`
-Value = `0`
-
----
 ```cpp
-// In Color
 Red
 ```
+Value: `0`
 '''
 range = "⟦Red⟧,"
 
 [answers.typedef.hover]
 markdown = '''
-### type `Alias`
+**type** `Alias` · namespace `kinds`
 
----
-Type: `struct kinds::Point`
-
----
 ```cpp
-// In namespace kinds
 using Alias = Point
 ```
+```cpp
+struct Point {
+  int x;
+}
+```
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "using ⟦Alias⟧ = Point;"
 
 [answers.function.hover]
 markdown = '''
-### function `length`
+**function** `length` · namespace `kinds`
 
----
-→ `int`
-Parameters:
-- `Point p`
-
----
 ```cpp
-// In namespace kinds
 int length(Point p)
 ```
 '''

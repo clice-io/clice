@@ -11,14 +11,8 @@ errors = []
 
 [saved.hover.hover]
 markdown = '''
-### function `twice`
+**function** `twice`
 
----
-→ `int`
-Parameters:
-- `int a`
-
----
 ```cpp
 export int twice(int a)
 ```

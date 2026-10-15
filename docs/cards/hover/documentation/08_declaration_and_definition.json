@@ -36,7 +36,7 @@
           "marker": "at_decl",
           "value": {
             "hover": {
-              "markdown": "### function `process`\n\n---\n\nPublic API documentation.\n\n→ `void`\nParameters:\n- `int x`\n\n---\n```cpp\n// In namespace decldef\nvoid process(int x)\n```",
+              "markdown": "**function** `process` · namespace `decldef`\n\nPublic API documentation.\n\n```cpp\nvoid process(int x)\n```",
               "range": {
                 "$place": "void ⟦process⟧(int x);",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "at_def",
           "value": {
             "hover": {
-              "markdown": "### function `process`\n\n---\n\nPublic API documentation.\n\n→ `void`\nParameters:\n- `int x`\n\n---\n```cpp\n// In namespace decldef\nvoid process(int x)\n```",
+              "markdown": "**function** `process` · namespace `decldef`\n\nPublic API documentation.\n\n```cpp\nvoid process(int x)\n```",
               "range": {
                 "$place": "void ⟦process⟧(int x) { (void)x; }",
                 "path": "main.cpp",
@@ -87,7 +87,7 @@
           "marker": "at_def",
           "value": {
             "hover": {
-              "markdown": "### function `process`\n\n---\n\nPublic API documentation.\n\n→ `void`\nParameters:\n- `int x`\n\n---\n```cpp\n// In namespace decldef\nvoid process(int x)\n```",
+              "markdown": "**function** `process` · namespace `decldef`\n\nPublic API documentation.\n\n```cpp\nvoid process(int x)\n```",
               "range": {
                 "$place": "void ⟦process⟧(int x) { (void)x; }",
                 "path": "main.cpp",
@@ -110,7 +110,7 @@
           "marker": "at_decl",
           "value": {
             "hover": {
-              "markdown": "### function `process`\n\n---\n\nPublic API documentation.\n\n→ `void`\nParameters:\n- `int x`\n\n---\n```cpp\n// In namespace decldef\nvoid process(int x)\n```",
+              "markdown": "**function** `process` · namespace `decldef`\n\nPublic API documentation.\n\n```cpp\nvoid process(int x)\n```",
               "range": {
                 "$place": "void ⟦process⟧(int x);",
                 "path": "main.cpp",

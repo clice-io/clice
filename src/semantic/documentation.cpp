@@ -23,6 +23,16 @@ std::pair<llvm::StringRef, llvm::ArrayRef<LexicalInfo::Comment>>
     if(decl->isImplicit() || range.isInvalid()) {
         return {};
     }
+    /// The declaration's range starts after the attributes leading it, whose
+    /// arguments may hold anything, as a `;` in a deprecation message.
+    auto& sources = decl->getASTContext().getSourceManager();
+    for(const auto* attr: decl->attrs()) {
+        auto begin = attr->getRange().getBegin();
+        if(!attr->isImplicit() && !attr->isInherited() && begin.isValid() &&
+           sources.isBeforeInTranslationUnit(begin, range.getBegin())) {
+            range.setBegin(begin);
+        }
+    }
     auto [fid, extent] = unit.produced_range(range);
     // The specialization Sema matches an explicit specialization with takes
     // the explicit one's name but keeps the template's extent.

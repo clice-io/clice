@@ -1,12 +1,9 @@
 [answers.auto_class_doc.hover]
 markdown = '''
-### type `auto`
-
----
+**auto**
 
 Holds one payload.
 
----
 ```cpp
 Packet<long>
 ```
@@ -15,33 +12,24 @@ range = "⟦auto⟧ packet = Packet<long>();"
 
 [answers.class_ref_doc.hover]
 markdown = '''
-### class `Packet<long>`
-
----
+**class** `Packet<long>` · namespace `template_docs`
 
 Holds one payload.
 
----
 ```cpp
-// In namespace template_docs
 template <> class Packet<long> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Packet⟧<long> other;"
 
 [answers.function_doc.hover]
 markdown = '''
-### function `send`
-
----
+**function** `send` · namespace `template_docs`
 
 Sends one payload.
 
-→ `void`
-
----
 ```cpp
-// In namespace template_docs
 template <> void send<long>()
 ```
 '''
@@ -49,13 +37,10 @@ range = "⟦send⟧<long>();"
 
 [answers.auto_var_tmpl_doc.hover]
 markdown = '''
-### type `auto`
-
----
+**auto**
 
 Holds one payload.
 
----
 ```cpp
 template_docs::Packet<long>
 ```
@@ -64,35 +49,23 @@ range = "⟦auto⟧ count = counter<Packet<long>>;"
 
 [answers.var_tmpl_ref_doc.hover]
 markdown = '''
-### variable `counter<template_docs::Packet<long>>`
-
----
+**variable** `counter<Packet<long>>` · namespace `template_docs`
 
 Counts payloads.
 
-Type: `template_docs::Packet<long>`
-
----
 ```cpp
-// In namespace template_docs
-template_docs::Packet<long> counter
+Packet<long> counter
 ```
 '''
 range = "auto count = ⟦counter⟧<Packet<long>>;"
 
 [answers.var_tmpl_assign_doc.hover]
 markdown = '''
-### variable `counter<int>`
-
----
+**variable** `counter<int>` · namespace `template_docs`
 
 Counts payloads.
 
-Type: `int`
-
----
 ```cpp
-// In namespace template_docs
 int counter
 ```
 '''
@@ -100,49 +73,37 @@ range = "⟦counter⟧<int> = 1;"
 
 [answers.full_spec_doc.hover]
 markdown = '''
-### class `Storage<int>`
-
----
+**class** `Storage<int>` · namespace `specialization_docs`
 
 Integer storage.
 
-Size: 1 byte, alignment 1 byte
-
----
 ```cpp
-// In namespace specialization_docs
 template <> class Storage<int> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "template <> class ⟦Storage⟧<int> {};"
 
 [answers.full_spec_ref_doc.hover]
 markdown = '''
-### class `Storage<int>`
-
----
+**class** `Storage<int>` · namespace `specialization_docs`
 
 Integer storage.
 
----
 ```cpp
-// In namespace specialization_docs
 template <> class Storage<int> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Storage⟧<int> integer;"
 
 [answers.primary_template_doc.hover]
 markdown = '''
-### class `Channel<long *>`
-
----
+**class** `Channel<long *>` · namespace `selected_specialization_docs`
 
 Pointer channel.
 
----
 ```cpp
-// In namespace selected_specialization_docs
 template <> class Channel<long *>
 ```
 '''
@@ -150,17 +111,11 @@ range = "⟦Channel⟧<long*>* channel;"
 
 [answers.variable_template_doc.hover]
 markdown = '''
-### variable `cache<long *>`
-
----
+**variable** `cache<long *>` · namespace `selected_variable_docs`
 
 Pointer cache slot.
 
-Type: `long`
-
----
 ```cpp
-// In namespace selected_variable_docs
 long cache
 ```
 '''

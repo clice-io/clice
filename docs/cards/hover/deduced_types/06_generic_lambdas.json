@@ -57,7 +57,7 @@
           "marker": "placeholder",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nstruct lambda_auto_params::Point\n```",
+              "markdown": "**auto**\n\n```cpp\nlambda_auto_params::Point\n```",
               "range": {
                 "$place": "auto norm = [](⟦auto⟧ point) {",
                 "path": "main.cpp",
@@ -80,7 +80,7 @@
           "marker": "parameter",
           "value": {
             "hover": {
-              "markdown": "### parameter `point`\n\n---\nType: `lambda_auto_params::Point`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto point\n```",
+              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\nType: `lambda_auto_params::Point`",
               "range": {
                 "$place": "auto norm = [](auto ⟦point⟧) {",
                 "path": "main.cpp",
@@ -103,7 +103,7 @@
           "marker": "parameter_use",
           "value": {
             "hover": {
-              "markdown": "### parameter `point`\n\n---\nType: `lambda_auto_params::Point`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto point\n```",
+              "markdown": "**parameter** `point` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto point\n```\nType: `lambda_auto_params::Point`",
               "range": {
                 "$place": "return ⟦point⟧.x + point.y;",
                 "path": "main.cpp",
@@ -126,7 +126,7 @@
           "marker": "member_use",
           "value": {
             "hover": {
-              "markdown": "### field `x`\n\n---\nType: `int`\n\n---\n```cpp\n// In Point\npublic: int x\n```",
+              "markdown": "**field** `x` · struct `lambda_auto_params::Point`\n\n```cpp\nint x\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "return point.⟦x⟧ + point.y;",
                 "path": "main.cpp",
@@ -149,7 +149,7 @@
           "marker": "several",
           "value": {
             "hover": {
-              "markdown": "### parameter `value`\n\n---\nType: `auto`\n\n---\n```cpp\n// In (anonymous class)::operator()\nauto value\n```",
+              "markdown": "**parameter** `value` · lambda in namespace `lambda_auto_params`\n\n```cpp\nauto value\n```\nType: `auto`",
               "range": {
                 "$place": "auto echo = [](auto ⟦value⟧) {",
                 "path": "main.cpp",

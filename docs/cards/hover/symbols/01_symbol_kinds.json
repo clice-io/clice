@@ -72,7 +72,7 @@
           "marker": "namespace",
           "value": {
             "hover": {
-              "markdown": "### namespace `kinds`\n\n---\n```cpp\nnamespace kinds {}\n```",
+              "markdown": "**namespace** `kinds`\n\n```cpp\nnamespace kinds {}\n```",
               "range": {
                 "$place": "namespace ⟦kinds⟧ {",
                 "path": "main.cpp",
@@ -95,7 +95,7 @@
           "marker": "struct",
           "value": {
             "hover": {
-              "markdown": "### struct `Point`\n\n---\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In namespace kinds\nstruct Point {\n  int x;\n}\n```",
+              "markdown": "**struct** `Point` · namespace `kinds`\n\n```cpp\nstruct Point {\n  int x;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "struct ⟦Point⟧ {",
                 "path": "main.cpp",
@@ -118,7 +118,7 @@
           "marker": "field",
           "value": {
             "hover": {
-              "markdown": "### field `x`\n\n---\nType: `int`\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Point\npublic: int x\n```",
+              "markdown": "**field** `x` · struct `kinds::Point`\n\n```cpp\nint x\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "int ⟦x⟧;",
                 "path": "main.cpp",
@@ -141,7 +141,7 @@
           "marker": "union",
           "value": {
             "hover": {
-              "markdown": "### union `Packet`\n\n---\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In namespace kinds\nunion Packet {\n  int raw;\n}\n```",
+              "markdown": "**union** `Packet` · namespace `kinds`\n\n```cpp\nunion Packet {\n  int raw;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "union ⟦Packet⟧ {",
                 "path": "main.cpp",
@@ -164,7 +164,7 @@
           "marker": "enum",
           "value": {
             "hover": {
-              "markdown": "### enum `Color`\n\n---\n```cpp\n// In namespace kinds\nenum class Color : int { Red = 0 }\n```",
+              "markdown": "**enum** `Color` · namespace `kinds`\n\n```cpp\nenum class Color : int { Red = 0 }\n```",
               "range": {
                 "$place": "enum class ⟦Color⟧ {",
                 "path": "main.cpp",
@@ -187,7 +187,7 @@
           "marker": "enumerator",
           "value": {
             "hover": {
-              "markdown": "### enumerator `Red`\n\n---\nType: `enum kinds::Color`\nValue = `0`\n\n---\n```cpp\n// In Color\nRed\n```",
+              "markdown": "**enumerator** `Red` · enum `kinds::Color`\n\n```cpp\nRed\n```\nValue: `0`",
               "range": {
                 "$place": "⟦Red⟧,",
                 "path": "main.cpp",
@@ -210,7 +210,7 @@
           "marker": "typedef",
           "value": {
             "hover": {
-              "markdown": "### type `Alias`\n\n---\nType: `struct kinds::Point`\n\n---\n```cpp\n// In namespace kinds\nusing Alias = Point\n```",
+              "markdown": "**type** `Alias` · namespace `kinds`\n\n```cpp\nusing Alias = Point\n```\n```cpp\nstruct Point {\n  int x;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "using ⟦Alias⟧ = Point;",
                 "path": "main.cpp",
@@ -233,7 +233,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "### function `length`\n\n---\n→ `int`\nParameters:\n- `Point p`\n\n---\n```cpp\n// In namespace kinds\nint length(Point p)\n```",
+              "markdown": "**function** `length` · namespace `kinds`\n\n```cpp\nint length(Point p)\n```",
               "range": {
                 "$place": "int ⟦length⟧(Point p) {",
                 "path": "main.cpp",

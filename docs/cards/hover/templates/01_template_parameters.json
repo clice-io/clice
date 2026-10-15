@@ -42,7 +42,7 @@
           "marker": "type_param",
           "value": {
             "hover": {
-              "markdown": "### type `Value`\n\n---\nType: `typename`\n\n---\n```cpp\n// In accept_type\ntypename Value = long\n```",
+              "markdown": "**type** `Value` · function `parameter_kinds::accept_type`\n\n```cpp\ntypename Value = long\n```",
               "range": {
                 "$place": "template <typename ⟦Value⟧ = long> void accept_type();",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "template_template_param",
           "value": {
             "hover": {
-              "markdown": "### type `Container`\n\n---\nType: `template <typename> class`\n\n---\n```cpp\n// In accept_template\ntemplate <typename> class Container\n```",
+              "markdown": "**type** `Container` · function `parameter_kinds::accept_template`\n\n```cpp\ntemplate <typename> class Container\n```",
               "range": {
                 "$place": "template <template <typename> class ⟦Container⟧>",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "non_type_param",
           "value": {
             "hover": {
-              "markdown": "### variable `Count`\n\n---\nType: `long`\n\n---\n```cpp\n// In accept_value\nlong Count = 8\n```",
+              "markdown": "**variable** `Count` · function `parameter_kinds::accept_value`\n\n```cpp\nlong Count = 8\n```",
               "range": {
                 "$place": "template <long ⟦Count⟧ = 8> void accept_value();",
                 "path": "main.cpp",

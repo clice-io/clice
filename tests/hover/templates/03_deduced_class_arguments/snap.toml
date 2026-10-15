@@ -1,29 +1,21 @@
-[answers.ctad_type]
-wrong = "the class name of a declaration with deduced arguments shows the primary template, not Box<int> (clangd#435)"
-
 [answers.ctad_type.hover]
 markdown = '''
-### struct `Box`
+**struct** `Box<int>` · namespace `ctad_arguments`
 
----
 ```cpp
-// In namespace ctad_arguments
-template <typename T> struct Box {}
+template <> struct Box<int> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Box⟧ picked(42);"
 
 [answers.ctad_var.hover]
 markdown = '''
-### variable `picked`
+**variable** `picked` · namespace `ctad_arguments`
 
----
-Type: `Box<int>`
-
----
 ```cpp
-// In namespace ctad_arguments
 Box picked(42)
 ```
+Type: `Box<int>`
 '''
 range = "Box ⟦picked⟧(42);"

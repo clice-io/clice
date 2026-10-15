@@ -1,18 +1,11 @@
 [answers.inherited_ctor.hover]
 markdown = '''
-### method `Base`
-
----
+**method** `Base` · struct `inherited_ctor::Base`
 
 Constructs from a value.
 
-Parameters:
-- `int value`
-
----
 ```cpp
-// In Base
-public: Base(int value)
+Base(int value)
 ```
 '''
 range = "using Base::⟦Base⟧;"

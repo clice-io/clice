@@ -32,7 +32,7 @@
           "marker": "table",
           "value": {
             "hover": {
-              "markdown": "### function `table_fn`\n\n---\n→ `void`\n\n| Column A | Column B |\n|----------|----------|\n| 1        | 2        |\n\n---\n```cpp\n// In namespace tables\nvoid table_fn()\n```",
+              "markdown": "**function** `table_fn` · namespace `tables`\n\n```cpp\nvoid table_fn()\n```\n\n---\n\n| Column A | Column B |\n|----------|----------|\n| 1        | 2        |",
               "range": {
                 "$place": "void ⟦table_fn⟧();",
                 "path": "main.cpp",

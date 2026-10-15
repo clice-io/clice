@@ -1,13 +1,7 @@
 [answers.identity.hover]
 markdown = '''
-### function `identity`
+**function** `identity`
 
----
-→ `int`
-Parameters:
-- `int x`
-
----
 ```cpp
 template <> int identity<int>(int x)
 ```
@@ -16,15 +10,8 @@ range = "return ⟦identity⟧(42) + pair_sum(1, 2L);"
 
 [answers.deduced.hover]
 markdown = '''
-### function `pair_sum`
+**function** `pair_sum`
 
----
-→ `long`
-Parameters:
-- `int a`
-- `long b`
-
----
 ```cpp
 template <> long pair_sum<int, long>(int a, long b)
 ```

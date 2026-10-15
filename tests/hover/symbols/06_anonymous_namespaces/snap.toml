@@ -1,31 +1,21 @@
 [answers.anon_var.hover]
 markdown = '''
-### variable `hidden`
+**variable** `hidden` · namespace `(anonymous)`
 
----
-Type: `int`
-Value = `1`
-
----
 ```cpp
-// In namespace (anonymous)
 int hidden = 1
 ```
+Value: `1`
 '''
 range = "int ⟦hidden⟧ = 1;"
 
 [answers.nested_anon_var.hover]
 markdown = '''
-### variable `nested`
+**variable** `nested` · namespace `outer::(anonymous)`
 
----
-Type: `int`
-Value = `2`
-
----
 ```cpp
-// In namespace outer::(anonymous)
 int nested = 2
 ```
+Value: `2`
 '''
 range = "int ⟦nested⟧ = 2;"

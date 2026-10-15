@@ -1,11 +1,7 @@
 [hover.left.hover]
 markdown = '''
-### function `left_val`
+**function** `left_val`
 
----
-→ `int`
-
----
 ```cpp
 export int left_val()
 ```
@@ -14,12 +10,8 @@ range = "return ⟦left_val⟧() + right_val();"
 
 [hover.right.hover]
 markdown = '''
-### function `right_val`
+**function** `right_val`
 
----
-→ `int`
-
----
 ```cpp
 export int right_val()
 ```

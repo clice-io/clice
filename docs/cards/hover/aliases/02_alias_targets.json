@@ -5,7 +5,7 @@
   "title": "Aliases of structs",
   "summary": "An alias names the struct it stands for, but does not show its members yet",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#2020"
   ],
@@ -37,9 +37,8 @@
           "label": "alias_using",
           "marker": "alias_using",
           "value": {
-            "wrong": "an alias of a struct does not show the struct's members (clangd#2020)",
             "hover": {
-              "markdown": "### type `Handle`\n\n---\nType: `struct aliases::Widget`\n\n---\n```cpp\n// In namespace aliases\nusing Handle = Widget\n```",
+              "markdown": "**type** `Handle` · namespace `aliases`\n\n```cpp\nusing Handle = Widget\n```\n```cpp\nstruct Widget {\n  int id;\n  double value;\n}\n```\nSize: 16 bytes (4 bytes padding), alignment 8 bytes",
               "range": {
                 "$place": "using ⟦Handle⟧ = Widget;",
                 "path": "main.cpp",
@@ -61,9 +60,8 @@
           "label": "alias_typedef",
           "marker": "alias_typedef",
           "value": {
-            "wrong": "an alias of a struct does not show the struct's members (clangd#2020)",
             "hover": {
-              "markdown": "### type `Widget_t`\n\n---\nType: `struct aliases::Widget`\n\n---\n```cpp\n// In namespace aliases\ntypedef Widget Widget_t\n```",
+              "markdown": "**type** `Widget_t` · namespace `aliases`\n\n```cpp\ntypedef Widget Widget_t\n```\n```cpp\nstruct Widget {\n  int id;\n  double value;\n}\n```\nSize: 16 bytes (4 bytes padding), alignment 8 bytes",
               "range": {
                 "$place": "typedef Widget ⟦Widget_t⟧;",
                 "path": "main.cpp",

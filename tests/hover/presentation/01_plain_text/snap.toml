@@ -1,16 +1,9 @@
 [default.function.hover]
 markdown = '''
-### function `answer`
-
----
+**function** `answer`
 
 Computes the answer. Tests primality of `p`.
 
-→ `int`
-Parameters:
-- `int p`
-
----
 ```cpp
 constexpr int answer(int p)
 ```
@@ -19,33 +12,24 @@ range = "constexpr int ⟦answer⟧(int p) {"
 
 [default.variable.hover]
 markdown = '''
-### variable `value`
+**variable** `value`
 
----
-Type: `int`
-Value = `42 (0x2a)`
-
----
 ```cpp
 int value = answer(1)
 ```
+Value: `42 (0x2a)`
 '''
 range = "int ⟦value⟧ = answer(1);"
 
 [default.field.hover]
 markdown = '''
-### field `second`
+**field** `second` · struct `Layout`
 
----
-Type: `int`
+```cpp
+int second
+```
 Offset: 4 bytes
 Size: 4 bytes, alignment 4 bytes
-
----
-```cpp
-// In Layout
-public: int second
-```
 '''
 range = "int ⟦second⟧;"
 
@@ -55,10 +39,6 @@ function answer
 
 Computes the answer. Tests primality of `p`.
 
-→ int
-Parameters:
-- int p
-
 constexpr int answer(int p)
 '''
 range = "constexpr int ⟦answer⟧(int p) {"
@@ -67,23 +47,20 @@ range = "constexpr int ⟦answer⟧(int p) {"
 plaintext = '''
 variable value
 
-Type: int
-Value = 42 (0x2a)
-
 int value = answer(1)
+
+Value: 42 (0x2a)
 '''
 range = "int ⟦value⟧ = answer(1);"
 
 ["plain text client".field.hover]
 plaintext = '''
-field second
+field second · struct Layout
 
-Type: int
+int second
+
 Offset: 4 bytes
 Size: 4 bytes, alignment 4 bytes
-
-// In Layout
-public: int second
 '''
 range = "int ⟦second⟧;"
 
@@ -92,10 +69,6 @@ plaintext = '''
 function answer
 
 Computes the answer. Tests primality of `p`.
-
-→ int
-Parameters:
-- int p
 
 constexpr int answer(int p)
 '''

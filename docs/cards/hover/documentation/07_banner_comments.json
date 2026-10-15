@@ -32,7 +32,7 @@
           "marker": "after_banner",
           "value": {
             "hover": {
-              "markdown": "### function `foo`\n\n---\n→ `void`\n\n---\n```cpp\n// In namespace banners\nvoid foo()\n```",
+              "markdown": "**function** `foo` · namespace `banners`\n\n```cpp\nvoid foo()\n```",
               "range": {
                 "$place": "void ⟦foo⟧();",
                 "path": "main.cpp",

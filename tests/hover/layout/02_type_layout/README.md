@@ -4,4 +4,4 @@ issues: [clangd#1763]
 
 # Type layout
 
-A class shows its size and alignment, but not how much of it is padding yet
+A class shows its size and alignment, and how much of the size is padding

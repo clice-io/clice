@@ -62,12 +62,8 @@
 
 [test."asked again"."unit_0.cpp"]
 markdown = '''
-### function `unit_0`
+**function** `unit_0`
 
----
-→ `int`
-
----
 ```cpp
 int unit_0()
 ```
@@ -76,12 +72,8 @@ range = "int ⟦unit_0⟧() { return 0; }"
 
 [test."asked again"."unit_1.cpp"]
 markdown = '''
-### function `unit_1`
+**function** `unit_1`
 
----
-→ `int`
-
----
 ```cpp
 int unit_1()
 ```
@@ -90,12 +82,8 @@ range = "int ⟦unit_1⟧() { return 1; }"
 
 [test."asked again"."unit_2.cpp"]
 markdown = '''
-### function `unit_2`
+**function** `unit_2`
 
----
-→ `int`
-
----
 ```cpp
 int unit_2()
 ```
@@ -104,12 +92,8 @@ range = "int ⟦unit_2⟧() { return 2; }"
 
 [test."asked again"."unit_3.cpp"]
 markdown = '''
-### function `unit_3`
+**function** `unit_3`
 
----
-→ `int`
-
----
 ```cpp
 int unit_3()
 ```
@@ -118,12 +102,8 @@ range = "int ⟦unit_3⟧() { return 3; }"
 
 [test."asked again"."unit_4.cpp"]
 markdown = '''
-### function `unit_4`
+**function** `unit_4`
 
----
-→ `int`
-
----
 ```cpp
 int unit_4()
 ```
@@ -132,12 +112,8 @@ range = "int ⟦unit_4⟧() { return 4; }"
 
 [test."asked again"."unit_5.cpp"]
 markdown = '''
-### function `unit_5`
+**function** `unit_5`
 
----
-→ `int`
-
----
 ```cpp
 int unit_5()
 ```

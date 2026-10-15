@@ -1,12 +1,12 @@
 ["hover in the header".macro.hover]
 markdown = '''
-### macro `SCALE`
+**macro** `SCALE`
 
----
 ```cpp
 #define SCALE 3
-
-// Expands to
+```
+Expands to:
+```cpp
 3
 ```
 '''
@@ -14,14 +14,10 @@ range = "return Meters{⟦SCALE⟧ * 0.5};"
 
 ["hover in the header".variable.hover]
 markdown = '''
-### variable `unit_length`
+**variable** `unit_length`
 
----
-Type: `Meters`
-
----
 ```cpp
-Meters unit_length{1.0}
+inline Meters unit_length{1.0}
 ```
 '''
 range = "inline Meters ⟦unit_length⟧{1.0};"

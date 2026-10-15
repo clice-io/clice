@@ -1,10 +1,8 @@
 [answers.class_sections.hover]
 markdown = '''
-### class `Widget`
+**class** `Widget` · namespace `access_sections`
 
----
 ```cpp
-// In namespace access_sections
 class Widget : public Base {
   int id;
 
@@ -23,42 +21,39 @@ private:
   unsigned int flags : 3;
 }
 ```
+Size: 16 bytes (29 bits padding), alignment 4 bytes
 '''
 range = "⟦Widget⟧ widget;"
 
 [answers.nested_type.hover]
 markdown = '''
-### struct `Node`
+**struct** `Node` · class `access_sections::Widget`
 
----
 ```cpp
-// In Widget
-public: struct Node {
+struct Node {
   int hidden;
 }
 ```
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "Widget::⟦Node⟧ node;"
 
 [answers.functions_only.hover]
 markdown = '''
-### struct `Service`
+**struct** `Service` · namespace `functions_only`
 
----
 ```cpp
-// In namespace functions_only
 struct Service {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Service⟧ service;"
 
 [answers.unnamed_members.hover]
 markdown = '''
-### struct `Value`
+**struct** `Value` · namespace `unnamed_members`
 
----
 ```cpp
-// In namespace unnamed_members
 struct Value {
   enum { inline_capacity = 16 };
   int kind;
@@ -82,16 +77,15 @@ struct Value {
   static struct(unnamed) shared;
 }
 ```
+Size: 48 bytes (8 bytes padding), alignment 8 bytes
 '''
 range = "⟦Value⟧ current;"
 
 [answers.primary_declaration.hover]
 markdown = '''
-### struct `Box`
+**struct** `Box` · namespace `templates`
 
----
 ```cpp
-// In namespace templates
 template <typename T> struct Box {
   using value_type = T;
   T value;
@@ -105,11 +99,9 @@ range = "template <typename T> struct ⟦Box⟧;"
 
 [answers.primary_use.hover]
 markdown = '''
-### struct `Box`
+**struct** `Box` · namespace `templates`
 
----
 ```cpp
-// In namespace templates
 template <typename T> struct Box {
   using value_type = T;
   T value;
@@ -123,11 +115,9 @@ range = "template <typename T> void take(⟦Box⟧<T> box);"
 
 [answers.implicit_instantiation.hover]
 markdown = '''
-### struct `Box<int>`
+**struct** `Box<int>` · namespace `templates`
 
----
 ```cpp
-// In namespace templates
 template <> struct Box<int> {
   using value_type = int;
   int value;
@@ -136,44 +126,41 @@ template <> struct Box<int> {
   struct Inner;
 }
 ```
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "⟦Box⟧<int> integer;"
 
 [answers.partial_specialization.hover]
 markdown = '''
-### struct `Box<int *>`
+**struct** `Box<int *>` · namespace `templates`
 
----
 ```cpp
-// In namespace templates
 template <> struct Box<int *> {
   int *pointer;
 }
 ```
+Size: 8 bytes, alignment 8 bytes
 '''
 range = "⟦Box⟧<int*> pointer;"
 
 [answers.explicit_specialization.hover]
 markdown = '''
-### struct `Box<bool>`
+**struct** `Box<bool>` · namespace `templates`
 
----
 ```cpp
-// In namespace templates
 template <> struct Box<bool> {
   unsigned char bits;
 }
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Box⟧<bool> flag;"
 
 [answers.instantiated_unnamed.hover]
 markdown = '''
-### struct `Expected<long>`
+**struct** `Expected<long>` · namespace `instantiated_unnamed`
 
----
 ```cpp
-// In namespace instantiated_unnamed
 template <> struct Expected<long> {
   union {
     long value;
@@ -190,16 +177,15 @@ template <> struct Expected<long> {
   bool has_error : 1;
 }
 ```
+Size: 48 bytes (63 bits padding), alignment 8 bytes
 '''
 range = "⟦Expected⟧<long> expected;"
 
 [answers.declarator_specifiers.hover]
 markdown = '''
-### struct `Device`
+**struct** `Device` · namespace `declarator_specifiers`
 
----
 ```cpp
-// In namespace declarator_specifiers
 struct Device {
   volatile struct {
     unsigned int control;
@@ -215,49 +201,47 @@ struct Device {
   } queue[8], *head;
 }
 ```
+Size: 64 bytes (4 bytes padding), alignment 8 bytes
 '''
 range = "⟦Device⟧ device;"
 
 [answers.before_definition.hover]
 markdown = '''
-### struct `Later`
+**struct** `Later` · namespace `forward_declared`
 
----
 ```cpp
-// In namespace forward_declared
 struct Later {
   int value;
 }
 ```
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "⟦Later⟧* later;"
 
 [answers.redeclared_nested.hover]
 markdown = '''
-### class `Tree`
+**class** `Tree` · namespace `redeclared_nested`
 
----
 ```cpp
-// In namespace redeclared_nested
 class Tree {
   struct Node;
   template <typename T> struct Visitor;
   Node *root;
 }
 ```
+Size: 8 bytes, alignment 8 bytes
 '''
 range = "⟦Tree⟧ tree;"
 
 [answers.derived.hover]
 markdown = '''
-### struct `Square`
+**struct** `Square` · namespace `derived_members`
 
----
 ```cpp
-// In namespace derived_members
 struct Square final : Shape {
   int length;
 }
 ```
+Size: 8 bytes, alignment 4 bytes
 '''
 range = "⟦Square⟧ square;"

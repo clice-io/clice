@@ -1,6 +1,10 @@
 [answers.emphasis.hover]
 markdown = '''
-### `init_priority`
+**attribute** `init_priority`
+
+```cpp
+__attribute__((init_priority(200)))
+```
 
 ---
 In C++, the order in which global variables are initialized across translation units is unspecified, unlike the ordering within a single translation unit. The `init_priority` attribute allows you to specify a relative ordering for the initialization of objects declared at namespace scope in C++ within a single linked image on supported platforms. The priority is given as an integer constant expression between 101 and 65535 (inclusive). Priorities outside of that range are reserved for use by the implementation. A lower value indicates a higher priority of initialization. Note that only the relative ordering of values is important. For example:
@@ -14,17 +18,16 @@ Note that this attribute does not control the initialization order of objects ac
 On Windows, `init_seg(compiler)` is represented with a priority of 200 and `init_seg(library)` is represented with a priority of 400. `init_seg(user)` uses the default 65535 priority.
 On MachO platforms, this attribute also does not control the order of initialization across translation units, where it only affects the order within a single TU.
 This attribute is only supported for C++ and Objective-C++ and is ignored in other language modes.
-
----
-```cpp
-__attribute__((init_priority(200)))
-```
 '''
 range = "Logger logger __attribute__((⟦init_priority⟧(200)));"
 
 [answers.numbered_list.hover]
 markdown = '''
-### `format`
+**attribute** `format`
+
+```cpp
+__attribute__((format(printf, 1, 2)))
+```
 
 ---
 Clang supports the `format` attribute, which indicates that the function accepts (among other possibilities) a `printf` or `scanf`-like format string and corresponding arguments or a `va_list` that contains these arguments.
@@ -75,17 +78,16 @@ void fmt(const char *s, int b, ...);
 // (must be __printf__, 1, 3)
 ```
 Using the `format` attribute on a non-variadic function emits a GCC compatibility diagnostic.
-
----
-```cpp
-__attribute__((format(printf, 1, 2)))
-```
 '''
 range = "int log(const char* format, ...) __attribute__((⟦format⟧(printf, 1, 2)));"
 
 [answers.escape.hover]
 markdown = '''
-### `lifetimebound`
+**attribute** `clang::lifetimebound`
+
+```cpp
+[[clang::lifetimebound]]
+```
 
 ---
 The `lifetimebound` attribute on a function parameter or implicit object parameter indicates that objects that are referred to by that parameter may also be referred to by the return value of the annotated function (or, for a parameter of a constructor, by the value of the constructed object).
@@ -127,18 +129,16 @@ struct string {
 };
 ```
 This attribute is inspired by the C++ committee paper P0936R0, but does not affect whether temporary objects have their lifetimes extended.
-
----
-```cpp
-// In clang
-[[clang::lifetimebound]]
-```
 '''
 range = "const int& pick(const int& value [[clang::⟦lifetimebound⟧]]);"
 
 [answers.capitalized_note.hover]
 markdown = '''
-### `alloc_size`
+**attribute** `alloc_size`
+
+```cpp
+__attribute__((alloc_size(1)))
+```
 
 ---
 The `alloc_size` attribute can be placed on functions that return pointers in order to hint to the compiler how many bytes of memory will be available at the returned pointer. `alloc_size` takes one or two arguments.
@@ -169,10 +169,5 @@ int main() {
 }
 ```
 Note: This attribute works differently in clang than it does in GCC. Specifically, clang will only trace `const` pointers (as above); we give up on pointers that are not marked as `const`. In the vast majority of cases, this is unimportant, because LLVM has support for the `alloc_size` attribute. However, this may cause mildly unintuitive behavior when used with other attributes, such as `enable_if`.
-
----
-```cpp
-__attribute__((alloc_size(1)))
-```
 '''
 range = "void* allocate(unsigned long size) __attribute__((⟦alloc_size⟧(1)));"

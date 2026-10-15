@@ -1,13 +1,8 @@
 [answers.var_of_template_type.hover]
 markdown = '''
-### variable `bundle`
+**variable** `bundle` · namespace `object_instance`
 
----
-Type: `Bundle<long, char, bool>`
-
----
 ```cpp
-// In namespace object_instance
 Bundle<long, char, bool> bundle{7}
 ```
 '''
@@ -15,23 +10,20 @@ range = "Bundle<long, char, bool> ⟦bundle⟧{7};"
 
 [answers.implicit_instantiation.hover]
 markdown = '''
-### class `Sequence<long>`
+**class** `Sequence<long>` · namespace `implicit_instance`
 
----
 ```cpp
-// In namespace implicit_instance
 template <> class Sequence<long> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Sequence⟧<long> values;"
 
 [answers.class_template.hover]
 markdown = '''
-### class `Registry`
+**class** `Registry` · namespace `class_template_declaration`
 
----
 ```cpp
-// In namespace class_template_declaration
 template <template <typename, bool...> class Strategy, typename Value = char,
           long Size = 4, bool Enabled = true, typename... Rest>
 class Registry final {}
@@ -41,33 +33,19 @@ range = "⟦Registry⟧<Strategy> registry;"
 
 [answers.function_template.hover]
 markdown = '''
-### function `register_type`
+**function** `register_type` · namespace `function_template_call`
 
----
-→ `void`
-
----
 ```cpp
-// In namespace function_template_call
-template <>
-void register_type<function_template_call::Policy, char, 4L, true, <>>()
+template <> void register_type<Policy, char, 4L, true>()
 ```
 '''
 range = "⟦register_type⟧<Policy>();"
 
 [answers.function_decl.hover]
 markdown = '''
-### function `evaluate`
+**function** `evaluate` · namespace `function_declaration_call`
 
----
-→ `Policy<long, true, false>`
-Parameters:
-- `long`
-- `bool enabled = true`
-
----
 ```cpp
-// In namespace function_declaration_call
 Policy<long, true, false> evaluate(long, bool enabled = true)
 ```
 '''
@@ -75,11 +53,9 @@ range = "⟦evaluate⟧(5);"
 
 [answers.partial_specialization.hover]
 markdown = '''
-### class `Container<T *>`
+**class** `Container<T *>` · namespace `partial_specialization_declaration`
 
----
 ```cpp
-// In namespace partial_specialization_declaration
 template <typename T> class Container<T *> {}
 ```
 '''
@@ -87,73 +63,52 @@ range = "template <typename T> class ⟦Container⟧<T*> {};"
 
 [answers.partial_spec_constructor.hover]
 markdown = '''
-### method `Container`
+**method** `Container` · struct `partial_specialization_constructor::Container<T *>`
 
----
 ```cpp
-// In Container<T *>
-public: Container()
+Container()
 ```
 '''
 range = "⟦Container⟧();"
 
 [answers.variable_template.hover]
 markdown = '''
-### variable `items`
+**variable** `items` · namespace `variable_template_declaration`
 
----
-Type: `count_type[Size] (aka long[Size])`
-
----
 ```cpp
-// In namespace variable_template_declaration
 template <long Size> count_type items[Size]
 ```
+`count_type` is `long`
 '''
 range = "template <long Size> count_type ⟦items⟧[Size]; @+0"
 
 [answers.variable_template_spec.hover]
 markdown = '''
-### variable `items<6>`
+**variable** `items<6>` · namespace `variable_template_specialization`
 
----
-Type: `count_type[6] (aka long[6])`
-
----
 ```cpp
-// In namespace variable_template_specialization
 count_type items[6]
 ```
+`count_type` is `long`
 '''
 range = "template <> count_type ⟦items⟧<6>[6];"
 
 [answers.canonical_type.hover]
 markdown = '''
-### variable `value`
+**variable** `value` · namespace `canonical_member_type`
 
----
-Type: `Identity<long>::type (aka long)`
-
----
 ```cpp
-// In namespace canonical_member_type
 Identity<long>::type value
 ```
+`Identity<long>::type` is `long`
 '''
 range = "Identity<long>::type ⟦value⟧;"
 
 [answers.function_template_type.hover]
 markdown = '''
-### function `consume`
+**function** `consume` · namespace `canonical_function_parameter`
 
----
-→ `void`
-Parameters:
-- `T value`
-
----
 ```cpp
-// In namespace canonical_function_parameter
 template <typename T> void consume(T value)
 ```
 '''
@@ -161,14 +116,9 @@ range = "template <typename T> void ⟦consume⟧(T value) {}"
 
 [answers.alias_template.hover]
 markdown = '''
-### type `identity`
+**type** `identity` · namespace `alias_template_declaration`
 
----
-Type: `T`
-
----
 ```cpp
-// In namespace alias_template_declaration
 template <typename T> using identity = T
 ```
 '''
@@ -176,101 +126,74 @@ range = "template <typename T> using ⟦identity⟧ = T; @+0"
 
 [answers.alias_template_chain.hover]
 markdown = '''
-### type `const_identity`
+**type** `const_identity` · namespace `alias_template_chain`
 
----
-Type: `const identity<T> (aka const T)`
-
----
 ```cpp
-// In namespace alias_template_chain
 template <typename T> using const_identity = const identity<T>
 ```
+`identity<T>` is `T`
 '''
 range = "template <typename T> using ⟦const_identity⟧ = const identity<T>;"
 
 [answers.constant_array.hover]
 markdown = '''
-### variable `fixed`
+**variable** `fixed` · namespace `array_types`
 
----
-Type: `element_type[12] (aka long[12])`
-
----
 ```cpp
-// In namespace array_types
 element_type fixed[12]
 ```
+`element_type` is `long`
 '''
 range = "element_type ⟦fixed⟧[12];"
 
 [answers.incomplete_array.hover]
 markdown = '''
-### variable `open`
+**variable** `open` · namespace `array_types`
 
----
-Type: `element_type[] (aka long[])`
-
----
 ```cpp
-// In namespace array_types
 extern element_type open[]
 ```
+`element_type` is `long`
 '''
 range = "extern element_type ⟦open⟧[];"
 
 [answers.dependent_size_array.hover]
 markdown = '''
-### field `data`
+**field** `data` · struct `array_types::Buffer<Size>`
 
----
-Type: `element_type[Size] (aka long[Size])`
-
----
 ```cpp
-// In Buffer<Size>
-public: element_type data[Size]
+element_type data[Size]
 ```
+`element_type` is `long`
 '''
 range = "element_type ⟦data⟧[Size];"
 
 [answers.template_template_arg.hover]
 markdown = '''
-### struct `Allocator`
+**struct** `Allocator` · namespace `template_argument`
 
----
 ```cpp
-// In namespace template_argument
 template <typename T> struct Allocator {}
 ```
 '''
 range = "Owner<⟦Allocator⟧> owner;"
 
-[answers.ctad]
-wrong = "the class name of a declaration with deduced arguments shows the primary template, not Wrapper<long> (clangd#435)"
-
 [answers.ctad.hover]
 markdown = '''
-### struct `Wrapper`
+**struct** `Wrapper<long>` · namespace `deduction_placeholder`
 
----
 ```cpp
-// In namespace deduction_placeholder
-template <typename T> struct Wrapper {}
+template <> struct Wrapper<long> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Wrapper⟧ wrapper(9L);"
 
 [answers.sizeof_pack.hover]
 markdown = '''
-### type `Types`
+**type** `Types` · namespace `pack_size`
 
----
-Type: `typename...`
-
----
 ```cpp
-// In namespace pack_size
 typename... Types
 ```
 '''
@@ -278,14 +201,33 @@ range = "template <typename... Types> constexpr auto count = sizeof...(⟦Types�
 
 [answers.injected_class_name.hover]
 markdown = '''
-### struct `Link`
+**struct** `Link` · namespace `injected_name`
 
----
 ```cpp
-// In namespace injected_name
 template <typename T> struct Link {
   Link<T> *next;
 }
 ```
 '''
 range = "⟦Link⟧* next;"
+
+[answers.pack_class.hover]
+markdown = '''
+**struct** `Bundle<long, char, bool>` · namespace `pack_arguments`
+
+```cpp
+template <> struct Bundle<long, char, bool> {}
+```
+Size: 1 byte, alignment 1 byte
+'''
+range = "⟦Bundle⟧<long, char, bool> bundle;"
+
+[answers.pack_function.hover]
+markdown = '''
+**function** `log` · namespace `pack_arguments`
+
+```cpp
+template <> void log<int, double>(int args, double args)
+```
+'''
+range = "⟦log⟧(1, 2.5);"

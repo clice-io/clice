@@ -42,7 +42,7 @@
           "marker": "pointer",
           "value": {
             "hover": {
-              "markdown": "### variable `cursor`\n\n---\nType: `int *`\nValue = `&stock`\n\n---\n```cpp\n// In namespace inventory\nint *cursor = &stock\n```",
+              "markdown": "**variable** `cursor` · namespace `inventory`\n\n```cpp\nint *cursor = &stock\n```\nValue: `&stock`",
               "range": {
                 "$place": "int *⟦cursor⟧ = &stock;",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "reference",
           "value": {
             "hover": {
-              "markdown": "### variable `view`\n\n---\nType: `const int &`\n\n---\n```cpp\n// In namespace inventory\nconst int &view = stock\n```",
+              "markdown": "**variable** `view` · namespace `inventory`\n\n```cpp\nconst int &view = stock\n```",
               "range": {
                 "$place": "const int &⟦view⟧ = stock;",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "array",
           "value": {
             "hover": {
-              "markdown": "### variable `shelves`\n\n---\nType: `int[3]`\nValue = `{}`\n\n---\n```cpp\n// In namespace inventory\nint shelves[3] {}\n```",
+              "markdown": "**variable** `shelves` · namespace `inventory`\n\n```cpp\nint shelves[3] {}\n```\nValue: `{}`",
               "range": {
                 "$place": "int ⟦shelves⟧[3]{};",
                 "path": "main.cpp",

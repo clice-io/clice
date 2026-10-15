@@ -1,16 +1,8 @@
 [answers.params.hover]
 markdown = '''
-### function `add`
+**function** `add` · namespace `function_signature`
 
----
-→ `int`
-Parameters:
-- `int lhs`
-- `int rhs`
-
----
 ```cpp
-// In namespace function_signature
 int add(int lhs, int rhs)
 ```
 '''
@@ -18,17 +10,9 @@ range = "int ⟦add⟧(int lhs, int rhs);"
 
 [answers.defaults.hover]
 markdown = '''
-### function `configure`
+**function** `configure` · namespace `function_signature`
 
----
-→ `void`
-Parameters:
-- `int width`
-- `bool visible = true`
-
----
 ```cpp
-// In namespace function_signature
 void configure(int width, bool visible = true)
 ```
 '''
@@ -36,17 +20,9 @@ range = "void ⟦configure⟧(int width, bool visible = true);"
 
 [answers.written_defaults.hover]
 markdown = '''
-### function `open_file`
+**function** `open_file` · namespace `function_signature`
 
----
-→ `void`
-Parameters:
-- `int mode = 0644`
-- `int timeout = DEFAULT_TIMEOUT`
-
----
 ```cpp
-// In namespace function_signature
 void open_file(int mode = 0644, int timeout = DEFAULT_TIMEOUT)
 ```
 '''

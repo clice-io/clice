@@ -1,17 +1,9 @@
 [doxygen.function.hover]
 markdown = '''
-### function `area`
-
----
+**function** `area`
 
 Computes the area. Sides are *positive*.
 
-→ `int`
-Parameters:
-- `int width`
-- `int height`
-
----
 ```cpp
 int area(int width, int height)
 ```
@@ -20,20 +12,15 @@ range = "int ⟦area⟧(int width, int height);"
 
 [plain.function.hover]
 markdown = '''
-### function `area`
+**function** `area`
 
----
-→ `int`
-Parameters:
-- `int width`
-- `int height`
-
-@brief Computes the area.
-Sides are \*positive\*.
-
----
 ```cpp
 int area(int width, int height)
 ```
+
+---
+
+@brief Computes the area.
+Sides are \*positive\*.
 '''
 range = "int ⟦area⟧(int width, int height);"

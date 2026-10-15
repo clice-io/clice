@@ -53,10 +53,6 @@ struct Options {
     /// printing, since TypePrinter does not.
     bool resolve_decltype = false;
 
-    /// type(): prefix an unqualified outer tag type with its tag keyword
-    /// ("struct S") for extra clarity.
-    bool tag_keyword_prefix = false;
-
     /// type(): attach the desugared form as `aka` when it differs.
     bool show_aka = false;
 
@@ -134,17 +130,15 @@ auto name_of(const clang::NamedDecl* decl, const Options& options = {}) -> std::
 /// source code ("<int, 4>"). Empty if the decl is not a specialization.
 auto template_args(const clang::NamedDecl& decl) -> std::string;
 
+/// The arguments of a class or variable template specialization as a reader
+/// names them: through options.readable, the ones left to their defaults
+/// omitted (`<std::string>` for `vector<string, allocator<string>>`); a
+/// partial specialization's as written. Empty for any other declaration.
+auto specialization_args(const clang::NamedDecl& decl, const Options& options) -> std::string;
+
 /// A short human-readable summary of an expression, e.g. for block-end
 /// hints: names, literals, and simple unary/binary operator forms.
 auto summarize(const clang::Expr* expr) -> std::string;
-
-/// The class(es) and function a local declaration lives in, joined with
-/// "::". Empty if the decl is not local.
-auto local_scope(const clang::Decl* decl) -> std::string;
-
-/// The namespace containing the declaration, empty for the global
-/// namespace.
-auto namespace_scope(const clang::Decl* decl) -> std::string;
 
 /// The class scope type() writes back in front of `type` when the options
 /// suppress scopes. Class scopes carry meaning, but SuppressScope also drops
@@ -192,15 +186,20 @@ public:
 
     auto readable(clang::QualType type) -> clang::QualType;
 
+    /// A reserved name a library keeps to itself, within namespace std or a
+    /// reserved one (`_NonArray`, `__gnu_cxx::__alloc_traits`). One outside
+    /// them, as `__m128`, is the name its header gives its users.
+    bool internal(const clang::NamedDecl* decl) const;
+
 private:
     auto readable(const clang::TemplateArgument& argument) -> clang::TemplateArgument;
 
     bool reserved(const clang::NamedDecl* decl) const;
 
-    /// A reserved name a library keeps to itself, within namespace std or a
-    /// reserved one (`_NonArray`, `__gnu_cxx::__alloc_traits`). One outside
-    /// them, as `__m128`, is the name its header gives its users.
-    bool internal(const clang::NamedDecl* decl) const;
+    /// The typedef the code names the type of `sizeof` or of a pointer
+    /// difference with (`std::size_t`, else `size_t`); null when it declares
+    /// none.
+    auto standard_name(const clang::PredefinedSugarType& type) -> const clang::TypedefNameDecl*;
 
     /// The scope the code names a namespace member through, `std::pmr::`.
     auto written_scope(const clang::NamedDecl* decl) const -> clang::NestedNameSpecifier;
@@ -212,6 +211,9 @@ private:
 
     clang::ASTContext& context;
     bool scoped;
+
+    /// The alias found for a specialization or a compiler's internal type,
+    /// null when there is none.
     llvm::DenseMap<const clang::Type*, const clang::TypedefNameDecl*> aliases;
 };
 
@@ -250,10 +252,6 @@ auto parameter(const clang::ParmVarDecl& param, llvm::StringRef name, const Opti
 /// default member initializer as the source writes them, as parameter()
 /// gives a default argument.
 auto field(const clang::FieldDecl& field, const Options& options) -> std::string;
-
-/// Render every parameter of a template parameter list.
-auto template_params(const clang::TemplateParameterList* params, const Options& options = {})
-    -> std::vector<Param>;
 
 /// The rendered "type" of a single template parameter: "typename"/"class"
 /// for type parameters, the declared type for non-type parameters and

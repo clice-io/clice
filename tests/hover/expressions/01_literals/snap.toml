@@ -1,20 +1,27 @@
-[answers.string]
-wrong = "the size in bytes counts the terminator, and the string's length is not shown (clangd#1016)"
-
 [answers.string.hover]
 markdown = '''
-### `string-literal`
+**literal** `"hello"`
 
----
 Type: `const char[6]`
+Length: 5
 Size: 6 bytes
 '''
 range = 'const char *greeting = ⟦"hello"⟧;'
 
-[answers.integer]
-wrong = "a numeric literal has no card, where its type and value could show (clangd#1669)"
-hover = {}
+[answers.integer.hover]
+markdown = '''
+**literal** `42`
 
-[answers.floating]
-wrong = "a numeric literal has no card, where its type and value could show (clangd#1669)"
-hover = {}
+Type: `int`
+Value: `42 (0x2a)`
+'''
+range = "auto count = ⟦42⟧;"
+
+[answers.floating.hover]
+markdown = '''
+**literal** `3.14`
+
+Type: `double`
+Value: `3.14`
+'''
+range = "auto ratio = ⟦3.14⟧;"

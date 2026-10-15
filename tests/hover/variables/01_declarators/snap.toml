@@ -1,29 +1,19 @@
 [answers.pointer.hover]
 markdown = '''
-### variable `cursor`
+**variable** `cursor` · namespace `inventory`
 
----
-Type: `int *`
-Value = `&stock`
-
----
 ```cpp
-// In namespace inventory
 int *cursor = &stock
 ```
+Value: `&stock`
 '''
 range = "int *⟦cursor⟧ = &stock;"
 
 [answers.reference.hover]
 markdown = '''
-### variable `view`
+**variable** `view` · namespace `inventory`
 
----
-Type: `const int &`
-
----
 ```cpp
-// In namespace inventory
 const int &view = stock
 ```
 '''
@@ -31,16 +21,11 @@ range = "const int &⟦view⟧ = stock;"
 
 [answers.array.hover]
 markdown = '''
-### variable `shelves`
+**variable** `shelves` · namespace `inventory`
 
----
-Type: `int[3]`
-Value = `{}`
-
----
 ```cpp
-// In namespace inventory
 int shelves[3] {}
 ```
+Value: `{}`
 '''
 range = "int ⟦shelves⟧[3]{};"

@@ -1,63 +1,45 @@
 [default.alias.hover]
 markdown = '''
-### variable `direct`
+**variable** `direct` · namespace `aka_desugar`
 
----
-Type: `Handle (aka int)`
-Value = `0`
-
----
 ```cpp
-// In namespace aka_desugar
 Handle direct = 0
 ```
+`Handle` is `int`
+Value: `0`
 '''
 range = "Handle ⟦direct⟧ = 0;"
 
 [default.alias_chain.hover]
 markdown = '''
-### variable `chained`
+**variable** `chained` · namespace `aka_desugar`
 
----
-Type: `Alias (aka int)`
-Value = `0`
-
----
 ```cpp
-// In namespace aka_desugar
 Alias chained = 0
 ```
+`Alias` is `int`
+Value: `0`
 '''
 range = "Alias ⟦chained⟧ = 0;"
 
 [configured.alias.hover]
 markdown = '''
-### variable `direct`
+**variable** `direct` · namespace `aka_desugar`
 
----
-Type: `Handle`
-Value = `0`
-
----
 ```cpp
-// In namespace aka_desugar
 Handle direct = 0
 ```
+Value: `0`
 '''
 range = "Handle ⟦direct⟧ = 0;"
 
 [configured.alias_chain.hover]
 markdown = '''
-### variable `chained`
+**variable** `chained` · namespace `aka_desugar`
 
----
-Type: `Alias`
-Value = `0`
-
----
 ```cpp
-// In namespace aka_desugar
 Alias chained = 0
 ```
+Value: `0`
 '''
 range = "Alias ⟦chained⟧ = 0;"

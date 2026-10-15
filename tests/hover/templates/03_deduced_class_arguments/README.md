@@ -4,4 +4,4 @@ issues: [clangd#435]
 
 # Deduced class arguments
 
-A variable whose class template arguments are deduced shows them, while the class name beside it shows the template alone
+A declaration that deduces its class template arguments shows them, at the class name and at the variable

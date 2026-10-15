@@ -42,7 +42,7 @@
           "marker": "method_local",
           "value": {
             "hover": {
-              "markdown": "### variable `count`\n\n---\nType: `int`\nValue = `0`\n\n---\n```cpp\n// In Engine::tick\nint count = 0\n```",
+              "markdown": "**variable** `count` · method `app::detail::Engine::tick`\n\n```cpp\nint count = 0\n```\nValue: `0`",
               "range": {
                 "$place": "int ⟦count⟧ = 0;",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "ns_var",
           "value": {
             "hover": {
-              "markdown": "### variable `workers`\n\n---\nType: `int`\nValue = `4`\n\n---\n```cpp\n// In namespace app::detail\nint workers = 4\n```",
+              "markdown": "**variable** `workers` · namespace `app::detail`\n\n```cpp\nint workers = 4\n```\nValue: `4`",
               "range": {
                 "$place": "int ⟦workers⟧ = 4;",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "global_var",
           "value": {
             "hover": {
-              "markdown": "### variable `global`\n\n---\nType: `int`\nValue = `1`\n\n---\n```cpp\nint global = 1\n```",
+              "markdown": "**variable** `global`\n\n```cpp\nint global = 1\n```\nValue: `1`",
               "range": {
                 "$place": "int ⟦global⟧ = 1;",
                 "path": "main.cpp",

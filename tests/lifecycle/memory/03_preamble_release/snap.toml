@@ -6,16 +6,12 @@ pchLoadedStates = 2
 
 [test.hover.hover]
 markdown = '''
-### variable `distinct_0`
+**variable** `distinct_0`
 
----
-Type: `int`
-Value = `0`
-
----
 ```cpp
 int distinct_0 = 0
 ```
+Value: `0`
 '''
 range = "int use_0() { return ⟦distinct_0⟧; }"
 

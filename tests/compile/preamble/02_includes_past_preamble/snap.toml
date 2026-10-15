@@ -6,25 +6,16 @@ document_links = [
 
 [answers.late.hover]
 markdown = '''
-### `foo.h`
+**header** `foo.h`
 
----
-```cpp
-${WS}/foo.h
-```
+`${WS}/foo.h`
 '''
 range = '#include ⟦"foo.h"⟧'
 
 [answers.call.hover]
 markdown = '''
-### function `include`
+**function** `include`
 
----
-→ `int`
-Parameters:
-- `int value`
-
----
 ```cpp
 int include(int value)
 ```

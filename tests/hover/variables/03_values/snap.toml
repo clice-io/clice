@@ -1,77 +1,53 @@
 [answers.enum_var_value.hover]
 markdown = '''
-### variable `source`
+**variable** `source` · namespace `symbolic_enum_value`
 
----
-Type: `Status`
-Value = `Idle (0xfffffffc)`
-
----
 ```cpp
-// In namespace symbolic_enum_value
 Status source = Status::Idle
 ```
+Value: `Idle (0xfffffffc)`
 '''
 range = "Status copy = ⟦source⟧;"
 
 [answers.static_member_value.hover]
 markdown = '''
-### variable `value`
+**variable** `value` · struct `evaluated_static_member::Offset<10>`
 
----
-Type: `const long`
-Value = `16 (0x10)`
-
----
 ```cpp
-// In Offset<10>
-public: static constexpr long value = Base + 6
+static constexpr long value = Base + 6
 ```
+Value: `16 (0x10)`
 '''
 range = "long result = Offset<10>::⟦value⟧;"
 
 [answers.constexpr_fn_value.hover]
 markdown = '''
-### function `total`
+**function** `total` · namespace `aliased_result`
 
----
-→ `count_type (aka long)`
-Value = `18 (0x12)`
-
----
 ```cpp
-// In namespace aliased_result
 constexpr count_type total()
 ```
+`count_type` is `long`
+Value: `18 (0x12)`
 '''
 range = "long result = ⟦total⟧();"
 
 [answers.string_pointer_value.hover]
 markdown = '''
-### variable `message`
+**variable** `message` · namespace `pointer_value`
 
----
-Type: `const char *`
-Value = `&"ready"[0]`
-
----
 ```cpp
-// In namespace pointer_value
 const char *message = "ready"
 ```
+Value: `"ready"`
 '''
 range = 'const char* ⟦message⟧ = "ready";'
 
 [answers.dependent_ctor_arg.hover]
 markdown = '''
-### parameter `identifier`
+**parameter** `identifier` · function `dependent_constructor::create`
 
----
-Type: `long`
-
----
 ```cpp
-// In create
 long identifier
 ```
 '''
@@ -79,23 +55,32 @@ range = "new Holder<T>(⟦identifier⟧);"
 
 [answers.unwritten_namespaces.hover]
 markdown = '''
-### class `Response`
+**class** `Response` · namespace `product::api::(anonymous)::detail`
 
----
 ```cpp
-// In namespace product::api::(anonymous)::detail
 class Response {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "product::api::detail::⟦Response⟧ response;"
 
 [answers.auto_incomplete_arg.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 Wrapper<Forward>
 ```
 '''
 range = "⟦auto⟧ wrapper = Wrapper<Forward>{};"
+
+[answers.inline_variable.hover]
+markdown = '''
+**variable** `shared` · namespace `inline_variable`
+
+```cpp
+inline int shared = 4
+```
+Value: `4`
+'''
+range = "inline int ⟦shared⟧ = 4;"

@@ -6,12 +6,8 @@ document_symbols = [
 
 ["rules from the file".hover.hover]
 markdown = '''
-### function `main`
+**function** `main`
 
----
-→ `int`
-
----
 ```cpp
 int main()
 ```

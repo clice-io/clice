@@ -1,10 +1,8 @@
 [answers.long_record.hover]
 markdown = '''
-### struct `Registers`
+**struct** `Registers` · namespace `long_record`
 
----
 ```cpp
-// In namespace long_record
 struct Registers {
   int r00;
   int r01;
@@ -29,16 +27,15 @@ struct Registers {
   // ...
 }
 ```
+Size: 84 bytes, alignment 4 bytes
 '''
 range = "⟦Registers⟧ registers; @+0"
 
 [answers.exact_record.hover]
 markdown = '''
-### struct `Registers`
+**struct** `Registers` · namespace `exact_record`
 
----
 ```cpp
-// In namespace exact_record
 struct Registers {
   int r00;
   int r01;
@@ -62,16 +59,15 @@ struct Registers {
   int r19;
 }
 ```
+Size: 80 bytes, alignment 4 bytes
 '''
 range = "⟦Registers⟧ registers; @+0"
 
 [answers.long_enum.hover]
 markdown = '''
-### enum `Opcode`
+**enum** `Opcode` · namespace `long_enum`
 
----
 ```cpp
-// In namespace long_enum
 enum Opcode {
   Op00 = 0,
   Op01 = 1,
@@ -101,11 +97,9 @@ range = "⟦Opcode⟧ opcode;"
 
 [answers.nested_cut.hover]
 markdown = '''
-### struct `Packet`
+**struct** `Packet` · namespace `nested_cut`
 
----
 ```cpp
-// In namespace nested_cut
 struct Packet {
   int r00;
   int r01;
@@ -132,33 +126,31 @@ struct Packet {
   // ...
 }
 ```
+Size: 80 bytes, alignment 4 bytes
 '''
 range = "⟦Packet⟧ packet;"
 
 [answers.huge_record_initializers.hover]
 markdown = '''
-### struct `Tables`
+**struct** `Tables` · namespace `huge_initializers`
 
----
 ```cpp
-// In namespace huge_initializers
 struct Tables {
   int large_field[256];
-  static int large_static[256];
+  inline static int large_static[256];
   int small_field = 1;
-  static int small_static = 2;
+  inline static int small_static = 2;
 }
 ```
+Size: 1028 bytes, alignment 4 bytes
 '''
 range = "⟦Tables⟧ tables;"
 
 [answers.huge_enumerator.hover]
 markdown = '''
-### enum `Sum`
+**enum** `Sum` · namespace `huge_initializers`
 
----
 ```cpp
-// In namespace huge_initializers
 enum Sum { Small = 1, Large = 256 }
 ```
 '''

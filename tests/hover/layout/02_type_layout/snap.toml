@@ -1,20 +1,13 @@
-[answers.struct_size]
-wrong = "the card does not say how much of the size is padding, 4 bytes here (clangd#1763)"
-
 [answers.struct_size.hover]
 markdown = '''
-### struct `Widget`
+**struct** `Widget` · namespace `layout`
 
----
-Size: 16 bytes, alignment 8 bytes
-
----
 ```cpp
-// In namespace layout
 struct Widget {
   int id;
   double value;
 }
 ```
+Size: 16 bytes (4 bytes padding), alignment 8 bytes
 '''
 range = "struct ⟦Widget⟧ {"

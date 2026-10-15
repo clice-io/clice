@@ -1,58 +1,44 @@
 [answers.qualified.hover]
 markdown = '''
-### function `qualified`
-
----
+**function** `qualified` · namespace `names::inner`
 
 Draws the shape.
 
-→ `bool` — Whether it drew.
-Parameters:
-- `double scale` — How much larger.
-
----
 ```cpp
-// In namespace names::inner
 bool qualified(double scale)
 ```
+
+Parameters:
+- `scale` — How much larger.
+
+Returns: Whether it drew.
 '''
 range = "bool ⟦qualified⟧(double scale);"
 
 [answers.hash.hover]
 markdown = '''
-### function `hash`
-
----
+**function** `hash` · namespace `names::inner`
 
 Draws the shape.
 
-→ `bool` — Whether it drew.
-Parameters:
-- `double scale` — How much larger.
-
----
 ```cpp
-// In namespace names::inner
 bool hash(double scale)
 ```
+
+Parameters:
+- `scale` — How much larger.
+
+Returns: Whether it drew.
 '''
 range = "bool ⟦hash⟧(double scale);"
 
 [answers.template_member.hover]
 markdown = '''
-### function `template_member`
-
----
+**function** `template_member` · namespace `names::inner`
 
 Adds an element.
 
-→ `void`
-Parameters:
-- `int value`
-
----
 ```cpp
-// In namespace names::inner
 void template_member(int value)
 ```
 '''
@@ -60,19 +46,11 @@ range = "void ⟦template_member⟧(int value);"
 
 [answers.overload.hover]
 markdown = '''
-### function `overload`
-
----
+**function** `overload` · namespace `names::inner`
 
 Takes a floating-point number.
 
-→ `void`
-Parameters:
-- `double value`
-
----
 ```cpp
-// In namespace names::inner
 void overload(double value)
 ```
 '''
@@ -80,19 +58,11 @@ range = "void ⟦overload⟧(double value);"
 
 [answers.no_overload.hover]
 markdown = '''
-### function `no_overload`
-
----
+**function** `no_overload` · namespace `names::inner`
 
 See `pick(long)`.
 
-→ `void`
-Parameters:
-- `long value`
-
----
 ```cpp
-// In namespace names::inner
 void no_overload(long value)
 ```
 '''
@@ -100,17 +70,11 @@ range = "void ⟦no_overload⟧(long value);"
 
 [answers.absolute.hover]
 markdown = '''
-### function `absolute`
-
----
+**function** `absolute` · namespace `names::inner`
 
 The global helper.
 
-→ `void`
-
----
 ```cpp
-// In namespace names::inner
 void absolute()
 ```
 '''
@@ -118,17 +82,11 @@ range = "void ⟦absolute⟧();"
 
 [answers.relative.hover]
 markdown = '''
-### function `relative`
-
----
+**function** `relative` · namespace `names::inner`
 
 The inner helper.
 
-→ `void`
-
----
 ```cpp
-// In namespace names::inner
 void relative()
 ```
 '''
@@ -136,17 +94,11 @@ range = "void ⟦relative⟧();"
 
 [answers.nested.hover]
 markdown = '''
-### function `nested`
-
----
+**function** `nested` · namespace `names::inner`
 
 The other target.
 
-→ `void`
-
----
 ```cpp
-// In namespace names::inner
 void nested()
 ```
 '''
@@ -154,20 +106,17 @@ range = "void ⟦nested⟧();"
 
 [answers.details.hover]
 markdown = '''
-### function `details`
-
----
+**function** `details` · namespace `names::inner`
 
 Draws twice as large.
 
-→ `bool` — Whether it drew.
-Parameters:
-- `double scale` — How much larger.
-
----
 ```cpp
-// In namespace names::inner
 bool details(double scale)
 ```
+
+Parameters:
+- `scale` — How much larger.
+
+Returns: Whether it drew.
 '''
 range = "bool ⟦details⟧(double scale);"

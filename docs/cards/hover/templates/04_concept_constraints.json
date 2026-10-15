@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "templates",
   "title": "Concept constraints",
-  "summary": "A concept and a constrained parameter show the constraint, but an `Addable auto` placeholder shows only the deduced type",
+  "summary": "A concept and a constrained parameter show the constraint; an `Addable auto` placeholder shows the type it deduces",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -54,7 +54,7 @@
           "marker": "concept_name",
           "value": {
             "hover": {
-              "markdown": "### concept `Addable`\n\n---\n```cpp\n// In namespace concept_constraints\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```",
+              "markdown": "**concept** `Addable` · namespace `concept_constraints`\n\n```cpp\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```",
               "range": {
                 "$place": "template <⟦Addable⟧ U>",
                 "path": "main.cpp",
@@ -77,7 +77,7 @@
           "marker": "param_name",
           "value": {
             "hover": {
-              "markdown": "### type `U`\n\n---\nType: `class`\n\n---\n```cpp\n// In sum\nAddable U\n```",
+              "markdown": "**type** `U` · function `concept_constraints::sum`\n\n```cpp\nAddable U\n```",
               "range": {
                 "$place": "template <Addable ⟦U⟧>",
                 "path": "main.cpp",
@@ -100,7 +100,7 @@
           "marker": "concept_ref",
           "value": {
             "hover": {
-              "markdown": "### concept `Addable`\n\n---\nValue = `true`\n\n---\n```cpp\n// In namespace concept_constraints\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```",
+              "markdown": "**concept** `Addable` · namespace `concept_constraints`\n\n```cpp\ntemplate <typename T>\nconcept Addable = requires(T a) { a + a; }\n```",
               "range": {
                 "$place": "auto flag = ⟦Addable⟧<int>;",
                 "path": "main.cpp",
@@ -122,9 +122,8 @@
           "label": "constrained_auto",
           "marker": "constrained_auto",
           "value": {
-            "wrong": "the placeholder drops its Addable constraint, showing only the deduced int",
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nint\n```",
+              "markdown": "**auto**\n\n```cpp\nint\n```",
               "range": {
                 "$place": "Addable ⟦auto⟧ total = 1;",
                 "path": "main.cpp",
@@ -147,7 +146,7 @@
           "marker": "constrained_var",
           "value": {
             "hover": {
-              "markdown": "### variable `total`\n\n---\nType: `int`\nValue = `1`\n\n---\n```cpp\n// In namespace concept_constraints\nAddable auto total = 1\n```",
+              "markdown": "**variable** `total` · namespace `concept_constraints`\n\n```cpp\nAddable auto total = 1\n```\nType: `int`\nValue: `1`",
               "range": {
                 "$place": "Addable auto ⟦total⟧ = 1;",
                 "path": "main.cpp",

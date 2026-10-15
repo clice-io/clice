@@ -11,12 +11,8 @@ diagnostics = [
 
 ["oversized index without store".hover.hover]
 markdown = '''
-### function `function_000`
+**function** `function_000`
 
----
-→ `int`
-
----
 ```cpp
 int function_000()
 ```

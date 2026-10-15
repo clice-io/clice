@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "expressions",
   "title": "Literals",
-  "summary": "A string literal shows its type and size, while a number shows nothing yet",
-  "prose": "The size counts the terminating null; the string's length is not shown.",
-  "status": "unsupported",
+  "summary": "A number shows its type and value, a string its type, length and size",
+  "prose": "The length leaves the terminating null out; the size counts it.",
+  "status": "supported",
   "issues": [
     "clangd#1016",
     "clangd#1669"
@@ -44,9 +44,8 @@
           "label": "string",
           "marker": "string",
           "value": {
-            "wrong": "the size in bytes counts the terminator, and the string's length is not shown (clangd#1016)",
             "hover": {
-              "markdown": "### `string-literal`\n\n---\nType: `const char[6]`\nSize: 6 bytes",
+              "markdown": "**literal** `\"hello\"`\n\nType: `const char[6]`\nLength: 5\nSize: 6 bytes",
               "range": {
                 "$place": "const char *greeting = ⟦\"hello\"⟧;",
                 "path": "main.cpp",
@@ -68,16 +67,46 @@
           "label": "integer",
           "marker": "integer",
           "value": {
-            "wrong": "a numeric literal has no card, where its type and value could show (clangd#1669)",
-            "hover": {}
+            "hover": {
+              "markdown": "**literal** `42`\n\nType: `int`\nValue: `42 (0x2a)`",
+              "range": {
+                "$place": "auto count = ⟦42⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 15
+                  }
+                }
+              }
+            }
           }
         },
         {
           "label": "floating",
           "marker": "floating",
           "value": {
-            "wrong": "a numeric literal has no card, where its type and value could show (clangd#1669)",
-            "hover": {}
+            "hover": {
+              "markdown": "**literal** `3.14`\n\nType: `double`\nValue: `3.14`",
+              "range": {
+                "$place": "auto ratio = ⟦3.14⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 17
+                  }
+                }
+              }
+            }
           }
         }
       ]

@@ -1,94 +1,68 @@
 [answers.dtor_tilde.hover]
 markdown = '''
-### method `~Vec`
+**method** `~Vec` · struct `Vec`
 
----
 ```cpp
-// In Vec
-public: ~Vec()
+~Vec()
 ```
 '''
 range = "⟦~⟧Vec();"
 
 [answers.dtor_class.hover]
 markdown = '''
-### method `~Vec`
+**method** `~Vec` · struct `Vec`
 
----
 ```cpp
-// In Vec
-public: ~Vec()
+~Vec()
 ```
 '''
 range = "~⟦Vec⟧();"
 
 [answers.eq_keyword.hover]
 markdown = '''
-### method `operator==`
+**method** `operator==` · struct `Vec`
 
----
-→ `bool`
-Parameters:
-- `const Vec &other`
-
----
 ```cpp
-// In Vec
-public: bool operator==(const Vec &other) const
+bool operator==(const Vec &other) const
 ```
 '''
 range = "bool ⟦operator⟧==(const Vec& other) const;"
 
 [answers.eq_symbol.hover]
 markdown = '''
-### method `operator==`
+**method** `operator==` · struct `Vec`
 
----
-→ `bool`
-Parameters:
-- `const Vec &other`
-
----
 ```cpp
-// In Vec
-public: bool operator==(const Vec &other) const
+bool operator==(const Vec &other) const
 ```
 '''
 range = "bool operator⟦==⟧(const Vec& other) const;"
 
 [answers.conv_keyword.hover]
 markdown = '''
-### method `operator Handle *`
+**method** `operator Handle *` · struct `Vec`
 
----
 ```cpp
-// In Vec
-public: operator Handle *() const
+operator Handle *() const
 ```
 '''
 range = "⟦operator⟧ Handle*() const;"
 
 [answers.conv_type.hover]
 markdown = '''
-### struct `Handle`
+**struct** `Handle`
 
----
 ```cpp
 struct Handle {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "operator ⟦Handle⟧*() const;"
 
 [answers.literal_keyword.hover]
 markdown = '''
-### function `operator""_km`
+**function** `operator ""_km`
 
----
-→ `unsigned long long`
-Parameters:
-- `unsigned long long value`
-
----
 ```cpp
 unsigned long long operator""_km(unsigned long long value)
 ```
@@ -97,14 +71,8 @@ range = 'unsigned long long ⟦operator⟧""_km(unsigned long long value);'
 
 [answers.literal_suffix.hover]
 markdown = '''
-### function `operator""_km`
+**function** `operator ""_km`
 
----
-→ `unsigned long long`
-Parameters:
-- `unsigned long long value`
-
----
 ```cpp
 unsigned long long operator""_km(unsigned long long value)
 ```
@@ -113,36 +81,31 @@ range = 'unsigned long long operator⟦""_km⟧(unsigned long long value);'
 
 [answers.destructor.hover]
 markdown = '''
-### method `~Resource`
+**method** `~Resource` · struct `special_members::Resource`
 
----
 ```cpp
-// In Resource
-public: ~Resource()
+~Resource()
 ```
 '''
 range = "⟦~⟧Resource();"
 
 [answers.conversion_operator.hover]
 markdown = '''
-### method `operator long`
+**method** `operator long` · struct `special_members::Conversion`
 
----
 ```cpp
-// In Conversion
-public: operator long()
+operator long()
 ```
 '''
 range = "⟦operator⟧ long();"
 
 [answers.conversion_target.hover]
 markdown = '''
-### class `SelfConversion`
+**class** `SelfConversion` · namespace `special_members`
 
----
 ```cpp
-// In namespace special_members
 class SelfConversion {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "operator ⟦SelfConversion⟧();"

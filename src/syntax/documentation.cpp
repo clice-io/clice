@@ -479,8 +479,10 @@ bool gtk_name_line(llvm::StringRef line, bool& strong) {
 }
 
 /// kernel-doc's name line, `foo() - brief` or `struct foo - brief`: the
-/// brief when `line` is one.
-std::optional<llvm::StringRef> kernel_name_line(llvm::StringRef line) {
+/// brief when `line` is one. `loose` takes a function written without its
+/// parentheses, `foo - brief`, as many kernel comments write it: for a
+/// comment the rest of which reads as kernel-doc.
+std::optional<llvm::StringRef> kernel_name_line(llvm::StringRef line, bool loose) {
     auto rest = line;
     bool named = false;
     for(llvm::StringRef keyword: {"struct ", "union ", "enum ", "typedef "}) {
@@ -494,7 +496,7 @@ std::optional<llvm::StringRef> kernel_name_line(llvm::StringRef line) {
         return std::nullopt;
     }
     rest = rest.ltrim().substr(name.size());
-    if(!named && !rest.consume_front("()")) {
+    if(!named && !rest.consume_front("()") && !loose) {
         return std::nullopt;
     }
     if(!rest.ltrim().starts_with("- ") && rest.trim() != "-") {
@@ -542,21 +544,20 @@ public:
             if(line.starts_with("SECTION:") || line.starts_with("DOC:")) {
                 return {};
             }
-            if(auto brief = kernel_name_line(line)) {
+            auto marks_gtk = [](llvm::StringRef line) {
+                line = line.trim();
+                return gtk_section(line).has_value() ||
+                       (line.starts_with("@") &&
+                        line.drop_front().drop_while(identifier_char).starts_with(":"));
+            };
+            bool marked = llvm::any_of(lines, marks_gtk);
+            if(auto brief = kernel_name_line(line, marked)) {
                 gtk = true;
                 doc.brief = brief->str();
                 *first = {};
-            } else if(gtk_name_line(line, strong)) {
-                auto marks_gtk = [](llvm::StringRef line) {
-                    line = line.trim();
-                    return gtk_section(line).has_value() ||
-                           (line.starts_with("@") &&
-                            line.drop_front().drop_while(identifier_char).starts_with(":"));
-                };
-                if(strong || llvm::any_of(lines, marks_gtk)) {
-                    gtk = true;
-                    *first = {};
-                }
+            } else if(gtk_name_line(line, strong) && (strong || marked)) {
+                gtk = true;
+                *first = {};
             }
         }
 

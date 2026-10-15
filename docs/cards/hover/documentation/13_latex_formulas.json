@@ -32,7 +32,7 @@
           "marker": "documented",
           "value": {
             "hover": {
-              "markdown": "### function `circle_area`\n\n---\n\nThe area of a circle is `A = \\pi r^2`.\n\n→ `double`\nParameters:\n- `double r`\n\n---\n```cpp\ndouble circle_area(double r)\n```",
+              "markdown": "**function** `circle_area`\n\nThe area of a circle is `A = \\pi r^2`.\n\n```cpp\ndouble circle_area(double r)\n```",
               "range": {
                 "$place": "double ⟦circle_area⟧(double r);",
                 "path": "main.cpp",

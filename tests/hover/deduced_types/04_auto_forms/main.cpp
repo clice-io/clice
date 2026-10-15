@@ -1,7 +1,7 @@
 // auto in the places the documented case leaves out: constrained, of a
 // specialization, const reference, initializer list, conversion function,
 // trailing decltype, reference and pointer results, function pointer, through
-// aliases, template parameter, abbreviated function parameter.
+// aliases, template parameter, abbreviated function parameter, new-expression.
 
 namespace std {
 template <typename T> class initializer_list {
@@ -106,4 +106,8 @@ void inspect(au§(abbreviated_param)to value) {}
 void use() {
     inspect(29L);
 }
+}
+
+namespace expression_placeholder {
+long* allocated = new au§(new_auto)to(35L);
 }

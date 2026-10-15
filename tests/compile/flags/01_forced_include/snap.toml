@@ -1,12 +1,12 @@
 [hover.forced.hover]
 markdown = '''
-### macro `FORCED`
+**macro** `FORCED`
 
----
 ```cpp
 #define FORCED 1
-
-// Expands to
+```
+Expands to:
+```cpp
 1
 ```
 '''

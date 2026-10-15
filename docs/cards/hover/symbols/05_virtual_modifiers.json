@@ -50,7 +50,7 @@
           "marker": "pure_virtual",
           "value": {
             "hover": {
-              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Base\npublic: virtual void draw() = 0\n```",
+              "markdown": "**method** `draw` · struct `Base`\n\n```cpp\nvirtual void draw() = 0\n```",
               "range": {
                 "$place": "virtual void ⟦draw⟧() = 0;",
                 "path": "main.cpp",
@@ -73,7 +73,7 @@
           "marker": "override_method",
           "value": {
             "hover": {
-              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Circle\npublic: void draw() override\n```",
+              "markdown": "**method** `draw` · struct `Circle`\n\n```cpp\nvoid draw() override\n```\nOverrides: `Base::draw`",
               "range": {
                 "$place": "void ⟦draw⟧() override;",
                 "path": "main.cpp",
@@ -96,7 +96,7 @@
           "marker": "final_method",
           "value": {
             "hover": {
-              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Dot\npublic: void draw() final\n```",
+              "markdown": "**method** `draw` · struct `Dot`\n\n```cpp\nvoid draw() final\n```\nOverrides: `Circle::draw`",
               "range": {
                 "$place": "void ⟦draw⟧() final;",
                 "path": "main.cpp",
@@ -120,7 +120,7 @@
           "value": {
             "wrong": "draw overrides Base::draw, but without the override keyword the card gives no sign it is virtual (clangd#2474)",
             "hover": {
-              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Square\npublic: void draw()\n```",
+              "markdown": "**method** `draw` · struct `Square`\n\n```cpp\nvoid draw()\n```\nOverrides: `Base::draw`",
               "range": {
                 "$place": "void ⟦draw⟧();",
                 "path": "main.cpp",

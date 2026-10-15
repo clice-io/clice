@@ -1,35 +1,25 @@
 [answers.type.hover]
 markdown = '''
-### struct `Point`
-
----
+**struct** `Point`
 
 A point on the plane.
 
----
 ```cpp
 export struct Point {
   int x;
   int y;
 }
 ```
+Size: 8 bytes, alignment 4 bytes
 '''
 range = "⟦Point⟧ origin{0, 0};"
 
 [answers.function.hover]
 markdown = '''
-### function `add`
-
----
+**function** `add`
 
 Adds two numbers together.
 
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 export int add(int a, int b)
 ```

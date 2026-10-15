@@ -22,15 +22,8 @@ value = 1
 
 [test."healthy hover".hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```
@@ -39,15 +32,8 @@ range = "int ⟦add⟧(int a, int b) {"
 
 [test."hover after the fix".hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```

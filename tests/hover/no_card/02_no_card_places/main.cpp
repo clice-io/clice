@@ -6,7 +6,6 @@
 
 void empty_body() {§(empty_braces)}
 
-int* allocated = new au§(new_auto)to(1);
 
 auto generic = [](a§(lambda_auto_param)uto value) {};
 

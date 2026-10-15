@@ -1,39 +1,51 @@
 [answers.function.hover]
 markdown = '''
-### function `area`
-
----
+**function** `area`
 
 Computes the area of a rectangle.
 
-→ `int` — The product of both sides.
-Parameters:
-- `int width` — The horizontal extent.
-- `int height` — The vertical extent.
-
----
 ```cpp
 int area(int width, int height)
 ```
+
+Parameters:
+- `width` — The horizontal extent.
+- `height` — The vertical extent.
+
+Returns: The product of both sides.
 '''
 range = "int ⟦area⟧(int width, int height);"
 
 [answers.call.hover]
 markdown = '''
-### function `area`
-
----
+**function** `area`
 
 Computes the area of a rectangle.
 
-→ `int` — The product of both sides.
-Parameters:
-- `int width` — The horizontal extent.
-- `int height` — The vertical extent.
-
----
 ```cpp
 int area(int width, int height)
 ```
+
+Parameters:
+- `width` — The horizontal extent.
+- `height` — The vertical extent.
+
+Returns: The product of both sides.
 '''
 range = "int total = ⟦area⟧(3, 4);"
+
+[answers.return_values.hover]
+markdown = '''
+**function** `open_file`
+
+Opens the file.
+
+```cpp
+int open_file()
+```
+
+Return values:
+- `0` — The file is open.
+- `-1` — It does not exist.
+'''
+range = "int ⟦open_file⟧();"

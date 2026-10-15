@@ -6,15 +6,8 @@ poisoned = {}
 
 [test."round 1".healthy]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```
@@ -29,15 +22,8 @@ poisoned = {}
 
 [test."round 2".healthy]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```
@@ -52,15 +38,8 @@ poisoned = {}
 
 [test."round 3".healthy]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```

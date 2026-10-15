@@ -1,70 +1,54 @@
 [answers.placeholder.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
-struct lambda_auto_params::Point
+lambda_auto_params::Point
 ```
 '''
 range = "auto norm = [](⟦auto⟧ point) {"
 
 [answers.parameter.hover]
 markdown = '''
-### parameter `point`
+**parameter** `point` · lambda in namespace `lambda_auto_params`
 
----
-Type: `lambda_auto_params::Point`
-
----
 ```cpp
-// In (anonymous class)::operator()
 auto point
 ```
+Type: `lambda_auto_params::Point`
 '''
 range = "auto norm = [](auto ⟦point⟧) {"
 
 [answers.parameter_use.hover]
 markdown = '''
-### parameter `point`
+**parameter** `point` · lambda in namespace `lambda_auto_params`
 
----
-Type: `lambda_auto_params::Point`
-
----
 ```cpp
-// In (anonymous class)::operator()
 auto point
 ```
+Type: `lambda_auto_params::Point`
 '''
 range = "return ⟦point⟧.x + point.y;"
 
 [answers.member_use.hover]
 markdown = '''
-### field `x`
+**field** `x` · struct `lambda_auto_params::Point`
 
----
-Type: `int`
-
----
 ```cpp
-// In Point
-public: int x
+int x
 ```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "return point.⟦x⟧ + point.y;"
 
 [answers.several.hover]
 markdown = '''
-### parameter `value`
+**parameter** `value` · lambda in namespace `lambda_auto_params`
 
----
-Type: `auto`
-
----
 ```cpp
-// In (anonymous class)::operator()
 auto value
 ```
+Type: `auto`
 '''
 range = "auto echo = [](auto ⟦value⟧) {"

@@ -1,37 +1,23 @@
 [answers.inspect.dependent_getter.hover]
 markdown = '''
-### method `getLevel`
-
----
+**method** `getLevel` · struct `Gauge<T>`
 
 Trivial accessor for `level`.
 
-→ `T`
-
----
 ```cpp
-// In Gauge<T>
-public: T getLevel()
+T getLevel()
 ```
 '''
 range = "return gauge.⟦getLevel⟧();"
 
 [answers.inspect.dependent_setter.hover]
 markdown = '''
-### method `setLevel`
-
----
+**method** `setLevel` · struct `Gauge<T>`
 
 Trivial setter for `level`.
 
-→ `void`
-Parameters:
-- `T value`
-
----
 ```cpp
-// In Gauge<T>
-public: void setLevel(T value)
+void setLevel(T value)
 ```
 '''
 range = "gauge.⟦setLevel⟧(value);"
@@ -41,32 +27,20 @@ wrong = "the server never parses the deferred bodies, so the accessors get no de
 
 [answers.server.dependent_getter.hover]
 markdown = '''
-### method `getLevel`
+**method** `getLevel` · struct `Gauge<T>`
 
----
-→ `T`
-
----
 ```cpp
-// In Gauge<T>
-public: T getLevel()
+T getLevel()
 ```
 '''
 range = "return gauge.⟦getLevel⟧();"
 
 [answers.server.dependent_setter.hover]
 markdown = '''
-### method `setLevel`
+**method** `setLevel` · struct `Gauge<T>`
 
----
-→ `void`
-Parameters:
-- `T value`
-
----
 ```cpp
-// In Gauge<T>
-public: void setLevel(T value)
+void setLevel(T value)
 ```
 '''
 range = "gauge.⟦setLevel⟧(value);"

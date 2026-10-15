@@ -1,13 +1,8 @@
 [answers.type_param.hover]
 markdown = '''
-### type `Value`
+**type** `Value` · function `parameter_kinds::accept_type`
 
----
-Type: `typename`
-
----
 ```cpp
-// In accept_type
 typename Value = long
 ```
 '''
@@ -15,14 +10,9 @@ range = "template <typename ⟦Value⟧ = long> void accept_type();"
 
 [answers.template_template_param.hover]
 markdown = '''
-### type `Container`
+**type** `Container` · function `parameter_kinds::accept_template`
 
----
-Type: `template <typename> class`
-
----
 ```cpp
-// In accept_template
 template <typename> class Container
 ```
 '''
@@ -30,14 +20,9 @@ range = "template <template <typename> class ⟦Container⟧>"
 
 [answers.non_type_param.hover]
 markdown = '''
-### variable `Count`
+**variable** `Count` · function `parameter_kinds::accept_value`
 
----
-Type: `long`
-
----
 ```cpp
-// In accept_value
 long Count = 8
 ```
 '''

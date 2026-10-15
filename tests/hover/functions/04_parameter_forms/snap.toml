@@ -1,0 +1,39 @@
+[answers.function_type.hover]
+markdown = '''
+**parameter** `attempt` · function `function_type::retry`
+
+```cpp
+int attempt(int)
+```
+'''
+range = "void retry(int ⟦attempt⟧(int));"
+
+[answers.explicit_object.hover]
+markdown = '''
+**parameter** `self` · method `explicit_object::Widget::resize`
+
+```cpp
+this Widget &self
+```
+'''
+range = "void resize(this Widget& ⟦self⟧, int width);"
+
+[answers.deduced_object.hover]
+markdown = '''
+**parameter** `self` · method `explicit_object::Widget::get`
+
+```cpp
+this Self &&self
+```
+'''
+range = "template <typename Self> auto& get(this Self&& ⟦self⟧);"
+
+[answers.inherited_default.hover]
+markdown = '''
+**parameter** `mode` · function `inherited_default::open`
+
+```cpp
+int mode
+```
+'''
+range = "void open(int ⟦mode⟧) {}"

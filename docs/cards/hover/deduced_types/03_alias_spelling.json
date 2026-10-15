@@ -30,7 +30,7 @@
           "marker": "auto",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nOuter // aka: int\n```",
+              "markdown": "**auto**\n\n```cpp\nOuter\n```\n`Outer` is `int`",
               "range": {
                 "$place": "⟦auto⟧ value = make();",
                 "path": "main.cpp",

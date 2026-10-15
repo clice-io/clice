@@ -58,7 +58,7 @@
           "marker": "included",
           "value": {
             "hover": {
-              "markdown": "### function `legacy_fn`\n\n---\n→ `int`\n\n---\n```cpp\ninline int legacy_fn()\n```",
+              "markdown": "**function** `legacy_fn`\n\n```cpp\ninline int legacy_fn()\n```",
               "range": {
                 "$place": "return ⟦legacy_fn⟧() + base();",
                 "path": "combined.cppm",
@@ -81,7 +81,7 @@
           "marker": "imported",
           "value": {
             "hover": {
-              "markdown": "### function `base`\n\n---\n→ `int`\n\n---\n```cpp\nexport int base()\n```",
+              "markdown": "**function** `base`\n\n```cpp\nexport int base()\n```",
               "range": {
                 "$place": "return legacy_fn() + ⟦base⟧();",
                 "path": "combined.cppm",
@@ -104,7 +104,7 @@
           "marker": "use",
           "value": {
             "hover": {
-              "markdown": "### function `combined`\n\n---\n→ `int`\n\n---\n```cpp\nexport int combined()\n```",
+              "markdown": "**function** `combined`\n\n```cpp\nexport int combined()\n```",
               "range": {
                 "$place": "return ⟦combined⟧();",
                 "path": "main.cpp",

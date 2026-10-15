@@ -1,16 +1,9 @@
 [answers.documented.hover]
 markdown = '''
-### function `circle_area`
-
----
+**function** `circle_area`
 
 The area of a circle is `A = \pi r^2`.
 
-→ `double`
-Parameters:
-- `double r`
-
----
 ```cpp
 double circle_area(double r)
 ```

@@ -1,34 +1,22 @@
 [answers.nested.hover]
 markdown = '''
-### variable `table`
+**variable** `table` · namespace `clang_format_types`
 
----
-Type: `Tuple<Row, Row, Row, Row> (aka Tuple<Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>>)`
-
----
 ```cpp
-// In namespace clang_format_types
 Tuple<Row, Row, Row, Row> table
 ```
+`Tuple<Row, Row, Row, Row>` is `Tuple<Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>>`
 '''
 range = "Tuple<Row, Row, Row, Row> ⟦table⟧;"
 
 [answers.parameters.hover]
 markdown = '''
-### function `consume`
+**function** `consume` · namespace `clang_format_types`
 
----
-→ `void`
-Parameters:
-- `Tuple<Row, Row, Row, Row> first (aka Tuple<Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>>)`
-- `Tuple<Row, Row, Row, Row> second (aka Tuple<Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>>)`
-- `Tuple<Row, Row, Row, Row> third (aka Tuple<Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>>)`
-
----
 ```cpp
-// In namespace clang_format_types
 void consume(Tuple<Row, Row, Row, Row> first, Tuple<Row, Row, Row, Row> second,
              Tuple<Row, Row, Row, Row> third)
 ```
+`Tuple<Row, Row, Row, Row>` is `Tuple<Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>, Tuple<int, long, unsigned int, char>>`
 '''
 range = "void ⟦consume⟧(Tuple<Row, Row, Row, Row> first, Tuple<Row, Row, Row, Row> second, Tuple<Row, Row, Row, Row> third);"

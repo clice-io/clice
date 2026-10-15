@@ -1,10 +1,8 @@
 [answers.goto_label.hover]
 markdown = '''
-### label `finish`
+**label** `finish` · function `jump_target::adjust`
 
----
 ```cpp
-// In adjust
 finish:
 ```
 '''
@@ -12,11 +10,9 @@ range = "goto ⟦finish⟧;"
 
 [answers.label_def.hover]
 markdown = '''
-### label `finish`
+**label** `finish` · function `jump_target::adjust`
 
----
 ```cpp
-// In adjust
 finish:
 ```
 '''

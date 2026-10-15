@@ -6,12 +6,8 @@ diagnostics = []
 
 ["a second name"."second hover".hover]
 markdown = '''
-### function `main`
+**function** `main`
 
----
-→ `int`
-
----
 ```cpp
 int main()
 ```
@@ -41,12 +37,8 @@ pushes = [
 
 ["a second name"."first hover".hover]
 markdown = '''
-### function `main`
+**function** `main`
 
----
-→ `int`
-
----
 ```cpp
 int main()
 ```

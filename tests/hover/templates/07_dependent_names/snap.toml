@@ -1,181 +1,122 @@
 [answers.dependent_type.hover]
 markdown = '''
-### type `value_type`
+**type** `value_type` · struct `dependent_base_names::Source<T>`
 
----
-Type: `T`
-
----
 ```cpp
-// In Source<T>
-public: using value_type = T
+using value_type = T
 ```
 '''
 range = "typename Source<T>::⟦value_type⟧ value;"
 
 [answers.dependent_value.hover]
 markdown = '''
-### variable `count`
+**variable** `count` · struct `dependent_base_names::Source<T>`
 
----
-Type: `const long`
-Value = `2`
-
----
 ```cpp
-// In Source<T>
-public: static constexpr long count = 2
+static constexpr long count = 2
 ```
+Value: `2`
 '''
 range = "static constexpr long size = Source<T>::⟦count⟧;"
 
 [answers.using_typename.hover]
 markdown = '''
-### type `value_type`
+**type** `value_type` · struct `dependent_base_names::Source<T>`
 
----
-Type: `T`
-
----
 ```cpp
-// In Source<T>
-public: using value_type = T
+using value_type = T
 ```
 '''
 range = "using typename Source<T>::⟦value_type⟧;"
 
 [answers.using_value.hover]
 markdown = '''
-### variable `count`
+**variable** `count` · struct `dependent_base_names::Source<T>`
 
----
-Type: `const long`
-Value = `2`
-
----
 ```cpp
-// In Source<T>
-public: static constexpr long count = 2
+static constexpr long count = 2
 ```
+Value: `2`
 '''
 range = "using Source<T>::⟦count⟧;"
 
 [answers.unresolved_member.hover]
 markdown = '''
-### method `write`
+**method** `write` · struct `dependent_overload::Writer`
 
----
-→ `void`
-Parameters:
-- `long`
-
----
 ```cpp
-// In Writer
-public: void write(long)
+void write(long)
 ```
 '''
 range = "writer.⟦write⟧(value);"
 
 [answers.dependent_method.hover]
 markdown = '''
-### method `reset`
+**method** `reset` · struct `current_instantiation_members::Base<T>`
 
----
-→ `void`
-
----
 ```cpp
-// In Base<T>
-public: void reset()
+void reset()
 ```
 '''
 range = "this->⟦reset⟧();"
 
 [answers.dependent_field.hover]
 markdown = '''
-### field `value`
+**field** `value` · struct `current_instantiation_members::Base<T>`
 
----
-Type: `long`
-
----
 ```cpp
-// In Base<T>
-public: long value
+long value
 ```
 '''
 range = "return this->⟦value⟧;"
 
 [answers.fixed_base.hover]
 markdown = '''
-### type `index_type`
+**type** `index_type` · struct `nondependent_base_name::Common`
 
----
-Type: `long`
-
----
 ```cpp
-// In Common
-public: using index_type = long
+using index_type = long
 ```
 '''
 range = "template <typename T> typename Table<T>::⟦index_type⟧ index();"
 
 [answers.partial_order.hover]
 markdown = '''
-### variable `value`
+**variable** `value` · struct `partial_ordering::Rank<Type *, Type *>`
 
----
-Type: `const long`
-Value = `2`
-
----
 ```cpp
-// In Rank<Type *, Type *>
-public: static constexpr long value = 2
+static constexpr long value = 2
 ```
+Value: `2`
 '''
 range = "return Rank<T*, T*>::⟦value⟧;"
 
 [answers.arrow_chain.hover]
 markdown = '''
-### method `visit`
+**method** `visit` · struct `overloaded_arrow::Node<T>`
 
----
-→ `void`
-
----
 ```cpp
-// In Node<T>
-public: void visit()
+void visit()
 ```
 '''
 range = "pointer->⟦visit⟧();"
 
 [answers.unresolved_using_use.hover]
 markdown = '''
-### `item_type`
+**type** `item_type` · struct `dependent_using_use::Destination<T>`
 
----
 ```cpp
-// In Destination<T>
-public: using typename Source<T>::item_type
+using typename Source<T>::item_type
 ```
 '''
 range = "⟦item_type⟧ item;"
 
 [answers.dependent_member_alias.hover]
 markdown = '''
-### type `reference`
+**type** `reference` · struct `dependent_alias_sugar::View<T>`
 
----
-Type: `const T &`
-
----
 ```cpp
-// In View<T>
-public: using reference = const T &
+using reference = const T &
 ```
 '''
 range = "using ⟦reference⟧ = const T&;"

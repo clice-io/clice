@@ -1,11 +1,7 @@
 [answers.other.hover]
 markdown = '''
-### function `other`
+**function** `other`
 
----
-→ `int`
-
----
 ```cpp
 inline int other()
 ```

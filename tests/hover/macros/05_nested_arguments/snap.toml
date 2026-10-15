@@ -1,12 +1,12 @@
 [answers.nested_arg.hover]
 markdown = '''
-### macro `INNER_VAL`
+**macro** `INNER_VAL`
 
----
 ```cpp
 #define INNER_VAL 99
-
-// Expands to
+```
+Expands to:
+```cpp
 99
 ```
 '''

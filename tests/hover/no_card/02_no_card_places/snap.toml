@@ -4,10 +4,6 @@ hover = {}
 [answers.empty_braces]
 hover = {}
 
-[answers.new_auto]
-wrong = "the auto of a new-expression deduces int but shows nothing, unlike every other auto"
-hover = {}
-
 [answers.lambda_auto_param]
 hover = {}
 

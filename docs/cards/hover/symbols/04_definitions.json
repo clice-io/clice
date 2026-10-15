@@ -36,7 +36,7 @@
           "marker": "function_def",
           "value": {
             "hover": {
-              "markdown": "### function `backoff`\n\n---\n→ `int`\nParameters:\n- `int attempt = 1`\n\n---\n```cpp\n// In namespace retry\nint backoff(int attempt = 1)\n```",
+              "markdown": "**function** `backoff` · namespace `retry`\n\n```cpp\nint backoff(int attempt = 1)\n```",
               "range": {
                 "$place": "int ⟦backoff⟧(int attempt = 1) {",
                 "path": "main.cpp",
@@ -59,7 +59,7 @@
           "marker": "var_ref",
           "value": {
             "hover": {
-              "markdown": "### variable `max_retries`\n\n---\nType: `const int`\nValue = `3`\n\n---\n```cpp\n// In namespace retry\nconstexpr int max_retries = 3\n```",
+              "markdown": "**variable** `max_retries` · namespace `retry`\n\n```cpp\nconstexpr int max_retries = 3\n```\nValue: `3`",
               "range": {
                 "$place": "return attempt * ⟦max_retries⟧;",
                 "path": "main.cpp",

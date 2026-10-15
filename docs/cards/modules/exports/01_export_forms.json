@@ -47,7 +47,7 @@
           "marker": "block",
           "value": {
             "hover": {
-              "markdown": "### function `alpha`\n\n---\n→ `int`\n\n---\n```cpp\nexport int alpha()\n```",
+              "markdown": "**function** `alpha`\n\n```cpp\nexport int alpha()\n```",
               "range": {
                 "$place": "return ⟦alpha⟧() + ns::gamma() + math::add(1, 2);",
                 "path": "main.cpp",
@@ -70,7 +70,7 @@
           "marker": "block_namespace",
           "value": {
             "hover": {
-              "markdown": "### function `gamma`\n\n---\n→ `int`\n\n---\n```cpp\n// In namespace ns\nexport int gamma()\n```",
+              "markdown": "**function** `gamma` · namespace `ns`\n\n```cpp\nexport int gamma()\n```",
               "range": {
                 "$place": "return alpha() + ns::⟦gamma⟧() + math::add(1, 2);",
                 "path": "main.cpp",
@@ -93,7 +93,7 @@
           "marker": "namespace",
           "value": {
             "hover": {
-              "markdown": "### function `add`\n\n---\n→ `int`\nParameters:\n- `int a`\n- `int b`\n\n---\n```cpp\n// In namespace math\nexport int add(int a, int b)\n```",
+              "markdown": "**function** `add` · namespace `math`\n\n```cpp\nexport int add(int a, int b)\n```",
               "range": {
                 "$place": "return alpha() + ns::gamma() + math::⟦add⟧(1, 2);",
                 "path": "main.cpp",

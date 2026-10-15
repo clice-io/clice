@@ -1,13 +1,8 @@
 [answers.template_param.hover]
 markdown = '''
-### type `_Tp`
+**type** `_Tp` · function `scale`
 
----
-Type: `typename`
-
----
 ```cpp
-// In scale
 typename _Tp
 ```
 '''
@@ -15,15 +10,8 @@ range = "⟦_Tp⟧ scale(_Tp __value, int __count) {"
 
 [answers.function.hover]
 markdown = '''
-### function `scale`
+**function** `scale`
 
----
-→ `_Tp`
-Parameters:
-- `_Tp __value`
-- `int __count`
-
----
 ```cpp
 template <typename _Tp> _Tp scale(_Tp __value, int __count)
 ```
@@ -32,14 +20,9 @@ range = "_Tp ⟦scale⟧(_Tp __value, int __count) {"
 
 [answers.parameter.hover]
 markdown = '''
-### parameter `__value`
+**parameter** `__value` · function `scale`
 
----
-Type: `_Tp`
-
----
 ```cpp
-// In scale
 _Tp __value
 ```
 '''

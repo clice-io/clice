@@ -1,14 +1,9 @@
 [answers.function.hover]
 markdown = '''
-### function `sizes`
-
----
+**function** `sizes`
 
 Returns a std::vector\<int> of <b>bold</b> sizes, where a < b.
 
-→ `int`
-
----
 ```cpp
 int sizes()
 ```

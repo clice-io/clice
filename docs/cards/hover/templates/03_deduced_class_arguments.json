@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "templates",
   "title": "Deduced class arguments",
-  "summary": "A variable whose class template arguments are deduced shows them, while the class name beside it shows the template alone",
+  "summary": "A declaration that deduces its class template arguments shows them, at the class name and at the variable",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [
     "clangd#435"
   ],
@@ -37,9 +37,8 @@
           "label": "ctad_type",
           "marker": "ctad_type",
           "value": {
-            "wrong": "the class name of a declaration with deduced arguments shows the primary template, not Box<int> (clangd#435)",
             "hover": {
-              "markdown": "### struct `Box`\n\n---\n```cpp\n// In namespace ctad_arguments\ntemplate <typename T> struct Box {}\n```",
+              "markdown": "**struct** `Box<int>` · namespace `ctad_arguments`\n\n```cpp\ntemplate <> struct Box<int> {}\n```\nSize: 1 byte, alignment 1 byte",
               "range": {
                 "$place": "⟦Box⟧ picked(42);",
                 "path": "main.cpp",
@@ -62,7 +61,7 @@
           "marker": "ctad_var",
           "value": {
             "hover": {
-              "markdown": "### variable `picked`\n\n---\nType: `Box<int>`\n\n---\n```cpp\n// In namespace ctad_arguments\nBox picked(42)\n```",
+              "markdown": "**variable** `picked` · namespace `ctad_arguments`\n\n```cpp\nBox picked(42)\n```\nType: `Box<int>`",
               "range": {
                 "$place": "Box ⟦picked⟧(42);",
                 "path": "main.cpp",

@@ -1,61 +1,55 @@
 [answers.struct.hover]
 markdown = '''
-### struct `Coordinate`
+**struct** `Coordinate` · namespace `structure_use::model`
 
----
 ```cpp
-// In namespace structure_use::model
 struct Coordinate {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "model::⟦Coordinate⟧* current;"
 
 [answers.class.hover]
 markdown = '''
-### class `Controller`
+**class** `Controller` · namespace `class_use::model`
 
----
 ```cpp
-// In namespace class_use::model
 class Controller {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "model::⟦Controller⟧* current;"
 
 [answers.union.hover]
 markdown = '''
-### union `Storage`
+**union** `Storage` · namespace `union_use::model`
 
----
 ```cpp
-// In namespace union_use::model
 union Storage {
   long integer;
   double decimal;
 }
 ```
+Size: 8 bytes, alignment 8 bytes
 '''
 range = "model::⟦Storage⟧ current;"
 
 [answers.forward_class.hover]
 markdown = '''
-### class `Session`
+**class** `Session` · namespace `forward_use`
 
----
 ```cpp
-// In namespace forward_use
 class Session {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Session⟧* active();"
 
 [answers.enum.hover]
 markdown = '''
-### enum `Direction`
+**enum** `Direction` · namespace `enum_use`
 
----
 ```cpp
-// In namespace enum_use
 enum Direction { North = 0, East = 1, South = 2, West = 3 }
 ```
 '''
@@ -63,62 +57,42 @@ range = "⟦Direction⟧ current = North;"
 
 [answers.enumerator.hover]
 markdown = '''
-### enumerator `High`
+**enumerator** `High` · enum `enumerator_use::Priority`
 
----
-Type: `enum enumerator_use::Priority`
-Value = `2`
-
----
 ```cpp
-// In Priority
 High
 ```
+Value: `2`
 '''
 range = "Priority current = ⟦High⟧;"
 
 [answers.using_enum.hover]
 markdown = '''
-### enumerator `Write`
+**enumerator** `Write` · enum `imported_enumerator::Mode`
 
----
-Type: `enum imported_enumerator::Mode`
-Value = `1`
-
----
 ```cpp
-// In Mode
 Write
 ```
+Value: `1`
 '''
 range = "Mode current = ⟦Write⟧;"
 
 [answers.anon_enumerator.hover]
 markdown = '''
-### enumerator `Complete`
+**enumerator** `Complete` · enum `(anonymous enum)`
 
----
-Type: `enum anonymous_enumerator::(unnamed enum)`
-Value = `8`
-
----
 ```cpp
-// In namespace anonymous_enumerator
 Complete = 8
 ```
+Value: `8`
 '''
 range = "int state = ⟦Complete⟧;"
 
 [answers.typedef.hover]
 markdown = '''
-### type `Identifier`
+**type** `Identifier` · namespace `alias_use`
 
----
-Type: `long`
-
----
 ```cpp
-// In namespace alias_use
 typedef long Identifier
 ```
 '''
@@ -126,26 +100,25 @@ range = "⟦Identifier⟧ next;"
 
 [answers.typedef_embedded.hover]
 markdown = '''
-### type `Packet`
+**type** `Packet` · namespace `embedded_alias_use`
 
----
-Type: `struct embedded_alias_use::Payload`
-
----
 ```cpp
-// In namespace embedded_alias_use
 typedef struct Payload Packet
 ```
+```cpp
+struct Payload {
+  long size;
+}
+```
+Size: 8 bytes, alignment 8 bytes
 '''
 range = "⟦Packet⟧ queued;"
 
 [answers.namespace.hover]
 markdown = '''
-### namespace `protocol`
+**namespace** `protocol` · namespace `namespace_use`
 
----
 ```cpp
-// In namespace namespace_use
 namespace protocol {}
 ```
 '''
@@ -153,44 +126,32 @@ range = "⟦protocol⟧::Client::connect();"
 
 [answers.anon_struct_field.hover]
 markdown = '''
-### field `total`
+**field** `total` · struct `(anonymous struct)`
 
----
-Type: `long`
-
----
 ```cpp
-// In (anonymous struct)
-public: long total
+long total
 ```
+Offset: 0 bytes
+Size: 8 bytes, alignment 8 bytes
 '''
 range = "metrics.⟦total⟧++;"
 
 [answers.anon_union_field.hover]
 markdown = '''
-### field `count`
+**field** `count` · union `(anonymous union)`
 
----
-Type: `long`
-
----
 ```cpp
-// In Result::(anonymous union)
-public: long count
+long count
 ```
+Size: 8 bytes, alignment 8 bytes
 '''
 range = "result.data.⟦count⟧++;"
 
 [answers.templated_function.hover]
 markdown = '''
-### function `default_value`
+**function** `default_value` · namespace `function_template_use`
 
----
-→ `long`
-
----
 ```cpp
-// In namespace function_template_use
 template <> long default_value<long>()
 ```
 '''
@@ -198,29 +159,19 @@ range = "long value = ⟦default_value⟧<long>();"
 
 [answers.template_method.hover]
 markdown = '''
-### method `size`
+**method** `size` · struct `instantiated_method_use::Container<int>`
 
----
-→ `long`
-
----
 ```cpp
-// In Container<int>
-public: long size()
+long size()
 ```
 '''
 range = "auto size = Container<int>{}.⟦size⟧();"
 
 [answers.nested_template_var.hover]
 markdown = '''
-### variable `value`
+**variable** `value` · namespace `nested_instance_value`
 
----
-Type: `Wrapper<Wrapper<Wrapper<long>>>`
-
----
 ```cpp
-// In namespace nested_instance_value
 Wrapper<Wrapper<Wrapper<long>>> value
 ```
 '''
@@ -228,15 +179,12 @@ range = "Wrapper<Wrapper<Wrapper<long>>> ⟦value⟧; @+0"
 
 [answers.nested_template_class.hover]
 markdown = '''
-### struct `Wrapper<nested_instance_type::Wrapper<nested_instance_type::Wrapper<long>>>`
+**struct** `Wrapper<Wrapper<Wrapper<long>>>` · namespace `nested_instance_type`
 
----
 ```cpp
-// In namespace nested_instance_type
-template <>
-struct Wrapper<
-    nested_instance_type::Wrapper<nested_instance_type::Wrapper<long>>> {}
+template <> struct Wrapper<Wrapper<Wrapper<long>>> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Wrapper⟧<Wrapper<Wrapper<long>>> value; @+0"
 
@@ -245,12 +193,8 @@ wrong = "a type's card shows the value of the cast it is named in"
 
 [answers.forward_struct_value.hover]
 markdown = '''
-### struct `Incomplete`
+**struct** `Incomplete`
 
----
-Value = `&storage`
-
----
 ```cpp
 struct Incomplete
 ```

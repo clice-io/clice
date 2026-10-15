@@ -1,60 +1,43 @@
 [answers.wide.hover]
 markdown = '''
-### variable `wide`
+**variable** `wide`
 
----
-Type: `const Wide`
-Value = `Max (0xffffffffffffffff)`
-
----
 ```cpp
 constexpr Wide wide = Max
 ```
+Value: `Max (0xffffffffffffffff)`
 '''
 range = "constexpr Wide ⟦wide⟧ = Max;"
 
 [answers.narrow.hover]
 markdown = '''
-### variable `narrow`
+**variable** `narrow`
 
----
-Type: `const Narrow`
-Value = `Small (0x5)`
-
----
 ```cpp
 constexpr Narrow narrow = Small
 ```
+Value: `Small (0x5)`
 '''
 range = "constexpr Narrow ⟦narrow⟧ = Small;"
 
 [answers.huge.hover]
 markdown = '''
-### variable `huge`
+**variable** `huge`
 
----
-Type: `const Huge`
-Value = `Top`
-
----
 ```cpp
 constexpr Huge huge = Top
 ```
+Value: `Top`
 '''
 range = "constexpr Huge ⟦huge⟧ = Top;"
 
 [answers.max_value.hover]
 markdown = '''
-### enumerator `Max`
+**enumerator** `Max` · enum `big_enum::Flags`
 
----
-Type: `enum big_enum::Flags`
-Value = `18446744073709551615`
-
----
 ```cpp
-// In Flags
 Max = 0xFFFFFFFFFFFFFFFFULL
 ```
+Value: `18446744073709551615`
 '''
 range = "⟦Max⟧ = 0xFFFFFFFFFFFFFFFFULL,"

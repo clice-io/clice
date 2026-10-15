@@ -1,7 +1,7 @@
 // Values past the documented case: an enum variable, a static member of an
 // instantiation, a constexpr function's call, a string pointer, a dependent
 // constructor argument, a class behind inline and anonymous namespaces, auto
-// of an incomplete template argument.
+// of an incomplete template argument, an inline variable.
 
 namespace symbolic_enum_value {
 enum class Status { Idle = -4, Ready = 12 };
@@ -60,4 +60,10 @@ class Forward;
 void create() {
     §(auto_incomplete_arg)auto wrapper = Wrapper<Forward>{};
 }
+}
+
+namespace inline_variable {
+
+inline int §(inline_variable)shared = 4;
+
 }

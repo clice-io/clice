@@ -32,7 +32,7 @@
           "marker": "big_initializer",
           "value": {
             "hover": {
-              "markdown": "### variable `values`\n\n---\nType: `int[256]`\nValue = `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`\n\n---\n```cpp\nint values[]\n```",
+              "markdown": "**variable** `values`\n\n```cpp\nint values[]\n```\nValue: `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`",
               "range": {
                 "$place": "int ⟦values⟧[] = {DUPLICATE_256(3)};",
                 "path": "main.cpp",

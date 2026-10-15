@@ -1,14 +1,9 @@
 [answers.system.hover]
 markdown = '''
-### function `release_all`
-
----
+**function** `release_all`
 
 Releases every buffer the library holds.
 
-→ `void`
-
----
 ```cpp
 void release_all()
 ```

@@ -116,3 +116,12 @@ template <typename T> struct Link {
     §(injected_class_name)Link* next;
 };
 }
+
+namespace pack_arguments {
+template <typename T, typename... Rest> struct Bundle {};
+Bund§(pack_class)le<long, char, bool> bundle;
+template <typename... Args> void log(Args... args) {}
+void run() {
+    §(pack_function)log(1, 2.5);
+}
+}

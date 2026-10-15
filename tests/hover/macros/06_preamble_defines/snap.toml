@@ -1,8 +1,7 @@
 [answers.definition.hover]
 markdown = '''
-### macro `EARLY`
+**macro** `EARLY`
 
----
 ```cpp
 #define EARLY 1
 ```
@@ -11,13 +10,13 @@ range = "#define ⟦EARLY⟧ 1"
 
 [answers.use.hover]
 markdown = '''
-### macro `EARLY`
+**macro** `EARLY`
 
----
 ```cpp
 #define EARLY 1
-
-// Expands to
+```
+Expands to:
+```cpp
 1
 ```
 '''

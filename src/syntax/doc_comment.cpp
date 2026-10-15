@@ -178,7 +178,15 @@ bool DocCommentChoice::offer(llvm::StringRef content, llvm::ArrayRef<LexicalInfo
 }
 
 std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Comment> comments) {
-    llvm::SmallVector<llvm::StringRef> lines;
+    struct Line {
+        llvm::StringRef text;
+
+        /// The line a block comment opens on: its text starts after the
+        /// opener, at no column the lines below it are indented to.
+        bool opens_block = false;
+    };
+
+    llvm::SmallVector<Line> lines;
     for(auto& comment: comments) {
         auto text = text_of(content, comment);
         auto marker = is_doc_comment(text) ? 3 : 2;
@@ -188,7 +196,7 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
 
         if(comment.kind == Comment::Kind::Line) {
             for(auto line: llvm::split(text.drop_front(marker), '\n')) {
-                lines.push_back(line.rtrim());
+                lines.push_back({.text = line.rtrim()});
             }
             continue;
         }
@@ -213,14 +221,14 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
                 line = line.ltrim();
                 line.consume_front("*");
             }
-            lines.push_back(line.rtrim());
+            lines.push_back({.text = line.rtrim(), .opens_block = index == 0});
         }
     }
 
-    auto blank_or_banner = [](llvm::StringRef line) {
-        return line.empty() || is_banner(line);
+    auto blank_or_banner = [](const Line& line) {
+        return line.text.empty() || is_banner(line.text);
     };
-    llvm::ArrayRef<llvm::StringRef> kept = lines;
+    llvm::ArrayRef<Line> kept = lines;
     while(!kept.empty() && blank_or_banner(kept.front())) {
         kept = kept.drop_front();
     }
@@ -229,18 +237,19 @@ std::string comment_text(llvm::StringRef content, llvm::ArrayRef<LexicalInfo::Co
     }
 
     std::size_t indent = std::numeric_limits<std::size_t>::max();
-    for(auto line: kept) {
-        if(!line.empty()) {
-            indent = std::min(indent, line.size() - line.ltrim(" \t").size());
+    for(const auto& line: kept) {
+        if(!line.text.empty() && !line.opens_block) {
+            indent = std::min(indent, line.text.size() - line.text.ltrim(" \t").size());
         }
     }
 
     std::string result;
-    for(auto line: kept) {
+    for(const auto& line: kept) {
         if(!result.empty()) {
             result += '\n';
         }
-        result += line.drop_front(std::min(indent, line.size()));
+        result += line.opens_block ? line.text.ltrim(" \t")
+                                   : line.text.drop_front(std::min(indent, line.text.size()));
     }
     if(!llvm::json::isUTF8(result)) {
         result = llvm::json::fixUTF8(result);

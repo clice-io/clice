@@ -3,9 +3,8 @@ wrong = "a hover the index answers lacks the return type and parameters a compil
 
 [test.hover.hover]
 markdown = '''
-### function `unit_00`
+**function** `unit_00`
 
----
 ```cpp
 int unit_00()
 ```

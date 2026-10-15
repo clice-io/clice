@@ -48,7 +48,7 @@
           "marker": "constexpr_call",
           "value": {
             "hover": {
-              "markdown": "### variable `from_call`\n\n---\nType: `long`\nValue = `27 (0x1b)`\n\n---\n```cpp\n// In namespace evaluated_context\nlong from_call = cube(3)\n```",
+              "markdown": "**variable** `from_call` · namespace `evaluated_context`\n\n```cpp\nlong from_call = cube(3)\n```\nValue: `27 (0x1b)`",
               "range": {
                 "$place": "long ⟦from_call⟧ = cube(3);",
                 "path": "main.cpp",
@@ -71,7 +71,7 @@
           "marker": "sizeof",
           "value": {
             "hover": {
-              "markdown": "### variable `from_size`\n\n---\nType: `long`\nValue = `8`\n\n---\n```cpp\n// In namespace evaluated_context\nlong from_size = sizeof(double)\n```",
+              "markdown": "**variable** `from_size` · namespace `evaluated_context`\n\n```cpp\nlong from_size = sizeof(double)\n```\nValue: `8`",
               "range": {
                 "$place": "long ⟦from_size⟧ = sizeof(double);",
                 "path": "main.cpp",
@@ -94,7 +94,7 @@
           "marker": "enumerator",
           "value": {
             "hover": {
-              "markdown": "### enumerator `Online`\n\n---\nType: `enum evaluated_context::State`\nValue = `6`\n\n---\n```cpp\n// In State\nOnline = 6\n```",
+              "markdown": "**enumerator** `Online` · enum `evaluated_context::State`\n\n```cpp\nOnline = 6\n```\nValue: `6`",
               "range": {
                 "$place": "State selected = State::⟦Online⟧;",
                 "path": "main.cpp",
@@ -117,7 +117,7 @@
           "marker": "static_member",
           "value": {
             "hover": {
-              "markdown": "### variable `from_member`\n\n---\nType: `long`\nValue = `20 (0x14)`\n\n---\n```cpp\n// In namespace evaluated_context\nlong from_member = Product<4, 5>::value\n```",
+              "markdown": "**variable** `from_member` · namespace `evaluated_context`\n\n```cpp\nlong from_member = Product<4, 5>::value\n```\nValue: `20 (0x14)`",
               "range": {
                 "$place": "long ⟦from_member⟧ = Product<4, 5>::value;",
                 "path": "main.cpp",

@@ -1,13 +1,8 @@
 [answers.object_init.hover]
 markdown = '''
-### variable `active`
+**variable** `active` · function `mvp::demo`
 
----
-Type: `Timer`
-
----
 ```cpp
-// In demo
 Timer active(seconds)
 ```
 '''
@@ -15,14 +10,9 @@ range = "Timer ⟦active⟧(seconds);"
 
 [answers.vexing_decl.hover]
 markdown = '''
-### function `empty`
+**function** `empty` · namespace `mvp`
 
----
-→ `Timer`
-
----
 ```cpp
-// In namespace mvp
 Timer empty()
 ```
 '''

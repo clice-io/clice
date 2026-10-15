@@ -32,7 +32,7 @@
           "marker": "indented",
           "value": {
             "hover": {
-              "markdown": "### function `run`\n\n---\n\nSummary line.\n\n→ `void`\n\n    step_one();\n    step_two();\n\n---\n```cpp\n// In namespace indented\nvoid run()\n```",
+              "markdown": "**function** `run` · namespace `indented`\n\nSummary line.\n\n```cpp\nvoid run()\n```\n\n---\n\n    step_one();\n    step_two();",
               "range": {
                 "$place": "void ⟦run⟧();",
                 "path": "main.cpp",

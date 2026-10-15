@@ -4,16 +4,12 @@ message = "request cancelled"
 
 ["completion in its worker"."hover after".hover]
 markdown = '''
-### variable `value`
+**variable** `value`
 
----
-Type: `int`
-Value = `42 (0x2a)`
-
----
 ```cpp
 int value = 42
 ```
+Value: `42 (0x2a)`
 '''
 range = "int ⟦value⟧ = 42;"
 
@@ -23,16 +19,12 @@ message = "request cancelled"
 
 ["signatureHelp in its worker"."hover after".hover]
 markdown = '''
-### variable `value`
+**variable** `value`
 
----
-Type: `int`
-Value = `42 (0x2a)`
-
----
 ```cpp
 int value = 42
 ```
+Value: `42 (0x2a)`
 '''
 range = "int ⟦value⟧ = 42;"
 
@@ -70,16 +62,12 @@ message = "request cancelled"
 
 ["waiting on the compile"."hover after".hover]
 markdown = '''
-### variable `value`
+**variable** `value`
 
----
-Type: `int`
-Value = `42 (0x2a)`
-
----
 ```cpp
 int value = 42
 ```
+Value: `42 (0x2a)`
 '''
 range = "int ⟦value⟧ = 42;"
 

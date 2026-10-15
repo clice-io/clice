@@ -3,14 +3,9 @@ definition = ["for(int ⟦x⟧: r) {"]
 
 [answers.after_variable.hover]
 markdown = '''
-### variable `x`
+**variable** `x` · function `use`
 
----
-Type: `int`
-
----
 ```cpp
-// In use
 int x
 ```
 '''
@@ -21,14 +16,9 @@ definition = ["Widget ⟦copy⟧=w;"]
 
 [answers.after_copy.hover]
 markdown = '''
-### variable `copy`
+**variable** `copy` · function `use`
 
----
-Type: `Widget`
-
----
 ```cpp
-// In use
 Widget copy = w
 ```
 '''

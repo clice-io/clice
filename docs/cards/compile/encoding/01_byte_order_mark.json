@@ -52,7 +52,7 @@
           "label": "user3",
           "value": {
             "hover": {
-              "markdown": "### function `user3`\n\n---\n→ `int`\n\n---\n```cpp\nint user3()\n```",
+              "markdown": "**function** `user3`\n\n```cpp\nint user3()\n```",
               "range": {
                 "$place": "int ⟦user3⟧() {",
                 "path": "c.cpp",

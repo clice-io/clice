@@ -1,11 +1,7 @@
 [answers.block.hover]
 markdown = '''
-### function `alpha`
+**function** `alpha`
 
----
-→ `int`
-
----
 ```cpp
 export int alpha()
 ```
@@ -14,14 +10,9 @@ range = "return ⟦alpha⟧() + ns::gamma() + math::add(1, 2);"
 
 [answers.block_namespace.hover]
 markdown = '''
-### function `gamma`
+**function** `gamma` · namespace `ns`
 
----
-→ `int`
-
----
 ```cpp
-// In namespace ns
 export int gamma()
 ```
 '''
@@ -29,17 +20,9 @@ range = "return alpha() + ns::⟦gamma⟧() + math::add(1, 2);"
 
 [answers.namespace.hover]
 markdown = '''
-### function `add`
+**function** `add` · namespace `math`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
-// In namespace math
 export int add(int a, int b)
 ```
 '''

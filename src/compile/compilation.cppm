@@ -405,6 +405,11 @@ public:
     /// implementation unit's (`module M;`) names a module defined elsewhere.
     bool defines_module();
 
+    /// The definitions of the macro `name`, in the order the preprocessor
+    /// met them: those of the preamble the compile loads too, which no
+    /// directive of this compile records.
+    auto macro_definitions(llvm::StringRef name) -> llvm::SmallVector<const clang::MacroInfo*>;
+
     /// The diagnostics the compile reported, each with its notes: the
     /// compiler's, and clang-tidy's findings in the editor shape. Those a
     /// suppression comment hides are left out, and a finding reported more

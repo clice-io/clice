@@ -5,7 +5,7 @@
   "title": "C anonymous struct typedefs",
   "summary": "In C, a struct named only by its typedef shows under the typedef's name",
   "prose": "The definition line still spells it `struct Point`, a name C does not\nknow for it.",
-  "status": "partial",
+  "status": "supported",
   "issues": [
     "clangd#2219"
   ],
@@ -37,9 +37,8 @@
           "label": "typedef",
           "marker": "typedef",
           "value": {
-            "wrong": "the definition names a struct Point that does not exist: the struct is anonymous",
             "hover": {
-              "markdown": "### type `Point`\n\n---\n\nA 2-D point.\n\nType: `Point`\n\n---\n```cpp\ntypedef struct Point Point\n```",
+              "markdown": "**type** `Point`\n\nA 2-D point.\n\n```cpp\ntypedef struct {\n  int x;\n  int y;\n} Point\n```\nSize: 8 bytes, alignment 4 bytes",
               "range": {
                 "$place": "} ⟦Point⟧;",
                 "path": "main.c",
@@ -62,7 +61,7 @@
           "marker": "var",
           "value": {
             "hover": {
-              "markdown": "### variable `origin`\n\n---\nType: `Point`\n\n---\n```cpp\nPoint origin = {.y = 2, .x = 1}\n```",
+              "markdown": "**variable** `origin`\n\n```cpp\nPoint origin = {.y = 2, .x = 1}\n```",
               "range": {
                 "$place": "Point ⟦origin⟧ = {.y = 2, .x = 1};",
                 "path": "main.c",

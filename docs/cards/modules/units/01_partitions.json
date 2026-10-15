@@ -58,7 +58,7 @@
           "marker": "type",
           "value": {
             "hover": {
-              "markdown": "### struct `Config`\n\n---\n```cpp\nexport struct Config {\n  int value = 0;\n}\n```",
+              "markdown": "**struct** `Config`\n\n```cpp\nexport struct Config {\n  int value = 0;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "⟦Config⟧ config = make_config();",
                 "path": "main.cpp",
@@ -81,7 +81,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "### function `make_config`\n\n---\n→ `Config`\n\n---\n```cpp\nexport Config make_config()\n```",
+              "markdown": "**function** `make_config`\n\n```cpp\nexport Config make_config()\n```",
               "range": {
                 "$place": "Config config = ⟦make_config⟧();",
                 "path": "main.cpp",
@@ -104,7 +104,7 @@
           "marker": "primary",
           "value": {
             "hover": {
-              "markdown": "### function `make_config`\n\n---\n→ `Config`\n\n---\n```cpp\nexport Config make_config()\n```",
+              "markdown": "**function** `make_config`\n\n```cpp\nexport Config make_config()\n```",
               "range": {
                 "$place": "return ⟦make_config⟧().value;",
                 "path": "sys.cppm",

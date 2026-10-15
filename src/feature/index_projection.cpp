@@ -640,11 +640,19 @@ auto index_document_links(llvm::StringRef content,
 }
 
 auto index_hover(const index::SymbolRef& info,
+                 llvm::ArrayRef<index::SymbolRef> scopes,
                  llvm::StringRef definition_text,
                  Documentation documentation) -> HoverInfo {
     HoverInfo hover;
     hover.name = info.display_name();
     hover.kind = info.kind;
+    if(!scopes.empty()) {
+        hover.scope_kind = kind_noun(scopes.back().kind).str();
+        hover.scope = llvm::join(
+            llvm::map_range(scopes,
+                            [](const index::SymbolRef& scope) { return scope.display_name(); }),
+            "::");
+    }
     hover.documentation = std::move(documentation);
     /// The index keeps that a symbol is deprecated, not the message.
     if(index::has_flag(info.flags, index::SymbolFlags::Deprecated)) {
@@ -656,8 +664,8 @@ auto index_hover(const index::SymbolRef& info,
 
     // The stored extent is the whole written definition; the AST card
     // prints a declaration — a function without its body, a namespace with
-    // an empty one, a macro with its `#define`. A type gets an empty body
-    // too: the AST card's member summary needs the AST.
+    // an empty one, a macro with its `#define`. A type's members are left
+    // out: the AST card's member summary needs the AST.
     hover.definition = definition_text.str();
     switch(info.kind) {
         case SymbolKind::Function:
@@ -668,13 +676,18 @@ auto index_hover(const index::SymbolRef& info,
             }
             break;
         }
-        case SymbolKind::Namespace:
+        case SymbolKind::Namespace: {
+            if(auto head = before_body(hover.definition)) {
+                hover.definition = head->str() + " {}";
+            }
+            break;
+        }
         case SymbolKind::Class:
         case SymbolKind::Struct:
         case SymbolKind::Union:
         case SymbolKind::Enum: {
             if(auto head = before_body(hover.definition)) {
-                hover.definition = head->str() + " {}";
+                hover.definition = head->str() + " { ... }";
             }
             break;
         }

@@ -48,7 +48,7 @@
           "marker": "exported_fn",
           "value": {
             "hover": {
-              "markdown": "### function `area`\n\n---\n→ `int`\nParameters:\n- `int side`\n\n---\n```cpp\nexport int area(int side)\n```",
+              "markdown": "**function** `area`\n\n```cpp\nexport int area(int side)\n```",
               "range": {
                 "$place": "export int ⟦area⟧(int side) {",
                 "path": "main.cpp",
@@ -71,7 +71,7 @@
           "marker": "exported_struct",
           "value": {
             "hover": {
-              "markdown": "### struct `Square`\n\n---\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\nexport struct Square {\n  int side;\n}\n```",
+              "markdown": "**struct** `Square`\n\n```cpp\nexport struct Square {\n  int side;\n}\n```\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "struct ⟦Square⟧ {",
                 "path": "main.cpp",
@@ -94,7 +94,7 @@
           "marker": "member",
           "value": {
             "hover": {
-              "markdown": "### field `side`\n\n---\nType: `int`\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Square\npublic: int side\n```",
+              "markdown": "**field** `side` · struct `Square`\n\n```cpp\nint side\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "int ⟦side⟧;",
                 "path": "main.cpp",
@@ -117,7 +117,7 @@
           "marker": "internal_fn",
           "value": {
             "hover": {
-              "markdown": "### function `perimeter`\n\n---\n→ `int`\nParameters:\n- `int side`\n\n---\n```cpp\nint perimeter(int side)\n```",
+              "markdown": "**function** `perimeter`\n\n```cpp\nint perimeter(int side)\n```",
               "range": {
                 "$place": "int ⟦perimeter⟧(int side) {",
                 "path": "main.cpp",

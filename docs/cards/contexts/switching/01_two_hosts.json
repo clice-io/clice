@@ -40,7 +40,7 @@
               "automatic": true
             },
             "hover": {
-              "markdown": "### function `get_value`\n\n---\n→ `int`\n\n---\n```cpp\nint get_value()\n```",
+              "markdown": "**function** `get_value`\n\n```cpp\nint get_value()\n```",
               "range": {
                 "$place": "VALUE_TYPE ⟦get_value⟧();",
                 "path": "shared.h",
@@ -70,7 +70,7 @@
               "automatic": false
             },
             "hover": {
-              "markdown": "### function `get_value`\n\n---\n→ `float`\n\n---\n```cpp\nfloat get_value()\n```",
+              "markdown": "**function** `get_value`\n\n```cpp\nfloat get_value()\n```",
               "range": {
                 "$place": "VALUE_TYPE ⟦get_value⟧();",
                 "path": "shared.h",
@@ -100,7 +100,7 @@
               "automatic": false
             },
             "hover": {
-              "markdown": "### function `get_value`\n\n---\n→ `int`\n\n---\n```cpp\nint get_value()\n```",
+              "markdown": "**function** `get_value`\n\n```cpp\nint get_value()\n```",
               "range": {
                 "$place": "VALUE_TYPE ⟦get_value⟧();",
                 "path": "shared.h",
@@ -130,7 +130,7 @@
               "automatic": true
             },
             "hover": {
-              "markdown": "### function `get_value`\n\n---\n→ `int`\n\n---\n```cpp\nint get_value()\n```",
+              "markdown": "**function** `get_value`\n\n```cpp\nint get_value()\n```",
               "range": {
                 "$place": "VALUE_TYPE ⟦get_value⟧();",
                 "path": "shared.h",

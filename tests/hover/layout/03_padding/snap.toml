@@ -1,0 +1,69 @@
+[answers.field.hover]
+markdown = '''
+**private field** `layer` · class `studio::detail::Canvas`
+
+```cpp
+char layer
+```
+Offset: 0 bytes
+Size: 1 byte (+7 bytes padding), alignment 1 byte
+'''
+range = "char ⟦layer⟧;"
+
+[answers.union_field.hover]
+markdown = '''
+**field** `channel` · union `Pixel`
+
+```cpp
+char channel
+```
+Size: 1 byte (+7 bytes padding), alignment 1 byte
+'''
+range = "char ⟦channel⟧;"
+
+[answers.bitfield.hover]
+markdown = '''
+**field** `read` · struct `Permissions`
+
+```cpp
+unsigned int read : 1
+```
+Offset: 0 bytes
+Size: 1 bit (+31 bits padding), alignment 4 bytes
+'''
+range = "unsigned int ⟦read⟧ : 1;"
+
+[answers.bitfield_padding.hover]
+markdown = '''
+**field** `write` · struct `PackedPermissions`
+
+```cpp
+unsigned int write : 1
+```
+Offset: 1 byte
+Size: 1 bit (+23 bits padding), alignment 4 bytes
+'''
+range = "unsigned int ⟦write⟧ : 1;"
+
+[answers.struct_size.hover]
+markdown = '''
+**struct** `EmptyCanvas`
+
+```cpp
+struct EmptyCanvas {}
+```
+Size: 1 byte, alignment 1 byte
+'''
+range = "struct ⟦EmptyCanvas⟧ {};"
+
+[answers.anonymous_member.hover]
+markdown = '''
+**field** `count` · struct `Message`
+
+```cpp
+long count
+```
+Offset: 16 bytes
+Size: 8 bytes, alignment 8 bytes
+'''
+range = "long ⟦count⟧;"

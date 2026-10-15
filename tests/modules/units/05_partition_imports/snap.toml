@@ -1,11 +1,7 @@
 [answers.imported.hover]
 markdown = '''
-### function `ext_val`
+**function** `ext_val`
 
----
-→ `int`
-
----
 ```cpp
 export int ext_val()
 ```
@@ -14,12 +10,8 @@ range = "return ⟦ext_val⟧() + 1;"
 
 [answers.use.hover]
 markdown = '''
-### function `core_fn`
+**function** `core_fn`
 
----
-→ `int`
-
----
 ```cpp
 export int core_fn()
 ```

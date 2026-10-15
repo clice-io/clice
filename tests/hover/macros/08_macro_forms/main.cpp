@@ -60,3 +60,8 @@ name);
 #define A2048 CAT(A1024, A1024)
 
 int §(oversized_use)A2048 = 1;
+
+// An expansion longer than a line wraps as clang-format lays it out.
+int combine(int, int, int, int, int, int, int);
+#define SPREAD(a, b) combine(a, b, a + b, a * b, a - b, a / b, a % b)
+int spread = §(long_expansion)SPREAD(100000, 200000);

@@ -1,14 +1,10 @@
 [answers.big_initializer.hover]
 markdown = '''
-### variable `values`
+**variable** `values`
 
----
-Type: `int[256]`
-Value = `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`
-
----
 ```cpp
 int values[]
 ```
+Value: `{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...}`
 '''
 range = "int ⟦values⟧[] = {DUPLICATE_256(3)};"

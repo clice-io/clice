@@ -12,7 +12,7 @@ stdout = '''
             "end": 62
           },
           "kind": "markdown",
-          "contents": "### function `add`  \n\n---\n→ `int`  \nParameters:  \n- `int a`\n- `int b`\n\n---\n```cpp\nint add(int a, int b)\n```"
+          "contents": "**function** `add`  \n\n```cpp\nint add(int a, int b)\n```"
         }
       },
       "error": null,

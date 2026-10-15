@@ -1,38 +1,22 @@
 [answers.constrained.hover]
 markdown = '''
-### function `sum`
-
----
+**function** `sum` · namespace `headers`
 
 Sums the elements of a range.
 
-→ `int`
-Parameters:
-- `headers::Range &&r`
-
----
 ```cpp
-// In namespace headers
-template <> int sum<headers::Range>(headers::Range &&r)
+template <> int sum<Range>(Range &&r)
 ```
 '''
 range = "return ⟦sum⟧(Range{}) + pick(1);"
 
 [answers.braced.hover]
 markdown = '''
-### function `pick`
-
----
+**function** `pick` · namespace `headers`
 
 Picks one value.
 
-→ `int`
-Parameters:
-- `int a`
-
----
 ```cpp
-// In namespace headers
 template <> int pick<int, int>(int a)
 ```
 '''
@@ -40,15 +24,11 @@ range = "return sum(Range{}) + ⟦pick⟧(1);"
 
 [answers.class_template.hover]
 markdown = '''
-### struct `vec<int, int>`
-
----
+**struct** `vec<int, int>` · namespace `headers`
 
 A growable array.
 
----
 ```cpp
-// In namespace headers
 template <> struct vec<int, int>
 ```
 '''

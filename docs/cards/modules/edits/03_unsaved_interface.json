@@ -71,7 +71,7 @@
           "label": "hover",
           "value": {
             "hover": {
-              "markdown": "### function `twice`\n\n---\n→ `int`\nParameters:\n- `int a`\n\n---\n```cpp\nexport int twice(int a)\n```",
+              "markdown": "**function** `twice`\n\n```cpp\nexport int twice(int a)\n```",
               "range": {
                 "$place": "return add(1, 2) + ⟦twice⟧(3);",
                 "path": "main.cpp",

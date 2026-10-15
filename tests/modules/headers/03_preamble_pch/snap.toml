@@ -1,11 +1,7 @@
 [test.added.hover]
 markdown = '''
-### function `b`
+**function** `b`
 
----
-→ `int`
-
----
 ```cpp
 export int b()
 ```

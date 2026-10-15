@@ -1,20 +1,16 @@
 [answers.indented.hover]
 markdown = '''
-### function `run`
-
----
+**function** `run` · namespace `indented`
 
 Summary line.
 
-→ `void`
+```cpp
+void run()
+```
+
+---
 
     step_one();
     step_two();
-
----
-```cpp
-// In namespace indented
-void run()
-```
 '''
 range = "void ⟦run⟧();"

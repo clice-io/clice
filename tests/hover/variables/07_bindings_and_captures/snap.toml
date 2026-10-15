@@ -1,106 +1,109 @@
 [answers.binding.hover]
 markdown = '''
-### variable `first`
+**variable** `first` · function `bindings`
 
----
-Type: `int`
-
----
 ```cpp
-// In bindings
 auto [first, second] = make()
 ```
+Type: `int`
 '''
 range = "auto [⟦first⟧, second] = make();"
 
 [answers.binding_use.hover]
 markdown = '''
-### variable `first`
+**variable** `first` · function `bindings`
 
----
-Type: `int`
-
----
 ```cpp
-// In bindings
 auto [first, second] = make()
 ```
+Type: `int`
 '''
 range = "(void)⟦first⟧;"
 
 [answers.range_variable.hover]
 markdown = '''
-### variable `item`
+**variable** `item` · function `bindings`
 
----
-Type: `int &`
-
----
 ```cpp
-// In bindings
 auto &item
 ```
+Type: `int &`
 '''
 range = "for (auto& ⟦item⟧ : items) {"
 
 [answers.thread_local_binding.hover]
 markdown = '''
-### variable `shared`
+**variable** `shared` · function `bindings`
 
----
-Type: `int`
-
----
 ```cpp
-// In bindings
 static thread_local auto [shared, unused] = make()
 ```
+Type: `int`
 '''
 range = "static thread_local auto [⟦shared⟧, unused] = make();"
 
 [answers.range_binding.hover]
 markdown = '''
-### variable `key`
+**variable** `key` · function `bindings`
 
----
-Type: `int`
-
----
 ```cpp
-// In bindings
 auto [key, value]
 ```
+Type: `int`
 '''
 range = "for (auto [⟦key⟧, value] : pairs) {"
 
+[answers.tuple_like_binding.hover]
+markdown = '''
+**variable** `key` · function `bindings`
+
+```cpp
+auto [key, weight] = Entry {}
+```
+Type: `long`
+'''
+range = "auto [⟦key⟧, weight] = Entry{};"
+
 [answers.capture.hover]
 markdown = '''
-### variable `threshold`
+**variable** `threshold` · function `bindings`
 
----
-Type: `int`
-Value = `3`
-
----
 ```cpp
-// In bindings
 int threshold = 3
 ```
+Value: `3`
 '''
 range = "auto above = [&⟦threshold⟧](int v) { return v > threshold; };"
 
 [answers.capture_use.hover]
 markdown = '''
-### variable `threshold`
+**variable** `threshold` · function `bindings`
 
----
-Type: `int`
-Value = `3`
-
----
 ```cpp
-// In bindings
 int threshold = 3
 ```
+Value: `3`
 '''
 range = "auto above = [&threshold](int v) { return v > ⟦threshold⟧; };"
+
+[answers.init_capture.hover]
+markdown = '''
+**variable** `limit` · lambda in function `bindings`
+
+```cpp
+auto limit = threshold * 2
+```
+Type: `int`
+'''
+range = "auto scaled = [⟦limit⟧ = threshold * 2, &bound = threshold] {"
+
+[answers.reference_init_capture.hover]
+markdown = '''
+**variable** `bound` · lambda in function `bindings`
+
+```cpp
+auto &bound = threshold
+```
+Type: `int &`
+'''
+range = "auto scaled = [limit = threshold * 2, &⟦bound⟧ = threshold] {"

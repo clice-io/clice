@@ -1,119 +1,100 @@
 [answers.field.hover]
 markdown = '''
-### field `row`
+**field** `row` · struct `ordinary_member::Point`
 
----
-Type: `int`
-
----
 ```cpp
-// In Point
-public: int row
+int row
 ```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "return point.⟦row⟧;"
 
 [answers.field_init.hover]
 markdown = '''
-### field `value`
+**field** `value` · struct `initialized_member::Counter`
 
----
-Type: `int`
-
----
 ```cpp
-// In Counter
-public: int value = 12
+int value = 12
 ```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "return counter.⟦value⟧;"
 
 [answers.static_field.hover]
 markdown = '''
-### variable `maximum`
+**variable** `maximum` · struct `static_member::Limits`
 
----
-Type: `int`
-
----
 ```cpp
-// In Limits
-public: static int maximum
+static int maximum
 ```
 '''
-range = "return Limits::⟦maximum⟧;"
+range = "return Limits::⟦maximum⟧ + Limits::minimum;"
+
+[answers.inline_static_field.hover]
+markdown = '''
+**variable** `minimum` · struct `static_member::Limits`
+
+```cpp
+inline static int minimum = 1
+```
+Value: `1`
+'''
+range = "return Limits::maximum + Limits::⟦minimum⟧;"
 
 [answers.member_initializer.hover]
 markdown = '''
-### field `height`
+**field** `height` · struct `constructor_member::Window`
 
----
-Type: `int`
-
----
 ```cpp
-// In Window
-public: int height
+int height
 ```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "Window() : ⟦height⟧(480) {}"
 
 [answers.gnu_designator.hover]
 markdown = '''
-### field `column`
+**field** `column` · struct `old_designator::Coordinates`
 
----
-Type: `int`
-
----
 ```cpp
-// In Coordinates
-public: int column
+int column
 ```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "Coordinates point = {⟦column⟧ : 3};"
 
 [answers.field_designator.hover]
 markdown = '''
-### field `column`
+**field** `column` · struct `standard_designator::Coordinates`
 
----
-Type: `int`
-
----
 ```cpp
-// In Coordinates
-public: int column
+int column
 ```
+Offset: 0 bytes
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "Coordinates point = {.⟦column⟧ = 3, .row = 4};"
 
 [answers.method_call.hover]
 markdown = '''
-### method `size`
+**method** `size` · struct `member_function::Queue`
 
----
-→ `int`
-
----
 ```cpp
-// In Queue
-public: int size()
+int size()
 ```
 '''
 range = "return queue.⟦size⟧();"
 
 [answers.static_method_call.hover]
 markdown = '''
-### method `now`
+**method** `now` · struct `static_function::Clock`
 
----
-→ `int`
-
----
 ```cpp
-// In Clock
-public: static int now()
+static int now()
 ```
 '''
 range = "return Clock::⟦now⟧();"

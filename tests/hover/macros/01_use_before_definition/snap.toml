@@ -1,16 +1,34 @@
-[answers.before]
-wrong = "a name the preprocessor tests before its #define has no card yet"
-hover = {}
+[answers.guard.hover]
+markdown = '''
+**macro** `MAIN_GUARD`
+
+```cpp
+#define MAIN_GUARD
+```
+Not defined yet here: defined on line 2
+'''
+range = "#ifndef ⟦MAIN_GUARD⟧"
+
+[answers.before.hover]
+markdown = '''
+**macro** `LIMIT`
+
+```cpp
+#define LIMIT 8
+```
+Not defined yet here: defined on line 8
+'''
+range = "#if ⟦LIMIT⟧ > 0"
 
 [answers.after.hover]
 markdown = '''
-### macro `LIMIT`
+**macro** `LIMIT`
 
----
 ```cpp
 #define LIMIT 8
-
-// Expands to
+```
+Expands to:
+```cpp
 8
 ```
 '''

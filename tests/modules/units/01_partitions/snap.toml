@@ -1,24 +1,20 @@
 [answers.type.hover]
 markdown = '''
-### struct `Config`
+**struct** `Config`
 
----
 ```cpp
 export struct Config {
   int value = 0;
 }
 ```
+Size: 4 bytes, alignment 4 bytes
 '''
 range = "⟦Config⟧ config = make_config();"
 
 [answers.function.hover]
 markdown = '''
-### function `make_config`
+**function** `make_config`
 
----
-→ `Config`
-
----
 ```cpp
 export Config make_config()
 ```
@@ -27,12 +23,8 @@ range = "Config config = ⟦make_config⟧();"
 
 [answers.primary.hover]
 markdown = '''
-### function `make_config`
+**function** `make_config`
 
----
-→ `Config`
-
----
 ```cpp
 export Config make_config()
 ```

@@ -1,35 +1,33 @@
-[answers.alias_using]
-wrong = "an alias of a struct does not show the struct's members (clangd#2020)"
-
 [answers.alias_using.hover]
 markdown = '''
-### type `Handle`
+**type** `Handle` · namespace `aliases`
 
----
-Type: `struct aliases::Widget`
-
----
 ```cpp
-// In namespace aliases
 using Handle = Widget
 ```
+```cpp
+struct Widget {
+  int id;
+  double value;
+}
+```
+Size: 16 bytes (4 bytes padding), alignment 8 bytes
 '''
 range = "using ⟦Handle⟧ = Widget;"
 
-[answers.alias_typedef]
-wrong = "an alias of a struct does not show the struct's members (clangd#2020)"
-
 [answers.alias_typedef.hover]
 markdown = '''
-### type `Widget_t`
+**type** `Widget_t` · namespace `aliases`
 
----
-Type: `struct aliases::Widget`
-
----
 ```cpp
-// In namespace aliases
 typedef Widget Widget_t
 ```
+```cpp
+struct Widget {
+  int id;
+  double value;
+}
+```
+Size: 16 bytes (4 bytes padding), alignment 8 bytes
 '''
 range = "typedef Widget ⟦Widget_t⟧;"

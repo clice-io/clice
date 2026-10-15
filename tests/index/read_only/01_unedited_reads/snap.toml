@@ -36,9 +36,8 @@ document_links = [
 
 ["index serves unedited reads".add.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
 ```cpp
 int add(int a, int b)
 ```
@@ -50,13 +49,10 @@ definition = ["header.h │ int ⟦add⟧(int a, int b);"]
 
 ["index serves unedited reads".twice.hover]
 markdown = '''
-### function `twice`
-
----
+**function** `twice`
 
 Doubles a value.
 
----
 ```cpp
 int twice(int x)
 ```
@@ -97,15 +93,8 @@ pushes = []
 
 ["edit escalates to compile".read.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```
@@ -152,15 +141,8 @@ pushes = []
 
 ["off compiles on demand".read.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
-→ `int`
-Parameters:
-- `int a`
-- `int b`
-
----
 ```cpp
 int add(int a, int b)
 ```
@@ -189,9 +171,8 @@ pushes = []
 
 ["completion escalates".read.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
 ```cpp
 int add(int a, int b)
 ```
@@ -209,9 +190,8 @@ references = ["int ⟦add⟧(int a, int b);", "main.cpp │ return ⟦add⟧(x, 
 
 ["header served read-only".header.hover]
 markdown = '''
-### function `add`
+**function** `add`
 
----
 ```cpp
 int add(int a, int b)
 ```

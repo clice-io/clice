@@ -1,17 +1,14 @@
 [default.include_path.hover]
 markdown = '''
-### `own_header.h`
+**header** `own_header.h`
 
----
-```cpp
-${WS}/own_header.h
-```
+`${WS}/own_header.h`
 '''
 range = '#include ⟦"own_header.h"⟧'
 
 ["plain text client".include_path.hover]
 plaintext = '''
-own_header.h
+header own_header.h
 
 ${WS}/own_header.h
 '''

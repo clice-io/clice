@@ -1,18 +1,10 @@
 [answers.first.hover]
 markdown = '''
-### function `open`
-
----
+**function** `open` · namespace `overloads`
 
 Opens a file.
 
-→ `void`
-Parameters:
-- `const char *path`
-
----
 ```cpp
-// In namespace overloads
 void open(const char *path)
 ```
 '''
@@ -20,17 +12,9 @@ range = "void ⟦open⟧(const char* path);"
 
 [answers.second.hover]
 markdown = '''
-### function `open`
+**function** `open` · namespace `overloads`
 
----
-→ `void`
-Parameters:
-- `const char *path`
-- `int flags`
-
----
 ```cpp
-// In namespace overloads
 void open(const char *path, int flags)
 ```
 '''

@@ -1,5 +1,6 @@
 // Layout facts at the edges: tail padding, a union member (no offset), a
-// bitfield in bits, a bitfield after another member, an empty class.
+// bitfield in bits, a bitfield after another member, an empty class, a member
+// of anonymous structs and unions (at its offset in the class around them).
 
 namespace studio::detail {
 class Canvas {
@@ -24,3 +25,14 @@ struct PackedPermissions {
 };
 
 struct §(struct_size)EmptyCanvas {};
+
+struct Message {
+    int kind;
+    union {
+        struct {
+            char flag;
+            long cou§(anonymous_member)nt;
+        };
+        double ratio;
+    };
+};

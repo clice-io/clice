@@ -1,13 +1,8 @@
 [answers.misattributed_note.hover]
 markdown = '''
-### variable `counter`
+**variable** `counter` · namespace `suppression`
 
----
-Type: `int`
-
----
 ```cpp
-// In namespace suppression
 int counter
 ```
 '''

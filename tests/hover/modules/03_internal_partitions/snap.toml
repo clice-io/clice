@@ -1,11 +1,7 @@
 [partition.declared.hover]
 markdown = '''
-### function `helper`
+**function** `helper`
 
----
-→ `int`
-
----
 ```cpp
 int helper()
 ```
@@ -14,12 +10,8 @@ range = "int ⟦helper⟧() {"
 
 [importer.use.hover]
 markdown = '''
-### function `helper`
+**function** `helper`
 
----
-→ `int`
-
----
 ```cpp
 int helper()
 ```

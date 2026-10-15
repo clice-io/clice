@@ -1,124 +1,99 @@
 [answers.forwarded_arg.hover]
 markdown = '''
-### variable `identifier`
+**variable** `identifier` · function `forwarded_argument::run`
 
----
-Type: `long`
-Value = `4`
-Passed as identifier
-
----
 ```cpp
-// In run
 long identifier = 4
 ```
+Value: `4`
+Passed as `identifier` by value
 '''
 range = "auto record = construct<Record>(⟦identifier⟧);"
 
 [answers.converted_arg.hover]
 markdown = '''
-### variable `distance`
+**variable** `distance` · function `converted_argument::run`
 
----
-Type: `int`
-Value = `5`
-Passed as distance (converted to const double &)
-
----
 ```cpp
-// In run
 int distance = 5
 ```
+Value: `5`
+Passed as `distance` by const reference, converted to `double`
 '''
 range = "measure(⟦distance⟧);"
 
 [answers.converted_ctor_arg.hover]
 markdown = '''
-### variable `distance`
+**variable** `distance` · function `converted_constructor_argument::run`
 
----
-Type: `int`
-Value = `6`
-Passed as distance (converted to const double &)
-
----
 ```cpp
-// In run
 int distance = 6
 ```
+Value: `6`
+Passed as `distance` by const reference, converted to `double`
 '''
 range = "Measurement measurement(⟦distance⟧);"
 
 [answers.literal_arg.hover]
 markdown = '''
-### `literal`
+**literal** `8`
 
----
-Passed as expected (converted to const long &)
+Type: `int`
+Value: `8`
+Passed as `expected` by const reference, converted to `long`
 '''
 range = "compare(7, ⟦8⟧);"
 
 [answers.expression_arg.hover]
 markdown = '''
-### `expression`
+**expression**
 
----
 Type: `int`
-Value = `17 (0x11)`
-Passed as expected (converted to const long &)
+Value: `17 (0x11)`
+Passed as `expected` by const reference, converted to `long`
 '''
 range = "compare(7, 8 ⟦+⟧ 9);"
 
 [answers.expression_by_value.hover]
 markdown = '''
-### `expression`
+**expression**
 
----
 Type: `int`
-Value = `5`
-Passed as left (converted to long)
+Value: `5`
+Passed as `left` by value, converted to `long`
 '''
 range = "return add(2 ⟦+⟧ 3, 4);"
 
 [answers.converted_literal.hover]
 markdown = '''
-### `literal`
+**literal** `10`
 
----
-Passed as distance (converted to const double &)
+Type: `int`
+Value: `10 (0xa)`
+Passed as `distance` by const reference, converted to `double`
 '''
 range = "measure(⟦10⟧);"
 
 [answers.method_arg_default.hover]
 markdown = '''
-### variable `level`
+**variable** `level` · function `method_argument::run`
 
----
-Type: `long`
-Value = `2`
-Passed as level
-
----
 ```cpp
-// In run
 long level = 2
 ```
+Value: `2`
+Passed as `level` by value
 '''
 range = "logger.write(⟦level⟧);"
 
 [answers.converting_ctor_arg.hover]
 markdown = '''
-### variable `value`
+**variable** `value` · function `converting_constructor::run`
 
----
-Type: `const int`
-Value = `11 (0xb)`
-Passed by const reference as key (converted to Key)
-
----
 ```cpp
-// In run
 const int value = 11
 ```
+Value: `11 (0xb)`
+Passed as `key` by value, converted to `Key`
 '''
 range = "lookup(⟦value⟧);"

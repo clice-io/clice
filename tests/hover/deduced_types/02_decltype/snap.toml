@@ -1,8 +1,7 @@
 [answers.value.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long
 ```
@@ -11,9 +10,8 @@ range = "⟦decltype⟧(auto) first = 3L;"
 
 [answers.const.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 const long
 ```
@@ -22,9 +20,8 @@ range = "⟦decltype⟧(auto) second = constant;"
 
 [answers.ref.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long &
 ```
@@ -33,9 +30,8 @@ range = "⟦decltype⟧(auto) third = reference;"
 
 [answers.of_lvalue.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long
 ```
@@ -44,9 +40,8 @@ range = "⟦decltype⟧(value) fourth = value;"
 
 [answers.of_paren.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long &
 ```
@@ -55,9 +50,8 @@ range = "⟦decltype⟧((value)) fifth = value;"
 
 [answers.of_rvalue.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long &&
 ```
@@ -66,24 +60,19 @@ range = "⟦decltype⟧(static_cast<long&&>(value)) sixth = static_cast<long&&>(
 
 [answers.var_type.hover]
 markdown = '''
-### variable `copy`
+**variable** `copy` · namespace `declared_types`
 
----
-Type: `long`
-
----
 ```cpp
-// In namespace declared_types
 decltype(source) copy = source
 ```
+Type: `long`
 '''
 range = "decltype(source) ⟦copy⟧ = source;"
 
 [answers.undeduced.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 /* not deduced */
 ```
@@ -92,9 +81,8 @@ range = "template <typename T> ⟦decltype⟧(auto) pending() {"
 
 [answers.dependent.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 <dependent type>
 ```

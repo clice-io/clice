@@ -1,6 +1,6 @@
-// How each argument reaches its parameter, for every pairing of value, reference
-// and const reference with a variable, a reference, a literal, a derived object
-// and a conversion.
+// How each argument reaches its parameter, for every pairing of value, reference,
+// const reference and rvalue reference with a variable, a reference, a literal, a
+// derived object and a conversion.
 
 struct Message {};
 struct Alert : Message {};
@@ -16,6 +16,7 @@ struct Envelope {
 void take_int(int value) {}
 void borrow_int(int& value) {}
 void view_int(const int& value) {}
+void move_int(int&& value) {}
 void borrow_message(Message& value) {}
 void view_message(const Message& value) {}
 void take_message(Message value) {}
@@ -36,6 +37,7 @@ void exercise_pass_types() {
     borrow_int(code);
     view_int(code);
     view_int(§(int_const_ref_literal)456);
+    move_int(§(int_rvalue_ref_literal)456);
     take_int(§(int_value_from_ref)code_ref);
     view_int(§(int_const_ref_from_ref)code_ref);
     view_int(§(int_const_ref_from_const_ref)code_view);

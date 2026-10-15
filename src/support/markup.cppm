@@ -49,6 +49,9 @@ public:
     /// Document::add_markdown).
     Paragraph& append_markdown(llvm::StringRef text);
 
+    /// Append plain text shown in bold where markup shows.
+    Paragraph& append_strong(llvm::StringRef text);
+
     /// Ensure there is space between the surrounding chunks.
     /// Has no effect at the beginning or end of a paragraph.
     Paragraph& append_space();
@@ -59,6 +62,7 @@ private:
             PlainText,
             InlineCode,
             Markdown,
+            Strong,
         } kind = PlainText;
 
         /// Preserve chunk markers in plaintext.
@@ -118,6 +122,9 @@ public:
 
     /// Inserts a horizontal separator to the document.
     void add_ruler();
+
+    /// Inserts an empty line between the blocks around it.
+    void add_spacing();
 
     /// Adds a block of code. This translates to a ``` block in markdown. In
     /// plain text representation, the code block will be surrounded by

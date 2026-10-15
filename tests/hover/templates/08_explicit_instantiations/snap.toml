@@ -1,51 +1,41 @@
 [answers.extern_class_directive.hover]
 markdown = '''
-### struct `Box<Item>`
+**struct** `Box<Item>` · namespace `explicit_instantiation`
 
----
 ```cpp
-// In namespace explicit_instantiation
 template <> struct Box<Item> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "extern template struct ⟦Box⟧<Item>;"
 
 [answers.class_directive_argument.hover]
 markdown = '''
-### struct `Item`
+**struct** `Item` · namespace `explicit_instantiation`
 
----
 ```cpp
-// In namespace explicit_instantiation
 struct Item {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "extern template struct Box<⟦Item⟧>;"
 
 [answers.class_directive.hover]
 markdown = '''
-### struct `Box<Item>`
+**struct** `Box<Item>` · namespace `explicit_instantiation`
 
----
 ```cpp
-// In namespace explicit_instantiation
 template <> struct Box<Item> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "template struct ⟦Box⟧<Item>;"
 
 [answers.function_directive.hover]
 markdown = '''
-### function `run`
+**function** `run` · namespace `explicit_instantiation`
 
----
-→ `void`
-Parameters:
-- `long`
-
----
 ```cpp
-// In namespace explicit_instantiation
 template <> void run<long>(long)
 ```
 '''
@@ -53,16 +43,11 @@ range = "template void ⟦run⟧<long>(long);"
 
 [answers.variable_directive.hover]
 markdown = '''
-### variable `zero<long>`
+**variable** `zero<long>` · namespace `explicit_instantiation`
 
----
-Type: `long`
-Value = `0`
-
----
 ```cpp
-// In namespace explicit_instantiation
 long zero = 0
 ```
+Value: `0`
 '''
 range = "template long ⟦zero⟧<long>;"

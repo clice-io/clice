@@ -1,7 +1,0 @@
-[answers.const_kw]
-wrong = "a keyword has no card explaining it (clangd#1862)"
-hover = {}
-
-[answers.virtual_kw]
-wrong = "a keyword has no card explaining it (clangd#1862)"
-hover = {}

@@ -281,6 +281,7 @@ std::optional<feature::HoverInfo> Features::index_hover_card(const Session& sess
     }
     auto hover = feature::index_hover(
         *info,
+        query.container_chain(symbol),
         definition,
         feature::documentation(query, symbol, cursor->site.file, project.config.documentation));
     hover.symbol_range = cursor->site.range;
@@ -298,7 +299,7 @@ feature::HoverInfo Features::module_hover_card(const index::IndexQuery::Cursor& 
                             return from.sites(named, cursor.site.file, RelationKind::Definition);
                         });
     if(!units.empty()) {
-        hover.definition = shown(project.file_table, units.front().path);
+        hover.file = shown(project.file_table, units.front().path);
     }
     hover.symbol_range = cursor.site.range;
     return hover;
@@ -334,7 +335,7 @@ std::optional<protocol::Hover> Features::directive_hover(const Session& session,
     feature::HoverInfo info;
     info.name = name.str();
     info.kind = SymbolKind::Header;
-    info.definition = shown(project.file_table, link.target);
+    info.file = shown(project.file_table, link.target);
     info.symbol_range = link.range;
 
     auto hover =
@@ -584,8 +585,8 @@ Features::RawResult Features::hover(Ticket ticket,
             // name (the entity the buffer's index recorded can be gone, as
             // after an imported interface changed): while a compile can
             // run, the AST's card is worth the wait.
-            if(info->definition.empty() && session->serving == ServingMode::Escalated &&
-               !ASTFamily::compile_barred(*session)) {
+            if(info->definition.empty() && info->file.empty() &&
+               session->serving == ServingMode::Escalated && !ASTFamily::compile_barred(*session)) {
                 break;
             }
             session->index_served = true;
@@ -605,12 +606,19 @@ Features::RawResult Features::hover(Ticket ticket,
     }
 
     // A directive's card names its target, which the worker knows only by
-    // identity: this side answers it, from the links.
+    // identity: this side answers it, from the links. Off a directive line
+    // there is none to look for.
     auto offset = session->positions().offset(position, PositionEncoding::UTF16);
-    auto argument = offset ? feature::find_directive_argument(session->text,
-                                                              *offset,
-                                                              &index_lang_options(*session))
-                           : std::nullopt;
+    std::optional<LocalSourceRange> argument;
+    if(offset) {
+        llvm::StringRef text = session->text;
+        auto line_start = text.rfind('\n', *offset);
+        line_start = line_start == llvm::StringRef::npos ? 0 : line_start + 1;
+        if(text.substr(line_start).ltrim(" \t").starts_with("#")) {
+            argument =
+                feature::find_directive_argument(text, *offset, &index_lang_options(*session));
+        }
+    }
     if(argument && argument->begin <= *offset) {
         auto links = co_await directive_links(ticket, token).or_fail();
         if(auto* link = link_at(links, *offset)) {

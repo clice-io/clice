@@ -1,3 +1,3 @@
 # Doxygen commands
 
-`@brief` heads the card, and each `@param` and `@return` shows beside what it describes
+`@brief` heads the card, and each `@param`, `@return` and `@retval` shows beside what it describes

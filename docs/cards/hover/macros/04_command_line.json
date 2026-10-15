@@ -30,7 +30,7 @@
           "marker": "cli_use",
           "value": {
             "hover": {
-              "markdown": "### macro `FROM_CLI`\n\n---\n```cpp\n#define FROM_CLI 7\n\n// Expands to\n7\n```",
+              "markdown": "**macro** `FROM_CLI`\n\n```cpp\n#define FROM_CLI 7\n```\nExpands to:\n```cpp\n7\n```",
               "range": {
                 "$place": "int cli = ⟦FROM_CLI⟧;",
                 "path": "main.cpp",

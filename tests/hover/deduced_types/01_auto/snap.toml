@@ -1,8 +1,7 @@
 [answers.simple.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 long
 ```
@@ -11,9 +10,8 @@ range = "⟦auto⟧ first = 4L;"
 
 [answers.const.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 long
 ```
@@ -22,9 +20,8 @@ range = "const ⟦auto⟧ second = 5L;"
 
 [answers.ref.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 long
 ```
@@ -33,9 +30,8 @@ range = "⟦auto⟧& third = source;"
 
 [answers.ptr.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 long
 ```
@@ -44,9 +40,8 @@ range = "⟦auto⟧* fourth = &source;"
 
 [answers.from_pointer.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 long *
 ```
@@ -55,9 +50,8 @@ range = "⟦auto⟧ fifth = &source;"
 
 [answers.lambda.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 (lambda)
 ```
@@ -66,9 +60,8 @@ range = "⟦auto⟧ sixth = [](long value) { return value; };"
 
 [answers.instantiation.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 Holder<long>
 ```
@@ -77,9 +70,8 @@ range = "⟦auto⟧ seventh = Holder<long>{};"
 
 [answers.structured.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 Dimensions
 ```
@@ -88,9 +80,8 @@ range = "⟦auto⟧ [rows, columns] = Dimensions{};"
 
 [answers.trailing_return.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 long
 ```
@@ -99,9 +90,8 @@ range = "⟦auto⟧ explicit_result() -> long {"
 
 [answers.fn_return.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 Result
 ```
@@ -110,9 +100,8 @@ range = "⟦auto⟧ inferred_result() {"
 
 [answers.dependent.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 T
 ```
@@ -121,9 +110,8 @@ range = "⟦auto⟧ value = T{};"
 
 [answers.undeduced.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 /* not deduced */
 ```

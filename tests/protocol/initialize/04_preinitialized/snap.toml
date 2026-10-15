@@ -2,11 +2,6 @@
 plaintext = '''
 function add
 
-→ int
-Parameters:
-- int a
-- int b
-
 int add(int a, int b)
 '''
 range = "int ⟦add⟧(int a, int b) { return a + b; }"
@@ -21,11 +16,6 @@ pushes = [[]]
 ["an edit drops the replay".hover.hover]
 plaintext = '''
 function add
-
-→ int
-Parameters:
-- int a
-- int b
 
 int add(int a, int b)
 '''

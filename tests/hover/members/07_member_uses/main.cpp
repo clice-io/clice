@@ -24,9 +24,10 @@ int read() {
 namespace static_member {
 struct Limits {
     static int maximum;
+    inline static int minimum = 1;
 };
 int read() {
-    return Limits::§(static_field)maximum;
+    return Limits::§(static_field)maximum + Limits::§(inline_static_field)minimum;
 }
 }
 

@@ -42,6 +42,18 @@ llvm::StringRef type_identifier(clang::QualType type) {
     return "";
 }
 
+/// Names a class as the code of a scope names it: without the namespaces
+/// and classes the scope is in too.
+struct EnclosingScopes : clang::PrintingCallbacks {
+    explicit EnclosingScopes(const clang::DeclContext* scope) : scope(scope) {}
+
+    bool isScopeVisible(const clang::DeclContext* outer) const override {
+        return outer->Encloses(scope);
+    }
+
+    const clang::DeclContext* scope;
+};
+
 bool is_anonymous_name(const clang::DeclarationName& name) {
     return name.isIdentifier() && !name.getAsIdentifierInfo();
 }
@@ -107,6 +119,42 @@ std::string template_args(const clang::NamedDecl& decl) {
         clang::printTemplateArgumentList(os, var->getTemplateArgs().asArray(), policy);
     }
     return args;
+}
+
+auto specialization_args(const clang::NamedDecl& decl, const Options& options) -> std::string {
+    if(llvm::isa<clang::ClassTemplatePartialSpecializationDecl,
+                 clang::VarTemplatePartialSpecializationDecl>(decl)) {
+        return template_args(decl);
+    }
+
+    auto& context = decl.getASTContext();
+    llvm::ArrayRef<clang::TemplateArgument> args;
+    const clang::TemplateParameterList* params = nullptr;
+    if(const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(&decl)) {
+        args = spec->getTemplateArgs().asArray();
+        params = spec->getSpecializedTemplate()->getTemplateParameters();
+        // The readable type keeps its arguments in a template-id; one the
+        // standard has an alias for keeps them behind it.
+        if(options.readable) {
+            auto readable = options.readable->readable(context.getCanonicalTagType(spec));
+            if(const auto* id = readable->getAs<clang::TemplateSpecializationType>()) {
+                args = id->template_arguments();
+            }
+        }
+    } else if(const auto* var = llvm::dyn_cast<clang::VarTemplateSpecializationDecl>(&decl)) {
+        args = var->getTemplateArgs().asArray();
+        params = var->getSpecializedTemplate()->getTemplateParameters();
+    } else {
+        return {};
+    }
+
+    EnclosingScopes scopes(decl.getDeclContext());
+    clang::PrintingPolicy policy(context.getLangOpts());
+    policy.Callbacks = &scopes;
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    clang::printTemplateArgumentList(os, args, policy, params);
+    return text;
 }
 
 namespace {
@@ -531,51 +579,6 @@ auto summarize(const clang::Expr* expr) -> std::string {
     return Namer{}.Visit(expr);
 }
 
-auto local_scope(const clang::Decl* decl) -> std::string {
-    assert(decl);
-    std::vector<std::string> scopes;
-
-    auto name_of_type_decl = [](const clang::TypeDecl* decl) {
-        if(!decl->getDeclName().isEmpty()) {
-            clang::PrintingPolicy policy = decl->getASTContext().getPrintingPolicy();
-            policy.SuppressScope = true;
-            return types::declared_type(decl).getAsString(policy);
-        }
-
-        if(auto* record = llvm::dyn_cast<clang::RecordDecl>(decl)) {
-            return ("(anonymous " + record->getKindName() + ")").str();
-        }
-
-        return std::string();
-    };
-
-    const clang::DeclContext* context = decl->getDeclContext();
-    while(context) {
-        if(const auto* type_decl = llvm::dyn_cast<clang::TypeDecl>(context)) {
-            scopes.push_back(name_of_type_decl(type_decl));
-        } else if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(context)) {
-            scopes.push_back(function->getNameAsString());
-        }
-        context = context->getParent();
-    }
-
-    return llvm::join(llvm::reverse(scopes), "::");
-}
-
-auto namespace_scope(const clang::Decl* decl) -> std::string {
-    assert(decl);
-    llvm::SmallVector<llvm::StringRef> names;
-    for(const auto* context = decl->getDeclContext(); context; context = context->getParent()) {
-        /// Inline namespaces are transparent scopes: lookup, and most uses,
-        /// see through them. An anonymous one gives its names internal
-        /// linkage, which the reader needs to know.
-        if(const auto* ns = llvm::dyn_cast<clang::NamespaceDecl>(context); ns && !ns->isInline()) {
-            names.push_back(ns->isAnonymousNamespace() ? "(anonymous)" : ns->getName());
-        }
-    }
-    return llvm::join(llvm::reverse(names), "::");
-}
-
 auto printing_policy(clang::ASTContext& context, const Options& options) -> clang::PrintingPolicy {
     clang::PrintingPolicy policy = context.getPrintingPolicy();
     policy.SuppressScope = options.suppress_scope;
@@ -596,8 +599,7 @@ auto printing_policy(clang::ASTContext& context, const Options& options) -> clan
 }
 
 auto restored_scope(clang::QualType type, const Options& options) -> clang::NestedNameSpecifier {
-    /// Complex cases (pointers/references, cv-qualifiers) are not
-    /// attempted, mirroring the tag-keyword special case of type().
+    /// Complex cases (pointers/references, cv-qualifiers) are not attempted.
     if(!options.suppress_scope || type.isNull() || type.hasQualifiers()) {
         return std::nullopt;
     }
@@ -623,7 +625,6 @@ auto type(clang::ASTContext& context,
           const Options& options,
           llvm::StringRef declarator) -> Type {
     clang::PrintingPolicy policy = printing_policy(context, options);
-    auto written = type;
     if(options.readable && !type.isNull()) {
         type = options.readable->readable(type);
     }
@@ -641,21 +642,6 @@ auto type(clang::ASTContext& context,
 
     Type result;
     llvm::raw_string_ostream os(result.text);
-
-    /// Special case: if the outer type is written as a canonical tag type,
-    /// then include the tag for extra clarity. This isn't very idiomatic, so
-    /// don't attempt it for complex cases, including pointers/references,
-    /// template specializations, etc.
-    if(options.tag_keyword_prefix && !type.isNull() && !type.hasQualifiers() &&
-       policy.SuppressTagKeyword && written.getTypePtr() == type.getTypePtr()) {
-        if(auto* tag = llvm::dyn_cast<clang::TagType>(type.getTypePtr());
-           tag && tag->isCanonicalUnqualified()) {
-            /// A closure type's name, `(lambda)`, already says what it is.
-            if(const auto* record = tag->getAsCXXRecordDecl(); !record || !record->isLambda()) {
-                os << tag->getDecl()->getKindName() << " ";
-            }
-        }
-    }
 
     if(auto scope = restored_scope(type, options)) {
         scope.print(os, policy);
@@ -723,6 +709,117 @@ auto print_hex(const llvm::APSInt& value) -> llvm::FormattedNumber {
     return llvm::format_hex(bits, 0);
 }
 
+/// A string as a literal of `element` characters writes it, its quotes,
+/// prefix and escapes included; cut short with `...` past `limit` characters.
+auto quoted(const clang::ASTContext& context,
+            clang::QualType element,
+            llvm::ArrayRef<std::uint32_t> characters) -> std::string {
+    constexpr std::size_t limit = 80;
+    std::string text;
+    if(element->isChar8Type()) {
+        text = "u8";
+    } else if(element->isChar16Type()) {
+        text = "u";
+    } else if(element->isChar32Type()) {
+        text = "U";
+    } else if(element->isWideCharType()) {
+        text = "L";
+    }
+    text += '"';
+    bool narrow = context.getTypeSize(element) == 8;
+    for(auto [index, c]: llvm::enumerate(characters)) {
+        if(index == limit) {
+            text += "...";
+            break;
+        }
+        switch(c) {
+            case '"': text += R"(\")"; continue;
+            case '\\': text += R"(\\)"; continue;
+            case '\n': text += R"(\n)"; continue;
+            case '\t': text += R"(\t)"; continue;
+            default: break;
+        }
+        if(c < 0x20 || c == 0x7f) {
+            text += R"(\x)";
+            text += llvm::utohexstr(c, /*LowerCase=*/true, /*Width=*/2);
+        } else if(narrow) {
+            // UTF-8 code units pass through as the bytes they are.
+            text += static_cast<char>(c);
+        } else {
+            std::array<char, 4> buffer;
+            char* end = buffer.data();
+            if(llvm::ConvertCodePointToUTF8(c, end)) {
+                text.append(buffer.data(), end);
+            }
+        }
+    }
+    text += '"';
+    return text;
+}
+
+/// The value of a character array or of a pointer to a string literal's
+/// start as the string it holds, up to its terminator; nullopt for any
+/// other value, and for an array no terminator ends.
+auto string_value(const clang::ASTContext& context,
+                  const clang::APValue& value,
+                  clang::QualType type) -> std::optional<std::string> {
+    if(value.isArray()) {
+        const auto* array = context.getAsArrayType(type);
+        if(!array || !array->getElementType()->isAnyCharacterType()) {
+            return std::nullopt;
+        }
+        llvm::SmallVector<std::uint32_t> characters;
+        for(unsigned index = 0; index < value.getArraySize(); index += 1) {
+            const auto& element = index < value.getArrayInitializedElts()
+                                      ? value.getArrayInitializedElt(index)
+                                      : value.getArrayFiller();
+            if(!element.isInt()) {
+                return std::nullopt;
+            }
+            auto c = element.getInt().getZExtValue();
+            if(c == 0) {
+                return quoted(context, array->getElementType(), characters);
+            }
+            characters.push_back(static_cast<std::uint32_t>(c));
+        }
+        return std::nullopt;
+    }
+
+    if(value.isLValue() && !value.isLValueOnePastTheEnd() && value.getLValueOffset().isZero()) {
+        const auto* literal = llvm::dyn_cast_if_present<clang::StringLiteral>(
+            value.getLValueBase().dyn_cast<const clang::Expr*>());
+        if(!literal || !type->isPointerType()) {
+            return std::nullopt;
+        }
+        llvm::SmallVector<std::uint32_t> characters;
+        for(unsigned index = 0; index < literal->getLength(); index += 1) {
+            characters.push_back(literal->getCodeUnit(index));
+        }
+        return quoted(context, type->getPointeeType().getUnqualifiedType(), characters);
+    }
+    return std::nullopt;
+}
+
+/// The shortest text that reads back as the same value: `3.14` rather than
+/// `3.1400000000000001`, the digits a double holds.
+auto float_text(const llvm::APFloat& value) -> std::string {
+    llvm::SmallString<32> text;
+    if(value.isFinite()) {
+        for(unsigned precision = 1; precision < 40; precision += 1) {
+            text.clear();
+            value.toString(text, precision);
+            llvm::APFloat read(value.getSemantics());
+            llvm::cantFail(read.convertFromString(text, llvm::APFloat::rmNearestTiesToEven));
+            if(read.bitwiseIsEqual(value)) {
+                return text.str().str();
+            }
+        }
+    }
+    text.clear();
+    value.toString(text);
+    return text.str().str();
+}
+
 }  // namespace
 
 auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
@@ -753,6 +850,18 @@ auto expr_value(const clang::ASTContext& context, const clang::Expr* expr)
        /// might make clang crash while printing the expressions.
        constant.Val.isStruct() || constant.Val.isUnion()) {
         return std::nullopt;
+    }
+
+    if(auto text = string_value(context, constant.Val, type)) {
+        return text;
+    }
+    if(constant.Val.isFloat()) {
+        return float_text(constant.Val.getFloat());
+    }
+    /// As clang prints a complex integer, `0+6i`.
+    if(constant.Val.isComplexFloat()) {
+        return float_text(constant.Val.getComplexFloatReal()) + "+" +
+               float_text(constant.Val.getComplexFloatImag()) + "i";
     }
 
     /// Show enums symbolically, not numerically like APValue::printPretty().
@@ -896,7 +1005,7 @@ auto as_written(clang::ASTContext& context, const clang::Expr* expr, const Optio
 auto default_argument(const clang::ParmVarDecl* param, const Options& options)
     -> std::optional<std::string> {
     const clang::Expr* arg = default_arg(param);
-    if(!arg) {
+    if(!arg || arg->containsErrors()) {
         return std::nullopt;
     }
     return as_written(param->getASTContext(), arg, options);
@@ -947,7 +1056,23 @@ auto parameter(const clang::ParmVarDecl& param, llvm::StringRef name, const Opti
         declarator = "...";
     }
     declarator += name;
-    auto text = type(param.getASTContext(), written, options, declarator).text;
+    std::string text;
+    /// A parameter of function type, `int callback(int)`: clang would put
+    /// the name in parentheses, `int (callback)(int)`.
+    if(const auto* function = written->getAs<clang::FunctionProtoType>();
+       function && !name.empty()) {
+        auto& context = param.getASTContext();
+        text = type(context, function->getReturnType(), options).text + " " + declarator + "(";
+        llvm::raw_string_ostream os(text);
+        llvm::interleave(
+            function->getParamTypes(),
+            os,
+            [&](clang::QualType param_type) { os << type(context, param_type, options).text; },
+            ", ");
+        os << (function->isVariadic() ? (function->getNumParams() ? ", ...)" : "...)") : ")");
+    } else {
+        text = type(param.getASTContext(), written, options, declarator).text;
+    }
     if(auto value = default_argument(&param, options)) {
         text += " = " + *value;
     }
@@ -966,67 +1091,6 @@ auto field(const clang::FieldDecl& field, const Options& options) -> std::string
         text += as_written(context, init, options);
     }
     return text;
-}
-
-auto template_params(const clang::TemplateParameterList* params, const Options& options)
-    -> std::vector<Param> {
-    assert(params);
-    std::vector<Param> result;
-
-    for(const clang::Decl* decl: *params) {
-        Param param;
-        if(const auto* type_param = llvm::dyn_cast<clang::TemplateTypeParmDecl>(decl)) {
-            param.type = param_type(*type_param);
-
-            if(!type_param->getName().empty()) {
-                param.name = type_param->getNameAsString();
-            }
-
-            if(type_param->hasDefaultArgument()) {
-                param.default_value.emplace();
-                llvm::raw_string_ostream out(*param.default_value);
-                type_param->getDefaultArgument().getArgument().print(
-                    printing_policy(type_param->getASTContext(), options),
-                    out,
-                    /*IncludeType=*/false);
-            }
-        } else if(const auto* non_type_param =
-                      llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(decl)) {
-            param.type = param_type(*non_type_param, options);
-
-            if(auto* identifier = non_type_param->getIdentifier()) {
-                param.name = identifier->getName().str();
-            }
-
-            if(non_type_param->hasDefaultArgument()) {
-                param.default_value.emplace();
-                llvm::raw_string_ostream out(*param.default_value);
-                non_type_param->getDefaultArgument().getArgument().print(
-                    printing_policy(non_type_param->getASTContext(), options),
-                    out,
-                    /*IncludeType=*/false);
-            }
-        } else if(const auto* template_param =
-                      llvm::dyn_cast<clang::TemplateTemplateParmDecl>(decl)) {
-            param.type = param_type(*template_param, options);
-
-            if(!template_param->getName().empty()) {
-                param.name = template_param->getNameAsString();
-            }
-
-            if(template_param->hasDefaultArgument()) {
-                param.default_value.emplace();
-                llvm::raw_string_ostream out(*param.default_value);
-                template_param->getDefaultArgument().getArgument().print(
-                    printing_policy(template_param->getASTContext(), options),
-                    out,
-                    /*IncludeType=*/false);
-            }
-        }
-        result.push_back(std::move(param));
-    }
-
-    return result;
 }
 
 auto template_param_type(const clang::NamedDecl* param, const Options& options) -> Type {
@@ -1110,6 +1174,11 @@ bool is_listed(const clang::Decl& member) {
            member)) {
         return false;
     }
+    /// A reserved name is the implementation's own (`_M_impl`, `__base`).
+    if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(&member);
+       named && clang::isReservedInAllContexts(named->isReserved(member.getLangOpts()))) {
+        return false;
+    }
     return llvm::isa<clang::FieldDecl,
                      clang::VarDecl,
                      clang::VarTemplateDecl,
@@ -1147,6 +1216,7 @@ bool declared_with(const clang::Decl& member, const clang::TagDecl& tag) {
 struct MemberPrinter {
     llvm::raw_ostream& os;
     const clang::PrintingPolicy& policy;
+    const Options& options;
     TokenCount token_count;
 
     /// How many more members to print, those of nested unnamed tags included.
@@ -1196,6 +1266,8 @@ struct MemberPrinter {
 
     void members(const clang::RecordDecl& record) {
         auto access = record.isClass() ? clang::AS_private : clang::AS_public;
+        const auto* cxx = llvm::dyn_cast<clang::CXXRecordDecl>(&record);
+        bool instantiation = cxx && cxx->getTemplateInstantiationPattern();
         auto decls = record.decls();
         for(auto it = decls.begin(); it != decls.end(); ++it) {
             const clang::Decl* member = *it;
@@ -1253,11 +1325,50 @@ struct MemberPrinter {
                 it = last;
             } else if(llvm::isa<clang::ClassTemplateDecl>(member)) {
                 os << tag_head(*member, policy);
+            } else if(instantiation) {
+                instantiated(*member);
             } else {
                 print(*member, policy);
             }
             os << ';';
         }
+    }
+
+    /// A member of a class template's instantiation: its types as a reader
+    /// knows them, rather than as the template writes them in terms of its
+    /// own parameters and helpers (`typedef typename _Base::pointer
+    /// pointer`).
+    void instantiated(const clang::Decl& member) {
+        auto& context = member.getASTContext();
+        if(const auto* field = llvm::dyn_cast<clang::FieldDecl>(&member)) {
+            os << display::field(*field, options);
+        } else if(const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(&member)) {
+            auto target = type(context, member_type(alias->getUnderlyingType()), options).text;
+            if(llvm::isa<clang::TypeAliasDecl>(alias)) {
+                os << "using " << alias->getName() << " = " << target;
+            } else {
+                os << "typedef "
+                   << type(context,
+                           member_type(alias->getUnderlyingType()),
+                           options,
+                           alias->getName())
+                          .text;
+            }
+        } else {
+            print(member, policy);
+        }
+    }
+
+    /// The type a member type of an instantiation names, through the
+    /// aliases of its class and its bases.
+    static auto member_type(clang::QualType type) -> clang::QualType {
+        while(const auto* alias = type->getAs<clang::TypedefType>()) {
+            if(!alias->getDecl()->getDeclContext()->isRecord()) {
+                break;
+            }
+            type = type.getSingleStepDesugaredType(alias->getDecl()->getASTContext());
+        }
+        return type;
     }
 
     /// The specifiers the declarators in `const struct { ... } a, *b;`
@@ -1281,7 +1392,31 @@ struct MemberPrinter {
         if(hides_initializer(initializer(member), member_policy, token_count)) {
             member_policy.SuppressInitializers = true;
         }
+        if(const auto* var = llvm::dyn_cast<clang::VarDecl>(&member);
+           var && var->isInlineSpecified()) {
+            os << "inline ";
+        }
         member.print(os, member_policy);
+        if(const auto* init = template_initializer(member);
+           init && !member_policy.SuppressInitializers &&
+           !hides_initializer(init, member_policy, token_count)) {
+            os << " = ";
+            init->printPretty(os, nullptr, member_policy);
+        }
+    }
+
+    /// The initializer of a class template's static data member, for an
+    /// instantiation that has none of its own yet: clang instantiates it
+    /// only where it is used. One that depends on the template's arguments
+    /// says nothing until then.
+    static auto template_initializer(const clang::Decl& member) -> const clang::Expr* {
+        const auto* var = llvm::dyn_cast<clang::VarDecl>(&member);
+        if(!var || var->getInit()) {
+            return nullptr;
+        }
+        const auto* pattern = var->getInstantiatedFromStaticDataMember();
+        const auto* init = pattern ? pattern->getInit() : nullptr;
+        return init && !init->isValueDependent() ? init : nullptr;
     }
 };
 
@@ -1323,43 +1458,176 @@ void print_decomposition(const clang::DecompositionDecl& decl,
 
 }  // namespace
 
+namespace {
+
+/// The head of a class template's instantiation: its arguments as a reader
+/// names them (specialization_args), and its bases but those the library
+/// keeps to itself (`_Vector_base`).
+auto instantiation_head(const clang::ClassTemplateSpecializationDecl& spec, const Options& options)
+    -> std::string {
+    std::string text = "template <> ";
+    text += spec.getKindName();
+    text += ' ';
+    text += spec.getName();
+    text += specialization_args(spec, options);
+    if(spec.hasAttr<clang::FinalAttr>()) {
+        text += " final";
+    }
+    llvm::StringRef separator = " : ";
+    for(const auto& base: spec.bases()) {
+        const auto* base_decl = base.getType()->getAsCXXRecordDecl();
+        if(base_decl && options.readable && options.readable->internal(base_decl)) {
+            continue;
+        }
+        text += separator;
+        separator = ", ";
+        if(base.isVirtual()) {
+            text += "virtual ";
+        }
+        if(auto access = base.getAccessSpecifierAsWritten(); access != clang::AS_none) {
+            text += clang::getAccessSpelling(access);
+            text += ' ';
+        }
+        text += type(spec.getASTContext(), base.getType(), options).text;
+    }
+    return text;
+}
+
+/// Whether the alias names a tag declared with it and named by it alone, as
+/// in `typedef struct { ... } Point;`.
+bool declares_tag(const clang::TypedefNameDecl& alias) {
+    const auto* tag = alias.getUnderlyingType()->getAsTagDecl();
+    return tag && tag->getTypedefNameForAnonDecl() == &alias && tag->getDefinition();
+}
+
+/// Clang's printer writes a function under the qualifier its definition is
+/// written with, and a pack among a specialization's arguments as a nested
+/// list (`vector<int>::emplace_back<<int, int>>`, which then formats as a
+/// shift): the name alone, its arguments flattened.
+void print_name(std::string& text,
+                const clang::FunctionDecl& function,
+                const clang::PrintingPolicy& policy) {
+    std::string name;
+    llvm::raw_string_ostream name_os(name);
+    function.getNameInfo().printName(name_os, policy);
+
+    std::string printed;
+    llvm::raw_string_ostream printed_os(printed);
+    function.getQualifier().print(printed_os, policy);
+    printed_os << name;
+
+    const auto* args = function.getTemplateSpecializationArgs();
+    if(args && !function.getTemplateSpecializationArgsAsWritten()) {
+        printed_os << '<';
+        llvm::interleave(
+            args->asArray(),
+            printed_os,
+            [&](const clang::TemplateArgument& arg) {
+                arg.print(policy, printed_os, /*IncludeType=*/true);
+            },
+            ", ");
+        printed_os << '>';
+        clang::printTemplateArgumentList(name_os, args->asArray(), policy);
+    }
+
+    if(printed != name) {
+        if(auto at = text.find(printed); at != std::string::npos) {
+            text.replace(at, printed.size(), name);
+        }
+    }
+}
+
+}  // namespace
+
 auto definition(const clang::Decl* decl,
                 const Options& options,
                 llvm::function_ref<std::size_t(clang::SourceRange)> token_count) -> std::string {
     assert(decl);
-    clang::PrintingPolicy policy = printing_policy(decl->getASTContext(), options);
-    if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
-       var && hides_initializer(var->getInit(), policy, token_count)) {
+    auto& context = decl->getASTContext();
+    clang::PrintingPolicy policy = printing_policy(context, options);
+    EnclosingScopes scopes(decl->getDeclContext());
+    policy.Callbacks = &scopes;
+    const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
+    if(var && hides_initializer(var->getInit(), policy, token_count)) {
         policy.SuppressInitializers = true;
     }
 
     std::string definition;
     llvm::raw_string_ostream os(definition);
+    MemberPrinter printer{
+        .os = os,
+        .policy = policy,
+        .options = options,
+        .token_count = token_count,
+        .budget = options.max_members,
+    };
     const auto* class_template = llvm::dyn_cast<clang::ClassTemplateDecl>(decl);
     const auto* tag =
         llvm::dyn_cast<clang::TagDecl>(class_template ? class_template->getTemplatedDecl() : decl);
+    const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(decl);
     if(const auto* decomposition = llvm::dyn_cast<clang::DecompositionDecl>(decl)) {
         print_decomposition(*decomposition, policy, os);
+    } else if(const auto* param = llvm::dyn_cast<clang::ParmVarDecl>(decl)) {
+        if(param->isExplicitObjectParameter()) {
+            os << "this ";
+        }
+        /// As written, as clang prints every other declaration.
+        auto written = options;
+        written.resolve_decltype = false;
+        written.readable = nullptr;
+        auto text = parameter(*param, param->getName(), written);
+        /// A redeclaration inherits the default argument it does not write.
+        if(auto value = default_argument(param, written);
+           value && param->hasInheritedDefaultArg()) {
+            text.resize(text.size() - value->size() - llvm::StringRef(" = ").size());
+        }
+        os << text;
+    } else if(var && var->isInitCapture()) {
+        /// Clang prints the capture as a variable of its deduced type,
+        /// `auto` left in front.
+        os << "auto " << (var->getType()->isReferenceType() ? "&" : "") << var->getName();
+        if(var->getInit() && !policy.SuppressInitializers) {
+            os << " = " << as_written(context, var->getInit(), options);
+        }
+    } else if(alias && declares_tag(*alias)) {
+        /// Clang prints the tag under the alias's name, `typedef struct Point
+        /// Point`, a struct C does not know.
+        const auto* named = alias->getUnderlyingType()->getAsTagDecl()->getDefinition();
+        if(llvm::isa<clang::TypeAliasDecl>(alias)) {
+            os << "using " << alias->getName() << " = ";
+        } else {
+            os << "typedef ";
+        }
+        os << named->getKindName();
+        printer.body(*named);
+        if(llvm::isa<clang::TypedefDecl>(alias)) {
+            os << ' ' << alias->getName();
+        }
     } else if(!tag || !tag->getDefinition()) {
+        /// Clang prints no `inline` of a variable.
+        if(var && var->isInlineSpecified()) {
+            os << "inline ";
+        }
         decl->print(os, policy);
+        if(const auto* function = decl->getAsFunction()) {
+            print_name(definition, *function, policy);
+        }
     } else {
         /// The head comes from the definition too: only a definition prints
         /// its bases. tag_head() relies on the terse body.
         assert(options.terse);
         tag = tag->getDefinition();
+        const auto* spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(tag);
         if(class_template) {
             os << tag_head(*llvm::cast<clang::CXXRecordDecl>(tag)->getDescribedClassTemplate(),
                            policy);
+        } else if(spec && !llvm::isa<clang::ClassTemplatePartialSpecializationDecl>(spec) &&
+                  spec->getSpecializationKind() != clang::TSK_ExplicitSpecialization) {
+            os << instantiation_head(*spec, options);
         } else {
             os << tag_head(*tag, policy);
         }
         if(options.max_members > 0) {
-            MemberPrinter printer{
-                .os = os,
-                .policy = policy,
-                .token_count = token_count,
-                .budget = options.max_members,
-            };
             printer.body(*tag);
         }
     }
@@ -1568,11 +1836,48 @@ auto ReadableTypes::standard_alias(const clang::ClassTemplateSpecializationDecl&
     return found;
 }
 
+auto ReadableTypes::standard_name(const clang::PredefinedSugarType& type)
+    -> const clang::TypedefNameDecl* {
+    auto [cached, inserted] = aliases.try_emplace(&type, nullptr);
+    if(!inserted) {
+        return cached->second;
+    }
+    llvm::StringRef name;
+    switch(type.getKind()) {
+        case clang::PredefinedSugarType::Kind::SizeT: name = "size_t"; break;
+        case clang::PredefinedSugarType::Kind::PtrdiffT: name = "ptrdiff_t"; break;
+        // POSIX's ssize_t is no standard name.
+        case clang::PredefinedSugarType::Kind::SignedSizeT: return nullptr;
+    }
+    auto find = [&](const clang::DeclContext* scope) -> const clang::TypedefNameDecl* {
+        const auto* alias =
+            scope->lookup(&context.Idents.get(name)).find_first<clang::TypedefNameDecl>();
+        return alias && context.hasSameType(alias->getUnderlyingType(), type.desugar()) ? alias
+                                                                                        : nullptr;
+    };
+    const auto* global = context.getTranslationUnitDecl();
+    const auto* std_scope =
+        global->lookup(&context.Idents.get("std")).find_first<clang::NamespaceDecl>();
+    const auto* found = std_scope ? find(std_scope) : nullptr;
+    cached->second = found ? found : find(global);
+    return cached->second;
+}
+
 auto ReadableTypes::readable(clang::QualType type) -> clang::QualType {
     auto qualified = [&](clang::QualType inner) {
         return context.getQualifiedType(inner, type.getLocalQualifiers());
     };
     const auto* T = type.getTypePtr();
+    /// The compiler's own names for the type of `sizeof` and of a pointer
+    /// difference (`__size_t`), which no code spells.
+    if(const auto* predefined = llvm::dyn_cast<clang::PredefinedSugarType>(T)) {
+        if(const auto* alias = standard_name(*predefined)) {
+            auto scope = scoped ? written_scope(alias) : std::nullopt;
+            return qualified(
+                context.getTypedefType(clang::ElaboratedTypeKeyword::None, scope, alias));
+        }
+        return qualified(predefined->desugar());
+    }
     if(const auto* deduced = llvm::dyn_cast<clang::AutoType>(T);
        deduced && deduced->getDeducedKind() == clang::DeducedKind::Deduced) {
         return qualified(readable(deduced->getDeducedType()));

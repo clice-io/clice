@@ -1,16 +1,14 @@
 [answers.object_like.hover]
 markdown = '''
-### macro `BUFFER_LIMIT`
-
----
+**macro** `BUFFER_LIMIT`
 
 The largest buffer, in bytes.
 
----
 ```cpp
 #define BUFFER_LIMIT 4096
-
-// Expands to
+```
+Expands to:
+```cpp
 4096
 ```
 '''
@@ -18,40 +16,36 @@ range = "int limit = ⟦BUFFER_LIMIT⟧;"
 
 [answers.function_like.hover]
 markdown = '''
-### macro `CLAMP`
-
----
+**macro** `CLAMP`
 
 Clamps a value to a range.
+
+```cpp
+#define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
+```
+Expands to:
+```cpp
+((5) < (0) ? (0) : (5) > (10) ? (10) : (5))
+```
 
 Parameters:
 - `x` — The value to clamp.
 
 Returns: The value, at least `lo` and at most `hi`.
-
----
-```cpp
-#define CLAMP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
-
-// Expands to
-( ( 5 ) < ( 0 ) ? ( 0 ) : ( 5 ) > ( 10 ) ? ( 10 ) : ( 5 ) )
-```
 '''
 range = "int clamped = ⟦CLAMP⟧(5, 0, 10);"
 
 [answers.trailing.hover]
 markdown = '''
-### macro `RETRIES`
-
----
+**macro** `RETRIES`
 
 How many times a request is tried.
 
----
 ```cpp
 #define RETRIES 3
-
-// Expands to
+```
+Expands to:
+```cpp
 3
 ```
 '''

@@ -1,3 +1,6 @@
+#ifndef §(guard)MAIN_GUARD
+#define MAIN_GUARD
+
 #if §(before)LIMIT > 0
 int positive = 1;
 #endif
@@ -5,3 +8,5 @@ int positive = 1;
 #define LIMIT 8
 
 int capacity = §(after)LIMIT;
+
+#endif

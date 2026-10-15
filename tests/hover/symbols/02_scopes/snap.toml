@@ -1,46 +1,32 @@
 [answers.method_local.hover]
 markdown = '''
-### variable `count`
+**variable** `count` · method `app::detail::Engine::tick`
 
----
-Type: `int`
-Value = `0`
-
----
 ```cpp
-// In Engine::tick
 int count = 0
 ```
+Value: `0`
 '''
 range = "int ⟦count⟧ = 0;"
 
 [answers.ns_var.hover]
 markdown = '''
-### variable `workers`
+**variable** `workers` · namespace `app::detail`
 
----
-Type: `int`
-Value = `4`
-
----
 ```cpp
-// In namespace app::detail
 int workers = 4
 ```
+Value: `4`
 '''
 range = "int ⟦workers⟧ = 4;"
 
 [answers.global_var.hover]
 markdown = '''
-### variable `global`
+**variable** `global`
 
----
-Type: `int`
-Value = `1`
-
----
 ```cpp
 int global = 1
 ```
+Value: `1`
 '''
 range = "int ⟦global⟧ = 1;"

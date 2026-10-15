@@ -37,12 +37,8 @@ errors = [
 
 ["removed first folder hands over".beta.hover]
 markdown = '''
-### function `beta_fn`
+**function** `beta_fn`
 
----
-→ `int`
-
----
 ```cpp
 int beta_fn()
 ```

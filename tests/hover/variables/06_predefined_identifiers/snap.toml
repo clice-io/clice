@@ -1,21 +1,17 @@
 [answers.func_name.hover]
 markdown = '''
-### variable `__func__`
-
----
+**variable** `__func__`
 
 Name of the current function (predefined variable)
 
 Type: `const char[8]`
-Value = `"current"`
+Value: `"current"`
 '''
 range = "const char* name = ⟦__func__⟧; @+0"
 
 [answers.func_dependent.hover]
 markdown = '''
-### variable `__func__`
-
----
+**variable** `__func__`
 
 Name of the current function (predefined variable)
 

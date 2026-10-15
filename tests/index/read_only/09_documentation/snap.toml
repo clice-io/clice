@@ -1,32 +1,26 @@
 ["index cards carry documentation".call.hover]
 markdown = '''
-### function `area`
-
----
+**function** `area`
 
 Computes the area of a rectangle.
+
+```cpp
+int area(int width, int height)
+```
 
 Parameters:
 - `width` — The horizontal extent.
 
 Returns: The product of both sides.
-
----
-```cpp
-int area(int width, int height)
-```
 '''
 range = "return ⟦area⟧(2, 3) + shape.sides + LIMIT + calls;"
 
 ["index cards carry documentation".field.hover]
 markdown = '''
-### field `sides`
-
----
+**field** `sides` · struct `Shape`
 
 How many sides it has.
 
----
 ```cpp
 int sides
 ```
@@ -35,13 +29,10 @@ range = "return area(2, 3) + shape.⟦sides⟧ + LIMIT + calls;"
 
 ["index cards carry documentation".override.hover]
 markdown = '''
-### method `draw`
-
----
+**method** `draw` · struct `Square`
 
 Draws the shape.
 
----
 ```cpp
 void draw() override
 ```
@@ -50,13 +41,10 @@ range = "square.⟦draw⟧();"
 
 ["index cards carry documentation".macro.hover]
 markdown = '''
-### macro `LIMIT`
-
----
+**macro** `LIMIT`
 
 The most it takes.
 
----
 ```cpp
 #define LIMIT 4
 ```
@@ -65,13 +53,10 @@ range = "return area(2, 3) + shape.sides + ⟦LIMIT⟧ + calls;"
 
 ["index cards carry documentation".variable.hover]
 markdown = '''
-### variable `calls`
-
----
+**variable** `calls`
 
 How many calls so far.
 
----
 ```cpp
 extern int calls
 ```
@@ -80,13 +65,10 @@ range = "return area(2, 3) + shape.sides + LIMIT + ⟦calls⟧;"
 
 ["index cards carry documentation".absolute.hover]
 markdown = '''
-### function `absolute`
-
----
+**function** `absolute` · namespace `inner`
 
 The global helper.
 
----
 ```cpp
 void absolute()
 ```
@@ -95,13 +77,10 @@ range = "inner::⟦absolute⟧();"
 
 ["index cards carry documentation".overload.hover]
 markdown = '''
-### function `overload`
-
----
+**function** `overload` · namespace `inner`
 
 Takes a floating-point number.
 
----
 ```cpp
 void overload(double value)
 ```
@@ -110,13 +89,10 @@ range = "inner::⟦overload⟧(1.0);"
 
 ["index cards carry documentation".nested.hover]
 markdown = '''
-### function `nested`
-
----
+**function** `nested` · namespace `inner`
 
 The other target.
 
----
 ```cpp
 void nested()
 ```
@@ -125,13 +101,10 @@ range = "inner::⟦nested⟧();"
 
 ["index cards carry documentation".template.hover]
 markdown = '''
-### function `copy`
-
----
+**function** `copy`
 
 Makes a copy of a value.
 
----
 ```cpp
 template <typename T, typename = decltype(T{})>
 T copy(T value)
@@ -141,13 +114,10 @@ range = "⟦copy⟧(1);"
 
 ["index cards carry documentation".parameter.hover]
 markdown = '''
-### parameter `shape`
-
----
+**parameter** `shape` · function `use`
 
 The shape it reads.
 
----
 ```cpp
 Shape shape
 ```
@@ -156,13 +126,10 @@ range = "return area(2, 3) + ⟦shape⟧.sides + LIMIT + calls;"
 
 ["index cards of template parameters".template_parameter.hover]
 markdown = '''
-### type `T`
-
----
+**type** `T` · function `exchange`
 
 The replaced type.
 
----
 ```cpp
 typename T
 ```
@@ -171,9 +138,8 @@ range = "⟦T⟧ exchange(T& target, T value);"
 
 ["index cards of template parameters".undocumented_parameter.hover]
 markdown = '''
-### type `U`
+**type** `U` · function `repeat`
 
----
 ```cpp
 typename U
 ```
@@ -182,13 +148,10 @@ range = "⟦U⟧ repeat(U value);"
 
 ["index cards of template parameters".non_type_parameter.hover]
 markdown = '''
-### variable `Size`
-
----
+**variable** `Size` · struct `Buffer`
 
 Its capacity.
 
----
 ```cpp
 int Size
 ```
@@ -197,44 +160,39 @@ range = "char data[⟦Size⟧];"
 
 ["index cards of template parameters".copied_alias.hover]
 markdown = '''
-### type `self`
-
----
+**type** `self` · struct `Buffer`
 
 A fixed buffer.
 
-Template parameters:
-- `Size` — Its capacity.
-
----
 ```cpp
 using self = Buffer
 ```
+
+Template parameters:
+- `Size` — Its capacity.
 '''
 range = "using ⟦self⟧ = Buffer;"
 
 ["index cards follow the options".call.hover]
 markdown = '''
-### function `area`
+**function** `area`
+
+```cpp
+int area(int width, int height)
+```
 
 ---
 
 Computes the area of a rectangle.
 @param width The horizontal extent.
 @return The product of both sides.
-
----
-```cpp
-int area(int width, int height)
-```
 '''
 range = "return ⟦area⟧(2, 3) + shape.sides + LIMIT + calls;"
 
 ["index cards follow the options".override.hover]
 markdown = '''
-### method `draw`
+**method** `draw` · struct `Square`
 
----
 ```cpp
 void draw() override
 ```
@@ -247,10 +205,10 @@ function area
 
 Computes the area of a rectangle.
 
+int area(int width, int height)
+
 Parameters:
 - width — The horizontal extent.
 Returns: The product of both sides.
-
-int area(int width, int height)
 '''
 range = "return ⟦area⟧(2, 3) + shape.sides + LIMIT + calls;"

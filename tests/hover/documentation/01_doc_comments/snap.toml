@@ -1,19 +1,10 @@
 [answers.function.hover]
 markdown = '''
-### function `join`
-
----
+**function** `join` · namespace `reference_docs`
 
 Joins two counters.
 
-→ `long`
-Parameters:
-- `long left`
-- `long right`
-
----
 ```cpp
-// In namespace reference_docs
 long join(long left, long right)
 ```
 '''
@@ -21,15 +12,11 @@ range = "long ⟦join⟧(long left, long right);"
 
 [answers.primary_def.hover]
 markdown = '''
-### struct `Store`
-
----
+**struct** `Store` · namespace `reference_docs`
 
 Stores an ordinary value.
 
----
 ```cpp
-// In namespace reference_docs
 template <typename T> struct Store {}
 ```
 '''
@@ -37,15 +24,11 @@ range = "template <typename T> struct ⟦Store⟧ {};"
 
 [answers.spec_def.hover]
 markdown = '''
-### struct `Store<T *>`
-
----
+**struct** `Store<T *>` · namespace `reference_docs`
 
 Stores an indirect value.
 
----
 ```cpp
-// In namespace reference_docs
 template <typename T> struct Store<T *> {}
 ```
 '''
@@ -53,32 +36,26 @@ range = "template <typename T> struct ⟦Store⟧<T*> {};"
 
 [answers.primary_ref.hover]
 markdown = '''
-### struct `Store<long>`
-
----
+**struct** `Store<long>` · namespace `reference_docs`
 
 Stores an ordinary value.
 
----
 ```cpp
-// In namespace reference_docs
 template <> struct Store<long> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Store⟧<long> ordinary;"
 
 [answers.spec_ref.hover]
 markdown = '''
-### struct `Store<long *>`
-
----
+**struct** `Store<long *>` · namespace `reference_docs`
 
 Stores an indirect value.
 
----
 ```cpp
-// In namespace reference_docs
 template <> struct Store<long *> {}
 ```
+Size: 1 byte, alignment 1 byte
 '''
 range = "⟦Store⟧<long*> indirect;"

@@ -30,7 +30,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "### function `area`\n\n---\n\nComputes the area. Sides are *positive*.\n\n→ `int`\nParameters:\n- `int width`\n- `int height`\n\n---\n```cpp\nint area(int width, int height)\n```",
+              "markdown": "**function** `area`\n\nComputes the area. Sides are *positive*.\n\n```cpp\nint area(int width, int height)\n```",
               "range": {
                 "$place": "int ⟦area⟧(int width, int height);",
                 "path": "main.cpp",
@@ -63,7 +63,7 @@
           "marker": "function",
           "value": {
             "hover": {
-              "markdown": "### function `area`\n\n---\n→ `int`\nParameters:\n- `int width`\n- `int height`\n\n@brief Computes the area.\nSides are \\*positive\\*.\n\n---\n```cpp\nint area(int width, int height)\n```",
+              "markdown": "**function** `area`\n\n```cpp\nint area(int width, int height)\n```\n\n---\n\n@brief Computes the area.\nSides are \\*positive\\*.",
               "range": {
                 "$place": "int ⟦area⟧(int width, int height);",
                 "path": "main.cpp",

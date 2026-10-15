@@ -1,21 +1,15 @@
 [answers.import_name.hover]
 markdown = '''
-### module `math`
+**module** `math`
 
----
-```cpp
-${WS}/math.cppm
-```
+`${WS}/math.cppm`
 '''
 range = "import ⟦math⟧;"
 
 [answers.declared_name.hover]
 markdown = '''
-### module `math`
+**module** `math`
 
----
-```cpp
-${WS}/math.cppm
-```
+`${WS}/math.cppm`
 '''
 range = "export module ⟦math⟧;"

@@ -1,16 +1,9 @@
 [answers.macro_template.hover]
 markdown = '''
-### function `run`
-
----
+**function** `run`
 
 A documented template function.
 
-→ `void`
-Parameters:
-- `T value`
-
----
 ```cpp
 template <typename T> void run(T value)
 ```

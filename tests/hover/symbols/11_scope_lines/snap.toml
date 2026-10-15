@@ -1,76 +1,52 @@
 [answers.local_var.hover]
 markdown = '''
-### variable `counter`
+**variable** `counter` · function `local_object::update`
 
----
-Type: `int`
-Value = `0`
-
----
 ```cpp
-// In update
 int counter = 0
 ```
+Value: `0`
 '''
 range = "⟦counter⟧ = 3;"
 
 [answers.method_local_var.hover]
 markdown = '''
-### variable `position`
+**variable** `position` · method `method_object::Tracker::update`
 
----
-Type: `long`
-Value = `0`
-
----
 ```cpp
-// In Tracker::update
 long position = 0
 ```
+Value: `0`
 '''
 range = "⟦position⟧ = 8;"
 
 [answers.global_var.hover]
 markdown = '''
-### variable `requests`
+**variable** `requests`
 
----
-Type: `int`
-Value = `4`
-
----
 ```cpp
 static int requests = 4
 ```
+Value: `4`
 '''
 range = "⟦requests⟧++;"
 
 [answers.ns_global_var.hover]
 markdown = '''
-### variable `bytes`
+**variable** `bytes` · namespace `metrics`
 
----
-Type: `long long`
-Value = `-36637162602497 (0xffffdeadbeefffff)`
-
----
 ```cpp
-// In namespace metrics
 static long long bytes = -36637162602497
 ```
+Value: `-36637162602497 (0xffffdeadbeefffff)`
 '''
 range = "metrics::⟦bytes⟧++;"
 
 [answers.anon_ns_var.hover]
 markdown = '''
-### variable `generation`
+**variable** `generation` · namespace `service::(anonymous)`
 
----
-Type: `int`
-
----
 ```cpp
-// In namespace service::(anonymous)
 int generation
 ```
 '''
@@ -78,15 +54,10 @@ range = "return ++service::⟦generation⟧;"
 
 [answers.global_func.hover]
 markdown = '''
-### function `render`
-
----
+**function** `render`
 
 Describes a free function.
 
-→ `void`
-
----
 ```cpp
 void render()
 ```
@@ -95,17 +66,11 @@ range = "void ⟦render⟧() {}"
 
 [answers.ns_func.hover]
 markdown = '''
-### function `flush`
-
----
+**function** `flush` · namespace `studio::detail`
 
 Describes a namespaced function.
 
-→ `void`
-
----
 ```cpp
-// In namespace studio::detail
 void flush()
 ```
 '''
@@ -113,33 +78,23 @@ range = "void ⟦flush⟧() {}"
 
 [answers.method_local.hover]
 markdown = '''
-### variable `brushes`
+**variable** `brushes` · method `studio::detail::Painter::paint`
 
----
-Type: `int`
-Value = `0`
-
----
 ```cpp
-// In Painter::paint
 int brushes = 0
 ```
+Value: `0`
 '''
 range = "int ⟦brushes⟧ = 0;"
 
 [answers.anon_struct_field.hover]
 markdown = '''
-### field `mode`
+**field** `mode` · struct `(anonymous struct)`
 
----
-Type: `char`
+```cpp
+char mode
+```
 Offset: 0 bytes
 Size: 1 byte, alignment 1 byte
-
----
-```cpp
-// In (anonymous struct)
-public: char mode
-```
 '''
 range = "char ⟦mode⟧;"

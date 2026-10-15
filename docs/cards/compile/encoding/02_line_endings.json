@@ -27,7 +27,7 @@
           "label": "helper",
           "value": {
             "hover": {
-              "markdown": "### function `helper`\n\n---\n→ `int`\n\n---\n```cpp\ninline int helper()\n```",
+              "markdown": "**function** `helper`\n\n```cpp\ninline int helper()\n```",
               "range": {
                 "$place": "return ⟦helper⟧();",
                 "path": "main.cpp",

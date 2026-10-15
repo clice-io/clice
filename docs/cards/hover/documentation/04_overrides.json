@@ -32,7 +32,7 @@
           "marker": "override",
           "value": {
             "hover": {
-              "markdown": "### method `draw`\n\n---\n\nRenders the widget.\n\n→ `void`\n\n---\n```cpp\n// In Circle\npublic: void draw() override\n```",
+              "markdown": "**method** `draw` · struct `inherit_docs::Circle`\n\nRenders the widget.\n\n```cpp\nvoid draw() override\n```\nOverrides: `inherit_docs::Base::draw`",
               "range": {
                 "$place": "void ⟦draw⟧() override;",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "override",
           "value": {
             "hover": {
-              "markdown": "### method `draw`\n\n---\n→ `void`\n\n---\n```cpp\n// In Circle\npublic: void draw() override\n```",
+              "markdown": "**method** `draw` · struct `inherit_docs::Circle`\n\n```cpp\nvoid draw() override\n```\nOverrides: `inherit_docs::Base::draw`",
               "range": {
                 "$place": "void ⟦draw⟧() override;",
                 "path": "main.cpp",

@@ -48,7 +48,7 @@
           "marker": "marked",
           "value": {
             "hover": {
-              "markdown": "### field `x`\n\n---\n\nThe horizontal coordinate.\n\nType: `int`\n\n---\n```cpp\n// In Point\npublic: int x\n```",
+              "markdown": "**field** `x` · struct `trailing::Point`\n\nThe horizontal coordinate.\n\n```cpp\nint x\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "return p.⟦x⟧ + p.y + static_cast<int>(Color::Green) + limit;",
                 "path": "main.cpp",
@@ -71,7 +71,7 @@
           "marker": "plain",
           "value": {
             "hover": {
-              "markdown": "### field `y`\n\n---\n\nThe vertical coordinate.\n\nType: `int`\n\n---\n```cpp\n// In Point\npublic: int y\n```",
+              "markdown": "**field** `y` · struct `trailing::Point`\n\nThe vertical coordinate.\n\n```cpp\nint y\n```\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "return p.x + p.⟦y⟧ + static_cast<int>(Color::Green) + limit;",
                 "path": "main.cpp",
@@ -94,7 +94,7 @@
           "marker": "enumerator",
           "value": {
             "hover": {
-              "markdown": "### enumerator `Green`\n\n---\n\nThe green channel.\n\nType: `enum trailing::Color`\nValue = `1`\n\n---\n```cpp\n// In Color\nGreen\n```",
+              "markdown": "**enumerator** `Green` · enum `trailing::Color`\n\nThe green channel.\n\n```cpp\nGreen\n```\nValue: `1`",
               "range": {
                 "$place": "return p.x + p.y + static_cast<int>(Color::⟦Green⟧) + limit;",
                 "path": "main.cpp",
@@ -117,7 +117,7 @@
           "marker": "variable",
           "value": {
             "hover": {
-              "markdown": "### variable `limit`\n\n---\n\nThe largest coordinate.\n\nType: `int`\nValue = `4`\n\n---\n```cpp\n// In namespace trailing\nint limit = 4\n```",
+              "markdown": "**variable** `limit` · namespace `trailing`\n\nThe largest coordinate.\n\n```cpp\nint limit = 4\n```\nValue: `4`",
               "range": {
                 "$place": "return p.x + p.y + static_cast<int>(Color::Green) + ⟦limit⟧;",
                 "path": "main.cpp",

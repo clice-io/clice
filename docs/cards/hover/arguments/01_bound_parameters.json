@@ -42,7 +42,7 @@
           "marker": "by_name",
           "value": {
             "hover": {
-              "markdown": "### variable `height`\n\n---\nType: `long`\nValue = `720 (0x2d0)`\nPassed as height\n\n---\n```cpp\n// In apply\nlong height = 720\n```",
+              "markdown": "**variable** `height` · function `parameter_binding::apply`\n\n```cpp\nlong height = 720\n```\nValue: `720 (0x2d0)`\nPassed as `height` by value",
               "range": {
                 "$place": "resize(⟦height⟧, previous, 2);",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "by_ref",
           "value": {
             "hover": {
-              "markdown": "### variable `previous`\n\n---\nType: `long`\nValue = `0`\nPassed by reference as previous\n\n---\n```cpp\n// In apply\nlong previous = 0\n```",
+              "markdown": "**variable** `previous` · function `parameter_binding::apply`\n\n```cpp\nlong previous = 0\n```\nValue: `0`\nPassed as `previous` by reference",
               "range": {
                 "$place": "resize(height, ⟦previous⟧, 2);",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "literal",
           "value": {
             "hover": {
-              "markdown": "### `literal`\n\n---\nPassed as flags (converted to long)",
+              "markdown": "**literal** `2`\n\nType: `int`\nValue: `2`\nPassed as `flags` by value, converted to `long`",
               "range": {
                 "$place": "resize(height, previous, ⟦2⟧);",
                 "path": "main.cpp",

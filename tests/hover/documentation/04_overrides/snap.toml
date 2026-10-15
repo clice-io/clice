@@ -1,32 +1,23 @@
 [inherited.override.hover]
 markdown = '''
-### method `draw`
-
----
+**method** `draw` · struct `inherit_docs::Circle`
 
 Renders the widget.
 
-→ `void`
-
----
 ```cpp
-// In Circle
-public: void draw() override
+void draw() override
 ```
+Overrides: `inherit_docs::Base::draw`
 '''
 range = "void ⟦draw⟧() override;"
 
 ["not inherited".override.hover]
 markdown = '''
-### method `draw`
+**method** `draw` · struct `inherit_docs::Circle`
 
----
-→ `void`
-
----
 ```cpp
-// In Circle
-public: void draw() override
+void draw() override
 ```
+Overrides: `inherit_docs::Base::draw`
 '''
 range = "void ⟦draw⟧() override;"

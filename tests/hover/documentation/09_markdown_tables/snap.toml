@@ -1,18 +1,15 @@
 [answers.table.hover]
 markdown = '''
-### function `table_fn`
+**function** `table_fn` · namespace `tables`
+
+```cpp
+void table_fn()
+```
 
 ---
-→ `void`
 
 | Column A | Column B |
 |----------|----------|
 | 1        | 2        |
-
----
-```cpp
-// In namespace tables
-void table_fn()
-```
 '''
 range = "void ⟦table_fn⟧();"

@@ -1,13 +1,8 @@
 [answers.after_banner.hover]
 markdown = '''
-### function `foo`
+**function** `foo` · namespace `banners`
 
----
-→ `void`
-
----
 ```cpp
-// In namespace banners
 void foo()
 ```
 '''

@@ -99,7 +99,7 @@
           "label": "hover",
           "value": {
             "hover": {
-              "markdown": "### field `field_a`\n\n---\nType: `int`\n\n---\n```cpp\n// In Record\npublic: int field_a\n```",
+              "markdown": "**field** `field_a` · struct `Record`\n\n```cpp\nint field_a\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "int sum() const { return ⟦field_a⟧ + field_b; }",
                 "path": "body.inc",

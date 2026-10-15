@@ -30,7 +30,7 @@
           "marker": "nested_arg",
           "value": {
             "hover": {
-              "markdown": "### macro `INNER_VAL`\n\n---\n```cpp\n#define INNER_VAL 99\n\n// Expands to\n99\n```",
+              "markdown": "**macro** `INNER_VAL`\n\n```cpp\n#define INNER_VAL 99\n```\nExpands to:\n```cpp\n99\n```",
               "range": {
                 "$place": "int nested = ECHO(⟦INNER_VAL⟧);",
                 "path": "main.cpp",

@@ -3,14 +3,9 @@ contexts = []
 
 ["orphan header compiles alone".hover.hover]
 markdown = '''
-### function `value`
+**function** `value` · namespace `orphan`
 
----
-→ `int`
-
----
 ```cpp
-// In namespace orphan
 inline int value()
 ```
 '''

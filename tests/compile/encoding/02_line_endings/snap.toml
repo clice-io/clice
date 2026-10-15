@@ -1,11 +1,7 @@
 [answers.helper.hover]
 markdown = '''
-### function `helper`
+**function** `helper`
 
----
-→ `int`
-
----
 ```cpp
 inline int helper()
 ```

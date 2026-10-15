@@ -31,3 +31,7 @@ struct Packed {
 };
 
 struct §(inner_tags)Packed packed;
+
+int width(struct Point* point) {
+    return point->§(field_use)x;
+}

@@ -1,6 +1,10 @@
 [answers.lambda_std.hover]
 markdown = '''
-### `nodiscard`
+**attribute** `nodiscard`
+
+```cpp
+[[nodiscard]]
+```
 
 ---
 Clang supports the ability to diagnose when the results of a function call expression are discarded under suspicious circumstances. A diagnostic is generated when a function or its return type is marked with `[[nodiscard]]` (or `__attribute__((warn_unused_result))`) and the function call appears as a potentially-evaluated discarded-value expression that is not explicitly cast to `void`.
@@ -40,17 +44,16 @@ void usages() {
   (int)s; // diagnoses
 }
 ```
-
----
-```cpp
-[[nodiscard("")]]
-```
 '''
 range = "auto lambda = [] [[⟦nodiscard⟧]] (int x) __attribute__((always_inline)) {"
 
 [answers.lambda_gnu.hover]
 markdown = '''
-### `always_inline`
+**attribute** `always_inline`
+
+```cpp
+__attribute__((always_inline))
+```
 
 ---
 Inlining heuristics are disabled and inlining is always attempted regardless of optimization level.
@@ -73,10 +76,5 @@ int example(void) {
 This attribute does not guarantee that inline substitution actually occurs.
 \<ins>Note: applying this attribute to a coroutine at the `-O0` optimization level has no effect; other optimization levels may only partially inline and result in a diagnostic.\</ins>
 See also the Microsoft Docs on Inline Functions, the GCC Common Function Attribute docs, and the GCC Inline docs.
-
----
-```cpp
-__attribute__((always_inline))
-```
 '''
 range = "auto lambda = [] [[nodiscard]] (int x) __attribute__((⟦always_inline⟧)) {"

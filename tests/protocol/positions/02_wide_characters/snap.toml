@@ -5,12 +5,8 @@ diagnostics = [
 
 [test.hover.hover]
 markdown = '''
-### variable `sum`
+**variable** `sum`
 
----
-Type: `int`
-
----
 ```cpp
 int sum
 ```

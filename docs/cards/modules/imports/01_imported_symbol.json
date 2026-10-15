@@ -35,7 +35,7 @@
           "marker": "use",
           "value": {
             "hover": {
-              "markdown": "### function `magic_number`\n\n---\n→ `int`\n\n---\n```cpp\nexport int magic_number()\n```",
+              "markdown": "**function** `magic_number`\n\n```cpp\nexport int magic_number()\n```",
               "range": {
                 "$place": "return ⟦magic_number⟧();",
                 "path": "main.cpp",

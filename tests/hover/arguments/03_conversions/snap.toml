@@ -1,33 +1,23 @@
 [answers.arithmetic.hover]
 markdown = '''
-### variable `n`
+**variable** `n` · function `implicit_conversion::demo`
 
----
-Type: `int`
-Value = `0`
-Passed as x (converted to float)
-
----
 ```cpp
-// In demo
 int n = 0
 ```
+Value: `0`
+Passed as `x` by value, converted to `float`
 '''
 range = "take_float(⟦n⟧);"
 
 [answers.user_defined.hover]
 markdown = '''
-### variable `n`
+**variable** `n` · function `implicit_conversion::demo`
 
----
-Type: `int`
-Value = `0`
-Passed as w (converted to Wrapper)
-
----
 ```cpp
-// In demo
 int n = 0
 ```
+Value: `0`
+Passed as `w` by value, converted to `Wrapper`
 '''
 range = "take_wrapper(⟦n⟧);"

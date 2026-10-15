@@ -38,7 +38,7 @@
           "marker": "base",
           "value": {
             "hover": {
-              "markdown": "### function `base_func`\n\n---\n\nDetailed documentation.\n\n→ `void`\n\n---\n```cpp\n// In namespace copydoc\nvoid base_func()\n```",
+              "markdown": "**function** `base_func` · namespace `copydoc`\n\nDetailed documentation.\n\n```cpp\nvoid base_func()\n```",
               "range": {
                 "$place": "void ⟦base_func⟧();",
                 "path": "main.cpp",
@@ -61,7 +61,7 @@
           "marker": "wrapper",
           "value": {
             "hover": {
-              "markdown": "### function `wrapper`\n\n---\n\nDetailed documentation.\n\n→ `void`\n\n---\n```cpp\n// In namespace copydoc\nvoid wrapper()\n```",
+              "markdown": "**function** `wrapper` · namespace `copydoc`\n\nDetailed documentation.\n\n```cpp\nvoid wrapper()\n```",
               "range": {
                 "$place": "void ⟦wrapper⟧();",
                 "path": "main.cpp",

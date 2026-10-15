@@ -1,14 +1,9 @@
 [answers.block.hover]
 markdown = '''
-### function `block`
-
----
+**function** `block`
 
 Block comment documentation. Second line.
 
-→ `int`
-
----
 ```cpp
 int block()
 ```
@@ -17,17 +12,48 @@ range = "int ⟦block⟧();"
 
 [answers.qt.hover]
 markdown = '''
-### function `qt`
-
----
+**function** `qt`
 
 Qt-style documentation.
 
-→ `int`
-
----
 ```cpp
 int qt()
 ```
 '''
 range = "int ⟦qt⟧();"
+
+[answers.gnu.hover]
+markdown = '''
+**function** `print`
+
+Write formatted output to stdout.
+
+```cpp
+int print(const char *format, ...)
+```
+
+---
+
+This function is a possible cancellation point and therefore not
+marked with __THROW.
+'''
+range = "int ⟦print⟧(const char* format, ...);"
+
+[answers.kernel_doc.hover]
+markdown = '''
+**function** `kernel_open`
+
+Opens a device.
+
+```cpp
+int kernel_open(int minor)
+```
+
+Parameters:
+- `minor` — The minor number of the device.
+
+---
+
+Returns a descriptor, or a negative error code.
+'''
+range = "int ⟦kernel_open⟧(int minor);"

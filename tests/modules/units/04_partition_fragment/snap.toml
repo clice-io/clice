@@ -1,12 +1,12 @@
 [answers.macro.hover]
 markdown = '''
-### macro `MAX_SIZE`
+**macro** `MAX_SIZE`
 
----
 ```cpp
 #define MAX_SIZE 100
-
-// Expands to
+```
+Expands to:
+```cpp
 100
 ```
 '''
@@ -14,15 +14,11 @@ range = "export constexpr int max_size = ⟦MAX_SIZE⟧;"
 
 [answers.use.hover]
 markdown = '''
-### variable `max_size`
+**variable** `max_size`
 
----
-Type: `const int`
-Value = `100 (0x64)`
-
----
 ```cpp
 export constexpr int max_size = 100
 ```
+Value: `100 (0x64)`
 '''
 range = "return ⟦max_size⟧;"

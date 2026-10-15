@@ -1,12 +1,8 @@
 [answers.declaration.hover]
 markdown = '''
-### function `open_v1`
+**function** `open_v1`
 
----
 Deprecated: use open_v2
-→ `void`
-
----
 ```cpp
 void open_v1()
 ```
@@ -15,13 +11,9 @@ range = '[[deprecated("use open_v2")]] void ⟦open_v1⟧();'
 
 [answers.call.hover]
 markdown = '''
-### function `open_v1`
+**function** `open_v1`
 
----
 Deprecated: use open_v2
-→ `void`
-
----
 ```cpp
 void open_v1()
 ```

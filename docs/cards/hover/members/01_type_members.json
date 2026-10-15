@@ -38,7 +38,7 @@
           "marker": "enum_type",
           "value": {
             "hover": {
-              "markdown": "### enum `Color`\n\n---\n```cpp\n// In namespace members\nenum Color { Red = 0, Green = 4, Blue = 5 }\n```",
+              "markdown": "**enum** `Color` · namespace `members`\n\n```cpp\nenum Color { Red = 0, Green = 4, Blue = 5 }\n```",
               "range": {
                 "$place": "enum ⟦Color⟧ {",
                 "path": "main.cpp",
@@ -61,7 +61,7 @@
           "marker": "struct_type",
           "value": {
             "hover": {
-              "markdown": "### struct `Point`\n\n---\nSize: 16 bytes, alignment 8 bytes\n\n---\n```cpp\n// In namespace members\nstruct Point {\n  using Scalar = double;\n  Scalar x;\n  Scalar y;\n}\n```",
+              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point {\n  using Scalar = double;\n  Scalar x;\n  Scalar y;\n}\n```\nSize: 16 bytes, alignment 8 bytes",
               "range": {
                 "$place": "struct ⟦Point⟧ {",
                 "path": "main.cpp",
@@ -94,7 +94,7 @@
           "marker": "enum_type",
           "value": {
             "hover": {
-              "markdown": "### enum `Color`\n\n---\n```cpp\n// In namespace members\nenum Color {\n  Red = 0,\n  Green = 4,\n  // ...\n}\n```",
+              "markdown": "**enum** `Color` · namespace `members`\n\n```cpp\nenum Color {\n  Red = 0,\n  Green = 4,\n  // ...\n}\n```",
               "range": {
                 "$place": "enum ⟦Color⟧ {",
                 "path": "main.cpp",
@@ -117,7 +117,7 @@
           "marker": "struct_type",
           "value": {
             "hover": {
-              "markdown": "### struct `Point`\n\n---\nSize: 16 bytes, alignment 8 bytes\n\n---\n```cpp\n// In namespace members\nstruct Point {\n  using Scalar = double;\n  Scalar x;\n  // ...\n}\n```",
+              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point {\n  using Scalar = double;\n  Scalar x;\n  // ...\n}\n```\nSize: 16 bytes, alignment 8 bytes",
               "range": {
                 "$place": "struct ⟦Point⟧ {",
                 "path": "main.cpp",
@@ -150,7 +150,7 @@
           "marker": "enum_type",
           "value": {
             "hover": {
-              "markdown": "### enum `Color`\n\n---\n```cpp\n// In namespace members\nenum Color\n```",
+              "markdown": "**enum** `Color` · namespace `members`\n\n```cpp\nenum Color\n```",
               "range": {
                 "$place": "enum ⟦Color⟧ {",
                 "path": "main.cpp",
@@ -173,7 +173,7 @@
           "marker": "struct_type",
           "value": {
             "hover": {
-              "markdown": "### struct `Point`\n\n---\nSize: 16 bytes, alignment 8 bytes\n\n---\n```cpp\n// In namespace members\nstruct Point\n```",
+              "markdown": "**struct** `Point` · namespace `members`\n\n```cpp\nstruct Point\n```\nSize: 16 bytes, alignment 8 bytes",
               "range": {
                 "$place": "struct ⟦Point⟧ {",
                 "path": "main.cpp",

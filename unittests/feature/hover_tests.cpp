@@ -19,8 +19,6 @@ namespace protocol = kota::ipc::protocol;
 
 using HoverInfo = feature::HoverInfo;
 using PrintedType = display::Type;
-using HoverParam = display::Param;
-using PassType = feature::HoverInfo::PassType;
 using PassMode = feature::HoverInfo::PassMode;
 
 std::string dump(const std::optional<std::string>& value) {
@@ -41,7 +39,7 @@ std::string dump(const std::optional<PrintedType>& type) {
     return result;
 }
 
-std::string dump(const std::optional<HoverParam>& param) {
+std::string dump(const std::optional<display::Param>& param) {
     if(!param) {
         return "<none>";
     }
@@ -51,150 +49,8 @@ std::string dump(const std::optional<HoverParam>& param) {
     return result;
 }
 
-std::string dump(const std::optional<std::vector<HoverParam>>& params) {
-    if(!params) {
-        return "<none>";
-    }
-    std::string result = "[";
-    for(const auto& param: *params) {
-        if(result.size() > 1) {
-            result += "; ";
-        }
-        llvm::raw_string_ostream os(result);
-        os << param;
-    }
-    result += "]";
-    return result;
-}
-
-std::string dump(const std::optional<PassType>& pass) {
-    if(!pass) {
-        return "<none>";
-    }
-    return std::format("{{pass_by: {}, converted: {}}}",
-                       static_cast<int>(pass->pass_by),
-                       pass->converted);
-}
-
-std::string dump_param(const HoverParam& param) {
-    std::string result;
-    llvm::raw_string_ostream os(result);
-    os << param;
-    return result;
-}
-
-std::string dump_pass_type(const PassType& pass) {
-    std::string result;
-    switch(pass.pass_by) {
-        case PassMode::Ref: result = "by reference"; break;
-        case PassMode::ConstRef: result = "by const reference"; break;
-        case PassMode::Value: result = "by value"; break;
-    }
-    if(pass.converted) {
-        result += " (converted)";
-    }
-    return result;
-}
-
-/// Render \p text as a YAML block scalar under \p key, indented by
-/// \p indent spaces, so that snapshot files stay valid YAML documents.
-std::string yaml_block(llvm::StringRef key, llvm::StringRef text, std::size_t indent = 0) {
-    std::string pad(indent, ' ');
-    if(text.empty()) {
-        return std::format("{}{}: \"\"\n", pad, key.str());
-    }
-
-    std::string out = std::format("{}{}: |\n", pad, key.str());
-    llvm::SmallVector<llvm::StringRef> lines;
-    text.split(lines, '\n', -1, true);
-    for(auto line: lines) {
-        out += line.empty() ? "\n" : std::format("{}  {}\n", pad, line.str());
-    }
-    return out;
-}
-
-/// Render every field of the hover info as a deterministic, human readable
-/// YAML mapping (indented by two spaces, to be nested under the point name).
-/// Absent or empty fields are omitted, except for `name` and `kind` which
-/// are always printed.
-std::string dump(const HoverInfo& info) {
-    std::string out;
-
-    auto add = [&](std::string_view key, llvm::StringRef value) {
-        out += std::format("  {}: {}\n", key, yaml_str(value));
-    };
-
-    auto add_params = [&](std::string_view key, const std::vector<HoverParam>& params) {
-        if(params.empty()) {
-            out += std::format("  {}: []\n", key);
-            return;
-        }
-        out += std::format("  {}:\n", key);
-        for(const auto& param: params) {
-            out += std::format("    - {}\n", yaml_str(dump_param(param)));
-        }
-    };
-
-    add("name", info.name);
-    out += std::format(
-        "  kind: {}\n",
-        kota::meta::enum_name(static_cast<SymbolKind::Kind>(info.kind.value()), "Unknown"));
-    if(info.namespace_scope) {
-        add("namespace_scope", *info.namespace_scope);
-    }
-    if(!info.local_scope.empty()) {
-        add("local_scope", info.local_scope);
-    }
-    if(!info.documentation.empty()) {
-        add("documentation", feature::present(info.documentation).as_markdown());
-    }
-    if(!info.definition.empty()) {
-        add("definition", info.definition);
-    }
-    if(!info.access_specifier.empty()) {
-        add("access_specifier", info.access_specifier);
-    }
-    if(info.type) {
-        add("type", dump(info.type));
-    }
-    if(info.return_type) {
-        add("return_type", dump(info.return_type));
-    }
-    if(info.parameters) {
-        add_params("parameters", *info.parameters);
-    }
-    if(info.template_parameters) {
-        add_params("template_parameters", *info.template_parameters);
-    }
-    if(info.value) {
-        add("value", *info.value);
-    }
-    if(info.size) {
-        out += std::format("  size: {}\n", *info.size);
-    }
-    if(info.offset) {
-        out += std::format("  offset: {}\n", *info.offset);
-    }
-    if(info.padding) {
-        out += std::format("  padding: {}\n", *info.padding);
-    }
-    if(info.align) {
-        out += std::format("  align: {}\n", *info.align);
-    }
-    if(info.callee_arg_info) {
-        add("callee_arg_info", dump_param(*info.callee_arg_info));
-    }
-    if(info.call_pass_type) {
-        out += std::format("  passed: {}\n", dump_pass_type(*info.call_pass_type));
-    }
-    if(info.symbol_range) {
-        out += std::format("  symbol_range: \"[{}, {})\"\n",
-                           info.symbol_range->begin,
-                           info.symbol_range->end);
-    }
-
-    out += yaml_block("markdown", info.present().as_markdown(), 2);
-    return out;
+std::string dump(const std::optional<PassMode>& mode) {
+    return mode ? std::to_string(std::to_underlying(*mode)) : "<none>";
 }
 
 ZEST_SUITE(hover, Tester) {
@@ -246,40 +102,21 @@ void expect_hover(const HoverInfo& expected) {
     }
     ZASSERT(info);
 
-    bool same =
-        info->namespace_scope == expected.namespace_scope &&
-        info->local_scope == expected.local_scope && info->name == expected.name &&
-        info->kind == expected.kind && info->documentation == expected.documentation &&
-        info->definition == expected.definition &&
-        info->access_specifier == expected.access_specifier && info->type == expected.type &&
-        info->return_type == expected.return_type && info->parameters == expected.parameters &&
-        info->template_parameters == expected.template_parameters &&
-        info->value == expected.value && info->size == expected.size &&
-        info->offset == expected.offset && info->padding == expected.padding &&
-        info->align == expected.align && info->callee_arg_info == expected.callee_arg_info &&
-        info->call_pass_type == expected.call_pass_type;
-    if(!same) {
-        std::println("hover mismatch for:\n{}", current_code.str());
-    }
-
-    ZEXPECT(dump(info->namespace_scope) == dump(expected.namespace_scope));
-    ZEXPECT(info->local_scope == expected.local_scope);
+    ZEXPECT(info->scope_kind == expected.scope_kind);
+    ZEXPECT(info->scope == expected.scope);
     ZEXPECT(info->name == expected.name);
     ZEXPECT(info->kind.value() == expected.kind.value());
     ZEXPECT(info->documentation == expected.documentation);
     ZEXPECT(info->definition == expected.definition);
-    ZEXPECT(info->access_specifier == expected.access_specifier);
+    ZEXPECT(info->access == expected.access);
     ZEXPECT(dump(info->type) == dump(expected.type));
-    ZEXPECT(dump(info->return_type) == dump(expected.return_type));
-    ZEXPECT(dump(info->parameters) == dump(expected.parameters));
-    ZEXPECT(dump(info->template_parameters) == dump(expected.template_parameters));
     ZEXPECT(dump(info->value) == dump(expected.value));
     ZEXPECT(dump(info->size) == dump(expected.size));
     ZEXPECT(dump(info->offset) == dump(expected.offset));
     ZEXPECT(dump(info->padding) == dump(expected.padding));
     ZEXPECT(dump(info->align) == dump(expected.align));
     ZEXPECT(dump(info->callee_arg_info) == dump(expected.callee_arg_info));
-    ZEXPECT(dump(info->call_pass_type) == dump(expected.call_pass_type));
+    ZEXPECT(dump(info->pass_mode) == dump(expected.pass_mode));
 }
 
 void check_sym_range() {
@@ -478,22 +315,18 @@ ZEST_CASE(structured_no_crash) {
          [](HoverInfo& hi) {
              hi.name = "x";
              hi.kind = SymbolKind::Variable;
-             hi.namespace_scope = "";
              hi.definition = "X x";
-             hi.type = "X";
          }},
         // Don't crash on null types.
         {R"cpp(auto [§(sym)⟦§x⟧] = 1; /*error-ok*/)cpp",
          [](HoverInfo& hi) {
              hi.name = "x";
              hi.kind = SymbolKind::Variable;
-             hi.namespace_scope = "";
              hi.definition = "auto [x] = 1";
              hi.type = "NULL TYPE";
-             // Bindings are in theory public members of an anonymous struct.
-             hi.access_specifier = "public";
          }},
-        // Don't crash on invalid decl with invalid init expr.
+        // Don't crash on invalid decl with invalid init expr; show it as
+        // written, not as the `int abc` clang recovers.
         {R"cpp(
           Unknown §(sym)⟦§abc⟧ = invalid;
           // error-ok
@@ -501,10 +334,7 @@ ZEST_CASE(structured_no_crash) {
          [](HoverInfo& hi) {
              hi.name = "abc";
              hi.kind = SymbolKind::Variable;
-             hi.namespace_scope = "";
-             hi.definition = "int abc";
-             hi.type = "int";
-             hi.access_specifier = "public";
+             hi.definition = "Unknown abc";
          }},
         // Don't crash on invalid decl
         {R"cpp(
@@ -515,11 +345,9 @@ ZEST_CASE(structured_no_crash) {
          [](HoverInfo& hi) {
              hi.name = "xx";
              hi.kind = SymbolKind::Field;
-             hi.namespace_scope = "";
-             hi.definition = "int xx";
-             hi.local_scope = "Foo::";
-             hi.type = "int";
-             hi.access_specifier = "public";
+             hi.scope_kind = "struct";
+             hi.scope = "Foo";
+             hi.definition = "Bar xx";
          }},
         {R"cpp(
         // error-ok
@@ -530,11 +358,9 @@ ZEST_CASE(structured_no_crash) {
          [](HoverInfo& hi) {
              hi.name = "yy";
              hi.kind = SymbolKind::Field;
-             hi.namespace_scope = "";
+             hi.scope_kind = "struct";
+             hi.scope = "Foo";
              hi.definition = "int yy";
-             hi.local_scope = "Foo::";
-             hi.type = "int";
-             hi.access_specifier = "public";
          }},
         // No crash on InitListExpr.
         {R"cpp(
@@ -564,9 +390,8 @@ ZEST_CASE(all_no_crash) {
          [](HoverInfo& hi) {
              hi.name = "test";
              hi.kind = SymbolKind::Variable;
-             hi.namespace_scope = "";
-             hi.local_scope = "test::";
-             hi.type = "Test &&";
+             hi.scope_kind = "function";
+             hi.scope = "test";
              hi.definition = "Test &&test = {}";
          }},
         {R"cpp(// Shouldn't crash when evaluating the initializer.
@@ -576,9 +401,8 @@ ZEST_CASE(all_no_crash) {
          [](HoverInfo& hi) {
              hi.name = "x";
              hi.kind = SymbolKind::Parameter;
-             hi.namespace_scope = "";
-             hi.local_scope = "Foo::foo::";
-             hi.type = "Bar";
+             hi.scope_kind = "method";
+             hi.scope = "Foo::foo";
              hi.definition = "Bar x";
          }},
     };
@@ -610,8 +434,9 @@ ZEST_CASE(spaceship_doc_no_crash) {
     ZEXPECT(info->documentation.empty());
 }
 
-ZEST_CASE(invalid_default_args) {
-    // Function parameter default values are not evaluated on invalid decls.
+ZEST_CASE(parameter_defaults) {
+    // A parameter's value is the caller's: its default shows in its
+    // declaration alone, and one that does not compile not at all.
     run_info(R"cpp(
         // error-ok testing behavior on invalid decl
         class Foo {};
@@ -625,7 +450,8 @@ ZEST_CASE(invalid_default_args) {
         void foo(Foo *p§aram = nullptr);
         )cpp");
     ZASSERT(info);
-    ZEXPECT(dump(info->value) == "nullptr");
+    ZEXPECT(!info->value.has_value());
+    ZEXPECT(info->definition == "Foo *param = nullptr");
 }
 
 ZEST_CASE(disable_show_aka) {
@@ -640,7 +466,18 @@ ZEST_CASE(disable_show_aka) {
              "-std=c++17");
 
     ZASSERT(info);
-    ZEXPECT(dump(info->type) == dump(std::optional(PrintedType("m_int"))));
+    ZEXPECT(info->aliases.empty());
+
+    options.show_aka = true;
+    run_info(R"cpp(
+    using m_int = int;
+    m_int §(sym)⟦§a⟧;
+  )cpp",
+             options,
+             "-std=c++17");
+    ZASSERT(info);
+    ZASSERT(info->aliases.size() == 1U);
+    ZEXPECT(dump(info->aliases.front()) == "m_int (aka int)");
     check_sym_range();
 }
 
@@ -787,7 +624,7 @@ int x = 0;
     ZEXPECT(info->kind == SymbolKind::Header);
     ZEXPECT(info->name == "test.h");
 
-    ZEXPECT(info->definition == TestVFS::path("test.h"));
+    ZEXPECT(info->file == TestVFS::path("test.h"));
     ZASSERT(info->symbol_range);
     ZEXPECT(info->symbol_range->begin == arg.begin);
     ZEXPECT(info->symbol_range->end == arg.end);
@@ -826,7 +663,7 @@ ZEST_CASE(has_include_header) {
     ZEXPECT(hover->kind == SymbolKind::Header);
     ZEXPECT(hover->name == "test.h");
 
-    ZEXPECT(hover->definition == TestVFS::path("test.h"));
+    ZEXPECT(hover->file == TestVFS::path("test.h"));
     ZEXPECT(hover->symbol_range == arg);
 }
 
@@ -845,7 +682,7 @@ const unsigned char data[] = {
     ZEXPECT(hover->kind == SymbolKind::Header);
     ZEXPECT(hover->name == "data.bin");
 
-    ZEXPECT(hover->definition == TestVFS::path("data.bin"));
+    ZEXPECT(hover->file == TestVFS::path("data.bin"));
     ZEXPECT(hover->symbol_range == arg);
 }
 
@@ -863,7 +700,7 @@ ZEST_CASE(has_embed_file) {
     ZEXPECT(hover->kind == SymbolKind::Header);
     ZEXPECT(hover->name == "data.bin");
 
-    ZEXPECT(hover->definition == TestVFS::path("data.bin"));
+    ZEXPECT(hover->file == TestVFS::path("data.bin"));
     ZEXPECT(hover->symbol_range == arg);
 }
 
@@ -881,7 +718,7 @@ ZEST_CASE(macro_include_header) {
     ZEXPECT(hover->kind == SymbolKind::Header);
     ZEXPECT(hover->name == "HEADER");
 
-    ZEXPECT(hover->definition == TestVFS::path("test.h"));
+    ZEXPECT(hover->file == TestVFS::path("test.h"));
     ZEXPECT(hover->symbol_range == arg);
 }
 
@@ -902,9 +739,9 @@ ZEST_CASE(scoped_attribute) {
 )cpp");
 
     ZASSERT(info);
-    ZASSERT(info->name == "noinline");
-    ZASSERT(info->local_scope == "gnu");
-    ZASSERT(info->kind == SymbolKind::Invalid);
+    ZEXPECT(info->name == "gnu::noinline");
+    ZEXPECT(info->definition == "[[gnu::noinline]]");
+    ZEXPECT(info->kind == SymbolKind::Attribute);
 }
 
 ZEST_CASE(whitespace_no_hover) {

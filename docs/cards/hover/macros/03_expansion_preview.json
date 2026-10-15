@@ -30,7 +30,7 @@
           "marker": "expansion",
           "value": {
             "hover": {
-              "markdown": "### macro `MAX`\n\n---\n```cpp\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\n\n// Expands to\n( ( x ) > ( y ) ? ( x ) : ( y ) )\n```",
+              "markdown": "**macro** `MAX`\n\n```cpp\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\n```\nExpands to:\n```cpp\n((x) > (y) ? (x) : (y))\n```",
               "range": {
                 "$place": "int z = ⟦MAX⟧(x, y);",
                 "path": "main.cpp",

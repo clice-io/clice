@@ -371,6 +371,21 @@ public:
     }
 };
 
+class Spacing : public Block {
+public:
+    void render_markdown(llvm::raw_ostream& os) const override {
+        os << '\n';
+    }
+
+    void render_plain_text(llvm::raw_ostream& os) const override {
+        os << '\n';
+    }
+
+    std::unique_ptr<Block> clone() const override {
+        return std::make_unique<Spacing>(*this);
+    }
+};
+
 class CodeBlock : public Block {
 public:
     CodeBlock(std::string contents, std::string language) :
@@ -518,6 +533,7 @@ void Paragraph::render_markdown(llvm::raw_ostream& os) const {
             case Chunk::PlainText: os << render_text(chunk.contents, !has_chunks); break;
             case Chunk::InlineCode: os << render_inline_block(chunk.contents); break;
             case Chunk::Markdown: os << escape_markdown(chunk.contents); break;
+            case Chunk::Strong: os << "**" << render_text(chunk.contents, false) << "**"; break;
         }
 
         has_chunks = true;
@@ -581,6 +597,14 @@ Paragraph& Paragraph::append_markdown(llvm::StringRef text) {
     chunk.kind = Chunk::Markdown;
     chunk.space_before = llvm::isSpace(text.front());
     chunk.space_after = llvm::isSpace(text.back());
+    return *this;
+}
+
+Paragraph& Paragraph::append_strong(llvm::StringRef text) {
+    append_text(text);
+    if(!chunks.empty() && chunks.back().kind == Chunk::PlainText) {
+        chunks.back().kind = Chunk::Strong;
+    }
     return *this;
 }
 
@@ -652,6 +676,10 @@ Paragraph& Document::add_paragraph() {
 
 void Document::add_ruler() {
     children.push_back(std::make_unique<Ruler>());
+}
+
+void Document::add_spacing() {
+    children.push_back(std::make_unique<Spacing>());
 }
 
 void Document::add_code_block(std::string code, std::string language) {

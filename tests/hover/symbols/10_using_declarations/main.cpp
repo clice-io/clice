@@ -1,5 +1,6 @@
 // Names brought in by using-declarations show what they name: a function,
-// overloads in a template, a member type; a namespace alias in a using-directive.
+// overloads where they are brought in and in a template, a member type,
+// inherited constructors; a namespace alias in a using-directive.
 
 namespace imported_function {
 namespace library {
@@ -16,7 +17,7 @@ namespace library {
 void write(long);
 void write(char);
 }
-using library::write;
+using library::§(using_overloads_site)write;
 template <typename T> void invoke() {
     §(using_overloads)write(T{});
 }
@@ -43,4 +44,14 @@ namespace namespace_alias {
 namespace implementation {}
 namespace api = implementation;
 using namespace §(alias_directive)api;
+}
+
+namespace inherited_overloads {
+struct Base {
+    Base(int value);
+    Base(double value);
+};
+struct Derived : Base {
+    using Base::§(inherited_constructors)Base;
+};
 }

@@ -1,11 +1,7 @@
 [hover.c.hover]
 markdown = '''
-### function `language`
+**function** `language`
 
----
-→ `int`
-
----
 ```cpp
 static inline int language(void)
 ```
@@ -14,12 +10,8 @@ range = "return ⟦language⟧() + class;"
 
 [hover.cpp.hover]
 markdown = '''
-### function `language`
+**function** `language`
 
----
-→ `int`
-
----
 ```cpp
 inline int language()
 ```

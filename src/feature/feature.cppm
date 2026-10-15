@@ -212,6 +212,13 @@ struct HoverOptions {
                          "enumerators; member functions are left out. `0` shows "
                          "the declaration alone.")
     <std::uint32_t> max_members = 20;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Show how the compiler lays out a class or a field "
+                         "wherever it is hovered: size, alignment, a field's "
+                         "offset, and the padding.")
+    <bool> layout = true;
 };
 
 /// Corresponds to the `[diagnostics]` section in clice.toml.
@@ -228,109 +235,105 @@ struct DiagnosticsOptions {
     <bool> clang_tidy = true;
 };
 
-/// Contains detailed information about a symbol. Especially useful when
-/// generating hover responses. It can be rendered as a hover panel, or
-/// embedding clients can use the structured information to provide their own
-/// UI.
+/// The noun a hover card names an entity of `kind` with; empty for the
+/// lexical kinds no card is about.
+auto kind_noun(SymbolKind kind) -> llvm::StringRef;
+
+/// What a hover card shows, before it is rendered: the title, the
+/// declaration as code, then facts and documentation. Each field is shown
+/// only when set.
 struct HoverInfo {
-    struct PassType {
-        /// How the argument is passed to the callee.
-        enum class PassMode : std::uint8_t {
-            Ref,
-            ConstRef,
-            Value,
-        };
-
-        bool operator==(const PassType&) const = default;
-
-        PassMode pass_by = PassMode::Ref;
-
-        /// True if implicit type conversion happened. This includes calls to
-        /// implicit constructor, as well as built-in type conversions. Casting
-        /// to base class is not considered conversion.
-        bool converted = false;
+    /// How an argument reaches the parameter it is passed to.
+    enum class PassMode : std::uint8_t {
+        Value,
+        Ref,
+        ConstRef,
+        RValueRef,
     };
 
-    using PassMode = PassType::PassMode;
-
-    /// For a variable named Bar, declared in clice::feature::foo the
-    /// following fields will hold:
-    /// - namespace_scope: clice::feature::
-    /// - local_scope: foo::
-    /// - name: Bar
-    ///
-    /// Scopes might be None in cases where they don't make sense, e.g.
-    /// auto/decltype. Contains all of the enclosing namespaces, empty string
-    /// means global namespace.
-    std::optional<std::string> namespace_scope;
-
-    /// Remaining named contexts in the symbol's qualified name, empty string
-    /// means the symbol is not local.
-    std::string local_scope;
-
-    /// Name of the symbol, does not contain any "::".
-    std::string name;
-
-    /// The range of the symbol in the main file, used by the client to
-    /// highlight the hovered token.
-    std::optional<LocalSourceRange> symbol_range;
-
+    /// The noun the title names the entity with ("function", "header");
+    /// SymbolKind::Invalid for a card the name alone titles (`this`, an
+    /// expression).
     SymbolKind kind = SymbolKind::Invalid;
 
-    /// What the symbol's documentation comment says, or what clice says of
-    /// a trivial accessor or `__func__`.
+    /// The name in the title, without its scope.
+    std::string name;
+
+    /// Where the entity is declared, as the title shows it: the kind of the
+    /// enclosing declaration (`namespace`, `struct`, `lambda in function`)
+    /// and its qualified name (`geo::Point`); both empty at global scope.
+    std::string scope_kind;
+    std::string scope;
+
+    /// `private` or `protected` for a member with that access, which the
+    /// title shows; empty otherwise.
+    std::string access;
+
+    /// The range of the hovered token in the main file, which the editor
+    /// highlights.
+    std::optional<LocalSourceRange> symbol_range;
+
+    /// What the documentation comment says, or what clice says of a trivial
+    /// accessor or `__func__`.
     Documentation documentation;
 
     /// The manual's entry of an attribute, in reStructuredText.
     std::string attribute_documentation;
 
-    /// Set for a deprecated symbol: the message its deprecation gives,
-    /// empty when it gives none.
+    /// Set for a deprecated entity: the message its deprecation gives, empty
+    /// when it gives none.
     std::optional<std::string> deprecation;
 
-    /// Source code containing the definition of the symbol.
+    /// The declaration, shown as code.
     std::string definition;
 
-    /// Access specifier for declarations inside class/struct/unions, empty
-    /// for others.
-    std::string access_specifier;
+    /// A second code block after the declaration: the definition of the
+    /// class an alias names.
+    std::string target_definition;
 
-    /// Printable variable type. Set only for variables.
+    /// What a macro use expands to, shown as code.
+    std::string expansion;
+
+    /// The file a header or a module name resolves to.
+    std::string file;
+
+    /// The type, when the declaration does not spell it: a deduced `auto`,
+    /// a structured binding, a function whose return type is deduced, an
+    /// expression.
     std::optional<display::Type> type;
 
-    /// Set for functions and lambdas.
-    std::optional<display::Type> return_type;
+    /// The aliases the declaration spells, each with what it stands for.
+    std::vector<display::Type> aliases;
 
-    /// Set for functions and lambdas with parameters.
-    std::optional<std::vector<display::Param>> parameters;
-
-    /// Set for all templates (function, class, variable).
-    std::optional<std::vector<display::Param>> template_parameters;
-
-    /// Contains the evaluated value of the symbol if available.
+    /// The value, when it is known at compile time.
     std::optional<std::string> value;
 
-    /// Contains the bit-size of fields and types where it's interesting.
+    /// The number of characters of a string literal, its terminator left
+    /// out.
+    std::optional<std::uint64_t> length;
+
+    /// For a macro a directive tests before the file defines it, the line
+    /// its definition is on.
+    std::optional<std::uint32_t> defined_on_line;
+
+    /// The method an overriding method overrides, qualified.
+    std::optional<std::string> overrides;
+
+    /// Layout in bits: the size of a type or a field, a field's offset, its
+    /// alignment, and the padding after a field or inside a type.
     std::optional<std::uint64_t> size;
-
-    /// Contains the offset of fields within the enclosing class.
     std::optional<std::uint64_t> offset;
-
-    /// Contains the padding following a field within the enclosing class.
     std::optional<std::uint64_t> padding;
-
-    /// Contains the alignment of fields and types where it's interesting.
     std::optional<std::uint64_t> align;
 
-    /// Set when the symbol is inside a function call. Contains information
-    /// extracted from the callee definition about the argument this is
-    /// passed as.
+    /// Set for an argument of a call: the parameter it is passed to and how.
     std::optional<display::Param> callee_arg_info;
+    std::optional<PassMode> pass_mode;
 
-    /// Set only if callee_arg_info is set.
-    std::optional<PassType> call_pass_type;
+    /// Set when an implicit conversion turns the argument into the
+    /// parameter's type.
+    std::optional<std::string> converted_to;
 
-    /// Produce a user-readable information.
     markup::Document present() const;
 };
 
@@ -1003,10 +1006,11 @@ auto index_document_links(llvm::StringRef content,
                           llvm::ArrayRef<IndexIncludeEdge> edges)
     -> std::vector<index::DocumentLink>;
 
-/// Assemble the read-only hover card: name, kind and what the index can
-/// prove from stored text — no Sema products (type, value, size, aka) and
-/// no qualified scope (the index stores unqualified names).
+/// Assemble the read-only hover card: name, kind, where it is (`scopes`,
+/// the containers outermost first) and what the index can prove from
+/// stored text — no Sema products (type, value, size, aka).
 auto index_hover(const index::SymbolRef& info,
+                 llvm::ArrayRef<index::SymbolRef> scopes,
                  llvm::StringRef definition_text,
                  Documentation documentation) -> HoverInfo;
 

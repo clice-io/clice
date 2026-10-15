@@ -42,7 +42,7 @@
           "marker": "public_field",
           "value": {
             "hover": {
-              "markdown": "### field `balance`\n\n---\nType: `int`\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Account\npublic: int balance\n```",
+              "markdown": "**field** `balance` · class `Account`\n\n```cpp\nint balance\n```\nOffset: 0 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "int ⟦balance⟧;",
                 "path": "main.cpp",
@@ -65,7 +65,7 @@
           "marker": "protected_field",
           "value": {
             "hover": {
-              "markdown": "### field `limit`\n\n---\nType: `int`\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Account\nprotected: int limit\n```",
+              "markdown": "**protected field** `limit` · class `Account`\n\n```cpp\nint limit\n```\nOffset: 4 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "int ⟦limit⟧;",
                 "path": "main.cpp",
@@ -88,7 +88,7 @@
           "marker": "private_field",
           "value": {
             "hover": {
-              "markdown": "### field `pin`\n\n---\nType: `int`\nOffset: 8 bytes\nSize: 4 bytes, alignment 4 bytes\n\n---\n```cpp\n// In Account\nprivate: int pin\n```",
+              "markdown": "**private field** `pin` · class `Account`\n\n```cpp\nint pin\n```\nOffset: 8 bytes\nSize: 4 bytes, alignment 4 bytes",
               "range": {
                 "$place": "int ⟦pin⟧;",
                 "path": "main.cpp",

@@ -1,8 +1,7 @@
 [answers.function_def.hover]
 markdown = '''
-### macro `CLAMP`
+**macro** `CLAMP`
 
----
 ```cpp
 #define CLAMP(x) ((x) < LIMIT ? (x) : LIMIT)
 ```
@@ -11,37 +10,36 @@ range = "#define ⟦CLAMP⟧(x) ((x) < LIMIT ? (x) : LIMIT)"
 
 [answers.function_use.hover]
 markdown = '''
-### macro `CLAMP`
+**macro** `CLAMP`
 
----
 ```cpp
 #define CLAMP(x) ((x) < LIMIT ? (x) : LIMIT)
-
-// Expands to
-( ( 10 ) < 64 ? ( 10 ) : 64 )
+```
+Expands to:
+```cpp
+((10) < 64 ? (10) : 64)
 ```
 '''
 range = "int use_function = ⟦CLAMP⟧(10);"
 
 [answers.nested_use.hover]
 markdown = '''
-### macro `WRAP`
+**macro** `WRAP`
 
----
 ```cpp
 #define WRAP(x) CLAMP(x)
-
-// Expands to
-( ( 3 ) < 64 ? ( 3 ) : 64 )
+```
+Expands to:
+```cpp
+((3) < 64 ? (3) : 64)
 ```
 '''
 range = "int use_nested = ⟦WRAP⟧(3);"
 
 [answers.empty_def.hover]
 markdown = '''
-### macro `BARE`
+**macro** `BARE`
 
----
 ```cpp
 #define BARE
 ```
@@ -50,9 +48,8 @@ range = "#define ⟦BARE⟧"
 
 [answers.empty_use.hover]
 markdown = '''
-### macro `BARE`
+**macro** `BARE`
 
----
 ```cpp
 #define BARE
 ```
@@ -61,9 +58,8 @@ range = "⟦BARE⟧ int used_bare = 1;"
 
 [answers.multiline_def.hover]
 markdown = '''
-### macro `MULTI`
+**macro** `MULTI`
 
----
 ```cpp
 #define MULTI(x) \
     ((x) + 1)
@@ -73,24 +69,23 @@ range = '#define ⟦MULTI⟧(x) \'
 
 [answers.multiline_use.hover]
 markdown = '''
-### macro `MULTI`
+**macro** `MULTI`
 
----
 ```cpp
 #define MULTI(x) \
     ((x) + 1)
-
-// Expands to
-( ( 2 ) + 1 )
+```
+Expands to:
+```cpp
+((2) + 1)
 ```
 '''
 range = "int folded = ⟦MULTI⟧(2);"
 
 [answers.spliced_def.hover]
 markdown = '''
-### macro `SPLIT_NAME`
+**macro** `SPLIT_NAME`
 
----
 ```cpp
 #define SPLIT_\
 NAME 7
@@ -100,14 +95,14 @@ range = '#define ⟦SPLIT_\ … NAME⟧ (2 lines)'
 
 [answers.spliced_use.hover]
 markdown = '''
-### macro `SPLIT_NAME`
+**macro** `SPLIT_NAME`
 
----
 ```cpp
 #define SPLIT_\
 NAME 7
-
-// Expands to
+```
+Expands to:
+```cpp
 7
 ```
 '''
@@ -115,13 +110,13 @@ range = "int spliced_use = ⟦SPLIT_NAME⟧;"
 
 [answers.continued_arg.hover]
 markdown = '''
-### macro `ECHO`
+**macro** `ECHO`
 
----
 ```cpp
 #define ECHO(x) x
-
-// Expands to
+```
+Expands to:
+```cpp
 joined_name
 ```
 '''
@@ -129,14 +124,29 @@ range = 'int continued = ⟦ECHO⟧(joined_\'
 
 [answers.oversized_use.hover]
 markdown = '''
-### macro `A2048`
+**macro** `A2048`
 
----
 ```cpp
 #define A2048 CAT(A1024, A1024)
-
-// Expands to
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ...
+```
+Expands to:
+```cpp
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...
 ```
 '''
 range = "int ⟦A2048⟧ = 1;"
+
+[answers.long_expansion.hover]
+markdown = '''
+**macro** `SPREAD`
+
+```cpp
+#define SPREAD(a, b) combine(a, b, a + b, a * b, a - b, a / b, a % b)
+```
+Expands to:
+```cpp
+combine(100000, 200000, 100000 + 200000, 100000 * 200000, 100000 - 200000,
+        100000 / 200000, 100000 % 200000)
+```
+'''
+range = "int spread = ⟦SPREAD⟧(100000, 200000);"

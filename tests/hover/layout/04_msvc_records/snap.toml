@@ -1,0 +1,22 @@
+[answers.struct_hover.hover]
+markdown = '''
+**struct** `Widget` · namespace `ms`
+
+```cpp
+struct Widget {
+  int value;
+}
+```
+Size: 4 bytes, alignment 4 bytes
+'''
+range = "struct ⟦Widget⟧ {"
+
+[answers.method_hover.hover]
+markdown = '''
+**method** `update` · struct `ms::Widget`
+
+```cpp
+void update()
+```
+'''
+range = "void ⟦update⟧();"

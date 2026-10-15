@@ -1,8 +1,7 @@
 [answers.dependent_keyword.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 T
 ```
@@ -11,24 +10,19 @@ range = "⟦auto⟧ copy = value;"
 
 [answers.dependent_auto.hover]
 markdown = '''
-### variable `copy`
+**variable** `copy` · function `dependent_placeholders::make`
 
----
-Type: `T`
-
----
 ```cpp
-// In make
 auto copy = value
 ```
+Type: `T`
 '''
 range = "auto ⟦copy⟧ = value;"
 
 [answers.reference_keyword.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 T
 ```
@@ -37,9 +31,8 @@ range = "const ⟦auto⟧& reference = value;"
 
 [answers.pointer_keyword.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 T
 ```
@@ -48,9 +41,8 @@ range = "⟦auto⟧* pointer = source;"
 
 [answers.forwarding_keyword.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 T &
 ```
@@ -59,15 +51,11 @@ range = "⟦auto⟧&& forwarded = value;"
 
 [answers.dependent_class_arguments.hover]
 markdown = '''
-### variable `wrapper`
+**variable** `wrapper` · function `dependent_placeholders::make`
 
----
-Type: `Wrapper`
-
----
 ```cpp
-// In make
 Wrapper wrapper { value }
 ```
+Type: `Wrapper`
 '''
 range = "Wrapper ⟦wrapper⟧{value};"

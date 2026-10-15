@@ -1,16 +1,10 @@
 [answers.base.hover]
 markdown = '''
-### function `base_func`
-
----
+**function** `base_func` · namespace `copydoc`
 
 Detailed documentation.
 
-→ `void`
-
----
 ```cpp
-// In namespace copydoc
 void base_func()
 ```
 '''
@@ -18,17 +12,11 @@ range = "void ⟦base_func⟧();"
 
 [answers.wrapper.hover]
 markdown = '''
-### function `wrapper`
-
----
+**function** `wrapper` · namespace `copydoc`
 
 Detailed documentation.
 
-→ `void`
-
----
 ```cpp
-// In namespace copydoc
 void wrapper()
 ```
 '''

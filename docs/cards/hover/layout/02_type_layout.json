@@ -3,9 +3,9 @@
   "topic": "hover",
   "subtopic": "layout",
   "title": "Type layout",
-  "summary": "A class shows its size and alignment, but not how much of it is padding yet",
+  "summary": "A class shows its size and alignment, and how much of the size is padding",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#1763"
   ],
@@ -31,9 +31,8 @@
           "label": "struct_size",
           "marker": "struct_size",
           "value": {
-            "wrong": "the card does not say how much of the size is padding, 4 bytes here (clangd#1763)",
             "hover": {
-              "markdown": "### struct `Widget`\n\n---\nSize: 16 bytes, alignment 8 bytes\n\n---\n```cpp\n// In namespace layout\nstruct Widget {\n  int id;\n  double value;\n}\n```",
+              "markdown": "**struct** `Widget` · namespace `layout`\n\n```cpp\nstruct Widget {\n  int id;\n  double value;\n}\n```\nSize: 16 bytes (4 bytes padding), alignment 8 bytes",
               "range": {
                 "$place": "struct ⟦Widget⟧ {",
                 "path": "main.cpp",

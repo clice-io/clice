@@ -1,11 +1,8 @@
 [include.include.hover]
 markdown = '''
-### `foo.h`
+**header** `foo.h`
 
----
-```cpp
-${WS}/foo.h
-```
+`${WS}/foo.h`
 '''
 range = '#include ⟦"foo.h"⟧'
 

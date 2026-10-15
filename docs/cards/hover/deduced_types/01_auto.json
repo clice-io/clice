@@ -96,7 +96,7 @@
           "marker": "simple",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "markdown": "**auto**\n\n```cpp\nlong\n```",
               "range": {
                 "$place": "⟦auto⟧ first = 4L;",
                 "path": "main.cpp",
@@ -119,7 +119,7 @@
           "marker": "const",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "markdown": "**auto**\n\n```cpp\nlong\n```",
               "range": {
                 "$place": "const ⟦auto⟧ second = 5L;",
                 "path": "main.cpp",
@@ -142,7 +142,7 @@
           "marker": "ref",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "markdown": "**auto**\n\n```cpp\nlong\n```",
               "range": {
                 "$place": "⟦auto⟧& third = source;",
                 "path": "main.cpp",
@@ -165,7 +165,7 @@
           "marker": "ptr",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "markdown": "**auto**\n\n```cpp\nlong\n```",
               "range": {
                 "$place": "⟦auto⟧* fourth = &source;",
                 "path": "main.cpp",
@@ -188,7 +188,7 @@
           "marker": "from_pointer",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nlong *\n```",
+              "markdown": "**auto**\n\n```cpp\nlong *\n```",
               "range": {
                 "$place": "⟦auto⟧ fifth = &source;",
                 "path": "main.cpp",
@@ -211,7 +211,7 @@
           "marker": "lambda",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\n(lambda)\n```",
+              "markdown": "**auto**\n\n```cpp\n(lambda)\n```",
               "range": {
                 "$place": "⟦auto⟧ sixth = [](long value) { return value; };",
                 "path": "main.cpp",
@@ -234,7 +234,7 @@
           "marker": "instantiation",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nHolder<long>\n```",
+              "markdown": "**auto**\n\n```cpp\nHolder<long>\n```",
               "range": {
                 "$place": "⟦auto⟧ seventh = Holder<long>{};",
                 "path": "main.cpp",
@@ -257,7 +257,7 @@
           "marker": "structured",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nDimensions\n```",
+              "markdown": "**auto**\n\n```cpp\nDimensions\n```",
               "range": {
                 "$place": "⟦auto⟧ [rows, columns] = Dimensions{};",
                 "path": "main.cpp",
@@ -280,7 +280,7 @@
           "marker": "trailing_return",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nlong\n```",
+              "markdown": "**auto**\n\n```cpp\nlong\n```",
               "range": {
                 "$place": "⟦auto⟧ explicit_result() -> long {",
                 "path": "main.cpp",
@@ -303,7 +303,7 @@
           "marker": "fn_return",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nResult\n```",
+              "markdown": "**auto**\n\n```cpp\nResult\n```",
               "range": {
                 "$place": "⟦auto⟧ inferred_result() {",
                 "path": "main.cpp",
@@ -326,7 +326,7 @@
           "marker": "dependent",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\nT\n```",
+              "markdown": "**auto**\n\n```cpp\nT\n```",
               "range": {
                 "$place": "⟦auto⟧ value = T{};",
                 "path": "main.cpp",
@@ -349,7 +349,7 @@
           "marker": "undeduced",
           "value": {
             "hover": {
-              "markdown": "### type `auto`\n\n---\n```cpp\n/* not deduced */\n```",
+              "markdown": "**auto**\n\n```cpp\n/* not deduced */\n```",
               "range": {
                 "$place": "⟦auto⟧ sum = value + 1;",
                 "path": "main.cpp",

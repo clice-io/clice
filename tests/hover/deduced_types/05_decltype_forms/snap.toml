@@ -1,8 +1,7 @@
 [answers.const_ref_decltype_auto.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 const long &
 ```
@@ -11,9 +10,8 @@ range = "⟦decltype⟧(auto) value = reference;"
 
 [answers.decltype_auto_fn_return.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 Message
 ```
@@ -22,9 +20,8 @@ range = "⟦decltype⟧(auto) create() {"
 
 [answers.decltype_auto_ref_return.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long &
 ```
@@ -33,9 +30,8 @@ range = "⟦decltype⟧(auto) current() {"
 
 [answers.decltype_lvalue_ref.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long &
 ```
@@ -44,9 +40,8 @@ range = "⟦decltype⟧(reference) alias = source;"
 
 [answers.decltype_rvalue_call.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long &&
 ```
@@ -55,9 +50,8 @@ range = "⟦decltype⟧(acquire()) moved = acquire();"
 
 [answers.decltype_trailing_return.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 Message
 ```
@@ -66,9 +60,8 @@ range = "⟦decltype⟧(create()) message = create();"
 
 [answers.decltype_of_decltype.hover]
 markdown = '''
-### type `decltype`
+**decltype**
 
----
 ```cpp
 long
 ```
@@ -77,56 +70,41 @@ range = "⟦decltype⟧(intermediate) copy = source; @+0"
 
 [answers.var_decltype_chain.hover]
 markdown = '''
-### variable `copy`
+**variable** `copy` · namespace `variable_type_chain`
 
----
-Type: `long`
-
----
 ```cpp
-// In namespace variable_type_chain
 decltype(intermediate) copy = source
 ```
+Type: `long`
 '''
 range = "decltype(intermediate) ⟦copy⟧ = source; @+0"
 
 [answers.var_const_decltype.hover]
 markdown = '''
-### variable `copy`
+**variable** `copy` · namespace `const_variable_type`
 
----
-Type: `const long`
-
----
 ```cpp
-// In namespace const_variable_type
 const decltype(source) copy = source
 ```
+Type: `const long`
 '''
 range = "const decltype(source) ⟦copy⟧ = source;"
 
 [answers.fn_decltype_signature.hover]
 markdown = '''
-### function `convert`
+**function** `convert` · namespace `signature_type`
 
----
-→ `long`
-Parameters:
-- `long value`
-
----
 ```cpp
-// In namespace signature_type
 auto convert(decltype(source) value) -> decltype(source)
 ```
+Type: `auto (decltype(source)) -> decltype(source)` (aka `auto (long) -> long`)
 '''
 range = "auto ⟦convert⟧(decltype(source) value) -> decltype(source) {"
 
 [answers.decltype_auto_inner.hover]
 markdown = '''
-### type `auto`
+**auto**
 
----
 ```cpp
 long
 ```

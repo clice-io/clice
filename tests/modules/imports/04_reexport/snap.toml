@@ -1,11 +1,7 @@
 [answers.reexported.hover]
 markdown = '''
-### function `core_fn`
+**function** `core_fn`
 
----
-→ `int`
-
----
 ```cpp
 export int core_fn()
 ```
@@ -14,12 +10,8 @@ range = "return ⟦core_fn⟧() + wrap_fn();"
 
 [answers.own.hover]
 markdown = '''
-### function `wrap_fn`
+**function** `wrap_fn`
 
----
-→ `int`
-
----
 ```cpp
 export int wrap_fn()
 ```

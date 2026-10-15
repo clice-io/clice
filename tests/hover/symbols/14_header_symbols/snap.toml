@@ -1,37 +1,26 @@
 [answers.type.hover]
 markdown = '''
-### struct `Point`
-
----
+**struct** `Point` · namespace `geometry`
 
 A point in the plane.
 
----
 ```cpp
-// In namespace geometry
 struct Point {
   int x;
   int y;
 }
 ```
+Size: 8 bytes, alignment 4 bytes
 '''
 range = "geometry::⟦Point⟧ corner{3, 4};"
 
 [answers.function.hover]
 markdown = '''
-### function `norm`
-
----
+**function** `norm` · namespace `geometry`
 
 Distance from the origin, in taxicab steps.
 
-→ `int`
-Parameters:
-- `Point p`
-
----
 ```cpp
-// In namespace geometry
 int norm(Point p)
 ```
 '''

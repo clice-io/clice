@@ -1,62 +1,50 @@
 [answers.template_first.hover]
 markdown = '''
-### function `scale`
-
----
+**function** `scale`
 
 Scales a value.
 
-→ `T`
-Template parameters:
-- `typename T` — The arithmetic type.
-
-Parameters:
-- `T value` — The value to scale.
-- `T factor` — How much to scale by.
-
----
 ```cpp
 template <typename T> T scale(T value, T factor)
 ```
+
+Template parameters:
+- `T` — The arithmetic type.
+
+Parameters:
+- `value` — The value to scale.
+- `factor` — How much to scale by.
 '''
 range = "T ⟦scale⟧(T value, T factor);"
 
 [answers.renamed.hover]
 markdown = '''
-### function `copy`
-
----
+**function** `copy`
 
 Copies bytes.
 
-→ `void`
-Parameters:
-- `char *destination` — Where they go.
-- `int __count` — How many.
-
----
 ```cpp
 void copy(char *destination, int __count)
 ```
+
+Parameters:
+- `to` — Where they go.
+- `__count` — How many.
 '''
 range = "⟦copy⟧(buffer, 4);"
 
 [answers.swapped.hover]
 markdown = '''
-### function `step`
-
----
+**function** `step`
 
 Moves a point.
 
-→ `void`
-Parameters:
-- `int z` — The horizontal step.
-- `int x` — The vertical step.
-
----
 ```cpp
 void step(int z, int x)
 ```
+
+Parameters:
+- `x` — The horizontal step.
+- `y` — The vertical step.
 '''
 range = "⟦step⟧(1, 2);"

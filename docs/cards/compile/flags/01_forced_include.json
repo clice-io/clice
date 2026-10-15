@@ -45,7 +45,7 @@
           "marker": "forced",
           "value": {
             "hover": {
-              "markdown": "### macro `FORCED`\n\n---\n```cpp\n#define FORCED 1\n\n// Expands to\n1\n```",
+              "markdown": "**macro** `FORCED`\n\n```cpp\n#define FORCED 1\n```\nExpands to:\n```cpp\n1\n```",
               "range": {
                 "$place": "return ⟦FORCED⟧;",
                 "path": "other.cpp",
