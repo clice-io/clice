@@ -1,0 +1,48 @@
+{
+  "id": "scan/commands/01_several_commands",
+  "topic": "scan",
+  "subtopic": "commands",
+  "title": "One file, several commands",
+  "summary": "A file the database compiles with several commands includes what each of them resolves",
+  "prose": "When the database lists one file under several commands, the scan resolves its includes under each command's search path, and the file lists every header they reach.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "a/config.h",
+      "text": "#define CONFIG 1\n",
+      "markers": []
+    },
+    {
+      "path": "b/config.h",
+      "text": "#define CONFIG 2\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "#include \"config.h\"\n\nint main() {\n    return CONFIG;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice scan",
+          "value": {
+            "stdout": "Scanned 3 files (1 source, 2 headers) in #ms: 2 of 2 includes resolved.",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice scan --json",
+          "value": {
+            "stdout": "{\n  \"files\": [\n    {\n      \"path\": \"${WS}/a/config.h\",\n      \"source\": false,\n      \"modules\": [],\n      \"includes\": [],\n      \"unresolved\": []\n    },\n    {\n      \"path\": \"${WS}/b/config.h\",\n      \"source\": false,\n      \"modules\": [],\n      \"includes\": [],\n      \"unresolved\": []\n    },\n    {\n      \"path\": \"${WS}/main.cpp\",\n      \"source\": true,\n      \"modules\": [],\n      \"includes\": [\n        \"${WS}/a/config.h\",\n        \"${WS}/b/config.h\"\n      ],\n      \"unresolved\": []\n    }\n  ]\n}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}

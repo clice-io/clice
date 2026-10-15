@@ -1,0 +1,7 @@
+[test."$ clice scan --json --runs 2"]
+stderr = "error: --runs prints times, --json the graph: pass one of them"
+exit = 1
+
+[test."$ clice scan --runs 0"]
+stderr = "error: --runs takes a count of at least 1"
+exit = 1

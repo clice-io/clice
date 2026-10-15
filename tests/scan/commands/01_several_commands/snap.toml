@@ -1,0 +1,36 @@
+[test."$ clice scan"]
+stdout = "Scanned 3 files (1 source, 2 headers) in #ms: 2 of 2 includes resolved."
+exit = 0
+
+[test."$ clice scan --json"]
+stdout = '''
+{
+  "files": [
+    {
+      "path": "${WS}/a/config.h",
+      "source": false,
+      "modules": [],
+      "includes": [],
+      "unresolved": []
+    },
+    {
+      "path": "${WS}/b/config.h",
+      "source": false,
+      "modules": [],
+      "includes": [],
+      "unresolved": []
+    },
+    {
+      "path": "${WS}/main.cpp",
+      "source": true,
+      "modules": [],
+      "includes": [
+        "${WS}/a/config.h",
+        "${WS}/b/config.h"
+      ],
+      "unresolved": []
+    }
+  ]
+}
+'''
+exit = 0

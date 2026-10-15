@@ -1,0 +1,52 @@
+[test."$ clice scan"]
+stdout = '''
+Scanned 4 files (1 source, 3 headers) in #ms: 3 of 4 includes resolved.
+  ${WS}/main.cpp: "missing.h" not found
+'''
+stderr = "warning: 1 unresolved includes"
+exit = 0
+
+[test."$ clice scan --json"]
+stdout = '''
+{
+  "files": [
+    {
+      "path": "${WS}/detail/impl.h",
+      "source": false,
+      "modules": [],
+      "includes": [],
+      "unresolved": []
+    },
+    {
+      "path": "${WS}/include/config.h",
+      "source": false,
+      "modules": [],
+      "includes": [],
+      "unresolved": []
+    },
+    {
+      "path": "${WS}/main.cpp",
+      "source": true,
+      "modules": [],
+      "includes": [
+        "${WS}/util.h",
+        "${WS}/include/config.h"
+      ],
+      "unresolved": [
+        "\"missing.h\""
+      ]
+    },
+    {
+      "path": "${WS}/util.h",
+      "source": false,
+      "modules": [],
+      "includes": [
+        "${WS}/detail/impl.h"
+      ],
+      "unresolved": []
+    }
+  ]
+}
+'''
+stderr = "warning: 1 unresolved includes"
+exit = 0

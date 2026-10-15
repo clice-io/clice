@@ -10,6 +10,7 @@ Subcommands:
   lint        Lint C++ source files
   format      Format C++ source files
   inspect     Run a feature on a source file and print raw results as JSON
+  scan        Scan the project's include and module dependencies
   analyze     Analyze the indexed workspace for refactoring
   modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
 '''
@@ -27,6 +28,7 @@ Subcommands:
   lint        Lint C++ source files
   format      Format C++ source files
   inspect     Run a feature on a source file and print raw results as JSON
+  scan        Scan the project's include and module dependencies
   analyze     Analyze the indexed workspace for refactoring
   modularize  Wrap a partition's libraries as modules over their headers, rewrite its program modules into module units, or merge the wrappings of several build configurations
 '''

@@ -1,0 +1,43 @@
+{
+  "id": "scan/modules/01_providers",
+  "topic": "scan",
+  "subtopic": "modules",
+  "title": "Find module providers",
+  "summary": "A module interface unit is listed with the module it provides",
+  "prose": "The scan reads each translation unit's module declaration, so the output names the file every module is built from.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "import math;\n\nint main() {\n    return add(1, 2);\n}\n",
+      "markers": []
+    },
+    {
+      "path": "math.cppm",
+      "text": "export module math;\n\nexport int add(int a, int b) {\n    return a + b;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "$ clice scan",
+          "value": {
+            "stdout": "Scanned 2 files (2 sources, 0 headers) in #ms: 0 of 0 includes resolved.",
+            "exit": 0
+          }
+        },
+        {
+          "label": "$ clice scan --json",
+          "value": {
+            "stdout": "{\n  \"files\": [\n    {\n      \"path\": \"${WS}/main.cpp\",\n      \"source\": true,\n      \"modules\": [],\n      \"includes\": [],\n      \"unresolved\": []\n    },\n    {\n      \"path\": \"${WS}/math.cppm\",\n      \"source\": true,\n      \"modules\": [\n        \"math\"\n      ],\n      \"includes\": [],\n      \"unresolved\": []\n    }\n  ]\n}",
+            "exit": 0
+          }
+        }
+      ]
+    }
+  ]
+}
