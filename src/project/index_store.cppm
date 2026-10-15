@@ -4,11 +4,10 @@ module;
 
 module clice:project.index_store;
 
+import :project.command_resolver;
 import :project.project;
 
 namespace clice {
-
-class CommandResolver;
 
 namespace testing {
 

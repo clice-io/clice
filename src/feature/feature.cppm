@@ -6,6 +6,8 @@ module clice:feature.feature;
 
 import :compile.compilation;
 import :index.manifest;
+import :index.query;
+import :index.shard;
 import :index.types;
 import :semantic.display;
 import :semantic.symbol;
@@ -15,13 +17,6 @@ import :syntax.documentation;
 import :syntax.position;
 import :vfs.ids;
 import :vfs.path;
-
-namespace clice::index {
-
-class IndexQuery;
-class Shard;
-
-}  // namespace clice::index
 
 namespace clice::feature {
 

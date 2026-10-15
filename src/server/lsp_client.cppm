@@ -5,14 +5,13 @@ module;
 module clice:server.lsp_client;
 
 import :feature.feature;
+import :server.master_server;
+import :server.project_server;
 import :server.session;
 import :support.signal;
 import :vfs.file_table;
 
 namespace clice {
-
-class MasterServer;
-class ProjectServer;
 
 class LSPClient {
 public:

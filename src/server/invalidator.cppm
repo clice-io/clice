@@ -6,13 +6,12 @@ module clice:server.invalidator;
 
 import :project.index_store;
 import :project.project;
+import :sched.families.pcm;
 import :server.ast_projection;
 import :server.editor_context;
 import :server.session_store;
 
 namespace clice {
-
-class PCMFamily;
 
 /// A change to a file the server cares about, described by what happened —
 /// not by what must be invalidated. Events are plain values handed to

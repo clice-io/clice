@@ -5,10 +5,9 @@ module;
 module clice:sched.bootstrap;
 
 import :project.load;
+import :sched.index.pump;
 
 namespace clice {
-
-class IndexPump;
 
 /// The one project loading sequence, shared by the server's initialize
 /// and the batch driver so the two can never drift apart: load the

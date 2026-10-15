@@ -8,13 +8,12 @@ import :compile.compilation;
 import :project.command_resolver;
 import :project.index_store;
 import :project.project;
+import :sched.families.pcm;
 import :sched.graph;
 import :sched.index.pending_table;
 import :worker.pool;
 
 namespace clice {
-
-class PCMFamily;
 
 /// One-shot whole-TU runs as a task-graph family: one round = one parse on
 /// a stateless worker serving the products of the frozen plan — the full

@@ -9,15 +9,14 @@ import :feature.feature;
 import :index.query;
 import :project.project;
 import :sched.index.pump;
+import :server.ast_family;
 import :server.dispatcher;
+import :server.editor_context;
 import :server.session;
 import :server.session_store;
 import :vfs.dir_cache;
 
 namespace clice {
-
-class ASTFamily;
-struct EditorContext;
 
 namespace protocol = kota::ipc::protocol;
 

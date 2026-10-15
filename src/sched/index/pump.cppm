@@ -6,14 +6,13 @@ module clice:sched.index.pump;
 
 import :project.index_store;
 import :project.project;
+import :sched.families.turun;
+import :sched.graph;
 import :sched.index.pending_table;
 import :support.signal;
+import :worker.pool;
 
 namespace clice {
-
-class TaskGraph;
-class TURunFamily;
-class WorkerPool;
 
 namespace testing {
 

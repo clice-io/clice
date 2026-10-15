@@ -4,11 +4,7 @@ module;
 
 module clice:index.database;
 
-namespace clice {
-
-class CacheStore;
-
-}
+import :vfs.cache_store;
 
 namespace clice::index {
 

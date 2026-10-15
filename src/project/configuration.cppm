@@ -4,9 +4,9 @@ module;
 
 module clice:project.configuration;
 
-namespace clice {
+import :config.config;
 
-struct Config;
+namespace clice {
 
 /// The configuration active when nothing selects one: `default_configuration`
 /// when it names a declared tag, else the first declared tag; empty when

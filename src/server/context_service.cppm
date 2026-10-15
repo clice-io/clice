@@ -4,14 +4,13 @@ module;
 
 module clice:server.context_service;
 
+import :server.ast_family;
 import :server.editor_context;
 import :server.extension;
 import :server.session;
+import :server.session_store;
 
 namespace clice {
-
-class ASTFamily;
-struct SessionStore;
 
 namespace protocol = kota::ipc::protocol;
 

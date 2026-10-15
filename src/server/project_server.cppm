@@ -14,6 +14,7 @@ import :server.context_service;
 import :server.dispatcher;
 import :server.editor_context;
 import :server.features;
+import :server.file_tracker;
 import :server.invalidator;
 import :server.live_sources;
 import :server.session;
@@ -22,7 +23,6 @@ import :support.signal;
 
 namespace clice {
 
-class FileTracker;
 class MasterServer;
 
 /// Everything the server runs for one project: the project on disk, its

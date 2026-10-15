@@ -5,12 +5,11 @@ module;
 module clice:server.dispatcher;
 
 import :server.ast_family;
+import :server.editor_context;
 import :server.session;
 import :worker.pool;
 
 namespace clice {
-
-struct EditorContext;
 
 namespace protocol = kota::ipc::protocol;
 

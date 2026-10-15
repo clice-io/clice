@@ -4,9 +4,9 @@ module;
 
 module clice:server.control_server;
 
-namespace clice {
+import :server.project_server;
 
-class ProjectServer;
+namespace clice {
 
 /// Serve a project's control channel: accept connections on `acceptor`
 /// for as long as the task runs, each answering the control request

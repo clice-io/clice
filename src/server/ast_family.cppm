@@ -9,6 +9,7 @@ import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.graph;
 import :server.ast_projection;
+import :server.editor_context;
 import :server.session;
 import :server.session_store;
 import :support.signal;
@@ -21,8 +22,6 @@ namespace testing {
 struct ASTFamilyFixture;
 
 }
-
-struct EditorContext;
 
 /// Open documents' ASTs as a task-graph family: one node per document,
 /// candidate/durable edges to the PCM and PCH nodes its rounds wait on,

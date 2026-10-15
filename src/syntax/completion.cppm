@@ -4,22 +4,14 @@ module;
 
 module clice:syntax.completion;
 
+import :command.search_config;
+import :syntax.dependency_graph;
+import :syntax.scan;
 import :syntax.token;
+import :vfs.dir_cache;
 import :vfs.file_table;
 
 namespace clice {
-
-namespace vfs {
-
-struct Scope;
-
-}
-
-class DependencyGraph;
-
-struct ScanResult;
-
-struct SearchConfig;
 
 /// What kind of preamble-level completion is being requested.
 enum class CompletionContext : std::uint8_t {
