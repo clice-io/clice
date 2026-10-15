@@ -519,7 +519,6 @@ struct FileScanner {
         llvm::StringRef includer_dir = includer_spelling;
         auto* includer_listing = &scope.list(includer_dir);
 
-        includes_found += scan.includes.size();
         llvm::SmallVector<IncludeEdge> edges;
         edges.reserve(scan.includes.size());
         for(auto& include: scan.includes) {
@@ -555,6 +554,8 @@ struct FileScanner {
             }
 
             if(!resolved.path_id.valid()) {
+                unresolved.push_back(
+                    {.includer = path_id, .name = include.path, .angled = include.is_angled});
                 continue;
             }
             includes_resolved += 1;
@@ -647,9 +648,9 @@ struct FileScanner {
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<CachedInclude>> forced_cache;
     llvm::StringMap<CachedInclude> angled;
 
-    /// For the scan report: #include directives seen, and resolved.
-    std::size_t includes_found = 0;
+    /// For the scan report: #include directives resolved, and not.
     std::size_t includes_resolved = 0;
+    std::vector<ScanReport::Unresolved> unresolved;
 };
 
 /// The async scan implementation that runs on a local event loop.
@@ -885,8 +886,8 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     }
 
     report.elapsed_ms = timer.ms();
-    report.includes_found = scanner.includes_found;
     report.includes_resolved = scanner.includes_resolved;
+    report.unresolved = std::move(scanner.unresolved);
     report.waves = wave_num;
 }
 

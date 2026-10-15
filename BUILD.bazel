@@ -162,5 +162,4 @@ benchmark_programs([
     "index_stats_benchmark",
     "pch_chain_benchmark",
     "pipeline_benchmark",
-    "scan_benchmark",
 ])

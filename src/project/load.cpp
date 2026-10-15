@@ -80,14 +80,8 @@ ProjectLoad load_project(Project& project,
     auto remembered = store.remembered();
     auto& nearby = remembered.sources;
     if(scan_tree) {
-        project.build.reset_active(configuration);
-        if(!project.build.declares_sources()) {
-            auto below = compile_commands_below(
-                root,
-                cfg.cache_dir.empty() ? CanonicalPath()
-                                      : CanonicalPath(Spelling::absolute(cfg.cache_dir)));
-            nearby.insert(nearby.end(), below.begin(), below.end());
-        }
+        auto below = compile_commands_in_tree(project, root, configuration);
+        nearby.insert(nearby.end(), below.begin(), below.end());
     }
     auto load = load_build(project, root, configuration, nearby, remembered.provisional);
     report.has_commands = !load.members.empty() || project.build.declares_sources();
@@ -101,6 +95,19 @@ ProjectLoad load_project(Project& project,
     project.file_table.disk.find_missing(
         llvm::to_vector(llvm::make_first_range(project.project_index.manifests)));
     return report;
+}
+
+llvm::SmallVector<Spelling> compile_commands_in_tree(Project& project,
+                                                     CanonicalRef root,
+                                                     llvm::StringRef configuration) {
+    project.build.reset_active(configuration);
+    if(project.build.declares_sources()) {
+        return {};
+    }
+    auto& cache_dir = project.config.project.cache_dir;
+    return compile_commands_below(root,
+                                  cache_dir.empty() ? CanonicalPath()
+                                                    : CanonicalPath(Spelling::absolute(cache_dir)));
 }
 
 BuildLoad load_build(Project& project,
@@ -181,11 +188,9 @@ BuildLoad load_build(Project& project,
         scan_dependency_graph(project.cdb, project.dep_graph, project.build.units(load.members));
     project.dep_graph.build_reverse_map();
 
-    auto unresolved = scan.includes_found - scan.includes_resolved;
+    auto found = scan.includes_resolved + scan.unresolved.size();
     double accuracy =
-        scan.includes_found > 0
-            ? 100.0 * static_cast<double>(scan.includes_resolved) / scan.includes_found
-            : 100.0;
+        found > 0 ? 100.0 * static_cast<double>(scan.includes_resolved) / found : 100.0;
     LOG_INFO(
         "Dependency scan: {}ms, {} files ({} source + {} header, {} reused), "
         "{}/{} includes resolved ({:.1f}%), {} waves",
@@ -195,16 +200,17 @@ BuildLoad load_build(Project& project,
         scan.total_files - scan.source_files,
         scan.scan_cache_hits,
         scan.includes_resolved,
-        scan.includes_found,
+        found,
         accuracy,
         scan.waves);
-    if(unresolved > 0)
-        LOG_WARN("{} unresolved includes", unresolved);
+    if(!scan.unresolved.empty())
+        LOG_WARN("{} unresolved includes", scan.unresolved.size());
     LOG_PERF("startup",
              "phase=dep_scan files={} edges={} elapsed_ms={}",
              scan.total_files,
              scan.includes_resolved,
              scan.elapsed_ms);
+    load.scan = std::move(scan);
 
     // The recorded files join against the scanned graph, which alone tells
     // whether a unit includes one, and the graph takes them in.

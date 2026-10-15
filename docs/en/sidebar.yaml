@@ -38,6 +38,7 @@ cli:
     - modularize
     - lint
     - format
+    - scan
 
 design:
   label: Design

@@ -1,0 +1,6 @@
+{
+  // One source, compiled twice with different search paths.
+  "units": {
+    "main.cpp": [["-Ia"], ["-Ib"]]
+  }
+}

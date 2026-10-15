@@ -20,7 +20,6 @@ your question:
 3. **Component benchmarks** — _which design alternative is faster?_
    Standalone binaries in this directory, Bazel targets of their own
    (`//:benchmarks`), each answering one decision:
-   - `scan_benchmark` — dependency-graph scan over a real CDB.
    - `pipeline_benchmark` — per-TU stage profile (preprocess, parse, index
      build/serialize, preamble PCH build incl. preamble indexing, reparse over
      PCH incl. interactive indexing), one result per file.
@@ -33,8 +32,8 @@ your question:
 pixi run build RelWithDebInfo -- //:benchmarks
 ```
 
-`//:benchmarks` is all four; name single ones (`//:bin/scan_benchmark`) to
-build less. They land in `build/RelWithDebInfo/bin/bin`.
+`//:benchmarks` is all three; name single ones (`//:bin/pipeline_benchmark`)
+to build less. They land in `build/RelWithDebInfo/bin/bin`.
 
 Always benchmark `RelWithDebInfo`; Debug numbers are meaningless.
 
@@ -54,6 +53,13 @@ clice's own CDB (`npx bazel run @compdb//:refresh` writes `compile_commands.json
 doubles as an always-available medium workload.
 
 ## Typical sessions
+
+The dependency-graph scan, cold and warm, over a workload's database — the
+CLI times it itself:
+
+```bash
+./build/RelWithDebInfo/bin/bin/clice scan --workspace benchmarks/workloads/llvm/build --runs 20
+```
 
 Stage profile of the 100 largest TUs plus a Chrome trace of one:
 

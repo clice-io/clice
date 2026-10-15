@@ -36,6 +36,7 @@ enum class Command : std::uint8_t {
     lint,
     format,
     inspect,
+    scan,
     analyze,
     modularize,
 };

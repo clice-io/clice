@@ -5,6 +5,7 @@ module;
 module clice:project.load;
 
 import :project.index_store;
+import :syntax.dependency_graph;
 import :vfs.file_table;
 
 namespace clice {
@@ -13,6 +14,9 @@ namespace clice {
 struct BuildLoad {
     /// The build's translation units, the dependency graph's roots.
     std::vector<Fid> members;
+
+    /// The dependency scan from them.
+    ScanReport scan;
 };
 
 /// Activate the build `configuration` (resolved, see
@@ -31,6 +35,14 @@ BuildLoad load_build(Project& project,
                      llvm::StringRef configuration,
                      llvm::ArrayRef<Spelling> nearby = {},
                      llvm::ArrayRef<Spelling> provisional = {});
+
+/// The databases a batch command, which opens no file, finds by searching
+/// the tree below `root` once (compile_commands_below): load_build's
+/// `nearby`. None when the rules of `configuration` declare the build's
+/// sources.
+llvm::SmallVector<Spelling> compile_commands_in_tree(Project& project,
+                                                     CanonicalRef root,
+                                                     llvm::StringRef configuration);
 
 /// What load_project found and did.
 struct ProjectLoad {
@@ -68,7 +80,7 @@ struct ProjectLoad {
 /// runs whose product must not touch the index (plain `clice lint`).
 ///
 /// `scan_tree` makes discovery search the whole tree once
-/// (compile_commands_below) instead of waiting for a didOpen: for the
+/// (compile_commands_in_tree) instead of waiting for a didOpen: for the
 /// batch commands, which open no file.
 ProjectLoad load_project(Project& project,
                          IndexStore& store,

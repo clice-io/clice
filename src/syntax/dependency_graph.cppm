@@ -236,10 +236,19 @@ struct ScanReport {
     std::size_t source_files = 0;
     std::size_t total_files = 0;
 
-    /// #include directives seen, and those resolved to a file (one include
-    /// edge each).
-    std::size_t includes_found = 0;
+    /// #include directives resolved to a file, one include edge each.
     std::size_t includes_resolved = 0;
+
+    /// An include no search found, as its includer wrote it.
+    struct Unresolved {
+        Fid includer;
+        std::string name;
+        bool angled = false;
+    };
+
+    /// The includes not resolved, in scan order; a file scanned under
+    /// several commands lists one again for each that misses it.
+    std::vector<Unresolved> unresolved;
 
     /// Files whose lexical scan was reused instead of read and lexed again.
     std::size_t scan_cache_hits = 0;
