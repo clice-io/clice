@@ -661,10 +661,10 @@ struct FileScanner {
 
 /// The scan from the build's units, wave by wave — breadth first, so a
 /// header takes its context from an includer nearest a unit, the same one
-/// every run. A file reached for the first time gets a read-and-lex task
-/// unless the quick scans still pin its bytes. A kota::queue task starts
-/// when awaited: a wave's reads run together on the thread pool, after
-/// the previous wave has recorded.
+/// every run. A file reached for the first time is read and lexed on the
+/// thread pool from the moment it is reached, unless the quick scans still
+/// pin its bytes: the units' reads run beside the toolchain probes and the
+/// search configurations, a wave's beside the recording of the one before.
 struct FullScan {
     /// The files one wave records, in the order they were reached: the
     /// units under every group their commands fall in, a header under the
@@ -677,22 +677,17 @@ struct FullScan {
             std::uint32_t first = 0;
             std::uint32_t count = 0;
 
-            /// Its scan: `warm[scan]`, the quick scan of the bytes the
-            /// disk still holds, else what the task `tasks[scan]` reads.
+            /// Whether its scan is the quick scan of the bytes the disk
+            /// still holds rather than a read.
             bool warm = false;
-            std::uint32_t scan = 0;
         };
 
         std::vector<File> files;
         std::vector<ScanContext> contexts;
-        std::vector<std::optional<ScannedText>> warm;
-        std::vector<kota::task<std::optional<ScannedText>>> tasks;
-    };
 
-    /// A directory listed on the thread pool.
-    struct Listed {
-        std::string dir;
-        std::shared_ptr<const vfs::Listing> listing;
+        /// `files[i]`'s scan; a read lands once `reads` has joined.
+        std::vector<std::optional<ScannedText>> scans;
+        kota::task_group<> reads;
     };
 
     FullScan(CompilationDatabase& cdb, DependencyGraph& graph, ScanReport& report) :
@@ -706,16 +701,19 @@ struct FullScan {
             .count = static_cast<std::uint32_t>(contexts.size()),
         });
         wave.contexts.insert(wave.contexts.end(), contexts.begin(), contexts.end());
-        if(auto scanned = warm(fid)) {
+        if(wave.scans.emplace_back(warm(fid))) {
             report.scan_cache_hits += 1;
             file.warm = true;
-            file.scan = static_cast<std::uint32_t>(wave.warm.size());
-            wave.warm.push_back(std::move(scanned));
             return;
         }
-        file.scan = static_cast<std::uint32_t>(wave.tasks.size());
-        auto path = files.resolve(fid).data();
-        wave.tasks.push_back(kota::queue([path] { return read_and_scan(path); }));
+        wave.reads.spawn(read_into(wave.scans, wave.scans.size() - 1, files.resolve(fid).data()));
+    }
+
+    static kota::task<> read_into(std::vector<std::optional<ScannedText>>& scans,
+                                  std::size_t index,
+                                  const char* path) {
+        auto scanned = co_await kota::queue([path] { return read_and_scan(path); });
+        scans[index] = std::move(scanned);
     }
 
     /// The quick scan of `fid`'s bytes when a live stat the shared table's
@@ -740,11 +738,11 @@ struct FullScan {
         };
     }
 
-    /// Every search dir and every directory quoted includes of source
-    /// files start from, listed on the thread pool — a listing the cache
-    /// can still confirm skips the readdir; its one validation stat happens
-    /// lazily at first use.
-    std::vector<kota::task<Listed>> list_directories() {
+    /// List every search dir and every directory quoted includes of source
+    /// files start from on the thread pool, into the scanner's listings —
+    /// a listing the cache can still confirm skips the readdir; its one
+    /// validation stat happens lazily at first use. Returns how many.
+    std::size_t list_directories(kota::task_group<>& listings) {
         llvm::StringSet<> unique_dirs;
         ScopedTimer lookup;
         for(auto& group: graph.groups()) {
@@ -757,17 +755,20 @@ struct FullScan {
             unique_dirs.insert(files.spelling(entry.file).parent().str());
         }
 
-        std::vector<kota::task<Listed>> tasks;
-        tasks.reserve(unique_dirs.size());
+        std::size_t listed = 0;
         for(auto& entry: unique_dirs) {
             if(files.dirs.kept(entry.getKey())) {
                 continue;
             }
-            tasks.push_back(kota::queue(
-                [dir = entry.getKey().str()]() -> Listed { return {dir, vfs::list(dir)}; }));
+            listings.spawn(list_into(scanner.scope, entry.getKey().str()));
+            listed += 1;
         }
-        LOG_INFO("Queued {} directory listings", tasks.size());
-        return tasks;
+        return listed;
+    }
+
+    static kota::task<> list_into(vfs::Scope& scope, std::string dir) {
+        auto listing = co_await kota::queue([&dir] { return vfs::list(dir); });
+        scope.adopt(dir, std::move(listing));
     }
 
     kota::task<> run(llvm::ArrayRef<CommandRef> units) {
@@ -797,36 +798,35 @@ struct FullScan {
             contexts.push_back(context);
         }
 
+        // A wave's reads write into its scans until they join: it stays
+        // put on the heap while the loop hands it on.
+        auto wave = std::make_unique<Wave>();
+        for(auto& [fid, contexts]: unit_contexts) {
+            add(*wave, fid, contexts);
+        }
+        report.source_files = wave->files.size();
+
         // Pre-warm the toolchain cache: probes key by non-user-content
         // flags, so groups differing only in -D/-I collapse to the same
         // probe — N groups often yield just 1-2 subprocess calls.
         cdb.warm(graph.groups());
 
-        // The first recording reads the listings: they are awaited first.
-        auto listings = list_directories();
-        Wave wave;
-        for(auto& [fid, contexts]: unit_contexts) {
-            add(wave, fid, contexts);
-        }
-        report.source_files = wave.files.size();
-        auto listed = co_await kota::when_all(std::move(listings));
-        for(auto& entry: listed) {
-            scanner.scope.adopt(entry.dir, std::move(entry.listing));
-        }
-        LOG_INFO("Pre-populated dir cache: {} directories", listed.size());
+        kota::task_group<> listings;
+        auto listed = list_directories(listings);
+        co_await listings.join();
+        LOG_INFO("Pre-populated dir cache: {} directories", listed);
 
-        while(!wave.files.empty()) {
+        while(!wave->files.empty()) {
             ScopedTimer wave_timer;
-            auto read = co_await kota::when_all(std::move(wave.tasks));
-            auto p1 = wave_timer.ms();
+            co_await wave->reads.join();
+            auto waited = wave_timer.ms();
 
-            Wave next;
+            auto next = std::make_unique<Wave>();
             auto reach = [&](Fid fid, ScanContext context) {
-                add(next, fid, llvm::ArrayRef(context));
+                add(*next, fid, llvm::ArrayRef(context));
             };
-            for(auto& file: wave.files) {
+            for(auto [file, scanned]: llvm::zip(wave->files, wave->scans)) {
                 report.total_files += 1;
-                auto& scanned = file.warm ? wave.warm[file.scan] : read[file.scan];
                 if(!scanned) {
                     LOG_WARN("Failed to read file for scanning: {}", files.resolve(file.fid));
                     continue;
@@ -836,7 +836,7 @@ struct FullScan {
                     graph.quick_scans.results.try_emplace({file.fid, scanned->obs.hash},
                                                           scanned->result);
                 }
-                auto contexts = llvm::ArrayRef(wave.contexts).slice(file.first, file.count);
+                auto contexts = llvm::ArrayRef(wave->contexts).slice(file.first, file.count);
                 for(auto& module: scanner.record(file.fid,
                                                  std::move(scanned->result),
                                                  scanned->obs.hash,
@@ -846,13 +846,12 @@ struct FullScan {
                 }
             }
 
-            LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms | next={} reads={}",
+            LOG_INFO("Wave {}: {} files | wait={}ms record={}ms | next={}",
                      report.waves,
-                     wave.files.size(),
-                     p1,
-                     wave_timer.ms() - p1,
-                     next.files.size(),
-                     next.tasks.size());
+                     wave->files.size(),
+                     waited,
+                     wave_timer.ms() - waited,
+                     next->files.size());
             wave = std::move(next);
             report.waves += 1;
         }
