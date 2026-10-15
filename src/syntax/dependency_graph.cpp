@@ -663,8 +663,8 @@ struct FileScanner {
 /// header takes its context from an includer nearest a unit, the same one
 /// every run. A file reached for the first time is read and lexed on the
 /// thread pool from the moment it is reached, unless the quick scans still
-/// pin its bytes: the units' reads run beside the toolchain probes and the
-/// search configurations, a wave's beside the recording of the one before.
+/// pin its bytes: the units' reads run beside the search configurations,
+/// a wave's beside the recording of the one before.
 struct FullScan {
     /// The files one wave records, in the order they were reached: the
     /// units under every group their commands fall in, a header under the
@@ -798,6 +798,13 @@ struct FullScan {
             contexts.push_back(context);
         }
 
+        // Pre-warm the toolchain cache: probes key by non-user-content
+        // flags, so groups differing only in -D/-I collapse to the same
+        // probe — N groups often yield just 1-2 subprocess calls. They
+        // run before the units' reads: probe processes competing with the
+        // reads for cores cost more than the overlap saves.
+        cdb.warm(graph.groups());
+
         // A wave's reads write into its scans until they join: it stays
         // put on the heap while the loop hands it on.
         auto wave = std::make_unique<Wave>();
@@ -805,11 +812,6 @@ struct FullScan {
             add(*wave, fid, contexts);
         }
         report.source_files = wave->files.size();
-
-        // Pre-warm the toolchain cache: probes key by non-user-content
-        // flags, so groups differing only in -D/-I collapse to the same
-        // probe — N groups often yield just 1-2 subprocess calls.
-        cdb.warm(graph.groups());
 
         kota::task_group<> listings;
         auto listed = list_directories(listings);
