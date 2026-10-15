@@ -960,31 +960,6 @@ void refer_candidates(References& out, auto&& candidates, const clang::Declarati
     }
 }
 
-void stmt_references(const clang::Stmt* S,
-                     References& out,
-                     types::TemplateResolver* resolver,
-                     const clang::CallExpr* call = nullptr);
-
-/// The references of a compiler-generated statement tree the traversal
-/// never records as nodes (a range-for's `begin`/`end`/`!=`/`++` calls,
-/// a coroutine's promise protocol), through the same per-statement
-/// extraction as recorded nodes. Nothing in such a tree is written, so
-/// the references carry no location whatever the AST says.
-void refer_hidden(References& out, const clang::Stmt* S, types::TemplateResolver* resolver) {
-    if(!S) {
-        return;
-    }
-
-    References hidden;
-    stmt_references(S, hidden, resolver);
-    for(auto& reference: hidden) {
-        out.push_back({reference.decl, reference.kind, {}});
-    }
-    for(auto* child: S->children()) {
-        refer_hidden(out, child, resolver);
-    }
-}
-
 /// A reference at `location`, the token standing for the conversion, to the
 /// conversion function `expr` calls when it converts (an `if consteval` has
 /// no condition).
@@ -1127,17 +1102,8 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
 
     /// auto [a, b] = std::make_tuple(1, 2);
     ///       ^~~~ definition
-    /// The tuple protocol behind a binding (`get<0>`, `tuple_element`) and
-    /// its holding variable are generated; the traversal records neither.
     if(auto* BD = llvm::dyn_cast<clang::BindingDecl>(D)) {
         refer(out, BD, RelationKind::Definition, BD->getLocation());
-        refer_hidden(out, BD->getBinding(), resolver);
-        if(auto* holder = BD->getHoldingVar()) {
-            refer_hidden(out, holder->getInit(), resolver);
-            if(auto* TT = holder->getType().getNonReferenceType()->getAs<clang::TypedefType>()) {
-                refer(out, TT->getDecl(), RelationKind::Reference, {});
-            }
-        }
         return;
     }
 
@@ -1289,13 +1255,6 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
                 }
             }
         }
-
-        /// The variable's destructor runs at the end of its lifetime;
-        /// nothing spells it.
-        refer(out,
-              types::destructor_of(VD->getASTContext().getBaseElementType(VD->getType())),
-              RelationKind::Reference,
-              {});
         return;
     }
 }
@@ -1441,7 +1400,7 @@ void nns_references(clang::NestedNameSpecifierLoc NNSL, References& out) {
 void stmt_references(const clang::Stmt* S,
                      References& out,
                      types::TemplateResolver* resolver,
-                     const clang::CallExpr* call) {
+                     const clang::CallExpr* call = nullptr) {
     /// foo = 1
     ///  ^~~~ reference
     if(auto* DRE = llvm::dyn_cast<clang::DeclRefExpr>(S)) {
@@ -1479,8 +1438,6 @@ void stmt_references(const clang::Stmt* S,
                 refer(out, constructor, RelationKind::Implied, keyword(constructor));
             }
         }
-        /// The matching deallocation function runs if the initializer throws.
-        refer(out, NE->getOperatorDelete(), RelationKind::Reference, {});
         return;
     }
     if(auto* DE = llvm::dyn_cast<clang::CXXDeleteExpr>(S)) {
@@ -1656,20 +1613,6 @@ void stmt_references(const clang::Stmt* S,
 
     /// The rest spell no name at all.
 
-    /// f(S()) — the temporary's destructor.
-    if(auto* BTE = llvm::dyn_cast<clang::CXXBindTemporaryExpr>(S)) {
-        refer(out, BTE->getTemporary()->getDestructor(), RelationKind::Reference, {});
-        return;
-    }
-
-    /// int i = s; — the conversion function an implicit conversion calls.
-    if(auto* ICE = llvm::dyn_cast<clang::ImplicitCastExpr>(S)) {
-        if(ICE->getCastKind() == clang::CK_UserDefinedConversion) {
-            refer(out, ICE->getConversionFunction(), RelationKind::Reference, {});
-        }
-        return;
-    }
-
     /// static_cast<double>(m) / (double)m / double(m)
     /// ^~~~ reference to the conversion function the cast calls
     if(auto* NCE = llvm::dyn_cast<clang::CXXNamedCastExpr>(S)) {
@@ -1733,14 +1676,6 @@ void stmt_references(const clang::Stmt* S,
     if(auto* FRS = llvm::dyn_cast<clang::CXXForRangeStmt>(S)) {
         refer_calls_named(out, FRS->getBeginStmt(), {"begin"}, FRS->getColonLoc());
         refer_calls_named(out, FRS->getEndStmt(), {"end"}, FRS->getColonLoc());
-        for(const clang::Stmt* generated:
-            {static_cast<const clang::Stmt*>(FRS->getBeginStmt()),
-             static_cast<const clang::Stmt*>(FRS->getEndStmt()),
-             static_cast<const clang::Stmt*>(FRS->getCond()),
-             static_cast<const clang::Stmt*>(FRS->getInc()),
-             static_cast<const clang::Stmt*>(FRS->getLoopVarStmt())}) {
-            refer_hidden(out, generated, resolver);
-        }
         return;
     }
 
@@ -1754,15 +1689,6 @@ void stmt_references(const clang::Stmt* S,
         return;
     }
 
-    /// The coroutine protocol: everything but the body is generated.
-    if(auto* CBS = llvm::dyn_cast<clang::CoroutineBodyStmt>(S)) {
-        for(auto* child: CBS->children()) {
-            if(child != CBS->getBody()) {
-                refer_hidden(out, child, resolver);
-            }
-        }
-        return;
-    }
     if(auto* CSE = llvm::dyn_cast<clang::CoroutineSuspendExpr>(S)) {
         /// co_await value
         /// ^~~~ reference to the `operator co_await` it selects and the
@@ -1782,11 +1708,6 @@ void stmt_references(const clang::Stmt* S,
                                   CSE->getKeywordLoc());
             }
         }
-        for(auto* child: CSE->children()) {
-            if(child != CSE->getOperand()) {
-                refer_hidden(out, child, resolver);
-            }
-        }
         return;
     }
     /// co_return value;
@@ -1796,7 +1717,6 @@ void stmt_references(const clang::Stmt* S,
                           CRS->getPromiseCall(),
                           {"return_value", "return_void"},
                           CRS->getKeywordLoc());
-        refer_hidden(out, CRS->getPromiseCall(), resolver);
         return;
     }
 }
