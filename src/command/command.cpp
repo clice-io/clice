@@ -59,8 +59,10 @@ struct LocalArg {
 
 /// `value` spelled against `anchor` when it names a path (names_path),
 /// else `value` itself.
-llvm::StringRef
-    anchored(unsigned id, llvm::StringRef value, const Spelling& anchor, StringSet& strings) {
+llvm::StringRef anchored(unsigned id,
+                         llvm::StringRef value,
+                         const Spelling& anchor,
+                         llvm::UniqueStringSaver& strings) {
     if(!names_path(id, value)) {
         return value;
     }
@@ -305,9 +307,7 @@ void CompilationDatabase::set_workspace_root(CanonicalRef root) {
 }
 
 const CompileConfig& CompilationDatabase::config(ConfigID id) const {
-    auto ptr = const_cast<ObjectSet<CompileConfig>&>(configs).get(static_cast<std::uint32_t>(id));
-    assert(ptr && "invalid ConfigID");
-    return *ptr;
+    return *configs.get(static_cast<std::uint32_t>(id));
 }
 
 llvm::ArrayRef<const char*>
@@ -546,7 +546,7 @@ std::optional<ConfigID> CompilationDatabase::normalize(const Spelling& directory
 
         LocalArg local;
         local.opt_id = id;
-        for(auto value: arg.values) {
+        for(llvm::StringRef value: arg.values) {
             local.values.push_back(strings.save(value).data());
         }
         local.cls = classify(id, local.values);
@@ -1280,7 +1280,7 @@ ConfigID CompilationDatabase::apply_rules(ConfigID id, const CommandOptions& opt
             }
             LocalArg local;
             local.opt_id = arg.id;
-            for(auto value: arg.values) {
+            for(llvm::StringRef value: arg.values) {
                 local.values.push_back(strings.save(value).data());
             }
             local.cls = classify(arg.id, local.values);
@@ -1415,7 +1415,7 @@ std::vector<const char*> CompilationDatabase::render_driver(const CommandRef& re
         argv.push_back(resource_dir().data());
     }
 
-    auto emit = [&](std::string_view fragment) {
+    auto emit = [&](llvm::StringRef fragment) {
         argv.push_back(strings.save(fragment).data());
     };
 
@@ -1506,7 +1506,7 @@ std::vector<const char*> CompilationDatabase::render(const CommandRef& ref,
         argv.push_back(path::filename(source).data());
     }
 
-    auto emit = [&](std::string_view fragment) {
+    auto emit = [&](llvm::StringRef fragment) {
         argv.push_back(strings.save(fragment).data());
     };
 
@@ -1534,7 +1534,7 @@ std::vector<const char*> CompilationDatabase::render_full(ConfigID id) {
     if(cfg.subcommand) {
         argv.push_back(cfg.subcommand);
     }
-    auto emit = [&](std::string_view fragment) {
+    auto emit = [&](llvm::StringRef fragment) {
         argv.push_back(strings.save(fragment).data());
     };
     for(auto& arg: cfg.args) {

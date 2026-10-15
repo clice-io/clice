@@ -4,7 +4,7 @@ module;
 
 /// The name search index: the project's symbols laid out for lookup by
 /// name — quality-ordered entries, a posting list per name token (the
-/// matcher's paths through a name, see support/fuzzy_matcher.h), and
+/// matcher's paths through a name, see support/fuzzy_matcher.cppm), and
 /// bitmaps per container, kind and file — so a query narrows to
 /// candidates by bitmap algebra and scores only those, stopping once the
 /// remaining quality cannot reach the results already held.

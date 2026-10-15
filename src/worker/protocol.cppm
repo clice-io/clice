@@ -18,7 +18,7 @@ namespace protocol = kota::ipc::protocol;
 /// Error codes attached to master-side dispatch failures. They mark expected
 /// operational conditions — memory-pressure preemption, worker deaths and
 /// restart windows — as opposed to real IPC breakage: callers must not
-/// classify them as anomalies (see support/anomaly.h). The death itself is
+/// classify them as anomalies (see support/anomaly.cppm). The death itself is
 /// already reported as a WorkerCrash anomaly by the pool.
 ///
 /// A death fails every request in flight on the worker; the pool tells them

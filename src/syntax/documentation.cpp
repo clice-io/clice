@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :support.markup;
 import :syntax.documentation;
 
 namespace clice {
@@ -285,17 +286,6 @@ llvm::StringRef next_word(llvm::StringRef text) {
 llvm::StringRef after_word(llvm::StringRef text, llvm::StringRef word) {
     text = text.ltrim(" \t");
     return text.substr(word.size());
-}
-
-/// Wrap `text` in a code span, with enough backticks for the ones it
-/// holds.
-std::string code_span(llvm::StringRef text) {
-    std::string fence = "`";
-    while(text.contains(fence)) {
-        fence += '`';
-    }
-    auto padding = text.starts_with("`") || text.ends_with("`") ? " " : "";
-    return fence + padding + text.str() + padding + fence;
 }
 
 /// The parameters of a parameter list, split at the commas outside
@@ -748,7 +738,7 @@ private:
                 auto word = line.substr(index + 1).take_while(
                     [](char c) { return identifier_char(c) || c == ':' || c == '-'; });
                 word = word.rtrim(":-");
-                out += code_span(word);
+                out += markup::code_span(word);
                 index += 1 + word.size();
                 continue;
             }
@@ -792,7 +782,7 @@ private:
                     return rest;
                 }
                 if(command.kind == Kind::Monospace) {
-                    out += code_span(word);
+                    out += markup::code_span(word);
                 } else {
                     auto marker = command.kind == Kind::Bold ? "**" : "*";
                     out += marker + word.str() + marker;
@@ -823,7 +813,7 @@ private:
             }
             case Kind::Formula: {
                 auto [formula, after] = closing(rest);
-                out += code_span(formula.trim());
+                out += markup::code_span(formula.trim());
                 return after;
             }
             case Kind::Anchor: {
@@ -943,7 +933,7 @@ private:
     void copy(Kind kind, llvm::StringRef name) {
         auto copied = lookup(name);
         if(!copied) {
-            push_line("See " + code_span(name) + ".", true);
+            push_line("See " + markup::code_span(name) + ".", true);
             return;
         }
         close();

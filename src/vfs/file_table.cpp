@@ -34,13 +34,9 @@ Fid FileTable::intern(CanonicalRef identity) {
     auto [it, inserted] =
         ids.try_emplace(identity, Fid{static_cast<std::uint32_t>(spellings.size())});
     if(inserted) {
-        // Allocate with null terminator so that resolve().data() is safe
-        // to use as const char* (e.g. in MemoryBuffer::getFile which calls strlen).
-        const std::size_t n = identity.size();
-        char* buf = allocator.Allocate<char>(n + 1);
-        std::ranges::copy(llvm::StringRef(identity), buf);
-        buf[n] = '\0';
-        spellings.push_back(llvm::StringRef(buf, n));
+        // Null-terminated, so that resolve().data() is safe to use as
+        // const char* (e.g. in MemoryBuffer::getFile which calls strlen).
+        spellings.push_back(llvm::StringSaver(allocator).save(llvm::StringRef(identity)));
     }
     return it->second;
 }
