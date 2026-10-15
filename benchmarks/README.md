@@ -32,7 +32,7 @@ your question:
 pixi run build RelWithDebInfo -- //:benchmarks
 ```
 
-`//:benchmarks` is all three; name single ones (`//:bin/pipeline_benchmark`)
+`//:benchmarks` is both; name single ones (`//:bin/pipeline_benchmark`)
 to build less. They land in `build/RelWithDebInfo/bin/bin`.
 
 Always benchmark `RelWithDebInfo`; Debug numbers are meaningless.
