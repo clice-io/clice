@@ -780,20 +780,15 @@ struct FullScan {
             add(wave, fid, contexts);
         }
         report.source_files = wave.files.size();
-        if(!listings.empty()) {
-            auto listed = co_await kota::when_all(std::move(listings));
-            for(auto& entry: listed) {
-                scanner.scope.adopt(entry.dir, std::move(entry.listing));
-            }
-            LOG_INFO("Pre-populated dir cache: {} directories", listed.size());
+        auto listed = co_await kota::when_all(std::move(listings));
+        for(auto& entry: listed) {
+            scanner.scope.adopt(entry.dir, std::move(entry.listing));
         }
+        LOG_INFO("Pre-populated dir cache: {} directories", listed.size());
 
         while(!wave.files.empty()) {
             ScopedTimer wave_timer;
-            std::vector<std::optional<ScannedText>> read;
-            if(!wave.tasks.empty()) {
-                read = co_await kota::when_all(std::move(wave.tasks));
-            }
+            auto read = co_await kota::when_all(std::move(wave.tasks));
             auto p1 = wave_timer.ms();
 
             Wave next;
