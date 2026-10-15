@@ -681,7 +681,9 @@ void CompilationDatabase::render_identity(ConfigID id, std::string& out) {
             auto name = path::portable(value, workspace_root, storage);
             values.push_back(name.data() == value ? value : saver.save(name).data());
         }
-        render_arg({.opt_id = arg.opt_id, .cls = arg.cls, .values = values}, append);
+        render_arg(
+            {.opt_id = arg.opt_id, .cls = arg.cls, .spelling = arg.spelling, .values = values},
+            append);
     };
 
     // A compiler named by path is spelled like every other path first.

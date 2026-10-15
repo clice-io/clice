@@ -355,6 +355,24 @@ ZEST_CASE(IdentityHashes) {
         16U);
 };
 
+ZEST_CASE(RuleUnknownFlagIdentity) {
+    /// A flag a rule appends that the option table does not know keeps its
+    /// spelling, and the identity hashes that spelling.
+    FileTable file_table;
+    CompilationDatabase database{file_table};
+    database.add_command("/fake", "a.cpp", "clang++ -std=c++20 a.cpp"sv);
+    auto base = database.candidate_entries(fake("a.cpp")).front().config;
+    auto hash_with = [&](std::string flag) {
+        std::vector<CommandEdit> edits = {
+            {CommandEdit::Kind::Append, {std::move(flag)}}
+        };
+        return database.entry_hash(database.apply_rules(base, {.edits = edits}));
+    };
+
+    ZEXPECT(hash_with("--clice-unknown-one") != hash_with("--clice-unknown-two"));
+    ZEXPECT(hash_with("--clice-unknown-one") != database.entry_hash(base));
+};
+
 ZEST_CASE(WrapperStripped) {
     FileTable file_table;
     CompilationDatabase database{file_table};
