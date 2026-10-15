@@ -44,15 +44,14 @@ struct ScanResult {
     bool need_preprocess = false;
 
     struct IncludeInfo {
-        /// Resolved file path (fuzzy/precise scan) or raw header name (lexer scan).
+        /// The header name as written, without its delimiters.
         std::string path;
 
         /// Byte offset of the directive's `#` in the scanned content.
-        /// Only populated by the lexer-based scan(); 0 for other scan modes.
         std::uint32_t offset = 0;
 
         /// Range of the filename token including delimiters (`"..."` or
-        /// `<...>`). Only populated by the lexer-based scan().
+        /// `<...>`).
         std::uint32_t name_offset = 0;
         std::uint32_t name_length = 0;
 
@@ -60,11 +59,7 @@ struct ScanResult {
         bool conditional = false;
 
         /// Number of #if/#ifdef/#ifndef blocks open at this directive.
-        /// Only populated by the lexer-based scan().
         std::uint16_t conditional_depth = 0;
-
-        /// Whether the included file was not found during resolution.
-        bool not_found = false;
 
         /// Whether this is an angled include (<...>) vs quoted ("...").
         bool is_angled = false;
@@ -73,9 +68,8 @@ struct ScanResult {
         bool is_include_next = false;
     };
 
-    /// Include file names.
-    /// From lexer scan these are the raw header names;
-    /// from preprocessor scan these are resolved file paths.
+    /// The includes of the file's own text, from the lexer scan
+    /// (scan_quick); the preprocessor scans leave them empty.
     std::vector<IncludeInfo> includes;
 
     /// Dependent module names.
@@ -101,23 +95,6 @@ struct ScanResult {
     /// result depends on: equal hashes, equal precise scans of the file
     /// under one command and disk.
     std::uint64_t directives_hash = 0;
-};
-
-/// Shared cache for dependency directives across multiple scan invocations.
-struct SharedScanCache {
-    struct CachedEntry {
-        /// The source content of the file (kept alive for token references).
-        std::string source;
-
-        /// Scanned tokens.
-        llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
-
-        /// Scanned directives (referencing tokens above).
-        llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
-    };
-
-    /// path -> cached scan result.
-    llvm::StringMap<CachedEntry> entries;
 };
 
 /// Quick lexer-based scan, answering exactly two questions: is this file a
@@ -170,13 +147,12 @@ struct QuickScanCache {
 /// legal ([cpp.import] macro-expands an import's tokens, see
 /// ImportMacroExpandedName in module_import_tests) — and it resolves a
 /// partition import (`import :part;`) against the enclosing module's
-/// name. Keeps all directives including #define and conditionals.
+/// name. Fills the module name and the imports with their offsets.
 /// An engaged `content` remaps the main file to it — even when empty:
 /// an emptied buffer must scan as empty, not fall back to the disk.
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content = std::nullopt,
-                        SharedScanCache* cache = nullptr,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
 
 /// Lightweight preprocessor-based fallback for resolving module declarations
@@ -191,13 +167,11 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
 ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
                             std::optional<llvm::StringRef> content = std::nullopt,
-                            SharedScanCache* cache = nullptr,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = nullptr);
 
-/// Compute preamble bound (moved from compile/preamble).
+/// The end of the preamble: the directives, and the global module
+/// fragment's `module;`, that open the file.
 std::uint32_t compute_preamble_bound(llvm::StringRef content);
-
-std::vector<std::uint32_t> compute_preamble_bounds(llvm::StringRef content);
 
 /// Check if the preamble region contains only syntactically complete directives.
 /// Returns false if any #include/#import has an unclosed "" or <>, or any

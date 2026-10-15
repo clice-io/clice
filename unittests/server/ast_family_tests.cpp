@@ -95,7 +95,6 @@ struct Stack {
         store->register_namespace({.name = "pch",
                                    .extension = ".pch",
                                    .aux_extension = ".pch.idx",
-                                   .policy = CachePolicy::LRU,
                                    .max_bytes = 1ull << 30});
         project.store.emplace(std::move(*store));
     }
@@ -454,13 +453,9 @@ ZEST_CASE(BufferImportBuildsPCM) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace({.name = "pch",
-                               .extension = ".pch",
-                               .aux_extension = ".pch.idx",
-                               .policy = CachePolicy::LRU,
-                               .max_bytes = 1ull << 30});
     store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     stack.project.store.emplace(std::move(*store));
 
     auto session = stack.open(src, "import m;\nint main() { return mv(); }\n");
@@ -521,13 +516,9 @@ ZEST_CASE(DiamondDepsDeduplicated) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace({.name = "pch",
-                               .extension = ".pch",
-                               .aux_extension = ".pch.idx",
-                               .policy = CachePolicy::LRU,
-                               .max_bytes = 1ull << 30});
     store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx", .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     stack.project.store.emplace(std::move(*store));
 
     auto session = stack.open(src, "import top;\nint main() { return t(); }\n");
@@ -582,7 +573,7 @@ ZEST_CASE(ImportScanPerUnit) {
     stack.project.dep_graph.build_reverse_map();
     stack.register_pch_store(tmp);
     stack.project.store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+        {.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
 
     auto plain = stack.open(tmp.path("plain.cpp"), "int plain() { return 0; }\n");
     auto main = stack.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");

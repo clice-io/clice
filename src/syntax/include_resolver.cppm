@@ -31,8 +31,6 @@ struct ResolvedSearchDir {
 struct ResolvedSearchConfig {
     llvm::SmallVector<ResolvedSearchDir> dirs;
     unsigned angled_start_idx = 0;
-    unsigned system_start_idx = 0;
-    unsigned after_start_idx = 0;
 };
 
 /// Pre-resolve a SearchConfig against the operation's listings. Call once

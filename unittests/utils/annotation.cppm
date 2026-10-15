@@ -2,11 +2,11 @@ module;
 
 #include "modules/prelude.h"
 
-module clice:syntax.annotation;
+module clice:unittests.utils.annotation;
 
 import :syntax.token;
 
-namespace clice {
+namespace clice::testing {
 
 /// A source file with inline `§` annotations stripped out. The stripped
 /// text is the canonical coordinate space: every offset refers to the
@@ -32,4 +32,4 @@ struct AnnotatedSources {
     void add_sources(llvm::StringRef content);
 };
 
-}  // namespace clice
+}  // namespace clice::testing

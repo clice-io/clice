@@ -188,72 +188,34 @@ int main() {
 
 // === scan_precise() tests ===
 
-ZEST_CASE(PreciseBasic) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", R"(
-#include "header.h"
-int main() {}
-)");
-    vfs->add("header.h", R"(
-#pragma once
-int x = 1;
-)");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
-    ZASSERT(result.includes.size() == 1u);
-    ZEXPECT(!result.includes[0].not_found);
-    ZEXPECT(!result.includes[0].conditional);
-}
-
-ZEST_CASE(PreciseConditionalWithDefine) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", R"(
-#define USE_FOO
-#ifdef USE_FOO
-#include "foo.h"
-#endif
-#ifndef USE_FOO
-#include "bar.h"
-#endif
-)");
-    vfs->add("foo.h");
-    vfs->add("bar.h");
-
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-
-    // Precise mode evaluates conditionals: only foo.h should be included.
-    ZASSERT(result.includes.size() == 1u);
-    ZEXPECT(result.includes[0].conditional);
-    ZEXPECT(result.includes[0].path.find("foo.h") != std::string::npos);
-}
-
 ZEST_CASE(PreciseWithContent) {
+    // The content replaces the file on disk, even when empty.
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp");
-    vfs->add("header.h");
+    auto empty_path = TestVFS::path("empty.cpp");
+    vfs->add("main.cpp", R"(#include "header.h")");
+    vfs->add("empty.cpp");
+    vfs->add("header.h", "import dep;");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), R"(#include "header.h")", nullptr, vfs);
+    ZEXPECT(scan_precise(args, TestVFS::root(), {}, vfs).modules.size() == 1u);
+    ZEXPECT(scan_precise(args, TestVFS::root(), llvm::StringRef(), vfs).modules.empty());
 
-    ZASSERT(result.includes.size() == 1u);
-    ZEXPECT(!result.includes[0].not_found);
+    args.back() = empty_path.c_str();
+    auto remapped = scan_precise(args, TestVFS::root(), R"(#include "header.h")", vfs);
+    ZASSERT(remapped.modules.size() == 1u);
+    ZEXPECT(remapped.modules[0] == "dep");
 }
 
 ZEST_CASE(PreciseHonorsWorkingDirectory) {
     // The scan interprets the command like the compile does: an explicit
     // -working-directory wins over the entry's directory, and a relative
     // one resolves from it — else a header the compile finds through a
-    // relative search path scans as missing and never enters the graph.
+    // relative search path scans as missing and its imports go unseen.
     auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
     auto main_path = TestVFS::path("main.cpp");
     vfs->add("main.cpp", R"(#include "x.h")");
-    vfs->add("other/rel/x.h");
+    vfs->add("other/rel/x.h", "import dep;");
 
     auto absolute = "-working-directory=" + TestVFS::path("other");
     auto args = std::vector<const char*>{"clang++",
@@ -261,35 +223,10 @@ ZEST_CASE(PreciseHonorsWorkingDirectory) {
                                          absolute.c_str(),
                                          "-Irel",
                                          main_path.c_str()};
-    auto result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-    ZASSERT(result.includes.size() == 1u);
-    ZEXPECT(!result.includes[0].not_found);
+    ZEXPECT(scan_precise(args, TestVFS::root(), {}, vfs).modules.size() == 1u);
 
     args[2] = "-working-directory=other";
-    result = scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
-    ZASSERT(result.includes.size() == 1u);
-    ZEXPECT(!result.includes[0].not_found);
-}
-
-ZEST_CASE(MainFileNeverCached) {
-    auto vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
-    auto main_path = TestVFS::path("main.cpp");
-    vfs->add("main.cpp", R"(#include "header.h")");
-    vfs->add("header.h");
-
-    SharedScanCache cache;
-    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-
-    // The main file is lexed in full, never through cached directives:
-    // a remapped scan cannot seed the path-keyed cache with the overlay.
-    auto remapped = scan_precise(args, TestVFS::root(), llvm::StringRef("int x = 1;"), &cache, vfs);
-    ZEXPECT(remapped.includes.empty());
-    ZEXPECT(!cache.entries.contains(main_path));
-
-    auto disk = scan_precise(args, TestVFS::root(), {}, &cache, vfs);
-    ZASSERT(disk.includes.size() == 1u);
-    ZEXPECT(disk.includes[0].path.find("header.h") != std::string::npos);
-    ZEXPECT(!cache.entries.contains(main_path));
+    ZEXPECT(scan_precise(args, TestVFS::root(), {}, vfs).modules.size() == 1u);
 }
 
 ZEST_CASE(DirectiveCutAtEnd) {
@@ -310,7 +247,6 @@ ZEST_CASE(DirectiveCutAtEnd) {
         scan_precise(args,
                      TestVFS::root(),
                      llvm::StringRef("#define VERSION_CODE()\r\n  #if(MSVC)VERSION_CODE("),
-                     nullptr,
                      vfs);
     ZEXPECT(result.modules.empty());
 }
@@ -359,29 +295,28 @@ export module foo;
     ZEXPECT(bound < src.size());
 }
 
-ZEST_CASE(BoundsVector) {
+ZEST_CASE(BoundAfterLastDirective) {
     llvm::StringRef src = R"(
 #include <a>
 #include <b>
 int x;
 )";
-    auto bounds = compute_preamble_bounds(src);
-    ZASSERT(bounds.size() == 2u);
-    ZEXPECT(bounds[0] < bounds[1]);
+    ZEXPECT(compute_preamble_bound(src) == src.find("<b>") + 3);
 }
 
-ZEST_CASE(BoundsWithModuleFragment) {
+ZEST_CASE(BoundWithModuleFragment) {
     llvm::StringRef src = R"(
 module;
 #include <a>
 #include <b>
 export module foo;
 )";
-    auto bounds = compute_preamble_bounds(src);
-    // module; + two #include = 3 bounds.
-    ZASSERT(bounds.size() == 3u);
-    ZEXPECT(bounds[0] < bounds[1]);
-    ZEXPECT(bounds[1] < bounds[2]);
+    ZEXPECT(compute_preamble_bound(src) == src.find("<b>") + 3);
+
+    llvm::StringRef marker_only = R"(module;
+export module foo;
+)";
+    ZEXPECT(compute_preamble_bound(marker_only) == marker_only.find(';') + 1);
 }
 
 ZEST_CASE(StopsAtCode) {
@@ -390,8 +325,7 @@ ZEST_CASE(StopsAtCode) {
 int x;
 #include <b>
 )";
-    auto bounds = compute_preamble_bounds(src);
-    ZASSERT(bounds.size() == 1u);
+    ZEXPECT(compute_preamble_bound(src) == src.find("<a>") + 3);
 }
 
 ZEST_CASE(ConditionalDirectives) {

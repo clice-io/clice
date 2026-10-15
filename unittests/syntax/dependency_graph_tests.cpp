@@ -122,17 +122,17 @@ ZEST_CASE(MultipleModules) {
 
 ZEST_CASE(ModuleCount) {
     clice::DependencyGraph graph;
-    ZEXPECT(graph.module_count() == 0u);
+    ZEXPECT(graph.modules().size() == 0u);
 
     graph.add_module("a", Fid{1});
-    ZEXPECT(graph.module_count() == 1u);
+    ZEXPECT(graph.modules().size() == 1u);
 
     graph.add_module("b", Fid{2});
-    ZEXPECT(graph.module_count() == 2u);
+    ZEXPECT(graph.modules().size() == 2u);
 
     // Second candidate for "a" doesn't increase module name count.
     graph.add_module("a", Fid{3});
-    ZEXPECT(graph.module_count() == 2u);
+    ZEXPECT(graph.modules().size() == 2u);
 }
 
 // ============================================================================
@@ -370,7 +370,7 @@ ZEST_CASE(EmptyCDB) {
     scan_all(cdb, graph);
 
     ZEXPECT(graph.file_count() == 0u);
-    ZEXPECT(graph.module_count() == 0u);
+    ZEXPECT(graph.modules().size() == 0u);
     ZEXPECT(graph.edge_count() == 0u);
 }
 
@@ -407,7 +407,7 @@ export module m;
     }
     scan_dependency_graph(cdb, graph, units);
 
-    ZEXPECT(graph.module_count() == 1u);
+    ZEXPECT(graph.modules().size() == 1u);
     ZEXPECT(graph.lookup_module("m").size() == 1u);
 }
 
@@ -475,7 +475,7 @@ ZEST_CASE(SingleFileNoIncludes) {
 
     ZEXPECT(graph.file_count() == 1u);
     ZEXPECT(graph.edge_count() == 0u);
-    ZEXPECT(graph.module_count() == 0u);
+    ZEXPECT(graph.modules().size() == 0u);
 }
 
 ZEST_CASE(SingleFileWithInclude) {
@@ -667,7 +667,7 @@ module lib:guarded;
     ZEXPECT(llvm::sys::fs::equivalent(provider("lib"), tmp.path("src/lib.cppm")));
     ZEXPECT(llvm::sys::fs::equivalent(provider("lib:detail"), tmp.path("src/detail.cppm")));
     ZEXPECT(llvm::sys::fs::equivalent(provider("lib:guarded"), tmp.path("src/guarded.cppm")));
-    ZEXPECT(graph.module_count() == 3u);
+    ZEXPECT(graph.modules().size() == 3u);
     ZEXPECT(!graph.internal_partition(graph.lookup_module("lib").front()));
     ZEXPECT(graph.internal_partition(graph.lookup_module("lib:detail").front()));
     ZEXPECT(graph.internal_partition(graph.lookup_module("lib:guarded").front()));
@@ -970,7 +970,7 @@ void a_impl() {}
     write_cdb(tmp, cdb, json);
     scan_all(cdb, graph);
 
-    ZEXPECT(graph.module_count() == 2u);
+    ZEXPECT(graph.modules().size() == 2u);
     ZASSERT(!graph.lookup_module("mod.a").empty());
     ZASSERT(!graph.lookup_module("mod.b").empty());
 }

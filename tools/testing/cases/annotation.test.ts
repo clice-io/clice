@@ -1,5 +1,5 @@
 /// Tests for the TS annotation parser (annotation.ts), the
-/// byte-identical twin of src/syntax/annotation.cpp.
+/// byte-identical twin of unittests/utils/annotation.cpp.
 
 import { expect, test } from "vitest";
 import { parseAnnotations } from "./annotation.ts";

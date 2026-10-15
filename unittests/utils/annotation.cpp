@@ -7,9 +7,9 @@ module;
 module clice;
 
 import :support.logging;
-import :syntax.annotation;
+import :unittests.utils.annotation;
 
-namespace clice {
+namespace clice::testing {
 
 /// The annotation grammar reserves no ASCII character: the sigil is `§`
 /// (U+00A7) and range bodies are delimited by `⟦` / `⟧` (U+27E6 / U+27E7),
@@ -167,4 +167,4 @@ void AnnotatedSources::add_sources(llvm::StringRef content) {
     save_previous_file();
 }
 
-}  // namespace clice
+}  // namespace clice::testing

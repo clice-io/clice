@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :syntax.annotation;
+import :unittests.utils.annotation;
 import :unittests.utils;
 
 namespace clice::testing {

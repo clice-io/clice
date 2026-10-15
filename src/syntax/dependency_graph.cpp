@@ -8,6 +8,7 @@ module clice;
 
 import :command.search_config;
 import :support.logging;
+import :support.timer;
 import :syntax.dependency_graph;
 import :syntax.include_resolver;
 import :syntax.scan;
@@ -66,11 +67,11 @@ llvm::ArrayRef<Fid> DependencyGraph::lookup_module(llvm::StringRef module_name) 
     return {};
 }
 
-void DependencyGraph::link(Fid includer, Fid target) {
-    auto& includers = reverse_includes[target];
-    auto it = llvm::lower_bound(includers, includer);
-    if(it == includers.end() || *it != includer) {
-        includers.insert(it, includer);
+/// Insert into a sorted list, once.
+static void insert_sorted(llvm::SmallVectorImpl<Fid>& list, Fid fid) {
+    auto it = llvm::lower_bound(list, fid);
+    if(it == list.end() || *it != fid) {
+        list.insert(it, fid);
     }
 }
 
@@ -92,7 +93,7 @@ void DependencyGraph::unlink(Fid includer, Fid target) {
 void DependencyGraph::set_includes(Fid path_id,
                                    std::uint32_t config_id,
                                    llvm::SmallVector<IncludeEdge> included) {
-    IncludeKey key{path_id, config_id};
+    std::pair key{path_id, config_id};
     if(reverse_built) {
         auto old = includes.find(key);
         if(old != includes.end()) {
@@ -108,7 +109,7 @@ void DependencyGraph::set_includes(Fid path_id,
             }
         }
         for(auto edge: included) {
-            link(path_id, edge.fid);
+            insert_sorted(reverse_includes[edge.fid], path_id);
         }
     }
     includes[key] = std::move(included);
@@ -120,7 +121,7 @@ void DependencyGraph::set_includes(Fid path_id,
 
 llvm::ArrayRef<IncludeEdge> DependencyGraph::get_includes(Fid path_id,
                                                           std::uint32_t config_id) const {
-    auto it = includes.find(IncludeKey{path_id, config_id});
+    auto it = includes.find(std::pair{path_id, config_id});
     if(it != includes.end()) {
         return it->second;
     }
@@ -137,7 +138,7 @@ llvm::SmallVector<Fid> DependencyGraph::get_all_includes(Fid path_id) const {
     }
 
     for(auto config_id: fc_it->second) {
-        auto it = includes.find(IncludeKey{path_id, config_id});
+        auto it = includes.find(std::pair{path_id, config_id});
         if(it != includes.end()) {
             for(auto edge: it->second) {
                 if(seen.insert(edge.fid).second) {
@@ -167,10 +168,6 @@ std::size_t DependencyGraph::file_count() const {
     return file_configs.size();
 }
 
-std::size_t DependencyGraph::module_count() const {
-    return module_to_path.size();
-}
-
 std::size_t DependencyGraph::edge_count() const {
     std::size_t count = 0;
     for(auto& [key, ids]: includes) {
@@ -185,7 +182,7 @@ void DependencyGraph::clear_includes(Fid path_id) {
         return;
     }
     for(auto config_id: it->second) {
-        auto key = includes.find(IncludeKey{path_id, config_id});
+        auto key = includes.find(std::pair{path_id, config_id});
         if(key == includes.end()) {
             continue;
         }
@@ -204,7 +201,7 @@ void DependencyGraph::build_reverse_map() {
     reverse_includes.clear();
     for(auto& [key, ids]: includes) {
         for(auto edge: ids) {
-            reverse_includes[edge.fid].push_back(key.path_id);
+            reverse_includes[edge.fid].push_back(key.first);
         }
     }
     // One includer appears once per configuration including the file, and
@@ -273,14 +270,6 @@ std::uint32_t DependencyGraph::count_includes(Fid includer, Fid target) const {
         most = std::max(most, static_cast<std::uint32_t>(count));
     }
     return most;
-}
-
-/// Insert into a sorted list, once.
-static void insert_sorted(llvm::SmallVectorImpl<Fid>& list, Fid fid) {
-    auto it = llvm::lower_bound(list, fid);
-    if(it == list.end() || *it != fid) {
-        list.insert(it, fid);
-    }
 }
 
 void DependencyGraph::add_forced_include(Fid unit, Fid header) {
@@ -454,8 +443,6 @@ struct FileScanResult {
     /// read doubles as the workspace's first disk observation.
     DiskObservation obs;
     bool read_failed = false;
-    std::int64_t read_us = 0;
-    std::int64_t scan_us = 0;
 };
 
 /// Scan a single file: read content + lexer scan.
@@ -467,21 +454,13 @@ FileScanResult scan_file_worker(const char* path, Fid path_id, ScanContext conte
     result.path_id = path_id;
     result.context = context;
 
-    auto t0 = std::chrono::steady_clock::now();
     auto observed = vfs::read_observed(path);
-    auto t1 = std::chrono::steady_clock::now();
-    result.read_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-
     if(!observed) {
         result.read_failed = true;
         return result;
     }
     result.obs = observed->obs;
-
     result.scan_result = scan_quick(observed->content->getBuffer());
-    auto t2 = std::chrono::steady_clock::now();
-    result.scan_us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
-
     return result;
 }
 
@@ -504,8 +483,8 @@ struct ProvidedModule {
 /// the groups' search configurations and the angled-include memo live
 /// as long as the operation, so they never serve a stale filesystem.
 struct FileScanner {
-    FileScanner(CompilationDatabase& cdb, DependencyGraph& graph, ScanReport& report) :
-        cdb(cdb), graph(graph), files(cdb.files()), report(report), scope(files.dirs) {}
+    FileScanner(CompilationDatabase& cdb, DependencyGraph& graph) :
+        cdb(cdb), graph(graph), files(cdb.files()), scope(files.dirs) {}
 
     /// Record `path_id`'s scan of the bytes hashing to `hash` under
     /// `context`. A file it includes or forces in that the scan reaches
@@ -540,7 +519,7 @@ struct FileScanner {
         llvm::StringRef includer_dir = includer_spelling;
         auto* includer_listing = &scope.list(includer_dir);
 
-        report.includes_found += scan.includes.size();
+        includes_found += scan.includes.size();
         llvm::SmallVector<IncludeEdge> edges;
         edges.reserve(scan.includes.size());
         for(auto& include: scan.includes) {
@@ -556,10 +535,8 @@ struct FileScanner {
 
             CachedInclude resolved;
             if(auto it = memoized ? angled.find(key) : angled.end(); it != angled.end()) {
-                report.include_cache_hits += 1;
                 resolved = it->second;
             } else {
-                auto t0 = std::chrono::steady_clock::now();
                 auto found = resolve_include(include.path,
                                              include.is_angled,
                                              includer_listing,
@@ -568,9 +545,6 @@ struct FileScanner {
                                              context.found_dir_idx,
                                              search.resolved,
                                              scope);
-                report.p2_resolve_us += std::chrono::duration_cast<std::chrono::microseconds>(
-                                            std::chrono::steady_clock::now() - t0)
-                                            .count();
                 resolved = found ? CachedInclude{.path_id = files.intern_spelled(
                                                      Spelling::absolute(found->path)),
                                                  .found_dir_idx = found->found_dir_idx}
@@ -581,21 +555,9 @@ struct FileScanner {
             }
 
             if(!resolved.path_id.valid()) {
-                report.unresolved.push_back({
-                    .header = include.path,
-                    .includer = std::string(files.resolve(path_id)),
-                    .is_angled = include.is_angled,
-                    .conditional = include.conditional,
-                });
                 continue;
             }
-            report.includes_resolved += 1;
-            report.total_edges += 1;
-            if(include.conditional) {
-                report.conditional_edges += 1;
-            } else {
-                report.unconditional_edges += 1;
-            }
+            includes_resolved += 1;
             edges.push_back({resolved.path_id, include.conditional});
             reached(resolved.path_id, resolved.found_dir_idx);
         }
@@ -680,11 +642,14 @@ struct FileScanner {
     CompilationDatabase& cdb;
     DependencyGraph& graph;
     FileTable& files;
-    ScanReport& report;
     vfs::Scope scope;
     llvm::DenseMap<std::uint32_t, std::unique_ptr<Search>> searches;
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<CachedInclude>> forced_cache;
     llvm::StringMap<CachedInclude> angled;
+
+    /// For the scan report: #include directives seen, and resolved.
+    std::size_t includes_found = 0;
+    std::size_t includes_resolved = 0;
 };
 
 /// The async scan implementation that runs on a local event loop.
@@ -693,9 +658,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                        ScanReport& report,
                        llvm::ArrayRef<CommandRef> units) {
     auto& file_table = cdb.files();
-    auto start_time = std::chrono::steady_clock::now();
-
-    auto config_start = std::chrono::steady_clock::now();
+    ScopedTimer timer;
 
     // One scan group per unique (effective config, input language) — the
     // SearchConfig granularity: different -I sets resolve differently, and
@@ -719,11 +682,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     // Pre-warm the toolchain cache: probes key by non-user-content flags,
     // so groups differing only in -D/-I collapse to the same probe — N
     // groups often yield just 1-2 subprocess calls.
-    auto prewarm_start = std::chrono::steady_clock::now();
     cdb.warm(graph.groups());
-    auto prewarm_end = std::chrono::steady_clock::now();
-    report.prewarm_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(prewarm_end - prewarm_start).count();
 
     // Collect every search dir and every directory quoted includes of
     // source files start from, and launch readdir tasks on the thread
@@ -737,21 +696,13 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
     std::vector<kota::task<DirEntry>> pending_dir_tasks;
     {
         llvm::StringSet<> unique_dirs;
-        std::int64_t lookup_us = 0;
+        ScopedTimer lookup;
         for(auto& group: graph.groups()) {
-            auto t0 = std::chrono::steady_clock::now();
-            auto search = cdb.search_config(group);
-            lookup_us += std::chrono::duration_cast<std::chrono::microseconds>(
-                             std::chrono::steady_clock::now() - t0)
-                             .count();
-            for(auto& dir: search.dirs) {
+            for(auto& dir: cdb.search_config(group).dirs) {
                 unique_dirs.insert(dir.path);
             }
         }
-        report.config_loop_ms = lookup_us / 1000;
-        LOG_INFO("Config extracted: {} groups, {:.1f}ms",
-                 graph.groups().size(),
-                 lookup_us / 1000.0);
+        LOG_INFO("Config extracted: {} groups, {:.1f}ms", graph.groups().size(), lookup.ms_f());
         for(auto& entry: cdb.entries()) {
             unique_dirs.insert(file_table.spelling(entry.file).parent().str());
         }
@@ -771,11 +722,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         LOG_INFO("Launched {} dir cache tasks (running in background)", pending_dir_tasks.size());
     }
 
-    auto config_end = std::chrono::steady_clock::now();
-    report.config_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(config_end - config_start).count();
-
-    FileScanner scanner(cdb, graph, report);
+    FileScanner scanner(cdb, graph);
     auto& scope = scanner.scope;
 
     report.source_files = current_wave.size();
@@ -815,12 +762,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             .scan_result = it->second,
             .obs = {.stamp = status->stamp, .hash = *hash, .paired = true, .reliable = true}
         });
-        report.scan_cache_hits++;
+        report.scan_cache_hits += 1;
         return true;
     };
 
     while(!current_wave.empty()) {
-        auto wave_start = std::chrono::steady_clock::now();
+        ScopedTimer wave_timer;
 
         // Phase 1: Read + scan all files in parallel on the thread pool.
         // Files with a cached ScanResult skip I/O and lexing entirely.
@@ -830,7 +777,6 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         // prefetch tasks for everything else.
         std::vector<FileScanResult> scan_results = std::move(pending_warm);
         pending_warm.clear();
-        std::size_t wave_cache_hits = scan_results.size();
         llvm::DenseSet<Fid> known;
         for(auto& r: scan_results) {
             known.insert(r.path_id);
@@ -862,7 +808,6 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                 scan_tasks.push_back(kota::queue(
                     [path, pid, context]() { return scan_file_worker(path, pid, context); }));
             }
-            wave_cache_hits += pending_warm.size();
             std::move(pending_warm.begin(), pending_warm.end(), std::back_inserter(scan_results));
             pending_warm.clear();
 
@@ -871,16 +816,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             // tasks first (while scan tasks continue in the background), we pay
             // max(dir_time, scan_time) instead of dir_time + scan_time.
             if(!pending_dir_tasks.empty()) {
-                auto dir_t0 = std::chrono::steady_clock::now();
                 auto listed = co_await kota::when_all(std::move(pending_dir_tasks));
                 pending_dir_tasks.clear();
                 for(auto& entry: listed) {
                     scope.adopt(entry.dir_path, std::move(entry.listing));
                 }
                 LOG_INFO("Pre-populated dir cache: {} directories", listed.size());
-                auto dir_t1 = std::chrono::steady_clock::now();
-                report.dir_cache_ms =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(dir_t1 - dir_t0).count();
             }
 
             if(!scan_tasks.empty()) {
@@ -896,13 +837,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             }
         }
 
-        auto phase1_end = std::chrono::steady_clock::now();
-
-        // Accumulate per-file read/scan timing into report.
-        for(auto& sr: scan_results) {
-            report.read_us += sr.read_us;
-            report.scan_us += sr.scan_us;
-        }
+        auto p1 = wave_timer.ms();
 
         // Phase 2: record every scan; a file reached for the first time
         // joins the next wave, its scan started right away on the thread
@@ -910,7 +845,6 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         // table already pins its scan.
         std::vector<WaveEntry> next_wave;
         next_wave.reserve(current_wave.size());  // Heuristic: next wave ≤ current wave.
-        auto stats_before = scope.stats;
         auto reach = [&](Fid path_id, ScanContext context) {
             next_wave.push_back({path_id, context});
             if(!try_warm(path_id, context)) {
@@ -922,7 +856,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
         };
 
         for(auto& scan_result: scan_results) {
-            report.total_files++;
+            report.total_files += 1;
             if(scan_result.read_failed) {
                 LOG_WARN("Failed to read file for scanning: {}", scan_result.path);
                 continue;
@@ -937,33 +871,7 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
             }
         }
 
-        auto wave_listed = scope.stats.listed - stats_before.listed;
-        auto wave_reused = scope.stats.reused - stats_before.reused;
-        report.dir_listings += wave_listed;
-        report.dir_hits += wave_reused;
-        report.fs_lookups += scope.stats.lookups - stats_before.lookups;
-        report.fs_us += scope.stats.us - stats_before.us;
-
-        auto phase2_end = std::chrono::steady_clock::now();
-        auto p1 =
-            std::chrono::duration_cast<std::chrono::milliseconds>(phase1_end - wave_start).count();
-        auto p2 =
-            std::chrono::duration_cast<std::chrono::milliseconds>(phase2_end - phase1_end).count();
-        report.phase1_ms += p1;
-        report.phase2_ms += p2;
-
-        // Record per-wave stats for cold start analysis.
-        ScanReport::WaveStats ws;
-        ws.files = current_wave.size();
-        ws.phase1_ms = p1;
-        ws.phase2_ms = p2;
-        ws.next_files = next_wave.size();
-        ws.prefetch_count = prefetch_tasks.size();
-        ws.dir_listings = wave_listed;
-        ws.dir_hits = wave_reused;
-        ws.cache_hits = wave_cache_hits;
-        report.wave_stats.push_back(ws);
-
+        auto p2 = wave_timer.ms() - p1;
         LOG_INFO("Wave {}: {} files | read+scan={}ms resolve={}ms | next={} prefetch={}",
                  wave_num,
                  current_wave.size(),
@@ -973,14 +881,12 @@ kota::task<> scan_impl(CompilationDatabase& cdb,
                  prefetch_tasks.size());
 
         current_wave = std::move(next_wave);
-        wave_num++;
+        wave_num += 1;
     }
 
-    auto end_time = std::chrono::steady_clock::now();
-    report.elapsed_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-    report.header_files = report.total_files - report.source_files;
-    report.modules = graph.module_count();
+    report.elapsed_ms = timer.ms();
+    report.includes_found = scanner.includes_found;
+    report.includes_resolved = scanner.includes_resolved;
     report.waves = wave_num;
 }
 
@@ -1002,8 +908,7 @@ ScanReport scan_dependency_graph(CompilationDatabase& cdb,
 
 void rescan_dependency_graph(CompilationDatabase& cdb, DependencyGraph& graph, Fid path_id) {
     auto& files = cdb.files();
-    ScanReport report;
-    FileScanner scanner(cdb, graph, report);
+    FileScanner scanner(cdb, graph);
     llvm::SmallVector<WaveEntry> reached;
     auto reach = [&](Fid fid, ScanContext context) {
         reached.push_back({fid, context});

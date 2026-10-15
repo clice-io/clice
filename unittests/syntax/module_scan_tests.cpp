@@ -4,7 +4,7 @@ module;
 
 module clice;
 
-import :syntax.annotation;
+import :unittests.utils.annotation;
 import :syntax.scan;
 import :unittests.utils;
 
@@ -48,11 +48,11 @@ struct ModuleScanFixture {
     }
 
     ScanResult decl() {
-        return scan_module_decl(args, TestVFS::root(), {}, nullptr, vfs);
+        return scan_module_decl(args, TestVFS::root(), {}, vfs);
     }
 
     ScanResult precise() {
-        return scan_precise(args, TestVFS::root(), {}, nullptr, vfs);
+        return scan_precise(args, TestVFS::root(), {}, vfs);
     }
 };
 

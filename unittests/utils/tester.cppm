@@ -6,7 +6,7 @@ module clice:unittests.utils.tester;
 
 import :command.command;
 import :compile.compilation;
-import :syntax.annotation;
+import :unittests.utils.annotation;
 import :unittests.utils;
 
 namespace clice::testing {

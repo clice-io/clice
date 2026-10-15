@@ -31,6 +31,30 @@ inline std::error_code widen(llvm::StringRef path, llvm::SmallVectorImpl<wchar_t
     return {};
 }
 
+/// A handle to the file or directory `path` names, opened for `access`
+/// with every sharing mode, so it never refuses other processes; `flags`
+/// add to FILE_FLAG_BACKUP_SEMANTICS, which opening a directory needs.
+/// The caller closes it.
+inline std::expected<HANDLE, std::error_code> open_handle(llvm::StringRef path,
+                                                          DWORD access,
+                                                          DWORD flags = 0) {
+    llvm::SmallVector<wchar_t, 256> wide;
+    if(auto error = widen(path, wide)) {
+        return std::unexpected(error);
+    }
+    HANDLE handle = ::CreateFileW(wide.data(),
+                                  access,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr,
+                                  OPEN_EXISTING,
+                                  FILE_FLAG_BACKUP_SEMANTICS | flags,
+                                  nullptr);
+    if(handle == INVALID_HANDLE_VALUE) {
+        return std::unexpected(llvm::mapWindowsError(::GetLastError()));
+    }
+    return handle;
+}
+
 /// Whether an entry with these attributes and reparse tag is a link — a
 /// symlink or a junction. Other reparse points (cloud placeholders,
 /// deduplicated or compressed files) are the file or directory they hold.

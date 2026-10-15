@@ -347,7 +347,6 @@ ZEST_CASE(AfterSearchedLast) {
     config.dirs.push_back({tmp.path("after")});
     config.angled_start_idx = 0;
     config.system_start_idx = 1;
-    config.after_start_idx = 2;
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);

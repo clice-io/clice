@@ -1,4 +1,4 @@
-/// Annotated-source parser mirroring src/syntax/annotation.cpp.
+/// Annotated-source parser mirroring unittests/utils/annotation.cpp.
 ///
 /// Case sources may carry inline annotations: `§` / `§(name)` points and
 /// `§⟦...⟧` / `§(name)⟦...⟧` ranges (nesting allowed). The unit Tester strips

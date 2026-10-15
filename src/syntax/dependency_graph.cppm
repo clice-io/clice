@@ -30,25 +30,6 @@ struct ScanContext {
 
 class DependencyGraph {
 public:
-    /// Key for per-(file, SearchConfig) include storage.
-    struct IncludeKey {
-        Fid path_id;
-        std::uint32_t config_id;
-
-        bool operator==(const IncludeKey&) const = default;
-    };
-
-    struct IncludeKeyInfo {
-        static unsigned getHashValue(const IncludeKey& key) {
-            return llvm::DenseMapInfo<std::uint64_t>::getHashValue(
-                (std::uint64_t(key.path_id.raw) << 32) | key.config_id);
-        }
-
-        static bool isEqual(const IncludeKey& lhs, const IncludeKey& rhs) {
-            return lhs == rhs;
-        }
-    };
-
     /// Register a unit providing a module: module name -> fid. `internal`
     /// marks an internal partition (ScanResult::is_internal_partition).
     void add_module(llvm::StringRef module_name, Fid path_id, bool internal = false);
@@ -156,9 +137,6 @@ public:
     /// Number of files with include entries.
     std::size_t file_count() const;
 
-    /// Number of module mappings.
-    std::size_t module_count() const;
-
     /// Total number of include edges across all (file, config) pairs.
     std::size_t edge_count() const;
 
@@ -214,7 +192,7 @@ private:
     llvm::DenseMap<Fid, std::uint64_t> scanned_directives;
 
     /// (fid, ConfigID) -> directly included files.
-    llvm::DenseMap<IncludeKey, llvm::SmallVector<IncludeEdge>, IncludeKeyInfo> includes;
+    llvm::DenseMap<std::pair<Fid, std::uint32_t>, llvm::SmallVector<IncludeEdge>> includes;
 
     /// Track which files have any include entries (for file_count).
     llvm::DenseMap<Fid, llvm::SmallVector<std::uint32_t>> file_configs;
@@ -234,8 +212,7 @@ private:
     /// Whether build_reverse_map() ran, so edge updates maintain the map.
     bool reverse_built = false;
 
-    /// Record `includer` among `target`'s includers, and drop it.
-    void link(Fid includer, Fid target);
+    /// Drop `includer` from `target`'s includers.
     void unlink(Fid includer, Fid target);
 
     /// The roots above `path_id`, climbing from forced headers to their
@@ -250,79 +227,24 @@ private:
                       llvm::function_ref<bool(Fid)> stop) const;
 };
 
-/// Detailed report from a dependency scan.
+/// What a dependency scan did, for the startup log.
 struct ScanReport {
-    /// Timing in milliseconds.
     std::int64_t elapsed_ms = 0;
 
-    /// File counts.
-    std::size_t source_files = 0;  // Files from CDB (translation units).
-    std::size_t header_files = 0;  // Files discovered via include scanning.
-    std::size_t total_files = 0;   // source_files + header_files.
+    /// Files scanned: the units from the CDB, and all files including the
+    /// headers the scan reached.
+    std::size_t source_files = 0;
+    std::size_t total_files = 0;
 
-    /// Include edge counts.
-    std::size_t total_edges = 0;          // Total include edges.
-    std::size_t conditional_edges = 0;    // Edges inside #if/#ifdef.
-    std::size_t unconditional_edges = 0;  // Edges not inside conditionals.
+    /// #include directives seen, and those resolved to a file (one include
+    /// edge each).
+    std::size_t includes_found = 0;
+    std::size_t includes_resolved = 0;
 
-    /// Include resolution.
-    std::size_t includes_found = 0;     // Total #include directives seen.
-    std::size_t includes_resolved = 0;  // Successfully resolved to a file.
+    /// Files whose lexical scan was reused instead of read and lexed again.
+    std::size_t scan_cache_hits = 0;
 
-    /// Module info.
-    std::size_t modules = 0;
-
-    /// BFS wave count.
     std::size_t waves = 0;
-
-    /// Wall-clock time per phase (milliseconds, summed across waves).
-    std::int64_t phase1_ms = 0;       // Read + scan (parallel on thread pool).
-    std::int64_t phase2_ms = 0;       // Include resolution (stat calls).
-    std::int64_t config_ms = 0;       // Config extraction (one-time, total).
-    std::int64_t prewarm_ms = 0;      // Toolchain pre-warm subset.
-    std::int64_t config_loop_ms = 0;  // lookup + extract_search_config loop.
-    std::int64_t dir_cache_ms = 0;    // Dir cache pre-population (overlapped with Phase 1).
-
-    /// Cumulative I/O time across all threads/files (microseconds).
-    /// These are sums of per-file durations — will exceed wall-clock time
-    /// when work is parallelized across threads.
-    std::int64_t read_us = 0;  // File read (cumulative across threads).
-    std::int64_t scan_us = 0;  // Lexer scan (cumulative across threads).
-    std::int64_t fs_us = 0;    // Filesystem ops (readdir calls).
-
-    /// Phase 2 breakdown (microseconds, single-threaded).
-    std::int64_t p2_resolve_us = 0;  // resolve_include() calls.
-
-    /// Filesystem call counts.
-    std::size_t dir_listings = 0;        // Actual readdir() calls (dir cache misses).
-    std::size_t dir_hits = 0;            // Directory cache hits (no syscall).
-    std::size_t fs_lookups = 0;          // Total file existence lookups.
-    std::size_t include_cache_hits = 0;  // Include resolution cache hits (skipped resolve).
-    std::size_t scan_cache_hits = 0;     // Scan result cache hits (skipped I/O + lexer).
-
-    /// Per-wave timing breakdown for cold start analysis.
-    struct WaveStats {
-        std::size_t files = 0;           // Files processed in this wave.
-        std::int64_t phase1_ms = 0;      // Read + scan (parallel).
-        std::int64_t phase2_ms = 0;      // Include resolution (serial).
-        std::size_t next_files = 0;      // Files discovered for next wave.
-        std::size_t prefetch_count = 0;  // Prefetch tasks launched during Phase 2.
-        std::size_t dir_listings = 0;    // readdir() calls in this wave.
-        std::size_t dir_hits = 0;        // Dir cache hits in this wave.
-        std::size_t cache_hits = 0;      // Scan cache hits in this wave.
-    };
-
-    std::vector<WaveStats> wave_stats;
-
-    /// Unresolved includes: (header_name, includer_path).
-    struct UnresolvedInclude {
-        std::string header;
-        std::string includer;
-        bool is_angled = false;
-        bool conditional = false;
-    };
-
-    std::vector<UnresolvedInclude> unresolved;
 };
 
 /// Run the wavefront BFS scan from `units` — the translation units to scan,

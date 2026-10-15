@@ -21,20 +21,11 @@ namespace {
 /// for no data access, so neither a sharing mode nor a missing read
 /// permission refuses it.
 std::optional<std::string> resolve_existing(llvm::StringRef path) {
-    llvm::SmallVector<wchar_t, 256> wide;
-    if(vfs::widen(path, wide)) {
+    auto opened = vfs::open_handle(path, 0);
+    if(!opened) {
         return std::nullopt;
     }
-    HANDLE handle = ::CreateFileW(wide.data(),
-                                  0,
-                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                  nullptr,
-                                  OPEN_EXISTING,
-                                  FILE_FLAG_BACKUP_SEMANTICS,
-                                  nullptr);
-    if(handle == INVALID_HANDLE_VALUE) {
-        return std::nullopt;
-    }
+    HANDLE handle = *opened;
     auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
 
     std::wstring final(MAX_PATH, L'\0');

@@ -12,8 +12,6 @@ namespace clice {
 ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scope& scope) {
     ResolvedSearchConfig resolved;
     resolved.angled_start_idx = config.angled_start_idx;
-    resolved.system_start_idx = config.system_start_idx;
-    resolved.after_start_idx = config.after_start_idx;
     resolved.dirs.reserve(config.dirs.size());
     for(auto& dir: config.dirs) {
         resolved.dirs.push_back({dir.path, &scope.list(dir.path)});
@@ -32,8 +30,6 @@ bool check_in_dir(llvm::StringRef dir_path,
                   llvm::StringRef filename,
                   bool is_simple,
                   vfs::Scope& scope) {
-    scope.stats.lookups += 1;
-
     if(is_simple) {
         return listing->contains_file(filename);
     }

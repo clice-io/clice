@@ -174,7 +174,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
             argv.push_back(arg.c_str());
         }
 
-        auto result = scan_precise(argv, TestVFS::root(), {}, nullptr, vfs);
+        auto result = scan_precise(argv, TestVFS::root(), {}, vfs);
         if(result.provided_module().empty()) {
             continue;
         }

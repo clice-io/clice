@@ -18,8 +18,8 @@ struct SearchDir {
 /// Header search configuration extracted from compilation arguments.
 /// Uses a four-segment model matching clang's InitHeaderSearch::Realize layout:
 ///   [Quoted... | Angled... | System... | After...]
-///              ^            ^            ^
-///      angled_start_idx   system_start_idx  after_start_idx
+///              ^            ^
+///      angled_start_idx   system_start_idx
 struct SearchConfig {
     /// Ordered list of search directories, partitioned into four segments.
     std::vector<SearchDir> dirs;
@@ -28,11 +28,9 @@ struct SearchConfig {
     /// Quoted ("") includes search from index 0; angled (<>) from here.
     unsigned angled_start_idx = 0;
 
-    /// Index in dirs where System (-isystem, -internal-isystem, etc.) dirs start.
+    /// Index in dirs where System (-isystem, -internal-isystem, etc.) dirs
+    /// start; the After dirs (-idirafter, -iwithprefix) follow them.
     unsigned system_start_idx = 0;
-
-    /// Index in dirs where After (-idirafter, -iwithprefix) dirs start.
-    unsigned after_start_idx = 0;
 
     /// The files the command includes ahead of the main file (`-include`),
     /// in order and as written: clang looks a relative one up in the

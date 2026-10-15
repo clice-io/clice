@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :support.text;
 import :syntax.doc_comment;
 import :syntax.lexical_scan;
 
@@ -15,11 +16,6 @@ using Comment = LexicalInfo::Comment;
 
 llvm::StringRef text_of(llvm::StringRef content, const Comment& comment) {
     return content.slice(comment.range.begin, comment.range.end);
-}
-
-std::uint32_t line_begin(llvm::StringRef content, std::uint32_t offset) {
-    auto newline = content.substr(0, offset).rfind('\n');
-    return newline == llvm::StringRef::npos ? 0 : static_cast<std::uint32_t>(newline + 1);
 }
 
 /// Whether the comment says it documents what precedes it: `///<`,

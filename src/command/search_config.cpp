@@ -108,7 +108,6 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     config.dirs.insert(config.dirs.end(),
                        std::make_move_iterator(system.begin()),
                        std::make_move_iterator(system.end()));
-    config.after_start_idx = static_cast<unsigned>(config.dirs.size());
     config.dirs.insert(config.dirs.end(),
                        std::make_move_iterator(after.begin()),
                        std::make_move_iterator(after.end()));
@@ -127,7 +126,6 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
 
         unsigned write = config.angled_start_idx;
         unsigned removed_before_system = 0;
-        unsigned removed_before_after = 0;
         for(unsigned read = config.angled_start_idx; read < config.dirs.size(); ++read) {
             if(seen.insert(CanonicalPath(Spelling::absolute(config.dirs[read].path)).str())
                    .second) {
@@ -135,18 +133,12 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
                     config.dirs[write] = std::move(config.dirs[read]);
                 }
                 ++write;
-            } else {
-                if(read < config.system_start_idx) {
-                    ++removed_before_system;
-                }
-                if(read < config.after_start_idx) {
-                    ++removed_before_after;
-                }
+            } else if(read < config.system_start_idx) {
+                removed_before_system += 1;
             }
         }
         config.dirs.resize(write);
         config.system_start_idx -= removed_before_system;
-        config.after_start_idx -= removed_before_after;
     }
 
     return config;

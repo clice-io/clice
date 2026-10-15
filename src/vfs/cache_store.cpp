@@ -10,7 +10,6 @@ module;
 #define NOMINMAX
 #include <windows.h>
 #else
-#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -19,6 +18,7 @@ module;
 module clice;
 
 import :support.logging;
+import :support.process;
 import :vfs.cache_store;
 import :vfs.file_system;
 import :vfs.path;
@@ -46,24 +46,6 @@ struct ManifestEntry {
 struct ManifestData {
     std::vector<ManifestEntry> entries;
 };
-
-bool is_pid_alive(std::uint32_t pid) {
-#ifdef _WIN32
-    HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if(!handle) {
-        return GetLastError() == ERROR_ACCESS_DENIED;
-    }
-    DWORD exit_code = 0;
-    bool alive = GetExitCodeProcess(handle, &exit_code) && exit_code == STILL_ACTIVE;
-    CloseHandle(handle);
-    return alive;
-#else
-    if(::kill(static_cast<pid_t>(pid), 0) == 0) {
-        return true;
-    }
-    return errno == EPERM;
-#endif
-}
 
 /// Flush a file's data to stable storage before the commit rename, so a
 /// crash cannot leave a blob whose name promises content it doesn't have.
@@ -113,8 +95,8 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
     return (*tmp_buf)->getBuffer() == (*final_buf)->getBuffer();
 }
 
-/// Remove directory children whose name parses as a dead pid.
-/// Used for both `tmp/{pid}` and Scratch `{ns}/{pid}` layouts.
+/// Remove directory children whose name parses as a dead pid: the
+/// `tmp/{pid}` directories crashed instances left behind.
 void remove_dead_pid_dirs(llvm::StringRef dir, std::uint32_t self_pid) {
     for(auto& entry: vfs::read_dir(dir).value_or(std::vector<vfs::Entry>())) {
         std::uint32_t pid = 0;
@@ -122,7 +104,7 @@ void remove_dead_pid_dirs(llvm::StringRef dir, std::uint32_t self_pid) {
         if(name.getAsInteger(10, pid)) {
             continue;
         }
-        if(pid == self_pid || is_pid_alive(pid)) {
+        if(pid == self_pid || process_alive(pid)) {
             continue;
         }
         vfs::remove_all(entry.path);
@@ -138,7 +120,7 @@ bool has_live_instance(llvm::StringRef base) {
                         [](const vfs::Entry& entry) {
                             std::uint32_t pid = 0;
                             return !path::filename(entry.path).getAsInteger(10, pid) &&
-                                   is_pid_alive(pid);
+                                   process_alive(pid);
                         });
 }
 
@@ -161,8 +143,7 @@ struct CacheStore::State {
 
     struct Namespace {
         CacheNamespace config;
-        /// Directory holding this namespace's blobs: `{base}/{name}` for
-        /// LRU, `{base}/{name}/{pid}` for Scratch.
+        /// Directory holding this namespace's blobs: `{base}/{name}`.
         std::string dir;
         llvm::StringMap<Entry> entries;
         std::uint64_t total_size = 0;
@@ -417,27 +398,10 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         vfs::create_directories(ns_dir);
     }
 
-    auto [it, inserted] = state->namespaces.try_emplace(ns.name);
+    [[maybe_unused]] auto [it, inserted] = state->namespaces.try_emplace(ns.name);
     assert(inserted && "namespace registered twice");
-    if(!inserted) {
-        return;
-    }
     auto& ns_state = it->second;
     ns_state.config = std::move(ns);
-
-    if(ns_state.config.policy == CachePolicy::Scratch) {
-        ns_state.dir = path::join(ns_dir, std::to_string(state->self_pid));
-        if(state->read_only) {
-            return;
-        }
-        // Scratch directories are per-instance; reclaim those left behind
-        // by crashed instances and start with a fresh one of our own.
-        remove_dead_pid_dirs(ns_dir, state->self_pid);
-        vfs::remove_all(ns_state.dir);
-        vfs::create_directories(ns_state.dir);
-        return;
-    }
-
     ns_state.dir = std::move(ns_dir);
 
     // Adopt blobs already on disk.  The directory scan, not the manifest,
@@ -564,24 +528,11 @@ CacheStore::PendingEntry CacheStore::begin_store_aux(llvm::StringRef ns, llvm::S
 CacheStore::PendingEntry CacheStore::begin_store_locked(llvm::StringRef ns,
                                                         llvm::StringRef key,
                                                         bool aux) {
-    llvm::StringRef entry = aux ? "begin_store_aux" : "begin_store";
     assert(!state->read_only && "write on a read-only store");
-    if(state->read_only) {
-        LOG_ERROR("CacheStore: {} on a read-only store", entry);
-        return {};
-    }
-
     auto* ns_state = state->find_namespace(ns);
     assert(ns_state && "begin_store on unregistered namespace");
-    if(!ns_state) {
-        LOG_ERROR("CacheStore: {} on unregistered namespace {}", entry, ns);
-        return {};
-    }
     auto& extension = aux ? ns_state->config.aux_extension : ns_state->config.extension;
-    if(aux && extension.empty()) {
-        LOG_ERROR("CacheStore: begin_store_aux on namespace {} without aux extension", ns);
-        return {};
-    }
+    assert(!extension.empty() && "begin_store_aux on a namespace without aux blobs");
 
     return PendingEntry{ns.str(), key.str(), next_tmp_path(extension), aux};
 }
@@ -622,9 +573,6 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
     // both.
     std::string final_path;
     std::string dir;
-    // Scratch blobs are cheap derivatives with no durability requirement;
-    // they skip the fsync.
-    bool durable;
     {
         std::lock_guard guard(state->mutex);
         auto* ns_state = state->find_namespace(pending.ns);
@@ -638,7 +586,6 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
             vfs::remove(pending.tmp_path);
             return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
         }
-        durable = ns_state->config.policy != CachePolicy::Scratch;
         final_path = pending.aux ? state->aux_blob_path(*ns_state, pending.key)
                                  : state->blob_path(*ns_state, pending.key);
         dir = ns_state->dir;
@@ -646,12 +593,9 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
         assert(alone && "one commit per key at a time");
     }
 
-    std::error_code failure;
     // The destination was removed for a retry that failed too.
     bool removed = false;
-    if(durable) {
-        failure = sync_file(pending.tmp_path);
-    }
+    auto failure = sync_file(pending.tmp_path);
     if(failure) {
         vfs::remove(pending.tmp_path);
     } else {
@@ -674,9 +618,8 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
                     failure = error;
                 }
             } else {
-                // The destination is stale — a rewritten Scratch key or an
-                // LRU blob whose content drifted from its key.  Remove it
-                // and retry; if the rename still fails, report the error
+                // The destination is stale — a blob whose content drifted
+                // from its key.  Remove it and retry; if the rename still fails, report the error
                 // instead of silently dropping the new data.
                 vfs::remove(final_path);
                 if(auto retry = vfs::rename(pending.tmp_path, final_path)) {
@@ -732,14 +675,9 @@ std::expected<std::string, std::error_code> CacheStore::commit(PendingEntry pend
         }
         entry.atime = state->next_generation();
 
-        if(ns_state->config.policy == CachePolicy::LRU) {
-            state->evict_locked(*ns_state, pending.key);
-        }
-
-        if(ns_state->config.policy != CachePolicy::Scratch) {
-            state->dirty = true;
-            state->changes_since_checkpoint += 1;
-        }
+        state->evict_locked(*ns_state, pending.key);
+        state->dirty = true;
+        state->changes_since_checkpoint += 1;
     }
 
     maybe_checkpoint();
@@ -777,10 +715,8 @@ void CacheStore::invalidate(llvm::StringRef ns, llvm::StringRef key) {
         ns_state->total_size -= it->second.size + it->second.aux_size;
         ns_state->entries.erase(it);
 
-        if(ns_state->config.policy != CachePolicy::Scratch) {
-            state->dirty = true;
-            state->changes_since_checkpoint += 1;
-        }
+        state->dirty = true;
+        state->changes_since_checkpoint += 1;
     }
 
     maybe_checkpoint();
@@ -810,8 +746,7 @@ bool CacheStore::read_only() const {
 }
 
 void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
-    if(read_only || ns.config.policy != CachePolicy::LRU || ns.config.max_bytes == 0 ||
-       ns.total_size <= ns.config.max_bytes) {
+    if(read_only || ns.config.max_bytes == 0 || ns.total_size <= ns.config.max_bytes) {
         return;
     }
 
@@ -883,9 +818,6 @@ void CacheStore::State::checkpoint_locked() {
 
     ManifestData data;
     for(auto& [name, ns_state]: namespaces) {
-        if(ns_state.config.policy == CachePolicy::Scratch) {
-            continue;
-        }
         for(auto& entry: ns_state.entries) {
             data.entries.push_back({name.str(), entry.first().str(), entry.second.atime});
         }
@@ -932,11 +864,6 @@ void CacheStore::shutdown() {
     state->checkpoint_locked();
 
     vfs::remove_all(state->tmp_dir);
-    for(auto& [name, ns_state]: state->namespaces) {
-        if(ns_state.config.policy == CachePolicy::Scratch) {
-            vfs::remove_all(ns_state.dir);
-        }
-    }
 }
 
 }  // namespace clice

@@ -88,10 +88,6 @@ struct Token {
         return range.valid();
     }
 
-    llvm::StringRef name() const {
-        return clang::tok::getTokenName(kind);
-    }
-
     llvm::StringRef text(llvm::StringRef content) const {
         assert(range.valid() && "Invalid source range");
         return content.substr(range.begin, range.end - range.begin);

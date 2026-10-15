@@ -44,12 +44,8 @@ ProjectLoad load_project(Project& project,
             cache->register_namespace({.name = "pch",
                                        .extension = ".pch",
                                        .aux_extension = ".pch.idx",
-                                       .policy = CachePolicy::LRU,
                                        .max_bytes = 8 * GiB});
-            cache->register_namespace({.name = "pcm",
-                                       .extension = ".pcm",
-                                       .policy = CachePolicy::LRU,
-                                       .max_bytes = 8 * GiB});
+            cache->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 8 * GiB});
             project.store.emplace(std::move(*cache));
             // A read-only bootstrap opens the index database read-only:
             // no writer lock (a concurrent server or index run keeps
@@ -191,13 +187,13 @@ BuildLoad load_build(Project& project,
             ? 100.0 * static_cast<double>(scan.includes_resolved) / scan.includes_found
             : 100.0;
     LOG_INFO(
-        "Dependency scan: {}ms, {} files ({} source + {} header), "
-        "{} edges, {}/{} resolved ({:.1f}%), {} waves",
+        "Dependency scan: {}ms, {} files ({} source + {} header, {} reused), "
+        "{}/{} includes resolved ({:.1f}%), {} waves",
         scan.elapsed_ms,
         scan.total_files,
         scan.source_files,
-        scan.header_files,
-        scan.total_edges,
+        scan.total_files - scan.source_files,
+        scan.scan_cache_hits,
         scan.includes_resolved,
         scan.includes_found,
         accuracy,
@@ -207,7 +203,7 @@ BuildLoad load_build(Project& project,
     LOG_PERF("startup",
              "phase=dep_scan files={} edges={} elapsed_ms={}",
              scan.total_files,
-             scan.total_edges,
+             scan.includes_resolved,
              scan.elapsed_ms);
 
     // The recorded files join against the scanned graph, which alone tells

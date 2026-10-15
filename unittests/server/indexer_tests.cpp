@@ -2854,10 +2854,8 @@ ZEST_CASE(StaleFormatDropsPch) {
 
     auto setup = [&](IndexerFixture& f) {
         open_store(tmp, f.project);
-        f.project.store->register_namespace({.name = "pch",
-                                             .extension = ".pch",
-                                             .aux_extension = ".pch.idx",
-                                             .policy = CachePolicy::LRU});
+        f.project.store->register_namespace(
+            {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
     };
 
     {
@@ -2917,8 +2915,7 @@ ZEST_CASE(DeplessPcmDropped) {
 
     auto setup = [&](IndexerFixture& f) {
         open_store(tmp, f.project);
-        f.project.store->register_namespace(
-            {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU});
+        f.project.store->register_namespace({.name = "pcm", .extension = ".pcm"});
     };
 
     {
@@ -3710,8 +3707,7 @@ ZEST_CASE(ModuleLintScanParity) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
 
     f.pcm.register_runner();
@@ -3832,8 +3828,7 @@ ZEST_CASE(BuildsOnlyImportedPCMs) {
 
     auto store = CacheStore::open(tmp.path("root"), 1);
     ZASSERT(store);
-    store->register_namespace(
-        {.name = "pcm", .extension = ".pcm", .policy = CachePolicy::LRU, .max_bytes = 1ull << 30});
+    store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 1ull << 30});
     f.project.store.emplace(std::move(*store));
     f.pcm.register_runner();
 

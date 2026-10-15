@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :support.text;
 import :syntax.lexer;
 import :syntax.preamble_synthesis;
 import :syntax.scan;
@@ -117,9 +118,7 @@ static std::optional<TopLevel> last_top_level(llvm::StringRef content, std::uint
                 branches.pop_back();
             }
             auto end = keyword.is_eod() ? keyword : lexer.advance_until(clang::tok::eod);
-            auto line_end = content.find('\n', end.range.begin);
-            mark(line_end == llvm::StringRef::npos ? static_cast<std::uint32_t>(content.size())
-                                                   : static_cast<std::uint32_t>(line_end + 1));
+            mark(line_end(content, end.range.begin));
             continue;
         }
         if(token.kind == clang::tok::l_brace) {
@@ -223,10 +222,7 @@ static bool emit_fragment(std::string& out,
             names_snapshot = true;
             continue;
         }
-        auto line_start = content.rfind('\n', include.offset);
-        auto begin = line_start == llvm::StringRef::npos
-                         ? from
-                         : std::max(from, static_cast<std::uint32_t>(line_start + 1));
+        auto begin = std::max(from, line_begin(content, include.offset));
         auto eol = content.find('\n', include.offset);
         auto end =
             eol == llvm::StringRef::npos ? to : std::min(to, static_cast<std::uint32_t>(eol));
@@ -379,10 +375,7 @@ std::optional<SynthesizedContext>
         // After the cut: everything past the matched directive's line. The
         // text before closed `depth` conditionals early, so reopen them
         // with `#if 1` to keep the fragment's own #endifs balanced.
-        auto line_end = entry.content.find('\n', cut);
-        auto resume = line_end == llvm::StringRef::npos
-                          ? static_cast<std::uint32_t>(entry.content.size())
-                          : static_cast<std::uint32_t>(line_end + 1);
+        auto resume = line_end(entry.content, cut);
         // The header's buffer appends its include of the suffix, and a
         // file the context did not cut can enter the header again before
         // the cut — an earlier occurrence: there the header is its text

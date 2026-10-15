@@ -140,12 +140,11 @@ namespace {
 
 class ScanDirectivesGetter : public clang::DependencyDirectivesGetter {
 public:
-    ScanDirectivesGetter(SharedScanCache* cache, clang::FileManager& file_mgr) :
-        cache(cache), file_mgr(&file_mgr) {}
+    explicit ScanDirectivesGetter(clang::FileManager& file_mgr) : file_mgr(&file_mgr) {}
 
     std::unique_ptr<clang::DependencyDirectivesGetter>
         cloneFor(clang::FileManager& new_file_mgr) override {
-        return std::make_unique<ScanDirectivesGetter>(cache, new_file_mgr);
+        return std::make_unique<ScanDirectivesGetter>(new_file_mgr);
     }
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
@@ -153,54 +152,21 @@ public:
         if(file == main_file) {
             return std::nullopt;
         }
-        auto path = file.getFileEntry().tryGetRealPathName();
-        if(path.empty()) {
-            path = file.getName();
-        }
 
-        // Check cache first.
-        if(cache) {
-            auto it = cache->entries.find(path);
-            if(it != cache->entries.end()) {
-                return llvm::ArrayRef(it->second.directives);
-            }
-        }
-
-        // Read the file content.
         auto buffer = file_mgr->getBufferForFile(file);
         if(!buffer) {
             return std::nullopt;
         }
 
-        auto source = (*buffer)->getBuffer().str();
-
-        // Create entry in its final location first, then scan into it.
-        // Directive::Tokens are ArrayRefs pointing into the tokens SmallVector,
-        // so the entry must not be moved after scanning.
-        SharedScanCache::CachedEntry* entry_ptr;
-        if(cache) {
-            auto [it, _] = cache->entries.try_emplace(path);
-            entry_ptr = &it->second;
-        } else {
-            local_entries.emplace_back();
-            entry_ptr = &local_entries.back();
-        }
-
-        entry_ptr->source = std::move(source);
-
-        if(clang::scanSourceForDependencyDirectives(entry_ptr->source,
-                                                    entry_ptr->tokens,
-                                                    entry_ptr->directives)) {
-            // Scan failed — remove the entry.
-            if(cache) {
-                cache->entries.erase(path);
-            } else {
-                local_entries.pop_back();
-            }
+        // Directive::Tokens are ArrayRefs into the entry's tokens, so the
+        // entry is scanned in its final, never-moving place.
+        auto& entry = entries.emplace_back();
+        entry.source = (*buffer)->getBuffer().str();
+        if(clang::scanSourceForDependencyDirectives(entry.source, entry.tokens, entry.directives)) {
+            entries.pop_back();
             return std::nullopt;
         }
-
-        return llvm::ArrayRef(entry_ptr->directives);
+        return llvm::ArrayRef(entry.directives);
     }
 
     /// Lexed by clang's ordinary lexer, not from its directives: the main
@@ -211,67 +177,23 @@ public:
     clang::OptionalFileEntryRef main_file;
 
 private:
-    SharedScanCache* cache;
+    struct Entry {
+        /// The file's text, which the tokens point into.
+        std::string source;
+        llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
+        llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
+    };
+
     clang::FileManager* file_mgr;
-    std::deque<SharedScanCache::CachedEntry> local_entries;
+    std::deque<Entry> entries;
 };
 
-/// PPCallbacks for precise mode: single ScanResult with accurate
-/// conditional tracking via preprocessor callbacks.
-class PreciseScanPPCallbacks : public clang::PPCallbacks {
+/// Collects the imports the preprocessor reaches, each with its offset in
+/// the main file.
+class ImportCollector : public clang::PPCallbacks {
 public:
-    PreciseScanPPCallbacks(ScanResult& result, const clang::SourceManager& sources) :
+    ImportCollector(ScanResult& result, const clang::SourceManager& sources) :
         result(result), sources(sources) {}
-
-    void InclusionDirective(clang::SourceLocation,
-                            const clang::Token& include_tok,
-                            llvm::StringRef file_name,
-                            bool is_angled,
-                            clang::CharSourceRange,
-                            clang::OptionalFileEntryRef file,
-                            llvm::StringRef,
-                            llvm::StringRef,
-                            const clang::Module*,
-                            bool,
-                            clang::SrcMgr::CharacteristicKind) override {
-        bool not_found = !file.has_value();
-        std::string resolved_path;
-        if(file) {
-            resolved_path = file->getFileEntry().tryGetRealPathName().str();
-        } else {
-            resolved_path = file_name.str();
-        }
-
-        ScanResult::IncludeInfo info;
-        info.path = std::move(resolved_path);
-        info.conditional = conditional_depth > 0;
-        info.not_found = not_found;
-        info.is_angled = is_angled;
-        info.is_include_next =
-            include_tok.getIdentifierInfo() &&
-            include_tok.getIdentifierInfo()->getPPKeywordID() == clang::tok::pp_include_next;
-        result.includes.push_back(std::move(info));
-    }
-
-    void If(clang::SourceLocation, clang::SourceRange, ConditionValueKind) override {
-        conditional_depth++;
-    }
-
-    void Ifdef(clang::SourceLocation, const clang::Token&, const clang::MacroDefinition&) override {
-        conditional_depth++;
-    }
-
-    void Ifndef(clang::SourceLocation,
-                const clang::Token&,
-                const clang::MacroDefinition&) override {
-        conditional_depth++;
-    }
-
-    void Endif(clang::SourceLocation, clang::SourceLocation) override {
-        if(conditional_depth > 0) {
-            conditional_depth--;
-        }
-    }
 
     void moduleImport(clang::SourceLocation location,
                       clang::ModuleIdPath names,
@@ -299,7 +221,6 @@ public:
 private:
     ScanResult& result;
     const clang::SourceManager& sources;
-    int conditional_depth = 0;
 };
 
 /// The setup every preprocessor-driven scan shares: the instance from the
@@ -311,7 +232,6 @@ void scan_with_preprocessor(
     llvm::ArrayRef<const char*> arguments,
     llvm::StringRef directory,
     std::optional<llvm::StringRef> content,
-    SharedScanCache* cache,
     llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs,
     ScanResult& result,
     llvm::function_ref<void(clang::CompilerInstance&, clang::FrontendAction&)> body) {
@@ -351,7 +271,7 @@ void scan_with_preprocessor(
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
     instance->createFileManager();
 
-    auto getter = std::make_unique<ScanDirectivesGetter>(cache, instance->getFileManager());
+    auto getter = std::make_unique<ScanDirectivesGetter>(instance->getFileManager());
     auto& directives = *getter;
     instance->setDependencyDirectivesGetter(std::move(getter));
 
@@ -392,19 +312,17 @@ const ScanResult& QuickScanCache::scan_of(Fid fid,
 ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content,
-                        SharedScanCache* cache,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
     scan_with_preprocessor(
         arguments,
         directory,
         content,
-        cache,
         std::move(vfs),
         result,
         [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
             instance.getPreprocessor().addPPCallbacks(
-                std::make_unique<PreciseScanPPCallbacks>(result, instance.getSourceManager()));
+                std::make_unique<ImportCollector>(result, instance.getSourceManager()));
             if(auto error = action.Execute()) {
                 llvm::consumeError(std::move(error));
             }
@@ -415,13 +333,11 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
 ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
                             std::optional<llvm::StringRef> content,
-                            SharedScanCache* cache,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
     scan_with_preprocessor(arguments,
                            directory,
                            content,
-                           cache,
                            std::move(vfs),
                            result,
                            [](clang::CompilerInstance& instance, clang::FrontendAction&) {
@@ -439,55 +355,32 @@ ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
 }
 
 std::uint32_t compute_preamble_bound(llvm::StringRef content) {
-    auto result = compute_preamble_bounds(content);
-    if(result.empty()) {
-        return 0;
-    } else {
-        return result.back();
-    }
-}
-
-std::vector<std::uint32_t> compute_preamble_bounds(llvm::StringRef content) {
-    std::vector<std::uint32_t> result;
-
+    std::uint32_t bound = 0;
     Lexer lexer(content);
-
     while(true) {
         auto token = lexer.advance();
         if(token.is_eof()) {
             break;
         }
+        if(!token.is_at_start_of_line) {
+            continue;
+        }
 
-        if(token.is_at_start_of_line) {
-            if(token.kind == clang::tok::hash) {
-                /// For preprocessor directive, consume the whole directive.
-                lexer.advance_until(clang::tok::eod);
-                auto last = lexer.last();
-
-                /// Append the token before the eod.
-                result.push_back(last.range.end);
-            } else if(token.is_identifier() && token.text(content) == "module") {
-                /// If we encounter a module keyword at the start of a line, it may be
-                /// a module declaration or global module fragment.
-                auto next = lexer.next();
-
-                if(next.kind == clang::tok::semi) {
-                    /// If next token is `;`, it is a global module fragment.
-                    /// we just continue.
-                    lexer.advance();
-
-                    /// Append it to bounds.
-                    result.push_back(next.range.end);
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
+        if(token.kind == clang::tok::hash) {
+            /// For preprocessor directive, consume the whole directive: the
+            /// bound is the end of the token before the eod.
+            lexer.advance_until(clang::tok::eod);
+            bound = lexer.last().range.end;
+        } else if(token.is_identifier() && token.text(content) == "module" &&
+                  lexer.next().kind == clang::tok::semi) {
+            /// `module;` opens the global module fragment, which belongs
+            /// to the preamble; any other module keyword ends it.
+            bound = lexer.advance().range.end;
+        } else {
+            break;
         }
     }
-
-    return result;
+    return bound;
 }
 
 bool is_preamble_complete(llvm::StringRef content, std::uint32_t bound) {

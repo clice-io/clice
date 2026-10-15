@@ -99,7 +99,7 @@ kota::task<PCMFamily::ModuleDeps> PCMFamily::direct_deps(Fid path_id,
         }
         import_scans += 1;
         auto scanned = co_await kota::queue(
-            [&] { return scan_precise(arguments, directory, content, nullptr, std::move(vfs)); });
+            [&] { return scan_precise(arguments, directory, content, std::move(vfs)); });
         scan = {.directives = directives,
                 .bound = bound,
                 .arguments = arguments_hash,

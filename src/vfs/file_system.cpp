@@ -215,18 +215,12 @@ StatusResult by_path(llvm::StringRef path) {
             return std::unexpected(llvm::mapWindowsError(error));
         }
     }
-    HANDLE handle = ::CreateFileW(wide.data(),
-                                  0,
-                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                  nullptr,
-                                  OPEN_EXISTING,
-                                  FILE_FLAG_BACKUP_SEMANTICS,
-                                  nullptr);
-    if(handle == INVALID_HANDLE_VALUE) {
-        return std::unexpected(llvm::mapWindowsError(::GetLastError()));
+    auto handle = open_handle(path, 0);
+    if(!handle) {
+        return std::unexpected(handle.error());
     }
-    auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
-    return handle_status(handle);
+    auto close = llvm::make_scope_exit([&] { ::CloseHandle(*handle); });
+    return handle_status(*handle);
 }
 
 /// A directory asked about this often within one operation is listed.
@@ -235,25 +229,6 @@ constexpr unsigned list_after = 8;
 /// A directory with more entries is not listed: the few names asked
 /// about it would pay for all of them.
 constexpr std::size_t list_limit = 4096;
-
-/// A handle to list `dir` through.
-std::expected<HANDLE, std::error_code> open_directory(llvm::StringRef dir) {
-    llvm::SmallVector<wchar_t, 256> wide;
-    if(auto error = widen(dir, wide)) {
-        return std::unexpected(error);
-    }
-    HANDLE handle = ::CreateFileW(wide.data(),
-                                  FILE_LIST_DIRECTORY,
-                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                  nullptr,
-                                  OPEN_EXISTING,
-                                  FILE_FLAG_BACKUP_SEMANTICS,
-                                  nullptr);
-    if(handle == INVALID_HANDLE_VALUE) {
-        return std::unexpected(llvm::mapWindowsError(::GetLastError()));
-    }
-    return handle;
-}
 
 /// Hand each entry of the directory `handle` lists, `.` and `..` left out,
 /// to `visit` as the information class `Info` describes it, until `visit`
@@ -289,7 +264,7 @@ std::error_code for_each_entry(HANDLE handle,
 /// reparse points left out; empty when it cannot be listed.
 llvm::StringMap<Status> list_statuses(llvm::StringRef dir) {
     llvm::StringMap<Status> entries;
-    auto handle = open_directory(dir);
+    auto handle = open_handle(dir, FILE_LIST_DIRECTORY);
     if(!handle) {
         return entries;
     }
@@ -851,23 +826,13 @@ bool is_directory(llvm::StringRef path) {
 bool is_symlink(llvm::StringRef path) {
 #ifdef _WIN32
     // LLVM's status reports a link as what it points to.
-    llvm::SmallVector<wchar_t, 256> wide;
-    if(widen(path, wide)) {
+    auto handle = open_handle(path, 0, FILE_FLAG_OPEN_REPARSE_POINT);
+    if(!handle) {
         return false;
     }
-    HANDLE handle = ::CreateFileW(wide.data(),
-                                  0,
-                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                  nullptr,
-                                  OPEN_EXISTING,
-                                  FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-                                  nullptr);
-    if(handle == INVALID_HANDLE_VALUE) {
-        return false;
-    }
-    auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
+    auto close = llvm::make_scope_exit([&] { ::CloseHandle(*handle); });
     FILE_ATTRIBUTE_TAG_INFO info;
-    return ::GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &info, sizeof(info)) &&
+    return ::GetFileInformationByHandleEx(*handle, FileAttributeTagInfo, &info, sizeof(info)) &&
            is_link(info.FileAttributes, info.ReparseTag);
 #else
     return llvm::sys::fs::is_symlink_file(path);
@@ -878,7 +843,7 @@ std::expected<std::vector<Entry>, std::error_code> read_dir(llvm::StringRef dir)
     std::vector<Entry> entries;
 #ifdef _WIN32
     // LLVM's listing reports a link as what it points to.
-    auto handle = open_directory(dir);
+    auto handle = open_handle(dir, FILE_LIST_DIRECTORY);
     if(!handle) {
         return std::unexpected(handle.error());
     }
@@ -970,24 +935,14 @@ std::error_code rename(llvm::StringRef from, llvm::StringRef to) {
 
 std::error_code remove(llvm::StringRef path) {
 #ifdef _WIN32
-    llvm::SmallVector<wchar_t, 256> wide;
-    if(auto error = widen(path, wide)) {
-        return error;
-    }
-    HANDLE handle = ::CreateFileW(wide.data(),
-                                  DELETE,
-                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                  nullptr,
-                                  OPEN_EXISTING,
-                                  FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
-                                  nullptr);
-    if(handle == INVALID_HANDLE_VALUE) {
-        auto error = llvm::mapWindowsError(::GetLastError());
-        if(error == std::errc::no_such_file_or_directory) {
+    auto opened = open_handle(path, DELETE, FILE_FLAG_OPEN_REPARSE_POINT);
+    if(!opened) {
+        if(opened.error() == std::errc::no_such_file_or_directory) {
             return {};
         }
-        return error;
+        return opened.error();
     }
+    HANDLE handle = *opened;
     auto close = llvm::make_scope_exit([&] { ::CloseHandle(handle); });
     FILE_DISPOSITION_INFO_EX posix{FILE_DISPOSITION_FLAG_DELETE |
                                    FILE_DISPOSITION_FLAG_POSIX_SEMANTICS};

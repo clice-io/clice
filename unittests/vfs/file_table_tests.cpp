@@ -319,13 +319,12 @@ ZEST_CASE(WarmListingReused) {
         op.list(dir);
     }
     ZASSERT(cache.listings.contains(dir));
-    ZASSERT(cache.listings.find(dir)->second->mtime_ns != 0);
+    auto kept = cache.listings.find(dir)->second;
+    ZASSERT(kept->mtime_ns != 0);
 
     // The next operation validates by one stat and reuses the listing.
     vfs::Scope op(cache);
-    ZASSERT(op.list(dir).contains("a.h"));
-    ZASSERT(op.stats.listed == 0u);
-    ZASSERT(op.stats.reused == 1u);
+    ZASSERT(&op.list(dir) == kept.get());
 }
 
 ZEST_CASE(LookupSpellingNotShown) {

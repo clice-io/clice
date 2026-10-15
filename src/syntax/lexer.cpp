@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :support.text;
 import :syntax.lexer;
 
 namespace clice {
@@ -38,11 +39,7 @@ Lexer::Lexer(llvm::StringRef content, std::uint32_t start_offset, Options option
 Lexer::Lexer(llvm::StringRef content, Options options) : Lexer(content, 0, options) {}
 
 Lexer Lexer::from_line(llvm::StringRef content, std::uint32_t offset, Options options) {
-    std::uint32_t line_start = 0;
-    if(auto nl = content.rfind('\n', offset); nl != llvm::StringRef::npos) {
-        line_start = static_cast<std::uint32_t>(nl + 1);
-    }
-    return Lexer(content, line_start, options);
+    return Lexer(content, line_begin(content, offset), options);
 }
 
 Lexer::~Lexer() = default;

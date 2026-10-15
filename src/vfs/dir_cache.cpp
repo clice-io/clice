@@ -102,23 +102,16 @@ std::shared_ptr<const Listing> DirCache::kept(llvm::StringRef dir) const {
 
 const Listing& Scope::list(llvm::StringRef dir) {
     if(auto it = held.find(dir); it != held.end()) {
-        stats.reused += 1;
         return *it->second;
     }
 
     if(auto kept = cache.kept(dir)) {
         if(auto status = vfs::status(dir); status && status->stamp.mtime_ns == kept->mtime_ns) {
-            stats.reused += 1;
             return *held.try_emplace(dir, std::move(kept)).first->second;
         }
     }
 
-    stats.listed += 1;
-    auto start = std::chrono::steady_clock::now();
     auto listing = vfs::list(dir);
-    stats.us += std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::steady_clock::now() - start)
-                    .count();
     adopt(dir, listing);
     return *listing;
 }

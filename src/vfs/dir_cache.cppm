@@ -77,18 +77,6 @@ struct Scope {
 
     DirCache& cache;
     llvm::StringMap<std::shared_ptr<const Listing>> held;
-
-    /// What the operation cost, for the scan report: readdirs made,
-    /// listings served without one, names looked up in listings (counted
-    /// by the include resolver), and microseconds spent listing.
-    struct Stats {
-        std::size_t listed = 0;
-        std::size_t reused = 0;
-        std::size_t lookups = 0;
-        std::int64_t us = 0;
-    };
-
-    Stats stats;
 };
 
 }  // namespace clice::vfs

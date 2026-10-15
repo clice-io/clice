@@ -6,19 +6,8 @@ module clice:vfs.cache_store;
 
 namespace clice {
 
-/// Lifecycle policy for a cache namespace.
-enum class CachePolicy : std::uint8_t {
-    /// Size-capped with least-recently-used eviction: rebuildable large
-    /// artifacts (PCH, PCM).
-    LRU,
-
-    /// Per-instance working files: not tracked in the manifest, not part
-    /// of LRU.  Stored under a pid subdirectory; directories of dead pids
-    /// are cleaned up when the namespace is registered.
-    Scratch,
-};
-
-/// Static configuration of a cache namespace.
+/// Static configuration of a cache namespace: rebuildable large artifacts
+/// (PCH, PCM), size-capped with least-recently-used eviction.
 struct CacheNamespace {
     /// Directory name under the store root, e.g. "pch".
     std::string name;
@@ -34,15 +23,12 @@ struct CacheNamespace {
     /// be a suffix collision with `extension`.
     std::string aux_extension;
 
-    CachePolicy policy = CachePolicy::LRU;
-
-    /// Size budget for LRU namespaces; 0 means unlimited.
-    /// Ignored for Scratch.
+    /// Size budget; 0 means unlimited.
     std::uint64_t max_bytes = 0;
 };
 
 /// Content-addressed blob store with atomic writes, crash recovery and
-/// per-namespace lifecycle policies.
+/// per-namespace size budgets.
 ///
 /// Responsibility split: the store only manages blob lifecycle — atomic
 /// two-phase writes (begin_store/commit), LRU accounting and eviction,
@@ -72,8 +58,7 @@ struct CacheNamespace {
 /// On-disk layout under `{root}/cache/v{version}/`:
 ///   manifest.json        last-accessed checkpoint (not a source of truth)
 ///   tmp/{pid}/           in-flight writes of one live instance
-///   {ns}/{key}{ext}      committed blobs (LRU)
-///   {ns}/{pid}/{key}{ext}  Scratch blobs of one live instance
+///   {ns}/{key}{ext}      committed blobs
 ///
 /// A blob is complete iff it exists at its final path (atomic rename); the
 /// only crash residue is tmp files, removed on open().  Opening a root whose
@@ -176,8 +161,7 @@ public:
 
     /// Register a namespace and scan its directory to rebuild in-memory
     /// state.  Blobs already on disk are adopted; their last-accessed time
-    /// comes from the manifest, falling back to file mtime.  For Scratch
-    /// namespaces this cleans dead-pid subdirectories instead.
+    /// comes from the manifest, falling back to file mtime.
     void register_namespace(CacheNamespace ns);
 
     /// Return the absolute blob path on hit and refresh its in-memory
@@ -255,8 +239,7 @@ public:
     /// shutdown() on exit.
     void checkpoint();
 
-    /// Final checkpoint plus removal of this instance's tmp and Scratch
-    /// directories.
+    /// Final checkpoint plus removal of this instance's tmp directory.
     void shutdown();
 
 private:

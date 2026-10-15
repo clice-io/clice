@@ -214,7 +214,6 @@ ZEST_CASE(PrefixIncludeOptions) {
     ZASSERT(config.dirs.size() == 3u);
     ZEXPECT(config.angled_start_idx == 0u);
     ZEXPECT(config.system_start_idx == 1u);
-    ZEXPECT(config.after_start_idx == 1u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "gcc/12/include"));
     ZEXPECT(config.dirs[1].path == spelled(tmp, "gcc/12/lib"));
     ZEXPECT(config.dirs[2].path == spelled(tmp, "gcc/13/include"));
@@ -235,7 +234,6 @@ ZEST_CASE(DirafterGroup) {
     ZASSERT(config.dirs.size() == 3u);
     ZEXPECT(config.angled_start_idx == 0u);
     ZEXPECT(config.system_start_idx == 1u);
-    ZEXPECT(config.after_start_idx == 2u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "user"));
     ZEXPECT(config.dirs[1].path == spelled(tmp, "sys"));
     ZEXPECT(config.dirs[2].path == spelled(tmp, "fallback"));
@@ -255,7 +253,7 @@ ZEST_CASE(DirafterDeduplication) {
 
     ZASSERT(config.dirs.size() == 2u);
     ZEXPECT(config.angled_start_idx == 0u);
-    ZEXPECT(config.after_start_idx == 1u);
+    ZEXPECT(config.system_start_idx == 1u);
     ZEXPECT(config.dirs[0].path == spelled(tmp, "shared"));
     ZEXPECT(config.dirs[1].path == spelled(tmp, "extra"));
 }

@@ -121,7 +121,10 @@ cc_binary(
 # The test helpers: partitions of clice too, which the tests import.
 cc_library(
     name = "unit_test_support",
-    srcs = ["unittests/utils/tester.cpp"],
+    srcs = [
+        "unittests/utils/annotation.cpp",
+        "unittests/utils/tester.cpp",
+    ],
     copts = CLICE_COPTS,
     features = ["cpp_modules"],
     module_interfaces = glob(["unittests/**/*.cppm"]),
