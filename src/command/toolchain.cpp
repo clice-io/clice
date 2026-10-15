@@ -818,7 +818,7 @@ Toolchain::ProbeArgv Toolchain::probe_argv(const CompileConfig& config) {
         out.argv.push_back(config.subcommand);
     }
 
-    auto emit = [&](std::string_view fragment) {
+    auto emit = [&](llvm::StringRef fragment) {
         out.argv.push_back(db.strings.save(fragment).data());
     };
 
@@ -901,7 +901,7 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
         }
         Staged local;
         local.opt_id = arg.id;
-        for(auto value: arg.values) {
+        for(llvm::StringRef value: arg.values) {
             local.values.push_back(db.strings.save(value).data());
         }
         local.cls = is_user_content_option(arg.id) ? ArgClass::UserContent : ArgClass::Semantic;

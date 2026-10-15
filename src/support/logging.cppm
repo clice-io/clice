@@ -14,8 +14,8 @@ import :support.format;
 ///
 ///   situation                                   → channel
 ///   ─────────────────────────────────────────────────────────────────────
-///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY   (anomaly.h)
-///   the user must fix their setup or config     → LOG_GUIDANCE  (anomaly.h)
+///   a clice invariant broke (a bug in clice)    → LOG_ANOMALY   (anomaly.macros.h)
+///   the user must fix their setup or config     → LOG_GUIDANCE  (anomaly.macros.h)
 ///     ... and it is tied to a specific file     →   + a published diagnostic
 ///   a request cannot be served                  → LSP error response
 ///   an operation failed but is expected in       → LOG_WARN / LOG_ERROR
@@ -33,7 +33,7 @@ import :support.format;
 ///   classify them structurally (has_user_errors, dispatch_errc) and log
 ///   them as warn/error instead.
 ///
-/// The anomaly/guidance channels live in support/anomaly.h, deliberately
+/// The anomaly/guidance channels live in support/anomaly.cppm, deliberately
 /// NOT in this header: they are reporting policy (trap, per-id rate limit,
 /// client notify hook, test hooks) layered on top of this transport, and
 /// their AnomalyId enum evolves — this header is included by every TU, so
@@ -80,7 +80,7 @@ import :support.format;
 /// best-effort: clients are expected to drain stderr (editors do), and
 /// one that stops reading costs log lines, never liveness — once the
 /// pipe fills, lines are dropped and the gap is reported when the client
-/// drains again (see support/log_sinks.h). Workers log ONLY to
+/// drains again (see support/log_sinks.cppm). Workers log ONLY to
 /// their own <session>/<worker>.log (mirror_stderr = false): a worker's
 /// stderr is reserved for unexpected third-party output — assertion
 /// failures, sanitizer reports — which the pool relays line-by-line into the
@@ -204,33 +204,3 @@ void critical [[noreturn]](logging_format<Args...> fmt, Args&&... args) {
 }
 
 }  // namespace clice::logging
-
-#define LOG_MESSAGE(name, fmt, ...)                                                                \
-    do {                                                                                           \
-        if(clice::logging::options.level <= clice::logging::Level::name) {                         \
-            clice::logging::name(fmt __VA_OPT__(, ) __VA_ARGS__);                                  \
-        }                                                                                          \
-    } while(0)
-
-#define LOG_TRACE(fmt, ...) LOG_MESSAGE(trace, fmt, __VA_ARGS__)
-#define LOG_DEBUG(fmt, ...) LOG_MESSAGE(debug, fmt, __VA_ARGS__)
-#define LOG_INFO(fmt, ...) LOG_MESSAGE(info, fmt, __VA_ARGS__)
-#define LOG_WARN(fmt, ...) LOG_MESSAGE(warn, fmt, __VA_ARGS__)
-#define LOG_ERROR(fmt, ...) LOG_MESSAGE(err, fmt, __VA_ARGS__)
-#define LOG_FATAL(fmt, ...) clice::logging::critical(fmt __VA_OPT__(, ) __VA_ARGS__);
-
-/// Performance measurement line (see the taxonomy above): `topic` must be a
-/// string literal, the message should be stable key=value pairs.
-#define LOG_PERF(topic, fmt, ...) LOG_INFO("[perf:" topic "] " fmt __VA_OPT__(, ) __VA_ARGS__)
-
-#define LOG_MESSAGE_RET(ret, name, fmt, ...)                                                       \
-    do {                                                                                           \
-        LOG_MESSAGE(name, fmt, __VA_ARGS__);                                                       \
-        return ret;                                                                                \
-    } while(0);
-
-#define LOG_TRACE_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, trace, fmt, __VA_ARGS__)
-#define LOG_DEBUG_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, debug, fmt, __VA_ARGS__)
-#define LOG_INFO_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, info, fmt, __VA_ARGS__)
-#define LOG_WARN_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, warn, fmt, __VA_ARGS__)
-#define LOG_ERROR_RET(ret, fmt, ...) LOG_MESSAGE_RET(ret, err, fmt, __VA_ARGS__)

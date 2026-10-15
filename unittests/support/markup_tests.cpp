@@ -110,23 +110,26 @@ ZEST_CASE(Escaping) {  // Check all ASCII punctuation.
     p.append_code("* foo !+ bar * baz");
     ZASSERT(p.as_markdown() == "`* foo !+ bar * baz`");
 
-    // But we have to escape the backticks.
+    // Backticks inside need a longer fence; inner ones stay as written.
     p = Paragraph();
     p.append_code("foo`bar`baz", /*preserve=*/true);
-    ZASSERT(p.as_markdown() == "`foo``bar``baz`");
+    ZASSERT(p.as_markdown() == "``foo`bar`baz``");
     // In plain-text, we fall back to different quotes.
     ZASSERT(p.as_plain_text() == "'foo`bar`baz'");
+    p = Paragraph();
+    p.append_code("a``b`c");
+    ZASSERT(p.as_markdown() == "```a``b`c```");
 
     // Inline code blocks starting or ending with backticks should add spaces.
     p = Paragraph();
     p.append_code("`foo");
-    ZASSERT(p.as_markdown() == "` ``foo `");
+    ZASSERT(p.as_markdown() == "`` `foo ``");
     p = Paragraph();
     p.append_code("foo`");
-    ZASSERT(p.as_markdown() == "` foo`` `");
+    ZASSERT(p.as_markdown() == "`` foo` ``");
     p = Paragraph();
     p.append_code("`foo`");
-    ZASSERT(p.as_markdown() == "` ``foo`` `");
+    ZASSERT(p.as_markdown() == "`` `foo` ``");
 
     // Code blocks might need more than 3 backticks.
     Document d;
@@ -270,17 +273,6 @@ ZEST_CASE(DocumentRuler) {
     d.add_paragraph().append_text("foo");
     ZASSERT(d.as_markdown() == "foo  \n\n---\nfoo");
     ZASSERT(d.as_plain_text() == "foo\n\nfoo");
-}
-
-ZEST_CASE(DocumentAppend) {
-    Document d;
-    d.add_paragraph().append_text("foo");
-    d.add_ruler();
-    Document e;
-    e.add_ruler();
-    e.add_paragraph().append_text("bar");
-    d.append(std::move(e));
-    ZASSERT(d.as_markdown() == "foo  \n\n---\nbar");
 }
 
 ZEST_CASE(DocumentHeading) {

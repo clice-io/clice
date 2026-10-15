@@ -1,5 +1,5 @@
 /// Parser and aggregator for clice's `[perf:<topic>] key=value` log lines
-/// (see src/support/logging.h). Consumed by bench.ts for the server-side
+/// (see src/support/logging.cppm). Consumed by bench.ts for the server-side
 /// breakdown of a benchmark run and by perf_report.ts for offline log
 /// analysis.
 
@@ -94,7 +94,7 @@ export function computeStats(values: number[]): Stats | null {
 
 /// Discriminated name for an event: `<topic>[.<kind>][.<detail>]`. The kind
 /// is the event's `kind`, `phase`, or `op` value; the detail is its `scope`
-/// or `rel` value — mirroring how the topics in logging.h use those fields
+/// or `rel` value — mirroring how the topics in logging.cppm use those fields
 /// to distinguish materially different operations (`index_detail op=build
 /// scope=full` vs `scope=interested`, `index_query kind=relations
 /// rel=Definition` vs `rel=Reference`).

@@ -117,7 +117,7 @@ ZEST_CASE(ForcedIncludeServed) {
                    RelationKind::Definition,
                    [&](llvm::StringRef path, const index::Relation& r) {
                        ZEXPECT(path.ends_with("forced.h"));
-                       ZEXPECT(dump(r.range) == dump(range("def", "forced.h")));
+                       ZEXPECT(r.range == range("def", "forced.h"));
                        found = true;
                        return false;
                    });
@@ -143,7 +143,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
                    RelationKind::Definition,
                    [&](llvm::StringRef path, const index::Relation& r) {
                        ZEXPECT(path.ends_with("foo.h"));
-                       ZEXPECT(dump(r.range) == dump(range("def", "foo.h")));
+                       ZEXPECT(r.range == range("def", "foo.h"));
                        found_def = true;
                        return false;
                    });
@@ -189,7 +189,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     bool found_occurrence = false;
     preamble.lookup(point("ref"), [&](const index::Occurrence& occurrence) {
         ZEXPECT(occurrence.target == foo);
-        ZEXPECT(dump(occurrence.range) == dump(range("ref")));
+        ZEXPECT(occurrence.range == range("ref"));
         found_occurrence = true;
         return false;
     });
@@ -198,7 +198,7 @@ int main() { §(ref)⟦§(ref)foo⟧(); return 0; }
     // Relation lookup by symbol in the preamble entry.
     bool found_relation = false;
     preamble.lookup(foo, RelationKind::Reference, [&](const index::Relation& r) {
-        ZEXPECT(dump(r.range) == dump(range("ref")));
+        ZEXPECT(r.range == range("ref"));
         found_relation = true;
         return false;
     });

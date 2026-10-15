@@ -68,14 +68,6 @@ public:
     /// and debugging.
     std::string annotate(llvm::StringRef name);
 
-    llvm::StringRef pattern() const {
-        return {pat.data(), pat.size()};
-    }
-
-    bool empty() const {
-        return pat.empty();
-    }
-
 private:
     /// How a state was reached, for reconstructing the match.
     enum class Step : std::uint8_t {

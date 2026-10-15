@@ -184,8 +184,7 @@ void EXPECT_SELECT(llvm::StringRef pos,
 
     ZASSERT(!occurrences.empty());
 
-    /// FIXME: Make eq pretty print reflectable struct.
-    ZASSERT(dump(occurrences.front().range) == dump(expected));
+    ZASSERT(occurrences.front().range == expected);
 };
 
 /// Whether the main file holds a symbol-pair relation of `kind` from the
@@ -249,7 +248,6 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
     auto& index = tu_index.main_file_index;
     auto it = index.relations.find(occurrences.front().target);
     ZASSERT(it != index.relations.end());
-    ///<< std::format("Cannot find target: {}", occurrences.front().target);
 
     auto& relations = it->second;
     auto target = std::ranges::find_if(relations, [](const index::Relation& relation) {
@@ -257,8 +255,7 @@ void GO_TO_DEFINITION(llvm::StringRef pos,
     });
 
     ZASSERT(target != relations.end());
-    ///   << std::format("Fail to find definition in {}", dump(relations));
-    ZASSERT(dump(target->range) == dump(expected));
+    ZASSERT(target->range == expected);
 }
 
 ZEST_CASE(Basic) {
@@ -1241,7 +1238,7 @@ ZEST_CASE(MacroDefinitionExtent) {
         return relation.kind == RelationKind::Definition;
     });
     ZASSERT(definition != relations.end());
-    ZASSERT(dump(definition->definition_range()) == dump(range("ext")));
+    ZASSERT(definition->definition_range() == range("ext"));
 }
 
 ZEST_CASE(SpelledInMacroRedeclarations) {

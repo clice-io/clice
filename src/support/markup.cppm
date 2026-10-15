@@ -10,6 +10,10 @@ module clice:support.markup;
 /// A model of formatted text that can be rendered to plaintext or markdown.
 namespace clice::markup {
 
+/// Wrap `text` in a code span, with enough backticks for the ones it
+/// holds.
+std::string code_span(llvm::StringRef text);
+
 /// Holds text and knows how to lay it out. Multiple blocks can be grouped to
 /// form a document. Blocks include their own trailing newlines, container
 /// should trim them if need be.
@@ -17,7 +21,6 @@ class Block {
 public:
     virtual void render_markdown(llvm::raw_ostream& os) const = 0;
     virtual void render_plain_text(llvm::raw_ostream& os) const = 0;
-    virtual std::unique_ptr<Block> clone() const = 0;
 
     std::string as_markdown() const;
     std::string as_plain_text() const;
@@ -36,7 +39,6 @@ class Paragraph : public Block {
 public:
     void render_markdown(llvm::raw_ostream& os) const override;
     void render_plain_text(llvm::raw_ostream& os) const override;
-    std::unique_ptr<Block> clone() const override;
 
     /// Append plain text to the end of the string.
     Paragraph& append_text(llvm::StringRef text);
@@ -88,7 +90,6 @@ public:
 
     void render_markdown(llvm::raw_ostream& os) const override;
     void render_plain_text(llvm::raw_ostream& os) const override;
-    std::unique_ptr<Block> clone() const override;
 
     Document& add_item();
 
@@ -100,19 +101,6 @@ private:
 /// markdown and plaintext.
 class Document {
 public:
-    Document() = default;
-
-    Document(const Document& other) {
-        *this = other;
-    }
-
-    Document& operator=(const Document&);
-
-    Document(Document&&) = default;
-    Document& operator=(Document&&) = default;
-
-    void append(Document other);
-
     /// Adds a semantical block that will be separate from others.
     Paragraph& add_paragraph();
 

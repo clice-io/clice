@@ -32,6 +32,16 @@ static spdlog::sink_ptr console_sink;
 
 constexpr static auto pattern = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] [%s:%#] %v";
 
+static void install_logger(std::string_view name,
+                           llvm::ArrayRef<spdlog::sink_ptr> sinks,
+                           Level level) {
+    auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
+    logger->set_level(level);
+    logger->set_pattern(pattern);
+    logger->flush_on(Level::trace);
+    spdlog::set_default_logger(std::move(logger));
+}
+
 void stderr_logger(std::string_view name, const Options& options) {
     std::shared_ptr<StderrSink> client_stderr;
     if(options.never_block_stderr) {
@@ -41,19 +51,12 @@ void stderr_logger(std::string_view name, const Options& options) {
         console_sink = std::make_shared<FileSink>(2, /*owned=*/false);
     }
 
-    std::shared_ptr<spdlog::logger> logger;
+    llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {console_sink};
     if(options.replay_console) {
         ringbuffer_sink = std::make_shared<spdlog::sinks::ringbuffer_sink_mt>(128);
-        std::array<spdlog::sink_ptr, 2> sinks = {console_sink, ringbuffer_sink};
-        logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
-    } else {
-        logger = std::make_shared<spdlog::logger>(std::string(name), console_sink);
+        sinks.push_back(ringbuffer_sink);
     }
-
-    logger->set_level(options.level);
-    logger->set_pattern(pattern);
-    logger->flush_on(Level::trace);
-    spdlog::set_default_logger(std::move(logger));
+    install_logger(name, sinks, options.level);
 
     if(client_stderr && client_stderr->inoperative()) {
         // The sink fails closed (drops everything) rather than risk the
@@ -104,11 +107,7 @@ bool file_logger(std::string_view name,
         assert(console_sink && "stderr_logger chooses the sink file_logger mirrors to");
         sinks.push_back(console_sink);
     }
-    auto logger = std::make_shared<spdlog::logger>(std::string(name), sinks.begin(), sinks.end());
-    logger->set_level(options.level);
-    logger->set_pattern(pattern);
-    logger->flush_on(Level::trace);
-    spdlog::set_default_logger(std::move(logger));
+    install_logger(name, sinks, options.level);
 
     // Replay buffered logs after swapping the default logger, so no messages
     // emitted between the snapshot and the swap are lost.

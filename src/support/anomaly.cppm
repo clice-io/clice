@@ -6,8 +6,8 @@ module clice:support.anomaly;
 
 /// Anomaly and guidance reporting — the policy layer on top of the logging
 /// transport. The full channel design (which situation goes to which
-/// channel, and why this file is separate from logging.h) is documented at
-/// the top of support/logging.h.
+/// channel, and why this file is separate from logging.cppm) is documented at
+/// the top of support/logging.cppm.
 namespace clice::logging {
 
 /// Stable identifiers for anomalies — internal states that should be
@@ -93,23 +93,3 @@ void set_anomaly_trap_for_testing(std::function<void(AnomalyId)> trap);
 void reset_anomaly_for_testing();
 
 }  // namespace clice::logging
-
-/// Soft assertion for internal invariants (see AnomalyId). The gate runs
-/// before the format arguments are evaluated, so suppressed reports cost
-/// nothing — arguments must not carry needed side effects.
-#define LOG_ANOMALY(id, fmt, ...)                                                                  \
-    do {                                                                                           \
-        if(clice::logging::anomaly_should_report(clice::logging::AnomalyId::id)) {                 \
-            clice::logging::report_anomaly(clice::logging::AnomalyId::id,                          \
-                                           std::format(fmt __VA_OPT__(, ) __VA_ARGS__));           \
-        }                                                                                          \
-    } while(0)
-
-/// User-facing guidance via window/logMessage (master) and the log file.
-/// Same lazy-evaluation contract as LOG_ANOMALY.
-#define LOG_GUIDANCE(fmt, ...)                                                                     \
-    do {                                                                                           \
-        if(clice::logging::guidance_should_report()) {                                             \
-            clice::logging::report_guidance(std::format(fmt __VA_OPT__(, ) __VA_ARGS__));          \
-        }                                                                                          \
-    } while(0)
