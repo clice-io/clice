@@ -344,10 +344,6 @@ public:
     void render_plain_text(llvm::raw_ostream& os) const override {
         os << '\n';
     }
-
-    std::unique_ptr<Block> clone() const override {
-        return std::make_unique<Spacing>(*this);
-    }
 };
 
 class CodeBlock : public Block {
