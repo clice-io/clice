@@ -6,7 +6,7 @@ import { answers, test } from "@clice/tools/testing";
 // defines its macro under a condition that leaves code outside it, and
 // limits.h gives a macro a default unless the includer set it: neither
 // guards anything.
-answers(async (a) => {
+answers("headers", async (a) => {
     for (const file of ["widget.h", "defined.h", "unguarded.h", "limits.h"]) {
         await a.show(file, a.documentSymbols(file), { parts: ["detail"] });
     }
