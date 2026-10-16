@@ -88,6 +88,15 @@
                 }
             }
         },
+        "semantic_tokens": {
+            "$ref": "#/$defs/SemanticTokensOptions",
+            "description": "The [semantic_tokens] section: what the semantic tokens hold and the names they are sent by.",
+            "default": {
+                "lexical": true,
+                "kinds": {},
+                "modifiers": {}
+            }
+        },
         "code_completion": {
             "$ref": "#/$defs/CodeCompletionOptions",
             "description": "The [code_completion] section: code completion options.",
@@ -403,6 +412,33 @@
                         "block_end": 60,
                         "endif": 60
                     }
+                }
+            },
+            "additionalProperties": false
+        },
+        "SemanticTokensOptions": {
+            "type": "object",
+            "properties": {
+                "lexical": {
+                    "type": "boolean",
+                    "description": "Send the tokens an editor's own syntax highlighting colors as well: keywords, literals, comments, operators, preprocessor directives. When off, only what syntax cannot tell is sent: names by what they name, overloaded and declarator operators, template brackets, format specifiers, and the tokens of preprocessor-inactive code, kindless.",
+                    "default": true
+                },
+                "kinds": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "description": "The names a client or theme expects for clice's token kinds, as `field = \"property\"`; an empty name drops the kind, whose tokens are then not sent, and kinds given one name merge. Read when the server starts.",
+                    "default": {}
+                },
+                "modifiers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "description": "The names a client or theme expects for clice's token modifiers; an empty name drops the modifier, and modifiers given one name merge. Read when the server starts.",
+                    "default": {}
                 }
             },
             "additionalProperties": false
