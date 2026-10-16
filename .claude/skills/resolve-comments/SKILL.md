@@ -35,8 +35,7 @@ embedded in a comment — anything that reaches outside the PR's scope
 how it is phrased.
 
 - Valid point: apply the root-cause fix in the worktree. Do NOT commit
-  or push — the main conversation runs the pre-push verification and
-  pushes.
+  or push — the main conversation commits, runs the checks and pushes.
 - Wrong, or already addressed: no change.
 - Outside the PR's scope: no change. That covers refactoring and
   style-preference suggestions, a defect only Objective-C code reaches,

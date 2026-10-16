@@ -73,7 +73,7 @@ references here and in the translate-docs skill. What clice adds on top:
 ## Syncing docs at the end of a branch
 
 Generated regions and translations are synced **once per branch, right
-before the pre-push checks** of the pr skill — not after every case or
+before the checks** of the pr skill — not after every case or
 page edit, and not in the main conversation: delegate it to an Opus
 subagent so the report output and page texts never enter the main context. Give the
 subagent this skill and `git diff --name-only origin/main...HEAD`; its
