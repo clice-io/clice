@@ -95,7 +95,13 @@ namespace clice::logging {
 using Level = spdlog::level::level_enum;
 
 struct Options {
+    /// Lines below it are written nowhere.
     Level level = Level::info;
+
+    /// Lines below it are written to the log file alone: a session log keeps
+    /// what a terminal reader does not want to see.
+    Level stderr_level = Level::info;
+
     bool replay_console = true;
     /// stderr's reader is an editor, which must not be able to block the
     /// server: lines it does not take are buffered, then dropped (see

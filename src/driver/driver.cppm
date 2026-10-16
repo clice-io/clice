@@ -151,24 +151,28 @@ inline void println() {
 
 enum class LogLevel : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
 
-/// The --log-level option every subcommand's options hold. One keeping a
-/// session log logs from info unless asked, as an info-level session log
-/// is what tells what a run did.
+/// The --log-level option every subcommand's options hold: what reaches
+/// stderr. A session log keeps info whatever stderr shows, as an
+/// info-level session log is what tells what a run did.
 struct LogLevelOption {
-    DecoKV(help = "Log level", required = false)
+    DecoKV(help = "Log level of stderr", required = false)
     <LogLevel> log_level = LogLevel::Warn;
 
-    /// Make the level given the global log level.
+    /// Set the global levels: stderr's as given, the logs' info at least.
     void apply() const {
-        switch(*log_level) {
-            case LogLevel::Trace: logging::options.level = logging::Level::trace; return;
-            case LogLevel::Debug: logging::options.level = logging::Level::debug; return;
-            case LogLevel::Info: logging::options.level = logging::Level::info; return;
-            case LogLevel::Warn: logging::options.level = logging::Level::warn; return;
-            case LogLevel::Error: logging::options.level = logging::Level::err; return;
-            case LogLevel::Off: logging::options.level = logging::Level::off; return;
-        }
-        std::unreachable();
+        auto level = [&] {
+            switch(*log_level) {
+                case LogLevel::Trace: return logging::Level::trace;
+                case LogLevel::Debug: return logging::Level::debug;
+                case LogLevel::Info: return logging::Level::info;
+                case LogLevel::Warn: return logging::Level::warn;
+                case LogLevel::Error: return logging::Level::err;
+                case LogLevel::Off: return logging::Level::off;
+            }
+            std::unreachable();
+        }();
+        logging::options.stderr_level = level;
+        logging::options.level = std::min(level, logging::Level::info);
     }
 };
 

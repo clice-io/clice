@@ -33,7 +33,7 @@ struct IndexOptions {
     kota::deco::decl::HelpOption help;
     WorkspaceOptions where;
     JobsOption jobs;
-    LogLevelOption log{.log_level = LogLevel::Info};
+    LogLevelOption log;
 };
 
 struct StatsOptions {

@@ -50,6 +50,7 @@ void stderr_logger(std::string_view name, const Options& options) {
     } else {
         console_sink = std::make_shared<FileSink>(2, /*owned=*/false);
     }
+    console_sink->set_level(options.stderr_level);
 
     llvm::SmallVector<spdlog::sink_ptr, 2> sinks = {console_sink};
     if(options.replay_console) {
