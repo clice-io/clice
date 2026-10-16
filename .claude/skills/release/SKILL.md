@@ -47,8 +47,8 @@ approval like any release trigger.
 
 Every GitHub release, nightly or stable, is created as a draft and
 published by `publish-clice.yml` only once all six platform archives are
-attached: drafts are invisible to the editor extensions, so none of them
-ever installs from a half-uploaded release. A failed promote leg leaves
+attached: drafts are hidden from anyone without push access, so no user's
+editor extension ever installs from a half-uploaded release. A failed promote leg leaves
 the draft behind; `gh run rerun <id> --failed` finishes and publishes it.
 
 The vsix packaging matrix runs in parallel, but release upload and

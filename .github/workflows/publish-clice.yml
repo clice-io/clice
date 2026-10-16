@@ -9,8 +9,8 @@ name: clice
 # so publish-vscode.yml can bundle them.
 #
 # The release is a draft until every platform archive is attached: drafts are
-# hidden from the public release list, so an editor extension picking the
-# newest release never meets one that lacks its platform's archive.
+# hidden from anyone without push access, so no user's editor extension
+# picking the newest release meets one that lacks its platform's archive.
 on:
   workflow_call:
     inputs:
