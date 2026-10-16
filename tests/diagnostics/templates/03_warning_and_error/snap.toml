@@ -1,0 +1,27 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "int x = ⟦use⟧(Old{});",
+        severity = "warning",
+        message = "In template: 'get' is deprecated",
+        source = "clang",
+        code = "-Wdeprecated-declarations",
+        related = [
+            { at = "use.h │ int v = T::⟦get⟧();", message = "warning occurred here" },
+            { at = "int x = ⟦use⟧(Old{});", message = "in instantiation of function template specialization 'use<Old>' requested here" },
+            { at = "use.h │ [[⟦deprecated⟧]] static int get();", message = "'get' has been explicitly marked deprecated here" },
+        ],
+    },
+    {
+        at = "int x = ⟦use⟧(Old{});",
+        severity = "error",
+        message = "In template: no member named 'size' in 'Old'",
+        source = "clang",
+        code = "err_no_member",
+        related = [
+            { at = "use.h │ decltype(T().⟦size⟧()) value;", message = "error occurred here" },
+            { at = "use.h │ Box<T> ⟦box⟧;", message = "in instantiation of template class 'Box<Old>' requested here" },
+            { at = "int x = ⟦use⟧(Old{});", message = "in instantiation of function template specialization 'use<Old>' requested here" },
+        ],
+    },
+]
