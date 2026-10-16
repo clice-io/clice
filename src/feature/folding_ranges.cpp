@@ -303,28 +303,41 @@ private:
     void collect_cases(const clang::CompoundStmt* body) {
         struct Case {
             const clang::SwitchCase* label;
+            /// Where the label begins, its attributes (`[[likely]]`) included.
+            clang::SourceLocation begin;
             bool only_block;
+        };
+
+        auto label_of = [](const clang::Stmt* stmt) -> const clang::SwitchCase* {
+            if(const auto* attributed = llvm::dyn_cast<clang::AttributedStmt>(stmt)) {
+                stmt = attributed->getSubStmt();
+            }
+            return llvm::dyn_cast<clang::SwitchCase>(stmt);
         };
 
         llvm::SmallVector<Case> cases;
         for(const auto* child: body->body()) {
-            if(!llvm::isa<clang::SwitchCase>(child)) {
+            const auto* label = label_of(child);
+            if(!label) {
                 if(!cases.empty()) {
                     cases.back().only_block = false;
                 }
                 continue;
             }
             // `case 1: case 2:` chains the labels each into the one before.
-            for(const auto* label = llvm::dyn_cast<clang::SwitchCase>(child); label;
-                label = llvm::dyn_cast<clang::SwitchCase>(label->getSubStmt())) {
-                cases.push_back({label, llvm::isa<clang::CompoundStmt>(label->getSubStmt())});
+            for(const clang::Stmt* written = child; label;) {
+                const auto* next = label_of(label->getSubStmt());
+                cases.push_back({label,
+                                 written->getBeginLoc(),
+                                 !next && llvm::isa<clang::CompoundStmt>(label->getSubStmt())});
+                written = label->getSubStmt();
+                label = next;
             }
         }
 
         auto focus = unit.focus_file();
         for(auto [index, item]: llvm::enumerate(cases)) {
-            auto next = index + 1 < cases.size() ? cases[index + 1].label->getKeywordLoc()
-                                                 : body->getRBracLoc();
+            auto next = index + 1 < cases.size() ? cases[index + 1].begin : body->getRBracLoc();
             auto colon = focus.produced_range(item.label->getColonLoc());
             auto end = focus.offset(next);
             if(!colon || !end) {

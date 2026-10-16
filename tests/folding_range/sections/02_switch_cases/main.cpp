@@ -24,6 +24,10 @@ int classify(int code) {
         }
             result += 6;
             break;
+        [[likely]] case 7:
+            result += 7;
+            result *= 7;
+            break;
         default:
             result = -1;
             break;

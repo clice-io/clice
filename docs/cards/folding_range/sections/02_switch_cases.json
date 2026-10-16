@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "int classify(int code) {\n    int result = 0;\n    switch (code) {\n        case 1:\n            result += 1;\n            result *= 2;\n            break;\n        case 2:\n        case 3:\n            result -= 1;\n            result *= 3;\n            break;\n        case 4: {\n            int scratch = code;\n            result = scratch;\n            break;\n        }\n        case 5: result = 5;\n            result += 1;\n            break;\n        case 6: {\n            int scratch = code;\n            result = scratch;\n        }\n            result += 6;\n            break;\n        default:\n            result = -1;\n            break;\n    }\n    return result;\n}\n",
+      "text": "int classify(int code) {\n    int result = 0;\n    switch (code) {\n        case 1:\n            result += 1;\n            result *= 2;\n            break;\n        case 2:\n        case 3:\n            result -= 1;\n            result *= 3;\n            break;\n        case 4: {\n            int scratch = code;\n            result = scratch;\n            break;\n        }\n        case 5: result = 5;\n            result += 1;\n            break;\n        case 6: {\n            int scratch = code;\n            result = scratch;\n        }\n            result += 6;\n            break;\n        [[likely]] case 7:\n            result += 7;\n            result *= 7;\n            break;\n        default:\n            result = -1;\n            break;\n    }\n    return result;\n}\n",
       "markers": []
     }
   ],
@@ -25,7 +25,7 @@
               {
                 "kind": "functionBody",
                 "at": {
-                  "$place": "int classify(int code) ⟦{ … }⟧ (32 lines)",
+                  "$place": "int classify(int code) ⟦{ … }⟧ (36 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -33,7 +33,7 @@
                       "character": 23
                     },
                     "end": {
-                      "line": 31,
+                      "line": 35,
                       "character": 1
                     }
                   }
@@ -43,7 +43,7 @@
               {
                 "kind": "compoundStmt",
                 "at": {
-                  "$place": "switch (code) ⟦{ … }⟧ (28 lines)",
+                  "$place": "switch (code) ⟦{ … }⟧ (32 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -51,7 +51,7 @@
                       "character": 18
                     },
                     "end": {
-                      "line": 29,
+                      "line": 33,
                       "character": 5
                     }
                   }
@@ -165,15 +165,32 @@
               {
                 "kind": "switchCase",
                 "at": {
-                  "$place": "default:⟦ …     ⟧ (4 lines)",
+                  "$place": "[[likely]] case 7:⟦ …         ⟧ (5 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
                       "line": 26,
+                      "character": 26
+                    },
+                    "end": {
+                      "line": 30,
+                      "character": 8
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "switchCase",
+                "at": {
+                  "$place": "default:⟦ …     ⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 30,
                       "character": 16
                     },
                     "end": {
-                      "line": 29,
+                      "line": 33,
                       "character": 4
                     }
                   }
