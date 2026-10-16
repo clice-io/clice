@@ -1946,6 +1946,15 @@ stdout = '''
 '''
 exit = 2
 
+["merges configurations"."$ clice modularize merge merges/two.json"]
+stdout = '''
+{
+  "error": "modularize merge needs --out",
+  "stale": []
+}
+'''
+exit = 1
+
 ["partition errors"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.

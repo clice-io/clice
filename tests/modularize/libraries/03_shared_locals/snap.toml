@@ -281,6 +281,520 @@ stdout = '''
 '''
 exit = 0
 
+[test."$ clice analyze modules interface --scope \"app/**\" --scope \"third/**\" --partition partition.json --std stdmod"]
+stdout = '''
+[
+  {
+    "module": "app",
+    "imports": [],
+    "entries": [],
+    "exports": [],
+    "aliases": [],
+    "textual": [],
+    "textualUses": [],
+    "sharedLocals": [],
+    "macros": [
+      {
+        "name": "ALPHA_WIDE",
+        "module": "app",
+        "file": "app/main.cpp",
+        "directive": "#define ALPHA_WIDE 1"
+      }
+    ],
+    "reads": []
+  },
+  {
+    "module": "alpha",
+    "imports": [
+      "libc",
+      "std"
+    ],
+    "entries": [
+      {
+        "file": "third/alpha/alpha/alpha.h",
+        "names": [
+          "alpha/alpha.h"
+        ],
+        "include": "<alpha/alpha.h>",
+        "because": ""
+      },
+      {
+        "file": "third/alpha/alpha/limits.h",
+        "names": [
+          "alpha/limits.h"
+        ],
+        "include": "<alpha/limits.h>",
+        "because": ""
+      },
+      {
+        "file": "third/alpha/alpha/simd.h",
+        "names": [
+          "alpha/simd.h"
+        ],
+        "include": "<alpha/simd.h>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "alpha::Color",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "alpha::Color",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 1
+      },
+      {
+        "name": "alpha::Thing",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "alpha::alpha_high",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 2
+      },
+      {
+        "name": "alpha::fake_abs",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "alpha::make",
+        "file": "third/alpha/alpha/alpha.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "alpha_simd",
+        "file": "third/alpha/alpha/simd.h",
+        "used": false,
+        "form": 0
+      }
+    ],
+    "aliases": [
+      {
+        "name": "al",
+        "target": "::alpha"
+      }
+    ],
+    "textual": [
+      {
+        "file": "third/alpha/alpha/anchor.h",
+        "names": [
+          "alpha/anchor.h"
+        ],
+        "include": "<alpha/anchor.h>",
+        "because": ""
+      },
+      {
+        "file": "third/alpha/alpha/local.h",
+        "names": [
+          "alpha/local.h"
+        ],
+        "include": "<alpha/local.h>",
+        "because": ""
+      }
+    ],
+    "textualUses": [],
+    "sharedLocals": [
+      {
+        "name": "fake_deep",
+        "file": "third/libc/csimd.h",
+        "modules": [
+          "beta"
+        ]
+      },
+      {
+        "name": "fake_seed",
+        "file": "third/libc/cseed.h",
+        "modules": [
+          "beta"
+        ]
+      },
+      {
+        "name": "fake_simd",
+        "file": "third/libc/csimd.h",
+        "modules": [
+          "beta"
+        ]
+      },
+      {
+        "name": "fake_value",
+        "file": "third/libc/cvalue.h",
+        "modules": [
+          "beta"
+        ]
+      }
+    ],
+    "macros": [
+      {
+        "name": "ALPHA_VERSION",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_VERSION 3"
+      },
+      {
+        "name": "ALPHA_TWICE",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_TWICE(x) ((x) * 2)"
+      },
+      {
+        "name": "ALPHA_EXTERN",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_EXTERN extern"
+      }
+    ],
+    "reads": [
+      {
+        "name": "ALPHA_WIDE",
+        "module": "app",
+        "file": "app/main.cpp",
+        "directive": "#define ALPHA_WIDE 1"
+      }
+    ]
+  },
+  {
+    "module": "libc",
+    "imports": [],
+    "entries": [
+      {
+        "file": "third/libc/cputs.h",
+        "names": [
+          "cputs.h"
+        ],
+        "include": "<cputs.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/csimd.h",
+        "names": [
+          "csimd.h"
+        ],
+        "include": "<csimd.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/csmall.h",
+        "names": [
+          "csmall.h"
+        ],
+        "include": "<csmall.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/cva.h",
+        "names": [
+          "cva.h"
+        ],
+        "include": "<cva.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/cvalue.h",
+        "names": [
+          "cvalue.h"
+        ],
+        "include": "<cvalue.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/cwide.h",
+        "names": [
+          "cwide.h"
+        ],
+        "include": "<cwide.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/cwin.h",
+        "names": [
+          "cwin.h"
+        ],
+        "include": "<cwin.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/cwrap.h",
+        "names": [
+          "cwrap.h"
+        ],
+        "include": "<cwrap.h>",
+        "because": ""
+      },
+      {
+        "file": "third/libc/fassert.h",
+        "names": [
+          "fassert.h"
+        ],
+        "include": "<fassert.h>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "fake_puts",
+        "file": "third/libc/cputs.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "fake_va",
+        "file": "third/libc/cva.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "fake_vlen",
+        "file": "third/libc/cva.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "fake_vprint",
+        "file": "third/libc/cvp.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "fake_wide",
+        "file": "third/libc/cdual.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "fake_word",
+        "file": "third/libc/cdual.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "fake_wrap",
+        "file": "third/libc/cwrap.h",
+        "used": true,
+        "form": 0
+      }
+    ],
+    "aliases": [],
+    "textual": [
+      {
+        "file": "third/libc/cio.h",
+        "names": [
+          "cio.h"
+        ],
+        "include": "<cio.h>",
+        "because": "fake_stdout in app/main.cpp"
+      },
+      {
+        "file": "third/libc/cva.h",
+        "names": [
+          "cva.h"
+        ],
+        "include": "<cva.h>",
+        "because": "fake_vprint in app/third.cpp"
+      }
+    ],
+    "textualUses": [],
+    "sharedLocals": [],
+    "macros": [
+      {
+        "name": "FAKE_EOF",
+        "module": "libc",
+        "file": "third/libc/cio.h",
+        "directive": "#define FAKE_EOF (-1)"
+      },
+      {
+        "name": "fake_stdout",
+        "module": "libc",
+        "file": "third/libc/cio.h",
+        "directive": "#define fake_stdout fake_stdout"
+      },
+      {
+        "name": "fassert",
+        "module": "libc",
+        "file": "third/libc/fassert.h",
+        "directive": "#define fassert(x) ((void)(x))"
+      }
+    ],
+    "reads": []
+  },
+  {
+    "module": "beta",
+    "imports": [
+      "alpha",
+      "libc"
+    ],
+    "entries": [
+      {
+        "file": "third/beta/beta/beta.h",
+        "names": [
+          "beta/beta.h"
+        ],
+        "include": "<beta/beta.h>",
+        "because": ""
+      },
+      {
+        "file": "third/beta/beta/simd.h",
+        "names": [
+          "beta/simd.h"
+        ],
+        "include": "<beta/simd.h>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "beta::opened",
+        "file": "third/beta/beta/beta.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "beta::wrap",
+        "file": "third/beta/beta/beta.h",
+        "used": true,
+        "form": 0
+      },
+      {
+        "name": "beta_local",
+        "file": "third/beta/beta/beta.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "beta_simd",
+        "file": "third/beta/beta/simd.h",
+        "used": false,
+        "form": 0
+      }
+    ],
+    "aliases": [],
+    "textual": [],
+    "textualUses": [
+      {
+        "file": "third/alpha/alpha/local.h",
+        "names": [
+          "alpha/local.h"
+        ],
+        "include": "<alpha/local.h>",
+        "because": ""
+      }
+    ],
+    "sharedLocals": [
+      {
+        "name": "fake_deep",
+        "file": "third/libc/csimd.h",
+        "modules": [
+          "alpha"
+        ]
+      },
+      {
+        "name": "fake_seed",
+        "file": "third/libc/cseed.h",
+        "modules": [
+          "alpha"
+        ]
+      },
+      {
+        "name": "fake_simd",
+        "file": "third/libc/csimd.h",
+        "modules": [
+          "alpha"
+        ]
+      },
+      {
+        "name": "fake_value",
+        "file": "third/libc/cvalue.h",
+        "modules": [
+          "alpha"
+        ]
+      }
+    ],
+    "macros": [],
+    "reads": [
+      {
+        "name": "ALPHA_TWICE",
+        "module": "alpha",
+        "file": "third/alpha/alpha/alpha.h",
+        "directive": "#define ALPHA_TWICE(x) ((x) * 2)"
+      }
+    ]
+  },
+  {
+    "module": "std",
+    "imports": [
+      "libc"
+    ],
+    "entries": [
+      {
+        "file": "third/std/fakecstdio",
+        "names": [
+          "fakecstdio"
+        ],
+        "include": "<fakecstdio>",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "fakestd::fake_abs",
+        "file": "third/std/fakecstdio",
+        "used": true,
+        "form": 0
+      }
+    ],
+    "aliases": [],
+    "textual": [],
+    "textualUses": [],
+    "sharedLocals": [],
+    "macros": [],
+    "reads": []
+  },
+  {
+    "module": "third/widen",
+    "imports": [],
+    "entries": [
+      {
+        "file": "third/widen/widen.h",
+        "names": [],
+        "include": "\"third/widen/widen.h\"",
+        "because": ""
+      }
+    ],
+    "exports": [
+      {
+        "name": "fake_widen",
+        "file": "third/widen/widen.h",
+        "used": false,
+        "form": 0
+      },
+      {
+        "name": "widen_twice",
+        "file": "third/widen/widen.h",
+        "used": true,
+        "form": 0
+      }
+    ],
+    "aliases": [],
+    "textual": [],
+    "textualUses": [],
+    "sharedLocals": [],
+    "macros": [],
+    "reads": []
+  }
+]
+'''
+exit = 0
+
 [test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --std stdmod --out wrap"]
 stdout = '''
 {

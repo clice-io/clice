@@ -4,7 +4,7 @@
   "subtopic": "locators",
   "title": "Name an ambiguous symbol",
   "summary": "A name two symbols spell lists both, and a scoped name or a candidate's `symbol` picks one",
-  "prose": "Nothing is renamed while the name is ambiguous. Each candidate carries a\n`symbol` to pass back to `--symbol` as it is.",
+  "prose": "Nothing is renamed while the name is ambiguous. Each candidate carries a\n`symbol` to pass back as it is.",
   "status": "supported",
   "issues": [],
   "files": [

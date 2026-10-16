@@ -320,6 +320,45 @@ at argv[0]:
 '''
 exit = 2
 
+["positional arguments"."$ clice index symbol"]
+stderr = "missing <LOCATOR>"
+exit = 2
+
+["positional arguments"."$ clice index file a.h b.h"]
+stderr = "unexpected argument 'b.h'"
+exit = 2
+
+["positional arguments"."$ clice inspect hover"]
+stderr = "missing <PATH>"
+exit = 2
+
+["positional arguments"."$ clice modularize merge"]
+stdout = '''
+{
+  "error": "missing <FILE>",
+  "stale": []
+}
+'''
+exit = 2
+
+["positional arguments"."$ clice query references"]
+stdout = '''
+{
+  "error": "missing <LOCATOR>",
+  "stale": []
+}
+'''
+exit = 2
+
+["unknown option beside help"."$ clice analyze modules --bogus --help"]
+stdout = '''
+{
+  "error": "at argv[0]:\n  --bogus --help\n  ^~~~~~~\n  unknown option '--bogus'",
+  "stale": []
+}
+'''
+exit = 2
+
 ["unknown operation"."$ clice query bogus"]
 stdout = '''
 {

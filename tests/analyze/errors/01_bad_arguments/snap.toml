@@ -97,6 +97,16 @@ stdout = '''
 stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 1
 
+[test."$ clice analyze modules --annotation weights.json --annotation nowhere.json"]
+stdout = '''
+{
+  "error": "cannot read nowhere.json: No such file or directory",
+  "stale": []
+}
+'''
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
+exit = 1
+
 [test."$ clice analyze modules --dir-depth deep"]
 stdout = '''
 {
