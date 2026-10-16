@@ -970,9 +970,9 @@ auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
 auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
     -> std::vector<TextReplacement>;
 
-/// `edits` with what they leave dangling removed, as clang-tidy cleans up
-/// the fixes it applies: the comma before `)` a removed argument leaves,
-/// the `:` of a constructor whose initializers are all removed.
+/// `edits` cleaned up as clang-tidy cleans up the fixes it applies: on the
+/// lines they touch, a comma left after `(`, before `)` or doubled, a
+/// constructor's `:` with no initializer left, a namespace left empty.
 auto cleanup_edits(llvm::StringRef file,
                    llvm::StringRef content,
                    std::vector<TextReplacement> edits) -> std::vector<TextReplacement>;

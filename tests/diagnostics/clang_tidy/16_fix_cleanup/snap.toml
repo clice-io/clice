@@ -19,3 +19,14 @@ title = "remove 'name()'"
 
 [test.after]
 diagnostics = []
+
+[[test.replacement.code_actions]]
+kind = "quickfix"
+title = "change '0' to 'nullptr'"
+
+[test.replacement.code_actions.edits]
+"macro.cpp" = '''
+ #define PICK(a, b) b
+-int* p = PICK(, 0);
++int* p = PICK(, nullptr);
+'''
