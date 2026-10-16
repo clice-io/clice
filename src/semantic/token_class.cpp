@@ -16,6 +16,11 @@ using enum SemanticTokenKind;
 using enum SemanticTokenModifier;
 
 SemanticTokenKind kind_of(const clang::NamedDecl* decl) {
+    // An anonymous union, the field holding it, a lambda's class: no name
+    // is written for them.
+    if(decl->getDeclName().isIdentifier() && decl->getName().empty()) {
+        return None;
+    }
     if(llvm::isa<clang::NamespaceDecl, clang::NamespaceAliasDecl>(decl)) {
         return Namespace;
     }
@@ -58,6 +63,10 @@ SemanticTokenKind kind_of(const clang::NamedDecl* decl) {
     }
     if(const auto* guide = llvm::dyn_cast<clang::CXXDeductionGuideDecl>(decl)) {
         return kind_of(guide->getDeducedTemplate());
+    }
+    // A conversion function's name is a type, with no token of its own.
+    if(llvm::isa<clang::CXXConversionDecl>(decl)) {
+        return None;
     }
     if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
         if(function->isOverloadedOperator() || function->getLiteralIdentifier()) {
@@ -216,6 +225,9 @@ TokenClass token_class(const clang::NamedDecl* decl) {
     }
     if(const auto* guide = llvm::dyn_cast<clang::CXXDeductionGuideDecl>(decl)) {
         decl = guide->getDeducedTemplate();
+    }
+    if(const auto* indirect = llvm::dyn_cast<clang::IndirectFieldDecl>(decl)) {
+        decl = indirect->getAnonField();
     }
 
     TokenClass result{.kind = kind_of(decl)};

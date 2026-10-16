@@ -5,3 +5,7 @@ type = "none"
 [answers.comma.semantic_token]
 text = ","
 type = "none"
+
+[answers.template_close.semantic_token]
+text = ">"
+type = "bracket"

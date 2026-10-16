@@ -13,3 +13,7 @@ int all_three = 3;
 #endif
 
 #undef FEATURE
+
+#if __has_include(<missing_header.h>)
+int with_missing_header = 4;
+#endif

@@ -5,10 +5,130 @@
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run update-feature-docs`. -->
 
-clice classifies every token of a document with its own token-kind vocabulary,
-which is richer than the standard LSP token types and consistent across all
-clice replies. Clients that prefer standard LSP kinds can map them through
-configuration.
+clice colors every token of a document: names by what they declare or name,
+keywords, literals, comments, operators and directives by their spelling. It
+speaks a vocabulary of its own, made for C and C++, rather than the standard
+LSP one: a type alias, a template type parameter and a non-type template
+parameter are three kinds, and a modifier such as `controlFlow` says what a
+keyword, a function or a macro does to the flow of control. The clice
+extensions for VS Code and Neovim color all of it; any other editor colors
+the names it knows, and the configuration renames clice's to those.
+
+## Kinds
+
+| Kind                                | Marks                                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------------- |
+| `comment`                           | a comment                                                                             |
+| `string`, `character`, `number`     | a literal, its prefix and suffix included                                             |
+| `escape`                            | an escape sequence in a literal: `\n`, `\x41`, `{{` in a format string               |
+| `formatSpecifier`                   | a placeholder of a format string: `{}`, `{:>8}`, `%d`                                 |
+| `keyword`                           | a keyword; `module`, `import`, `override` and `final` where they act as one           |
+| `primitive`                         | a built-in type: `int`, `bool`, `char8_t`                                             |
+| `operator`                          | an operator, built-in or overloaded, words such as `sizeof`, `new` and `and` included |
+| `bracket`                           | the `<` and `>` around template arguments and parameters                              |
+| `directive`, `header`               | a preprocessor directive; a header name                                               |
+| `namespace`, `module`               | a namespace or namespace alias; a C++20 module name                                   |
+| `class`, `struct`, `union`, `enum`  | a class by the keyword that declares it                                               |
+| `typeAlias`                         | a `typedef` or `using` alias                                                          |
+| `typeParameter`                     | a template type or template template parameter                                        |
+| `templateParameter`                 | a non-type template parameter                                                         |
+| `concept`                           | a concept                                                                             |
+| `function`, `method`                | a free function; a member function, constructors and destructors included             |
+| `variable`, `parameter`, `field`    | a variable, a function parameter, a data member                                       |
+| `enumMember`, `label`               | an enumerator; a label                                                                |
+| `macro`, `macroParameter`           | a macro; a parameter of a function-like macro, in its definition                      |
+| `attribute`                         | an attribute name: `nodiscard`, `gnu::packed`                                         |
+| `unknown`                           | a dependent name only an instantiation resolves: `T::reset()`, `value.size()`         |
+| `conflict`                          | a name meaning entities of different kinds at once                                    |
+| `plain`                             | a token with no kind of its own in an untaken branch, sent for its `inactive`         |
+
+## Modifiers
+
+A modifier named like a standard LSP one means what the standard one means,
+on every kind:
+
+| Modifier         | Means                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| `declaration`    | declares the entity without defining it                                                                     |
+| `definition`     | defines the entity                                                                                          |
+| `readonly`       | the object cannot change through the name: a constant, a reference to const, a const pointer, an enumerator, a const method |
+| `static`         | a static member or a static local                                                                           |
+| `deprecated`     | the entity is deprecated                                                                                    |
+| `abstract`       | a pure virtual method, or a class with one                                                                  |
+| `defaultLibrary` | declared in a system header or built into the compiler                                                      |
+| `documentation`  | inside a documentation comment                                                                              |
+| `modification`   | the entity changes there: assigned, incremented, passed by reference or address to non-const               |
+
+Every name carries where it is visible from: `local` (in its function or
+block), `member` (in its class), `internal` (in its translation unit, as
+`static` and unnamed namespaces make it) or `global`.
+
+The rest are clice's own, and some mean something of their own on each kind:
+
+| Modifier                    | On                                     | Means                                                                    |
+| --------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| `template`                  | a class, alias, variable or function   | a template, or a specialization of one                                   |
+| `dependent`                 | any name                               | depends on a template parameter; every `unknown` name carries it         |
+| `virtual`                   | a method; a class                      | a virtual method; a polymorphic class                                    |
+| `constexpr`                 | a function, variable or `templateParameter` | usable in constant expressions                                      |
+| `constructor`, `destructor` | a method                               | a constructor; a destructor                                              |
+| `callable`                  | a macro                                | a function-like macro                                                    |
+|                             | a variable, parameter or field         | of a type that can be called: a function pointer, a lambda, a class with `operator()` |
+| `controlFlow`               | a keyword                              | transfers control: `if`, `for`, `return`, `throw`, `co_await`, `case`    |
+|                             | a function                             | `[[noreturn]]`                                                           |
+|                             | a macro                                | its expansion can leave the function: `return`, `break`, `goto`, `throw` |
+| `userDefined`               | an operator; a literal's suffix        | calls an overloaded operator; a user-defined literal                     |
+| `declarator`                | an operator                            | the `*`, `&` or `&&` of a declarator, apart from the same operators in expressions |
+| `literal`                   | a keyword                              | `true`, `false`, `nullptr`                                               |
+| `affix`                     | a literal                              | its prefix or suffix: `u8`, `L`, `42u`, `1.5f`                           |
+| `empty`                     | a macro                                | expands to nothing                                                       |
+| `inactive`                  | any token                              | in an untaken preprocessor branch, or an argument a macro drops          |
+
+## Editors
+
+- **VS Code**: the clice extension declares every kind and modifier with the
+  TextMate scopes themes color, so `keyword.controlFlow` takes a theme's color
+  for control keywords and `escape` its color for escape sequences.
+- **Neovim**: the clice plugin links the `@lsp.type.*` and `@lsp.mod.*`
+  groups of clice's names to the groups colorschemes style, as defaults a
+  colorscheme can override.
+- **Other editors** — Zed, Kate, Emacs, Sublime Text — color the standard LSP
+  names. `[semantic_tokens.kinds]` gives each clice kind the standard name
+  closest to it:
+
+```toml
+[semantic_tokens.kinds]
+character = "string"
+escape = "string"
+formatSpecifier = "string"
+primitive = "type"
+bracket = "operator"
+directive = "macro"
+header = "string"
+module = "namespace"
+union = "struct"
+typeAlias = "type"
+templateParameter = "parameter"
+concept = "type"
+field = "property"
+macroParameter = "parameter"
+attribute = "decorator"
+```
+
+Zed asks for semantic tokens only once `semantic_tokens` is `"combined"` (or
+`"full"`) for C and C++; the mapping then goes in its settings, under
+`lsp.clice.initialization_options`, as JSON.
+
+## Configuration
+
+The `[semantic_tokens]` section of `clice.toml`, or the same keys in the
+editor's `initializationOptions`, holds the switch for lexical tokens and the
+two renaming tables. The names are announced once, when the editor connects:
+a change takes a server restart. See the
+[configuration guide](../guide/configuration.md#semantic-tokens) for details.
+
+<!-- BEGIN GENERATED ITEMS: semantic_tokens/options -->
+<!-- END GENERATED ITEMS -->
 
 ## Lexical Tokens
 
@@ -639,9 +759,10 @@ tests/semantic_tokens/modules/03_contextual_keywords
 Every token inside an untaken preprocessor branch carries the `inactive`
 modifier while keeping its lexical kind, so editors dim the region by
 styling the modifier without losing the syntax colors underneath. Tokens
-without a classification in dead code — bare identifiers and plain
-punctuation — are emitted as the unstyled `identifier` type, giving the
-whole region token coverage. The clice VS Code extension renders the
+without a kind of their own in dead code — bare identifiers and plain
+punctuation — are sent as the unstyled `plain` kind, giving the whole region
+token coverage. The arguments a macro drops, such as those of an `assert`
+compiled away, dim the same way. The clice VS Code extension renders the
 regions dimmed out of the box; other editors style the modifier directly
 (e.g. `@lsp.mod.inactive` in Neovim).
 
@@ -649,7 +770,6 @@ regions dimmed out of the box; other editors style the modifier directly
 - [x] Correct inactive boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))
 - [x] Preserve syntax highlighting within inactive regions ([clangd#1664](https://github.com/clangd/clangd/issues/1664))
 - [x] Keep inactive regions distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
-- [ ] Unreachable code dimming ([clangd#1828](https://github.com/clangd/clangd/issues/1828))
 
 ### Untaken Branches
 
@@ -711,36 +831,22 @@ tests/inactive_regions/updates/01_edited_condition
 
 <!-- END GENERATED ITEMS -->
 
-## Other Known Gaps
-
-Curated issues without a fixture yet:
-
-- [ ] `auto` parameters must not be highlighted as template type parameters
-      ([clangd#1390](https://github.com/clangd/clangd/issues/1390))
-- [ ] Nested name specifier in a pointer-to-member should get a token
-      ([clangd#2235](https://github.com/clangd/clangd/issues/2235))
-- [ ] `::new` should keep the `new` keyword highlighted
-      ([clangd#1627](https://github.com/clangd/clangd/issues/1627))
-- [ ] `co_yield` / `co_await` lose highlighting when the coroutine return type is
-      a template ([clangd#2437](https://github.com/clangd/clangd/issues/2437))
-- [ ] Token modifiers should apply to operands of overloaded operators
-      ([clangd#2547](https://github.com/clangd/clangd/issues/2547))
-- [ ] Dependent template names (`obj.template get<int>()`), members imported from
-      a dependent base via `using`, and dependent names with mixed-kind overload
-      sets ([clangd#484](https://github.com/clangd/clangd/issues/484),
-      [clangd#686](https://github.com/clangd/clangd/issues/686),
-      [clangd#1057](https://github.com/clangd/clangd/issues/1057))
-
-## Format String Highlighting
-
-- [ ] `std::format` / `std::print` placeholder highlighting ([clangd#1709](https://github.com/clangd/clangd/issues/1709))
-- [ ] Highlight invalid format specifiers as errors
-
 ## Protocol Support
 
 - [x] Full document semantic tokens (`textDocument/semanticTokens/full`)
-- [x] UTF-16 delta-encoded token positions
-- [ ] Range-based semantic tokens (`textDocument/semanticTokens/range`) — only
-      compute tokens for the visible viewport, critical for large files
-- [ ] Delta updates (`textDocument/semanticTokens/full/delta`) — send only
-      changes since the previous response
+- [x] Range requests (`textDocument/semanticTokens/range`): the tokens a range overlaps
+- [x] Delta updates (`textDocument/semanticTokens/full/delta`): the changes since the answer the editor holds
+- [x] Positions in the encoding the editor negotiated, a token spanning lines split per line
+
+## Known Limitations
+
+- While a file's compile is in progress — when it is first opened, or after
+  a header it includes changed — its tokens come from the project index. They
+  name everything the finished compile names, but leave out what only the
+  compile knows: dependent and `unknown` names, declarator operators, format
+  string placeholders, untaken branches and the arguments macros drop. These
+  appear once the compile finishes.
+- Code no control flow reaches, and the branch of an `if constexpr` an
+  instantiation discards, are not dimmed: the first takes a control flow
+  analysis, the second differs from one instantiation to the next
+  ([clangd#1828](https://github.com/clangd/clangd/issues/1828)).

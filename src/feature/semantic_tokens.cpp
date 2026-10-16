@@ -245,9 +245,12 @@ private:
         auto occurrences =
             resolve_occurrences(semantics, index, &unit.get<types::TemplateResolver>());
         if(occurrences.empty()) {
+            // A dependent `co_yield` or `co_await` resolves through a
+            // lookup located at its keyword.
             if(auto name = unresolved_name(entry.node); name && !index_known) {
                 if(auto index = spelled_index(name->first);
-                   index && !semantics.token_preprocessed_away(*index)) {
+                   index && semantics.spelled_tokens()[*index].kind() == clang::tok::identifier &&
+                   !semantics.token_preprocessed_away(*index)) {
                     auto offset = semantics.token_offset(*index);
                     unresolved.try_emplace(offset, name->second);
                     usage[offset] |= mask(Modifier::Dependent);
@@ -436,6 +439,17 @@ private:
     }
 
     std::optional<std::uint32_t> spelled_index(clang::SourceLocation location) {
+        auto index = spelled_containing(location);
+        if(!index || semantics.spelled_tokens()[*index].location() !=
+                         (location.isMacroID() ? sources.getSpellingLoc(location) : location)) {
+            return std::nullopt;
+        }
+        return index;
+    }
+
+    /// The spelled token `location` falls in, macro locations at their
+    /// spelling: a literal operator's name ends inside its `""_kb` token.
+    std::optional<std::uint32_t> spelled_containing(clang::SourceLocation location) {
         if(location.isInvalid()) {
             return std::nullopt;
         }
@@ -446,8 +460,12 @@ private:
         auto it = std::partition_point(
             spelled.begin(),
             spelled.end(),
-            [&](const clang::syntax::Token& token) { return token.location() < location; });
-        if(it == spelled.end() || it->location() != location) {
+            [&](const clang::syntax::Token& token) { return !(location < token.location()); });
+        if(it == spelled.begin()) {
+            return std::nullopt;
+        }
+        it -= 1;
+        if(location.getRawEncoding() - it->location().getRawEncoding() >= it->length()) {
             return std::nullopt;
         }
         return static_cast<std::uint32_t>(it - spelled.begin());
@@ -480,8 +498,10 @@ private:
         if(!first) {
             return;
         }
-        auto last = end.isValid() ? spelled_index(end) : first;
-        if(!last || *last < *first) {
+        // A name pasted together in a macro body spans nothing written.
+        auto last = end.isValid() ? spelled_containing(end) : first;
+        if(!last || *last < *first || semantics.token_preprocessed_away(*first) ||
+           semantics.token_preprocessed_away(*last)) {
             last = first;
         }
         auto spelled = semantics.spelled_tokens();

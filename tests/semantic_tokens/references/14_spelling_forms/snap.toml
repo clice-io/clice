@@ -1,0 +1,22 @@
+[answers.auto.semantic_token]
+text = "auto"
+type = "keyword"
+
+[answers.new.semantic_token]
+text = "new"
+type = "operator"
+
+[answers.member_class.semantic_token]
+text = "Widget"
+type = "struct"
+modifiers = ["global"]
+
+[answers.assigned.semantic_token]
+text = "a"
+type = "parameter"
+modifiers = ["modification", "local"]
+
+[answers.dependent_template.semantic_token]
+text = "get"
+type = "unknown"
+modifiers = ["dependent"]

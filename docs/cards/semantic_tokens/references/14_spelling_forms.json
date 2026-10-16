@@ -1,0 +1,121 @@
+{
+  "id": "semantic_tokens/references/14_spelling_forms",
+  "topic": "semantic_tokens",
+  "subtopic": "references",
+  "title": "Spelling forms",
+  "summary": "Names keep their kinds in the less common ways C++ spells them",
+  "prose": "An `auto` parameter is a keyword, not a template parameter; `new` behind\n`::` an operator; the class of a pointer to member a class; the left\noperand of an overloaded `=` is modified like a built-in one's; a member\ntemplate named after `template` is `unknown` until an instantiation.",
+  "status": "supported",
+  "issues": [
+    "clangd#1390",
+    "clangd#1627",
+    "clangd#2235",
+    "clangd#2547",
+    "clangd#484"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    int value;\n    Widget& operator=(const Widget& other);\n};\n\nvoid take(auto item) {}\n\nvoid forms(Widget a, Widget b) {\n    Widget* made = ::new Widget;\n    int Widget::*field = &Widget::value;\n    a = b;\n    ::delete made;\n}\n\ntemplate <class T>\nint call(T object) {\n    return object.template get<int>();\n}\n",
+      "markers": [
+        {
+          "name": "auto",
+          "begin": 89,
+          "end": 89,
+          "range": false
+        },
+        {
+          "name": "new",
+          "begin": 158,
+          "end": 158,
+          "range": false
+        },
+        {
+          "name": "member_class",
+          "begin": 178,
+          "end": 178,
+          "range": false
+        },
+        {
+          "name": "assigned",
+          "begin": 215,
+          "end": 215,
+          "range": false
+        },
+        {
+          "name": "dependent_template",
+          "begin": 311,
+          "end": 311,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "auto",
+          "marker": "auto",
+          "value": {
+            "semantic_token": {
+              "text": "auto",
+              "type": "keyword"
+            }
+          }
+        },
+        {
+          "label": "new",
+          "marker": "new",
+          "value": {
+            "semantic_token": {
+              "text": "new",
+              "type": "operator"
+            }
+          }
+        },
+        {
+          "label": "member_class",
+          "marker": "member_class",
+          "value": {
+            "semantic_token": {
+              "text": "Widget",
+              "type": "struct",
+              "modifiers": [
+                "global"
+              ]
+            }
+          }
+        },
+        {
+          "label": "assigned",
+          "marker": "assigned",
+          "value": {
+            "semantic_token": {
+              "text": "a",
+              "type": "parameter",
+              "modifiers": [
+                "modification",
+                "local"
+              ]
+            }
+          }
+        },
+        {
+          "label": "dependent_template",
+          "marker": "dependent_template",
+          "value": {
+            "semantic_token": {
+              "text": "get",
+              "type": "unknown",
+              "modifiers": [
+                "dependent"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

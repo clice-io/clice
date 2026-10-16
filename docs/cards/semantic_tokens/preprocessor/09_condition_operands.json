@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "#define FEATURE 1\n\n#ifdef FEATURE\nint with_feature = 1;\n#endif\n\n#ifndef MISSING\nint without_missing = 2;\n#endif\n\n#if defined(FEATURE) && !defined(MISSING) && __has_include(\"main.cpp\")\nint all_three = 3;\n#endif\n\n#undef FEATURE\n",
+      "text": "#define FEATURE 1\n\n#ifdef FEATURE\nint with_feature = 1;\n#endif\n\n#ifndef MISSING\nint without_missing = 2;\n#endif\n\n#if defined(FEATURE) && !defined(MISSING) && __has_include(\"main.cpp\")\nint all_three = 3;\n#endif\n\n#undef FEATURE\n\n#if __has_include(<missing_header.h>)\nint with_missing_header = 4;\n#endif\n",
       "markers": []
     }
   ],
@@ -580,6 +580,157 @@
                   }
                 },
                 "type": "macro"
+              },
+              {
+                "at": {
+                  "$place": "⟦#if⟧ __has_include(<missing_header.h>)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#if __has_include(⟦<missing_header.h>⟧)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 36
+                    }
+                  }
+                },
+                "type": "header"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ with_missing_header = 4;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int ⟦with_missing_header⟧ = 4;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 23
+                    }
+                  }
+                },
+                "type": "plain",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int with_missing_header ⟦=⟧ 4;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int with_missing_header = ⟦4⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 26
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "number",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int with_missing_header = 4⟦;⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 27
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "plain",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧ @19",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
               }
             ]
           }

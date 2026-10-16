@@ -32,4 +32,12 @@ semantic_tokens = [
     { at = "⟦#endif⟧ @13", type = "directive" },
     { at = "⟦#undef⟧ FEATURE", type = "directive" },
     { at = "#undef ⟦FEATURE⟧", type = "macro" },
+    { at = "⟦#if⟧ __has_include(<missing_header.h>)", type = "directive" },
+    { at = "#if __has_include(⟦<missing_header.h>⟧)", type = "header" },
+    { at = "⟦int⟧ with_missing_header = 4;", type = "primitive", modifiers = ["inactive"] },
+    { at = "int ⟦with_missing_header⟧ = 4;", type = "plain", modifiers = ["inactive"] },
+    { at = "int with_missing_header ⟦=⟧ 4;", type = "operator", modifiers = ["inactive"] },
+    { at = "int with_missing_header = ⟦4⟧;", type = "number", modifiers = ["inactive"] },
+    { at = "int with_missing_header = 4⟦;⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧ @19", type = "directive" },
 ]

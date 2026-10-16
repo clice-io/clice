@@ -516,8 +516,8 @@ struct SemanticTokensOptions {
                      description =
                          "Send the tokens an editor's own syntax highlighting colors as well: "
                          "keywords, literals, comments, operators, preprocessor directives. "
-                         "Off, only what syntax cannot tell is sent: names by what they name, "
-                         "overloaded and declarator operators, template brackets, format "
+                         "When off, only what syntax cannot tell is sent: names by what they "
+                         "name, overloaded and declarator operators, template brackets, format "
                          "specifiers, and the tokens of preprocessor-inactive code, kindless.")
     <bool> lexical = true;
 

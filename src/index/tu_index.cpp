@@ -208,13 +208,9 @@ clang::QualType value_type(const clang::ValueDecl* decl) {
 
 /// The declaration go-to-type-definition reaches from a value or a
 /// function: the one its value_type names once pointers, references and
-/// arrays are stripped, and inside a template once the resolver resolved it;
-/// from a constructor or a destructor, its class.
+/// arrays are stripped, and inside a template once the resolver resolved it.
 const clang::NamedDecl* type_definition_of(const clang::ValueDecl* decl,
                                            types::TemplateResolver& resolver) {
-    if(llvm::isa<clang::CXXConstructorDecl, clang::CXXDestructorDecl>(decl)) {
-        return llvm::cast<clang::CXXMethodDecl>(decl)->getParent();
-    }
     return types::decl_of(types::unwrap(resolver.resolve(value_type(decl))), &resolver);
 }
 
@@ -594,10 +590,8 @@ public:
             return;
         }
         add_pair_relation(decl, RelationKind::TypeDefinition, target, decl->getLocation());
-        // A constructor's or a destructor's class is no value pointing anywhere.
         auto type = types::unwrap(resolver.resolve(value_type(decl)));
-        if(!llvm::isa<clang::CXXRecordDecl>(target) || type->isDependentType() ||
-           type->isVoidType()) {
+        if(!llvm::isa<clang::CXXRecordDecl>(target) || type->isDependentType()) {
             return;
         }
         if(auto* pointed = types::decl_of(types::unwrap(resolver.arrow_pointee(type)))) {
@@ -1244,7 +1238,9 @@ public:
                 auto name = add_name(occurrence);
 
                 if(occurrence.kind.is_one_of(RelationKind::Reference)) {
-                    if(is_written(semantics, i)) {
+                    // What an instantiation passes differs from one
+                    // instantiation to the next: the written code only.
+                    if(!entries[i].flags.in_instantiation && is_written(semantics, i)) {
                         add_self_relation(occurrence.decl, RelationKind::Write, name);
                     }
                     add_specialized_type(occurrence.decl, name);

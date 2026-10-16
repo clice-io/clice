@@ -200,6 +200,12 @@ auto index_semantic_tokens(llvm::StringRef content,
     // `operator+`, a module name) paints every token of it the AST would,
     // over the names nested in it; any other name its first token.
     auto paint = [&](LocalSourceRange range, const TokenClass& token) {
+        // What a macro's expansion declares or names is spelled in its
+        // definition: the expansion's name is the macro's alone.
+        if(token.kind == Kind::Macro) {
+            owned[range.begin] = token;
+            return;
+        }
         if(anchors(range.begin, token)) {
             combine(facts.semantic[range.begin], token);
         }
@@ -244,7 +250,8 @@ auto index_semantic_tokens(llvm::StringRef content,
         facts.semantic[offset] = token;
     }
     for(const auto& write: entries.writes) {
-        if(auto it = facts.semantic.find(write.range.begin); it != facts.semantic.end()) {
+        if(auto it = facts.semantic.find(write.range.begin);
+           it != facts.semantic.end() && it->second.kind != Kind::Macro) {
             it->second.modifiers |= mask(Modifier::Modification);
         }
     }

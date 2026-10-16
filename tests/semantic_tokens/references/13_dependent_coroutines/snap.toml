@@ -1,0 +1,9 @@
+[answers.co_yield.semantic_token]
+text = "co_yield"
+type = "keyword"
+modifiers = ["controlFlow"]
+
+[answers.co_await.semantic_token]
+text = "co_await"
+type = "keyword"
+modifiers = ["controlFlow"]
