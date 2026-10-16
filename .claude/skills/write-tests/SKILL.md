@@ -26,10 +26,12 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
    when the inherited script does not fit; a `README.md` only when the case
    shows a capability a reader should see. A case that pins an edge or a
    fixed bug has no README.
-3. Run it alone: `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run cases-test`.
+3. Run it alone, on the box the build ran on (the test skill):
+   `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run cases-test`.
    `UPDATE_SNAPSHOTS=1` writes its `snap.toml` (and a documented case's card
    under `docs/cards/`) and prints what changed: review every block like
-   code. What clice gets wrong stays in the output, with
+   code. They are written on the box: `box cp $id . <case dir> docs/cards`
+   brings them back before the next `box push` overwrites them. What clice gets wrong stays in the output, with
    `wrong = "<reason>"` on the block.
 4. Gate: `pixi run npm run check` at the repo root (strict tsc + ESLint,
    zero tolerance). Page regions and translations are synced, and

@@ -120,9 +120,11 @@ only a fresh session recovers). Rules:
   unchanged to codex-authored code. Any run that may modify files gets its
   own git worktree — the main checkout is for analysis-only runs, or edits
   will race with this session's.
-- **Never let codex run the cases while this session might also run them**
-  — two full runs at once on one machine slow both. Either codex runs them
-  and you don't, or codex analyzes and you verify.
+- **Codex builds and runs suites on a box, never on this machine** — name
+  the build and test skills in its prompt. Never let it run the cases on a
+  box this session might also run them on: two full runs at once slow
+  both. Either codex runs them and you don't, or codex analyzes and you
+  verify.
 - **Keep codex's raw output out of the main context.** Progress checks on a
   background run (log tail, new commits, report landed?) go through an Opus
   subagent that returns a digest; a codex-authored diff gets the pr skill's

@@ -1,6 +1,6 @@
 ---
 name: build
-description: Build clice, on a box unless a local build is truly necessary. Optional arg = build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context; only the outcome returns.
+description: Build clice, on a box unless a local build is truly necessary. Optional args = build type (Debug | RelWithDebInfo, default RelWithDebInfo) and the caller's box id. Runs in a forked context; only the outcome returns.
 context: fork
 ---
 
@@ -11,11 +11,12 @@ Build the project with the requested build type (default `RelWithDebInfo`).
 On a box, not on this machine: this machine hosts every agent's session, and one build saturates it. Build here only when truly necessary. The agent-box skill covers the tool itself (leases, limits, safety); for clice:
 
 ```bash
-id=$(box up clice-io/clice)                     # ~1 min; reuse yours from `box ls`
+id=$(box up clice-io/clice)                     # ~1 min; only when the caller passed no id
 box push $id                                    # the working tree's tracked files
-box run $id 'pixi run build RelWithDebInfo'     # run_in_background; warm for the whole lease
-box down $id                                    # at the end of the task, also on failure
+box run $id 'pixi run build RelWithDebInfo'     # run_in_background
 ```
+
+The box belongs to the caller's task, not to this skill: build on the id the caller passed, or lease one and report its id. Never `box down` it here — its warm build is what the test skill and every later push run on. The caller runs `box down $id` when its task ends, also on failure.
 
 - A box restores the Bazel and ThinLTO caches of main's CI, RelWithDebInfo only: a Debug build there starts cold.
 - Several boxes in parallel are fine when the work splits (RelWithDebInfo and Debug, platforms, A/B). While a box comes up, push and let CI verify; it runs many jobs at once.

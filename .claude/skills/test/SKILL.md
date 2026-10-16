@@ -1,6 +1,6 @@
 ---
 name: test
-description: Run the clice test suites, on a box unless a local run is truly necessary; also how to test on Windows. Optional args = suite (unit | cases | all, default all) and build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context; only a digest returns.
+description: Run the clice test suites, on a box unless a local run is truly necessary; also how to test on Windows. Optional args = suite (unit | cases | all, default all) build type (Debug | RelWithDebInfo, default RelWithDebInfo) and the box id the build ran on. Runs in a forked context; only a digest returns.
 context: fork
 ---
 
@@ -8,7 +8,7 @@ Run the requested suites (default: all) against the requested build type (defaul
 
 ## Where it runs
 
-On the box that built clice (the build skill), not on this machine unless truly necessary; the tools' own tests need no build and run here. On a box, run the suites as CI does, in the `test-run` environment: `box run $id 'pixi run -e test-run unit-test RelWithDebInfo'`.
+On the box that built clice (the build skill; the caller passes its id, and downs it), not on this machine unless truly necessary; the tools' own tests need no build and run here. On a box, run the suites as CI does, in the `test-run` environment: `box run $id 'pixi run -e test-run unit-test RelWithDebInfo'`.
 
 Windows: build on a linux box, run on a windows box, as CI does. A windows box builds nothing (no Bazel cache, only `test-run`).
 
