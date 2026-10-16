@@ -116,8 +116,8 @@ tests/selection_range/syntax_ranges/07_blocks
 A function's name is selected with its signature before the whole declaration
 
 The signature runs from the return type, or from the name of a
-constructor, through the parameters and what follows them, such as
-`const noexcept` or a trailing return type.
+constructor, through the parameters and the rest of the function's type,
+such as `const noexcept` or a trailing return type.
 
 ```case
 tests/selection_range/syntax_ranges/11_function_signatures
@@ -133,6 +133,21 @@ A `case` label is selected with the statements it leads before the whole switch 
 
 ```case
 tests/selection_range/syntax_ranges/15_switch_cases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Documented declarations**
+
+A declaration is selected with the comment documenting it, from inside either one
+
+Inside a block comment over several lines, the line under the cursor
+comes first, without the `*` it begins with.
+
+```case
+tests/selection_range/syntax_ranges/19_documented_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -180,21 +195,6 @@ A directive is selected as a whole line, after the header name it includes or th
 
 ```case
 tests/selection_range/text_ranges/03_directives
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Documented declarations**
-
-A declaration is selected with the comment documenting it, from inside either one
-
-Inside a block comment over several lines, the line under the cursor
-comes first, without the `*` it begins with.
-
-```case
-tests/selection_range/text_ranges/05_documented_declarations
 ```
 
 <!-- END CAPABILITY -->

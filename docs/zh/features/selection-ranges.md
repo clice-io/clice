@@ -109,7 +109,7 @@ tests/selection_range/syntax_ranges/07_blocks
 
 选区从函数名扩大到函数签名，再扩大到整个声明
 
-签名从返回类型开始（构造函数从其名称开始），包括形参列表及其后的部分，例如 `const noexcept` 或尾置返回类型。
+签名从返回类型开始（构造函数从其名称开始），包括形参列表和函数类型的其余部分，例如 `const noexcept` 或尾置返回类型。
 
 ```case
 tests/selection_range/syntax_ranges/11_function_signatures
@@ -125,6 +125,20 @@ tests/selection_range/syntax_ranges/11_function_signatures
 
 ```case
 tests/selection_range/syntax_ranges/15_switch_cases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**带文档注释的声明**
+
+无论从声明内部还是从其文档注释内部开始，选区都会扩大到声明连同其文档注释
+
+在跨越多行的块注释中，先选中光标所在的那一行，不含行首的 `*`。
+
+```case
+tests/selection_range/syntax_ranges/19_documented_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -171,20 +185,6 @@ tests/selection_range/text_ranges/02_comments
 
 ```case
 tests/selection_range/text_ranges/03_directives
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**带文档注释的声明**
-
-无论从声明内部还是从其文档注释内部开始，选区都会扩大到声明连同其文档注释
-
-在跨越多行的块注释中，先选中光标所在的那一行，不含行首的 `*`。
-
-```case
-tests/selection_range/text_ranges/05_documented_declarations
 ```
 
 <!-- END CAPABILITY -->
