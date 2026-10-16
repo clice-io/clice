@@ -1,6 +1,8 @@
 [answers.skipped]
 selection_ranges = [
     "return ⟦value⟧ + 1;",
+    "⟦return value + 1;⟧",
+    "⟦#if 0 … #endif⟧ (3 lines)",
     "⟦#if 0 … return value;⟧ (4 lines)",
     "int pick(int value) ⟦{ … }⟧ (6 lines)",
     "⟦int pick(int value) { … }⟧ (6 lines)",

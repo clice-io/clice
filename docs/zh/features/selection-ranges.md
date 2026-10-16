@@ -103,6 +103,32 @@ tests/selection_range/syntax_ranges/07_blocks
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**函数签名**
+
+选区从函数名扩大到函数签名，再扩大到整个声明
+
+签名从返回类型开始（构造函数从其名称开始），包括形参列表及其后的部分，例如 `const noexcept` 或尾置返回类型。
+
+```case
+tests/selection_range/syntax_ranges/11_function_signatures
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**switch 中的 case 分支**
+
+先选中 `case` 标签连同它下面的语句，再选中整个 switch 语句体
+
+```case
+tests/selection_range/syntax_ranges/15_switch_cases
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 文本范围
@@ -145,6 +171,42 @@ tests/selection_range/text_ranges/02_comments
 
 ```case
 tests/selection_range/text_ranges/03_directives
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**带文档注释的声明**
+
+无论从声明内部还是从其文档注释内部开始，选区都会扩大到声明连同其文档注释
+
+在跨越多行的块注释中，先选中光标所在的那一行，不含行首的 `*`。
+
+```case
+tests/selection_range/text_ranges/05_documented_declarations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 条件编译
+
+在 `#if` 块的代码中逐步扩大选区，预处理器跳过的分支也不例外。
+
+<!-- BEGIN GENERATED ITEMS: selection_range/conditionals -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**条件编译块**
+
+先选中分支内的代码，再依次选中该分支的各行和从 `#if` 到 `#endif` 的整个条件编译块
+
+预处理器跳过的分支也有同样的选择步骤，因此可以整体选中其中的代码。
+
+```case
+tests/selection_range/conditionals/03_conditional_blocks
 ```
 
 <!-- END CAPABILITY -->

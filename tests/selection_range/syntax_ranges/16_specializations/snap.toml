@@ -1,0 +1,33 @@
+[answers.explicit]
+selection_ranges = [
+    "struct Array<⟦char⟧, 4> {};",
+    "struct Array<⟦char, 4⟧> {};",
+    "struct Array⟦<char, 4>⟧ {};",
+    "⟦template <> … struct Array<char, 4> {}⟧ (2 lines)",
+    "⟦template <> … struct Array<char, 4> {};⟧ (2 lines)",
+]
+
+[answers.partial]
+selection_ranges = [
+    "struct Array<T*, ⟦2⟧> {};",
+    "struct Array<⟦T*, 2⟧> {};",
+    "struct Array⟦<T*, 2>⟧ {};",
+    "⟦template <class T> … struct Array<T*, 2> {}⟧ (2 lines)",
+    "⟦template <class T> … struct Array<T*, 2> {};⟧ (2 lines)",
+]
+
+[answers.variable]
+selection_ranges = [
+    "constexpr int width<⟦bool⟧> = 8;",
+    "constexpr int width⟦<bool>⟧ = 8;",
+    "⟦template <> … constexpr int width<bool> = 8⟧ (2 lines)",
+    "⟦template <> … constexpr int width<bool> = 8;⟧ (2 lines)",
+]
+
+[answers.function]
+selection_ranges = [
+    "int zero<⟦int⟧>() {",
+    "int zero⟦<int>⟧() {",
+    "⟦int zero<int>()⟧ {",
+    "⟦template <> … }⟧ (4 lines)",
+]

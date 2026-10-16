@@ -1,0 +1,18 @@
+[answers.first]
+selection_ranges = [
+    "int ⟦width⟧ = 640, height = 480;",
+    "⟦int width = 640⟧, height = 480;",
+    "⟦int width = 640, height = 480⟧;",
+    "⟦int width = 640, height = 480;⟧",
+]
+
+[answers.member]
+selection_ranges = [
+    "int ⟦rows⟧, columns;",
+    "⟦int rows⟧, columns;",
+    "⟦int rows, columns⟧;",
+    "⟦int rows, columns;⟧",
+    "struct Size ⟦{ … }⟧ (3 lines)",
+    "⟦struct Size { … }⟧ (3 lines)",
+    "⟦struct Size { … };⟧ (3 lines)",
+]

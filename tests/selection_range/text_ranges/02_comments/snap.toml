@@ -3,18 +3,25 @@ selection_ranges = [
     "// ⟦the second line of it.⟧",
     "⟦// the second line of it.⟧",
     "⟦// The first line of a run, … // the second line of it.⟧ (2 lines)",
+    "⟦// The first line of a run, … int value = 0;⟧ (3 lines)",
 ]
 
 [answers.block]
-selection_ranges = ["/** ⟦A documentation block.⟧ */", "⟦/** A documentation block. */⟧"]
+selection_ranges = [
+    "/** ⟦A documentation block.⟧ */",
+    "⟦/** A documentation block. */⟧",
+    "⟦/** A documentation block. */ … }⟧ (5 lines)",
+]
 
 [answers.member_doc]
 selection_ranges = [
     "int count = 0; ///< ⟦a member note⟧",
     "int count = 0; ⟦///< a member note⟧",
+    "⟦int count = 0; ///< a member note⟧",
     "⟦int count = 0; ///< a member note … return value + count; // a trailing note⟧ (2 lines)",
     "int documented() ⟦{ … }⟧ (4 lines)",
     "⟦int documented() { … }⟧ (4 lines)",
+    "⟦/** A documentation block. */ … }⟧ (5 lines)",
 ]
 
 [answers.trailing]
@@ -24,4 +31,5 @@ selection_ranges = [
     "⟦int count = 0; ///< a member note … return value + count; // a trailing note⟧ (2 lines)",
     "int documented() ⟦{ … }⟧ (4 lines)",
     "⟦int documented() { … }⟧ (4 lines)",
+    "⟦/** A documentation block. */ … }⟧ (5 lines)",
 ]

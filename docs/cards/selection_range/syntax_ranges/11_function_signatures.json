@@ -1,0 +1,263 @@
+{
+  "id": "selection_range/syntax_ranges/11_function_signatures",
+  "topic": "selection_range",
+  "subtopic": "syntax_ranges",
+  "title": "Function signatures",
+  "summary": "A function's name is selected with its signature before the whole declaration",
+  "prose": "The signature runs from the return type, or from the name of a\nconstructor, through the parameters and what follows them, such as\n`const noexcept` or a trailing return type.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Timer {\n    Timer(int ticks);\n    [[nodiscard]] long elapsed(int scale) const noexcept;\n};\n\nTimer::Timer(int ticks) {}\n\nauto tick(int step) -> long {\n    return step;\n}\n",
+      "markers": [
+        {
+          "name": "method",
+          "begin": 60,
+          "end": 60,
+          "range": false
+        },
+        {
+          "name": "constructor",
+          "begin": 106,
+          "end": 106,
+          "range": false
+        },
+        {
+          "name": "trailing",
+          "begin": 132,
+          "end": 132,
+          "range": false
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "method",
+          "marker": "method",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "[[nodiscard]] long ⟦elapsed⟧(int scale) const noexcept;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 23
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 30
+                  }
+                }
+              },
+              {
+                "$place": "[[nodiscard]] ⟦long elapsed(int scale) const noexcept⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 18
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 56
+                  }
+                }
+              },
+              {
+                "$place": "⟦[[nodiscard]] long elapsed(int scale) const noexcept⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 56
+                  }
+                }
+              },
+              {
+                "$place": "⟦[[nodiscard]] long elapsed(int scale) const noexcept;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 2,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 57
+                  }
+                }
+              },
+              {
+                "$place": "⟦Timer(int ticks); … [[nodiscard]] long elapsed(int scale) const noexcept;⟧ (2 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 2,
+                    "character": 57
+                  }
+                }
+              },
+              {
+                "$place": "struct Timer ⟦{ … }⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Timer { … }⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Timer { … };⟧ (4 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 2
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "constructor",
+          "marker": "constructor",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "Timer::⟦Timer⟧(int ticks) {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 7
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "⟦Timer::Timer(int ticks)⟧ {}",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 23
+                  }
+                }
+              },
+              {
+                "$place": "⟦Timer::Timer(int ticks) {}⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 5,
+                    "character": 26
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "trailing",
+          "marker": "trailing",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "auto ⟦tick⟧(int step) -> long {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 5
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 9
+                  }
+                }
+              },
+              {
+                "$place": "⟦auto tick(int step) -> long⟧ {",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 7,
+                    "character": 27
+                  }
+                }
+              },
+              {
+                "$place": "⟦auto tick(int step) -> long { … }⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 7,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

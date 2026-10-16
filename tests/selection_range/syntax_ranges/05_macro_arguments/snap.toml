@@ -17,3 +17,13 @@ selection_ranges = [
     "int doubled() ⟦{ … }⟧ (3 lines)",
     "⟦int doubled() { … }⟧ (3 lines)",
 ]
+
+[answers.closing]
+selection_ranges = [
+    "return TWICE⟦(counter + 1)⟧;",
+    "return ⟦TWICE(counter + 1)⟧;",
+    "⟦return TWICE(counter + 1)⟧;",
+    "⟦return TWICE(counter + 1);⟧",
+    "int doubled() ⟦{ … }⟧ (3 lines)",
+    "⟦int doubled() { … }⟧ (3 lines)",
+]

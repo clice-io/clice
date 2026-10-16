@@ -1,0 +1,25 @@
+[answers.method]
+selection_ranges = [
+    "[[nodiscard]] long ⟦elapsed⟧(int scale) const noexcept;",
+    "[[nodiscard]] ⟦long elapsed(int scale) const noexcept⟧;",
+    "⟦[[nodiscard]] long elapsed(int scale) const noexcept⟧;",
+    "⟦[[nodiscard]] long elapsed(int scale) const noexcept;⟧",
+    "⟦Timer(int ticks); … [[nodiscard]] long elapsed(int scale) const noexcept;⟧ (2 lines)",
+    "struct Timer ⟦{ … }⟧ (4 lines)",
+    "⟦struct Timer { … }⟧ (4 lines)",
+    "⟦struct Timer { … };⟧ (4 lines)",
+]
+
+[answers.constructor]
+selection_ranges = [
+    "Timer::⟦Timer⟧(int ticks) {}",
+    "⟦Timer::Timer(int ticks)⟧ {}",
+    "⟦Timer::Timer(int ticks) {}⟧",
+]
+
+[answers.trailing]
+selection_ranges = [
+    "auto ⟦tick⟧(int step) -> long {",
+    "⟦auto tick(int step) -> long⟧ {",
+    "⟦auto tick(int step) -> long { … }⟧ (3 lines)",
+]

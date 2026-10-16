@@ -3,9 +3,11 @@ selection_ranges = [
     "Point(int a, int b) : x(⟦a⟧), y(b) {}",
     "Point(int a, int b) : x⟦(a)⟧, y(b) {}",
     "Point(int a, int b) : ⟦x(a)⟧, y(b) {}",
+    "Point(int a, int b) : ⟦x(a), y(b)⟧ {}",
     "⟦Point(int a, int b) : x(a), y(b) {}⟧",
     "⟦int x; … Point(int a, int b) : x(a), y(b) {}⟧ (4 lines)",
     "struct Point ⟦{ … }⟧ (6 lines)",
     "⟦struct Point { … }⟧ (6 lines)",
     "⟦struct Point { … };⟧ (6 lines)",
+    "⟦// A member initializer steps from its argument to the initializer, then to the … };⟧ (8 lines)",
 ]

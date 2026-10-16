@@ -1,0 +1,8 @@
+[answers.declaration]
+selection_ranges = ["export module ⟦app⟧;", "⟦export module app;⟧"]
+
+[answers.import]
+selection_ranges = ["import ⟦geometry⟧;", "⟦import geometry⟧;", "⟦import geometry;⟧"]
+
+[answers.semicolon]
+selection_ranges = ["⟦import geometry;⟧"]

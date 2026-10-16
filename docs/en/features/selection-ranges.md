@@ -109,6 +109,34 @@ tests/selection_range/syntax_ranges/07_blocks
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Function signatures**
+
+A function's name is selected with its signature before the whole declaration
+
+The signature runs from the return type, or from the name of a
+constructor, through the parameters and what follows them, such as
+`const noexcept` or a trailing return type.
+
+```case
+tests/selection_range/syntax_ranges/11_function_signatures
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Switch cases**
+
+A `case` label is selected with the statements it leads before the whole switch body
+
+```case
+tests/selection_range/syntax_ranges/15_switch_cases
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Text Ranges
@@ -152,6 +180,44 @@ A directive is selected as a whole line, after the header name it includes or th
 
 ```case
 tests/selection_range/text_ranges/03_directives
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Documented declarations**
+
+A declaration is selected with the comment documenting it, from inside either one
+
+Inside a block comment over several lines, the line under the cursor
+comes first, without the `*` it begins with.
+
+```case
+tests/selection_range/text_ranges/05_documented_declarations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Conditional Compilation
+
+Steps through the code of `#if` blocks, the branches the preprocessor skipped included.
+
+<!-- BEGIN GENERATED ITEMS: selection_range/conditionals -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Conditional blocks**
+
+The lines of a conditional's branch and the whole `#if` through `#endif` are selected after the code inside them
+
+A branch the preprocessor skipped gets the same steps, so its code can
+be selected as a whole.
+
+```case
+tests/selection_range/conditionals/03_conditional_blocks
 ```
 
 <!-- END CAPABILITY -->

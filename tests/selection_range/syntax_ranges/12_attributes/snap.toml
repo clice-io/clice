@@ -1,0 +1,30 @@
+[answers.alignas]
+selection_ranges = [
+    "struct alignas(⟦16⟧) Vector {",
+    "struct alignas⟦(16)⟧ Vector {",
+    "struct ⟦alignas(16)⟧ Vector {",
+    "⟦struct alignas(16) Vector { … }⟧ (3 lines)",
+    "⟦struct alignas(16) Vector { … };⟧ (3 lines)",
+]
+
+[answers.message]
+selection_ranges = [
+    '[[deprecated("⟦use other⟧")]] int old_api();',
+    '[[deprecated(⟦"use other"⟧)]] int old_api();',
+    '[[deprecated⟦("use other")⟧]] int old_api();',
+    '[[⟦deprecated("use other")⟧]] int old_api();',
+    '[⟦[deprecated("use other")]⟧] int old_api();',
+    '⟦[[deprecated("use other")]]⟧ int old_api();',
+    '⟦[[deprecated("use other")]] int old_api()⟧;',
+    '⟦[[deprecated("use other")]] int old_api();⟧',
+]
+
+[answers.gnu]
+selection_ranges = [
+    "int counter __attribute__((⟦aligned⟧(8)));",
+    "int counter __attribute__((⟦aligned(8)⟧));",
+    "int counter __attribute__(⟦(aligned(8))⟧);",
+    "int counter __attribute__⟦((aligned(8)))⟧;",
+    "⟦int counter __attribute__((aligned(8)))⟧;",
+    "⟦int counter __attribute__((aligned(8)));⟧",
+]

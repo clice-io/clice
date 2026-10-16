@@ -1,0 +1,32 @@
+[answers.call]
+selection_ranges = [
+    "void ⟦flush⟧();",
+    "⟦void flush()⟧;",
+    "⟦void flush();⟧",
+    "⟦int values[4]; … void flush();⟧ (2 lines)",
+    "struct Buffer ⟦{ … }⟧ (4 lines)",
+    "⟦struct Buffer { … }⟧ (4 lines)",
+    "⟦struct Buffer { … };⟧ (4 lines)",
+]
+
+[answers.statement]
+selection_ranges = [
+    "buffer.flush⟦()⟧;",
+    "⟦buffer.flush()⟧;",
+    "⟦buffer.flush();⟧",
+    "⟦buffer.flush(); … return buffer.values[0];⟧ (2 lines)",
+    "int first(Buffer& buffer) ⟦{ … }⟧ (4 lines)",
+    "⟦int first(Buffer& buffer) { … }⟧ (4 lines)",
+]
+
+[answers.subscript]
+selection_ranges = [
+    "return buffer.⟦values⟧[0];",
+    "return ⟦buffer.values⟧[0];",
+    "return ⟦buffer.values[0]⟧;",
+    "⟦return buffer.values[0]⟧;",
+    "⟦return buffer.values[0];⟧",
+    "⟦buffer.flush(); … return buffer.values[0];⟧ (2 lines)",
+    "int first(Buffer& buffer) ⟦{ … }⟧ (4 lines)",
+    "⟦int first(Buffer& buffer) { … }⟧ (4 lines)",
+]
