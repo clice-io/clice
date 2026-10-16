@@ -5,7 +5,7 @@ test(async (t) => {
     const search = await t.cli("query symbol-search add");
     const [add] = (search.json as { result: { symbols: { symbol: string }[] } }).result.symbols;
     if (add === undefined) {
-        throw new Error("symbolSearch found no add");
+        throw new Error("symbol-search found no add");
     }
     await t.cli(["query", "definition", add.symbol]);
     await t.cli("query definition main.cpp:4");

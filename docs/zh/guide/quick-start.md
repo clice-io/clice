@@ -111,4 +111,4 @@ clice index --workspace /path/to/project
 
 该过程支持断点续作——用 Ctrl-C 中断时会保存进度，下次运行会从上次中断处
 继续，而不是从头开始。
-`clice index --stats` 会输出当前持久化索引所包含的内容。
+`clice index stats` 会输出当前持久化索引所包含的内容。

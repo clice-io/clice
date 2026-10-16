@@ -257,7 +257,7 @@ struct ProjectIndex {
         std::size_t contributors = 0;
     };
 
-    /// For `clice index --stats`.
+    /// For `clice index stats`.
     GlobalColumns global_columns() const;
 
 private:

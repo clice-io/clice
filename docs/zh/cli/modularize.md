@@ -6,9 +6,9 @@
 
 程序自身的代码也可以跟进：划分文件标记为改写的模块，其文件会被原地改写成模块单元，头文件变成分区（partition），包含变成导入。
 
-**用法**：`clice modularize --partition <file> --out <dir> [--std <dir>] [--no-mirrors] [--scope <glob,...>] [--workspace <dir>] [--configuration <tag>]`
+**用法**：`clice modularize --partition <file> --out <dir> [--std <dir>] [--no-mirrors] [--scope <glob>...] [--workspace <dir>] [--configuration <tag>]`
 
-所有信息都来自持久化索引，可通过 [`clice analyze modules --view interface`](./analyze.md#modules) 查看；请先运行 `clice index`。该命令会写入文件并输出构建所需的信息，但不会修改任何构建文件。
+所有信息都来自持久化索引，可通过 [`clice analyze modules interface`](./analyze.md#modules) 查看；请先运行 `clice index`。该命令会写入文件并输出构建所需的信息，但不会修改任何构建文件。
 
 ## 划分
 
@@ -57,7 +57,7 @@
 
 一次封装只涵盖头文件在单一构建配置下声明和定义的内容：平台的 C 库、库的配置头文件设置的宏、库只为某个目标平台声明的名称。为多个平台或多种配置构建的程序，要为每个配置各运行一次 modularize，各自基于该配置的索引、写到各自的目录，然后合并结果。
 
-**用法**：`clice modularize --merge <file> --out <dir> [--no-mirrors]`
+**用法**：`clice modularize merge <file> --out <dir> [--no-mirrors]`
 
 ```json
 {
@@ -199,7 +199,7 @@ tests/modularize/program/01_one_module
 - 只有索引中的文件会被改写：被索引的构建配置中没有任何编译用到的源文件（例如其他平台的源文件）会保留原有的包含指令。
 - clang 不认为实现分区的全局模块片段对经由另一个分区间接导入它的单元可达，尽管标准规定该单元同样导入了它。因此被改写的文件会自行包含这类分区所包含的、仍保持为头文件的头文件，并再解析一遍。
 - 位于预处理条件中的被改写头文件的包含，会变成无条件的导入。
-- 头文件变成分区后只编译一次：声明随包含方而不同、或检测包含方所定义宏的头文件，只会保留其中一种结果。`clice analyze modules --view obstacles` 会列出这类头文件，应先行处理。
+- 头文件变成分区后只编译一次：声明随包含方而不同、或检测包含方所定义宏的头文件，只会保留其中一种结果。`clice analyze modules obstacles` 会列出这类头文件，应先行处理。
 - 对分析范围外文件的包含保持原位；如果它位于文件开头那些预处理指令之后，就会落在模块辖域内，其中声明的实体随之附属于该模块。
 - 以下情况 modularize 会在写出任何文件之前报错退出：仍保持为头文件的头文件包含了被改写的头文件；要写出的文件会覆盖已有文件。
 - 编译器能在改写后的代码上报出的问题留给构建去发现：同一模块或两个被改写模块的头文件互相包含；变成分区的头文件里有 `static` 实体；被改写的源文件定义了仍保持为头文件的头文件所声明的实体。

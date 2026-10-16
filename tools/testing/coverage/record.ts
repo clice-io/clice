@@ -24,9 +24,10 @@ export function record(surface: Surface, item: string): void {
     fs.appendFileSync(path.join(dir, `${process.pid}.txt`), `${entry}\n`);
 }
 
-/// A command line run: the words leading it, its subcommand and operation,
-/// and the flags it passed, values and positional arguments dropped
-/// (`query references --include-declaration`).
+/// A command line run: the words leading it — its subcommand, its
+/// operation, and a positional argument spelled like a word — and the
+/// flags it passed, their values dropped (`query references add
+/// --include-declaration`); the check matches commands by prefix.
 export function recordInvocation(args: readonly string[]): void {
     const words: string[] = [];
     let subcommand = true;

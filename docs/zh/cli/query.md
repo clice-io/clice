@@ -4,16 +4,16 @@
 
 `clice query` 向持久化索引提出一个结构化的问题，并把答案以 JSON 形式打印到 stdout——供那些不想说 LSP、又想拿到语言服务器所掌握事实的脚本和 coding agent 使用。它直接从磁盘读取索引，正是 `clice index` 构建、编辑器会话持续更新的那一份，因此编辑器开着时它照常工作，编辑器没开时也不需要服务器。
 
-**用法**：`clice query --method <question> [--workspace <dir>] [--configuration <tag>] [--fresh] [question options]`
+**用法**：`clice query <question> [<locator> | <file>] [--workspace <dir>] [--configuration <tag>] [--fresh] [question options]`
 
 ## 支持的问题
 
-- `symbolSearch --symbol <locator> [--limit <n>]` 列出[定位串](#locators)（locator）匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 `symbol`。
-- `definition`、`readSymbol`、`references [--include-declaration]`、`callGraph [--direction callers|callees|both]` 和 `typeHierarchy [--direction supertypes|subtypes|both]` 针对 `--symbol <locator>` 指明的那一个符号作答。定位串匹配到多个符号时，会把它们作为 `candidates` 列出；没有符号与该名称完全一致时，同样会列出最接近的匹配。`definition` 和 `readSymbol` 还会给出符号的 `documentation`：以 markdown 形式给出它的文档注释，读法与编辑器的悬停一致——解析 `@param`、`@return` 和 `@copydoc`，没有注释的重写函数显示它所重写函数的文档。
-- `documentSymbols --path <file>` 给出该文件的大纲。
-- `compileCommand --path <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、从邻近翻译单元借来的命令（借给临时成员时为 `provisional`，借给构建之外的文件时为 `inferred`），或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
-- `projectFiles [--filter all|source|header|module]` 列出构建涉及的文件；`fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` 沿包含关系图查询，`impactAnalysis --path <file>` 则沿包含关系图以及导入该文件所属模块的文件查询。
-- `counterparts --path <file>` 列出与该文件配对的文件——头文件的源文件、源文件的头文件、模块的接口单元和实现单元——最佳的排在最前，每个都附上理由，并把编辑器无需询问就会直接打开的那一个标为 `preferred`（参见[切换源文件／头文件](../features/navigation.md#switch-source-header)）。
+- `symbol-search [<locator>] [--limit <n>]` 列出[定位串](#locators)（locator）匹配到的符号，最佳匹配排在最前，并附上各符号的种类、文件、行号、所属容器和 `symbol`。
+- `definition <locator>`、`read-symbol <locator>`、`references <locator> [--include-declaration]`、`call-graph <locator> [--direction callers|callees|both]` 和 `type-hierarchy <locator> [--direction supertypes|subtypes|both]` 针对定位串指明的那一个符号作答。定位串匹配到多个符号时，会把它们作为 `candidates` 列出；没有符号与该名称完全一致时，同样会列出最接近的匹配。`definition` 和 `read-symbol` 还会给出符号的 `documentation`：以 markdown 形式给出它的文档注释，读法与编辑器的悬停一致——解析 `@param`、`@return` 和 `@copydoc`，没有注释的重写函数显示它所重写函数的文档。
+- `document-symbols <file>` 给出该文件的大纲。
+- `compile-command <file>` 给出编辑器编译该文件时会使用的命令，以及它的来源：文件自身的数据库条目、头文件的宿主源文件、规则的默认命令、从邻近翻译单元借来的命令（借给临时成员时为 `provisional`，借给构建之外的文件时为 `inferred`），或内置的回退命令。给出的是经编译器解析后的命令，带有目标平台和系统头文件目录；询问编译器失败时，`toolchainError` 说明原因，命令则停留在未经解析的驱动命令。
+- `project-files [--filter all|source|header|module]` 列出构建涉及的文件；`file-deps <file> [--direction includes|includers|both] [--depth <n>]` 沿包含关系图查询，`impact-analysis <file>` 则沿包含关系图以及导入该文件所属模块的文件查询。
+- `counterparts <file>` 列出与该文件配对的文件——头文件的源文件、源文件的头文件、模块的接口单元和实现单元——最佳的排在最前，每个都附上理由，并把编辑器无需询问就会直接打开的那一个标为 `preferred`（参见[切换源文件／头文件](../features/navigation.md#switch-source-header)）。
 
 问题中的路径可以相对于工作区，也可以是绝对路径，答案中的路径一律是绝对路径；行号从 1 开始。
 
@@ -38,11 +38,11 @@
 
 局部变量、参数和具有内部链接的实体（`static` 实体，或位于匿名命名空间中的实体）只有能看到它们的文件才知道：按名称查找它们时，必须同时用 `path:` 给出它们所在的文件或该文件所在的目录。
 
-答案列出的每个符号都带有 `symbol`，即反过来指明该符号的定位串：它的 id；只有部分文件能看到的符号，id 后面再跟上 `path:` 和它所在的文件。把它原样传给 `--symbol` 即可。在 shell 命令行中，要给整个定位串加上引号：在那里 `#` 会开始一段注释，`<` 和 `>` 会重定向，`*` 会被展开。
+答案列出的每个符号都带有 `symbol`，即反过来指明该符号的定位串：它的 id；只有部分文件能看到的符号，id 后面再跟上 `path:` 和它所在的文件。把它原样传回即可。在 shell 命令行中，要给整个定位串加上引号：在那里 `#` 会开始一段注释，`<` 和 `>` 会重定向，`*` 会被展开。
 
 ## 答案
 
-每个答案都是一个 JSON 对象：成功时是 `{"result": ..., "stale": [...]}`；问题无法回答时（符号不存在、文件不存在、选项取了不支持的值）是 `{"error": "...", "stale": [...]}`，退出码为 1；参数无法解析时同样如此，退出码为 2。定位串匹配到多个符号时，错误中会用 `candidates` 列出它们，每个都附上自己的 `symbol`。
+每个答案都是一个 JSON 对象：成功时是 `{"result": ..., "stale": [...]}`；问题无法回答时（符号不存在、文件不存在、选项取了不支持的值）是 `{"error": "...", "stale": [...]}`，退出码为 1；参数无法解析时（问题未知，定位串或文件缺失或多余）同样如此，退出码为 2。定位串匹配到多个符号时，错误中会用 `candidates` 列出它们，每个都附上自己的 `symbol`。
 
 `stale` 列出答案不得不略过其数据行的文件：它们在磁盘上的内容已经与建立索引时不一致，索引为它们保存的位置会指向移动过的文本。仅因所包含的头文件发生变化的文件，仍用它上一次的数据行作答。定义位于已过期文件中的符号会被报告为未找到，并给出文件名，这样读者就能区分“不存在”和“尚未建立索引”。只有答案查阅过的文件才会被检查：在文件建立索引之后新增的符号只会缺席，因为没有任何数据行指向那个文件——要询问磁盘的当前状态，请用 `--fresh`。索引从不读取编辑器中未保存的缓冲区：它描述的是磁盘上的内容。
 

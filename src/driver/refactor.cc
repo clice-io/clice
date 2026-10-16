@@ -192,22 +192,19 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
         requests = one_rename(*args);
     }
     if(!requests) {
-        print_json(Failure{.error = std::move(requests.error())});
-        return 1;
+        return fail(std::move(requests.error()));
     }
     auto spelling = opts.where.root();
     auto config = Config::load_from_workspace(CanonicalPath(spelling));
     auto configuration = opts.where.configuration.tag();
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
-        print_json(Failure{.error = std::move(checked.error())});
-        return 1;
+        return fail(std::move(checked.error()));
     }
     std::vector<std::string> failed;
     if(opts.fresh.fresh) {
         auto refreshed = refresh(spelling, config, configuration, self_path);
         if(!refreshed) {
-            print_json(Failure{.error = refreshed.error()});
-            return 1;
+            return fail(refreshed.error());
         }
         failed = std::move(*refreshed);
     }
@@ -223,10 +220,8 @@ int run_rename(const RenameOptions& opts, const char* self_path) {
     auto loaded =
         load_index(project, commands, std::move(config), configuration, /*with_build=*/true);
     if(!loaded) {
-        print_json(Failure{
-            .error =
-                "the index could not be opened (the log above says why); run `clice index` or pass --fresh"});
-        return 1;
+        return fail(
+            "the index could not be opened (the log above says why); run `clice index` or pass --fresh");
     }
     saved.bytes = std::move(loaded->contexts);
     contexts.load();

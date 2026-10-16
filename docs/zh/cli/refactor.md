@@ -4,7 +4,7 @@
 
 `clice refactor` 根据持久化索引改写工作区的源代码，`clice query` 读取的也是同一份索引。整个过程不做编译，因此在大型源码树上做一次重构，耗时与一次查询相当。目前唯一的重构是 `rename`；编辑器里的重命名走的也是同一个引擎。
 
-**用法**：`clice refactor rename (--symbol <locator> --to <name> | --spec <file>) [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
+**用法**：`clice refactor rename (<locator> <new-name> | --spec <file>) [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
 
 ## 重命名
 

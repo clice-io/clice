@@ -45,8 +45,23 @@ export async function surface(clice: string): Promise<string[]> {
     for (const [flag, owners] of byFlag) {
         if (owners.length === commands.length) {
             flagItems.push(`flag * ${flag}`);
-        } else {
-            flagItems.push(...owners.map((owner) => `flag ${owner} ${flag}`));
+            continue;
+        }
+        // A flag every operation of a subcommand takes is the subcommand's.
+        const bySubcommand = new Map<string, string[]>();
+        for (const owner of owners) {
+            const subcommand = owner.split(" ")[0] ?? owner;
+            bySubcommand.set(subcommand, [...(bySubcommand.get(subcommand) ?? []), owner]);
+        }
+        for (const [subcommand, held] of bySubcommand) {
+            const operations = commands.filter(
+                (command) => command === subcommand || command.startsWith(`${subcommand} `),
+            );
+            if (held.length === operations.length) {
+                flagItems.push(`flag ${subcommand} ${flag}`);
+            } else {
+                flagItems.push(...held.map((owner) => `flag ${owner} ${flag}`));
+            }
         }
     }
     return [

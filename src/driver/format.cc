@@ -6,7 +6,6 @@ module clice;
 
 import :driver.driver;
 import :sched.batch;
-import :support.logging;
 import :vfs.path;
 
 namespace clice::driver {

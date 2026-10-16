@@ -14,5 +14,6 @@ test(async (t) => {
     await t.cli("index --jobs 1");
     await t.cli(`analyze modules interface alpha ${ARGS}`);
     await t.cli(`analyze modules interface beta ${ARGS}`);
+    await t.cli(`analyze modules interface ${ARGS}`);
     await t.cli(`modularize ${ARGS} --out wrap`);
 });

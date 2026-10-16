@@ -96,45 +96,46 @@ struct ImpactOptions {
 
 struct FileViewOptions {
     kota::deco::decl::HelpOption help;
-
-    DecoInput(meta_var = "<PATH>",
-              help = "The file, relative to the workspace or absolute",
-              required = false)
-    <std::vector<std::string>> targets;
-
+    FileTarget target;
     ModelOptions model;
     WeightOptions weights;
     LogLevelOption log;
 };
 
-struct EdgeOptions {
-    kota::deco::decl::HelpOption help;
-
+struct EdgeTarget {
     DecoInput(meta_var = "<FROM> <TO>",
               help = "The module whose files name the other's entities, and the module named",
               required = false)
-    <std::vector<std::string>> targets;
+    <std::vector<std::string>> inputs;
+};
 
+struct EdgeOptions {
+    kota::deco::decl::HelpOption help;
+    EdgeTarget target;
     ModelOptions model;
     LogLevelOption log;
+};
+
+struct ModuleTarget {
+    DecoInput(meta_var = "<MODULE>", help = "The module", required = false)
+    <std::vector<std::string>> inputs;
 };
 
 struct ModuleViewOptions {
     kota::deco::decl::HelpOption help;
-
-    DecoInput(meta_var = "<MODULE>", help = "The module", required = false)
-    <std::vector<std::string>> targets;
-
+    ModuleTarget target;
     ModelOptions model;
     LogLevelOption log;
 };
 
+struct InterfaceTarget {
+    DecoInput(meta_var = "<MODULE>", help = "The module (default: every module)", required = false)
+    <std::vector<std::string>> inputs;
+};
+
 struct InterfaceOptions {
     kota::deco::decl::HelpOption help;
-
-    DecoInput(meta_var = "<MODULE>", help = "The module (default: every module)", required = false)
-    <std::vector<std::string>> targets;
-
+    InterfaceTarget target;
     ModelOptions model;
     LogLevelOption log;
 };
@@ -144,11 +145,6 @@ struct PlainViewOptions {
     ModelOptions model;
     LogLevelOption log;
 };
-
-int fail(std::string error) {
-    print_json(Failure{.error = std::move(error)});
-    return 1;
-}
 
 template <typename T>
 int answer(const std::expected<T, std::string>& result) {
@@ -258,8 +254,8 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
 }
 
 /// A module view over the options `Options`, which `view` answers from the
-/// report and the positional arguments `names` name, `targets` in the
-/// options, of which the trailing `optional` may be left out.
+/// report and the positional arguments `names` name, the options'
+/// `target`, of which the trailing `optional` may be left out.
 template <typename Options, typename View>
 CommandHandler module_view(std::string_view usage,
                            std::initializer_list<std::string_view> names,
@@ -271,8 +267,8 @@ CommandHandler module_view(std::string_view usage,
         Errors::JSON,
         [names = std::vector<std::string_view>(names), optional, view](const Options& opts) {
             std::vector<std::string> args;
-            if constexpr(requires { opts.targets; }) {
-                auto taken = positional(opts.targets.as_optional(), names, optional);
+            if constexpr(requires { opts.target; }) {
+                auto taken = positional(opts.target.inputs.as_optional(), names, optional);
                 if(!taken) {
                     return usage_error(Errors::JSON, taken.error());
                 }

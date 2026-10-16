@@ -151,8 +151,9 @@ inline void println() {
 
 enum class LogLevel : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
 
-/// The --log-level option every subcommand's options hold; one that logs
-/// more unless asked gives it a default of its own.
+/// The --log-level option every subcommand's options hold. One keeping a
+/// session log logs from info unless asked, as an info-level session log
+/// is what tells what a run did.
 struct LogLevelOption {
     DecoKV(help = "Log level", required = false)
     <LogLevel> log_level = LogLevel::Warn;
@@ -208,6 +209,22 @@ struct JobsOption {
                "project.stateless_worker_count; for format, the CPU count)",
            required = false)
     <std::uint32_t> jobs;
+};
+
+/// The file an operation is about.
+struct FileTarget {
+    DecoInput(meta_var = "<PATH>",
+              help = "The file, relative to the workspace or absolute",
+              required = false)
+    <std::vector<std::string>> inputs;
+};
+
+/// The symbol an operation is about.
+struct SymbolTarget {
+    DecoInput(meta_var = "<LOCATOR>",
+              help = "The symbol, as a locator: a name, an answer's symbol, or file:line[:column]",
+              required = false)
+    <std::vector<std::string>> inputs;
 };
 
 /// --fresh, of the subcommands that read the index.
@@ -271,6 +288,13 @@ std::string render_json(const T& value) {
 template <typename T>
 void print_json(const T& value) {
     driver::println("{}", render_json(value));
+}
+
+/// Answer that a subcommand answering in JSON could not do what it was
+/// asked; returns its exit code.
+inline int fail(std::string error) {
+    print_json(Failure{.error = std::move(error)});
+    return 1;
 }
 
 /// How a subcommand reports arguments it cannot take: as text on stderr,
@@ -362,8 +386,9 @@ struct Operation {
 
 /// A subcommand whose first argument names one of its `operations`. With
 /// `main`, the subcommand's own job, arguments naming none (none at all,
-/// or options) run it, and its help lists the operations after its own;
-/// without, they print the operations, which `overview` heads.
+/// or options) run it, and its help lists the operations after its own.
+/// Without, no arguments print the operations, which `overview` heads, and
+/// an option before an operation is an unknown one.
 inline CommandHandler with_operations(std::string_view overview,
                                       std::vector<Operation> operations,
                                       Errors errors,
@@ -385,7 +410,8 @@ inline CommandHandler with_operations(std::string_view overview,
             return (*commander)(args);
         }
         auto code = main(args);
-        if(llvm::any_of(args, [](std::string_view arg) {
+        // Arguments that do not parse fail before --help is seen.
+        if(code == 0 && llvm::any_of(args, [](std::string_view arg) {
                return llvm::is_contained(kota::deco::decl::help_names, arg);
            })) {
             driver::println();

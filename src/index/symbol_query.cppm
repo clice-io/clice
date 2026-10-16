@@ -2,8 +2,8 @@ module;
 
 #include "modules/prelude.h"
 
-/// The one grammar every symbol lookup speaks: the `--symbol` of
-/// `clice query` and `clice refactor`, and workspace/symbol.
+/// The one grammar every symbol lookup speaks: the locators the clice
+/// commands take, and workspace/symbol.
 ///
 ///   foo                  fuzzy; the exact name ranks first, then prefixes
 ///   "foo"                the whole name, case-sensitive

@@ -26,7 +26,7 @@ struct LintOptions {
 
     WorkspaceOptions where;
     JobsOption jobs;
-    LogLevelOption log;
+    LogLevelOption log{.log_level = LogLevel::Info};
 };
 
 /// Where a finding or a note is, as compilers print it; nothing for one no

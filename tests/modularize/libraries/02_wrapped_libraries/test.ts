@@ -101,6 +101,7 @@ test("merges configurations", async (t) => {
     await t.cli("modularize merge merges/two.json --out merged");
     await t.cli("modularize merge merges/mirror.json --out merged");
     await t.cli("modularize merge merges/two.json --partition partition.json --out merged");
+    await t.cli("modularize merge merges/two.json");
 });
 
 test("partition errors", async (t) => {

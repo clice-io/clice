@@ -43,15 +43,6 @@ inline std::string symbol_id(SymbolHash hash) {
     return std::format("#{:016x}", hash);
 }
 
-/// The hash a `#<hex>` id names; nullopt for anything else.
-inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
-    SymbolHash hash = 0;
-    if(!id.consume_front("#") || id.getAsInteger(16, hash) || reserved_key(hash)) {
-        return std::nullopt;
-    }
-    return hash;
-}
-
 /// On-disk index blob schema version. Every persisted blob carries it as a
 /// regular field and every loader discards blobs with a different value —
 /// including version-less blobs from older builds, which read back as 0.

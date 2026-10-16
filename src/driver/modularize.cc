@@ -196,11 +196,6 @@ std::expected<std::vector<analysis::Configuration>, std::string>
     return configurations;
 }
 
-int fail(std::string error) {
-    print_json(Failure{.error = std::move(error)});
-    return 1;
-}
-
 int run_merge(const MergeOptions& opts) {
     auto args = positional(opts.file.as_optional(), {"<FILE>"});
     if(!args) {

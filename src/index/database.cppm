@@ -149,7 +149,7 @@ public:
     virtual void condemn() {}
 
     /// Whether this handle was opened read-only (a session that must not
-    /// take the writer lock — batch lint, `clice index --stats`). Writes
+    /// take the writer lock — batch lint, `clice index stats`). Writes
     /// are a caller bug then; persistence-side callers skip them.
     virtual bool read_only() const {
         return false;

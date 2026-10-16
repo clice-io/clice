@@ -22,22 +22,6 @@ struct QueryOptions {
     FreshOption fresh;
 };
 
-/// The file a question is about.
-struct FileTarget {
-    DecoInput(meta_var = "<PATH>",
-              help = "The file, relative to the workspace or absolute",
-              required = false)
-    <std::vector<std::string>> path;
-};
-
-/// The symbol a question is about.
-struct SymbolTarget {
-    DecoInput(meta_var = "<LOCATOR>",
-              help = "The symbol, as a locator: a name, an answer's symbol, or file:line[:column]",
-              required = false)
-    <std::vector<std::string>> locator;
-};
-
 struct FileQuestion {
     kota::deco::decl::HelpOption help;
     FileTarget target;
@@ -139,15 +123,13 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
     auto config = Config::load_from_workspace(CanonicalPath(spelling));
     auto configuration = opts.where.configuration.tag();
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
-        print_json(Failure{.error = std::move(checked.error())});
-        return 1;
+        return fail(std::move(checked.error()));
     }
     std::vector<std::string> failed;
     if(opts.fresh.fresh) {
         auto refreshed = refresh(spelling, config, configuration, self_path);
         if(!refreshed) {
-            print_json(Failure{.error = refreshed.error()});
-            return 1;
+            return fail(refreshed.error());
         }
         failed = std::move(*refreshed);
     }
@@ -175,10 +157,8 @@ int run_query(const QueryOptions& opts, bool with_build, const char* self_path, 
         opened = open_index(project, std::move(config), configuration);
     }
     if(!opened) {
-        print_json(Failure{
-            .error =
-                "the index could not be opened (the log above says why); run `clice index` or pass --fresh"});
-        return 1;
+        return fail(
+            "the index could not be opened (the log above says why); run `clice index` or pass --fresh");
     }
 
     index::FreshnessGate gate(project.file_table, {.check_disk = true});
@@ -215,7 +195,7 @@ template <typename Options, typename Ask>
 CommandHandler
     file_question(std::string_view usage, bool with_build, const char* self_path, Ask ask) {
     return operation<Options>(usage, "query", Errors::JSON, [=](const Options& opts) {
-        auto args = positional(opts.target.path.as_optional(), {"<PATH>"});
+        auto args = positional(opts.target.inputs.as_optional(), {"<PATH>"});
         if(!args) {
             return usage_error(Errors::JSON, args.error());
         }
@@ -229,7 +209,7 @@ CommandHandler
 template <typename Options, typename Ask>
 CommandHandler symbol_question(std::string_view usage, const char* self_path, Ask ask) {
     return operation<Options>(usage, "query", Errors::JSON, [=](const Options& opts) {
-        auto args = positional(opts.target.locator.as_optional(), {"<LOCATOR>"});
+        auto args = positional(opts.target.inputs.as_optional(), {"<LOCATOR>"});
         if(!args) {
             return usage_error(Errors::JSON, args.error());
         }

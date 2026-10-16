@@ -7,11 +7,11 @@ import { normalize, splitCommand } from "./run.ts";
 
 describe("splitCommand", () => {
     test("quotes group words", () => {
-        expect(splitCommand(`query --name "a b" --path='x y.cpp'  --limit 3`)).toEqual([
+        expect(splitCommand(`query symbol-search "a b" --workspace='x y'  --limit 3`)).toEqual([
             "query",
-            "--name",
+            "symbol-search",
             "a b",
-            "--path=x y.cpp",
+            "--workspace=x y",
             "--limit",
             "3",
         ]);
@@ -19,7 +19,7 @@ describe("splitCommand", () => {
     });
 
     test("an open quote is refused", () => {
-        expect(() => splitCommand(`query --name "a`)).toThrow(/unterminated/);
+        expect(() => splitCommand(`query symbol-search "a`)).toThrow(/unterminated/);
     });
 });
 

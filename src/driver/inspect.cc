@@ -137,7 +137,7 @@ struct HoverResult {
     std::string contents;
 };
 
-/// Strict decode for --config and --markers: an unknown key is a typo,
+/// Strict decode for --config-overlay and --markers: an unknown key is a typo,
 /// not something to silently ignore.
 struct StrictJson {
     constexpr static bool deny_unknown_fields = true;
@@ -2127,7 +2127,7 @@ std::optional<kota::codec::RawValue> run_signature_help(CompilationParams params
         feature::signature_help(std::move(params), config.signature_help, config.documentation));
 }
 
-/// Marker payload for document_highlight: the unit's own TU index stands
+/// Marker payload for document-highlight: the unit's own TU index stands
 /// in for the server's file index, the cursor resolved by the same rule.
 std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& unit,
                                                             std::uint32_t offset,

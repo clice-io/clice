@@ -13,7 +13,9 @@ import :index.query;
 import :index.serialization;
 import :index.symbol_query;
 import :index.writer_lock;
+import :project.command_resolver;
 import :project.configuration;
+import :project.index_store;
 import :project.open_index;
 import :project.project;
 import :sched.batch;
@@ -31,7 +33,7 @@ struct IndexOptions {
     kota::deco::decl::HelpOption help;
     WorkspaceOptions where;
     JobsOption jobs;
-    LogLevelOption log;
+    LogLevelOption log{.log_level = LogLevel::Info};
 };
 
 struct StatsOptions {
@@ -51,24 +53,14 @@ struct StatsOptions {
 
 struct SymbolOptions {
     kota::deco::decl::HelpOption help;
-
-    DecoInput(meta_var = "<LOCATOR>",
-              help = "The symbols, as a locator: a name, an answer's symbol, or file:line[:column]",
-              required = false)
-    <std::vector<std::string>> locator;
-
+    SymbolTarget target;
     WorkspaceOptions where;
     LogLevelOption log;
 };
 
 struct FileOptions {
     kota::deco::decl::HelpOption help;
-
-    DecoInput(meta_var = "<PATH>",
-              help = "The file, relative to the workspace or absolute",
-              required = false)
-    <std::vector<std::string>> path;
-
+    FileTarget target;
     WorkspaceOptions where;
     LogLevelOption log;
 };
@@ -535,24 +527,31 @@ llvm::StringRef kind_name(SymbolKind kind) {
 }
 
 /// What the index records about every symbol `text`, a locator, names:
-/// a name, every symbol it spells whole.
+/// an id its symbol, whether a file places it or not; anything else what
+/// the query commands find for it, a name every symbol spelling it whole.
 int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef text) {
     auto locator = index::SymbolQuery::parse(text);
     if(!locator) {
         LOG_ERROR("{}", locator.error());
         return 1;
     }
-    ContextsBlob saved;
-    EditorContext contexts{project, commands, saved};
     index::IndexQuery query(project.project_index, project.file_table, nullptr, nullptr);
-    query::Context ctx{.project = project, .contexts = contexts, .query = query};
-    auto matches = query::named_symbols(ctx, std::move(*locator));
-    if(!matches) {
-        driver::println("{}: {}", std::string_view(text), matches.error());
-        return 1;
+    std::vector<index::SymbolHash> matches;
+    if(locator->handle) {
+        matches.push_back(*locator->handle);
+    } else {
+        ContextsBlob saved;
+        EditorContext contexts{project, commands, saved};
+        query::Context ctx{.project = project, .contexts = contexts, .query = query};
+        auto named = query::named_symbols(ctx, std::move(*locator));
+        if(!named) {
+            driver::println("{}: {}", std::string_view(text), named.error());
+            return 1;
+        }
+        matches = std::move(*named);
     }
     int rc = 0;
-    for(auto hash: *matches) {
+    for(auto hash: matches) {
         auto info = query.symbol_info(hash);
         if(!info) {
             driver::println("{}: no table knows this hash", format_hash(hash));
@@ -796,7 +795,7 @@ int read_index(const WorkspaceOptions& where, Run run) {
 template <typename Show>
 CommandHandler show_file(std::string_view usage, Show show) {
     return operation<FileOptions>(usage, "index", Errors::Text, [show](const FileOptions& opts) {
-        auto args = positional(opts.path.as_optional(), {"<PATH>"});
+        auto args = positional(opts.target.inputs.as_optional(), {"<PATH>"});
         if(!args) {
             return usage_error(Errors::Text, args.error());
         }
@@ -833,7 +832,7 @@ CommandHandler build(const char* self_path) {
             "index",
             Errors::Text,
             [](const SymbolOptions& opts) {
-                auto args = positional(opts.locator.as_optional(), {"<LOCATOR>"});
+                auto args = positional(opts.target.inputs.as_optional(), {"<LOCATOR>"});
                 if(!args) {
                     return usage_error(Errors::Text, args.error());
                 }

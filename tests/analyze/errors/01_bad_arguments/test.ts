@@ -12,6 +12,7 @@ test(async (t) => {
     await t.cli("analyze modules --move-entity Nowhere=core/nowhere.h");
     await t.cli("analyze modules --partition nowhere.json");
     await t.cli("analyze modules --annotation nowhere.json");
+    await t.cli("analyze modules --annotation weights.json --annotation nowhere.json");
     await t.cli("analyze modules --dir-depth deep");
     await t.cli("analyze modules --configuration nowhere");
 });

@@ -4,7 +4,7 @@
 
 `clice format` 用 clice 内置的 clang-format 格式化工作区中的文件，与编辑器中的格式化一致，一次处理多个文件，并沿用项目中已有的 `.clang-format` 配置。clice 自己不添加任何风格设置：风格来自 clang-format 自身的查找规则，即每个文件向上最近的那个 `.clang-format`。
 
-**用法**：`clice format [--workspace <dir>] [--configuration <tag>] [--check] [--jobs <n>] [<path>...]`
+**用法**：`clice format [<path>...] [--workspace <dir>] [--configuration <tag>] [--check] [--jobs <n>]`
 
 不带路径时，它格式化构建自身的文件：编译数据库中的每个翻译单元，以及它们包含的每个带 C 族后缀的文件——这些文件须位于工作区内，在构建树之外（构建树指根目录下存放编译数据库的目录，构建会在其中生成或拉取源文件），在其编译命令的系统包含目录之外，也在缓存目录之外。目录参数会把这个集合收窄到该目录下的文件；带 C 族后缀的文件参数则无论构建是否知道它都会被格式化。路径相对于工作区。`clice.toml` 中写有 `format = false` 的规则会把匹配到的文件排除在外，例如随项目附带的第三方库或生成的源文件：
 

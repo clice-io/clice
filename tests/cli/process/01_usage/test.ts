@@ -45,6 +45,24 @@ test("unknown subcommand", async (t) => {
     await t.cli("bogus");
 });
 
+// A target an operation takes, missing or one too many.
+test("positional arguments", async (t) => {
+    for (const command of [
+        "index symbol",
+        "index file a.h b.h",
+        "inspect hover",
+        "modularize merge",
+        "query references",
+    ]) {
+        await t.cli(command);
+    }
+});
+
+// An option that does not parse fails before the help it asks beside it.
+test("unknown option beside help", async (t) => {
+    await t.cli(["analyze", "modules", "--bogus", "--help"]);
+});
+
 test("unknown operation", async (t) => {
     for (const command of ["query", "index", "analyze modules", "modularize"]) {
         await t.cli([...command.split(" "), "bogus"]);

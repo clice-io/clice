@@ -23,7 +23,7 @@ struct IndexLoadOptions {
 
     /// Serve the shards straight from the opening read snapshot, pinned
     /// for the store's lifetime, instead of copying them out and retiring
-    /// it. For a short-lived reader (`clice query`, `clice index --stats`)
+    /// it. For a short-lived reader (`clice query`, `clice index stats`)
     /// the copy is the whole cost of the load; a long read-only session
     /// (batch lint) copies so a concurrent writer can reclaim its pages
     /// meanwhile.
