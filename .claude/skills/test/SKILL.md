@@ -8,7 +8,7 @@ Run the requested suites (default: all) against the requested build type (defaul
 
 ## Where it runs
 
-On the box that built clice (the build skill; the caller passes its id, and downs it), not on this machine unless truly necessary; the tools' own tests need no build and run here. On a box, run the suites as CI does, in the `test-run` environment: `box run $id 'pixi run -e test-run unit-test RelWithDebInfo'`.
+On the box that built clice (the build skill; the caller passes its id), not on this machine unless truly necessary; the tools' own tests need no build and run here. On a box, run the suites as CI does, in the `test-run` environment: `box run $id 'pixi run -e test-run unit-test RelWithDebInfo'`.
 
 Windows: build on a linux box, run on a windows box, as CI does. A windows box builds nothing (no Bazel cache, only `test-run`).
 
