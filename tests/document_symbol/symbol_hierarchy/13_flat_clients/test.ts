@@ -1,3 +1,5 @@
+import { expect } from "vitest";
+import type * as proto from "vscode-languageserver-protocol";
 import { test } from "@clice/tools/testing";
 
 const FLAT = { textDocument: { documentSymbol: { hierarchicalDocumentSymbolSupport: false } } };
@@ -25,7 +27,8 @@ test("tree in the first kinds", async (t) => {
 });
 
 // A second spelling of an open file is served by the first one's document;
-// its flat symbols still sit in the document the request names.
+// its flat symbols still sit in the document the request names, which the
+// rendered paths, resolving links, cannot tell apart.
 test(
     "flat at the spelling asked",
     { except: { win32: "a symlink on Windows needs a privilege the CI runners lack" } },
@@ -35,6 +38,12 @@ test(
         s.open("main.cpp");
         s.open("alias.cpp");
         await s.sync();
-        await t.show("alias", s.documentSymbols("alias.cpp"));
+        const reply = await s.request<proto.SymbolInformation[]>(
+            "textDocument/documentSymbol",
+            "alias.cpp",
+        );
+        expect(new Set(reply.map((symbol) => symbol.location.uri))).toEqual(
+            new Set([s.uri("alias.cpp")]),
+        );
     },
 );
