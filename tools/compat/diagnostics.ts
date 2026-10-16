@@ -29,7 +29,13 @@ import { CliceClient } from "../client/client.ts";
 import { Workspace } from "../client/workspace.ts";
 import { withTimeout } from "../promise.ts";
 import { REPO_ROOT } from "../repo.ts";
-import { entryArguments, entrySource, readDatabase, type DatabaseEntry } from "./database.ts";
+import {
+    entryArguments,
+    entrySource,
+    readDatabase,
+    samePath,
+    type DatabaseEntry,
+} from "./database.ts";
 import { run, systemEnv } from "./scenario.ts";
 
 const TOOLS = ["clang", "clice", "clangd", "lint"] as const;
@@ -176,7 +182,7 @@ async function clangFindings(opts: Options, entry: DatabaseEntry): Promise<Findi
         if (level === "fatal error") {
             return text;
         }
-        if (level === "note" || path.resolve(entry.directory, where) !== file) {
+        if (level === "note" || !samePath(path.resolve(entry.directory, where), file)) {
             continue;
         }
         findings.push({
@@ -272,7 +278,9 @@ async function serverFindings(
     return result;
 }
 
-const LINT_LINE = /^(.*?):(\d+):(\d+): (error|warning): (.*) \[([^\]]+)\]$/;
+/// A finding about the file as a whole has no line: the editor shows it on
+/// the first.
+const LINT_LINE = /^(.*?):(?:(\d+):(\d+):)? (error|warning): (.*) \[([^\]]+)\]$/;
 
 /// `clice lint` over the whole workspace, its findings by file.
 async function lintFindings(opts: Options): Promise<Map<string, Finding[]>> {
@@ -285,7 +293,7 @@ async function lintFindings(opts: Options): Promise<Map<string, Finding[]>> {
         if (match === null) {
             continue;
         }
-        const [, file = "", line = "0", , level = "", message = "", check = ""] = match;
+        const [, file = "", line = "1", , level = "", message = "", check = ""] = match;
         const compiler = check.startsWith("clang-diagnostic-");
         const findings = result.get(file) ?? [];
         findings.push({
@@ -316,10 +324,10 @@ interface Difference {
     finding: Finding;
 }
 
-/// The diagnostics of one file the tools disagree on: each message, with
-/// the lines the tools that report it put it on, kept when one of the
-/// tools compared on this kind of diagnostic misses it or puts it
-/// elsewhere. A message raised several times agrees where every tool puts
+/// The diagnostics of one file the tools disagree on: each message at each
+/// severity, with the lines the tools that report it put it on, kept when
+/// one of the tools compared on this kind of diagnostic misses it or puts
+/// it elsewhere. A message raised several times agrees where every tool puts
 /// one on the same line; the occurrences left pair up in line order. The
 /// compiler's diagnostics are compared across all four, clang-tidy's
 /// between clice, clangd and lint.
@@ -327,7 +335,7 @@ function differences(file: string, by: Partial<Record<Tool, Finding[]>>): Differ
     const merged = new Map<string, { finding: Finding; lines: Partial<Record<Tool, number[]>> }>();
     for (const tool of TOOLS) {
         for (const finding of by[tool] ?? []) {
-            const key = `${finding.tidy}|${finding.message}`;
+            const key = `${finding.tidy}|${finding.severity}|${finding.message}`;
             const entry = merged.get(key) ?? { finding, lines: {} };
             (entry.lines[tool] ??= []).push(finding.line);
             merged.set(key, entry);
