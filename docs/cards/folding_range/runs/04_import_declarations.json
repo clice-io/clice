@@ -4,7 +4,7 @@
   "subtopic": "runs",
   "title": "Import runs",
   "summary": "Consecutive import declarations fold as one run, like include directives",
-  "prose": "`export import` joins the run too.",
+  "prose": "`export import` joins the run too, and blank and comment lines between\nimports stay in it.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -25,7 +25,7 @@
     },
     {
       "path": "main.cpp",
-      "text": "module;\n\n#include \"config.h\"\n#include \"platform.h\"\n\nexport module app;\n\nexport import :core;\nimport :detail;\nimport :util;\n\nexport int run();\n",
+      "text": "module;\n\n#include \"config.h\"\n#include \"platform.h\"\n\nexport module app;\n\nexport import :core;\n\n// Internal partitions.\nimport :detail;\nimport :util;\n\nexport int run();\n",
       "markers": []
     },
     {
@@ -84,7 +84,7 @@
               {
                 "kind": "imports",
                 "at": {
-                  "$place": "export import :core;⟦ … import :util;⟧ (3 lines)",
+                  "$place": "export import :core;⟦ … import :util;⟧ (5 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -92,7 +92,7 @@
                       "character": 20
                     },
                     "end": {
-                      "line": 9,
+                      "line": 11,
                       "character": 13
                     }
                   }

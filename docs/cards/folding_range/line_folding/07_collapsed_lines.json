@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace shapes\n{\n\nstruct Point {\n    int x;\n    int y;\n};\n\nint area(Point p) {\n    if (p.x > 0) {\n        return p.x * p.y;\n    } else {\n        return 0;\n    }\n}\n\nint scaled(Point p,\n           int factor)\n{\n    return area(p) * factor;\n}\n\n}  // namespace shapes\n\n/*\n * Debug helpers.\n */\n#ifdef SHAPES_DEBUG\nvoid dump();\n#endif\n\nvoid visit(void (*callback)(int));\n\nvoid run() {\n    visit([](int value) {\n        value += 1;\n    });\n}\n",
+      "text": "namespace shapes\n{\n\nstruct Point {\n    int x;\n    int y;\n};\n\nint area(Point p) {\n    if (p.x > 0) {\n        return p.x * p.y;\n    } else {\n        return 0;\n    }\n}\n\nint scaled(Point p,\n           int factor)\n{\n    return area(p) * factor;\n}\n\n}  // namespace shapes\n\n/*\n * Debug helpers.\n */\n#ifdef SHAPES_DEBUG\nvoid dump();\n#endif\n\n#pragma region Visitors\nvoid visit(void (*callback)(int));\nvoid visit_with(void (*callback)(int), int times);\n#pragma endregion\n\nvoid run() {\n    visit([](int value) {\n        value += 1;\n    });\n    visit_with([](int value) {\n        value += 1;\n    }, 2);\n}\n",
       "markers": []
     }
   ],
@@ -167,17 +167,35 @@
                 "collapsed": "#ifdef SHAPES_DEBUG...#endif"
               },
               {
-                "kind": "functionBody",
+                "kind": "region",
                 "at": {
-                  "$place": "⟦void run() { … }⟧ (5 lines)",
+                  "$place": "⟦#pragma region Visitors … #pragma endregion⟧ (4 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 33,
+                      "line": 31,
                       "character": 0
                     },
                     "end": {
-                      "line": 37,
+                      "line": 34,
+                      "character": 17
+                    }
+                  }
+                },
+                "collapsed": "#pragma region Visitors...#pragma endregion"
+              },
+              {
+                "kind": "functionBody",
+                "at": {
+                  "$place": "⟦void run() { … }⟧ (8 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 36,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 43,
                       "character": 1
                     }
                   }
@@ -190,16 +208,33 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 34,
+                      "line": 37,
                       "character": 0
                     },
                     "end": {
-                      "line": 36,
+                      "line": 39,
                       "character": 7
                     }
                   }
                 },
                 "collapsed": "    visit([](int value) {...});"
+              },
+              {
+                "at": {
+                  "$place": "⟦    visit_with([](int value) { … value += 1;⟧ (2 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 40,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 41,
+                      "character": 19
+                    }
+                  }
+                },
+                "collapsed": "    visit_with([](int value) {..."
               }
             ]
           }

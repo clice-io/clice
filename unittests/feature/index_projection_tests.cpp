@@ -351,6 +351,7 @@ typedef struct {
         ZASSERT(twin != ast.end());
         ZASSERT(fold.kind == twin->kind);
         ZASSERT(fold.lines == twin->lines);
+        ZASSERT(fold.closer == twin->closer);
     }
     ZASSERT(projected[0].lines);
     ZASSERT(projected[1].lines);

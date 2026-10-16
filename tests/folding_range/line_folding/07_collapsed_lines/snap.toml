@@ -8,6 +8,8 @@ folding_ranges = [
     { kind = "functionBody", at = "⟦int scaled(Point p, … }⟧ (5 lines)", collapsed = "int scaled(Point p,...}" },
     { kind = "comment", at = "⟦/* … */⟧ (3 lines)", collapsed = "/*...*/" },
     { kind = "conditionDirective", at = "⟦#ifdef SHAPES_DEBUG … #endif⟧ (3 lines)", collapsed = "#ifdef SHAPES_DEBUG...#endif" },
-    { kind = "functionBody", at = "⟦void run() { … }⟧ (5 lines)", collapsed = "void run() {...}" },
+    { kind = "region", at = "⟦#pragma region Visitors … #pragma endregion⟧ (4 lines)", collapsed = "#pragma region Visitors...#pragma endregion" },
+    { kind = "functionBody", at = "⟦void run() { … }⟧ (8 lines)", collapsed = "void run() {...}" },
     { at = "⟦    visit([](int value) { … });⟧ (3 lines)", collapsed = "    visit([](int value) {...});" },
+    { at = "⟦    visit_with([](int value) { … value += 1;⟧ (2 lines)", collapsed = "    visit_with([](int value) {..." },
 ]

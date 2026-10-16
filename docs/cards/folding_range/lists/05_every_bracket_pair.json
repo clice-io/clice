@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "#define CHECK(condition) ((void)(condition))\n#define TABLE(...) int table[] = {__VA_ARGS__}\n\nint compute(int a, int b);\n\nusing Callback = void (*)(\n    int code,\n    const char* message);\n\n[[deprecated,\n  nodiscard]] int legacy();\n\nint run(int a, int b) {\n    if (a > 0 &&\n        b > 0 &&\n        a != b) {\n        a = 0;\n    }\n\n    for (int i = 0;\n         i < a;\n         i += 1) {\n        b += i;\n    }\n\n    int values[4] = {1, 2, 3, 4};\n    b += values[\n        a % 4\n    ];\n\n    auto value = (a +\n                  b +\n                  compute(a, b));\n\n    auto widened = static_cast<long>(\n        a * b);\n\n    static_assert(sizeof(int) >=\n                      2,\n                  \"int too small\");\n\n    CHECK(\n        a ==\n        b);\n\n    TABLE(\n        1,\n        2,\n        3);\n\n    return value + static_cast<int>(widened) + table[0];\n}\n",
+      "text": "#define CHECK(condition) ((void)(condition))\n#define TABLE(...) int table[] = {__VA_ARGS__}\n\nint compute(int a, int b);\n\nusing Callback = void (*)(\n    int code,\n    const char* message);\n\n[[deprecated,\n  nodiscard]] int legacy();\n\nint run(int a, int b) {\n    if (a > 0 &&\n        b > 0 &&\n        a != b) {\n        a = 0;\n    }\n\n    for (int i = 0;\n         i < a;\n         i += 1) {\n        b += i;\n    }\n\n    while ((a > b &&\n            b > 0 &&\n            a != 0)) {\n        a -= 1;\n    }\n\n    int values[4] = {1, 2, 3, 4};\n    b += values[\n        a % 4\n    ];\n\n    auto value = (a +\n                  b +\n                  compute(a, b));\n\n    auto widened = static_cast<long>(\n        a * b);\n\n    static_assert(sizeof(int) >=\n                      2,\n                  \"int too small\");\n\n    CHECK(\n        a ==\n        b);\n\n    TABLE(\n        1,\n        2,\n        3);\n\n    return value + static_cast<int>(widened) + table[0];\n}\n",
       "markers": []
     }
   ],
@@ -59,7 +59,7 @@
               {
                 "kind": "functionBody",
                 "at": {
-                  "$place": "int run(int a, int b) ⟦{ … }⟧ (40 lines)",
+                  "$place": "int run(int a, int b) ⟦{ … }⟧ (46 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -67,7 +67,7 @@
                       "character": 22
                     },
                     "end": {
-                      "line": 51,
+                      "line": 57,
                       "character": 1
                     }
                   }
@@ -146,15 +146,50 @@
               },
               {
                 "at": {
+                  "$place": "while ⟦((a > b && … a != 0))⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 25,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 27,
+                      "character": 20
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
+                "kind": "compoundStmt",
+                "at": {
+                  "$place": "a != 0)) ⟦{ … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 27,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 29,
+                      "character": 5
+                    }
+                  }
+                },
+                "collapsed": "{...}"
+              },
+              {
+                "at": {
                   "$place": "b += values⟦[ … ]⟧ (3 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 26,
+                      "line": 32,
                       "character": 15
                     },
                     "end": {
-                      "line": 28,
+                      "line": 34,
                       "character": 5
                     }
                   }
@@ -167,11 +202,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 30,
+                      "line": 36,
                       "character": 17
                     },
                     "end": {
-                      "line": 32,
+                      "line": 38,
                       "character": 32
                     }
                   }
@@ -184,11 +219,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 34,
+                      "line": 40,
                       "character": 36
                     },
                     "end": {
-                      "line": 35,
+                      "line": 41,
                       "character": 14
                     }
                   }
@@ -201,11 +236,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 37,
+                      "line": 43,
                       "character": 17
                     },
                     "end": {
-                      "line": 39,
+                      "line": 45,
                       "character": 34
                     }
                   }
@@ -218,11 +253,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 41,
+                      "line": 47,
                       "character": 9
                     },
                     "end": {
-                      "line": 43,
+                      "line": 49,
                       "character": 10
                     }
                   }
@@ -235,11 +270,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 45,
+                      "line": 51,
                       "character": 9
                     },
                     "end": {
-                      "line": 48,
+                      "line": 54,
                       "character": 10
                     }
                   }

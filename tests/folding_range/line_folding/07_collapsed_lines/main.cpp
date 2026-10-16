@@ -29,10 +29,16 @@ int scaled(Point p,
 void dump();
 #endif
 
+#pragma region Visitors
 void visit(void (*callback)(int));
+void visit_with(void (*callback)(int), int times);
+#pragma endregion
 
 void run() {
     visit([](int value) {
         value += 1;
     });
+    visit_with([](int value) {
+        value += 1;
+    }, 2);
 }

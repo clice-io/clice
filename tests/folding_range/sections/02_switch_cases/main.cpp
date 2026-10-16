@@ -18,6 +18,12 @@ int classify(int code) {
         case 5: result = 5;
             result += 1;
             break;
+        case 6: {
+            int scratch = code;
+            result = scratch;
+        }
+            result += 6;
+            break;
         default:
             result = -1;
             break;

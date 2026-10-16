@@ -23,6 +23,12 @@ int run(int a, int b) {
         b += i;
     }
 
+    while ((a > b &&
+            b > 0 &&
+            a != 0)) {
+        a -= 1;
+    }
+
     int values[4] = {1, 2, 3, 4};
     b += values[
         a % 4

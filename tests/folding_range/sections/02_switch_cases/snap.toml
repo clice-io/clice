@@ -1,10 +1,12 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { kind = "functionBody", at = "int classify(int code) ⟦{ … }⟧ (26 lines)", collapsed = "{...}" },
-    { kind = "compoundStmt", at = "switch (code) ⟦{ … }⟧ (22 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "int classify(int code) ⟦{ … }⟧ (32 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "switch (code) ⟦{ … }⟧ (28 lines)", collapsed = "{...}" },
     { kind = "switchCase", at = "case 1:⟦ …         ⟧ (5 lines)" },
     { kind = "switchCase", at = "case 3:⟦ …         ⟧ (5 lines)" },
     { kind = "compoundStmt", at = "case 4: ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
     { kind = "switchCase", at = "case 5:⟦ result = 5; …         ⟧ (4 lines)" },
+    { kind = "switchCase", at = "case 6:⟦ { …         ⟧ (7 lines)" },
+    { kind = "compoundStmt", at = "case 6: ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { kind = "switchCase", at = "default:⟦ …     ⟧ (4 lines)" },
 ]
