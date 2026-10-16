@@ -1,4 +1,0 @@
-{
-  // The unknown template is the point: the folds follow clang's recovery.
-  "compiles": false
-}

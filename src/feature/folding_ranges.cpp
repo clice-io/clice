@@ -230,6 +230,47 @@ private:
             return;
         }
 
+        // A function's body folds first as its declaration's block; the
+        // same braces again are dropped.
+        if(llvm::isa<clang::CompoundStmt>(stmt)) {
+            add_range(stmt->getSourceRange(), "compoundStmt", "{...}");
+            return;
+        }
+
+        if(const auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(stmt)) {
+            if(construct->isListInitialization()) {
+                add_range(construct->getParenOrBraceRange(), "initializer", "{...}");
+            }
+            return;
+        }
+
+        if(const auto* init = llvm::dyn_cast<clang::InitListExpr>(stmt)) {
+            add_range(clang::SourceRange(init->getLBraceLoc(), init->getRBraceLoc()),
+                      "initializer",
+                      "{...}");
+            return;
+        }
+
+        if(const auto* requirements = llvm::dyn_cast<clang::RequiresExpr>(stmt)) {
+            // The opening brace is recorded nowhere; it follows the
+            // parameter list, if any.
+            auto range = requirements->getSourceRange();
+            if(auto parameters_end = requirements->getRParenLoc(); parameters_end.isValid()) {
+                range.setBegin(parameters_end);
+            }
+            auto tokens = unit.focus_file().tokens().expanded(range).drop_until(
+                [](const clang::syntax::Token& token) {
+                    return token.kind() == clang::tok::l_brace;
+                });
+            if(!tokens.empty()) {
+                add_range(
+                    clang::SourceRange(tokens.front().location(), requirements->getRBraceLoc()),
+                    "requiresExpression",
+                    "{...}");
+            }
+            return;
+        }
+
         if(const auto* reference = llvm::dyn_cast<clang::DeclRefExpr>(stmt)) {
             add_template_arguments(reference->getLAngleLoc(), reference->getRAngleLoc());
         }
@@ -331,15 +372,18 @@ private:
         add_range(clang::SourceRange(left, right), "templateArgs", "<...>");
     }
 
-    /// Every bracket pair of the code, skipped code included, but not those
-    /// of directive lines: a macro's body pairs nothing written here.
+    /// The parentheses and square brackets of the code, and every bracket
+    /// pair of skipped code; not those of directive lines, as a macro's body
+    /// pairs nothing written here. The braces of compiled code fold from the
+    /// AST, which knows those a macro closes (`#define END }`).
     void collect_brackets() {
         auto tokens = lex(content, unit.lang_options());
         auto skipped = skipped_tokens(unit, tokens);
         BracketPairs pairs;
         for(auto [token, skip]: llvm::zip(tokens, skipped)) {
             auto open = pairs.visit(token, skip);
-            if(!open || pairs.in_directive()) {
+            if(!open || pairs.in_directive() ||
+               (token.kind == clang::tok::r_brace && !pairs.in_skipped())) {
                 continue;
             }
             // `[[ ]]` and `(( ))` write one list in two pairs; the outer
@@ -647,6 +691,9 @@ private:
     std::uint32_t section_begin(std::uint32_t label_end) {
         auto end = line_text_end(label_end);
         auto rest = content.slice(label_end, end).ltrim(" \t");
+        while(rest.starts_with("/*") && rest.contains("*/")) {
+            rest = rest.split("*/").second.ltrim(" \t");
+        }
         return rest.empty() || rest.starts_with("//") || rest.starts_with("/*") ? end : label_end;
     }
 
@@ -876,20 +923,8 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
     });
     folds.erase(same.begin(), same.end());
 
-    // Folds nesting by characters can still cross by lines where clang's
-    // recovery from broken code closes a declaration's block at another
-    // brace than the text pairs: the outer one stays.
-    llvm::SmallVector<std::uint32_t> ends;
     result.reserve(folds.size());
     for(const auto& fold: folds) {
-        while(!ends.empty() && ends.back() < fold.start) {
-            ends.pop_back();
-        }
-        if(!ends.empty() && fold.end > ends.back()) {
-            continue;
-        }
-        ends.push_back(fold.end);
-
         protocol::FoldingRange range{.start_line = fold.start, .end_line = fold.end};
         if(fold.item->kind) {
             range.kind = *fold.item->kind;

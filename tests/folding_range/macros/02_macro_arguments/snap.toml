@@ -4,7 +4,7 @@ folding_ranges = [
     { at = "CHECK⟦(compute( … 6))⟧ (4 lines)", collapsed = "(...)" },
     { at = "CHECK(compute⟦( … 6)⟧ (4 lines)", collapsed = "(...)" },
     { at = "CHECK⟦([] { … }())⟧ (4 lines)", collapsed = "(...)" },
-    { at = "CHECK([] ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "CHECK([] ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { at = "MAKE_STRUCT⟦(Generated, { … })⟧ (4 lines)", collapsed = "(...)" },
     { kind = "struct", at = "MAKE_STRUCT(Generated, ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
 ]

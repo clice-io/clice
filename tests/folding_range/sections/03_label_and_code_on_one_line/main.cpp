@@ -10,3 +10,13 @@ private:
     int width;
     int height;
 };
+
+struct Annotated {
+public: /* drawing */ void draw() {
+        int a = 1;
+        a += 1;
+    }
+    void resize();
+private:
+    int width;
+};

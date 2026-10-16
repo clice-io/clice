@@ -5,7 +5,7 @@
 #include "delta.h"
 
 #include "alpha.h"
-// a comment line ends the run
+// a comment line stays in the run
 #include "beta.h"
 #define HEADER "delta.h"
 #include "gamma.h"

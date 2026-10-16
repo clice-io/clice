@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "functionBody", at = "void check(bool ready) ⟦{ … }⟧ (8 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "if (ready) ⟦{ …     ⟧ (4 lines)", collapsed = "{..." },
+]

@@ -12,5 +12,5 @@ folding_ranges = [
     { at = "requires⟦(sizeof(T) > … 1)⟧ (2 lines)", collapsed = "(...)" },
     { at = "auto lambda = []⟦(int a, … int b)⟧ (2 lines)", collapsed = "(...)" },
     { at = "int b) noexcept⟦(sizeof(int) > … 2)⟧ (2 lines) @36", collapsed = "(...)" },
-    { at = "2) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "2) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
 ]

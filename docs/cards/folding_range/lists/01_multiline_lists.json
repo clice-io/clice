@@ -58,6 +58,7 @@
                 "collapsed": "{...}"
               },
               {
+                "kind": "initializer",
                 "at": {
                   "$place": "int values[] = ⟦{ … }⟧ (5 lines)",
                   "path": "main.cpp",
@@ -109,6 +110,7 @@
                 "collapsed": "[...]"
               },
               {
+                "kind": "compoundStmt",
                 "at": {
                   "$place": "] ⟦{ … }⟧ (3 lines)",
                   "path": "main.cpp",
@@ -143,6 +145,7 @@
                 "collapsed": "(...)"
               },
               {
+                "kind": "compoundStmt",
                 "at": {
                   "$place": ") ⟦{ … }⟧ (3 lines) @32",
                   "path": "main.cpp",
@@ -247,6 +250,7 @@
                 "collapsed": "(...)"
               },
               {
+                "kind": "initializer",
                 "at": {
                   "$place": "Rect brace_area⟦{ … }⟧ (4 lines)",
                   "path": "main.cpp",

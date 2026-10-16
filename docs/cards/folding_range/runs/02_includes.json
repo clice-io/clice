@@ -30,7 +30,7 @@
     },
     {
       "path": "main.cpp",
-      "text": "#include \"alpha.h\"\n#include \"beta.h\"\n#include \"gamma.h\"\n\n#include \"delta.h\"\n\n#include \"alpha.h\"\n// a comment line ends the run\n#include \"beta.h\"\n#define HEADER \"delta.h\"\n#include \"gamma.h\"\n#include HEADER\n\n#ifdef WINDOWS_BACKEND\n#include \"windows_api.h\"\n#include \"windows_io.h\"\n#else\n#include \"posix_api.h\"\n#include \"posix_io.h\"\n#endif\n",
+      "text": "#include \"alpha.h\"\n#include \"beta.h\"\n#include \"gamma.h\"\n\n#include \"delta.h\"\n\n#include \"alpha.h\"\n// a comment line stays in the run\n#include \"beta.h\"\n#define HEADER \"delta.h\"\n#include \"gamma.h\"\n#include HEADER\n\n#ifdef WINDOWS_BACKEND\n#include \"windows_api.h\"\n#include \"windows_io.h\"\n#else\n#include \"posix_api.h\"\n#include \"posix_io.h\"\n#endif\n",
       "markers": []
     },
     {

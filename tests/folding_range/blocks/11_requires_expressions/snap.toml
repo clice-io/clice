@@ -1,9 +1,9 @@
 [answers."main.cpp"]
 folding_ranges = [
-    { at = "concept Shape = requires(T t) ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
-    { at = "requires requires(T t) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "requiresExpression", at = "concept Shape = requires(T t) ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "requiresExpression", at = "requires requires(T t) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "void probe(T value) ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
     { at = "if constexpr ⟦(requires { … })⟧ (3 lines)", collapsed = "(...)" },
-    { at = "if constexpr (requires ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-    { at = "}) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "requiresExpression", at = "if constexpr (requires ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "}) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
 ]

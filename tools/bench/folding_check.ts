@@ -508,11 +508,7 @@ async function main(): Promise<void> {
         const stack: CharFold[] = [];
         for (const [index, fold] of sorted.entries()) {
             const previous = sorted[index - 1];
-            if (
-                previous !== undefined &&
-                previous.begin === fold.begin &&
-                previous.end === fold.end
-            ) {
+            if (previous?.begin === fold.begin && previous.end === fold.end) {
                 invariants.add(
                     `chars: duplicate (${previous.kind} / ${fold.kind})`,
                     at(lines.position(fold.begin).line),

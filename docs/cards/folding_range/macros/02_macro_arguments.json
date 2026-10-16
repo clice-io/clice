@@ -92,6 +92,7 @@
                 "collapsed": "(...)"
               },
               {
+                "kind": "compoundStmt",
                 "at": {
                   "$place": "CHECK([] ⟦{ … }⟧ (4 lines)",
                   "path": "main.cpp",

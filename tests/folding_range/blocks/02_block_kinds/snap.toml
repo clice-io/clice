@@ -7,7 +7,7 @@ folding_ranges = [
     { kind = "union", at = "union Value ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { kind = "class", at = "class Canvas ⟦{ … }⟧ (10 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "int area() ⟦{ … }⟧ (6 lines)", collapsed = "{...}" },
-    { at = "auto scale = [](int factor) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "auto scale = [](int factor) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     { kind = "namespace", at = "⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
     { kind = "struct", at = "struct Placeholder ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
 ]

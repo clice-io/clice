@@ -41,6 +41,7 @@
                 "collapsed": "{...}"
               },
               {
+                "kind": "compoundStmt",
                 "at": {
                   "$place": "switch (code) ⟦{ … }⟧ (22 lines)",
                   "path": "main.cpp",
@@ -92,6 +93,7 @@
                 }
               },
               {
+                "kind": "compoundStmt",
                 "at": {
                   "$place": "case 4: ⟦{ … }⟧ (5 lines)",
                   "path": "main.cpp",

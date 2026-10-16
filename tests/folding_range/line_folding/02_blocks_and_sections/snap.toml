@@ -1,11 +1,11 @@
 [characters."main.cpp"]
 folding_ranges = [
     { kind = "functionBody", at = "int f(int a) ⟦{ … }⟧ (16 lines)", collapsed = "{...}" },
-    { at = "if (a) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-    { at = "} else ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-    { at = "try ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-    { at = "} catch (...) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-    { at = "do ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "if (a) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "} else ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "try ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "} catch (...) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "do ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     { kind = "class", at = "class Widget ⟦{ … }⟧ (6 lines)", collapsed = "{...}" },
     { kind = "accessSpecifier", at = "public:⟦ … ⟧ (3 lines)" },
     { kind = "accessSpecifier", at = "private:⟦ … ⟧ (3 lines)" },
@@ -17,11 +17,11 @@ folding_ranges = [
 ["whole lines"."main.cpp"]
 folding_ranges = [
     { kind = "functionBody", at = "⟦int f(int a) { … return a;⟧ (15 lines)" },
-    { at = "⟦    if (a) { … a += 1;⟧ (2 lines)" },
-    { at = "⟦    } else { … a -= 1;⟧ (2 lines)" },
-    { at = "⟦    try { … a *= 2;⟧ (2 lines)" },
-    { at = "⟦    } catch (...) { … a = 0;⟧ (2 lines)" },
-    { at = "⟦    do { … a -= 1;⟧ (2 lines)" },
+    { kind = "compoundStmt", at = "⟦    if (a) { … a += 1;⟧ (2 lines)" },
+    { kind = "compoundStmt", at = "⟦    } else { … a -= 1;⟧ (2 lines)" },
+    { kind = "compoundStmt", at = "⟦    try { … a *= 2;⟧ (2 lines)" },
+    { kind = "compoundStmt", at = "⟦    } catch (...) { … a = 0;⟧ (2 lines)" },
+    { kind = "compoundStmt", at = "⟦    do { … a -= 1;⟧ (2 lines)" },
     { kind = "class", at = "⟦class Widget { … int width;⟧ (5 lines)" },
     { kind = "accessSpecifier", at = "⟦public: … void draw();⟧ (2 lines)" },
     { kind = "accessSpecifier", at = "⟦private: … int width;⟧ (2 lines)" },

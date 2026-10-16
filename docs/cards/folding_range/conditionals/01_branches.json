@@ -4,7 +4,7 @@
   "subtopic": "conditionals",
   "title": "Preprocessor conditionals",
   "summary": "Each branch of a conditional forms a folding range up to the directive that ends it, which stays visible",
-  "prose": "",
+  "prose": "A branch that would cut across a block or a section, such as the\n`#ifdef __cplusplus` around `extern \"C\" {` in a C header, gives way to it, so\nthe folds always nest.",
   "status": "supported",
   "issues": [
     "clangd#1661",

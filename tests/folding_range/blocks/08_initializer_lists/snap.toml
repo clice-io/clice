@@ -5,7 +5,7 @@ folding_ranges = [
     { kind = "class", at = "class initializer_list ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
     { kind = "accessSpecifier", at = "public:⟦ … ⟧ (6 lines)" },
     { kind = "struct", at = "struct Bag ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
-    { at = "Bag braces⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "initializer", at = "Bag braces⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { at = "Bag nested⟦({ … })⟧ (4 lines)", collapsed = "(...)" },
-    { at = "Bag nested(⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "initializer", at = "Bag nested(⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
 ]

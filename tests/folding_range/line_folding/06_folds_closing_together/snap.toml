@@ -3,9 +3,9 @@ folding_ranges = [
     { kind = "struct", at = "struct Item ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "void demo() ⟦{ … }⟧ (12 lines)", collapsed = "{...}" },
     { at = "each⟦(3, [](int value) { … })⟧ (3 lines)", collapsed = "(...)" },
-    { at = "each(3, [](int value) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { kind = "compoundStmt", at = "each(3, [](int value) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     { at = "push⟦({ … })⟧ (4 lines)", collapsed = "(...)" },
-    { at = "push(⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "initializer", at = "push(⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { at = "int sum = add⟦(add( … 2), 3)⟧ (3 lines)", collapsed = "(...)" },
     { at = "int sum = add(add⟦( … 2)⟧ (3 lines)", collapsed = "(...)" },
 ]

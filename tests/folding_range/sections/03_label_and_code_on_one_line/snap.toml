@@ -4,5 +4,9 @@ folding_ranges = [
     { kind = "class", at = "class Widget ⟦{ … }⟧ (10 lines)", collapsed = "{...}" },
     { kind = "accessSpecifier", at = "public:⟦ void draw() { … ⟧ (6 lines)" },
     { kind = "functionBody", at = "public: void draw() ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
-    { kind = "accessSpecifier", at = "private:⟦ … ⟧ (4 lines)" },
+    { kind = "accessSpecifier", at = "private:⟦ … ⟧ (4 lines) @9" },
+    { kind = "struct", at = "struct Annotated ⟦{ … }⟧ (9 lines)", collapsed = "{...}" },
+    { kind = "accessSpecifier", at = "public:⟦ /* drawing */ void draw() { … ⟧ (6 lines)" },
+    { kind = "functionBody", at = "public: /* drawing */ void draw() ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "accessSpecifier", at = "private:⟦ … ⟧ (3 lines) @20" },
 ]
