@@ -47,7 +47,7 @@ Options:
   --workspace <value>             Workspace root directory (optional, skips LSP initialize)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 '''
 exit = 0
 
@@ -90,7 +90,7 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 
 Subcommands:
   stats   What the persisted index holds: its sizes and how its records spread
@@ -111,7 +111,7 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 '''
 exit = 0
 
@@ -127,7 +127,7 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 '''
 exit = 0
 
@@ -162,7 +162,7 @@ Options:
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 '''
 exit = 0
 
@@ -189,7 +189,7 @@ Options:
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 
 Subcommands:
   merge  Merge the wrappings of several build configurations
@@ -222,7 +222,7 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --fresh                         Reindex the files whose content changed since they were indexed first, through the running server or a batch run of this command
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 '''
 exit = 0
 
@@ -237,7 +237,7 @@ Options:
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 '''
 exit = 0
 
@@ -260,7 +260,7 @@ Options:
   --annotation <value>            An annotation file weighing the results: {"name": "compile_time", "unit": "s", "values": {"src/a.cpp": 1.5}} (may be repeated)
   --churn-since <value>           git log --since value of the churn annotation (default 6.months; empty leaves it out)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 
 Subcommands:
   edge       Every entity an edge between two modules carries, and its uses
@@ -290,7 +290,7 @@ Options:
   --workspace <value>             Workspace root directory (default: the current directory)
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 '''
 exit = 0
 
@@ -307,7 +307,7 @@ Options:
   --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --check                         Check the results instead of printing them: report where they differ from the same results computed another way
   --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+                                  Log level of stderr
 '''
 exit = 0
 

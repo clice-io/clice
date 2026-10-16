@@ -72,3 +72,31 @@ stdout = '''
 '''
 stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 0
+
+[test."$ clice analyze modules file \"${WS}/app/main.cpp\""]
+stdout = '''
+{
+  "path": "app/main.cpp",
+  "module": "app",
+  "source": true,
+  "annotations": [],
+  "uses": [
+    {
+      "module": "util",
+      "entities": [
+        "Clock",
+        "Clock::size"
+      ]
+    }
+  ],
+  "usedBy": [],
+  "affinity": [
+    {
+      "module": "util",
+      "entities": 2
+    }
+  ]
+}
+'''
+stderr = "warning: no churn annotation: Process git ended with exit code 128"
+exit = 0
