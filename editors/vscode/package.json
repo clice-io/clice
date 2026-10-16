@@ -355,6 +355,18 @@
           "keyword": [
             "keyword.other"
           ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
           "keyword.controlFlow": [
             "keyword.control"
           ],
@@ -429,6 +441,18 @@
           "keyword": [
             "keyword.other"
           ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
+          ],
           "keyword.controlFlow": [
             "keyword.control"
           ],
@@ -502,6 +526,18 @@
         "scopes": {
           "keyword": [
             "keyword.other"
+          ],
+          "struct.global": [
+            "entity.name.type.struct"
+          ],
+          "struct.member": [
+            "entity.name.type.struct"
+          ],
+          "struct.local": [
+            "entity.name.type.struct"
+          ],
+          "struct.internal": [
+            "entity.name.type.struct"
           ],
           "keyword.controlFlow": [
             "keyword.control"
