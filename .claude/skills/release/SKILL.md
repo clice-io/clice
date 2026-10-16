@@ -40,7 +40,9 @@ to a GitHub pre-release plus the Marketplace and Open VSX pre-release
 channels, and
 prunes odd-minor pre-releases older than 30 days or beyond the newest 25
 (the Zed extension reads only the first 30 releases, which must keep the
-newest stable one). Promotion fails loudly
+newest stable one), sparing the release `mason-org/mason-registry` pins in
+`packages/clice/package.yaml` — Mason's Renovate bumps that pin only to
+stable releases. Promotion fails loudly
 if no packaged green run exists. A failed nightly just means no nightly
 that day — fix main and rerun via dispatch, with the maintainer's
 approval like any release trigger.
