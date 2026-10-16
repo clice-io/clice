@@ -270,7 +270,7 @@ ZEST_CASE(QueryFakeDriver, skip = Windows) {
 
 ZEST_CASE(QueryPrecompileFullBMI, skip = Windows) {
     // Under --precompile the driver asks for a reduced BMI with no module
-    // output to write it to: the BMI the build writes is the full one.
+    // output to write it to: the build writes the full one.
     auto driver =
         create_fake_clang(R"( "/usr/bin/clang-22" "-cc1" "-fmodules-reduced-bmi" "-std=c++23")");
     ZASSERT(driver);
