@@ -229,7 +229,7 @@ ZEST_CASE(ParseCC1DropsCodegen) {
 
 /// Canned `-###` output covering version-skew hardening: an unknown future
 /// flag with a value, plus the module output query() must strip and the
-/// reduced BMI beside it, which stays.
+/// reduced BMI, which stays.
 constexpr static llvm::StringRef fake_cc1_line =
     R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/probe.pcm" "-clice-future-flag" "val" "-std=c++23")";
 
@@ -269,16 +269,18 @@ ZEST_CASE(QueryFakeDriver, skip = Windows) {
 }
 
 ZEST_CASE(QueryPrecompileFullBMI, skip = Windows) {
-    // Under --precompile the driver asks for a reduced BMI with no module
-    // output to write it to: the build writes the full one.
-    auto driver =
-        create_fake_clang(R"( "/usr/bin/clang-22" "-cc1" "-fmodules-reduced-bmi" "-std=c++23")");
+    // --precompile writes the full BMI whatever the driver asks for.
+    auto driver = create_fake_clang(fake_cc1_line);
     ZASSERT(driver);
 
-    auto result = Toolchain::query({driver->c_str()}, "/tmp/a.cppm");
+    auto result = Toolchain::query({driver->c_str(), "--precompile"}, "/tmp/a.cppm");
     ZASSERT(result);
 
-    std::vector<std::string> expected = {"/usr/bin/clang-22", "-cc1", "-std=c++23"};
+    std::vector<std::string> expected = {"/usr/bin/clang-22",
+                                         "-cc1",
+                                         "-triple",
+                                         "x86_64-unknown-linux-gnu",
+                                         "-std=c++23"};
     ZEXPECT(*result == expected);
 }
 

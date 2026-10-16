@@ -459,18 +459,16 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
     // itself. The probe path uses an exact match: all supported drivers echo
     // input paths verbatim, without canonicalizing them.
     //
-    // -fmodules-reduced-bmi stays only beside that module output, where the
-    // real build writes the reduced BMI its importers read (--precompile
-    // hands them the full one): clice builds the same kind, as a reduced BMI
-    // drops what the global module fragment declares and the purview never
-    // names, partial specializations among them.
-    bool reduced_bmi = ranges::contains(*queried, "-fmodules-reduced-bmi") &&
-                       ranges::any_of(*queried, [](llvm::StringRef arg) {
-                           return arg.starts_with("-fmodule-output");
-                       });
+    // The importers of the real build read a reduced BMI where the driver
+    // asks for one, but --precompile writes the full one to -o whatever it
+    // asks: clice builds the kind they read, as a reduced BMI drops what the
+    // global module fragment declares and the purview never names, partial
+    // specializations among them.
+    bool precompile =
+        ranges::any_of(spec.argv, [](llvm::StringRef arg) { return arg == "--precompile"; });
     std::erase_if(*queried, [&](const std::string& arg) {
         llvm::StringRef s(arg);
-        return s == *src_path || (s == "-fmodules-reduced-bmi" && !reduced_bmi) ||
+        return s == *src_path || (s == "-fmodules-reduced-bmi" && precompile) ||
                s.starts_with("-fmodule-output");
     });
 
