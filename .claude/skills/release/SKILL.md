@@ -79,7 +79,9 @@ Every step that tags or publishes needs the maintainer's explicit approval first
    already-tested packages from that commit's green CI run and publishes the
    extensions (Marketplace and Open VSX, without the pre-release flag). The promote path
    creates the GitHub release as a draft if none exists, and publishes it
-   once every platform archive is attached. Package artifacts
+   once every platform archive is attached; it refuses a release that is
+   already published, so notes prepared on the releases page beforehand
+   must be saved as a draft. Package artifacts
    expire 30 days after the CI run, so the tagged commit's run must be
    less than a month old — for an older commit, rerun its main workflow
    first to regenerate the packages.

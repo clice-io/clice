@@ -70,15 +70,22 @@ jobs:
 
       # Stable tag pushes arrive without a release object (nightly creates
       # its own draft before dispatching); create it so `gh release upload`
-      # in the promote matrix has a target. gh finds drafts by tag too.
+      # in the promote matrix has a target. gh finds drafts by tag too. A
+      # release already published, e.g. one created on the releases page,
+      # would show its archives one platform at a time, so it is refused.
       - name: Ensure the release exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.release_tag }}
         run: |
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
+          if ! DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft --jq .isDraft 2> /dev/null); then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
               --title "$TAG" --generate-notes
+          elif [ "$DRAFT" != true ]; then
+            echo "::error::release $TAG is already published; turn it back into a draft (gh release edit $TAG --draft=true) and rerun"
+            exit 1
+          fi
 
   promote:
     needs: locate
