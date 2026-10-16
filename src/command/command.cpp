@@ -277,13 +277,16 @@ void render_driver_arg(const Arg& arg,
 }
 
 unsigned family_visibility(CompilerFamily family) {
+    /// Flang's own options shadow clang's: -Wextra and -Wconversion have
+    /// flang-only spellings that flang ignores, matched before -W<warning>.
+    auto flang = static_cast<unsigned>(option::FlangOption | option::FC1Option);
     /// Exclude the slash-prefixed CL and DXC options otherwise (/D and /I
     /// carry both bits), to prevent /U, /D, /I from matching Unix absolute
     /// paths like /Users/... .
     if(family == CompilerFamily::MSVC || family == CompilerFamily::ClangCL) {
-        return ~0u;
+        return ~flang;
     }
-    return ~static_cast<unsigned>(option::CLOption | option::DXCOption);
+    return ~(flang | option::CLOption | option::DXCOption);
 }
 
 CompilationDatabase::CompilationDatabase(FileTable& files) :

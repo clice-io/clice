@@ -825,6 +825,13 @@ ZEST_CASE(CodegenFilter) {
     EXPECT_CONTAINS(full, "-flto");
 };
 
+ZEST_CASE(FlangOnlyWarnings) {
+    /// Spellings flang ignores are clang's warning options.
+    EXPECT_STRIP("clang++ -Wall -Wextra -Wconversion main.cpp",
+                 "clang++ -Wall -Wextra -Wconversion {}");
+    EXPECT_STRIP("clang-cl /W4 -Wextra /c main.cpp", "clang-cl /W4 -Wextra {}");
+};
+
 ZEST_CASE(DependencyScanFilter) {
     FileTable file_table;
     CompilationDatabase database{file_table};

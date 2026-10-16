@@ -273,7 +273,7 @@ void render_driver_arg(const Arg& arg,
 
 /// The option-table visibility mask of a driver family: CL families see
 /// /U-, /D-style options; the rest exclude them so Unix absolute paths
-/// are not misparsed.
+/// are not misparsed. None sees flang's.
 unsigned family_visibility(CompilerFamily family);
 
 /// Per-file delta of the build's commands — a compilation database
