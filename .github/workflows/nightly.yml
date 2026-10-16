@@ -5,8 +5,8 @@ name: nightly
 # vX.<odd>.YYYYMMDDHH on the odd minor above the newest release, promote its
 # CI packages, and publish it as a GitHub pre-release plus a Marketplace and
 # Open VSX pre-release.
-# Old nightlies are pruned after 30 days; stable (even-minor) releases are
-# never touched.
+# Old nightlies are pruned after 30 days or beyond the newest 25; stable
+# (even-minor) releases are never touched.
 on:
   schedule:
     - cron: "17 2 * * *"
@@ -152,8 +152,9 @@ jobs:
 
       # Tags pushed with GITHUB_TOKEN do not trigger workflows, which is
       # exactly right here: the publish workflows are invoked directly below
-      # instead of through the tag-push release path.
-      - name: Create tag and pre-release
+      # instead of through the tag-push release path. The release stays a
+      # draft until publish-clice.yml has attached every platform archive.
+      - name: Create tag and draft pre-release
         if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -199,7 +200,7 @@ jobs:
             echo "via \`scripts/symbolize.py\`. Extension users on the Marketplace"
             echo "or Open VSX pre-release channel update automatically."
           } > /tmp/notes.md
-          gh release create "$TAG" --prerelease --title "$TAG" \
+          gh release create "$TAG" --draft --prerelease --title "$TAG" \
             --notes-file /tmp/notes.md
           # Mirror the release notes into the run summary page.
           cat /tmp/notes.md >> "$GITHUB_STEP_SUMMARY"
@@ -226,8 +227,10 @@ jobs:
       prerelease: true
     secrets: inherit
 
-  # Nightlies expire after 30 days. Only odd-minor pre-releases are pruned;
-  # stable releases and their tags are never deleted.
+  # Nightlies expire after 30 days, and only the newest 25 are kept: the Zed
+  # extension reads only the first page (30) of the release list, which must
+  # still hold the newest stable release. Only odd-minor pre-releases are
+  # pruned; stable releases and their tags are never deleted.
   cleanup:
     needs: prepare
     runs-on: ubuntu-latest
@@ -239,15 +242,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           CUTOFF=$(date -u -d '30 days ago' +%s)
+          RANK=0
           gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
             --json tagName,isPrerelease,createdAt \
             -q '.[] | select(.isPrerelease) | .tagName + " " + .createdAt' |
+          sort -rV |
           while read -r TAG CREATED; do
             MINOR=$(echo "$TAG" | cut -d. -f2)
             case "$MINOR" in *[!0-9]* | "") continue ;; esac
             if [ $((MINOR % 2)) -eq 0 ]; then continue; fi
-            if [ "$(date -u -d "$CREATED" +%s)" -lt "$CUTOFF" ]; then
-              echo "Pruning $TAG (created $CREATED)"
+            RANK=$((RANK + 1))
+            if [ "$RANK" -gt 25 ] \
+              || [ "$(date -u -d "$CREATED" +%s)" -lt "$CUTOFF" ]; then
+              echo "Pruning $TAG (created $CREATED, newest $RANK)"
               gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" \
                 --cleanup-tag --yes
             fi

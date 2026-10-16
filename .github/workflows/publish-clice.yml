@@ -4,9 +4,13 @@ name: clice
 # release build: every CI run on main packages the binaries its test suites
 # just validated (see test-leg.yml), and this workflow
 # only downloads those artifacts from the green run of the tagged commit,
-# renames them to their asset names, and attaches them to the release. It
-# also re-uploads the packages into the current run so publish-vscode.yml
-# can bundle them.
+# renames them to their asset names, attaches them to the release, and then
+# publishes the release. It also re-uploads the packages into the current run
+# so publish-vscode.yml can bundle them.
+#
+# The release is a draft until every platform archive is attached: drafts are
+# hidden from the public release list, so an editor extension picking the
+# newest release never meets one that lacks its platform's archive.
 on:
   workflow_call:
     inputs:
@@ -65,15 +69,15 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       # Stable tag pushes arrive without a release object (nightly creates
-      # its own before dispatching); create it so `gh release upload` in the
-      # promote matrix has a target.
+      # its own draft before dispatching); create it so `gh release upload`
+      # in the promote matrix has a target. gh finds drafts by tag too.
       - name: Ensure the release exists
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.release_tag }}
         run: |
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft \
               --title "$TAG" --generate-notes
 
   promote:
@@ -149,3 +153,17 @@ jobs:
             pkg/clice.zip
           if-no-files-found: error
           retention-days: 7
+
+  # Only after every leg of the matrix succeeded; a failed leg leaves the
+  # draft for `gh run rerun --failed`.
+  publish:
+    needs: promote
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.release_tag }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

@@ -1,9 +1,6 @@
 use zed_extension_api::{
-    self as zed,
-    http_client::{HttpMethod, HttpRequest},
-    serde_json,
-    settings::LspSettings,
-    Architecture, DownloadedFileType, LanguageServerId, LanguageServerInstallationStatus, Os,
+    self as zed, serde_json, settings::LspSettings, Architecture, DownloadedFileType,
+    GithubRelease, GithubReleaseOptions, LanguageServerId, LanguageServerInstallationStatus, Os,
     Result, Worktree,
 };
 
@@ -94,59 +91,32 @@ fn selects_pre_release(channel: Option<&serde_json::Value>) -> Result<bool> {
     }
 }
 
-/// The version and download URL of the release to install, from GitHub's
-/// release list (newest first): the newest one of the channel that ships
-/// `asset_suffix`. The stable channel takes the newest pre-release while no
-/// stable release ships it, so it works before the first stable release and
-/// follows stable releases once they exist.
-fn select_release(
-    releases: &serde_json::Value,
+/// The newest release of the channel; `latest(pre_release)` is the newest
+/// release that is, or is not, a pre-release. The stable channel takes the
+/// newest pre-release while there is no stable release, so it works before the
+/// first stable release and follows stable releases once they exist.
+fn latest_release(
     pre_release: bool,
-    asset_suffix: &str,
-) -> Option<(String, String)> {
-    let newest = |prerelease: bool| {
-        releases
-            .as_array()?
-            .iter()
-            .filter(|release| release["prerelease"].as_bool() == Some(prerelease))
-            .find_map(|release| {
-                // Tags are `v<version>`; asset names carry the bare version.
-                let version = release["tag_name"].as_str()?.trim_start_matches('v');
-                let name = format!("clice-{version}.{asset_suffix}");
-                let asset = release["assets"]
-                    .as_array()?
-                    .iter()
-                    .find(|asset| asset["name"] == name.as_str() && asset["state"] == "uploaded")?;
-                let url = asset["browser_download_url"].as_str()?;
-                Some((version.to_owned(), url.to_owned()))
-            })
-    };
-
+    latest: impl Fn(bool) -> Result<GithubRelease>,
+) -> Result<GithubRelease> {
     if pre_release {
-        newest(true)
+        latest(true)
     } else {
-        newest(false).or_else(|| newest(true))
+        latest(false).or_else(|_| latest(true))
     }
 }
 
-/// `zed::latest_github_release` only offers the newest release of a channel,
-/// whose archives are uploaded platform by platform after it is published,
-/// and scans only the first page of releases, which a month of nightlies
-/// fills.
-fn latest_release(pre_release: bool, package: &Package) -> Result<(String, String)> {
-    let response = HttpRequest::builder()
-        .method(HttpMethod::Get)
-        .url(format!(
-            "https://api.github.com/repos/{REPOSITORY}/releases?per_page=100"
-        ))
-        .build()?
-        .fetch()
-        .map_err(|error| format!("failed to list clice releases: {error}"))?;
-    let releases: serde_json::Value =
-        serde_json::from_slice(&response.body).map_err(|error| error.to_string())?;
-
-    select_release(&releases, pre_release, package.asset_suffix)
-        .ok_or_else(|| format!("no clice release ships a {} archive", package.asset_suffix))
+/// The version and download URL of `release`'s archive for this platform.
+fn release_asset(release: &GithubRelease, asset_suffix: &str) -> Result<(String, String)> {
+    // Tags are `v<version>`; asset names carry the bare version.
+    let version = release.version.trim_start_matches('v');
+    let name = format!("clice-{version}.{asset_suffix}");
+    let asset = release
+        .assets
+        .iter()
+        .find(|asset| asset.name == name)
+        .ok_or_else(|| format!("clice {version} ships no {name}"))?;
+    Ok((version.to_owned(), asset.download_url.clone()))
 }
 
 /// The `clice-<version>` directories in the work directory.
@@ -199,7 +169,22 @@ fn install_latest(
     pre_release: bool,
     package: &Package,
 ) -> Result<String> {
-    let (version, url) = latest_release(pre_release, package)?;
+    // `zed::latest_github_release` reads only the first page of releases and
+    // takes the newest one with any asset. That suffices because the release
+    // workflows publish a release only once every platform archive is
+    // attached, and nightly.yml prunes nightlies so that the newest stable
+    // release stays on the first page.
+    let release = latest_release(pre_release, |pre_release| {
+        zed::latest_github_release(
+            REPOSITORY,
+            GithubReleaseOptions {
+                require_assets: true,
+                pre_release,
+            },
+        )
+    })
+    .map_err(|error| format!("failed to find a clice release: {error}"))?;
+    let (version, url) = release_asset(&release, package.asset_suffix)?;
 
     let version_dir = format!("clice-{version}");
     let binary_path = format!("{version_dir}/{}", package.binary);
@@ -281,81 +266,90 @@ zed::register_extension!(CliceExtension);
 mod tests {
     use super::*;
     use serde_json::json;
+    use zed_extension_api::GithubReleaseAsset;
 
     const LINUX: &str = "x86_64-unknown-linux-gnu.tar.gz";
 
-    fn release(tag: &str, prerelease: bool, suffixes: &[&str]) -> serde_json::Value {
+    fn release(tag: &str, suffixes: &[&str]) -> GithubRelease {
         let version = tag.trim_start_matches('v');
-        let assets: Vec<_> = suffixes
-            .iter()
-            .map(|suffix| {
-                let name = format!("clice-{version}.{suffix}");
-                json!({ "name": name, "state": "uploaded", "browser_download_url": format!("https://dl/{name}") })
-            })
-            .collect();
-        json!({ "tag_name": tag, "prerelease": prerelease, "assets": assets })
+        GithubRelease {
+            version: tag.to_owned(),
+            assets: suffixes
+                .iter()
+                .map(|suffix| {
+                    let name = format!("clice-{version}.{suffix}");
+                    GithubReleaseAsset {
+                        download_url: format!("https://dl/{name}"),
+                        name,
+                    }
+                })
+                .collect(),
+        }
     }
 
-    fn picked(version: &str, suffix: &str) -> Option<(String, String)> {
-        Some((
-            version.to_owned(),
-            format!("https://dl/clice-{version}.{suffix}"),
-        ))
+    /// `latest` over a release list with only these newest releases.
+    fn newest(
+        stable: Option<&'static str>,
+        pre_release: Option<&'static str>,
+    ) -> impl Fn(bool) -> Result<GithubRelease> {
+        move |wants_pre_release| {
+            let tag = if wants_pre_release {
+                pre_release
+            } else {
+                stable
+            };
+            tag.map(|tag| release(tag, &[LINUX]))
+                .ok_or_else(|| "finding a prerelease".to_owned())
+        }
     }
 
-    #[test]
-    fn skips_release_still_uploading() {
-        let mut uploading = release("v0.3.2026110208", true, &[LINUX]);
-        uploading["assets"][0]["state"] = json!("open");
-        let releases = json!([
-            uploading,
-            release("v0.3.2026110108", true, &["x86_64-apple-darwin.tar.gz"]),
-            release("v0.3.2026103108", true, &[LINUX]),
-            release("v0.3.2026103008", true, &[LINUX]),
-        ]);
-        assert_eq!(
-            select_release(&releases, true, LINUX),
-            picked("0.3.2026103108", LINUX)
-        );
+    fn version(release: Result<GithubRelease>) -> Result<String> {
+        release.map(|release| release.version)
     }
 
     #[test]
     fn stable_prefers_stable_release() {
-        let releases = json!([
-            release("v0.3.2026110108", true, &[LINUX]),
-            release("v0.2.0", false, &[LINUX]),
-        ]);
+        let latest = newest(Some("v0.2.0"), Some("v0.3.2026110108"));
+        assert_eq!(version(latest_release(false, &latest)), Ok("v0.2.0".into()));
         assert_eq!(
-            select_release(&releases, false, LINUX),
-            picked("0.2.0", LINUX)
-        );
-        assert_eq!(
-            select_release(&releases, true, LINUX),
-            picked("0.3.2026110108", LINUX)
+            version(latest_release(true, &latest)),
+            Ok("v0.3.2026110108".into())
         );
     }
 
     #[test]
     fn stable_falls_back_to_pre_release() {
-        let releases = json!([
-            release("v0.1.2026100509", true, &[LINUX]),
-            release("v0.0.9", false, &["x86_64-w64-mingw32.zip"]),
-        ]);
+        let latest = newest(None, Some("v0.1.2026100509"));
         assert_eq!(
-            select_release(&releases, false, LINUX),
-            picked("0.1.2026100509", LINUX)
+            version(latest_release(false, &latest)),
+            Ok("v0.1.2026100509".into())
         );
     }
 
     #[test]
-    fn no_release_ships_platform() {
-        let releases = json!([release("v0.2.0", false, &[LINUX])]);
-        assert_eq!(
-            select_release(&releases, false, "x86_64-w64-mingw32.zip"),
-            None
+    fn pre_release_never_takes_stable() {
+        assert!(latest_release(true, newest(Some("v0.2.0"), None)).is_err());
+        assert!(latest_release(false, newest(None, None)).is_err());
+    }
+
+    #[test]
+    fn picks_platform_asset() {
+        let release = release(
+            "v0.1.2026100509",
+            &[
+                "x86_64-apple-darwin.tar.gz",
+                LINUX,
+                "x86_64-w64-mingw32.zip",
+            ],
         );
-        assert_eq!(select_release(&releases, true, LINUX), None);
-        assert_eq!(select_release(&json!({}), false, LINUX), None);
+        assert_eq!(
+            release_asset(&release, LINUX),
+            Ok((
+                "0.1.2026100509".into(),
+                format!("https://dl/clice-0.1.2026100509.{LINUX}")
+            ))
+        );
+        assert!(release_asset(&release, "aarch64-w64-mingw32.zip").is_err());
     }
 
     #[test]

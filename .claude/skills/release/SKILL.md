@@ -38,10 +38,18 @@ package artifacts (path-filtered runs such as docs-only commits build
 nothing), tags exactly that commit, downloads its packages, attaches them
 to a GitHub pre-release plus the Marketplace and Open VSX pre-release
 channels, and
-prunes odd-minor pre-releases older than 30 days. Promotion fails loudly
+prunes odd-minor pre-releases older than 30 days or beyond the newest 25
+(the Zed extension reads only the first 30 releases, which must keep the
+newest stable one). Promotion fails loudly
 if no packaged green run exists. A failed nightly just means no nightly
 that day — fix main and rerun via dispatch, with the maintainer's
 approval like any release trigger.
+
+Every GitHub release, nightly or stable, is created as a draft and
+published by `publish-clice.yml` only once all six platform archives are
+attached: drafts are invisible to the editor extensions, so none of them
+ever installs from a half-uploaded release. A failed promote leg leaves
+the draft behind; `gh run rerun <id> --failed` finishes and publishes it.
 
 The vsix packaging matrix runs in parallel, but release upload and
 registry publishing happen in one serial job (`publish-release`) with
@@ -68,7 +76,8 @@ Every step that tags or publishes needs the maintainer's explicit approval first
    The tag push runs the release path of `main.yml`, which promotes the
    already-tested packages from that commit's green CI run and publishes the
    extensions (Marketplace and Open VSX, without the pre-release flag). The promote path
-   creates the GitHub release if the tag push did not. Package artifacts
+   creates the GitHub release as a draft if none exists, and publishes it
+   once every platform archive is attached. Package artifacts
    expire 30 days after the CI run, so the tagged commit's run must be
    less than a month old — for an older commit, rerun its main workflow
    first to regenerate the packages.
