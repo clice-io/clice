@@ -5,11 +5,12 @@ type = "none"
 [answers.ID.semantic_token]
 text = "ID"
 type = "macro"
+modifiers = ["callable"]
 
 [answers.value.semantic_token]
 text = "value"
 type = "variable"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.CALL.semantic_token]
 text = "CALL"

@@ -36,6 +36,8 @@ struct TUIndexMirror {
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint8_t> sym_scopes;
     std::vector<std::uint16_t> sym_flags;
+    std::vector<std::uint8_t> sym_token_kinds;
+    std::vector<std::uint32_t> sym_token_modifiers;
     std::vector<std::uint32_t> sym_files;
     std::vector<std::uint32_t> sym_reference_ends;
     std::vector<std::uint32_t> sym_references;
@@ -54,6 +56,8 @@ struct TUIndexMirror {
         sym_kinds.push_back(identity.kind.value());
         sym_scopes.push_back(static_cast<std::uint8_t>(identity.scope));
         sym_flags.push_back(static_cast<std::uint16_t>(identity.flags));
+        sym_token_kinds.push_back(static_cast<std::uint8_t>(identity.token_class.kind));
+        sym_token_modifiers.push_back(identity.token_class.modifiers);
         sym_files.push_back(identity.file);
         sym_references.insert(sym_references.end(), references.begin(), references.end());
         sym_reference_ends.push_back(static_cast<std::uint32_t>(sym_references.size()));

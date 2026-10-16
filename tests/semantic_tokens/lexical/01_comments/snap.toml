@@ -6,13 +6,10 @@ semantic_tokens = [
     { at = "⟦ * a block comment⟧", type = "comment" },
     { at = "⟦ * spanning several lines⟧", type = "comment" },
     { at = "⟦ */⟧", type = "comment" },
-    { at = "⟦/// a doc comment⟧", type = "comment" },
+    { at = "⟦/// a doc comment⟧", type = "comment", modifiers = ["documentation"] },
     { at = "⟦int⟧ after_comments = 0;", type = "primitive" },
-    {
-        at = "int ⟦after_comments⟧ = 0;",
-        type = "variable",
-        modifiers = ["definition", "globalScope"],
-    },
+    { at = "int ⟦after_comments⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int after_comments ⟦=⟧ 0;", type = "operator" },
     { at = "int after_comments = ⟦0⟧;", type = "number" },
     { at = "⟦/* first⟧", type = "comment" },
     { at = "⟦second */⟧ int after_block = 1;", type = "comment" },
@@ -20,7 +17,8 @@ semantic_tokens = [
     {
         at = "second */ int ⟦after_block⟧ = 1;",
         type = "variable",
-        modifiers = ["definition", "globalScope"],
+        modifiers = ["definition", "global"],
     },
+    { at = "second */ int after_block ⟦=⟧ 1;", type = "operator" },
     { at = "second */ int after_block = ⟦1⟧;", type = "number" },
 ]

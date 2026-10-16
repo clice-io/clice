@@ -69,6 +69,9 @@ public:
 private:
     Lexer(llvm::StringRef content, std::uint32_t start_offset, Options options);
 
+    bool keep_comments = false;
+    /// Where the last token other than eod ended.
+    std::uint32_t lexed_end = 0;
     bool parse_pp_keyword = false;
     bool parse_header_name = false;
     bool after_has_include = false;

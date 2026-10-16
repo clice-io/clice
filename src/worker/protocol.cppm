@@ -116,7 +116,6 @@ inline bool is_transport_error(const protocol::Error& error) {
 /// Kind of AST query dispatched to a stateful worker.
 enum class QueryKind : uint8_t {
     Hover,
-    SemanticTokens,
 };
 
 /// Unified parameters for all stateful AST queries.
@@ -489,6 +488,16 @@ struct InlayHintParams {
     Config config;
 };
 
+/// Request the semantic tokens of an open file's AST (see
+/// feature::semantic_tokens).
+struct SemanticTokensParams {
+    std::string path;
+
+    /// The workspace config, carried whole — the worker holds no config
+    /// state and a config change simply shows up on the next request.
+    Config config;
+};
+
 /// Request the outline of an open file's AST (see feature::document_symbols).
 struct DocumentSymbolParams {
     std::string path;
@@ -572,6 +581,13 @@ struct RequestTraits<clice::worker::SelectionRangeParams> {
     /// Empty without an AST.
     using Result = std::vector<std::vector<clice::LocalSourceRange>>;
     constexpr inline static std::string_view method = "clice/worker/selectionRange";
+};
+
+template <>
+struct RequestTraits<clice::worker::SemanticTokensParams> {
+    /// Empty without an AST.
+    using Result = std::optional<std::vector<clice::feature::SemanticToken>>;
+    constexpr inline static std::string_view method = "clice/worker/semanticTokens";
 };
 
 template <>

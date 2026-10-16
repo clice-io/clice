@@ -8,6 +8,7 @@ module clice;
 
 import :index.serialization;
 import :index.shard;
+import :semantic.token_class;
 import :support.logging;
 
 namespace clice::index {
@@ -307,6 +308,8 @@ struct LocalTable {
     llvm::ArrayRef<std::uint8_t> scopes;
     llvm::ArrayRef<std::uint64_t> parents;
     llvm::ArrayRef<std::uint16_t> flags;
+    llvm::ArrayRef<std::uint8_t> token_kinds;
+    llvm::ArrayRef<std::uint32_t> token_modifiers;
     llvm::ArrayRef<std::uint64_t> sym_hashes;
 
     static LocalTable of(BlobView root) {
@@ -317,6 +320,8 @@ struct LocalTable {
             .scopes = to_array_ref(root[&ShardBlob::local_scopes]),
             .parents = to_array_ref(root[&ShardBlob::local_parents]),
             .flags = to_array_ref(root[&ShardBlob::local_flags]),
+            .token_kinds = to_array_ref(root[&ShardBlob::local_token_kinds]),
+            .token_modifiers = to_array_ref(root[&ShardBlob::local_token_modifiers]),
             .sym_hashes = to_array_ref(root[&ShardBlob::sym_hashes]),
         };
     }
@@ -346,6 +351,8 @@ struct LocalTable {
             .kind = SymbolKind(kinds[k]),
             .scope = static_cast<SymbolScope>(scopes[k]),
             .flags = static_cast<SymbolFlags>(flags[k]),
+            .token_class = {.kind = static_cast<SemanticTokenKind>(token_kinds[k]),
+                            .modifiers = token_modifiers[k]},
         };
     }
 };
@@ -671,7 +678,9 @@ CheckResult locals_ok(BlobView root) {
     auto table = LocalTable::of(root);
     if(!sparse_ok(table.syms, table.kinds.size(), table.sym_hashes.size()) ||
        table.scopes.size() != table.size() || table.parents.size() != table.size() ||
-       table.flags.size() != table.size() || root[&ShardBlob::local_names].size() != table.size() ||
+       table.flags.size() != table.size() || table.token_kinds.size() != table.size() ||
+       table.token_modifiers.size() != table.size() || !all_token_kinds(table.token_kinds) ||
+       root[&ShardBlob::local_names].size() != table.size() ||
        root[&ShardBlob::local_args].size() != table.size()) {
         return std::unexpected("local symbol columns do not line up");
     }
@@ -1417,6 +1426,7 @@ struct LocalSymbol {
     SymbolKind kind;
     SymbolScope scope;
     SymbolFlags flags;
+    TokenClass token_class;
 };
 
 LocalSymbol own(const SymbolIdentity& identity) {
@@ -1427,6 +1437,7 @@ LocalSymbol own(const SymbolIdentity& identity) {
         .kind = identity.kind,
         .scope = identity.scope,
         .flags = identity.flags,
+        .token_class = identity.token_class,
     };
 }
 
@@ -1441,6 +1452,7 @@ void collect_locals(BlobView root, llvm::DenseMap<SymbolHash, LocalSymbol>& loca
         // behind `#ifdef`); like the project table, the union is kept.
         if(!inserted) {
             it->second.flags |= identity.flags;
+            it->second.token_class.modifiers |= identity.token_class.modifiers;
         }
     }
 }
@@ -1595,6 +1607,8 @@ void emit_blob(const MergedEntries<MaskT>& merged,
         blob.local_args.push_back(info->args);
         blob.local_parents.push_back(info->parent);
         blob.local_flags.push_back(static_cast<std::uint16_t>(info->flags));
+        blob.local_token_kinds.push_back(static_cast<std::uint8_t>(info->token_class.kind));
+        blob.local_token_modifiers.push_back(info->token_class.modifiers);
     }
 
     auto encoding = encoding_of(blob.variants.empty() ? 1 : blob.variants.size());

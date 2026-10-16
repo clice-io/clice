@@ -106,7 +106,7 @@
               "type": "field",
               "modifiers": [
                 "definition",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -121,7 +121,7 @@
               "modifiers": [
                 "declaration",
                 "static",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -136,7 +136,7 @@
               "modifiers": [
                 "definition",
                 "readonly",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -150,7 +150,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -164,7 +164,7 @@
               "type": "parameter",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -178,7 +178,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -191,7 +191,7 @@
               "text": "param",
               "type": "parameter",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -204,7 +204,7 @@
               "text": "global_value",
               "type": "variable",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -217,7 +217,8 @@
               "text": "field",
               "type": "field",
               "modifiers": [
-                "classScope"
+                "modification",
+                "member"
               ]
             }
           }
@@ -230,7 +231,7 @@
               "text": "local",
               "type": "variable",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -244,7 +245,8 @@
               "type": "variable",
               "modifiers": [
                 "static",
-                "classScope"
+                "modification",
+                "member"
               ]
             }
           }
@@ -257,7 +259,7 @@
               "text": "field",
               "type": "field",
               "modifiers": [
-                "classScope"
+                "member"
               ]
             }
           }
@@ -271,7 +273,7 @@
               "type": "enumMember",
               "modifiers": [
                 "readonly",
-                "globalScope"
+                "global"
               ]
             }
           }

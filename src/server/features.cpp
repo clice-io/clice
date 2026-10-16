@@ -653,23 +653,20 @@ Features::RawResult Features::hover(Ticket ticket,
     co_return std::move(raw);
 }
 
-Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_token token) {
+Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellation_token token) {
     auto& session = ticket.session;
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.full_lex = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto entries = feature::extract_index_entries(*source->shard);
-            auto tokens = feature::index_semantic_tokens(
-                session->text,
-                index_lang_options(*session),
-                entries.occurrences,
-                entries.decls,
-                [&](index::SymbolHash hash) { return query.symbol_info(hash); });
             session->index_served = true;
-            co_return to_raw(feature::semantic_tokens_to_protocol(tokens,
-                                                                  session->positions(),
-                                                                  PositionEncoding::UTF16));
+            co_return feature::index_semantic_tokens(session->text,
+                                                     index_lang_options(*session),
+                                                     feature::extract_index_entries(*source->shard),
+                                                     [&](index::SymbolHash hash) {
+                                                         return query.symbol_info(hash);
+                                                     },
+                                                     project.config.semantic_tokens);
         }
         case Route::Empty: {
             // The client caches this null, and only a semanticTokens
@@ -678,14 +675,11 @@ Features::RawResult Features::semantic_tokens(Ticket ticket, kota::cancellation_
             // this flag, so an empty pull registers the same interest
             // as a served one.
             session->index_served = true;
-            co_return serde_raw{"null"};
+            co_return std::nullopt;
         }
         case Route::Ast: break;
     }
-    co_return co_await dispatcher.query(worker::QueryKind::SemanticTokens,
-                                        ticket,
-                                        {},
-                                        std::move(token));
+    co_return co_await dispatcher.semantic_tokens(ticket, std::move(token)).or_fail();
 }
 
 Features::RawResult Features::inlay_hints(Ticket ticket,

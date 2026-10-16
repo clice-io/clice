@@ -1,9 +1,9 @@
 [answers.Color.semantic_token]
 text = "Color"
 type = "enum"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.Red.semantic_token]
 text = "Red"
 type = "enumMember"
-modifiers = ["readonly", "globalScope"]
+modifiers = ["readonly", "global"]

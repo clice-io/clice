@@ -68,7 +68,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -82,7 +82,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -95,7 +95,7 @@
               "text": "a",
               "type": "variable",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -108,7 +108,7 @@
               "text": "b",
               "type": "variable",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }

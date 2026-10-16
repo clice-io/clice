@@ -39,7 +39,7 @@
               "text": "done",
               "type": "label",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -53,7 +53,7 @@
               "type": "label",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }

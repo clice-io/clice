@@ -311,6 +311,7 @@ enum class EvidenceKind : std::uint8_t {
     Completion,
     SignatureHelp,
     Format,
+    SemanticTokens,
     Count,
 };
 

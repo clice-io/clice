@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "lexical",
   "title": "Literal prefixes and suffixes",
-  "summary": "Literal prefixes and suffixes do not receive tokens of their own yet",
-  "prose": "",
-  "status": "unsupported",
+  "summary": "A literal's prefix and suffix are tokens of their own, with the `affix` modifier",
+  "prose": "They keep the kind of their literal; a user-defined literal's suffix also\ncarries `userDefined`.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -53,10 +53,12 @@
           "label": "wide_prefix",
           "marker": "wide_prefix",
           "value": {
-            "wrong": "the encoding prefix should be a token of its own",
             "semantic_token": {
-              "text": "L\"wide string\"",
-              "type": "string"
+              "text": "L",
+              "type": "string",
+              "modifiers": [
+                "affix"
+              ]
             }
           }
         },
@@ -64,10 +66,12 @@
           "label": "utf8_prefix",
           "marker": "utf8_prefix",
           "value": {
-            "wrong": "the encoding prefix should be a token of its own",
             "semantic_token": {
-              "text": "u8\"utf-8 string\"",
-              "type": "string"
+              "text": "u8",
+              "type": "string",
+              "modifiers": [
+                "affix"
+              ]
             }
           }
         },
@@ -75,10 +79,12 @@
           "label": "unsigned_suffix",
           "marker": "unsigned_suffix",
           "value": {
-            "wrong": "the suffix should be a token of its own",
             "semantic_token": {
-              "text": "42u",
-              "type": "number"
+              "text": "u",
+              "type": "number",
+              "modifiers": [
+                "affix"
+              ]
             }
           }
         },
@@ -86,10 +92,12 @@
           "label": "float_suffix",
           "marker": "float_suffix",
           "value": {
-            "wrong": "the suffix should be a token of its own",
             "semantic_token": {
-              "text": "3.14f",
-              "type": "number"
+              "text": "f",
+              "type": "number",
+              "modifiers": [
+                "affix"
+              ]
             }
           }
         },
@@ -97,10 +105,13 @@
           "label": "literal_operator_suffix",
           "marker": "literal_operator_suffix",
           "value": {
-            "wrong": "the suffix should be a token of its own",
             "semantic_token": {
-              "text": "4_kb",
-              "type": "number"
+              "text": "_kb",
+              "type": "number",
+              "modifiers": [
+                "userDefined",
+                "affix"
+              ]
             }
           }
         }

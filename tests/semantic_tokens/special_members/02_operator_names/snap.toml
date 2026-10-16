@@ -9,9 +9,9 @@ type = "keyword"
 [answers.assign.semantic_token]
 text = "="
 type = "operator"
-modifiers = ["userDefined"]
+modifiers = ["member", "userDefined"]
 
 [answers.plus.semantic_token]
 text = "+"
 type = "operator"
-modifiers = ["userDefined"]
+modifiers = ["readonly", "member", "userDefined"]

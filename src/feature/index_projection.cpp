@@ -5,8 +5,9 @@ module;
 module clice;
 
 import :feature.feature;
-import :feature.lexical_classify;
+import :feature.semantic_token_stream;
 import :index.shard;
+import :semantic.token_class;
 import :syntax.documentation;
 import :syntax.lexer;
 import :syntax.lexical_scan;
@@ -41,6 +42,9 @@ IndexEntries extract_index_entries(const index::Shard& shard) {
                             .definition = kind.is_one_of(RelationKind::Definition)});
         } else if(kind.isReference() && nested(relation.range)) {
             names.push_back({.range = relation.range, .target = hash});
+        }
+        if(kind.is_one_of(RelationKind::Write)) {
+            entries.writes.push_back({.range = relation.range, .target = hash});
         }
         return true;
     });
@@ -157,192 +161,95 @@ auto index_lang_options(llvm::StringRef path, bool c_only, llvm::StringRef stand
 
 auto index_semantic_tokens(llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
-                           llvm::ArrayRef<index::Occurrence> occurrences,
-                           llvm::ArrayRef<IndexDecl> decls,
-                           IndexSymbolResolver resolve) -> std::vector<SemanticToken> {
+                           const IndexEntries& entries,
+                           IndexSymbolResolver resolve,
+                           const SemanticTokensOptions& options) -> std::vector<SemanticToken> {
     auto& profile = profile_for(lang_opts);
+    using Kind = SemanticTokenKind;
+    using Modifier = SemanticTokenModifier;
 
-    // Entries arrive in shard order (occurrences by range, relations grouped
-    // by symbol); token matching needs both sorted by anchor begin.
-    std::vector<index::Occurrence> occs(occurrences.begin(), occurrences.end());
-    std::ranges::sort(occs, {}, [](const index::Occurrence& o) { return o.range.begin; });
-    std::vector<IndexDecl> sorted_decls(decls.begin(), decls.end());
-    std::ranges::sort(sorted_decls, {}, [](const IndexDecl& r) { return r.range.begin; });
-
-    // The semantic classification of the token anchored at `begin`: decl
-    // entries carry their Declaration/Definition modifier; occurrences of
-    // symbols without a decl entry here contribute the bare kind. Multiple
-    // entries on one anchor (merged shard variants) combine — kind
-    // disagreement is a Conflict, like instantiation disagreement on the
-    // AST path.
-    auto semantic_at = [&](std::uint32_t begin, llvm::StringRef spelling) {
-        Classified semantic;
-        llvm::SmallVector<index::SymbolHash, 4> covered;
-
-        auto decl_it = std::ranges::lower_bound(sorted_decls, begin, {}, [](const IndexDecl& r) {
-            return r.range.begin;
-        });
-        for(; decl_it != sorted_decls.end() && decl_it->range.begin == begin; ++decl_it) {
-            auto info = resolve(decl_it->symbol);
-            if(!info) {
-                continue;
-            }
-            auto modifier =
-                decl_it->definition ? SymbolModifiers::Definition : SymbolModifiers::Declaration;
-            combine(semantic, {info->kind, SymbolModifiers::to_mask(modifier)});
-            covered.push_back(decl_it->symbol);
-        }
-
-        auto occ_it = std::ranges::lower_bound(occs, begin, {}, [](const index::Occurrence& o) {
-            return o.range.begin;
-        });
-        for(; occ_it != occs.end() && occ_it->range.begin == begin; ++occ_it) {
-            if(llvm::is_contained(covered, occ_it->target)) {
-                continue;
-            }
-            auto info = resolve(occ_it->target);
-            if(info && (!overrides(spelling) || info->name == spelling)) {
-                combine(semantic, {info->kind, 0});
-            }
-        }
-        return semantic;
-    };
-
-    // A module occurrence spans the whole written name (`demo.core`,
-    // `foo:part` — the index stores one occurrence over all components), while
-    // the raw lex sees one token per component; collect the spans so the
-    // components past the first classify like the first, as on the AST
-    // path.
-    std::vector<LocalSourceRange> module_spans;
-    for(const auto& occ: occs) {
-        if(auto info = resolve(occ.target); info && info->kind == SymbolKind::Module) {
-            module_spans.push_back(occ.range);
-        }
-    }
-
-    std::vector<SemanticToken> tokens;
-
-    enum class Directive : std::uint8_t {
-        None,
-        AfterHash,
-        AfterDefine,
-        Body,
-    };
-    Directive directive = Directive::None;
-    bool after_line_export = false;
-
-    Lexer lexer(content, {.keep_comments = true, .lang_opts = &profile.opts});
-    while(true) {
-        auto token = lexer.advance();
-        if(token.is_eof()) {
-            break;
-        }
-        if(token.is_eod()) {
-            directive = Directive::None;
-            continue;
-        }
-        if(token.kind == clang::tok::comment) {
-            append_token(tokens, token.range, SymbolKind::Comment, 0);
-            continue;
-        }
-
-        auto spelling = token.text(content);
-
-        // The raw lexer leaves keywords unresolved; the profile's
-        // identifier table maps them to their token kinds, which also
-        // covers alternative operator spellings (and, or, not).
+    // The rule the AST applies to the token a name occurrence resolves
+    // to: an identifier, a destructor's `~`, or for an operator the
+    // punctuation or the user-defined literal spelling it.
+    llvm::DenseMap<std::uint32_t, clang::tok::TokenKind> lexed;
+    Lexer lexer(content, {.lang_opts = &profile.opts});
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         auto kind = token.kind;
         if(token.is_identifier()) {
-            kind = profile.keywords.get(spelling).getTokenID();
+            auto it = profile.keywords.find(token.text(content));
+            kind = it == profile.keywords.end() ? clang::tok::identifier : it->second->getTokenID();
         }
-        auto lexical_class = classify_lexical_kind(kind, spelling);
-        Classified lexical{lexical_class.kind, 0};
-
-        // The contextual `module` and `import` open a module declaration
-        // or an import at the start of a line, behind `export` at most,
-        // and before what clang requires to recognize them.
-        bool line_head = token.is_at_start_of_line || after_line_export;
-        after_line_export = token.is_at_start_of_line && spelling == "export";
-        if(profile.opts.CPlusPlusModules && line_head &&
-           (spelling == "module" || spelling == "import")) {
-            auto next = lexer.next().kind;
-            if((spelling == "module" &&
-                llvm::is_contained(
-                    {clang::tok::raw_identifier, clang::tok::colon, clang::tok::semi},
-                    next)) ||
-               (spelling == "import" && llvm::is_contained({clang::tok::raw_identifier,
-                                                            clang::tok::colon,
-                                                            clang::tok::less,
-                                                            clang::tok::header_name,
-                                                            clang::tok::string_literal},
-                                                           next))) {
-                lexical = {SymbolKind::Keyword, 0};
-            }
+        lexed.try_emplace(token.range.begin, kind);
+    }
+    auto anchors = [&](std::uint32_t offset, const TokenClass& token) {
+        auto it = lexed.find(offset);
+        if(it == lexed.end()) {
+            return false;
         }
+        auto kind = it->second;
+        return kind == clang::tok::identifier || kind == clang::tok::tilde ||
+               (token.kind == Kind::Operator &&
+                (clang::tok::getPunctuatorSpelling(kind) || clang::tok::isLiteral(kind)));
+    };
 
-        // Directive overlay, driven by the lexer's preprocessor awareness:
-        // the hash and the directive name paint as Directive, a #define's
-        // name as Macro, header-name arguments as Header.
-        switch(directive) {
-            case Directive::None: {
-                if(token.is_directive_hash()) {
-                    directive = Directive::AfterHash;
-                    lexical = {SymbolKind::Directive, 0};
+    TokenFacts facts;
+    llvm::DenseMap<std::uint32_t, TokenClass> owned;
+    llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> declared;
+
+    // A name of several tokens its declaration owns whole (`~Widget`,
+    // `operator+`, a module name) paints every token of it the AST would,
+    // over the names nested in it; any other name its first token.
+    auto paint = [&](LocalSourceRange range, const TokenClass& token) {
+        if(anchors(range.begin, token)) {
+            combine(facts.semantic[range.begin], token);
+        }
+        if(token.has(Modifier::Destructor) || token.kind == Kind::Operator ||
+           token.kind == Kind::Module) {
+            for(auto offset = range.begin + 1; offset < range.end; offset += 1) {
+                if(anchors(offset, token)) {
+                    owned[offset] = token;
                 }
-                break;
-            }
-            case Directive::AfterHash: {
-                if(lexical_class.identifier_like) {
-                    lexical = {SymbolKind::Directive, 0};
-                }
-                directive = spelling == "define" ? Directive::AfterDefine : Directive::Body;
-                break;
-            }
-            case Directive::AfterDefine: {
-                if(lexical_class.identifier_like) {
-                    lexical = {SymbolKind::Macro, 0};
-                }
-                directive = Directive::Body;
-                break;
-            }
-            case Directive::Body: break;
-        }
-        if(token.is_header_name()) {
-            lexical = {SymbolKind::Header, 0};
-        }
-
-        // Only tokens that can spell a name take semantic classification —
-        // mirroring the AST path, which anchors declaration names at
-        // identifiers and a destructor's `~` only. Keywords stay lexical:
-        // an entry anchored on `operator` names nothing written there.
-        Classified semantic;
-        if(kind == clang::tok::identifier || kind == clang::tok::tilde) {
-            semantic = semantic_at(token.range.begin, spelling);
-        }
-        if(semantic.kind == SymbolKind::Invalid && lexical_class.identifier_like &&
-           !module_spans.empty()) {
-            auto covering = std::ranges::upper_bound(module_spans,
-                                                     token.range.begin,
-                                                     {},
-                                                     &LocalSourceRange::begin);
-            if(covering != module_spans.begin() && token.range.end <= (covering - 1)->end) {
-                semantic = semantic_at((covering - 1)->begin, {});
             }
         }
+    };
 
-        // The contextual keyword, unless it names something.
-        if(semantic.kind == SymbolKind::Invalid && overrides(spelling)) {
-            lexical = {SymbolKind::Keyword, 0};
+    for(const auto& decl: entries.decls) {
+        auto info = resolve(decl.symbol);
+        if(!info || info->token_class.kind == Kind::None) {
+            continue;
         }
-
-        Classified result = final_classification(semantic, lexical);
-
-        if(result.kind != SymbolKind::Invalid) {
-            append_token(tokens, token.range, result.kind, result.modifiers);
+        auto token = info->token_class;
+        token.modifiers |= mask(decl.definition ? Modifier::Definition : Modifier::Declaration);
+        paint(decl.range, token);
+        declared.insert({decl.range.begin, decl.symbol});
+    }
+    for(const auto& occurrence: entries.occurrences) {
+        auto begin = occurrence.range.begin;
+        if(declared.contains({begin, occurrence.target})) {
+            continue;
+        }
+        auto info = resolve(occurrence.target);
+        if(!info || info->token_class.kind == Kind::None) {
+            continue;
+        }
+        // `override` and `final` lead to the methods they override without
+        // spelling them.
+        auto spelling = content.slice(begin, occurrence.range.end);
+        if(overrides(spelling) && info->name != spelling) {
+            continue;
+        }
+        paint(occurrence.range, info->token_class);
+    }
+    for(auto& [offset, token]: owned) {
+        facts.semantic[offset] = token;
+    }
+    for(const auto& write: entries.writes) {
+        if(auto it = facts.semantic.find(write.range.begin); it != facts.semantic.end()) {
+            it->second.modifiers |= mask(Modifier::Modification);
         }
     }
 
-    return tokens;
+    return semantic_token_stream(content, profile.opts, facts, options);
 }
 
 auto index_document_symbols(llvm::StringRef content,

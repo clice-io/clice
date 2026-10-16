@@ -1092,8 +1092,7 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
         auto ticket = Ticket::take(session);
         kota::task_group<> group;
         auto tokens = [&]() -> kota::task<> {
-            auto result =
-                co_await stack.dispatcher.query(worker::QueryKind::SemanticTokens, ticket);
+            auto result = co_await stack.dispatcher.semantic_tokens(ticket);
             stale = !result.has_value() && result.error().code == content_modified_code;
         };
         group.spawn(tokens());
@@ -1130,7 +1129,7 @@ ZEST_CASE(HarmlessKindKeepsBar) {
 
     Stack stack;
     auto session = stack.open(src, "int x;\n");
-    constexpr auto tokens_kind = evidence_kind(worker::QueryKind::SemanticTokens);
+    constexpr auto tokens_kind = evidence_kind(EvidenceKind::SemanticTokens);
     session->quarantine->on_crash(tokens_kind, "w-1", "cause", Quarantine::Clock::now());
 
     bool done = false;

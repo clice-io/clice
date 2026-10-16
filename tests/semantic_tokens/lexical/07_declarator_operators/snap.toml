@@ -1,34 +1,21 @@
-[answers.pointer_declarator]
-wrong = "a declarator's * or & should be colored, apart from the operator (clangd#1421)"
-
 [answers.pointer_declarator.semantic_token]
 text = "*"
-type = "none"
-
-[answers.address_of]
-wrong = "an operator should be colored as an operator, apart from a declarator (clangd#1421)"
+type = "operator"
+modifiers = ["declarator"]
 
 [answers.address_of.semantic_token]
 text = "&"
-type = "none"
-
-[answers.reference_declarator]
-wrong = "a declarator's * or & should be colored, apart from the operator (clangd#1421)"
+type = "operator"
 
 [answers.reference_declarator.semantic_token]
 text = "&"
-type = "none"
-
-[answers.multiply]
-wrong = "an operator should be colored as an operator, apart from a declarator (clangd#1421)"
+type = "operator"
+modifiers = ["declarator"]
 
 [answers.multiply.semantic_token]
 text = "*"
-type = "none"
-
-[answers.bitwise_and]
-wrong = "an operator should be colored as an operator, apart from a declarator (clangd#1421)"
+type = "operator"
 
 [answers.bitwise_and.semantic_token]
 text = "&"
-type = "none"
+type = "operator"

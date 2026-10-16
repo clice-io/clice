@@ -52,7 +52,7 @@
               "type": "struct",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -66,7 +66,7 @@
               "type": "function",
               "modifiers": [
                 "declaration",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -79,7 +79,7 @@
               "text": "Widget",
               "type": "conflict",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -92,7 +92,7 @@
               "text": "Thing",
               "type": "conflict",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }

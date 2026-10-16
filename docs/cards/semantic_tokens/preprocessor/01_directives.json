@@ -57,8 +57,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "int before_conditional ⟦=⟧ 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {
@@ -146,7 +163,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -203,8 +220,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "int enabled_branch ⟦=⟧ 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {
@@ -274,7 +308,8 @@
                 },
                 "type": "macro",
                 "modifiers": [
-                  "definition"
+                  "definition",
+                  "empty"
                 ]
               },
               {
@@ -309,7 +344,10 @@
                     }
                   }
                 },
-                "type": "macro"
+                "type": "macro",
+                "modifiers": [
+                  "empty"
+                ]
               },
               {
                 "at": {
@@ -346,8 +384,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "int flagged ⟦=⟧ 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {
@@ -468,8 +523,43 @@
                 },
                 "type": "macro",
                 "modifiers": [
-                  "definition"
+                  "definition",
+                  "callable"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "#define STRINGIZE(⟦x⟧) #x",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "macroParameter"
+              },
+              {
+                "at": {
+                  "$place": "#define STRINGIZE(x) #⟦x⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 23
+                    }
+                  }
+                },
+                "type": "macroParameter"
               },
               {
                 "at": {
@@ -507,6 +597,26 @@
               },
               {
                 "at": {
+                  "$place": "const char⟦*⟧ stringized = STRINGIZE(abc);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
                   "$place": "const char* ⟦stringized⟧ = STRINGIZE(abc);",
                   "path": "main.cpp",
                   "range": {
@@ -523,9 +633,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "readonly",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "const char* stringized ⟦=⟧ STRINGIZE(abc);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {
@@ -542,7 +668,10 @@
                     }
                   }
                 },
-                "type": "macro"
+                "type": "macro",
+                "modifiers": [
+                  "callable"
+                ]
               }
             ]
           }

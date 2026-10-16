@@ -1,9 +1,9 @@
 [answers.Byte.semantic_token]
 text = "Byte"
-type = "type"
-modifiers = ["fileScope"]
+type = "typeAlias"
+modifiers = ["internal"]
 
 [answers.A.semantic_token]
 text = "A"
 type = "enumMember"
-modifiers = ["readonly", "globalScope"]
+modifiers = ["readonly", "global"]

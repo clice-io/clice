@@ -1,14 +1,14 @@
 [answers.Small_def.semantic_token]
 text = "Small"
 type = "concept"
-modifiers = ["definition", "templated", "globalScope"]
+modifiers = ["definition", "global", "template"]
 
 [answers.Small_use.semantic_token]
 text = "Small"
 type = "concept"
-modifiers = ["templated", "globalScope"]
+modifiers = ["global", "template"]
 
 [answers.Small_use2.semantic_token]
 text = "Small"
 type = "concept"
-modifiers = ["templated", "globalScope"]
+modifiers = ["global", "template"]

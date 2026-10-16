@@ -43,8 +43,6 @@ CrashSubject crash_subject(std::uint8_t kind) {
     if(kind >= evidence_kind(EvidenceKind::Count)) {
         switch(static_cast<Q>(kind - evidence_kind(EvidenceKind::Count))) {
             case Q::Hover: return {"computing hover for", "Hover is"};
-            case Q::SemanticTokens:
-                return {"computing semantic highlighting for", "Semantic highlighting is"};
         }
         std::unreachable();
     }
@@ -68,6 +66,8 @@ CrashSubject crash_subject(std::uint8_t kind) {
         case EvidenceKind::SignatureHelp:
             return {"computing signature help in", "Signature help is"};
         case EvidenceKind::Format: return {"formatting", "Formatting is"};
+        case EvidenceKind::SemanticTokens:
+            return {"computing semantic highlighting for", "Semantic highlighting is"};
         case EvidenceKind::Count: break;
     }
     std::unreachable();

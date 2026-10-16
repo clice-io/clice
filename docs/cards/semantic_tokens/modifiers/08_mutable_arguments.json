@@ -3,7 +3,7 @@
   "topic": "semantic_tokens",
   "subtopic": "modifiers",
   "title": "Mutable arguments",
-  "summary": "An argument the callee may modify, through a reference or a pointer to non-const, carries a modifier",
+  "summary": "An argument the callee may modify, through a reference or a pointer to non-const, carries `modification`, as the target of an assignment does",
   "prose": "",
   "status": "supported",
   "issues": [
@@ -47,8 +47,8 @@
               "text": "value",
               "type": "variable",
               "modifiers": [
-                "usedAsMutableReference",
-                "functionScope"
+                "modification",
+                "local"
               ]
             }
           }
@@ -61,8 +61,8 @@
               "text": "value",
               "type": "variable",
               "modifiers": [
-                "usedAsMutablePointer",
-                "functionScope"
+                "modification",
+                "local"
               ]
             }
           }
@@ -75,7 +75,7 @@
               "text": "value",
               "type": "variable",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }

@@ -1,64 +1,64 @@
 [answers.field_def.semantic_token]
 text = "field"
 type = "field"
-modifiers = ["definition", "classScope"]
+modifiers = ["definition", "member"]
 
 [answers.shared_decl.semantic_token]
 text = "shared"
 type = "variable"
-modifiers = ["declaration", "static", "classScope"]
+modifiers = ["declaration", "static", "member"]
 
 [answers.Idle_def.semantic_token]
 text = "Idle"
 type = "enumMember"
-modifiers = ["definition", "readonly", "globalScope"]
+modifiers = ["definition", "readonly", "global"]
 
 [answers.global_value_def.semantic_token]
 text = "global_value"
 type = "variable"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [answers.param_def.semantic_token]
 text = "param"
 type = "parameter"
-modifiers = ["definition", "functionScope"]
+modifiers = ["definition", "local"]
 
 [answers.local_def.semantic_token]
 text = "local"
 type = "variable"
-modifiers = ["definition", "functionScope"]
+modifiers = ["definition", "local"]
 
 [answers.param_use.semantic_token]
 text = "param"
 type = "parameter"
-modifiers = ["functionScope"]
+modifiers = ["local"]
 
 [answers.global_value_use.semantic_token]
 text = "global_value"
 type = "variable"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.field_use.semantic_token]
 text = "field"
 type = "field"
-modifiers = ["classScope"]
+modifiers = ["modification", "member"]
 
 [answers.local_use.semantic_token]
 text = "local"
 type = "variable"
-modifiers = ["functionScope"]
+modifiers = ["local"]
 
 [answers.shared_use.semantic_token]
 text = "shared"
 type = "variable"
-modifiers = ["static", "classScope"]
+modifiers = ["static", "modification", "member"]
 
 [answers.field_use2.semantic_token]
 text = "field"
 type = "field"
-modifiers = ["classScope"]
+modifiers = ["member"]
 
 [answers.Idle_use.semantic_token]
 text = "Idle"
 type = "enumMember"
-modifiers = ["readonly", "globalScope"]
+modifiers = ["readonly", "global"]

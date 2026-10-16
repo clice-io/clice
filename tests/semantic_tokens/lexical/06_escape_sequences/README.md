@@ -1,3 +1,3 @@
 # Escape sequences
 
-Escape sequences are not highlighted distinctly inside literals yet
+Escape sequences inside literals are `escape` tokens

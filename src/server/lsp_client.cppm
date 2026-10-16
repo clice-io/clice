@@ -117,6 +117,31 @@ private:
     /// How the client takes folds (textDocument.foldingRange).
     feature::FoldingClient folding_client;
 
+    /// The legend of the semantic tokens, fixed when the client initializes.
+    feature::SemanticTokenLegend token_legend;
+
+    /// What a semantic tokens request asks for: the whole document, the
+    /// edits from the result the client holds, or the tokens in a range.
+    struct TokensRequest {
+        std::optional<std::string> previous;
+        std::optional<kota::ipc::protocol::Range> window;
+    };
+
+    RawResult send_tokens(std::shared_ptr<ProjectServer> project,
+                          Fid path_id,
+                          std::shared_ptr<Session> session,
+                          kota::ipc::JSONPeer::RequestContext& ctx,
+                          TokensRequest request);
+
+    /// The last full or delta result sent for each open document, which
+    /// the next delta request names.
+    struct SentTokens {
+        std::string result_id;
+        std::vector<std::uint32_t> data;
+    };
+    llvm::DenseMap<Fid, SentTokens> sent_tokens;
+    std::uint64_t next_result_id = 0;
+
     /// How the client takes document symbols (textDocument.documentSymbol).
     feature::SymbolClient symbol_client;
 

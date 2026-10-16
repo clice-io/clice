@@ -1694,18 +1694,10 @@ auto kind_noun(SymbolKind kind) -> llvm::StringRef {
         case SymbolKind::Number:
         case SymbolKind::Character:
         case SymbolKind::String: return "literal";
-        case SymbolKind::MacroParameter:
         case SymbolKind::Comment:
         case SymbolKind::Keyword:
         case SymbolKind::Directive:
-        case SymbolKind::Paren:
-        case SymbolKind::Bracket:
-        case SymbolKind::Brace:
-        case SymbolKind::Angle:
-        case SymbolKind::Conflict:
-        case SymbolKind::Primitive:
-        case SymbolKind::Invalid:
-        case SymbolKind::Identifier: return "";
+        case SymbolKind::Invalid: return "";
     }
     std::unreachable();
 }

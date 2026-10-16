@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "preprocessor",
   "title": "Object-like vs function-like macros",
-  "summary": "Object-like and function-like macros do not receive distinct token kinds yet",
+  "summary": "A function-like macro carries `callable`, an object-like one does not",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#2649"
   ],
@@ -37,10 +37,12 @@
           "label": "function_like",
           "marker": "function_like",
           "value": {
-            "wrong": "object-like and function-like macros should be told apart (clangd#2649)",
             "semantic_token": {
               "text": "CHECK",
-              "type": "macro"
+              "type": "macro",
+              "modifiers": [
+                "callable"
+              ]
             }
           }
         },
@@ -48,7 +50,6 @@
           "label": "object_like",
           "marker": "object_like",
           "value": {
-            "wrong": "object-like and function-like macros should be told apart (clangd#2649)",
             "semantic_token": {
               "text": "MAX_SIZE",
               "type": "macro"

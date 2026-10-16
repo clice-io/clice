@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "lexical",
   "title": "Bracket token types",
-  "summary": "Matching brackets do not receive pair-specific token kinds yet",
-  "prose": "",
-  "status": "unsupported",
+  "summary": "The angle brackets of template arguments and parameters are `bracket` tokens",
+  "prose": "They are told apart from the comparisons an editor's grammar takes them\nfor. Parentheses, square brackets and braces, which the editor matches\nitself, get no token.",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -59,10 +59,9 @@
           "label": "template_open",
           "marker": "template_open",
           "value": {
-            "wrong": "a bracket should be a token of its bracket kind",
             "semantic_token": {
               "text": "<",
-              "type": "none"
+              "type": "bracket"
             }
           }
         },
@@ -70,7 +69,6 @@
           "label": "array_open",
           "marker": "array_open",
           "value": {
-            "wrong": "a bracket should be a token of its bracket kind",
             "semantic_token": {
               "text": "[",
               "type": "none"
@@ -81,10 +79,9 @@
           "label": "argument_open",
           "marker": "argument_open",
           "value": {
-            "wrong": "a bracket should be a token of its bracket kind",
             "semantic_token": {
               "text": "<",
-              "type": "none"
+              "type": "bracket"
             }
           }
         },
@@ -92,7 +89,6 @@
           "label": "brace_open",
           "marker": "brace_open",
           "value": {
-            "wrong": "a bracket should be a token of its bracket kind",
             "semantic_token": {
               "text": "{",
               "type": "none"
@@ -103,7 +99,6 @@
           "label": "paren_open",
           "marker": "paren_open",
           "value": {
-            "wrong": "a bracket should be a token of its bracket kind",
             "semantic_token": {
               "text": "(",
               "type": "none"
@@ -114,7 +109,6 @@
           "label": "subscript_open",
           "marker": "subscript_open",
           "value": {
-            "wrong": "a bracket should be a token of its bracket kind",
             "semantic_token": {
               "text": "[",
               "type": "none"

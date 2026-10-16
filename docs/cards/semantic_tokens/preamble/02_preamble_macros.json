@@ -39,7 +39,8 @@
               "text": "SQUARE",
               "type": "macro",
               "modifiers": [
-                "definition"
+                "definition",
+                "callable"
               ]
             }
           }
@@ -50,7 +51,10 @@
           "value": {
             "semantic_token": {
               "text": "SQUARE",
-              "type": "macro"
+              "type": "macro",
+              "modifiers": [
+                "callable"
+              ]
             }
           }
         }

@@ -1,8 +1,8 @@
 [answers.tilde.semantic_token]
 text = "~"
-type = "none"
+type = "operator"
 
 [answers.T.semantic_token]
 text = "T"
-type = "type"
-modifiers = ["functionScope"]
+type = "typeParameter"
+modifiers = ["local"]

@@ -1,34 +1,34 @@
 [answers.total_decl.semantic_token]
 text = "total"
 type = "variable"
-modifiers = ["declaration", "static", "classScope"]
+modifiers = ["declaration", "static", "member"]
 
 [answers.bump_decl.semantic_token]
 text = "bump"
 type = "method"
-modifiers = ["declaration", "static", "classScope"]
+modifiers = ["declaration", "static", "member"]
 
 [answers.current.semantic_token]
 text = "current"
 type = "field"
-modifiers = ["definition", "classScope"]
+modifiers = ["definition", "member"]
 
 [answers.calls_def.semantic_token]
 text = "calls"
 type = "variable"
-modifiers = ["definition", "static", "functionScope"]
+modifiers = ["definition", "static", "local"]
 
 [answers.bump_use.semantic_token]
 text = "bump"
 type = "method"
-modifiers = ["static", "classScope"]
+modifiers = ["static", "member"]
 
 [answers.total_use.semantic_token]
 text = "total"
 type = "variable"
-modifiers = ["static", "classScope"]
+modifiers = ["static", "modification", "member"]
 
 [answers.calls_use.semantic_token]
 text = "calls"
 type = "variable"
-modifiers = ["static", "functionScope"]
+modifiers = ["static", "local"]

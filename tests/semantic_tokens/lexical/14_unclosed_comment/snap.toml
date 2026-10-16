@@ -1,0 +1,9 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦int⟧ value = 0;", type = "primitive" },
+    { at = "int ⟦value⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int value ⟦=⟧ 0;", type = "operator" },
+    { at = "int value = ⟦0⟧;", type = "number" },
+    { at = "⟦/* a comment still being typed⟧", type = "comment" },
+    { at = "⟦int hidden = 1;⟧", type = "comment" },
+]

@@ -4,8 +4,8 @@
   "subtopic": "references",
   "title": "Dependent names",
   "summary": "Dependent names resolve through known primary templates",
-  "prose": "Dependent members of a known template (`Box<T>`) resolve to the primary\ntemplate's declarations and keep their kinds. Members of a bare template\nparameter have no candidate declaration and currently get no token;\nheuristic coloring for such names remains open.",
-  "status": "partial",
+  "prose": "Dependent members of a known template (`Box<T>`) resolve to the primary\ntemplate's declarations and keep their kinds. Members of a bare template\nparameter have no candidate declaration: they are `unknown`, or a type\nafter `typename`. Every dependent name carries `dependent`.",
+  "status": "supported",
   "issues": [
     "clangd#154",
     "clangd#297"
@@ -64,9 +64,10 @@
           "value": {
             "semantic_token": {
               "text": "value_type",
-              "type": "type",
+              "type": "typeAlias",
               "modifiers": [
-                "classScope"
+                "member",
+                "dependent"
               ]
             }
           }
@@ -80,7 +81,8 @@
               "type": "method",
               "modifiers": [
                 "static",
-                "classScope"
+                "member",
+                "dependent"
               ]
             }
           }
@@ -94,7 +96,8 @@
               "type": "method",
               "modifiers": [
                 "readonly",
-                "classScope"
+                "member",
+                "dependent"
               ]
             }
           }
@@ -103,10 +106,12 @@
           "label": "value_type_use2",
           "marker": "value_type_use2",
           "value": {
-            "wrong": "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)",
             "semantic_token": {
               "text": "value_type",
-              "type": "none"
+              "type": "typeAlias",
+              "modifiers": [
+                "dependent"
+              ]
             }
           }
         },
@@ -114,10 +119,12 @@
           "label": "reset_use2",
           "marker": "reset_use2",
           "value": {
-            "wrong": "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)",
             "semantic_token": {
               "text": "reset",
-              "type": "none"
+              "type": "unknown",
+              "modifiers": [
+                "dependent"
+              ]
             }
           }
         },
@@ -125,10 +132,12 @@
           "label": "size_use2",
           "marker": "size_use2",
           "value": {
-            "wrong": "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)",
             "semantic_token": {
               "text": "size",
-              "type": "none"
+              "type": "unknown",
+              "modifiers": [
+                "dependent"
+              ]
             }
           }
         }

@@ -3,13 +3,13 @@ module;
 #include "modules/prelude.h"
 
 #include "version.h"
+#include "support/anomaly.macros.h"
 #include "support/logging.macros.h"
 
 module clice;
 
 import :command.argument_parser;
 import :feature.feature;
-import :semantic.symbol;
 import :server.counterparts;
 import :server.editor_context;
 import :server.extension;
@@ -29,7 +29,6 @@ import :worker.serialize;
 namespace clice {
 
 namespace protocol = kota::ipc::protocol;
-namespace refl = kota::meta;
 using kota::ipc::RequestResult;
 using RequestContext = kota::ipc::JSONPeer::RequestContext;
 
@@ -497,27 +496,17 @@ void LSPClient::register_lifecycle() {
         folder_caps.change_notifications = true;
         caps.workspace = protocol::WorkspaceOptions{.workspace_folders = std::move(folder_caps)};
 
-        protocol::SemanticTokensOptions sem_opts;
-        {
-            auto lower_first = [](std::string_view name) -> std::string {
-                std::string s(name);
-                if(!s.empty()) {
-                    s[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(s[0])));
-                }
-                return s;
-            };
-
-            auto to_names = [&](auto names) {
-                return std::ranges::to<std::vector>(names | std::views::transform(lower_first));
-            };
-
-            sem_opts.legend = protocol::SemanticTokensLegend{
-                to_names(refl::reflection<SymbolKind::Kind>::member_names),
-                to_names(refl::reflection<SymbolModifiers::Kind>::member_names),
-            };
+        token_legend = feature::semantic_token_legend(srv.startup_token_options());
+        for(auto& name: token_legend.unknown) {
+            LOG_GUIDANCE("[semantic_tokens] renames `{}`, which names no token kind or modifier",
+                         name);
         }
-        sem_opts.full = true;
-        result.capabilities.semantic_tokens_provider = std::move(sem_opts);
+        result.capabilities.semantic_tokens_provider = protocol::SemanticTokensOptions{
+            .legend = {.token_types = token_legend.types,
+                       .token_modifiers = token_legend.modifiers},
+            .range = true,
+            .full = protocol::SemanticTokensFullDelta{.delta = true},
+        };
 
         protocol::ServerInfo info;
         info.name = "clice";
@@ -750,6 +739,7 @@ void LSPClient::register_document_sync() {
         // compile as an unchanged-text recompile.
         output_versions.erase(path_id);
         pulled.erase(path_id);
+        sent_tokens.erase(path_id);
         // The diagnostics clear goes out under the spelling being closed.
         srv.close_session(path_id);
         srv.files.unshow(path_id);
@@ -786,6 +776,51 @@ void LSPClient::register_document_sync() {
     });
 }
 
+LSPClient::RawResult LSPClient::send_tokens(std::shared_ptr<ProjectServer> project,
+                                            Fid path_id,
+                                            std::shared_ptr<Session> session,
+                                            RequestContext& ctx,
+                                            TokensRequest request) {
+    return kota::co_invoke(
+        [this,
+         project,
+         path_id,
+         session,
+         request = std::move(request),
+         tokens = project->features.semantic_tokens(Ticket::take(session), ctx.cancellation)]()
+            mutable -> RawResult {
+            auto found = co_await std::move(tokens).or_fail();
+            if(!found) {
+                co_return kota::codec::RawValue{"null"};
+            }
+            auto positions = session->positions();
+            if(request.window) {
+                auto window = positions.offset_range(*request.window, PositionEncoding::UTF16);
+                co_return to_raw(feature::semantic_tokens_to_protocol(*found,
+                                                                      positions,
+                                                                      PositionEncoding::UTF16,
+                                                                      token_legend,
+                                                                      window));
+            }
+            auto encoded = feature::semantic_tokens_to_protocol(*found,
+                                                                positions,
+                                                                PositionEncoding::UTF16,
+                                                                token_legend);
+            next_result_id += 1;
+            encoded.result_id = std::to_string(next_result_id);
+            auto& sent = sent_tokens[path_id];
+            bool held = request.previous && sent.result_id == *request.previous;
+            auto previous = std::exchange(sent, {*encoded.result_id, encoded.data});
+            if(held) {
+                co_return to_raw(protocol::SemanticTokensDelta{
+                    .result_id = encoded.result_id,
+                    .edits = feature::semantic_tokens_edits(previous.data, encoded.data),
+                });
+            }
+            co_return to_raw(encoded);
+        });
+}
+
 void LSPClient::register_language_features() {
     // The handlers of document requests take their snapshot — the ticket,
     // through the feature's entry point — before they return, as the
@@ -809,8 +844,25 @@ void LSPClient::register_language_features() {
         auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
         if(!session)
             return kota::outcome_error(unserved(path));
-        return holding(project,
-                       project->features.semantic_tokens(Ticket::take(session), ctx.cancellation));
+        return send_tokens(project, path_id, session, ctx, {});
+    });
+
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::SemanticTokensDeltaParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(!session)
+            return kota::outcome_error(unserved(path));
+        return send_tokens(project, path_id, session, ctx, {.previous = params.previous_result_id});
+    });
+
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::SemanticTokensRangeParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        if(!session)
+            return kota::outcome_error(unserved(path));
+        return send_tokens(project, path_id, session, ctx, {.window = params.range});
     });
 
     peer.on_request(

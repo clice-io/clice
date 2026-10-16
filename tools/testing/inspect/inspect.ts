@@ -121,10 +121,12 @@ interface RawCodeAction {
     host_definitions?: string[] | null;
 }
 
+/// A semantic token, its kind and modifiers by the names the legend gives
+/// them.
 interface RawToken {
     range: RawRange;
     kind: string;
-    modifiers: number;
+    modifiers: string[];
 }
 
 interface RawInlayHint {
@@ -157,34 +159,6 @@ interface RawLink {
     target: string;
 }
 
-/// Twin of SymbolModifiers::Kind (src/semantic/symbol.cppm), in bit order:
-/// the server names them through its legend.
-const SYMBOL_MODIFIERS = [
-    "Declaration",
-    "Definition",
-    "Const",
-    "Overloaded",
-    "Typed",
-    "Templated",
-    "Deprecated",
-    "Deduced",
-    "Readonly",
-    "Static",
-    "Abstract",
-    "Virtual",
-    "DependentName",
-    "DefaultLibrary",
-    "UsedAsMutableReference",
-    "UsedAsMutablePointer",
-    "ConstructorOrDestructor",
-    "UserDefined",
-    "FunctionScope",
-    "ClassScope",
-    "FileScope",
-    "GlobalScope",
-    "Inactive",
-];
-
 /// Twin of to_protocol_symbol_kind (src/feature/document_symbols.cpp);
 /// anything unlisted is Variable there too.
 const LSP_SYMBOL_KIND: Record<string, string> = {
@@ -208,10 +182,6 @@ const LSP_SYMBOL_KIND: Record<string, string> = {
     Header: "String",
     Number: "Number",
     Operator: "Operator",
-    Paren: "Operator",
-    Bracket: "Operator",
-    Brace: "Operator",
-    Angle: "Operator",
 };
 
 /// Twin of the HintCategory -> protocol::InlayHintKind switch in
@@ -223,12 +193,6 @@ const LSP_INLAY_KIND: Record<string, "Type" | "Parameter"> = {
     Designator: "Type",
     BlockEnd: "Type",
 };
-
-/// C++ enum names are PascalCase; the server's legend lowers the first
-/// letter.
-function lowerFirst(name: string): string {
-    return name.slice(0, 1).toLowerCase() + name.slice(1);
-}
 
 function byteOf(text: string, offset: number): number {
     return Buffer.byteLength(text.slice(0, offset), "utf8");
@@ -560,10 +524,8 @@ export class Inspect extends Client {
     private pieces(source: SourceText, raw: RawToken): Token[] {
         const start = source.positionAtByte(raw.range.begin);
         const end = source.positionAtByte(raw.range.end);
-        const type = lowerFirst(raw.kind);
-        const modifiers = SYMBOL_MODIFIERS.filter((_name, bit) => raw.modifiers & (1 << bit)).map(
-            lowerFirst,
-        );
+        const type = raw.kind;
+        const modifiers = raw.modifiers;
         const out: Token[] = [];
         for (let line = start.line; line <= end.line; line += 1) {
             const from = line === start.line ? start.character : 0;

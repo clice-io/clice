@@ -9,6 +9,7 @@ module;
 module clice:index.types;
 
 import :semantic.symbol;
+import :semantic.token_class;
 import :support.bitmap;
 import :syntax.token;
 
@@ -182,6 +183,7 @@ struct SymbolIdentity {
     SymbolScope scope = SymbolScope::External;
     SymbolFlags flags = SymbolFlags::None;
     std::uint32_t file = no_file;
+    TokenClass token_class;
 };
 
 struct Symbol {
@@ -205,6 +207,10 @@ struct Symbol {
 
     SymbolFlags flags = SymbolFlags::None;
 
+    /// What the symbol's written names show as semantic tokens wherever
+    /// they occur (token_class).
+    TokenClass token_class;
+
     /// The file holding the canonical declaration — a definition when one
     /// is known, else the first declaration — as a TU-local path id in a
     /// TU index and a FileTable id in the project table; `no_file` when the
@@ -226,6 +232,7 @@ struct Symbol {
             .scope = scope,
             .flags = flags,
             .file = file,
+            .token_class = token_class,
         };
     }
 
@@ -244,6 +251,7 @@ struct SymbolRef {
     SymbolKind kind;
     SymbolScope scope = SymbolScope::External;
     SymbolFlags flags = SymbolFlags::None;
+    TokenClass token_class;
 
     static SymbolRef from(SymbolHash hash, const SymbolIdentity& identity) {
         return {
@@ -254,6 +262,7 @@ struct SymbolRef {
             .kind = identity.kind,
             .scope = identity.scope,
             .flags = identity.flags,
+            .token_class = identity.token_class,
         };
     }
 

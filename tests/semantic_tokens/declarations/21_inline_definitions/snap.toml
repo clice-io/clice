@@ -1,0 +1,14 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦struct⟧ Point {", type = "keyword" },
+    { at = "struct ⟦Point⟧ {", type = "struct", modifiers = ["definition", "global"] },
+    { at = "⟦int⟧ x;", type = "primitive" },
+    { at = "int ⟦x⟧;", type = "field", modifiers = ["definition", "member"] },
+    { at = "} ⟦origin⟧;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "⟦typedef⟧ struct Tag {", type = "keyword" },
+    { at = "typedef ⟦struct⟧ Tag {", type = "keyword" },
+    { at = "typedef struct ⟦Tag⟧ {", type = "struct", modifiers = ["definition", "global"] },
+    { at = "⟦int⟧ t;", type = "primitive" },
+    { at = "int ⟦t⟧;", type = "field", modifiers = ["definition", "member"] },
+    { at = "} ⟦Tag⟧;", type = "typeAlias", modifiers = ["definition", "internal"] },
+]

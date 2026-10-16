@@ -93,8 +93,9 @@ inline std::string symbol_id(SymbolHash hash) {
 /// TemplateParameter flag, an explicit instantiation's name an
 /// Instantiation relation with the directive's extent, a declaration's
 /// extent its leading attributes, and a symbol first reached through its
-/// template or a using-declaration is described by its own declaration.
-constexpr inline std::uint32_t index_format_version = 34;
+/// template or a using-declaration is described by its own declaration;
+/// v35: symbols carry their semantic token class.
+constexpr inline std::uint32_t index_format_version = 35;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more
@@ -221,6 +222,8 @@ struct ShardBlob {
     std::vector<std::string> local_args;
     std::vector<std::uint64_t> local_parents;
     std::vector<std::uint16_t> local_flags;
+    std::vector<std::uint8_t> local_token_kinds;
+    std::vector<std::uint32_t> local_token_modifiers;
 
     /// Occurrences sorted by (begin, end, symbol hash).
     RangeColumns occs;

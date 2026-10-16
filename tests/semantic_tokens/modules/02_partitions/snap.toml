@@ -10,7 +10,8 @@ semantic_tokens = [
     {
         at = "export int ⟦partition_value⟧ = 1;",
         type = "variable",
-        modifiers = ["definition", "globalScope"],
+        modifiers = ["definition", "global"],
     },
+    { at = "export int partition_value ⟦=⟧ 1;", type = "operator" },
     { at = "export int partition_value = ⟦1⟧;", type = "number" },
 ]

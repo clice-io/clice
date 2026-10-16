@@ -1,0 +1,63 @@
+[default."main.cpp"]
+semantic_tokens = [
+    { at = "⟦int⟧ counter = 0;", type = "primitive" },
+    { at = "int ⟦counter⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int counter ⟦=⟧ 0;", type = "operator" },
+    { at = "int counter = ⟦0⟧;", type = "number" },
+    { at = "⟦void⟧ bump(int& target) {", type = "primitive" },
+    { at = "void ⟦bump⟧(int& target) {", type = "function", modifiers = ["definition", "global"] },
+    { at = "void bump(⟦int⟧& target) {", type = "primitive" },
+    { at = "void bump(int⟦&⟧ target) {", type = "operator", modifiers = ["declarator"] },
+    { at = "void bump(int& ⟦target⟧) {", type = "parameter", modifiers = ["definition", "local"] },
+    { at = "⟦static⟧ int calls = 0;", type = "keyword" },
+    { at = "static ⟦int⟧ calls = 0;", type = "primitive" },
+    {
+        at = "static int ⟦calls⟧ = 0;",
+        type = "variable",
+        modifiers = ["definition", "static", "local"],
+    },
+    { at = "static int calls ⟦=⟧ 0;", type = "operator" },
+    { at = "static int calls = ⟦0⟧;", type = "number" },
+    { at = "⟦calls⟧ += 1;", type = "variable", modifiers = ["static", "modification", "local"] },
+    { at = "calls ⟦+=⟧ 1;", type = "operator" },
+    { at = "calls += ⟦1⟧;", type = "number" },
+    { at = "⟦target⟧ += 1;", type = "parameter", modifiers = ["modification", "local"] },
+    { at = "target ⟦+=⟧ 1;", type = "operator" },
+    { at = "target += ⟦1⟧;", type = "number" },
+]
+
+[renamed."main.cpp"]
+semantic_tokens = [
+    { at = "⟦int⟧ counter = 0;", type = "primitive" },
+    { at = "int ⟦counter⟧ = 0;", type = "variable", modifiers = ["definition", "globalScope"] },
+    { at = "int counter ⟦=⟧ 0;", type = "operator" },
+    { at = "int counter = ⟦0⟧;", type = "number" },
+    { at = "⟦void⟧ bump(int& target) {", type = "primitive" },
+    {
+        at = "void ⟦bump⟧(int& target) {",
+        type = "function",
+        modifiers = ["definition", "globalScope"],
+    },
+    { at = "void bump(⟦int⟧& target) {", type = "primitive" },
+    { at = "void bump(int⟦&⟧ target) {", type = "operator", modifiers = ["declarator"] },
+    {
+        at = "void bump(int& ⟦target⟧) {",
+        type = "parameter",
+        modifiers = ["definition", "functionScope"],
+    },
+    { at = "⟦static⟧ int calls = 0;", type = "keyword" },
+    { at = "static ⟦int⟧ calls = 0;", type = "primitive" },
+    {
+        at = "static int ⟦calls⟧ = 0;",
+        type = "variable",
+        modifiers = ["definition", "static", "functionScope"],
+    },
+    { at = "static int calls ⟦=⟧ 0;", type = "operator" },
+    { at = "static int calls = ⟦0⟧;", type = "number" },
+    { at = "⟦calls⟧ += 1;", type = "variable", modifiers = ["static", "functionScope"] },
+    { at = "calls ⟦+=⟧ 1;", type = "operator" },
+    { at = "calls += ⟦1⟧;", type = "number" },
+    { at = "⟦target⟧ += 1;", type = "parameter", modifiers = ["functionScope"] },
+    { at = "target ⟦+=⟧ 1;", type = "operator" },
+    { at = "target += ⟦1⟧;", type = "number" },
+]

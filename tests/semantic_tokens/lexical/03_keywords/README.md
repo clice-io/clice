@@ -1,3 +1,3 @@
 # Keywords
 
-Alternative operator spellings and contextual specifiers retain keyword tokens
+Alternative operator spellings are operators, and contextual specifiers keep keyword tokens

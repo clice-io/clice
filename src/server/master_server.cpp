@@ -8,6 +8,7 @@ module;
 
 module clice;
 
+import :config.config;
 import :sched.graph;
 import :server.features;
 import :server.lsp_client;
@@ -491,6 +492,18 @@ CanonicalPath MasterServer::root_of(CanonicalRef folder) const {
         return folder;
     }
     return root_of(enclosing);
+}
+
+feature::SemanticTokensOptions MasterServer::startup_token_options() const {
+    auto config = Config::load_from_workspace(project_roots().front(),
+                                              /*issues=*/nullptr,
+                                              /*loaded_path=*/nullptr,
+                                              /*finalized=*/false);
+    if(init_options) {
+        // ProjectServer::configure reports a bad overlay.
+        [[maybe_unused]] auto overlaid = kota::codec::dyn::from_dyn(*init_options, config);
+    }
+    return config.semantic_tokens;
 }
 
 std::vector<CanonicalPath> MasterServer::project_roots() const {

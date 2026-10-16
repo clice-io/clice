@@ -3,7 +3,7 @@
   "topic": "semantic_tokens",
   "subtopic": "declarations",
   "title": "Templates",
-  "summary": "Template parameters receive type or variable kinds, and a declared template carries `templated`",
+  "summary": "A type parameter is a `typeParameter`, a non-type one a `templateParameter`, and a template carries `template`",
   "prose": "",
   "status": "supported",
   "issues": [],
@@ -97,10 +97,10 @@
           "value": {
             "semantic_token": {
               "text": "T",
-              "type": "type",
+              "type": "typeParameter",
               "modifiers": [
                 "definition",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -111,11 +111,12 @@
           "value": {
             "semantic_token": {
               "text": "N",
-              "type": "variable",
+              "type": "templateParameter",
               "modifiers": [
                 "definition",
                 "readonly",
-                "classScope"
+                "member",
+                "constexpr"
               ]
             }
           }
@@ -129,8 +130,8 @@
               "type": "struct",
               "modifiers": [
                 "definition",
-                "templated",
-                "globalScope"
+                "global",
+                "template"
               ]
             }
           }
@@ -141,9 +142,9 @@
           "value": {
             "semantic_token": {
               "text": "T",
-              "type": "type",
+              "type": "typeParameter",
               "modifiers": [
-                "classScope"
+                "member"
               ]
             }
           }
@@ -154,10 +155,11 @@
           "value": {
             "semantic_token": {
               "text": "N",
-              "type": "variable",
+              "type": "templateParameter",
               "modifiers": [
                 "readonly",
-                "classScope"
+                "member",
+                "constexpr"
               ]
             }
           }
@@ -171,8 +173,8 @@
               "type": "function",
               "modifiers": [
                 "declaration",
-                "templated",
-                "globalScope"
+                "global",
+                "template"
               ]
             }
           }
@@ -183,10 +185,10 @@
           "value": {
             "semantic_token": {
               "text": "T",
-              "type": "type",
+              "type": "typeParameter",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -197,9 +199,9 @@
           "value": {
             "semantic_token": {
               "text": "T",
-              "type": "type",
+              "type": "typeParameter",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -213,8 +215,8 @@
               "type": "function",
               "modifiers": [
                 "definition",
-                "templated",
-                "globalScope"
+                "global",
+                "template"
               ]
             }
           }
@@ -225,9 +227,9 @@
           "value": {
             "semantic_token": {
               "text": "T",
-              "type": "type",
+              "type": "typeParameter",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -240,7 +242,8 @@
               "text": "Array",
               "type": "struct",
               "modifiers": [
-                "globalScope"
+                "global",
+                "template"
               ]
             }
           }
@@ -253,7 +256,8 @@
               "text": "identity",
               "type": "function",
               "modifiers": [
-                "globalScope"
+                "global",
+                "template"
               ]
             }
           }

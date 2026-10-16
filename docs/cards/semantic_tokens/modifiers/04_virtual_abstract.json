@@ -71,7 +71,8 @@
               "modifiers": [
                 "definition",
                 "abstract",
-                "globalScope"
+                "global",
+                "virtual"
               ]
             }
           }
@@ -85,8 +86,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "virtual",
-                "classScope"
+                "member",
+                "virtual"
               ]
             }
           }
@@ -101,8 +102,8 @@
               "modifiers": [
                 "declaration",
                 "abstract",
-                "virtual",
-                "classScope"
+                "member",
+                "virtual"
               ]
             }
           }
@@ -116,7 +117,8 @@
               "type": "struct",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global",
+                "virtual"
               ]
             }
           }
@@ -130,8 +132,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "virtual",
-                "classScope"
+                "member",
+                "virtual"
               ]
             }
           }
@@ -144,8 +146,8 @@
               "text": "area",
               "type": "method",
               "modifiers": [
-                "virtual",
-                "classScope"
+                "member",
+                "virtual"
               ]
             }
           }
@@ -159,8 +161,8 @@
               "type": "method",
               "modifiers": [
                 "abstract",
-                "virtual",
-                "classScope"
+                "member",
+                "virtual"
               ]
             }
           }

@@ -1,4 +1,4 @@
 [answers.system_helper.semantic_token]
 text = "system_helper"
 type = "function"
-modifiers = ["defaultLibrary", "globalScope"]
+modifiers = ["defaultLibrary", "global"]

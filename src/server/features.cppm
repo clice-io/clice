@@ -119,7 +119,11 @@ public:
                     const protocol::Position& position,
                     protocol::MarkupKind markup,
                     kota::cancellation_token token = {});
-    RawResult semantic_tokens(Ticket ticket, kota::cancellation_token token = {});
+    /// The document's semantic tokens, none when nothing serves them yet;
+    /// the caller encodes them against the session's text right away.
+    using TokensResult =
+        kota::task<std::optional<std::vector<feature::SemanticToken>>, kota::ipc::Error>;
+    TokensResult semantic_tokens(Ticket ticket, kota::cancellation_token token = {});
     RawResult inlay_hints(Ticket ticket,
                           const protocol::Range& range,
                           bool label_parts,

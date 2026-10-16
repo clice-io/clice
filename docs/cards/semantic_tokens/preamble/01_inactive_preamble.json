@@ -223,8 +223,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "int after ⟦=⟧ KEEP;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {

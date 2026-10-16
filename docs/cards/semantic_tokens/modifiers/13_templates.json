@@ -1,0 +1,1180 @@
+{
+  "id": "semantic_tokens/modifiers/13_templates",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Templates",
+  "summary": "A class, alias, variable or function template is `template` wherever it is named",
+  "prose": "So is a specialization of it, and the `<` and `>` around template arguments\nare `bracket` tokens, told apart from comparisons.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "template <typename T>\nstruct Box {\n    T value;\n};\n\ntemplate <typename T>\nusing Boxes = Box<T>[4];\n\ntemplate <typename T>\nT zero = T();\n\ntemplate <typename T>\nT unwrap(Box<T> box) {\n    return box.value;\n}\n\nint use() {\n    Box<int> box{1};\n    return unwrap(box) + zero<int>;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦template⟧ <typename T> @1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template ⟦<⟧typename T> @1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "template <⟦typename⟧ T> @1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template <typename ⟦T⟧> @1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <typename T⟦>⟧ @1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "⟦struct⟧ Box {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "struct ⟦Box⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "definition",
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦T⟧ value;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T ⟦value⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "field",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦template⟧ <typename T> @6",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template ⟦<⟧typename T> @6",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "template <⟦typename⟧ T> @6",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template <typename ⟦T⟧> @6",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <typename T⟦>⟧ @6",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "⟦using⟧ Boxes = Box<T>[4];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "using ⟦Boxes⟧ = Box<T>[4];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "typeAlias",
+                "modifiers": [
+                  "definition",
+                  "internal",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "using Boxes ⟦=⟧ Box<T>[4];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "using Boxes = ⟦Box⟧<T>[4];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "using Boxes = Box⟦<⟧T>[4];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "using Boxes = Box<⟦T⟧>[4];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "typeParameter"
+              },
+              {
+                "at": {
+                  "$place": "using Boxes = Box<T⟦>⟧[4];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "using Boxes = Box<T>[⟦4⟧];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦template⟧ <typename T> @9",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template ⟦<⟧typename T> @9",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "template <⟦typename⟧ T> @9",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template <typename ⟦T⟧> @9",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "definition"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <typename T⟦>⟧ @9",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "⟦T⟧ zero = T();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 1
+                    }
+                  }
+                },
+                "type": "typeParameter"
+              },
+              {
+                "at": {
+                  "$place": "T ⟦zero⟧ = T();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T zero ⟦=⟧ T();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "T zero = ⟦T⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "typeParameter"
+              },
+              {
+                "at": {
+                  "$place": "⟦template⟧ <typename T> @12",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template ⟦<⟧typename T> @12",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "template <⟦typename⟧ T> @12",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template <typename ⟦T⟧> @12",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <typename T⟦>⟧ @12",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "⟦T⟧ unwrap(Box<T> box) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 1
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T ⟦unwrap⟧(Box<T> box) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T unwrap(⟦Box⟧<T> box) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T unwrap(Box⟦<⟧T> box) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "T unwrap(Box<⟦T⟧> box) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T unwrap(Box<T⟦>⟧ box) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "T unwrap(Box<T> ⟦box⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧ box.value;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return ⟦box⟧.value;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return box.⟦value⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 13,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 13,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "field",
+                "modifiers": [
+                  "member",
+                  "dependent"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ use() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦use⟧() {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦Box⟧<int> box{1};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "Box⟦<⟧int> box{1};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "Box<⟦int⟧> box{1};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "Box<int⟦>⟧ box{1};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "Box<int> ⟦box⟧{1};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "Box<int> box{⟦1⟧};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 17,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧ unwrap(box) + zero<int>;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return ⟦unwrap⟧(box) + zero<int>;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return unwrap(⟦box⟧) + zero<int>;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return unwrap(box) ⟦+⟧ zero<int>;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "return unwrap(box) + ⟦zero⟧<int>;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 29
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return unwrap(box) + zero⟦<⟧int>;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 29
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 30
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "return unwrap(box) + zero<⟦int⟧>;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 30
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 33
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "return unwrap(box) + zero<int⟦>⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 33
+                    },
+                    "end": {
+                      "line": 18,
+                      "character": 34
+                    }
+                  }
+                },
+                "type": "bracket"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

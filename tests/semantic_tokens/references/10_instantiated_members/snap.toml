@@ -1,14 +1,14 @@
 [answers.T.semantic_token]
 text = "T"
-type = "type"
-modifiers = ["classScope"]
+type = "typeParameter"
+modifiers = ["member"]
 
 [answers.hit_use.semantic_token]
 text = "hit"
 type = "conflict"
-modifiers = ["static", "classScope"]
+modifiers = ["static", "member", "dependent"]
 
 [answers.hit_use2.semantic_token]
 text = "hit"
 type = "method"
-modifiers = ["classScope"]
+modifiers = ["member", "dependent"]

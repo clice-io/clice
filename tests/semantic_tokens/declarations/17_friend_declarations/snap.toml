@@ -1,14 +1,14 @@
 [answers.Widget.semantic_token]
 text = "Widget"
 type = "struct"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.ping.semantic_token]
 text = "ping"
 type = "function"
-modifiers = ["declaration", "globalScope"]
+modifiers = ["declaration", "global"]
 
 [answers.inline_friend.semantic_token]
 text = "inline_friend"
 type = "function"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]

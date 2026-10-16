@@ -1,14 +1,14 @@
 [answers.item_def.semantic_token]
 text = "item"
 type = "variable"
-modifiers = ["definition", "functionScope"]
+modifiers = ["definition", "local"]
 
 [answers.items.semantic_token]
 text = "items"
 type = "parameter"
-modifiers = ["functionScope"]
+modifiers = ["local"]
 
 [answers.item_use.semantic_token]
 text = "item"
 type = "variable"
-modifiers = ["functionScope"]
+modifiers = ["modification", "local"]

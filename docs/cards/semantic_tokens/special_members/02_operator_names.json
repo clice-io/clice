@@ -71,6 +71,7 @@
               "text": "=",
               "type": "operator",
               "modifiers": [
+                "member",
                 "userDefined"
               ]
             }
@@ -84,6 +85,8 @@
               "text": "+",
               "type": "operator",
               "modifiers": [
+                "readonly",
+                "member",
                 "userDefined"
               ]
             }

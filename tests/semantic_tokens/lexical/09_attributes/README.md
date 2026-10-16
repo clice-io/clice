@@ -4,4 +4,4 @@ issues: [clangd#2209]
 
 # Attribute names
 
-Attribute names and their expressions do not receive semantic tokens yet
+Attribute names are `attribute` tokens, and their arguments keep their own kinds

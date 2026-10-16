@@ -274,13 +274,12 @@ ZEST_CASE(UnterminatedString) {
 }
 
 ZEST_CASE(UnterminatedComment) {
-    // clang's raw lexer swallows a block comment left unterminated at eof;
-    // no comment token is produced for it.
     llvm::StringRef content = "int x; /* abc";
     Lexer lexer(content, {.keep_comments = true});
     auto tokens = lex_all(lexer);
-    ZASSERT(tokens.size() == 3U);
-    ZASSERT(tokens.back().kind == clang::tok::semi);
+    ZASSERT(tokens.size() == 4U);
+    ZEXPECT(tokens.back().kind == clang::tok::comment);
+    ZEXPECT(tokens.back().text(content) == "/* abc");
 }
 
 };  // ZEST_SUITE(IncompleteInput)

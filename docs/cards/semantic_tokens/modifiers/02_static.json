@@ -71,7 +71,7 @@
               "modifiers": [
                 "declaration",
                 "static",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -86,7 +86,7 @@
               "modifiers": [
                 "declaration",
                 "static",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -100,7 +100,7 @@
               "type": "field",
               "modifiers": [
                 "definition",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -115,7 +115,7 @@
               "modifiers": [
                 "definition",
                 "static",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -129,7 +129,7 @@
               "type": "method",
               "modifiers": [
                 "static",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -143,7 +143,8 @@
               "type": "variable",
               "modifiers": [
                 "static",
-                "classScope"
+                "modification",
+                "member"
               ]
             }
           }
@@ -157,7 +158,7 @@
               "type": "variable",
               "modifiers": [
                 "static",
-                "functionScope"
+                "local"
               ]
             }
           }

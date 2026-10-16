@@ -58,7 +58,7 @@
               "type": "struct",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -71,7 +71,7 @@
               "text": "module",
               "type": "struct",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -85,7 +85,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -99,7 +99,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -113,7 +113,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }

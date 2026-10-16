@@ -1,0 +1,27 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦#define⟧ FIRST(a, b) a", type = "directive" },
+    { at = "#define ⟦FIRST⟧(a, b) a", type = "macro", modifiers = ["definition", "callable"] },
+    { at = "#define FIRST(⟦a⟧, b) a", type = "macroParameter" },
+    { at = "#define FIRST(a, ⟦b⟧) a", type = "macroParameter" },
+    { at = "#define FIRST(a, b) ⟦a⟧", type = "macroParameter" },
+    { at = "⟦#define⟧ IGNORE(...)", type = "directive" },
+    {
+        at = "#define ⟦IGNORE⟧(...)",
+        type = "macro",
+        modifiers = ["definition", "callable", "empty"],
+    },
+    { at = "⟦int⟧ left();", type = "primitive" },
+    { at = "int ⟦left⟧();", type = "function", modifiers = ["declaration", "global"] },
+    { at = "⟦int⟧ right();", type = "primitive" },
+    { at = "int ⟦right⟧();", type = "function", modifiers = ["declaration", "global"] },
+    { at = "⟦int⟧ pick() {", type = "primitive" },
+    { at = "int ⟦pick⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦IGNORE⟧(left(), right());", type = "macro", modifiers = ["callable", "empty"] },
+    { at = "IGNORE(⟦left(),⟧ right());", type = "plain", modifiers = ["inactive"] },
+    { at = "IGNORE(left(), ⟦right()⟧);", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦return⟧ FIRST(left(), right());", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦FIRST⟧(left(), right());", type = "macro", modifiers = ["callable"] },
+    { at = "return FIRST(⟦left⟧(), right());", type = "function", modifiers = ["global"] },
+    { at = "return FIRST(left(), ⟦right()⟧);", type = "plain", modifiers = ["inactive"] },
+]

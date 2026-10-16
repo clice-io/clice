@@ -168,8 +168,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "export int partition_value ⟦=⟧ 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 27
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {

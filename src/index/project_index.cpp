@@ -8,6 +8,7 @@ module clice;
 
 import :index.project_index;
 import :index.serialization;
+import :semantic.token_class;
 import :support.logging;
 
 namespace clice::index {
@@ -54,6 +55,8 @@ struct GlobalBlob {
     std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint16_t> sym_flags;
+    std::vector<std::uint8_t> sym_token_kinds;
+    std::vector<std::uint32_t> sym_token_modifiers;
     /// Path ids, `no_file` for a symbol without a declaring relation.
     std::vector<std::uint32_t> sym_files;
     std::vector<std::uint32_t> sym_reference_counts;
@@ -105,6 +108,8 @@ struct ProjectIndex::Base {
     llvm::ArrayRef<std::uint64_t> parents;
     llvm::ArrayRef<std::uint8_t> kinds;
     llvm::ArrayRef<std::uint16_t> flags;
+    llvm::ArrayRef<std::uint8_t> token_kinds;
+    llvm::ArrayRef<std::uint32_t> token_modifiers;
     llvm::ArrayRef<std::uint32_t> files;
     llvm::ArrayRef<std::uint32_t> reference_counts;
     llvm::ArrayRef<std::uint32_t> bitmap_ends;
@@ -190,6 +195,8 @@ struct ProjectIndex::Base {
             .scope = SymbolScope::External,
             .flags = static_cast<SymbolFlags>(flags[doc]),
             .file = file == no_file ? no_file : remap[file].raw,
+            .token_class = {.kind = static_cast<SemanticTokenKind>(token_kinds[doc]),
+                            .modifiers = token_modifiers[doc]},
         };
     }
 
@@ -215,6 +222,8 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     parents = to_array_ref(root[&GlobalBlob::sym_parents]);
     kinds = to_array_ref(root[&GlobalBlob::sym_kinds]);
     flags = to_array_ref(root[&GlobalBlob::sym_flags]);
+    token_kinds = to_array_ref(root[&GlobalBlob::sym_token_kinds]);
+    token_modifiers = to_array_ref(root[&GlobalBlob::sym_token_modifiers]);
     files = to_array_ref(root[&GlobalBlob::sym_files]);
     reference_counts = to_array_ref(root[&GlobalBlob::sym_reference_counts]);
     bitmap_ends = to_array_ref(root[&GlobalBlob::sym_bitmap_ends]);
@@ -249,9 +258,13 @@ std::expected<void, llvm::StringRef> ProjectIndex::Base::bind(BlobView root) {
     }
     auto count = hashes.size();
     if(name_ends.size() != count || args_ends.size() != count || parents.size() != count ||
-       kinds.size() != count || flags.size() != count || files.size() != count ||
+       kinds.size() != count || flags.size() != count || token_kinds.size() != count ||
+       token_modifiers.size() != count || files.size() != count ||
        reference_counts.size() != count || bitmap_ends.size() != count) {
         return std::unexpected("symbol columns do not line up");
+    }
+    if(!all_token_kinds(token_kinds)) {
+        return std::unexpected("a symbol's token kind is out of range");
     }
     if(!monotone_ends(name_ends, names.size()) || !monotone_ends(args_ends, args.size()) ||
        !monotone_ends(bitmap_ends, bitmaps.size())) {
@@ -575,6 +588,7 @@ Symbol& ProjectIndex::touch(SymbolHash hash) {
     symbol.parent = identity.parent;
     symbol.kind = identity.kind;
     symbol.flags = identity.flags;
+    symbol.token_class = identity.token_class;
     symbol.file = identity.file;
     if(auto decoded = base->bitmap(*doc)) {
         for(auto id: *decoded) {
@@ -623,6 +637,7 @@ void ProjectIndex::merge(const TUIndex& index,
         if(target.name.empty() && !identity.name.empty()) {
             target.parent = identity.parent;
             target.kind = identity.kind;
+            target.token_class.kind = identity.token_class.kind;
             symbol_changed = true;
         }
         symbol_changed = prefer(target.name, identity.name) || symbol_changed;
@@ -640,6 +655,9 @@ void ProjectIndex::merge(const TUIndex& index,
         auto flags = target.flags | identity.flags;
         symbol_changed = symbol_changed || flags != target.flags;
         target.flags = flags;
+        auto modifiers = target.token_class.modifiers | identity.token_class.modifiers;
+        symbol_changed = symbol_changed || modifiers != target.token_class.modifiers;
+        target.token_class.modifiers = modifiers;
         for(auto ref: references) {
             target.reference_files.add(file_ids_map[ref].raw);
         }
@@ -739,6 +757,8 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.sym_parents.push_back(base->parents[doc]);
         blob.sym_kinds.push_back(base->kinds[doc]);
         blob.sym_flags.push_back(base->flags[doc]);
+        blob.sym_token_kinds.push_back(base->token_kinds[doc]);
+        blob.sym_token_modifiers.push_back(base->token_modifiers[doc]);
         blob.sym_files.push_back(base->files[doc]);
         blob.sym_reference_counts.push_back(base->reference_counts[doc]);
         auto image = base->image(doc);
@@ -754,6 +774,8 @@ void ProjectIndex::serialize_global(llvm::raw_ostream& os, const FileTable& file
         blob.sym_parents.push_back(symbol.parent);
         blob.sym_kinds.push_back(symbol.kind.value());
         blob.sym_flags.push_back(static_cast<std::uint16_t>(symbol.flags));
+        blob.sym_token_kinds.push_back(static_cast<std::uint8_t>(symbol.token_class.kind));
+        blob.sym_token_modifiers.push_back(symbol.token_class.modifiers);
         blob.sym_files.push_back(symbol.file == no_file ? no_file : path_id(Fid{symbol.file}));
         blob.sym_reference_counts.push_back(
             static_cast<std::uint32_t>(symbol.reference_files.cardinality()));

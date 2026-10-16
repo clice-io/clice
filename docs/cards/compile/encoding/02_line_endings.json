@@ -142,7 +142,7 @@
                 "type": "function",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
               },
               {
@@ -160,7 +160,10 @@
                     }
                   }
                 },
-                "type": "keyword"
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
               },
               {
                 "at": {
@@ -179,7 +182,7 @@
                 },
                 "type": "function",
                 "modifiers": [
-                  "globalScope"
+                  "global"
                 ]
               }
             ]

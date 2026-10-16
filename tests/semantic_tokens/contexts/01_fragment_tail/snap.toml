@@ -1,0 +1,13 @@
+["in the editor"."colors.def"]
+semantic_tokens = [
+    { at = "⟦red⟧,", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
+    { at = "⟦green⟧,", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
+    { at = "⟦blue⟧,", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
+]
+
+["on the command line"."colors.def"]
+semantic_tokens = [
+    { at = "⟦red⟧,", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
+    { at = "⟦green⟧,", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
+    { at = "⟦blue⟧,", type = "enumMember", modifiers = ["definition", "readonly", "global"] },
+]

@@ -1,59 +1,59 @@
 [answers.T_def.semantic_token]
 text = "T"
-type = "type"
-modifiers = ["definition", "classScope"]
+type = "typeParameter"
+modifiers = ["definition", "member"]
 
 [answers.N_def.semantic_token]
 text = "N"
-type = "variable"
-modifiers = ["definition", "readonly", "classScope"]
+type = "templateParameter"
+modifiers = ["definition", "readonly", "member", "constexpr"]
 
 [answers.Array_def.semantic_token]
 text = "Array"
 type = "struct"
-modifiers = ["definition", "templated", "globalScope"]
+modifiers = ["definition", "global", "template"]
 
 [answers.T_use.semantic_token]
 text = "T"
-type = "type"
-modifiers = ["classScope"]
+type = "typeParameter"
+modifiers = ["member"]
 
 [answers.N_use.semantic_token]
 text = "N"
-type = "variable"
-modifiers = ["readonly", "classScope"]
+type = "templateParameter"
+modifiers = ["readonly", "member", "constexpr"]
 
 [answers.identity_decl.semantic_token]
 text = "identity"
 type = "function"
-modifiers = ["declaration", "templated", "globalScope"]
+modifiers = ["declaration", "global", "template"]
 
 [answers.T_def2.semantic_token]
 text = "T"
-type = "type"
-modifiers = ["definition", "functionScope"]
+type = "typeParameter"
+modifiers = ["definition", "local"]
 
 [answers.T_use2.semantic_token]
 text = "T"
-type = "type"
-modifiers = ["functionScope"]
+type = "typeParameter"
+modifiers = ["local"]
 
 [answers.identity_def.semantic_token]
 text = "identity"
 type = "function"
-modifiers = ["definition", "templated", "globalScope"]
+modifiers = ["definition", "global", "template"]
 
 [answers.T_use3.semantic_token]
 text = "T"
-type = "type"
-modifiers = ["functionScope"]
+type = "typeParameter"
+modifiers = ["local"]
 
 [answers.Array_use.semantic_token]
 text = "Array"
 type = "struct"
-modifiers = ["globalScope"]
+modifiers = ["global", "template"]
 
 [answers.identity_use.semantic_token]
 text = "identity"
 type = "function"
-modifiers = ["globalScope"]
+modifiers = ["global", "template"]

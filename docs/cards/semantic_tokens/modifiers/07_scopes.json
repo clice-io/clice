@@ -54,7 +54,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -68,7 +68,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "fileScope"
+                "internal"
               ]
             }
           }
@@ -82,7 +82,7 @@
               "type": "field",
               "modifiers": [
                 "definition",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -96,7 +96,7 @@
               "type": "variable",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }

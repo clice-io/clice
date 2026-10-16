@@ -1,19 +1,19 @@
 [answers.global.semantic_token]
 text = "global_scope"
 type = "variable"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [answers.in_file.semantic_token]
 text = "file_scope"
 type = "variable"
-modifiers = ["definition", "fileScope"]
+modifiers = ["definition", "internal"]
 
 [answers.in_class.semantic_token]
 text = "class_scope"
 type = "field"
-modifiers = ["definition", "classScope"]
+modifiers = ["definition", "member"]
 
 [answers.in_function.semantic_token]
 text = "function_scope"
 type = "variable"
-modifiers = ["definition", "functionScope"]
+modifiers = ["definition", "local"]

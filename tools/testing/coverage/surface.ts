@@ -134,5 +134,12 @@ export function methods(
     if (capabilities.workspace?.workspaceFolders?.changeNotifications !== undefined) {
         out.push("workspace/didChangeWorkspaceFolders");
     }
+    const tokens = capabilities.semanticTokensProvider;
+    if (tokens?.range === true) {
+        out.push("textDocument/semanticTokens/range");
+    }
+    if (typeof tokens?.full === "object" && tokens.full.delta === true) {
+        out.push("textDocument/semanticTokens/full/delta");
+    }
     return [...new Set(out)].sort();
 }

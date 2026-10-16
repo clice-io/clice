@@ -1,9 +1,9 @@
 [answers.Container_def.semantic_token]
 text = "Container"
-type = "type"
-modifiers = ["definition", "templated", "classScope"]
+type = "typeParameter"
+modifiers = ["definition", "member", "template"]
 
 [answers.Container_use.semantic_token]
 text = "Container"
-type = "type"
-modifiers = ["templated", "classScope"]
+type = "typeParameter"
+modifiers = ["member", "template"]

@@ -4,7 +4,7 @@
   "subtopic": "preprocessor",
   "title": "Untaken branches",
   "summary": "Tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier",
-  "prose": "Text with no kind of its own becomes a plain `identifier` token, so even a\nlone `}` line dims.",
+  "prose": "Text with no kind of its own becomes a `plain` token, so even a lone `}`\nline dims.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -57,8 +57,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "int before ⟦=⟧ 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {
@@ -146,7 +163,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -166,7 +183,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "operator",
                 "modifiers": [
                   "inactive"
                 ]
@@ -206,7 +223,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -226,7 +243,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -246,7 +263,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -266,7 +283,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -306,7 +323,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -366,7 +383,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "macro",
                 "modifiers": [
                   "inactive"
                 ]
@@ -406,7 +423,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -426,7 +443,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "operator",
                 "modifiers": [
                   "inactive"
                 ]
@@ -466,7 +483,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -526,7 +543,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -546,7 +563,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "operator",
                 "modifiers": [
                   "inactive"
                 ]
@@ -586,7 +603,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -627,6 +644,40 @@
               },
               {
                 "at": {
+                  "$place": "#if ⟦defined⟧(MISSING)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "#if defined(⟦MISSING⟧)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 14,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "macro"
+              },
+              {
+                "at": {
                   "$place": "⟦first_branch;⟧",
                   "path": "main.cpp",
                   "range": {
@@ -640,7 +691,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -694,7 +745,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -751,8 +802,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "int taken ⟦=⟧ 4;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 19,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 19,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {
@@ -857,7 +925,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -877,7 +945,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -897,7 +965,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -937,7 +1005,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]
@@ -957,7 +1025,7 @@
                     }
                   }
                 },
-                "type": "identifier",
+                "type": "plain",
                 "modifiers": [
                   "inactive"
                 ]

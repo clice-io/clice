@@ -1,8 +1,9 @@
 [answers.definition.semantic_token]
 text = "SQUARE"
 type = "macro"
-modifiers = ["definition"]
+modifiers = ["definition", "callable"]
 
 [answers.expansion.semantic_token]
 text = "SQUARE"
 type = "macro"
+modifiers = ["callable"]

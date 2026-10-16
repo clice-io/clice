@@ -1,34 +1,34 @@
 [answers.Shape.semantic_token]
 text = "Shape"
 type = "struct"
-modifiers = ["definition", "abstract", "globalScope"]
+modifiers = ["definition", "abstract", "global", "virtual"]
 
 [answers.area_decl.semantic_token]
 text = "area"
 type = "method"
-modifiers = ["declaration", "virtual", "classScope"]
+modifiers = ["declaration", "member", "virtual"]
 
 [answers.perimeter_decl.semantic_token]
 text = "perimeter"
 type = "method"
-modifiers = ["declaration", "abstract", "virtual", "classScope"]
+modifiers = ["declaration", "abstract", "member", "virtual"]
 
 [answers.Square.semantic_token]
 text = "Square"
 type = "struct"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global", "virtual"]
 
 [answers.perimeter_decl2.semantic_token]
 text = "perimeter"
 type = "method"
-modifiers = ["declaration", "virtual", "classScope"]
+modifiers = ["declaration", "member", "virtual"]
 
 [answers.area_use.semantic_token]
 text = "area"
 type = "method"
-modifiers = ["virtual", "classScope"]
+modifiers = ["member", "virtual"]
 
 [answers.perimeter_use.semantic_token]
 text = "perimeter"
 type = "method"
-modifiers = ["abstract", "virtual", "classScope"]
+modifiers = ["abstract", "member", "virtual"]

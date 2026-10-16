@@ -18,7 +18,7 @@ semantic_tokens = [
     { at = '⟦#include⟧ "h.h"', type = "directive" },
     { at = '#include ⟦"h.h"⟧', type = "header" },
     { at = "⟦int⟧ main() {", type = "primitive" },
-    { at = "int ⟦main⟧() {", type = "function", modifiers = ["definition", "globalScope"] },
-    { at = "⟦return⟧ helper();", type = "keyword" },
-    { at = "return ⟦helper⟧();", type = "function", modifiers = ["globalScope"] },
+    { at = "int ⟦main⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦return⟧ helper();", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦helper⟧();", type = "function", modifiers = ["global"] },
 ]

@@ -1,0 +1,832 @@
+{
+  "id": "semantic_tokens/lexical/13_doc_comments",
+  "topic": "semantic_tokens",
+  "subtopic": "lexical",
+  "title": "Documentation comments",
+  "summary": "Commands in documentation comments are keywords, the names they document parameters",
+  "prose": "Inside a `///` or `/** */` comment, a command such as `\\param`, `@brief`\nor `@return` is a `keyword` and the name after `@param` a `parameter`,\nboth with the `documentation` modifier; the rest of the comment stays a\n`comment`. An ordinary comment has no commands.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "/// Scales a value.\n/// \\param value the value to scale\n/// @param factor how much, at least 1\n/// @return the scaled value\nint scale(int value, int factor);\n\n/**\n * @brief A point on the plane.\n * @tparam T the coordinate type\n */\ntemplate <class T>\nstruct Point {\n    T x, y;\n};\n\n// @param plain comments have no commands\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦/// Scales a value.⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦/// ⟧\\param value the value to scale",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// ⟦\\param⟧ value the value to scale",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// \\param⟦ ⟧value the value to scale",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// \\param ⟦value⟧ the value to scale",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// \\param value⟦ the value to scale⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 35
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦/// ⟧@param factor how much, at least 1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// ⟦@param⟧ factor how much, at least 1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// @param⟦ ⟧factor how much, at least 1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// @param ⟦factor⟧ how much, at least 1",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// @param factor⟦ how much, at least 1⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 38
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦/// ⟧@return the scaled value",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// ⟦@return⟧ the scaled value",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// @return⟦ the scaled value⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ scale(int value, int factor);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦scale⟧(int value, int factor);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "declaration",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int scale(⟦int⟧ value, int factor);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int scale(int ⟦value⟧, int factor);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int scale(int value, ⟦int⟧ factor);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int scale(int value, int ⟦factor⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 31
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦/**⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦ * ⟧@brief A point on the plane.",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "* ⟦@brief⟧ A point on the plane.",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 3
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "* @brief⟦ A point on the plane.⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 31
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦ * ⟧@tparam T the coordinate type",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "* ⟦@tparam⟧ T the coordinate type",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 3
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "* @tparam⟦ ⟧T the coordinate type",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "* @tparam ⟦T⟧ the coordinate type",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "* @tparam T⟦ the coordinate type⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 32
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦ */⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦template⟧ <class T>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template ⟦<⟧class T>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "template <⟦class⟧ T>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template <class ⟦T⟧>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <class T⟦>⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "⟦struct⟧ Point {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "struct ⟦Point⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "definition",
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦T⟧ x, y;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 5
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T ⟦x⟧, y;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "field",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T x, ⟦y⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "field",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦// @param plain comments have no commands⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 41
+                    }
+                  }
+                },
+                "type": "comment"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

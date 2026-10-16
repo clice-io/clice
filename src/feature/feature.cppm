@@ -11,6 +11,7 @@ import :index.query;
 import :index.shard;
 import :index.types;
 import :semantic.display;
+import :semantic.token_class;
 import :semantic.symbol;
 import :support.anomaly;
 import :support.markup;
@@ -509,11 +510,65 @@ struct SignatureHelpOptions {
     <bool> documentation = true;
 };
 
+/// Corresponds to the `[semantic_tokens]` section in clice.toml.
+struct SemanticTokensOptions {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Send the tokens an editor's own syntax highlighting colors as well: "
+                         "keywords, literals, comments, operators, preprocessor directives. "
+                         "Off, only what syntax cannot tell is sent: names by what they name, "
+                         "overloaded and declarator operators, template brackets, format "
+                         "specifiers, and the tokens of preprocessor-inactive code, kindless.")
+    <bool> lexical = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "The names a client or theme expects for clice's token kinds, as "
+                         "`field = \"property\"`; an empty name drops the kind, whose tokens "
+                         "are then not sent, and kinds given one name merge. Read when the "
+                         "server starts.")
+    <std::map<std::string, std::string>> kinds;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "The names a client or theme expects for clice's token modifiers; an "
+                         "empty name drops the modifier, and modifiers given one name merge. "
+                         "Read when the server starts.")
+    <std::map<std::string, std::string>> modifiers;
+};
+
 struct SemanticToken {
     LocalSourceRange range;
-    SymbolKind kind = SymbolKind::Invalid;
+    SemanticTokenKind kind = SemanticTokenKind::None;
     std::uint32_t modifiers = 0;
 };
+
+/// The legend clice's tokens are sent with: the names of their kinds and
+/// modifiers after the `[semantic_tokens]` renames, and where each lands.
+struct SemanticTokenLegend {
+    constexpr static auto kind_count = kota::meta::reflection<SemanticTokenKind>::member_count;
+    constexpr static auto modifier_count =
+        kota::meta::reflection<SemanticTokenModifier>::member_count;
+
+    std::vector<std::string> types;
+    std::vector<std::string> modifiers;
+
+    /// The index in `types` of each SemanticTokenKind, none for one dropped.
+    std::array<std::optional<std::uint32_t>, kind_count> type_of{};
+
+    /// The legend bit of each SemanticTokenModifier, 0 for one dropped.
+    std::array<std::uint32_t, modifier_count> bit_of{};
+
+    /// The names the options map that name no kind or modifier.
+    std::vector<std::string> unknown;
+};
+
+/// The name the legend gives a kind or a modifier without a rename: its
+/// enumerator's, lower camel case.
+std::string legend_name(SemanticTokenKind kind);
+std::string legend_name(SemanticTokenModifier modifier);
+
+auto semantic_token_legend(const SemanticTokensOptions& options) -> SemanticTokenLegend;
 
 /// A fold in byte offsets of the main file; it becomes an LSP FoldingRange
 /// only at the reply edge, which knows how the client folds.
@@ -608,24 +663,32 @@ struct InlayHint {
     bool padding_right = false;
 };
 
-/// Semantic tokens of the main file. Tokens inside inactive regions
-/// carry the Inactive modifier, and bare identifiers there emit as
-/// Identifier so every word of a dead region has a token to dim. The
-/// overloads without a regions argument scan the unit themselves — correct
-/// only for units compiled without a PCH; a PCH unit's preamble share
-/// needs the seeded regions the worker assembles at compile time.
-auto semantic_tokens(CompilationUnit& unit) -> std::vector<SemanticToken>;
-auto semantic_tokens(CompilationUnit& unit, PositionEncoding encoding) -> protocol::SemanticTokens;
+/// Semantic tokens of the main file; `inactive_regions` are the unit's,
+/// the preamble's under a PCH included, as the worker assembles them at
+/// compile time. The overload without them scans the unit itself — correct
+/// only for a unit compiled without a PCH.
 auto semantic_tokens(CompilationUnit& unit,
                      llvm::ArrayRef<std::uint32_t> inactive_regions,
-                     PositionEncoding encoding) -> protocol::SemanticTokens;
+                     const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
+auto semantic_tokens(CompilationUnit& unit, const SemanticTokensOptions& options)
+    -> std::vector<SemanticToken>;
 
-/// Protocol encoding of computed tokens against the text they describe — one
-/// encoder for the worker's AST results and the master's index
-/// projections, so both paths emit byte-identical replies.
+/// Protocol encoding of computed tokens against the text they describe,
+/// those overlapping `window` alone when one is given — one encoder for the
+/// worker's AST results and the master's index projections, so both paths
+/// emit byte-identical replies.
 auto semantic_tokens_to_protocol(llvm::ArrayRef<SemanticToken> tokens,
                                  const PositionMap& map,
-                                 PositionEncoding encoding) -> protocol::SemanticTokens;
+                                 PositionEncoding encoding,
+                                 const SemanticTokenLegend& legend,
+                                 std::optional<LocalSourceRange> window = std::nullopt)
+    -> protocol::SemanticTokens;
+
+/// The one edit turning the encoded tokens `before` into `after`: what
+/// lies between their common prefix and suffix; none when they are equal.
+auto semantic_tokens_edits(llvm::ArrayRef<std::uint32_t> before,
+                           llvm::ArrayRef<std::uint32_t> after)
+    -> std::vector<protocol::SemanticTokensEdit>;
 
 auto folding_ranges(CompilationUnit& unit) -> std::vector<FoldingRange>;
 
@@ -1115,6 +1178,9 @@ struct IndexEntries {
     /// The explicit instantiations, as decl entries of what they
     /// instantiate (RelationKind::Instantiation).
     std::vector<IndexDecl> instantiations;
+
+    /// The names written to (RelationKind::Write).
+    std::vector<index::Occurrence> writes;
 };
 
 auto extract_index_entries(const index::Shard& shard) -> IndexEntries;
@@ -1135,15 +1201,14 @@ using IndexSymbolResolver = llvm::function_ref<std::optional<index::SymbolRef>(i
 auto index_lang_options(llvm::StringRef path, bool c_only, llvm::StringRef standard = {})
     -> const clang::LangOptions&;
 
-/// Lexical layer (keywords, literals, comments, directives) from a raw lex
-/// of `content`, semantic kinds from `occurrences` resolved through
-/// `resolve`, Declaration/Definition modifiers from `decls`, both in any
-/// order.
+/// The tokens of `content` as the AST's would be, from what the index
+/// records: each symbol's classified from `resolve` at its occurrences, the
+/// roles `decls` give, the writes `relations` record.
 auto index_semantic_tokens(llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
-                           llvm::ArrayRef<index::Occurrence> occurrences,
-                           llvm::ArrayRef<IndexDecl> decls,
-                           IndexSymbolResolver resolve) -> std::vector<SemanticToken>;
+                           const IndexEntries& entries,
+                           IndexSymbolResolver resolve,
+                           const SemanticTokensOptions& options) -> std::vector<SemanticToken>;
 
 /// The outline's SymbolKind -> LSP mapping, exhaustive over the enum so a
 /// new kind fails to compile rather than fall into a default. The index

@@ -1,13 +1,9 @@
-[answers.value_use]
-wrong = "the name a dependent using declaration brings in should be colored, as a dependent name"
-
 [answers.value_use.semantic_token]
 text = "value"
-type = "none"
-
-[answers.value_use2]
-wrong = "the name a dependent using declaration brings in should be colored, as a dependent name"
+type = "unknown"
+modifiers = ["declaration", "member", "dependent"]
 
 [answers.value_use2.semantic_token]
 text = "value"
-type = "none"
+type = "unknown"
+modifiers = ["member", "dependent"]

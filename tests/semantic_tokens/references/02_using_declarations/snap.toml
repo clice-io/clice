@@ -1,19 +1,19 @@
 [answers.helper_use.semantic_token]
 text = "helper"
 type = "function"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.Gadget_use.semantic_token]
 text = "Gadget"
 type = "struct"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.helper_use2.semantic_token]
 text = "helper"
 type = "function"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.Gadget_use2.semantic_token]
 text = "Gadget"
 type = "struct"
-modifiers = ["globalScope"]
+modifiers = ["global"]

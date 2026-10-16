@@ -81,6 +81,9 @@ public:
     kota::task<std::optional<std::vector<feature::DocumentSymbol>>, kota::ipc::Error>
         document_symbols(const Ticket& ticket, kota::cancellation_token token = {});
 
+    kota::task<std::optional<std::vector<feature::SemanticToken>>, kota::ipc::Error>
+        semantic_tokens(const Ticket& ticket, kota::cancellation_token token = {});
+
     /// The selection ranges around offsets of the buffer from the stateful
     /// worker holding the AST, none without one.
     kota::task<std::vector<std::vector<LocalSourceRange>>, kota::ipc::Error>

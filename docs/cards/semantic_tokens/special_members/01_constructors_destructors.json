@@ -4,7 +4,7 @@
   "subtopic": "special_members",
   "title": "Constructors and destructors",
   "summary": "Constructors and destructors use method tokens with dedicated modifiers",
-  "prose": "A destructor name renders as two tokens: the `~` carries the method\nkind and the declaration/definition modifiers, the class name after it\nstays a reference to the class.",
+  "prose": "A destructor's whole name, the `~` and the class name, is one method\ntoken.",
   "status": "supported",
   "issues": [
     "clangd#1509",
@@ -68,8 +68,8 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "constructorOrDestructor",
-                "classScope"
+                "member",
+                "constructor"
               ]
             }
           }
@@ -79,12 +79,12 @@
           "marker": "tilde_decl",
           "value": {
             "semantic_token": {
-              "text": "~",
+              "text": "~Session",
               "type": "method",
               "modifiers": [
                 "declaration",
-                "constructorOrDestructor",
-                "classScope"
+                "member",
+                "destructor"
               ]
             }
           }
@@ -94,10 +94,12 @@
           "marker": "Session_use",
           "value": {
             "semantic_token": {
-              "text": "Session",
-              "type": "struct",
+              "text": "~Session",
+              "type": "method",
               "modifiers": [
-                "globalScope"
+                "declaration",
+                "member",
+                "destructor"
               ]
             }
           }
@@ -111,8 +113,8 @@
               "type": "method",
               "modifiers": [
                 "definition",
-                "constructorOrDestructor",
-                "classScope"
+                "member",
+                "constructor"
               ]
             }
           }
@@ -122,12 +124,12 @@
           "marker": "tilde_def",
           "value": {
             "semantic_token": {
-              "text": "~",
+              "text": "~Session",
               "type": "method",
               "modifiers": [
                 "definition",
-                "constructorOrDestructor",
-                "classScope"
+                "member",
+                "destructor"
               ]
             }
           }
@@ -137,11 +139,11 @@
           "marker": "tilde_use",
           "value": {
             "semantic_token": {
-              "text": "~",
+              "text": "~Session",
               "type": "method",
               "modifiers": [
-                "constructorOrDestructor",
-                "classScope"
+                "member",
+                "destructor"
               ]
             }
           }

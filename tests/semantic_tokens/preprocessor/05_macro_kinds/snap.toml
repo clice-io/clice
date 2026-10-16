@@ -1,12 +1,7 @@
-[answers.function_like]
-wrong = "object-like and function-like macros should be told apart (clangd#2649)"
-
 [answers.function_like.semantic_token]
 text = "CHECK"
 type = "macro"
-
-[answers.object_like]
-wrong = "object-like and function-like macros should be told apart (clangd#2649)"
+modifiers = ["callable"]
 
 [answers.object_like.semantic_token]
 text = "MAX_SIZE"

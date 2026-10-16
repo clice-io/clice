@@ -305,6 +305,8 @@ struct GlobalBlobMirror {
     std::vector<std::uint64_t> sym_parents;
     std::vector<std::uint8_t> sym_kinds;
     std::vector<std::uint16_t> sym_flags;
+    std::vector<std::uint8_t> sym_token_kinds;
+    std::vector<std::uint32_t> sym_token_modifiers;
     std::vector<std::uint32_t> sym_files;
     std::vector<std::uint32_t> sym_reference_counts;
     std::vector<std::uint32_t> sym_bitmap_ends;
@@ -327,6 +329,8 @@ struct GlobalBlobMirror {
         sym_parents.push_back(parent);
         sym_kinds.push_back(0);
         sym_flags.push_back(0);
+        sym_token_kinds.push_back(0);
+        sym_token_modifiers.push_back(0);
         sym_files.push_back(file);
         sym_reference_counts.push_back(0);
         for(auto byte: image) {

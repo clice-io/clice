@@ -165,8 +165,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "export int exported_value ⟦=⟧ 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 26
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {
@@ -254,8 +271,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "int private_value ⟦=⟧ 2;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {

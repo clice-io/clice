@@ -181,8 +181,25 @@
                 "type": "variable",
                 "modifiers": [
                   "definition",
-                  "globalScope"
+                  "global"
                 ]
+              },
+              {
+                "at": {
+                  "$place": "int after_includes ⟦=⟧ 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {

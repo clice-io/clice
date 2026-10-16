@@ -1,34 +1,34 @@
 [answers.member.semantic_token]
 text = "hits"
 type = "field"
-modifiers = ["usedAsMutableReference", "classScope"]
+modifiers = ["modification", "member"]
 
 [answers.constructor.semantic_token]
 text = "value"
 type = "variable"
-modifiers = ["usedAsMutableReference", "functionScope"]
+modifiers = ["modification", "local"]
 
 [answers.call_operator.semantic_token]
 text = "value"
 type = "variable"
-modifiers = ["usedAsMutableReference", "functionScope"]
+modifiers = ["modification", "local"]
 
 [answers.by_value.semantic_token]
 text = "value"
 type = "variable"
-modifiers = ["functionScope"]
+modifiers = ["local"]
 
 [answers.function_pointer.semantic_token]
 text = "notify"
 type = "function"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.function_reference.semantic_token]
 text = "notify"
 type = "function"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.dependent_parameter.semantic_token]
 text = "local"
 type = "variable"
-modifiers = ["functionScope"]
+modifiers = ["local"]

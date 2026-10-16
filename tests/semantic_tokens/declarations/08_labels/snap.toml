@@ -1,9 +1,9 @@
 [answers.done_use.semantic_token]
 text = "done"
 type = "label"
-modifiers = ["functionScope"]
+modifiers = ["local"]
 
 [answers.done_def.semantic_token]
 text = "done"
 type = "label"
-modifiers = ["definition", "functionScope"]
+modifiers = ["definition", "local"]

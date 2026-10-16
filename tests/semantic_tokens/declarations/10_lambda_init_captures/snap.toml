@@ -1,9 +1,9 @@
 [answers.val_def.semantic_token]
 text = "val"
 type = "variable"
-modifiers = ["definition", "functionScope"]
+modifiers = ["definition", "local"]
 
 [answers.val_use.semantic_token]
 text = "val"
 type = "variable"
-modifiers = ["functionScope"]
+modifiers = ["local"]

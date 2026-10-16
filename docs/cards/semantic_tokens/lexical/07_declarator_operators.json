@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "lexical",
   "title": "Declarator vs operator disambiguation",
-  "summary": "Declarator and expression operators do not receive distinct token kinds yet",
+  "summary": "A declarator's `*`, `&` and `&&` carry the `declarator` modifier, apart from the same operators in expressions",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [
     "clangd#1421"
   ],
@@ -55,10 +55,12 @@
           "label": "pointer_declarator",
           "marker": "pointer_declarator",
           "value": {
-            "wrong": "a declarator's * or & should be colored, apart from the operator (clangd#1421)",
             "semantic_token": {
               "text": "*",
-              "type": "none"
+              "type": "operator",
+              "modifiers": [
+                "declarator"
+              ]
             }
           }
         },
@@ -66,10 +68,9 @@
           "label": "address_of",
           "marker": "address_of",
           "value": {
-            "wrong": "an operator should be colored as an operator, apart from a declarator (clangd#1421)",
             "semantic_token": {
               "text": "&",
-              "type": "none"
+              "type": "operator"
             }
           }
         },
@@ -77,10 +78,12 @@
           "label": "reference_declarator",
           "marker": "reference_declarator",
           "value": {
-            "wrong": "a declarator's * or & should be colored, apart from the operator (clangd#1421)",
             "semantic_token": {
               "text": "&",
-              "type": "none"
+              "type": "operator",
+              "modifiers": [
+                "declarator"
+              ]
             }
           }
         },
@@ -88,10 +91,9 @@
           "label": "multiply",
           "marker": "multiply",
           "value": {
-            "wrong": "an operator should be colored as an operator, apart from a declarator (clangd#1421)",
             "semantic_token": {
               "text": "*",
-              "type": "none"
+              "type": "operator"
             }
           }
         },
@@ -99,10 +101,9 @@
           "label": "bitwise_and",
           "marker": "bitwise_and",
           "value": {
-            "wrong": "an operator should be colored as an operator, apart from a declarator (clangd#1421)",
             "semantic_token": {
               "text": "&",
-              "type": "none"
+              "type": "operator"
             }
           }
         }

@@ -4,7 +4,7 @@
   "subtopic": "modifiers",
   "title": "Readonly",
   "summary": "Const values and methods, plus enum members, carry the readonly modifier",
-  "prose": "Readonly is currently value-based: a pointer to const counts as\nreadonly even though the pointer itself can change.",
+  "prose": "Readonly is about the object a name stands for: a reference to const and a\nconst pointer are readonly, a pointer to const is not.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -95,7 +95,7 @@
               "modifiers": [
                 "definition",
                 "readonly",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -110,7 +110,7 @@
               "modifiers": [
                 "definition",
                 "readonly",
-                "fileScope"
+                "internal"
               ]
             }
           }
@@ -125,7 +125,8 @@
               "modifiers": [
                 "definition",
                 "readonly",
-                "fileScope"
+                "internal",
+                "constexpr"
               ]
             }
           }
@@ -140,7 +141,7 @@
               "modifiers": [
                 "declaration",
                 "readonly",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -154,7 +155,7 @@
               "type": "method",
               "modifiers": [
                 "declaration",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -169,7 +170,7 @@
               "modifiers": [
                 "definition",
                 "readonly",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -183,8 +184,7 @@
               "type": "parameter",
               "modifiers": [
                 "definition",
-                "readonly",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -199,7 +199,7 @@
               "modifiers": [
                 "definition",
                 "readonly",
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -213,7 +213,7 @@
               "type": "method",
               "modifiers": [
                 "readonly",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -226,7 +226,7 @@
               "text": "write",
               "type": "method",
               "modifiers": [
-                "classScope"
+                "member"
               ]
             }
           }
@@ -240,7 +240,7 @@
               "type": "variable",
               "modifiers": [
                 "readonly",
-                "fileScope"
+                "internal"
               ]
             }
           }

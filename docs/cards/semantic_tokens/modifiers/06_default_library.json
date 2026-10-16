@@ -39,7 +39,7 @@
               "type": "function",
               "modifiers": [
                 "defaultLibrary",
-                "globalScope"
+                "global"
               ]
             }
           }

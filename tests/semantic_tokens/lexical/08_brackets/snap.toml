@@ -1,40 +1,22 @@
-[answers.template_open]
-wrong = "a bracket should be a token of its bracket kind"
-
 [answers.template_open.semantic_token]
 text = "<"
-type = "none"
-
-[answers.array_open]
-wrong = "a bracket should be a token of its bracket kind"
+type = "bracket"
 
 [answers.array_open.semantic_token]
 text = "["
 type = "none"
 
-[answers.argument_open]
-wrong = "a bracket should be a token of its bracket kind"
-
 [answers.argument_open.semantic_token]
 text = "<"
-type = "none"
-
-[answers.brace_open]
-wrong = "a bracket should be a token of its bracket kind"
+type = "bracket"
 
 [answers.brace_open.semantic_token]
 text = "{"
 type = "none"
 
-[answers.paren_open]
-wrong = "a bracket should be a token of its bracket kind"
-
 [answers.paren_open.semantic_token]
 text = "("
 type = "none"
-
-[answers.subscript_open]
-wrong = "a bracket should be a token of its bracket kind"
 
 [answers.subscript_open.semantic_token]
 text = "["

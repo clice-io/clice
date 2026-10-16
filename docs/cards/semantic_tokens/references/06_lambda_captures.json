@@ -63,7 +63,7 @@
               "text": "local",
               "type": "variable",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -86,7 +86,7 @@
               "text": "local",
               "type": "variable",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -99,7 +99,7 @@
               "text": "field",
               "type": "field",
               "modifiers": [
-                "classScope"
+                "member"
               ]
             }
           }
@@ -112,7 +112,7 @@
               "text": "local",
               "type": "variable",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -125,7 +125,7 @@
               "text": "local",
               "type": "variable",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }

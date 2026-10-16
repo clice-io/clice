@@ -1,62 +1,38 @@
 [test.burst]
 "unit_0.cpp" = [
     { at = "⟦int⟧ unit_0() { return 0; }", type = "primitive" },
-    {
-        at = "int ⟦unit_0⟧() { return 0; }",
-        type = "function",
-        modifiers = ["definition", "globalScope"],
-    },
-    { at = "int unit_0() { ⟦return⟧ 0; }", type = "keyword" },
+    { at = "int ⟦unit_0⟧() { return 0; }", type = "function", modifiers = ["definition", "global"] },
+    { at = "int unit_0() { ⟦return⟧ 0; }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int unit_0() { return ⟦0⟧; }", type = "number" },
 ]
 "unit_1.cpp" = [
     { at = "⟦int⟧ unit_1() { return 1; }", type = "primitive" },
-    {
-        at = "int ⟦unit_1⟧() { return 1; }",
-        type = "function",
-        modifiers = ["definition", "globalScope"],
-    },
-    { at = "int unit_1() { ⟦return⟧ 1; }", type = "keyword" },
+    { at = "int ⟦unit_1⟧() { return 1; }", type = "function", modifiers = ["definition", "global"] },
+    { at = "int unit_1() { ⟦return⟧ 1; }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int unit_1() { return ⟦1⟧; }", type = "number" },
 ]
 "unit_2.cpp" = [
     { at = "⟦int⟧ unit_2() { return 2; }", type = "primitive" },
-    {
-        at = "int ⟦unit_2⟧() { return 2; }",
-        type = "function",
-        modifiers = ["definition", "globalScope"],
-    },
-    { at = "int unit_2() { ⟦return⟧ 2; }", type = "keyword" },
+    { at = "int ⟦unit_2⟧() { return 2; }", type = "function", modifiers = ["definition", "global"] },
+    { at = "int unit_2() { ⟦return⟧ 2; }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int unit_2() { return ⟦2⟧; }", type = "number" },
 ]
 "unit_3.cpp" = [
     { at = "⟦int⟧ unit_3() { return 3; }", type = "primitive" },
-    {
-        at = "int ⟦unit_3⟧() { return 3; }",
-        type = "function",
-        modifiers = ["definition", "globalScope"],
-    },
-    { at = "int unit_3() { ⟦return⟧ 3; }", type = "keyword" },
+    { at = "int ⟦unit_3⟧() { return 3; }", type = "function", modifiers = ["definition", "global"] },
+    { at = "int unit_3() { ⟦return⟧ 3; }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int unit_3() { return ⟦3⟧; }", type = "number" },
 ]
 "unit_4.cpp" = [
     { at = "⟦int⟧ unit_4() { return 4; }", type = "primitive" },
-    {
-        at = "int ⟦unit_4⟧() { return 4; }",
-        type = "function",
-        modifiers = ["definition", "globalScope"],
-    },
-    { at = "int unit_4() { ⟦return⟧ 4; }", type = "keyword" },
+    { at = "int ⟦unit_4⟧() { return 4; }", type = "function", modifiers = ["definition", "global"] },
+    { at = "int unit_4() { ⟦return⟧ 4; }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int unit_4() { return ⟦4⟧; }", type = "number" },
 ]
 "unit_5.cpp" = [
     { at = "⟦int⟧ unit_5() { return 5; }", type = "primitive" },
-    {
-        at = "int ⟦unit_5⟧() { return 5; }",
-        type = "function",
-        modifiers = ["definition", "globalScope"],
-    },
-    { at = "int unit_5() { ⟦return⟧ 5; }", type = "keyword" },
+    { at = "int ⟦unit_5⟧() { return 5; }", type = "function", modifiers = ["definition", "global"] },
+    { at = "int unit_5() { ⟦return⟧ 5; }", type = "keyword", modifiers = ["controlFlow"] },
     { at = "int unit_5() { return ⟦5⟧; }", type = "number" },
 ]
 

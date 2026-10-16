@@ -75,6 +75,10 @@ using CopiedDocLookup = llvm::function_ref<std::optional<Documentation>(llvm::St
 /// file, a page or a group documents no declaration: empty.
 Documentation parse_documentation(llvm::StringRef text, CopiedDocLookup lookup);
 
+/// Whether `name`, written after `@` or `\` in a documentation comment, is a
+/// command parse_documentation reads.
+bool is_doc_command(llvm::StringRef name);
+
 /// A name as `@copydoc` writes it: `name`, `Class::member`,
 /// `Class#member`, `::name`, and for one overload of a function its
 /// parameter types, `f(int, const char*)`.

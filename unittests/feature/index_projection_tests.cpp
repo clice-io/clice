@@ -5,7 +5,9 @@ module;
 module clice;
 
 import :feature.feature;
+import :feature.semantic_token_stream;
 import :index.tu_index;
+import :semantic.token_class;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -30,20 +32,12 @@ void extract_entries() {
 }
 
 std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
-    auto to_ref = [&](const index::SymbolIdentity& identity) {
-        return index::SymbolRef{.hash = hash,
-                                .name = std::string(identity.name),
-                                .args = std::string(identity.args),
-                                .parent = identity.parent,
-                                .kind = identity.kind,
-                                .flags = identity.flags};
-    };
     if(auto identity = tu.find_symbol(hash)) {
-        return to_ref(*identity);
+        return index::SymbolRef::from(hash, *identity);
     }
     auto main_id = tu.path_count() - 1;
     if(auto identity = tu.shard_of(main_id).find_symbol(hash)) {
-        return to_ref(*identity);
+        return index::SymbolRef::from(hash, *identity);
     }
     return std::nullopt;
 }
@@ -63,29 +57,48 @@ auto projected_outline() -> std::vector<feature::DocumentSymbol> {
                                            {});
 }
 
-/// The projected tokens of the compiled unit equal the AST's, down to the
-/// modifiers the index knows; both under the Tester's C++20.
+/// The projected tokens of the compiled unit equal what the AST knows
+/// that the index records too, modifiers included; both under the
+/// Tester's C++20.
 void expect_tokens_match_ast() {
-    auto ast = feature::semantic_tokens(*unit);
+    auto content = unit->focus_file().content();
+    auto ast = feature::semantic_token_stream(content,
+                                              unit->lang_options(),
+                                              feature::semantic_token_facts(*unit, {}, true),
+                                              {});
     auto projected =
-        feature::index_semantic_tokens(unit->focus_file().content(),
+        feature::index_semantic_tokens(content,
                                        feature::index_lang_options("main.cpp", false, "c++20"),
-                                       entries.occurrences,
-                                       entries.decls,
-                                       resolver());
-
-    // The index knows Declaration/Definition; every other AST modifier
-    // (Readonly, Static, Virtual, ...) is a pinned degradation.
-    auto pinned = SymbolModifiers::to_mask(SymbolModifiers::Declaration) |
-                  SymbolModifiers::to_mask(SymbolModifiers::Definition);
+                                       entries,
+                                       resolver(),
+                                       {});
 
     ZASSERT(projected.size() == ast.size());
     for(std::size_t i = 0; i < ast.size(); i += 1) {
         ZASSERT(projected[i].range.begin == ast[i].range.begin);
         ZASSERT(projected[i].range.end == ast[i].range.end);
-        ZASSERT(projected[i].kind.value_of() == ast[i].kind.value_of());
-        ZASSERT(projected[i].modifiers == (ast[i].modifiers & pinned));
+        ZASSERT(projected[i].kind == ast[i].kind);
+        ZASSERT(projected[i].modifiers == ast[i].modifiers);
     }
+}
+
+/// The tokens the index projects from synthetic entries, each symbol of
+/// the token kind `kinds` gives it.
+auto project(llvm::StringRef content,
+             const clang::LangOptions& lang_opts,
+             feature::IndexEntries synthetic,
+             llvm::ArrayRef<SemanticTokenKind> kinds) -> std::vector<feature::SemanticToken> {
+    return feature::index_semantic_tokens(
+        content,
+        lang_opts,
+        synthetic,
+        [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+            if(hash == 0 || hash > kinds.size()) {
+                return std::nullopt;
+            }
+            return index::SymbolRef{.token_class = {.kind = kinds[hash - 1]}};
+        },
+        {});
 }
 
 ZEST_CASE(TokensMatchAst) {
@@ -420,47 +433,28 @@ void g() {
 
 ZEST_CASE(MergedKindsConflict) {
     llvm::StringRef content = "value;\n";
-    std::vector<index::Occurrence> merged = {
-        {.range = {0, 5}, .target = 1},
-        {.range = {0, 5}, .target = 2},
-    };
-    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
-        if(hash == 1) {
-            return index::SymbolRef{.name = "value", .kind = SymbolKind::Variable};
-        }
-        return index::SymbolRef{.name = "value", .kind = SymbolKind::Function};
-    };
-
-    auto tokens = feature::index_semantic_tokens(content,
-                                                 feature::index_lang_options("main.cpp", false),
-                                                 merged,
-                                                 {},
-                                                 resolve_synthetic);
+    auto tokens = project(content,
+                          feature::index_lang_options("main.cpp", false),
+                          {.occurrences = {{.range = {0, 5}, .target = 1},
+                                           {.range = {0, 5}, .target = 2}}},
+                          {SemanticTokenKind::Variable, SemanticTokenKind::Function});
     ZASSERT(tokens.size() == std::size_t(1));
-    ZASSERT(tokens[0].kind.value_of() == SymbolKind(SymbolKind::Conflict).value_of());
+    ZASSERT(tokens[0].kind == SemanticTokenKind::Conflict);
 }
 
 ZEST_CASE(ModuleNameComponents) {
     // The index stores one occurrence spanning the whole written module
     // name; every identifier component must classify, as on the AST path
-    // (separators and the contextual `module`/`import` stay unpainted).
+    // (separators stay unpainted).
     llvm::StringRef content = "export module demo.core;\nimport foo:part;\n";
-    std::vector<index::Occurrence> merged = {
-        {.range = {14, 23}, .target = 1},
-        {.range = {32, 40}, .target = 1},
-    };
-    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<index::SymbolRef> {
-        return index::SymbolRef{.name = "demo.core", .kind = SymbolKind::Module};
-    };
-
-    auto tokens = feature::index_semantic_tokens(content,
-                                                 feature::index_lang_options("main.cppm", false),
-                                                 merged,
-                                                 {},
-                                                 resolve_synthetic);
+    auto tokens = project(content,
+                          feature::index_lang_options("main.cppm", false),
+                          {.occurrences = {{.range = {14, 23}, .target = 1},
+                                           {.range = {32, 40}, .target = 1}}},
+                          {SemanticTokenKind::Module});
     std::vector<std::pair<std::uint32_t, std::uint32_t>> modules;
     for(auto& token: tokens) {
-        if(token.kind == SymbolKind::Module) {
+        if(token.kind == SemanticTokenKind::Module) {
             modules.emplace_back(token.range.begin, token.range.end);
         }
     }
@@ -473,67 +467,50 @@ ZEST_CASE(ModuleNameComponents) {
     ZASSERT(modules == expected);
 }
 
+/// The kind of the token beginning at `begin`, None without one.
+SemanticTokenKind kind_at(llvm::ArrayRef<feature::SemanticToken> tokens, std::uint32_t begin) {
+    auto token = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
+        return token.range.begin == begin;
+    });
+    return token == tokens.end() ? SemanticTokenKind::None : token->kind;
+}
+
 ZEST_CASE(CDialectKeywords) {
     // `class` is a valid C identifier: entries built by C parses must lex
     // under the C keyword table, or the C++ table would take `class` as
     // a keyword and shadow the entry's kind.
     llvm::StringRef content = "int class;\n";
-    std::vector<feature::IndexDecl> entries = {
-        {.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true},
+    feature::IndexEntries entries{
+        .decls = {{.range = {4, 9}, .extent = {0, 10}, .symbol = 1, .definition = true}},
     };
-    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<index::SymbolRef> {
-        return index::SymbolRef{.name = "class", .kind = SymbolKind::Variable};
-    };
+    auto c_tokens = project(content,
+                            feature::index_lang_options("header.h", true),
+                            entries,
+                            {SemanticTokenKind::Variable});
+    ZASSERT(kind_at(c_tokens, 4) == SemanticTokenKind::Variable);
 
-    auto c_tokens = feature::index_semantic_tokens(content,
-                                                   feature::index_lang_options("header.h", true),
-                                                   {},
-                                                   entries,
-                                                   resolve_synthetic);
-    ZASSERT(c_tokens.size() == std::size_t(2));
-    ZASSERT(c_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());
-
-    auto cpp_tokens = feature::index_semantic_tokens(content,
-                                                     feature::index_lang_options("header.h", false),
-                                                     {},
-                                                     entries,
-                                                     resolve_synthetic);
-    ZASSERT(cpp_tokens.size() == std::size_t(2));
-    ZASSERT(cpp_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Keyword).value_of());
+    auto cpp_tokens = project(content,
+                              feature::index_lang_options("header.h", false),
+                              entries,
+                              {SemanticTokenKind::Variable});
+    ZASSERT(kind_at(cpp_tokens, 4) == SemanticTokenKind::Keyword);
 }
 
 ZEST_CASE(DriverDefaultKeywords) {
     // The driver turns on `char8_t` from C++20 and the GNU keywords in GNU
     // modes; the language defaults alone leave both off.
     llvm::StringRef content = "char8_t c;\ntypeof(c) d;\n";
-    auto tokens = feature::index_semantic_tokens(
-        content,
-        feature::index_lang_options("main.cpp", false, "gnu++20"),
-        {},
-        {},
-        [](index::SymbolHash) -> std::optional<index::SymbolRef> { return std::nullopt; });
-    auto kind_at = [&](std::uint32_t begin) {
-        auto token = std::ranges::find_if(tokens, [&](const feature::SemanticToken& token) {
-            return token.range.begin == begin;
-        });
-        return token == tokens.end() ? SymbolKind(SymbolKind::Invalid).value_of()
-                                     : token->kind.value_of();
-    };
-    ZASSERT(kind_at(0) == SymbolKind(SymbolKind::Primitive).value_of());
-    ZASSERT(kind_at(11) == SymbolKind(SymbolKind::Keyword).value_of());
+    auto tokens = project(content, feature::index_lang_options("main.cpp", false, "gnu++20"), {}, {});
+    ZASSERT(kind_at(tokens, 0) == SemanticTokenKind::Primitive);
+    ZASSERT(kind_at(tokens, 11) == SemanticTokenKind::Keyword);
 }
 
 ZEST_CASE(ModuleKeywordsNeedModules) {
     // Before C++20 a line-leading `module` is a plain name.
     llvm::StringRef content = "module m;\n";
-    auto tokens = feature::index_semantic_tokens(
-        content,
-        feature::index_lang_options("main.cpp", false, "c++17"),
-        {},
-        {},
-        [](index::SymbolHash) -> std::optional<index::SymbolRef> { return std::nullopt; });
+    auto tokens = project(content, feature::index_lang_options("main.cpp", false, "c++17"), {}, {});
     ZASSERT(std::ranges::none_of(tokens, [](const feature::SemanticToken& token) {
-        return token.kind == SymbolKind::Keyword;
+        return token.kind == SemanticTokenKind::Keyword;
     }));
 }
 
@@ -542,41 +519,21 @@ ZEST_CASE(StandardFromCommand) {
     // -std must lex with that standard's keyword table, or a newer
     // table would take `concept` as a keyword and shadow the entry.
     llvm::StringRef content = "int concept;\n";
-    std::vector<feature::IndexDecl> entries = {
-        {.range = {4, 11}, .extent = {0, 12}, .symbol = 1, .definition = true},
+    feature::IndexEntries entries{
+        .decls = {{.range = {4, 11}, .extent = {0, 12}, .symbol = 1, .definition = true}},
     };
-    auto resolve_synthetic = [](index::SymbolHash) -> std::optional<index::SymbolRef> {
-        return index::SymbolRef{.name = "concept", .kind = SymbolKind::Variable};
-    };
+    auto kinds = {SemanticTokenKind::Variable};
 
-    auto cxx17_tokens =
-        feature::index_semantic_tokens(content,
-                                       feature::index_lang_options("main.cpp", false, "c++17"),
-                                       {},
-                                       entries,
-                                       resolve_synthetic);
-    ZASSERT(cxx17_tokens.size() == std::size_t(2));
-    ZASSERT(cxx17_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());
+    auto cxx17 = project(content, feature::index_lang_options("main.cpp", false, "c++17"), entries, kinds);
+    ZASSERT(kind_at(cxx17, 4) == SemanticTokenKind::Variable);
 
-    auto cxx20_tokens =
-        feature::index_semantic_tokens(content,
-                                       feature::index_lang_options("main.cpp", false, "c++20"),
-                                       {},
-                                       entries,
-                                       resolve_synthetic);
-    ZASSERT(cxx20_tokens.size() == std::size_t(2));
-    ZASSERT(cxx20_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Keyword).value_of());
+    auto cxx20 = project(content, feature::index_lang_options("main.cpp", false, "c++20"), entries, kinds);
+    ZASSERT(kind_at(cxx20, 4) == SemanticTokenKind::Keyword);
 
     // No -std in the command means the entries were indexed under the
     // driver's default dialect (C++17 today); the fallback matches it.
-    auto default_tokens =
-        feature::index_semantic_tokens(content,
-                                       feature::index_lang_options("main.cpp", false),
-                                       {},
-                                       entries,
-                                       resolve_synthetic);
-    ZASSERT(default_tokens.size() == std::size_t(2));
-    ZASSERT(default_tokens[1].kind.value_of() == SymbolKind(SymbolKind::Variable).value_of());
+    auto fallback = project(content, feature::index_lang_options("main.cpp", false), entries, kinds);
+    ZASSERT(kind_at(fallback, 4) == SemanticTokenKind::Variable);
 }
 
 ZEST_CASE(LinksFromEdges) {

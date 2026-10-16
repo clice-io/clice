@@ -24,7 +24,8 @@ static clang::SourceLocation fake_loc = clang::SourceLocation::getFromRawEncodin
 static clang::LangOptions default_opts;
 
 Lexer::Lexer(llvm::StringRef content, std::uint32_t start_offset, Options options) :
-    content(content), lexer(new clang::Lexer(fake_loc,
+    keep_comments(options.keep_comments), lexed_end(start_offset), content(content),
+    lexer(new clang::Lexer(fake_loc,
                                              options.lang_opts ? *options.lang_opts : default_opts,
                                              content.begin(),
                                              content.begin() + start_offset,
@@ -63,6 +64,23 @@ void Lexer::lex(Token& token) {
     // straight to offsets into `content` even when lexing starts mid-buffer.
     auto offset = raw_token.getLocation().getRawEncoding() - fake_loc.getRawEncoding();
     token.range = LocalSourceRange{offset, offset + raw_token.getLength()};
+
+    // clang's raw lexer drops a block comment left open (one being typed)
+    // and goes on to the end of the file: it is a comment to the end.
+    if(token.is_eof() && keep_comments) {
+        auto rest = content.substr(lexed_end);
+        auto at = rest.find_first_not_of(" \t\r\n\f\v");
+        if(at != llvm::StringRef::npos && rest.substr(at).starts_with("/*")) {
+            token.kind = clang::tok::comment;
+            token.range = {lexed_end + static_cast<std::uint32_t>(at),
+                           static_cast<std::uint32_t>(content.size())};
+            lexed_end = token.range.end;
+            return;
+        }
+    }
+    if(!token.is_eod() && !token.is_eof()) {
+        lexed_end = token.range.end;
+    }
 
     // Comments are transparent to the directive machinery, matching how the
     // lexer behaves when they are dropped: a retained line-leading comment

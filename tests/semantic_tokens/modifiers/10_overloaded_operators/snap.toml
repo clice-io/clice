@@ -1,8 +1,8 @@
 [answers.overloaded.semantic_token]
 text = "+"
 type = "operator"
-modifiers = ["userDefined"]
+modifiers = ["readonly", "member", "userDefined"]
 
 [answers.builtin.semantic_token]
 text = "+"
-type = "none"
+type = "operator"

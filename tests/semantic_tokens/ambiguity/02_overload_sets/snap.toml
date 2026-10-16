@@ -1,14 +1,14 @@
 [answers.apply_use.semantic_token]
 text = "apply"
 type = "function"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.apply_use2.semantic_token]
 text = "apply"
 type = "function"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.apply_use3.semantic_token]
 text = "apply"
 type = "function"
-modifiers = ["globalScope"]
+modifiers = ["global"]

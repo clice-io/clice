@@ -4,6 +4,7 @@ module;
 
 module clice:server.master_server;
 
+import :feature.feature;
 import :sched.index.pump;
 import :server.extension;
 import :server.project_server;
@@ -73,6 +74,11 @@ public:
     /// before move to the projects routing picks for them.
     void initialize();
     void initialize(const Spelling& root);
+
+    /// The `[semantic_tokens]` options the legend is built from, read once
+    /// as the client initializes: the first project's clice.toml under the
+    /// initializationOptions.
+    feature::SemanticTokensOptions startup_token_options() const;
 
     /// Bring every project to rest with its index committed while the
     /// transport still answers: the pool stops first, which breaks every

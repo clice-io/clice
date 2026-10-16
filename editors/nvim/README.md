@@ -33,7 +33,7 @@ Neovim runs a clice for each project root: the nearest directory above the file 
 
 Neovim drives most of clice through its defaults: pulled diagnostics with clang-tidy findings and their fixes (`gra`), semantic tokens, `K` hover, `<C-S>` signature help, `<C-X><C-O>` completion, `<C-]>` definition (on an `#include` too), `grr` references, `gri` implementations, `grn` rename, `gO` document symbols and `gq` formatting. Neovim 0.12 adds `grt` type definition (on `auto`, the deduced type), and `an` and `in` grow and shrink the visual selection through clice in buffers without a tree-sitter parser (Neovim bundles one for C, not for C++).
 
-Inactive preprocessor branches carry the `@lsp.mod.inactive` highlight; `plugin/clice.lua` links it to `Comment`. Without the plugin:
+Semantic tokens use clice's own kinds and modifiers; `plugin/clice.lua` links the ones Neovim has no default for to the tree-sitter groups that color the same things (`@lsp.type.field` to `@variable.member`, `@lsp.typemod.keyword.controlFlow` to `@keyword.conditional`, …), and the `@lsp.mod.inactive` of preprocessor branches not taken to `Comment`. Without the plugin, link what you want yourself:
 
 ```lua
 vim.api.nvim_set_hl(0, '@lsp.mod.inactive', { link = 'Comment', default = true })

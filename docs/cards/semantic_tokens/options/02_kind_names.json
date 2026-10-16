@@ -1,0 +1,880 @@
+{
+  "id": "semantic_tokens/options/02_kind_names",
+  "topic": "semantic_tokens",
+  "subtopic": "options",
+  "title": "Kind names",
+  "summary": "`kinds` renames the token kinds the server announces",
+  "prose": "Two kinds given one name merge into it, and a kind renamed to `\"\"` is not\nsent, leaving the editor's own color. The names are announced once, when the\neditor connects: a change takes a restart.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Widget {\n    int width;\n    using Size = int;\n};\n\ntemplate <typename T, int N>\nT scaled(T value) {\n    return value * N;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦struct⟧ Widget {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "struct ⟦Widget⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ width;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦width⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "field",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦using⟧ Size = int;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "using ⟦Size⟧ = int;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "typeAlias",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "using Size ⟦=⟧ int;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "using Size = ⟦int⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "⟦template⟧ <typename T, int N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template ⟦<⟧typename T, int N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "template <⟦typename⟧ T, int N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template <typename ⟦T⟧, int N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <typename T, ⟦int⟧ N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "template <typename T, int ⟦N⟧>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 26
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "templateParameter",
+                "modifiers": [
+                  "definition",
+                  "readonly",
+                  "local",
+                  "constexpr"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <typename T, int N⟦>⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 27
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "⟦T⟧ scaled(T value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 1
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T ⟦scaled⟧(T value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T scaled(⟦T⟧ value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "typeParameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T scaled(T ⟦value⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧ value * N;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return ⟦value⟧ * N;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return value ⟦*⟧ N;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "return value * ⟦N⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "templateParameter",
+                "modifiers": [
+                  "readonly",
+                  "local",
+                  "constexpr"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "renamed",
+      "config": {
+        "semantic_tokens": {
+          "kinds": {
+            "field": "property",
+            "typeAlias": "type",
+            "typeParameter": "type",
+            "primitive": ""
+          }
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦struct⟧ Widget {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "struct ⟦Widget⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int ⟦width⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "property",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦using⟧ Size = int;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "using ⟦Size⟧ = int;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "type",
+                "modifiers": [
+                  "definition",
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "using Size ⟦=⟧ int;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "⟦template⟧ <typename T, int N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template ⟦<⟧typename T, int N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "template <⟦typename⟧ T, int N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "template <typename ⟦T⟧, int N>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "type",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <typename T, int ⟦N⟧>",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 26
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "templateParameter",
+                "modifiers": [
+                  "definition",
+                  "readonly",
+                  "local",
+                  "constexpr"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "template <typename T, int N⟦>⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 27
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "bracket"
+              },
+              {
+                "at": {
+                  "$place": "⟦T⟧ scaled(T value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 1
+                    }
+                  }
+                },
+                "type": "type",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T ⟦scaled⟧(T value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global",
+                  "template"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T scaled(⟦T⟧ value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "type",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "T scaled(T ⟦value⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧ value * N;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return ⟦value⟧ * N;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return value ⟦*⟧ N;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "return value * ⟦N⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "templateParameter",
+                "modifiers": [
+                  "readonly",
+                  "local",
+                  "constexpr"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

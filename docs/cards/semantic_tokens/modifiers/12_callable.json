@@ -1,0 +1,1021 @@
+{
+  "id": "semantic_tokens/modifiers/12_callable",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Callable variables",
+  "summary": "A variable, parameter or field whose type can be called is `callable`",
+  "prose": "Function pointers, pointers to member functions, lambdas and objects of a\nclass with an `operator()` all carry it, at their declaration and at every\nuse.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct Adder {\n    int operator()(int left, int right) const;\n};\n\nint apply(int (*operation)(int, int), Adder adder, int value) {\n    auto twice = [](int x) { return x * 2; };\n    void (Adder::*member)() = nullptr;\n    return operation(value, value) + adder(value, value) + twice(value);\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦struct⟧ Adder {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "struct ⟦Adder⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ operator()(int left, int right) const;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦operator⟧()(int left, int right) const;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "int operator⟦()⟧(int left, int right) const;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declaration",
+                  "readonly",
+                  "member",
+                  "userDefined"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int operator()(⟦int⟧ left, int right) const;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int operator()(int ⟦left⟧, int right) const;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int operator()(int left, ⟦int⟧ right) const;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 29
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 32
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int operator()(int left, int ⟦right⟧) const;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 33
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 38
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int operator()(int left, int right) ⟦const⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 40
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 45
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ apply(int (*operation)(int, int), Adder adder, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦apply⟧(int (*operation)(int, int), Adder adder, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int apply(⟦int⟧ (*operation)(int, int), Adder adder, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (⟦*⟧operation)(int, int), Adder adder, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*⟦operation⟧)(int, int), Adder adder, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*operation)(⟦int⟧, int), Adder adder, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 27
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 30
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*operation)(int, ⟦int⟧), Adder adder, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 32
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 35
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*operation)(int, int), ⟦Adder⟧ adder, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 38
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 43
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*operation)(int, int), Adder ⟦adder⟧, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 44
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 49
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*operation)(int, int), Adder adder, ⟦int⟧ value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 51
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 54
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*operation)(int, int), Adder adder, int ⟦value⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 55
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 60
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦auto⟧ twice = [](int x) { return x * 2; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "auto ⟦twice⟧ = [](int x) { return x * 2; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "auto twice ⟦=⟧ [](int x) { return x * 2; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "auto twice = [](⟦int⟧ x) { return x * 2; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 23
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "auto twice = [](int ⟦x⟧) { return x * 2; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "auto twice = [](int x) { ⟦return⟧ x * 2; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 29
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 35
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "auto twice = [](int x) { return ⟦x⟧ * 2; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 36
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 37
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "auto twice = [](int x) { return x ⟦*⟧ 2; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 38
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 39
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "auto twice = [](int x) { return x * ⟦2⟧; };",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 40
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 41
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦void⟧ (Adder::*member)() = nullptr;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void (⟦Adder⟧::*member)() = nullptr;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void (Adder::⟦*⟧member)() = nullptr;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void (Adder::*⟦member⟧)() = nullptr;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void (Adder::*member)() ⟦=⟧ nullptr;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 29
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "void (Adder::*member)() = ⟦nullptr⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 30
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 37
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "literal"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧ operation(value, value) + adder(value, value) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return ⟦operation⟧(value, value) + adder(value, value) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(⟦value⟧, value) + adder(value, value) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 26
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, ⟦value⟧) + adder(value, value) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 33
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) ⟦+⟧ adder(value, value) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 35
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 36
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + ⟦adder⟧(value, value) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 37
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 42
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder⟦(⟧value, value) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 42
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 43
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "readonly",
+                  "member",
+                  "userDefined"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(⟦value⟧, value) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 43
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 48
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, ⟦value⟧) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 50
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 55
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value⟦)⟧ + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 55
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 56
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "readonly",
+                  "member",
+                  "userDefined"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) ⟦+⟧ twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 57
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 58
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + ⟦twice⟧(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 59
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 64
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + twice⟦(⟧value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 64
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 65
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "readonly",
+                  "member",
+                  "constexpr",
+                  "userDefined"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + twice(⟦value⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 65
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 70
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + twice(value⟦)⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 70
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 71
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "readonly",
+                  "member",
+                  "constexpr",
+                  "userDefined"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

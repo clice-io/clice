@@ -106,7 +106,7 @@
               "type": "class",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -120,7 +120,7 @@
               "type": "struct",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -134,7 +134,7 @@
               "type": "union",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -148,7 +148,7 @@
               "type": "enum",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -162,7 +162,7 @@
               "type": "enum",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -175,7 +175,7 @@
               "text": "Point",
               "type": "struct",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -186,10 +186,10 @@
           "value": {
             "semantic_token": {
               "text": "PointAlias",
-              "type": "type",
+              "type": "typeAlias",
               "modifiers": [
                 "definition",
-                "fileScope"
+                "internal"
               ]
             }
           }
@@ -200,10 +200,10 @@
           "value": {
             "semantic_token": {
               "text": "WidgetAlias",
-              "type": "type",
+              "type": "typeAlias",
               "modifiers": [
                 "definition",
-                "fileScope"
+                "internal"
               ]
             }
           }
@@ -216,7 +216,7 @@
               "text": "Widget",
               "type": "class",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -229,7 +229,7 @@
               "text": "Widget",
               "type": "class",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -240,9 +240,9 @@
           "value": {
             "semantic_token": {
               "text": "PointAlias",
-              "type": "type",
+              "type": "typeAlias",
               "modifiers": [
-                "fileScope"
+                "internal"
               ]
             }
           }
@@ -255,7 +255,7 @@
               "text": "Mode",
               "type": "enum",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -268,7 +268,7 @@
               "text": "Mode",
               "type": "enum",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }

@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "lexical",
   "title": "Attribute names",
-  "summary": "Attribute names and their expressions do not receive semantic tokens yet",
+  "summary": "Attribute names are `attribute` tokens, and their arguments keep their own kinds",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [
     "clangd#2209"
   ],
@@ -61,10 +61,9 @@
           "label": "nodiscard",
           "marker": "nodiscard",
           "value": {
-            "wrong": "an attribute name should be colored (clangd#2209)",
             "semantic_token": {
               "text": "nodiscard",
-              "type": "none"
+              "type": "attribute"
             }
           }
         },
@@ -72,10 +71,9 @@
           "label": "deprecated",
           "marker": "deprecated",
           "value": {
-            "wrong": "an attribute name should be colored (clangd#2209)",
             "semantic_token": {
               "text": "deprecated",
-              "type": "none"
+              "type": "attribute"
             }
           }
         },
@@ -93,10 +91,9 @@
           "label": "maybe_unused",
           "marker": "maybe_unused",
           "value": {
-            "wrong": "an attribute name should be colored (clangd#2209)",
             "semantic_token": {
               "text": "maybe_unused",
-              "type": "none"
+              "type": "attribute"
             }
           }
         },
@@ -104,10 +101,9 @@
           "label": "vendor",
           "marker": "vendor",
           "value": {
-            "wrong": "an attribute name should be colored (clangd#2209)",
             "semantic_token": {
               "text": "gnu",
-              "type": "none"
+              "type": "attribute"
             }
           }
         },
@@ -115,10 +111,9 @@
           "label": "packed",
           "marker": "packed",
           "value": {
-            "wrong": "an attribute name should be colored (clangd#2209)",
             "semantic_token": {
               "text": "packed",
-              "type": "none"
+              "type": "attribute"
             }
           }
         }

@@ -3,9 +3,9 @@
   "topic": "semantic_tokens",
   "subtopic": "lexical",
   "title": "Escape sequences",
-  "summary": "Escape sequences are not highlighted distinctly inside literals yet",
+  "summary": "Escape sequences inside literals are `escape` tokens",
   "prose": "",
-  "status": "unsupported",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -35,10 +35,9 @@
           "label": "newline",
           "marker": "newline",
           "value": {
-            "wrong": "the escape sequence should be a token of its own",
             "semantic_token": {
-              "text": "\"hello\\nworld\"",
-              "type": "string"
+              "text": "\\n",
+              "type": "escape"
             }
           }
         },
@@ -46,10 +45,9 @@
           "label": "hex",
           "marker": "hex",
           "value": {
-            "wrong": "the escape sequence should be a token of its own",
             "semantic_token": {
-              "text": "'\\x41'",
-              "type": "character"
+              "text": "\\x41",
+              "type": "escape"
             }
           }
         }

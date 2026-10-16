@@ -1,3 +1,3 @@
 # Templates
 
-Template parameters receive type or variable kinds, and a declared template carries `templated`
+A type parameter is a `typeParameter`, a non-type one a `templateParameter`, and a template carries `template`

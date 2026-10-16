@@ -37,7 +37,7 @@ export function inactiveRuns(data: ArrayLike<number>, mask: number): [number, nu
 /// Renders preprocessor-inactive regions dimmed, like unreachable code.
 /// The server tags every token inside an inactive region with the
 /// `inactive` semantic token modifier (bare identifiers travel as the
-/// deliberately unstyled `identifier` type so they have a token to
+/// deliberately unstyled `plain` type so they have a token to
 /// carry it). This middleware decodes the token stream VS Code pulls
 /// anyway, expands the tagged runs to whole-line ranges and dims them
 /// with an opacity decoration — TextMate keeps the syntax colors

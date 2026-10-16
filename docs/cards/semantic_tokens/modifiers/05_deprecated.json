@@ -41,7 +41,7 @@
               "modifiers": [
                 "declaration",
                 "deprecated",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -55,7 +55,7 @@
               "type": "function",
               "modifiers": [
                 "deprecated",
-                "globalScope"
+                "global"
               ]
             }
           }

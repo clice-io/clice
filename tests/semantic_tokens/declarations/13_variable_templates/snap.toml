@@ -1,24 +1,24 @@
 [answers.pair_value_decl.semantic_token]
 text = "pair_value"
 type = "variable"
-modifiers = ["declaration", "templated", "globalScope"]
+modifiers = ["declaration", "global", "template"]
 
 [answers.pair_value_def.semantic_token]
 text = "pair_value"
 type = "variable"
-modifiers = ["definition", "templated", "globalScope"]
+modifiers = ["definition", "global", "template"]
 
 [answers.pair_value_decl2.semantic_token]
 text = "pair_value"
 type = "variable"
-modifiers = ["declaration", "templated", "globalScope"]
+modifiers = ["declaration", "global", "template"]
 
 [answers.pair_value_def2.semantic_token]
 text = "pair_value"
 type = "variable"
-modifiers = ["definition", "templated", "globalScope"]
+modifiers = ["definition", "global", "template"]
 
 [answers.pair_value_def3.semantic_token]
 text = "pair_value"
 type = "variable"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global", "template"]

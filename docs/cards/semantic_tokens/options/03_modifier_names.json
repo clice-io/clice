@@ -1,0 +1,788 @@
+{
+  "id": "semantic_tokens/options/03_modifier_names",
+  "topic": "semantic_tokens",
+  "subtopic": "options",
+  "title": "Modifier names",
+  "summary": "`modifiers` renames the token modifiers the server announces",
+  "prose": "A modifier renamed to `\"\"` is never set. Like the kinds, the names are\nannounced once, when the editor connects.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "int counter = 0;\n\nvoid bump(int& target) {\n    static int calls = 0;\n    calls += 1;\n    target += 1;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "default",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦int⟧ counter = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦counter⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int counter ⟦=⟧ 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "int counter = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦void⟧ bump(int& target) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void ⟦bump⟧(int& target) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void bump(⟦int⟧& target) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void bump(int⟦&⟧ target) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void bump(int& ⟦target⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦static⟧ int calls = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "static ⟦int⟧ calls = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "static int ⟦calls⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "static",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "static int calls ⟦=⟧ 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "static int calls = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦calls⟧ += 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "static",
+                  "modification",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "calls ⟦+=⟧ 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "calls += ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦target⟧ += 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "modification",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "target ⟦+=⟧ 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "target += ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "number"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "renamed",
+      "config": {
+        "semantic_tokens": {
+          "modifiers": {
+            "local": "functionScope",
+            "global": "globalScope",
+            "modification": ""
+          }
+        }
+      },
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦int⟧ counter = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦counter⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "globalScope"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int counter ⟦=⟧ 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "int counter = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦void⟧ bump(int& target) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void ⟦bump⟧(int& target) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "globalScope"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void bump(⟦int⟧& target) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void bump(int⟦&⟧ target) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void bump(int& ⟦target⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "functionScope"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦static⟧ int calls = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "static ⟦int⟧ calls = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "static int ⟦calls⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "static",
+                  "functionScope"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "static int calls ⟦=⟧ 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "static int calls = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦calls⟧ += 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "static",
+                  "functionScope"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "calls ⟦+=⟧ 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "calls += ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦target⟧ += 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "functionScope"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "target ⟦+=⟧ 1;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "target += ⟦1⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "number"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

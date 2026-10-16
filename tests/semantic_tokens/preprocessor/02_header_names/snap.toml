@@ -8,10 +8,7 @@ semantic_tokens = [
     { at = '# ⟦include⟧ "inc/angled.h"', type = "directive" },
     { at = '# include ⟦"inc/angled.h"⟧', type = "header" },
     { at = "⟦int⟧ after_includes = 0;", type = "primitive" },
-    {
-        at = "int ⟦after_includes⟧ = 0;",
-        type = "variable",
-        modifiers = ["definition", "globalScope"],
-    },
+    { at = "int ⟦after_includes⟧ = 0;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int after_includes ⟦=⟧ 0;", type = "operator" },
     { at = "int after_includes = ⟦0⟧;", type = "number" },
 ]

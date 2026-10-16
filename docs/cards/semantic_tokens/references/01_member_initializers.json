@@ -47,7 +47,7 @@
               "text": "width",
               "type": "field",
               "modifiers": [
-                "classScope"
+                "member"
               ]
             }
           }
@@ -60,7 +60,7 @@
               "text": "w",
               "type": "parameter",
               "modifiers": [
-                "functionScope"
+                "local"
               ]
             }
           }
@@ -73,7 +73,7 @@
               "text": "height",
               "type": "field",
               "modifiers": [
-                "classScope"
+                "member"
               ]
             }
           }

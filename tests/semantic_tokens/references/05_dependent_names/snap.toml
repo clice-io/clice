@@ -1,35 +1,29 @@
 [answers.value_type_use.semantic_token]
 text = "value_type"
-type = "type"
-modifiers = ["classScope"]
+type = "typeAlias"
+modifiers = ["member", "dependent"]
 
 [answers.reset_use.semantic_token]
 text = "reset"
 type = "method"
-modifiers = ["static", "classScope"]
+modifiers = ["static", "member", "dependent"]
 
 [answers.size_use.semantic_token]
 text = "size"
 type = "method"
-modifiers = ["readonly", "classScope"]
-
-[answers.value_type_use2]
-wrong = "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)"
+modifiers = ["readonly", "member", "dependent"]
 
 [answers.value_type_use2.semantic_token]
 text = "value_type"
-type = "none"
-
-[answers.reset_use2]
-wrong = "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)"
+type = "typeAlias"
+modifiers = ["dependent"]
 
 [answers.reset_use2.semantic_token]
 text = "reset"
-type = "none"
-
-[answers.size_use2]
-wrong = "a member of a bare template parameter should still be colored, as a dependent name (clangd#154)"
+type = "unknown"
+modifiers = ["dependent"]
 
 [answers.size_use2.semantic_token]
 text = "size"
-type = "none"
+type = "unknown"
+modifiers = ["dependent"]

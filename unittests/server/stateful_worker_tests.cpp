@@ -259,8 +259,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
 
         // Queries take the strand through with_ast_or: a cancelled query
         // must release it on unwind like a cancelled compile does.
-        worker::QueryParams qp;
-        qp.kind = worker::QueryKind::SemanticTokens;
+        worker::SemanticTokensParams qp;
         qp.path = src;
 
         kota::cancellation_source source;
@@ -411,8 +410,7 @@ ZEST_CASE(SemanticTokensWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::SemanticTokens;
+        worker::SemanticTokensParams params;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);
@@ -541,8 +539,7 @@ ZEST_CASE(MultipleSequentialRequests) {
         auto r2 = co_await w.peer->send_request(cap);
         ZEXPECT(r2);
 
-        worker::QueryParams stp;
-        stp.kind = worker::QueryKind::SemanticTokens;
+        worker::SemanticTokensParams stp;
         stp.path = src;
         auto r3 = co_await w.peer->send_request(stp);
         ZEXPECT(r3);

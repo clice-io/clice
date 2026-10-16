@@ -39,8 +39,6 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
         case SymbolKind::Parameter:
         case SymbolKind::Label:
         case SymbolKind::Keyword:
-        case SymbolKind::Primitive:
-        case SymbolKind::MacroParameter:
         case SymbolKind::Attribute: return Variable;
         // A `#pragma mark`, which clangd and Xcode list as a file.
         case SymbolKind::Directive: return File;
@@ -52,14 +50,8 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
         case SymbolKind::String:
         case SymbolKind::Header: return String;
         case SymbolKind::Number: return Number;
-        case SymbolKind::Operator:
-        case SymbolKind::Paren:
-        case SymbolKind::Bracket:
-        case SymbolKind::Brace:
-        case SymbolKind::Angle: return Operator;
-        case SymbolKind::Conflict:
-        case SymbolKind::Invalid:
-        case SymbolKind::Identifier: return Variable;
+        case SymbolKind::Operator: return Operator;
+        case SymbolKind::Invalid: return Variable;
     }
 
     return Variable;

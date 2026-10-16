@@ -1,19 +1,19 @@
 [answers.measure_decl.semantic_token]
 text = "measure"
 type = "function"
-modifiers = ["declaration", "globalScope"]
+modifiers = ["declaration", "global"]
 
 [answers.measure_def.semantic_token]
 text = "measure"
 type = "function"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [answers.Sensor_decl.semantic_token]
 text = "Sensor"
 type = "struct"
-modifiers = ["declaration", "globalScope"]
+modifiers = ["declaration", "global"]
 
 [answers.Sensor_def.semantic_token]
 text = "Sensor"
 type = "struct"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]

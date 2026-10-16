@@ -1155,6 +1155,10 @@ private:
 
 }  // namespace
 
+bool is_doc_command(llvm::StringRef name) {
+    return commands().contains(name);
+}
+
 Documentation parse_documentation(llvm::StringRef text, CopiedDocLookup lookup) {
     return Parser(lookup).run(text);
 }

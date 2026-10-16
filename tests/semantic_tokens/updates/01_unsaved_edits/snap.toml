@@ -1,14 +1,14 @@
 [test.before.semantic_token]
 text = "counter"
 type = "variable"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [test.type.semantic_token]
 text = "Gauge"
 type = "struct"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [test.name.semantic_token]
 text = "counter"
 type = "variable"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]

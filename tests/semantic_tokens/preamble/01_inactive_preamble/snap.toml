@@ -10,6 +10,7 @@ semantic_tokens = [
     { at = "#define DEAD ⟦2⟧", type = "number", modifiers = ["inactive"] },
     { at = "⟦#endif⟧", type = "directive" },
     { at = "⟦int⟧ after = KEEP;", type = "primitive" },
-    { at = "int ⟦after⟧ = KEEP;", type = "variable", modifiers = ["definition", "globalScope"] },
+    { at = "int ⟦after⟧ = KEEP;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int after ⟦=⟧ KEEP;", type = "operator" },
     { at = "int after = ⟦KEEP⟧;", type = "macro" },
 ]

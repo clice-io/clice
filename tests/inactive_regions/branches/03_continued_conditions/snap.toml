@@ -1,0 +1,2 @@
+[test."main.cpp"]
+inactive_lines = ["⟦int disabled = 0;⟧", "⟦int also_disabled = 1;⟧"]

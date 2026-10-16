@@ -13,6 +13,7 @@ import :compile.tidy;
 import :config.config;
 import :driver.driver;
 import :feature.feature;
+import :feature.semantic_token_stream;
 import :index.query;
 import :index.shard;
 import :index.tu_index;
@@ -148,9 +149,154 @@ std::optional<kota::codec::RawValue> run_folding_ranges(CompilationUnit& unit,
     return to_raw_json(feature::folding_ranges(unit));
 }
 
+/// A semantic token as the client sees it: its kind and modifiers by the
+/// names the legend gives them.
+struct NamedToken {
+    LocalSourceRange range;
+    std::string kind;
+    std::vector<std::string> modifiers;
+};
+
+std::vector<NamedToken> named_tokens(llvm::ArrayRef<feature::SemanticToken> tokens,
+                                     const feature::SemanticTokenLegend& legend) {
+    std::vector<NamedToken> named;
+    for(const auto& token: tokens) {
+        auto type = legend.type_of[static_cast<std::size_t>(token.kind)];
+        if(!type) {
+            continue;
+        }
+        NamedToken entry{.range = token.range, .kind = legend.types[*type]};
+        std::uint32_t bits = 0;
+        for(std::size_t bit = 0; bit < legend.bit_of.size(); bit += 1) {
+            if(token.modifiers & (std::uint32_t(1) << bit)) {
+                bits |= legend.bit_of[bit];
+            }
+        }
+        for(auto [position, name]: llvm::enumerate(legend.modifiers)) {
+            if(bits & (std::uint32_t(1) << position)) {
+                entry.modifiers.push_back(name);
+            }
+        }
+        named.push_back(std::move(entry));
+    }
+    return named;
+}
+
 std::optional<kota::codec::RawValue> run_semantic_tokens(CompilationUnit& unit,
-                                                         [[maybe_unused]] const Config& config) {
-    return to_raw_json(feature::semantic_tokens(unit));
+                                                         const Config& config) {
+    return to_raw_json(named_tokens(feature::semantic_tokens(unit, config.semantic_tokens),
+                                    feature::semantic_token_legend(config.semantic_tokens)));
+}
+
+/// One way the tokens the index projects differ from the AST's, at the
+/// token it concerns (1-based line and column).
+struct TokenDifference {
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+    std::string text;
+    /// only_ast, only_index, range, kind or modifiers.
+    std::string field;
+    std::string ast;
+    std::string index;
+};
+
+struct TokenCheck {
+    std::uint32_t ast = 0;
+    std::uint32_t index = 0;
+    std::vector<TokenDifference> differences;
+};
+
+/// The file's semantic tokens as the AST gives them beside the ones the
+/// index projects from the unit's own TU index, as the server serves a file
+/// before its AST is current: tokens pair by where they begin.
+std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& unit,
+                                                               const Config& config) {
+    auto legend = feature::semantic_token_legend(config.semantic_tokens);
+    auto focus = unit.focus_file();
+    auto text = focus.content().take_front(unit.text_end(focus.file())).str();
+    llvm::StringRef content = text;
+    auto ast = named_tokens(
+        feature::semantic_token_stream(content,
+                                       unit.lang_options(),
+                                       feature::semantic_token_facts(unit, {}, true),
+                                       config.semantic_tokens),
+        legend);
+    auto bytes = index::build_tu_index(unit);
+    auto tu = index::TUIndex::from_bytes(bytes);
+    auto projected = named_tokens(
+        feature::index_semantic_tokens(
+            content,
+            unit.lang_options(),
+            feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
+            [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+                auto identity = tu.find_symbol(hash);
+                if(!identity) {
+                    return std::nullopt;
+                }
+                return index::SymbolRef::from(hash, *identity);
+            },
+            config.semantic_tokens),
+        legend);
+
+    auto spell = [](const NamedToken& token) {
+        auto spelled = token.kind;
+        for(const auto& modifier: token.modifiers) {
+            spelled += " " + modifier;
+        }
+        return spelled;
+    };
+
+    std::map<std::uint32_t, const NamedToken*> by_begin;
+    for(const auto& token: projected) {
+        by_begin.emplace(token.range.begin, &token);
+    }
+
+    const auto& map = unit.focus_file().positions();
+    TokenCheck check{
+        .ast = static_cast<std::uint32_t>(ast.size()),
+        .index = static_cast<std::uint32_t>(projected.size()),
+    };
+    auto report = [&](const NamedToken& token,
+                      llvm::StringRef field,
+                      std::string ast_value,
+                      std::string index_value) {
+        auto position = map.position(token.range.begin, PositionEncoding::UTF8);
+        check.differences.push_back({
+            .line = position ? position->line + 1 : 0,
+            .column = position ? position->character + 1 : 0,
+            .text = content.slice(token.range.begin, token.range.end).str(),
+            .field = field.str(),
+            .ast = std::move(ast_value),
+            .index = std::move(index_value),
+        });
+    };
+    for(const auto& token: ast) {
+        auto it = by_begin.find(token.range.begin);
+        if(it == by_begin.end()) {
+            report(token, "only_ast", spell(token), "");
+            continue;
+        }
+        const auto& other = *it->second;
+        by_begin.erase(it);
+        if(token.range.end != other.range.end) {
+            report(token,
+                   "range",
+                   content.slice(token.range.begin, token.range.end).str(),
+                   content.slice(other.range.begin, other.range.end).str());
+        }
+        if(token.kind != other.kind) {
+            report(token, "kind", spell(token), spell(other));
+        } else if(token.modifiers != other.modifiers) {
+            report(token, "modifiers", spell(token), spell(other));
+        }
+    }
+    for(auto [begin, token]: by_begin) {
+        report(*token, "only_index", "", spell(*token));
+    }
+    std::ranges::stable_sort(check.differences, {}, [](const TokenDifference& difference) {
+        return std::pair(difference.line, difference.column);
+    });
+    return to_raw_json(check);
 }
 
 std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnit& unit,
@@ -2176,6 +2322,8 @@ struct FeatureSpec {
 constexpr FeatureSpec document_symbols_check{.name = "document-symbols",
                                              .run = run_document_symbol_check};
 constexpr FeatureSpec hover_check{.name = "hover", .run_compiles = run_hover_check};
+constexpr FeatureSpec semantic_tokens_check{.name = "semantic-tokens",
+                                            .run = run_semantic_tokens_check};
 
 constexpr std::array features = {
     FeatureSpec{.name = "code-action",
@@ -2209,7 +2357,8 @@ constexpr std::array features = {
                 .run_at = run_selection_range},
     FeatureSpec{.name = "semantic-tokens",
                 .description = "The file's semantic tokens",
-                .run = run_semantic_tokens},
+                .run = run_semantic_tokens,
+                .check = &semantic_tokens_check},
     FeatureSpec{.name = "signature-help",
                 .description = "The signature help at a point",
                 .run_complete = run_signature_help},

@@ -76,7 +76,7 @@
               "type": "namespace",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -90,7 +90,7 @@
               "type": "namespace",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -104,7 +104,7 @@
               "type": "namespace",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -118,7 +118,7 @@
               "type": "namespace",
               "modifiers": [
                 "definition",
-                "fileScope"
+                "internal"
               ]
             }
           }
@@ -131,7 +131,7 @@
               "text": "demo",
               "type": "namespace",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -144,7 +144,7 @@
               "text": "inner",
               "type": "namespace",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -157,7 +157,7 @@
               "text": "alias",
               "type": "namespace",
               "modifiers": [
-                "fileScope"
+                "internal"
               ]
             }
           }
@@ -170,7 +170,7 @@
               "text": "value",
               "type": "variable",
               "modifiers": [
-                "globalScope"
+                "global"
               ]
             }
           }

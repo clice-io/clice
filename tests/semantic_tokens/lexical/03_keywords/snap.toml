@@ -1,14 +1,14 @@
 [answers.and.semantic_token]
 text = "and"
-type = "keyword"
+type = "operator"
 
 [answers.or.semantic_token]
 text = "or"
-type = "keyword"
+type = "operator"
 
 [answers.not.semantic_token]
 text = "not"
-type = "keyword"
+type = "operator"
 
 [answers.final_use.semantic_token]
 text = "final"

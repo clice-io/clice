@@ -445,11 +445,12 @@ llvm::SmallVector<NameOccurrence, 2>
 
 /// Whether node `index`, a name used as an expression, is written there:
 /// the target of an assignment or compound assignment, the operand of an
-/// increment or decrement (overloaded operators included), or an argument
+/// increment or decrement (overloaded operators included), an argument
 /// bound to a mutable lvalue reference parameter (the ones inlay hints mark
-/// with `&`) other than a forwarding reference, which binds anything. The
-/// object of a member access or call, the left operand of any other
-/// operator and an address taken are not written.
+/// with `&`) other than a forwarding reference, which binds anything, or
+/// one whose address is passed as a pointer to non-const. The object of a
+/// member access or call, the left operand of any other operator and any
+/// other address taken are not written.
 bool is_written(const Semantics& semantics, std::uint32_t index);
 
 }  // namespace clice

@@ -1940,7 +1940,7 @@ ZEST_CASE(DeepExpressionChain) {
         // selection at the giant expansion's invocation on this stack:
         // per-token ancestor walks and recursive tree materialization
         // both used to degrade on chains this deep.
-        feature::semantic_tokens(*unit);
+        feature::semantic_tokens(*unit, {});
         auto use_offset = static_cast<std::uint32_t>(code.rfind("A14"));
         SelectionTree::create_right(*unit, LocalSourceRange(use_offset, use_offset));
     });

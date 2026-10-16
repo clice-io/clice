@@ -6,14 +6,9 @@ module clice:semantic.symbol;
 
 namespace clice {
 
-/// In the LSP, there are several different kinds, such as `SemanticTokenType`,
-/// `CompletionItemKind`, and `SymbolKind`. Unfortunately, these kinds do not cover all the semantic
-/// information we need. It's also inconsistent that some kinds exist in one category but not in
-/// another, for example, `Namespace` is present in `SemanticTokenType` but not in
-/// `CompletionItemKind`. To address this, we define our own `SymbolKind`, which will be used
-/// consistently across our responses to the client and in the index. Users who prefer to stick to
-/// standard LSP kinds can map our `SymbolKind` to the corresponding LSP kinds through
-/// configuration.
+/// What a symbol is, in one vocabulary across the index, the outline,
+/// hover and completion; each LSP reply maps it to the kind set that reply
+/// takes. Semantic tokens have their own (SemanticTokenKind).
 struct SymbolKind {
     enum Kind : std::uint8_t {
         Comment = 0,     ///< C/C++ comments.
@@ -25,7 +20,6 @@ struct SymbolKind {
         Header,          ///< C/C++ header name, e.g. `<iostream>` and `"foo.h"`.
         Module,          ///< C++20 module name.
         Macro,           ///< C/C++ macro.
-        MacroParameter,  ///< C/C++ macro parameter.
         Namespace,       ///> C++ namespace.
         Class,           ///> C/C++ class.
         Struct,          ///> C/C++ struct.
@@ -42,20 +36,7 @@ struct SymbolKind {
         Concept,         ///> C++20 concept.
         Attribute,       ///> GNU/MSVC/C++11/C23 attribute.
         Operator,        ///> C/C++ operator.
-        Paren,           ///> `(` and `)`.
-        Bracket,         ///> `[` and `]`.
-        Brace,           ///> `{` and `}`.
-        Angle,           ///> `<` and `>`.
-        Conflict,        ///> This token have multiple kinds.
-        Primitive,       ///< C/C++ built-in primitive type keyword.
         Invalid,
-        /// A token with no classification — a bare identifier or plain
-        /// punctuation. Only emitted inside inactive regions, where every
-        /// token needs a carrier for the Inactive modifier; deliberately
-        /// unstyled everywhere (no superType, no scope mapping), so
-        /// editors keep their own syntax coloring for it. Appended past
-        /// Invalid: persisted index blobs store these values.
-        Identifier,
     };
 
     constexpr SymbolKind() = default;
@@ -80,100 +61,6 @@ struct SymbolKind {
 
 private:
     Kind kind_value = Invalid;
-};
-
-struct SymbolModifiers {
-    enum Kind : std::uint32_t {
-        /// Represents that the symbol is a declaration(e.g. function declaration).
-        Declaration = 0,
-
-        /// Represents that the symbol is a definition(e.g. function definition).
-        Definition = 1,
-
-        /// Represents that the symbol is const modified(e.g. `const` variable).
-        Const = 2,
-
-        /// Represents that the symbol is overloaded(e.g. overloaded functions and operators).
-        Overloaded = 3,
-
-        /// Represents that the symbol is a part of type(e.g. `*` in `int*`).
-        Typed = 4,
-
-        /// Represents that the symbol is a template(e.g. class template or function template).
-        Templated = 5,
-
-        /// Represents that the symbol is deprecated.
-        Deprecated = 6,
-
-        /// Represents that the symbol is deduced.
-        Deduced = 7,
-
-        /// Represents that the symbol is readonly.
-        Readonly = 8,
-
-        /// Represents that the symbol is static.
-        Static = 9,
-
-        /// Represents that the symbol is abstract.
-        Abstract = 10,
-
-        /// Represents that the symbol is virtual.
-        Virtual = 11,
-
-        /// Represents that the symbol is a dependent name.
-        DependentName = 12,
-
-        /// Represents that the symbol comes from the default library.
-        DefaultLibrary = 13,
-
-        /// Represents that the symbol is used through a mutable reference.
-        UsedAsMutableReference = 14,
-
-        /// Represents that the symbol is used through a mutable pointer.
-        UsedAsMutablePointer = 15,
-
-        /// Represents that the symbol is a constructor or destructor.
-        ConstructorOrDestructor = 16,
-
-        /// Represents that the symbol is user-defined.
-        UserDefined = 17,
-
-        /// Represents that the symbol is function-scoped.
-        FunctionScope = 18,
-
-        /// Represents that the symbol is class-scoped.
-        ClassScope = 19,
-
-        /// Represents that the symbol is file-scoped.
-        FileScope = 20,
-
-        /// Represents that the symbol is global-scoped.
-        GlobalScope = 21,
-
-        /// Represents that the token sits in a preprocessor-inactive region.
-        Inactive = 22,
-    };
-
-    constexpr static std::uint32_t to_mask(Kind kind) {
-        return std::uint32_t(1) << static_cast<std::uint32_t>(kind);
-    }
-
-    constexpr SymbolModifiers() = default;
-
-    constexpr SymbolModifiers(Kind kind) : value(to_mask(kind)) {}
-
-    constexpr explicit SymbolModifiers(std::uint32_t bits) : value(bits) {}
-
-    constexpr operator std::uint32_t() const {
-        return value;
-    }
-
-    constexpr bool contains(Kind kind) const {
-        return (value & to_mask(kind)) != 0;
-    }
-
-private:
-    std::uint32_t value = 0;
 };
 
 struct RelationKind {

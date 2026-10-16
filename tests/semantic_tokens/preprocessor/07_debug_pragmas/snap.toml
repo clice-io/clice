@@ -6,7 +6,7 @@ semantic_tokens = [
     { at = "⟦#pragma⟧ clang __debug crash @5", type = "directive" },
     { at = "⟦#pragma⟧ clang __debug dump", type = "directive" },
     { at = "⟦int⟧ before;", type = "primitive" },
-    { at = "int ⟦before⟧;", type = "variable", modifiers = ["definition", "globalScope"] },
+    { at = "int ⟦before⟧;", type = "variable", modifiers = ["definition", "global"] },
     { at = "⟦#pragma⟧ clang __debug crash @9", type = "directive" },
     { at = "⟦#pragma⟧ clang __debug parser_crash", type = "directive" },
     { at = "⟦#pragma⟧ clang __debug assert", type = "directive" },
@@ -15,5 +15,5 @@ semantic_tokens = [
     { at = "⟦#pragma⟧ clang __debug overflow_stack", type = "directive" },
     { at = "⟦#pragma⟧ clang __debug dump before", type = "directive" },
     { at = "⟦int⟧ after;", type = "primitive" },
-    { at = "int ⟦after⟧;", type = "variable", modifiers = ["definition", "globalScope"] },
+    { at = "int ⟦after⟧;", type = "variable", modifiers = ["definition", "global"] },
 ]

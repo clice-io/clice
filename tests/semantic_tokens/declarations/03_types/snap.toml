@@ -1,64 +1,64 @@
 [answers.Widget_def.semantic_token]
 text = "Widget"
 type = "class"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [answers.Point_def.semantic_token]
 text = "Point"
 type = "struct"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [answers.Storage.semantic_token]
 text = "Storage"
 type = "union"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [answers.Flags.semantic_token]
 text = "Flags"
 type = "enum"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [answers.Mode_def.semantic_token]
 text = "Mode"
 type = "enum"
-modifiers = ["definition", "globalScope"]
+modifiers = ["definition", "global"]
 
 [answers.Point_use.semantic_token]
 text = "Point"
 type = "struct"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.PointAlias_def.semantic_token]
 text = "PointAlias"
-type = "type"
-modifiers = ["definition", "fileScope"]
+type = "typeAlias"
+modifiers = ["definition", "internal"]
 
 [answers.WidgetAlias.semantic_token]
 text = "WidgetAlias"
-type = "type"
-modifiers = ["definition", "fileScope"]
+type = "typeAlias"
+modifiers = ["definition", "internal"]
 
 [answers.Widget_use.semantic_token]
 text = "Widget"
 type = "class"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.Widget_use2.semantic_token]
 text = "Widget"
 type = "class"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.PointAlias_use.semantic_token]
 text = "PointAlias"
-type = "type"
-modifiers = ["fileScope"]
+type = "typeAlias"
+modifiers = ["internal"]
 
 [answers.Mode_use.semantic_token]
 text = "Mode"
 type = "enum"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.Mode_use2.semantic_token]
 text = "Mode"
 type = "enum"
-modifiers = ["globalScope"]
+modifiers = ["global"]

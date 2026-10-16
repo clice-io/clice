@@ -181,13 +181,32 @@
         "superType": "string"
       },
       {
+        "id": "escape",
+        "description": "Escape sequence inside a string or character literal (e.g., \\n)",
+        "superType": "string"
+      },
+      {
+        "id": "formatSpecifier",
+        "description": "Placeholder of a format string (e.g., {} in std::format, %d in printf)",
+        "superType": "string"
+      },
+      {
+        "id": "primitive",
+        "description": "Built-in type (e.g., int, bool)",
+        "superType": "keyword"
+      },
+      {
+        "id": "bracket",
+        "description": "The < and > of a template argument or parameter list"
+      },
+      {
         "id": "directive",
-        "description": "C/C++ preprocessor directive (e.g., #include)",
+        "description": "Preprocessor directive (e.g., #include)",
         "superType": "keyword"
       },
       {
         "id": "header",
-        "description": "C/C++ header name (e.g., <iostream>)",
+        "description": "Header name (e.g., <iostream>)",
         "superType": "string"
       },
       {
@@ -196,24 +215,19 @@
         "superType": "namespace"
       },
       {
-        "id": "macroParameter",
-        "description": "C/C++ macro parameter",
-        "superType": "parameter"
-      },
-      {
         "id": "union",
-        "description": "C/C++ union type",
+        "description": "Union type",
         "superType": "struct"
       },
       {
-        "id": "field",
-        "description": "C/C++ field (member variable)",
-        "superType": "variable"
+        "id": "typeAlias",
+        "description": "Typedef or using alias",
+        "superType": "type"
       },
       {
-        "id": "label",
-        "description": "C/C++ label (for goto)",
-        "superType": "variable"
+        "id": "templateParameter",
+        "description": "Non-type template parameter",
+        "superType": "parameter"
       },
       {
         "id": "concept",
@@ -221,44 +235,341 @@
         "superType": "type"
       },
       {
+        "id": "field",
+        "description": "Data member",
+        "superType": "property"
+      },
+      {
+        "id": "label",
+        "description": "Label (for goto)"
+      },
+      {
+        "id": "macroParameter",
+        "description": "Macro parameter",
+        "superType": "parameter"
+      },
+      {
         "id": "attribute",
-        "description": "GNU/MSVC/C++11/C23 attribute",
-        "superType": "macro"
+        "description": "Attribute name (e.g., nodiscard)",
+        "superType": "decorator"
       },
       {
-        "id": "paren",
-        "description": "Parentheses `()`",
-        "superType": "operator"
+        "id": "unknown",
+        "description": "Dependent name only an instantiation resolves"
       },
       {
-        "id": "bracket",
-        "description": "Brackets `[]`",
-        "superType": "operator"
+        "id": "conflict",
+        "description": "Name meaning entities of different kinds at once"
       },
       {
-        "id": "brace",
-        "description": "Braces `{}`",
-        "superType": "operator"
-      },
-      {
-        "id": "angle",
-        "description": "Angle brackets `<>`",
-        "superType": "operator"
-      },
-      {
-        "id": "primitive",
-        "description": "C/C++ primitive type (e.g., int, float)",
-        "superType": "keyword"
-      },
-      {
-        "id": "identifier",
-        "description": "Token without semantic classification (a bare identifier or plain punctuation), emitted only inside inactive preprocessor regions. Deliberately unstyled (no superType) so the editor's own syntax coloring shows through."
+        "id": "plain",
+        "description": "Token without a kind of its own inside an inactive preprocessor region; unstyled, so the editor's syntax coloring shows through"
       }
     ],
     "semanticTokenModifiers": [
       {
+        "id": "definition",
+        "description": "The definition of a symbol"
+      },
+      {
+        "id": "defaultLibrary",
+        "description": "Declared in a system header or built into the compiler"
+      },
+      {
+        "id": "local",
+        "description": "Visible inside a function"
+      },
+      {
+        "id": "member",
+        "description": "Visible inside a class"
+      },
+      {
+        "id": "internal",
+        "description": "Visible in its own translation unit only"
+      },
+      {
+        "id": "global",
+        "description": "Visible from other translation units"
+      },
+      {
+        "id": "template",
+        "description": "A template, or a specialization of one"
+      },
+      {
+        "id": "dependent",
+        "description": "A name depending on a template parameter"
+      },
+      {
+        "id": "virtual",
+        "description": "A virtual function; a class with virtual functions"
+      },
+      {
+        "id": "constexpr",
+        "description": "Constant-evaluated: a constexpr or consteval function, a constexpr or constinit variable, a non-type template parameter"
+      },
+      {
+        "id": "constructor",
+        "description": "A constructor"
+      },
+      {
+        "id": "destructor",
+        "description": "A destructor"
+      },
+      {
+        "id": "callable",
+        "description": "A function-like macro; a variable of a callable type"
+      },
+      {
+        "id": "controlFlow",
+        "description": "A keyword transferring control; a function that never returns; a macro that returns, breaks, continues, jumps or throws"
+      },
+      {
+        "id": "userDefined",
+        "description": "An operator calling an overloaded operator; the suffix of a user-defined literal"
+      },
+      {
+        "id": "declarator",
+        "description": "The *, & or && of a declarator"
+      },
+      {
+        "id": "literal",
+        "description": "The keywords true, false and nullptr"
+      },
+      {
+        "id": "affix",
+        "description": "The encoding prefix or the suffix of a literal"
+      },
+      {
+        "id": "empty",
+        "description": "A macro expanding to nothing"
+      },
+      {
         "id": "inactive",
-        "description": "Token inside a preprocessor-inactive region (e.g. an #if 0 branch). The clice extension dims these regions; other clients can style the modifier directly."
+        "description": "Inside an inactive preprocessor region, or an argument a macro drops. The clice extension dims these regions; other clients can style the modifier directly."
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "c",
+        "scopes": {
+          "keyword": [
+            "keyword.other"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
+          "keyword.documentation": [
+            "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
+          ],
+          "comment.documentation": [
+            "comment.block.documentation"
+          ],
+          "parameter.documentation": [
+            "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
+          ]
+        }
+      },
+      {
+        "language": "cpp",
+        "scopes": {
+          "keyword": [
+            "keyword.other"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
+          "keyword.documentation": [
+            "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
+          ],
+          "comment.documentation": [
+            "comment.block.documentation"
+          ],
+          "parameter.documentation": [
+            "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
+          ]
+        }
+      },
+      {
+        "language": "cuda-cpp",
+        "scopes": {
+          "keyword": [
+            "keyword.other"
+          ],
+          "keyword.controlFlow": [
+            "keyword.control"
+          ],
+          "keyword.literal": [
+            "constant.language"
+          ],
+          "keyword.documentation": [
+            "storage.type.class.doxygen"
+          ],
+          "primitive": [
+            "storage.type.built-in.primitive"
+          ],
+          "operator.userDefined": [
+            "entity.name.function.operator"
+          ],
+          "operator.declarator": [
+            "storage.modifier"
+          ],
+          "escape": [
+            "constant.character.escape"
+          ],
+          "formatSpecifier": [
+            "constant.other.placeholder"
+          ],
+          "number.affix": [
+            "keyword.other.unit.suffix"
+          ],
+          "number.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "string.affix": [
+            "storage.type.string"
+          ],
+          "string.affix.userDefined": [
+            "keyword.other.unit.user-defined"
+          ],
+          "character.affix": [
+            "storage.type.string"
+          ],
+          "directive": [
+            "keyword.control.directive"
+          ],
+          "header": [
+            "string.quoted.other.lt-gt.include"
+          ],
+          "bracket": [
+            "punctuation.section.angle-brackets"
+          ],
+          "comment.documentation": [
+            "comment.block.documentation"
+          ],
+          "parameter.documentation": [
+            "variable.parameter"
+          ],
+          "templateParameter": [
+            "variable.other.constant"
+          ],
+          "label": [
+            "entity.name.label"
+          ],
+          "attribute": [
+            "entity.other.attribute"
+          ],
+          "variable.constexpr": [
+            "variable.other.constant"
+          ]
+        }
       }
     ],
     "views": {

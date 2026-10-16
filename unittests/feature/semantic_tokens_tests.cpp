@@ -10,7 +10,7 @@ module;
 module clice;
 
 import :feature.feature;
-import :semantic.symbol;
+import :semantic.token_class;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -22,7 +22,6 @@ namespace lsp = kota::ipc::lsp;
 namespace protocol = kota::ipc::protocol;
 
 struct DecodedToken {
-    LocalSourceRange range;
     /// Absolute positions are accumulated in 64 bits so that a broken delta
     /// stream (e.g. an underflowed deltaStart) stays visible instead of
     /// wrapping back to a plausible value.
@@ -32,51 +31,6 @@ struct DecodedToken {
     std::uint32_t type = 0;
     std::uint32_t modifiers = 0;
 };
-
-auto decode_utf8_tokens(llvm::StringRef content, const protocol::SemanticTokens& tokens)
-    -> std::vector<DecodedToken> {
-    assert(tokens.data.size() % 5 == 0 && "invalid semantic token payload");
-
-    auto starts = lsp::line_starts(content);
-    std::vector<DecodedToken> result;
-    result.reserve(tokens.data.size() / 5);
-
-    std::uint64_t line = 0;
-    std::uint64_t character = 0;
-    for(std::size_t i = 0; i < tokens.data.size(); i += 5) {
-        auto delta_line = tokens.data[i + 0];
-        auto delta_char = tokens.data[i + 1];
-        auto length = tokens.data[i + 2];
-        auto type = tokens.data[i + 3];
-        auto modifiers = tokens.data[i + 4];
-
-        line += delta_line;
-        character = delta_line == 0 ? character + delta_char : delta_char;
-
-        DecodedToken token{
-            .line = line,
-            .start = character,
-            .length = length,
-            .type = type,
-            .modifiers = modifiers,
-        };
-
-        // Only map in-bounds positions back to a byte range; out-of-range
-        // tokens keep an invalid range so lookups by annotation fail loudly.
-        if(line < starts.size()) {
-            auto begin = starts[line] + character;
-            auto end = begin + length;
-            if(end <= content.size()) {
-                token.range = LocalSourceRange(static_cast<std::uint32_t>(begin),
-                                               static_cast<std::uint32_t>(end));
-            }
-        }
-
-        result.push_back(token);
-    }
-
-    return result;
-}
 
 auto decode_relative_tokens(const protocol::SemanticTokens& tokens) -> std::vector<DecodedToken> {
     assert(tokens.data.size() % 5 == 0 && "invalid semantic token payload");
@@ -109,50 +63,51 @@ auto decode_relative_tokens(const protocol::SemanticTokens& tokens) -> std::vect
 
 ZEST_SUITE(semantic_tokens, Tester) {
 
-protocol::SemanticTokens tokens;
-std::vector<DecodedToken> decoded;
+std::vector<feature::SemanticToken> tokens;
+feature::SemanticTokenLegend legend = feature::semantic_token_legend({});
 
-void run_utf8(llvm::StringRef code) {
+void run(llvm::StringRef code) {
     add_main("main.cpp", code);
     ZASSERT(compile_with_pch());
-    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
+    tokens = feature::semantic_tokens(*unit, {});
 }
 
-auto find_by_range(llvm::StringRef name) -> const DecodedToken* {
-    auto expected = range(name);
-    for(const auto& token: decoded) {
-        if(token.range == expected) {
-            return &token;
-        }
-    }
-    return nullptr;
+protocol::SemanticTokens encode(PositionEncoding encoding) {
+    return feature::semantic_tokens_to_protocol(tokens,
+                                                unit->focus_file().positions(),
+                                                encoding,
+                                                legend);
 }
 
 void EXPECT_TOKEN(llvm::StringRef name,
-                  SymbolKind::Kind expected_kind,
+                  SemanticTokenKind expected_kind,
                   std::uint32_t expected_modifiers = 0) {
-    auto* token = find_by_range(name);
-    ZASSERT(token != nullptr);
-    ZASSERT(token->type == static_cast<std::uint32_t>(expected_kind));
-    ZASSERT(token->modifiers == expected_modifiers);
+    auto expected = range(name);
+    auto it = llvm::find_if(tokens, [&](const feature::SemanticToken& token) {
+        return token.range == expected;
+    });
+    ZASSERT(it != tokens.end());
+    ZASSERT(it->kind == expected_kind);
+    ZASSERT(it->modifiers == expected_modifiers);
 }
 
 ZEST_CASE(PreambleDefineUnderPch) {
     // The leading `#define` sits in the preamble, so under the PCH split no
     // MacroDefine record exists in the main compile; the macro name must
     // still classify as a definition through the lexical directive fallback.
-    run_utf8(R"cpp(
+    run(R"cpp(
 §(d1)⟦#define⟧ §(m0)⟦FOO⟧
 §(k0)⟦int⟧ main() { §(k1)⟦return⟧ 0; }
 §(c0)⟦// comment⟧
 )cpp");
 
-    EXPECT_TOKEN("d1", SymbolKind::Directive);
-    EXPECT_TOKEN("m0", SymbolKind::Macro, SymbolModifiers::to_mask(SymbolModifiers::Definition));
-    EXPECT_TOKEN("k0", SymbolKind::Primitive);
-    EXPECT_TOKEN("k1", SymbolKind::Keyword);
-    EXPECT_TOKEN("c0", SymbolKind::Comment);
+    EXPECT_TOKEN("d1", SemanticTokenKind::Directive);
+    EXPECT_TOKEN("m0",
+                 SemanticTokenKind::Macro,
+                 mask(SemanticTokenModifier::Definition) | mask(SemanticTokenModifier::Empty));
+    EXPECT_TOKEN("k0", SemanticTokenKind::Primitive);
+    EXPECT_TOKEN("k1", SemanticTokenKind::Keyword, mask(SemanticTokenModifier::ControlFlow));
+    EXPECT_TOKEN("c0", SemanticTokenKind::Comment);
 }
 
 ZEST_CASE(ModuleDeclarationUnderPch) {
@@ -160,7 +115,7 @@ ZEST_CASE(ModuleDeclarationUnderPch) {
     // PCH split; every written module token must still classify — with a
     // leading comment block ahead of the global fragment, like a license
     // header.
-    run_utf8(R"cpp(// leading comment block
+    run(R"cpp(// leading comment block
 // above the global module fragment
 
 §(g0)⟦module⟧;
@@ -174,18 +129,18 @@ export int exported_value = 1;
 int private_value = 2;
 )cpp");
 
-    auto definition = SymbolModifiers::to_mask(SymbolModifiers::Definition);
-    EXPECT_TOKEN("g0", SymbolKind::Keyword);
-    EXPECT_TOKEN("k0", SymbolKind::Keyword);
-    EXPECT_TOKEN("n0", SymbolKind::Module, definition);
-    EXPECT_TOKEN("n1", SymbolKind::Module, definition);
-    EXPECT_TOKEN("p0", SymbolKind::Keyword);
+    auto definition = mask(SemanticTokenModifier::Definition);
+    EXPECT_TOKEN("g0", SemanticTokenKind::Keyword);
+    EXPECT_TOKEN("k0", SemanticTokenKind::Keyword);
+    EXPECT_TOKEN("n0", SemanticTokenKind::Module, definition);
+    EXPECT_TOKEN("n1", SemanticTokenKind::Module, definition);
+    EXPECT_TOKEN("p0", SemanticTokenKind::Keyword);
 }
 
 ZEST_CASE(UsingFromDependentBase) {
     // A dependent name that a template base brings in with a
     // using-declaration names the member itself.
-    run_utf8(R"cpp(
+    run(R"cpp(
 struct Base { void f(); };
 template <class T> struct B : Base { using Base::f; };
 template <class T> struct D : B<T> {
@@ -196,48 +151,33 @@ template <class T> struct D : B<T> {
 };
 )cpp");
 
-    auto class_scope = SymbolModifiers::to_mask(SymbolModifiers::ClassScope);
-    EXPECT_TOKEN("member", SymbolKind::Method, class_scope);
-    EXPECT_TOKEN("qualified", SymbolKind::Method, class_scope);
+    auto member = mask(SemanticTokenModifier::Member) | mask(SemanticTokenModifier::Dependent);
+    EXPECT_TOKEN("member", SemanticTokenKind::Method, member);
+    EXPECT_TOKEN("qualified", SemanticTokenKind::Method, member);
 }
 
 ZEST_CASE(UTF16LengthDiffersFromUTF8) {
-    add_main("main.cpp", R"cpp(
+    run(R"cpp(
 int main() {
 §(lit)⟦u8"你"⟧;
 }
 )cpp");
-    ZASSERT(compile_with_pch());
 
-    auto utf8_tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    auto utf16_tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF16);
-
-    auto utf8 = decode_utf8_tokens(unit->focus_file().content(), utf8_tokens);
-    auto utf16 = decode_relative_tokens(utf16_tokens);
-
-    auto string_type = static_cast<std::uint32_t>(SymbolKind::String);
-    auto lit_range = range("lit");
-
-    std::optional<DecodedToken> utf8_token;
-    for(const auto& token: utf8) {
-        if(token.range == lit_range && token.type == string_type) {
-            utf8_token = token;
-            break;
-        }
-    }
-    ZASSERT(utf8_token);
-
-    std::optional<DecodedToken> utf16_token;
-    for(const auto& token: utf16) {
-        if(token.line == utf8_token->line && token.start == utf8_token->start &&
-           token.type == string_type) {
-            utf16_token = token;
-            break;
-        }
-    }
-    ZASSERT(utf16_token);
-
-    ZASSERT(utf8_token->length > utf16_token->length);
+    // The `u8` prefix is a piece of its own; the quoted text follows it.
+    auto string_type = *legend.type_of[static_cast<std::size_t>(SemanticTokenKind::String)];
+    auto lit = range("lit");
+    auto body = encode(PositionEncoding::UTF8);
+    auto wide = encode(PositionEncoding::UTF16);
+    auto length = [&](const protocol::SemanticTokens& encoded) {
+        auto decoded = decode_relative_tokens(encoded);
+        auto it = llvm::find_if(decoded, [&](const DecodedToken& token) {
+            return token.type == string_type && token.length > 2;
+        });
+        return it == decoded.end() ? 0u : it->length;
+    };
+    ZASSERT(lit.length() == 7U);
+    ZASSERT(length(body) == 5U);
+    ZASSERT(length(wide) == 3U);
 }
 
 /// A block comment over two lines, `/*<head>` and `cd*/`, splits into one
@@ -246,18 +186,15 @@ void check_comment_split(llvm::StringRef head,
                          llvm::StringRef newline,
                          PositionEncoding encoding,
                          std::uint32_t head_length) {
-    add_main("main.cpp",
-             std::format(R"cpp(int main() {{
+    run(std::format(R"cpp(int main() {{
 /*{}{}cd*/
 }}
 )cpp",
-                         head,
-                         newline));
-    ZASSERT(compile_with_pch());
+                    head,
+                    newline));
 
-    auto relative = decode_relative_tokens(feature::semantic_tokens(*unit, encoding));
-
-    auto comment_type = static_cast<std::uint32_t>(SymbolKind::Comment);
+    auto relative = decode_relative_tokens(encode(encoding));
+    auto comment_type = *legend.type_of[static_cast<std::size_t>(SemanticTokenKind::Comment)];
     std::vector<DecodedToken> comments;
     for(const auto& token: relative) {
         if(token.type == comment_type) {
@@ -295,11 +232,10 @@ export int x = 42;
 int y = x;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
+    tokens = feature::semantic_tokens(*unit, {});
 
-    EXPECT_TOKEN("kw", SymbolKind::Keyword);
-    EXPECT_TOKEN("mod", SymbolKind::Module);
+    EXPECT_TOKEN("kw", SemanticTokenKind::Keyword);
+    EXPECT_TOKEN("mod", SemanticTokenKind::Module);
 }
 
 ZEST_CASE(DottedModuleImport) {
@@ -313,11 +249,10 @@ import §(m0)⟦app⟧.§(m1)⟦core⟧;
 int y = x;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
+    tokens = feature::semantic_tokens(*unit, {});
 
-    EXPECT_TOKEN("m0", SymbolKind::Module);
-    EXPECT_TOKEN("m1", SymbolKind::Module);
+    EXPECT_TOKEN("m0", SemanticTokenKind::Module);
+    EXPECT_TOKEN("m1", SemanticTokenKind::Module);
 }
 
 ZEST_CASE(ImportChannelAudit) {
@@ -379,11 +314,10 @@ export module foo;
 export §(kw)⟦import⟧ :§(part)⟦part⟧;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
+    tokens = feature::semantic_tokens(*unit, {});
 
-    EXPECT_TOKEN("kw", SymbolKind::Keyword);
-    EXPECT_TOKEN("part", SymbolKind::Module);
+    EXPECT_TOKEN("kw", SemanticTokenKind::Keyword);
+    EXPECT_TOKEN("part", SemanticTokenKind::Module);
 }
 
 ZEST_CASE(ModuleImplementationUnit) {
@@ -397,15 +331,14 @@ export int x = 42;
 int y = §(ref)⟦x⟧;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
+    tokens = feature::semantic_tokens(*unit, {});
 
-    EXPECT_TOKEN("kw", SymbolKind::Keyword);
+    EXPECT_TOKEN("kw", SemanticTokenKind::Keyword);
     // An implementation unit declares the module its interface defines.
-    EXPECT_TOKEN("mod", SymbolKind::Module, SymbolModifiers::to_mask(SymbolModifiers::Declaration));
+    EXPECT_TOKEN("mod", SemanticTokenKind::Module, mask(SemanticTokenModifier::Declaration));
     EXPECT_TOKEN("ref",
-                 SymbolKind::Variable,
-                 SymbolModifiers::to_mask(SymbolModifiers::GlobalScope));
+                 SemanticTokenKind::Variable,
+                 mask(SemanticTokenModifier::Global));
 }
 
 ZEST_CASE(ModuleReexport) {
@@ -419,11 +352,10 @@ export module bar;
 export §(kw)⟦import⟧ §(mod)⟦foo⟧;
 )");
     ZASSERT(compile_with_modules());
-    tokens = feature::semantic_tokens(*unit, PositionEncoding::UTF8);
-    decoded = decode_utf8_tokens(unit->focus_file().content(), tokens);
+    tokens = feature::semantic_tokens(*unit, {});
 
-    EXPECT_TOKEN("kw", SymbolKind::Keyword);
-    EXPECT_TOKEN("mod", SymbolKind::Module);
+    EXPECT_TOKEN("kw", SemanticTokenKind::Keyword);
+    EXPECT_TOKEN("mod", SemanticTokenKind::Module);
 }
 
 };  // ZEST_SUITE(semantic_tokens)

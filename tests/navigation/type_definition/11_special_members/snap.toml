@@ -1,0 +1,11 @@
+[answers.constructor]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.tilde]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.destructor]
+type_definition = ["struct ⟦Widget⟧ {"]
+
+[answers.definition]
+type_definition = ["struct ⟦Widget⟧ {"]

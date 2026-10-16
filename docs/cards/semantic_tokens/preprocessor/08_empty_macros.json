@@ -1,0 +1,617 @@
+{
+  "id": "semantic_tokens/preprocessor/08_empty_macros",
+  "topic": "semantic_tokens",
+  "subtopic": "preprocessor",
+  "title": "Empty and control-flow macros",
+  "summary": "A macro that expands to nothing is `empty`, one that can leave the function `controlFlow`",
+  "prose": "Both modifiers mark the macro's name at its definition and at every\nexpansion. The arguments an empty macro drops never reach the compiler\nand are `inactive`, like the code of an untaken branch.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "#define TRACE(message)\n#define UNUSED\n#define RETURN_IF(condition) \\\n    if(condition)            \\\n    return\n\nint compute();\n\nint checked(int value) {\n    TRACE(compute());\n    UNUSED int spare = 0;\n    RETURN_IF(value < 0) 0;\n    return value;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "⟦#define⟧ TRACE(message)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#define ⟦TRACE⟧(message)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "definition",
+                  "callable",
+                  "empty"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "#define TRACE(⟦message⟧)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "macroParameter"
+              },
+              {
+                "at": {
+                  "$place": "⟦#define⟧ UNUSED",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#define ⟦UNUSED⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "definition",
+                  "empty"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦#define⟧ RETURN_IF(condition) \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#define ⟦RETURN_IF⟧(condition) \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "definition",
+                  "callable",
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "#define RETURN_IF(⟦condition⟧) \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "macroParameter"
+              },
+              {
+                "at": {
+                  "$place": "⟦if⟧(condition)            \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "if(⟦condition⟧)            \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "macroParameter"
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ compute();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦compute⟧();",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "declaration",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ checked(int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦checked⟧(int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int checked(⟦int⟧ value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int checked(int ⟦value⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦TRACE⟧(compute());",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "callable",
+                  "empty"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "TRACE(⟦compute()⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "plain",
+                "modifiers": [
+                  "inactive"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦UNUSED⟧ int spare = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "empty"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "UNUSED ⟦int⟧ spare = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "UNUSED int ⟦spare⟧ = 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "UNUSED int spare ⟦=⟧ 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "UNUSED int spare = ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦RETURN_IF⟧(value < 0) 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "macro",
+                "modifiers": [
+                  "callable",
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "RETURN_IF(⟦value⟧ < 0) 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "RETURN_IF(value ⟦<⟧ 0) 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "RETURN_IF(value < ⟦0⟧) 0;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 23
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "RETURN_IF(value < 0) ⟦0⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 26
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧ value;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return ⟦value⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

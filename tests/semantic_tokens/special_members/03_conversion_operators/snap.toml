@@ -9,14 +9,14 @@ type = "keyword"
 [answers.ratio_use.semantic_token]
 text = "ratio"
 type = "parameter"
-modifiers = ["functionScope"]
+modifiers = ["local"]
 
 [answers.ratio_use2.semantic_token]
 text = "ratio"
 type = "parameter"
-modifiers = ["functionScope"]
+modifiers = ["local"]
 
 [answers.ratio_use3.semantic_token]
 text = "ratio"
 type = "parameter"
-modifiers = ["functionScope"]
+modifiers = ["local"]

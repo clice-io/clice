@@ -1,7 +1,7 @@
 [answers.Widget.semantic_token]
 text = "Widget"
 type = "struct"
-modifiers = ["globalScope"]
+modifiers = ["global"]
 
 [answers.paren.semantic_token]
 text = "("

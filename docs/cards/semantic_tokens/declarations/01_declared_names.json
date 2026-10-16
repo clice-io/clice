@@ -58,7 +58,7 @@
               "type": "namespace",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -72,7 +72,7 @@
               "type": "struct",
               "modifiers": [
                 "definition",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -86,7 +86,7 @@
               "type": "field",
               "modifiers": [
                 "definition",
-                "classScope"
+                "member"
               ]
             }
           }
@@ -100,7 +100,7 @@
               "type": "function",
               "modifiers": [
                 "declaration",
-                "globalScope"
+                "global"
               ]
             }
           }
@@ -114,7 +114,7 @@
               "type": "parameter",
               "modifiers": [
                 "definition",
-                "functionScope"
+                "local"
               ]
             }
           }

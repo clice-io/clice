@@ -1,0 +1,709 @@
+{
+  "id": "semantic_tokens/modifiers/14_control_flow",
+  "topic": "semantic_tokens",
+  "subtopic": "modifiers",
+  "title": "Control flow",
+  "summary": "Keywords that transfer control and functions that never return are `controlFlow`",
+  "prose": "`if`, `for`, `return` and the other statements that branch, loop or leave\ncarry it, telling them apart from declaration keywords such as `int` or\n`const`. A `[[noreturn]]` function carries it too, as does a macro whose\nexpansion can leave the function.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "[[noreturn]] void fail(const char* reason);\n\nint first_positive(const int* values, int count) {\n    for(int i = 0; i < count; i += 1) {\n        if(values[i] > 0) {\n            return values[i];\n        }\n    }\n    fail(\"none\");\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "semantic_tokens": [
+              {
+                "at": {
+                  "$place": "[[⟦noreturn⟧]] void fail(const char* reason);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "attribute"
+              },
+              {
+                "at": {
+                  "$place": "[[noreturn]] ⟦void⟧ fail(const char* reason);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "[[noreturn]] void ⟦fail⟧(const char* reason);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "declaration",
+                  "global",
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "[[noreturn]] void fail(⟦const⟧ char* reason);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "[[noreturn]] void fail(const ⟦char⟧* reason);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 29
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 33
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "[[noreturn]] void fail(const char⟦*⟧ reason);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 33
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 34
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "[[noreturn]] void fail(const char* ⟦reason⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 35
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 41
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ first_positive(const int* values, int count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦first_positive⟧(const int* values, int count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int first_positive(⟦const⟧ int* values, int count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "int first_positive(const ⟦int⟧* values, int count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int first_positive(const int⟦*⟧ values, int count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 29
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int first_positive(const int* ⟦values⟧, int count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 30
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 36
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int first_positive(const int* values, ⟦int⟧ count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 38
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 41
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int first_positive(const int* values, int ⟦count⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 42
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 47
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦for⟧(int i = 0; i < count; i += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 7
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "for(⟦int⟧ i = 0; i < count; i += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "for(int ⟦i⟧ = 0; i < count; i += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "for(int i ⟦=⟧ 0; i < count; i += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "for(int i = ⟦0⟧; i < count; i += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "for(int i = 0; ⟦i⟧ < count; i += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "for(int i = 0; i ⟦<⟧ count; i += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "for(int i = 0; i < ⟦count⟧; i += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "for(int i = 0; i < count; ⟦i⟧ += 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 30
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 31
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "modification",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "for(int i = 0; i < count; i ⟦+=⟧ 1) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 32
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 34
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "for(int i = 0; i < count; i += ⟦1⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 35
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 36
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦if⟧(values[i] > 0) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "if(⟦values⟧[i] > 0) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "if(values[⟦i⟧] > 0) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "if(values[i] ⟦>⟧ 0) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "if(values[i] > ⟦0⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 23
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦return⟧ values[i];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return ⟦values⟧[i];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return values[⟦i⟧];",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 26
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦fail⟧(\"none\");",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 8
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "global",
+                  "controlFlow"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "fail(⟦\"none\"⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "string"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

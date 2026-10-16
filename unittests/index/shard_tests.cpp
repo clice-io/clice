@@ -633,6 +633,8 @@ ZEST_CASE(ReservedLocalParentRejected) {
     blob.local_args = {""};
     blob.local_parents = {0};
     blob.local_flags = {0};
+    blob.local_token_kinds = {0};
+    blob.local_token_modifiers = {0};
 
     auto bytes_of = [&] {
         std::string bytes;
