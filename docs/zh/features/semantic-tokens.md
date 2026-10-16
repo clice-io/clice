@@ -9,31 +9,31 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 
 ## 种类
 
-| 种类                               | 标记的内容                                                                   |
-| ---------------------------------- | ---------------------------------------------------------------------------- |
-| `comment`                          | 注释                                                                         |
-| `string`、`character`、`number`    | 字面量，包括其前缀和后缀                                                     |
-| `escape`                           | 字面量中的转义序列：`\n`、`\x41`，以及格式字符串中的 `{{`                    |
-| `formatSpecifier`                  | 格式字符串中的占位符：`{}`、`{:>8}`、`%d`                                    |
-| `keyword`                          | 关键字；`module`、`import`、`override` 和 `final` 起关键字作用时也是         |
-| `primitive`                        | 内置类型：`int`、`bool`、`char8_t`                                           |
-| `operator`                         | 运算符，无论内置还是重载，包括 `sizeof`、`new`、`and` 这类以单词拼写的运算符 |
-| `bracket`                          | 模板实参和模板参数两侧的 `<` 与 `>`                                          |
-| `directive`、`header`              | 预处理指令；头文件名                                                         |
-| `namespace`、`module`              | 命名空间或命名空间别名；C++20 模块名                                         |
-| `class`、`struct`、`union`、`enum` | 类，按声明它的关键字区分                                                     |
-| `typeAlias`                        | `typedef` 或 `using` 别名                                                    |
-| `typeParameter`                    | 模板类型参数或模板模板参数                                                   |
-| `templateParameter`                | 非类型模板参数                                                               |
-| `concept`                          | Concept                                                                      |
-| `function`、`method`               | 自由函数；成员函数，包括构造函数和析构函数                                   |
-| `variable`、`parameter`、`field`   | 变量、函数参数、数据成员                                                     |
-| `enumMember`、`label`              | 枚举成员；标签                                                               |
-| `macro`、`macroParameter`          | 宏；函数式宏在其定义中的参数                                                 |
-| `attribute`                        | 属性名：`nodiscard`、`gnu::packed`                                           |
-| `unknown`                          | 只有实例化才能解析的待决名：`T::reset()`、`value.size()`                     |
-| `conflict`                         | 同时指代不同种类实体的名称                                                   |
-| `plain`                            | 未选中分支中没有自身种类的 Token，为携带 `inactive` 而发送                   |
+| 种类                               | 标记的内容                                                                                          |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `comment`                          | 注释                                                                                                |
+| `string`、`character`、`number`    | 字面量，包括其前缀和后缀                                                                            |
+| `escape`                           | 字面量中的转义序列：`\n`、`\x41`，以及格式字符串中的 `{{`                                           |
+| `formatSpecifier`                  | 格式字符串中的占位符：`{}`、`{:>8}`、`%d`                                                           |
+| `keyword`                          | 关键字；`module`、`import`、`override` 和 `final` 起关键字作用时也是                                |
+| `primitive`                        | 内置类型：`int`、`bool`、`char8_t`                                                                  |
+| `operator`                         | 运算符，无论内置还是重载，包括 `sizeof`、`new`、`and` 这类以单词拼写的运算符                        |
+| `bracket`                          | 模板实参和模板参数两侧的 `<` 与 `>`                                                                 |
+| `directive`、`header`              | 预处理指令；头文件名                                                                                |
+| `namespace`、`module`              | 命名空间或命名空间别名；C++20 模块名                                                                |
+| `class`、`struct`、`union`、`enum` | 类，按声明它的关键字区分                                                                            |
+| `typeAlias`                        | `typedef` 或 `using` 别名                                                                           |
+| `typeParameter`                    | 模板类型参数或模板模板参数                                                                          |
+| `templateParameter`                | 非类型模板参数                                                                                      |
+| `concept`                          | Concept                                                                                             |
+| `function`、`method`               | 自由函数；成员函数，包括构造函数和析构函数                                                          |
+| `variable`、`parameter`、`field`   | 变量、函数参数、数据成员                                                                            |
+| `enumMember`、`label`              | 枚举成员；标签                                                                                      |
+| `macro`、`macroParameter`          | 宏；函数式宏在其定义中的参数                                                                        |
+| `attribute`                        | 属性名：`nodiscard`、`gnu::packed`                                                                  |
+| `unknown`                          | 只有实例化才能解析的待决名：`T::reset()`、`value.size()`                                            |
+| `conflict`                         | 同时指代不同种类实体的名称                                                                          |
+| `plain`                            | 未选中分支中没有自身种类的 Token（关闭词法 Token 时则是其中的所有 Token），为携带 `inactive` 而发送 |
 
 ## 修饰符
 
@@ -51,59 +51,64 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 | `documentation`  | 位于文档注释中                                                                    |
 | `modification`   | 实体在此处被修改：被赋值、被自增，或经引用或地址传给非 const 的参数               |
 
-每个名称都带有其可见范围：`local`（在所在函数或块内）、`member`（在所在类内）、`internal`（在所在翻译单元内，由 `static` 或匿名命名空间造成）或 `global`。
+声明所引入的名称都带有其可见范围：`local`（在所在函数或块内）、`member`（在所在类内）、`internal`（在所在翻译单元内，由 `static` 或匿名命名空间造成）或 `global`。
 
 其余修饰符是 clice 自有的，其中一些在不同种类上各有含义：
 
-| 修饰符                      | 作用于                           | 含义                                                         |
-| --------------------------- | -------------------------------- | ------------------------------------------------------------ |
-| `template`                  | 类、别名、变量或函数             | 模板，或模板的特化                                           |
-| `dependent`                 | 任意名称                         | 依赖于模板参数；每个 `unknown` 名称都带有它                  |
-| `virtual`                   | 方法；类                         | 虚方法；多态类                                               |
-| `constexpr`                 | 函数、变量或 `templateParameter` | 可用于常量表达式                                             |
-| `constructor`、`destructor` | 方法                             | 构造函数；析构函数                                           |
-| `callable`                  | 宏                               | 函数式宏                                                     |
-|                             | 变量、参数或字段                 | 其类型可被调用：函数指针、Lambda、带有 `operator()` 的类     |
-| `controlFlow`               | 关键字                           | 转移控制：`if`、`for`、`return`、`throw`、`co_await`、`case` |
-|                             | 函数                             | `[[noreturn]]`                                               |
-|                             | 宏                               | 其展开可能离开函数：`return`、`break`、`goto`、`throw`       |
-| `userDefined`               | 运算符；字面量的后缀             | 调用重载运算符；用户定义字面量                               |
-| `declarator`                | 运算符                           | 声明符中的 `*`、`&` 或 `&&`，与表达式中的同名运算符区分开    |
-| `literal`                   | 关键字                           | `true`、`false`、`nullptr`                                   |
-| `affix`                     | 字面量                           | 其前缀或后缀：`u8`、`L`、`42u`、`1.5f`                       |
-| `empty`                     | 宏                               | 展开为空                                                     |
-| `inactive`                  | 任意 Token                       | 位于未选中的预处理分支中，或属于宏丢弃的实参                 |
+| 修饰符                      | 作用于                           | 含义                                                                 |
+| --------------------------- | -------------------------------- | -------------------------------------------------------------------- |
+| `template`                  | 类、别名、变量或函数             | 模板，或模板的特化                                                   |
+| `dependent`                 | 任意名称                         | 依赖于模板参数；每个 `unknown` 名称都带有它                          |
+| `virtual`                   | 方法；类                         | 虚方法；多态类                                                       |
+| `constexpr`                 | 函数、变量或 `templateParameter` | 声明为 `constexpr`、`consteval` 或 `constinit`，或者是非类型模板参数 |
+| `constructor`、`destructor` | 方法                             | 构造函数；析构函数                                                   |
+| `callable`                  | 宏                               | 函数式宏                                                             |
+|                             | 变量、参数或字段                 | 其类型可被调用：函数指针、Lambda、带有 `operator()` 的类             |
+| `controlFlow`               | 关键字                           | 转移控制：`if`、`for`、`return`、`throw`、`co_await`、`case`         |
+|                             | 函数                             | `[[noreturn]]`                                                       |
+|                             | 宏                               | 其展开可能离开函数：`return`、`break`、`goto`、`throw`               |
+| `userDefined`               | 运算符；字面量的后缀             | 调用重载运算符；用户定义字面量                                       |
+| `declarator`                | 运算符                           | 声明符中的 `*`、`&` 或 `&&`，与表达式中的同名运算符区分开            |
+| `literal`                   | 关键字                           | `true`、`false`、`nullptr`                                           |
+| `affix`                     | 字面量                           | 其前缀或后缀：`u8`、`L`、`42u`、`1.5f`                               |
+| `empty`                     | 宏                               | 展开为空                                                             |
+| `inactive`                  | 任意 Token                       | 位于未选中的预处理分支中，或属于宏丢弃的实参                         |
 
 ## 编辑器
 
 - **VS Code**：clice 扩展为每个种类和修饰符声明了主题会着色的 TextMate 作用域，因此 `keyword.controlFlow` 采用主题为控制关键字设定的颜色，`escape` 采用主题为转义序列设定的颜色。
 - **Neovim**：clice 插件把 clice 名称对应的 `@lsp.type.*` 和 `@lsp.mod.*` 高亮组链接到配色方案会设置样式的高亮组，作为配色方案可以覆盖的默认值。
-- **其他编辑器**（Zed、Kate、Emacs、Sublime Text）为标准 LSP 名称着色。`[semantic_tokens.kinds]` 为每个 clice 种类指定最接近的标准名称：
+- **其他编辑器**（Zed、Kate、Emacs、Sublime Text）为标准 LSP 名称着色。把 clice 的种类重命名为最接近的标准名称，这些种类就能在该编辑器中着色；重命名写在该编辑器传给 clice 的 `initializationOptions` 中，而不是 VS Code 也会读取的 `clice.toml` 中：
 
-```toml
-[semantic_tokens.kinds]
-character = "string"
-escape = "string"
-formatSpecifier = "string"
-primitive = "type"
-bracket = "operator"
-directive = "macro"
-header = "string"
-module = "namespace"
-union = "struct"
-typeAlias = "type"
-templateParameter = "parameter"
-concept = "type"
-field = "property"
-macroParameter = "parameter"
-attribute = "decorator"
+```json
+{
+  "semantic_tokens": {
+    "kinds": {
+      "character": "string",
+      "escape": "string",
+      "formatSpecifier": "string",
+      "primitive": "type",
+      "bracket": "operator",
+      "directive": "macro",
+      "header": "string",
+      "module": "namespace",
+      "union": "struct",
+      "typeAlias": "type",
+      "templateParameter": "parameter",
+      "concept": "type",
+      "field": "property",
+      "macroParameter": "parameter",
+      "attribute": "decorator"
+    }
+  }
+}
 ```
 
-只有为 C 和 C++ 把 `semantic_tokens` 设为 `"combined"`（或 `"full"`）后，Zed 才会请求语义 Token；此时映射以 JSON 形式写在 Zed 设置的 `lsp.clice.initialization_options` 下。
+只有为 C 和 C++ 把 `semantic_tokens` 设为 `"combined"`（或 `"full"`）后，Zed 才会请求语义 Token；映射写在 `lsp.clice.initialization_options` 下。
 
 ## 配置
 
-`clice.toml` 的 `[semantic_tokens]` 配置节（或编辑器 `initializationOptions` 中的同名键）包含词法 Token 的开关和两张重命名表。这些名称只在编辑器连接时公布一次，修改后需要重启服务器。详见[配置指南](../guide/configuration.md#semantic-tokens)。
+`clice.toml` 的 `[semantic_tokens]` 配置节（或编辑器 `initializationOptions` 中的同名键）包含词法 Token 的开关和两张重命名表。这些名称只在编辑器连接时公布一次：它们取自编辑器的设置和第一个工作区文件夹的 `clice.toml`，修改后需要重启服务器。详见[配置指南](../guide/configuration.md#semantic-tokens)。
 
 <!-- BEGIN GENERATED ITEMS: semantic_tokens/options -->
 
@@ -113,7 +118,7 @@ attribute = "decorator"
 
 关闭 `lexical` 后，只发送编辑器自身语法无法区分的内容
 
-关键字、字面量、注释、内置运算符和指令交给编辑器的语法着色。名称、模板尖括号、声明符运算符和未选中分支中的代码仍会发送：没有自身种类的非活动 Token 是 `plain`，因此语法赋予的颜色保持不变，只是被淡化。
+关键字、字面量、注释、内置运算符和指令交给编辑器的语法着色。名称、模板尖括号和声明符运算符仍会发送，未选中分支中的代码也会作为 `plain` Token 发送：语法赋予的颜色保持不变，只是被淡化。
 
 ```case
 tests/semantic_tokens/options/01_lexical_tokens
@@ -275,7 +280,7 @@ tests/semantic_tokens/lexical/09_attributes
 
 格式字符串中的占位符是 `formatSpecifier` Token
 
-传给函数格式字符串形参的字符串会拆分为文本和占位符。这类形参指 `basic_format_string` 形参（`std::format`、`std::print` 和 {fmt} 都这样声明），或由 `format(printf, …)` 属性指明的那个参数。前一种风格的占位符如 `{}` 和 `{:>8.2f}`，printf 风格的如 `%d` 和 `%-8.3f`。转义的花括号和 `%%` 仍是文本，没有任何函数当作格式字符串读取的字符串也是如此。
+传给函数格式字符串形参的字符串会拆分为文本和占位符。这类形参指 `basic_format_string` 形参（`std::format`、`std::print` 和 {fmt} 都这样声明），或由 `format(printf, …)` 属性指明的那个参数。前一种风格的占位符如 `{}` 和 `{:>8.2f}`，printf 风格的如 `%d` 和 `%-8.3f`，原始字符串也不例外。转义的花括号和 `%%` 是转义序列；没有任何函数当作格式字符串读取的字符串则是普通文本。
 
 ```case
 tests/semantic_tokens/lexical/12_format_strings
@@ -607,7 +612,7 @@ tests/semantic_tokens/modifiers/06_default_library
 
 **作用域修饰符**
 
-每个名称都标明其可见范围：所在函数、所在类、所在文件或全局
+每个声明的名称都标明其可见范围：所在函数、所在类、所在文件或全局
 
 ```case
 tests/semantic_tokens/modifiers/07_scopes
@@ -645,7 +650,7 @@ tests/semantic_tokens/modifiers/10_overloaded_operators
 
 类型可被调用的变量、参数或字段带有 `callable`
 
-函数指针、成员函数指针、Lambda，以及带有 `operator()` 的类的对象都带有它，在声明处和每个使用处都是如此。
+函数指针、成员函数指针、Lambda，以及带有 `operator()`（无论是自身的还是基类的）的类的对象都带有它，在声明处和每个使用处都是如此。
 
 ```case
 tests/semantic_tokens/modifiers/12_callable
@@ -967,7 +972,7 @@ tests/inactive_regions/updates/01_edited_condition
 - [x] 全文档语义 Token（`textDocument/semanticTokens/full`）
 - [x] 范围请求（`textDocument/semanticTokens/range`）：返回与该范围重叠的 Token
 - [x] 增量更新（`textDocument/semanticTokens/full/delta`）：返回自编辑器持有的上一次响应以来的变化
-- [x] 位置采用编辑器协商的编码，跨行的 Token 按行拆分
+- [x] 以 UTF-16 为单位的位置，跨行的 Token 按行拆分
 
 ## 已知限制
 

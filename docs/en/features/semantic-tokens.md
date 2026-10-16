@@ -93,27 +93,32 @@ The rest are clice's own, and some mean something of their own on each kind:
   groups of clice's names to the groups colorschemes style, as defaults a
   colorscheme can override.
 - **Other editors** — Zed, Kate, Emacs, Sublime Text — color the standard LSP
-  names. Renaming clice's kinds to the standard names closest to them, in the
-  editor's settings (its `initializationOptions` for clice, as JSON) rather
-  than a `clice.toml` other editors read too, colors them there:
+  names. Renaming clice's kinds to the standard names closest to them colors
+  them there; the renames go in that editor's `initializationOptions` for
+  clice, not in a `clice.toml` VS Code reads too:
 
-```toml
-[semantic_tokens.kinds]
-character = "string"
-escape = "string"
-formatSpecifier = "string"
-primitive = "type"
-bracket = "operator"
-directive = "macro"
-header = "string"
-module = "namespace"
-union = "struct"
-typeAlias = "type"
-templateParameter = "parameter"
-concept = "type"
-field = "property"
-macroParameter = "parameter"
-attribute = "decorator"
+```json
+{
+  "semantic_tokens": {
+    "kinds": {
+      "character": "string",
+      "escape": "string",
+      "formatSpecifier": "string",
+      "primitive": "type",
+      "bracket": "operator",
+      "directive": "macro",
+      "header": "string",
+      "module": "namespace",
+      "union": "struct",
+      "typeAlias": "type",
+      "templateParameter": "parameter",
+      "concept": "type",
+      "field": "property",
+      "macroParameter": "parameter",
+      "attribute": "decorator"
+    }
+  }
+}
 ```
 
 Zed asks for semantic tokens only once `semantic_tokens` is `"combined"` (or
@@ -138,9 +143,9 @@ they come from the editor's settings and the first workspace folder's
 With `lexical` off, only what the editor's own grammar cannot tell is sent
 
 Keywords, literals, comments, built-in operators and directives are left
-to the editor's grammar. Names, template brackets, declarator operators and
-the code of untaken branches are still sent: an inactive token without a
-kind of its own is `plain`, so the grammar's color stays and only dims.
+to the editor's grammar. Names, template brackets and declarator operators
+are still sent, and so is the code of untaken branches, as `plain` tokens:
+the grammar's color stays and only dims.
 
 ```case
 tests/semantic_tokens/options/01_lexical_tokens
@@ -312,8 +317,8 @@ A string passed where a function takes a format string — a
 `basic_format_string` parameter as `std::format`, `std::print` and {fmt}
 declare it, or the argument a `format(printf, …)` attribute names — splits
 into its text and its placeholders: `{}` and `{:>8.2f}` in the first style,
-`%d` and `%-8.3f` in printf's. Escaped braces and `%%` stay text, and so does
-a string no function reads as a format.
+`%d` and `%-8.3f` in printf's, a raw string's too. Escaped braces and `%%`
+are escapes; a string no function reads as a format is plain text.
 
 ```case
 tests/semantic_tokens/lexical/12_format_strings
@@ -658,7 +663,7 @@ tests/semantic_tokens/modifiers/06_default_library
 
 **Scope modifiers**
 
-Every name carries where it is visible from: its function, its class, its file or everywhere
+A declared name carries where it is visible from: its function, its class, its file or everywhere
 
 ```case
 tests/semantic_tokens/modifiers/07_scopes
@@ -697,8 +702,8 @@ tests/semantic_tokens/modifiers/10_overloaded_operators
 A variable, parameter or field whose type can be called is `callable`
 
 Function pointers, pointers to member functions, lambdas and objects of a
-class with an `operator()` all carry it, at their declaration and at every
-use.
+class with an `operator()`, its own or a base's, all carry it, at their
+declaration and at every use.
 
 ```case
 tests/semantic_tokens/modifiers/12_callable
