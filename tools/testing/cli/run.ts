@@ -359,21 +359,22 @@ function spawnClice(
         child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
         child.stdin.end();
         let signalled = false;
-        const signal = (): void => {
-            if (signalled || !fs.existsSync(marker)) {
+        // No event: fs.watch loses it on macOS, where one FSEvents stream
+        // serves every directory watch of the process and is recreated
+        // whenever another test opens or closes one.
+        const poll = setInterval(() => {
+            if (!fs.existsSync(marker)) {
                 return;
             }
             signalled = true;
-            watcher.close();
+            clearInterval(poll);
             for (const name of interrupt.signals) {
                 child.kill(name);
             }
-        };
-        const watcher = fs.watch(dir, signal);
-        signal();
+        }, 10);
         child.on("error", reject);
         child.on("close", (status, sig) => {
-            watcher.close();
+            clearInterval(poll);
             fs.rmSync(dir, { recursive: true, force: true });
             if (!signalled) {
                 const how = sig === null ? `exited ${String(status)}` : `was killed by ${sig}`;
