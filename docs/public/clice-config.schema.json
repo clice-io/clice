@@ -32,7 +32,8 @@
             "$ref": "#/$defs/DiagnosticsOptions",
             "description": "The [diagnostics] section: diagnostic options.",
             "default": {
-                "clang_tidy": true
+                "clang_tidy": true,
+                "suppress": []
             }
         },
         "documentation": {
@@ -200,6 +201,14 @@
                     "type": "boolean",
                     "description": "Run clang-tidy on open files and offer its fixes, with the checks the nearest `.clang-tidy` configures (a small default set without one). Checks too slow for an editor, and those unreliable on code being edited, are left out; files `clice lint` does not check get none. `NOLINT` comments also silence compiler warnings only while this runs.",
                     "default": true
+                },
+                "suppress": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Diagnostics open files do not show, by their code: a compiler warning's option (`-Wunused-variable`), clang's name for any other diagnostic (`err_undeclared_var_use`), or a clang-tidy check. For code clang gets wrong: everything else works on the file as before, and `clice lint` still reports them.",
+                    "default": []
                 }
             },
             "additionalProperties": false
