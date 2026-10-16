@@ -4,7 +4,7 @@
   "subtopic": "line_folding",
   "title": "Declaration-line folding",
   "summary": "A declaration's body folds from the line holding its name",
-  "prose": "When the opening brace sits below the name, on a line of its own or after a\nsignature spanning several lines, a client that folds whole lines starts the\nfold on the name's line, so the folded declaration still shows what it is. A\nclient folding by characters starts at the brace and keeps everything before\nit visible anyway.\n\n> **Client support**: VS Code still leaves the closing `}` on a line of its\n> own rather than joining it to the signature line\n> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)).",
+  "prose": "When the opening brace sits below the name, on a line of its own or after a\nsignature spanning several lines, a client that folds whole lines starts the\nfold on the name's line, so the folded declaration still shows what it is. A\nclient folding by characters starts at the brace and keeps everything before\nit visible anyway.\n\n> **Client support**: VS Code leaves the closing `}` on a line of its own\n> rather than joining it to the signature line\n> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)); Neovim\n> joins it (see \"Closing lines fold in\").",
   "status": "supported",
   "issues": [
     "clangd#2666"
@@ -61,7 +61,6 @@
                 "collapsed": "{...}"
               },
               {
-                "kind": "functionParams",
                 "at": {
                   "$place": "scale⟦(const Config& cfg, … int factor)⟧ (2 lines)",
                   "path": "main.cpp",
@@ -141,8 +140,7 @@
                       "character": 15
                     }
                   }
-                },
-                "collapsed": "{...}"
+                }
               },
               {
                 "kind": "functionBody",
@@ -159,8 +157,7 @@
                       "character": 16
                     }
                   }
-                },
-                "collapsed": "{...}"
+                }
               },
               {
                 "kind": "functionBody",
@@ -177,8 +174,7 @@
                       "character": 30
                     }
                   }
-                },
-                "collapsed": "{...}"
+                }
               },
               {
                 "kind": "class",
@@ -195,8 +191,7 @@
                       "character": 15
                     }
                   }
-                },
-                "collapsed": "{...}"
+                }
               }
             ]
           }

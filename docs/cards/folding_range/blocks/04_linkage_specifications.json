@@ -41,23 +41,6 @@
                 "collapsed": "{...}"
               },
               {
-                "kind": "conditionDirective",
-                "at": {
-                  "$place": "#ifdef __cplusplus⟦ … ⟧ (3 lines) @8",
-                  "path": "main.cpp",
-                  "range": {
-                    "start": {
-                      "line": 7,
-                      "character": 18
-                    },
-                    "end": {
-                      "line": 9,
-                      "character": 0
-                    }
-                  }
-                }
-              },
-              {
                 "kind": "linkageSpec",
                 "at": {
                   "$place": "extern \"C\" ⟦{ … }⟧ (8 lines)",
@@ -74,23 +57,6 @@
                   }
                 },
                 "collapsed": "{...}"
-              },
-              {
-                "kind": "conditionDirective",
-                "at": {
-                  "$place": "#ifdef __cplusplus⟦ … ⟧ (3 lines) @15",
-                  "path": "main.cpp",
-                  "range": {
-                    "start": {
-                      "line": 14,
-                      "character": 18
-                    },
-                    "end": {
-                      "line": 16,
-                      "character": 0
-                    }
-                  }
-                }
               }
             ]
           }

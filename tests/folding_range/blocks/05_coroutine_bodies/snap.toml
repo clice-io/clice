@@ -8,7 +8,7 @@ folding_ranges = [
     { kind = "struct", at = "struct Task ⟦{ … }⟧ (9 lines)", collapsed = "{...}" },
     { kind = "struct", at = "struct promise_type ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "Task work() ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
-    { kind = "compoundStmt", at = "if (steps == 0) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { at = "if (steps == 0) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "void host() ⟦{ … }⟧ (7 lines)", collapsed = "{...}" },
-    { kind = "compoundStmt", at = "auto nested = []() -> Task ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { at = "auto nested = []() -> Task ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
 ]

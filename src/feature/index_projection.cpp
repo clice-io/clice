@@ -550,6 +550,7 @@ auto index_folding_ranges(llvm::StringRef content,
             .collapsed_text = "{...}",
             .lines = kind ? declaration_lines(content, *group, decl.range.begin, block_directives)
                           : std::nullopt,
+            .closer = group->end - 1,
         });
     }
 

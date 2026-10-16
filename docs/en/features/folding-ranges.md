@@ -54,7 +54,7 @@ tests/folding_range/blocks/04_linkage_specifications
 
 ## Lists
 
-Parameter, argument, initializer, capture and template parameter lists that span lines fold.
+Any parentheses, brackets or braces spanning lines fold, and so do template parameter and argument lists.
 
 <!-- BEGIN GENERATED ITEMS: folding_range/lists -->
 
@@ -87,11 +87,27 @@ tests/folding_range/lists/02_template_parameters
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Every bracket pair**
+
+Any parentheses, brackets or braces spanning lines fold, whatever writes them
+
+Conditions, casts, `static_assert`, parenthesized expressions, subscripts,
+attribute lists, function types and the arguments of a macro invocation fold
+like a call's arguments do. An attribute list written `[[...]]` folds once.
+
+```case
+tests/folding_range/lists/05_every_bracket_pair
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-## Access Sections
+## Sections
 
-The members under an access specifier fold as a section of their class.
+The members under an access specifier, and the statements under a `case` label, fold as a section up to the next label.
 
 <!-- BEGIN GENERATED ITEMS: folding_range/sections -->
 
@@ -107,11 +123,26 @@ tests/folding_range/sections/01_access_specifiers
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Switch cases**
+
+Each case of a switch folds up to the next label, which stays visible
+
+Labels written one after another fold as one case. A case whose body is a
+block opening on the label's line folds as that block.
+
+```case
+tests/folding_range/sections/02_switch_cases
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Comments and Runs
 
-A block comment folds on its delimiters, and consecutive line comments, includes or `using` declarations fold as one run.
+A block comment folds on its delimiters, and consecutive line comments, includes, imports or `using` declarations fold as one run.
 
 <!-- BEGIN GENERATED ITEMS: folding_range/runs -->
 
@@ -138,9 +169,9 @@ tests/folding_range/runs/01_comments
 
 Consecutive include directives fold as one run below the first include
 
-A blank line, a comment line or another directive ends the run; includes
-inside a conditional branch fold within it, whether or not the branch is
-taken.
+Blank lines and comment lines between includes stay in the run; code or
+another directive ends it. Includes inside a conditional branch fold within
+it, whether or not the branch is taken.
 
 ```case
 tests/folding_range/runs/02_includes
@@ -160,6 +191,20 @@ declarations produced by macros fold at the invocations.
 
 ```case
 tests/folding_range/runs/03_using_declarations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Import runs**
+
+Consecutive import declarations fold as one run, like include directives
+
+`export import` joins the run too.
+
+```case
+tests/folding_range/runs/04_import_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -192,7 +237,7 @@ tests/folding_range/raw_strings/01_raw_string_literals
 
 ## Preprocessor Conditionals
 
-Each branch of a conditional folds up to the directive that ends it, taken or not.
+Each branch of a conditional folds up to the directive that ends it, taken or not, and so do the blocks inside an untaken one.
 
 <!-- BEGIN GENERATED ITEMS: folding_range/conditionals -->
 
@@ -221,6 +266,21 @@ semantic tokens; the folds themselves do not tell the branches apart.
 
 ```case
 tests/folding_range/conditionals/02_untaken_branches
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Blocks in untaken branches**
+
+The blocks of an untaken branch fold too, not only the branch as a whole
+
+A function, a class or a statement body in code the compile skips folds on
+its brackets, so dead code can be folded piece by piece.
+
+```case
+tests/folding_range/conditionals/05_blocks_in_untaken_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -279,6 +339,9 @@ Code spelled through a macro, or written in its arguments, folds where you see i
 
 Braces and access specifiers spelled through macros fold at the invocation site
 
+A block a macro opens and closes folds between the two invocations, which
+stay visible; its placeholder is `...`.
+
 ```case
 tests/folding_range/macros/01_macro_spelled_blocks
 ```
@@ -299,9 +362,9 @@ tests/folding_range/macros/02_macro_arguments
 
 <!-- END GENERATED ITEMS -->
 
-## Declaration Lines
+## Folding Whole Lines
 
-A body folds from the line holding its declaration's name, so the folded code still shows what it is.
+A client folding whole lines keeps what a reader needs on screen: a body folds from the line holding its declaration's name, and a client showing collapsed text folds the closing line in.
 
 <!-- BEGIN GENERATED ITEMS: folding_range/line_folding -->
 
@@ -317,12 +380,34 @@ fold on the name's line, so the folded declaration still shows what it is. A
 client folding by characters starts at the brace and keeps everything before
 it visible anyway.
 
-> **Client support**: VS Code still leaves the closing `}` on a line of its
-> own rather than joining it to the signature line
-> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)).
+> **Client support**: VS Code leaves the closing `}` on a line of its own
+> rather than joining it to the signature line
+> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)); Neovim
+> joins it (see "Closing lines fold in").
 
 ```case
 tests/folding_range/line_folding/01_declaration_lines
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Closing lines fold in**
+
+A client that shows collapsed text folds a block's closing line too, `int area(Point p) {...}`
+
+Each fold shows its first line followed by `...`; when the closing brace,
+`#endif` or `*/` sits on a line of its own, that line folds in and shows
+after the `...`. A closing line that opens the next block, such as
+`} else {`, stays visible.
+
+> **Client support**: Neovim shows the text through `vim.lsp.foldtext()`.
+> VS Code shows no collapsed text, so the closing line stays visible there
+> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)).
+
+```case
+tests/folding_range/line_folding/07_collapsed_lines
 ```
 
 <!-- END CAPABILITY -->
@@ -341,9 +426,14 @@ A folded range shows a placeholder for what it hides, and a fold that would hide
 
 A folded range shows a placeholder, such as `{...}` for a body, while the line it starts on stays visible
 
+A client folding by characters, such as Zed, shows the placeholder in place
+of the range. A client folding whole lines, such as Neovim, shows its text in
+place of the whole first line, so it gets the first line followed by `...`
+instead (see "Closing lines fold in").
+
 > **Client support**: VS Code does not show `collapsedText` yet
-> ([vscode#70794](https://github.com/microsoft/vscode/issues/70794)); Neovim
-> does. A client that ignores it still folds, without the placeholder.
+> ([vscode#70794](https://github.com/microsoft/vscode/issues/70794)). A client
+> that ignores it still folds, without the placeholder.
 
 ```case
 tests/folding_range/presentation/01_collapsed_text

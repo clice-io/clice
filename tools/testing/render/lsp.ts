@@ -219,7 +219,7 @@ export class AnswerContext {
                     character: fold.endCharacter ?? source.line(fold.endLine).length,
                 },
             },
-            kind: fold.kind ?? "region",
+            kind: fold.kind,
             collapsedText: fold.collapsedText === "" ? undefined : fold.collapsedText,
         }));
     }

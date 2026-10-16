@@ -14,10 +14,10 @@ folding_ranges = [
 folding_ranges = [
     { kind = "comment", at = "⟦// run of … // line comments⟧ (2 lines)" },
     { kind = "imports", at = '⟦#include "a.h" … #include "c.h"⟧ (3 lines)' },
-    { kind = "namespace", at = "⟦namespace lib { … int a, b;⟧ (2 lines)", collapsed = "{...}" },
+    { kind = "namespace", at = "⟦namespace lib { … int a, b;⟧ (2 lines)" },
     { kind = "usingDeclaration", at = "⟦using lib::a; … using lib::b;⟧ (2 lines)" },
-    { kind = "comment", at = "⟦/* block … comment⟧ (2 lines)", collapsed = "/*...*/" },
-    { kind = "rawString", at = '⟦const char* text = R"( … raw⟧ (2 lines)', collapsed = 'R"(...)"' },
-    { kind = "templateParams", at = "⟦template <typename T, … typename U,⟧ (2 lines)", collapsed = "<...>" },
+    { kind = "comment", at = "⟦/* block … comment⟧ (2 lines)" },
+    { kind = "rawString", at = '⟦const char* text = R"( … raw⟧ (2 lines)' },
+    { kind = "templateParams", at = "⟦template <typename T, … typename U,⟧ (2 lines)" },
     { kind = "comment", at = "⟦// a run ending the file … // without a final newline⟧ (2 lines)" },
 ]

@@ -488,7 +488,7 @@ export class Inspect extends Client {
     protected async fetchFolds(file: string): Promise<Fold[]> {
         return ((await this.document("folding-range", file)) as RawFold[]).map((raw) => ({
             range: this.range(file, raw.range),
-            kind: raw.kind ?? "region",
+            kind: raw.kind ?? undefined,
             collapsedText: raw.collapsed_text === "" ? undefined : raw.collapsed_text,
         }));
     }

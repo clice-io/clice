@@ -26,21 +26,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import * as proto from "vscode-languageserver-protocol";
-import { CliceClient } from "../client/client.ts";
-import { Workspace } from "../client/workspace.ts";
 import { withTimeout } from "../promise.ts";
 import { REPO_ROOT } from "../repo.ts";
+import { Groups, Lines, type Server, type Span, snippet, start, stop } from "./lsp_check.ts";
 
 type TokenKind = "ident" | "number" | "string" | "char" | "comment" | "punct" | "header";
 
 interface Token {
     kind: TokenKind;
-    begin: number;
-    end: number;
-}
-
-/// UTF-16 offsets, as the protocol counts them.
-interface Span {
     begin: number;
     end: number;
 }
@@ -239,63 +232,6 @@ function lex(text: string): Token[] {
     return tokens;
 }
 
-/// Line starts of `text`, a line ending at `\n` (its `\r` before it
-/// belongs to the break, not the line).
-class Lines {
-    readonly starts: number[] = [0];
-    readonly text: string;
-
-    constructor(text: string) {
-        this.text = text;
-        for (let i = 0; i < text.length; i += 1) {
-            if (text[i] === "\n") {
-                this.starts.push(i + 1);
-            }
-        }
-    }
-
-    /// The length of line `line`, its break excluded.
-    length(line: number): number {
-        const begin = this.starts[line] ?? this.text.length;
-        let end =
-            line + 1 < this.starts.length ? (this.starts[line + 1] ?? 0) - 1 : this.text.length;
-        if (end > begin && this.text[end - 1] === "\r") {
-            end -= 1;
-        }
-        return end - begin;
-    }
-
-    position(offset: number): proto.Position {
-        let low = 0;
-        let high = this.starts.length - 1;
-        while (low < high) {
-            const mid = (low + high + 1) >> 1;
-            if ((this.starts[mid] ?? 0) <= offset) {
-                low = mid;
-            } else {
-                high = mid - 1;
-            }
-        }
-        return { line: low, character: offset - (this.starts[low] ?? 0) };
-    }
-
-    /// The offset of a reply position, or why it is no valid position.
-    offset(position: proto.Position): number | string {
-        if (position.line < 0 || position.line >= this.starts.length) {
-            return `line ${position.line} past the last line`;
-        }
-        if (position.character < 0 || position.character > this.length(position.line)) {
-            return `character ${position.character} past the end of line ${position.line}`;
-        }
-        const offset = (this.starts[position.line] ?? 0) + position.character;
-        const unit = this.text.charCodeAt(offset);
-        if (unit >= 0xdc00 && unit <= 0xdfff) {
-            return `character ${position.character} splits a surrogate pair`;
-        }
-        return offset;
-    }
-}
-
 /// The places a cursor is put: every token's start and end, the middle of
 /// a long one, and the blank lines and indentation between them.
 function cursorOffsets(text: string, tokens: Token[], lines: Lines): number[] {
@@ -474,69 +410,10 @@ function shape(text: string, layout: Layout, span: Span): string {
     return first === last ? `${inner}${head}` : `${inner}${head} … ${tail}`;
 }
 
-/// One line around a step, the step marked: `a ⟦b⟧ c`, a step over
-/// several lines shown from its first line to its last.
-function snippet(text: string, lines: Lines, span: Span): string {
-    const from = lines.position(span.begin);
-    const to = lines.position(span.end);
-    const lineText = (line: number) => {
-        const begin = lines.starts[line] ?? 0;
-        return text.slice(begin, begin + lines.length(line));
-    };
-    const first = lineText(from.line);
-    if (from.line === to.line) {
-        return (
-            first.slice(0, from.character) +
-            "⟦" +
-            first.slice(from.character, to.character) +
-            "⟧" +
-            first.slice(to.character)
-        ).trim();
-    }
-    const last = lineText(to.line);
-    return (
-        `${first.slice(0, from.character)}⟦${first.slice(from.character)}`.trim() +
-        " … " +
-        `${last.slice(0, to.character)}⟧${last.slice(to.character)}`.trim() +
-        ` (${to.line - from.line + 1} lines)`
-    );
-}
-
 interface Example {
     at: string;
     step: string;
     cursor?: string;
-}
-
-/// Findings of one kind, counted once per file and step.
-class Groups {
-    readonly groups = new Map<string, { count: number; examples: Example[] }>();
-    private readonly seen = new Set<string>();
-
-    add(key: string, identity: string, example: () => Example): void {
-        const limit = key.startsWith("clice only") || key.startsWith("clangd only") ? 4 : 12;
-        if (this.seen.has(`${key}\u0000${identity}`)) {
-            return;
-        }
-        this.seen.add(`${key}\u0000${identity}`);
-        let group = this.groups.get(key);
-        if (group === undefined) {
-            group = { count: 0, examples: [] };
-            this.groups.set(key, group);
-        }
-        group.count += 1;
-        if (group.examples.length < limit) {
-            const added = example();
-            const file = added.at.replace(/:\d+:\d+$/, "");
-            if (limit === 4 || !group.examples.some((e) => e.at.startsWith(file))) {
-                group.examples.push(added);
-            }
-        }
-    }
-
-    sorted(): [string, { count: number; examples: Example[] }][] {
-        return [...this.groups].sort((a, b) => b[1].count - a[1].count);
-    }
 }
 
 function flatten(range: proto.SelectionRange | undefined): proto.Range[] {
@@ -545,62 +422,6 @@ function flatten(range: proto.SelectionRange | undefined): proto.Range[] {
         chain.push(node.range);
     }
     return chain;
-}
-
-interface Server {
-    name: "clice" | "clangd";
-    client: CliceClient;
-    /// Per position, milliseconds of the request it travelled in, divided.
-    millis: number[];
-    slowest: number;
-}
-
-let readonly = false;
-
-async function start(name: "clice" | "clangd", binary: string, workspace: string): Promise<Server> {
-    const client = CliceClient.start(binary, {
-        args:
-            name === "clice"
-                ? ["serve"]
-                : [`--compile-commands-dir=${workspace}`, "--background-index=false"],
-        cwd: workspace,
-    });
-    await client.initialize(new Workspace(workspace), {
-        testDefaults: false,
-        initializationOptions:
-            name === "clice"
-                ? {
-                      rules: [{ compile_commands: [workspace] }],
-                      project: {
-                          enable_indexing: false,
-                          stateful_worker_count: 1,
-                          readonly: readonly ? "on" : "off",
-                      },
-                  }
-                : {},
-    });
-    return { name, client, millis: [], slowest: 0 };
-}
-
-async function stop(server: Server): Promise<void> {
-    if (server.name === "clice") {
-        await server.client.shutdown();
-        return;
-    }
-    try {
-        await withTimeout(
-            server.client.sendRequest(proto.ShutdownRequest.type),
-            60_000,
-            "shutdown",
-        );
-        await server.client.sendNotification(proto.ExitNotification.type);
-    } catch {
-        // Killed below.
-    }
-    server.client.disposed = true;
-    // Hang detection: a server still running after `exit` is killed.
-    setTimeout(() => server.client.child.kill("SIGKILL"), 5_000).unref();
-    await server.client.exited;
 }
 
 interface Options {
@@ -656,17 +477,18 @@ function options(): Options {
 
 async function main(): Promise<void> {
     const opts = options();
-    readonly = opts.readonly;
-    const invariants = new Groups();
-    const differences = new Groups();
+    const invariants = new Groups<Example>();
+    const differences = new Groups<Example>();
     const failures: string[] = [];
     const broken: string[] = [];
     let positionCount = 0;
     let compared = 0;
     let agreed = 0;
 
-    let clice = await start("clice", opts.clice, opts.cdb);
-    let clangd = opts.clangd === null ? null : await start("clangd", opts.clangd, opts.cdb);
+    const serve = (kind: "clice" | "clangd", binary: string) =>
+        start(kind, binary, opts.cdb, { readonly: opts.readonly });
+    let clice = await serve("clice", opts.clice);
+    let clangd = opts.clangd === null ? null : await serve("clangd", opts.clangd);
 
     for (const file of opts.files) {
         // Editors hold a document without its byte order mark.
@@ -701,11 +523,11 @@ async function main(): Promise<void> {
         const restart = async (server: Server) => {
             server.client.disposed = true;
             server.client.child.kill("SIGKILL");
-            const binary = server.name === "clice" ? opts.clice : (opts.clangd ?? "");
-            const next = await start(server.name, binary, opts.cdb);
+            const binary = server.kind === "clice" ? opts.clice : (opts.clangd ?? "");
+            const next = await serve(server.kind, binary);
             next.millis = server.millis;
             next.slowest = server.slowest;
-            if (server.name === "clice") {
+            if (server.kind === "clice") {
                 clice = next;
             } else {
                 clangd = next;
@@ -713,7 +535,7 @@ async function main(): Promise<void> {
         };
         const opened = await Promise.allSettled(
             servers.map(async (server) => {
-                if (readonly && server.name === "clice") {
+                if (opts.readonly && server.kind === "clice") {
                     // Read-only serving compiles nothing, so no diagnostics arrive.
                     const [uri] = server.client.open(file, 0, { text });
                     await server.client.hoverAt(uri, 0, 0);
@@ -790,7 +612,7 @@ async function main(): Promise<void> {
             if (opts.at.length > 0 || opts.markers) {
                 batch.forEach((offset, i) => {
                     console.log(
-                        `\n${at(offset)}  ${snippet(text, lines, { begin: offset, end: offset }).replace("⟦⟧", "|")}`,
+                        `\n${at(offset)}  ${snippet(lines, { begin: offset, end: offset }).replace("⟦⟧", "|")}`,
                     );
                     replies.forEach((reply, k) => {
                         console.log(`  ${servers[k]?.name ?? ""}:`);
@@ -799,7 +621,7 @@ async function main(): Promise<void> {
                             const end = lines.offset(range.end);
                             console.log(
                                 typeof begin === "number" && typeof end === "number"
-                                    ? `    ${snippet(text, lines, { begin, end })}`
+                                    ? `    ${snippet(lines, { begin, end })}`
                                     : `    invalid ${JSON.stringify(range)}`,
                             );
                         }
@@ -844,7 +666,7 @@ async function main(): Promise<void> {
                         `${head.begin}-${head.end}`,
                         () => ({
                             at: cursor,
-                            step: snippet(text, lines, head),
+                            step: snippet(lines, head),
                         }),
                     );
                 }
@@ -863,7 +685,7 @@ async function main(): Promise<void> {
                             `${child.begin}-${child.end}-${span.begin}-${span.end}`,
                             () => ({
                                 at: cursor,
-                                step: `${snippet(text, lines, child)}  ⊄  ${snippet(text, lines, span)}`,
+                                step: `${snippet(lines, child)}  ⊄  ${snippet(lines, span)}`,
                             }),
                         );
                     }
@@ -883,7 +705,7 @@ async function main(): Promise<void> {
                                 `${span.begin}-${span.end}`,
                                 () => ({
                                     at: cursor,
-                                    step: snippet(text, lines, span),
+                                    step: snippet(lines, span),
                                 }),
                             );
                         }
@@ -896,7 +718,7 @@ async function main(): Promise<void> {
                 if (single && token !== undefined && token.kind !== "comment") {
                     invariants.add(`only an empty range beside a ${token.kind}`, cursor, () => ({
                         at: cursor,
-                        step: snippet(text, lines, token),
+                        step: snippet(lines, token),
                     }));
                 }
 
@@ -926,8 +748,8 @@ async function main(): Promise<void> {
                         `${name}:${key(s)}`,
                         () => ({
                             at: cursor,
-                            step: snippet(text, lines, s),
-                            cursor: snippet(text, lines, { begin: offset, end: offset }),
+                            step: snippet(lines, s),
+                            cursor: snippet(lines, { begin: offset, end: offset }),
                         }),
                     );
                 }
@@ -937,8 +759,8 @@ async function main(): Promise<void> {
                         `${name}:${key(s)}`,
                         () => ({
                             at: cursor,
-                            step: snippet(text, lines, s),
-                            cursor: snippet(text, lines, { begin: offset, end: offset }),
+                            step: snippet(lines, s),
+                            cursor: snippet(lines, { begin: offset, end: offset }),
                         }),
                     );
                 }

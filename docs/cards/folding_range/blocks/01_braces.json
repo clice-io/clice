@@ -77,7 +77,6 @@
                 "collapsed": "{...}"
               },
               {
-                "kind": "compoundStmt",
                 "at": {
                   "$place": "auto twice = [](int value) ⟦{ … }⟧ (3 lines)",
                   "path": "main.cpp",

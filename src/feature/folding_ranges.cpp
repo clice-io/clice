@@ -6,27 +6,89 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
+import :feature.raw_tokens;
 import :semantic.decls;
 import :semantic.semantics;
 import :support.text;
+import :syntax.token;
 
 namespace clice::feature {
 
 namespace {
 
+/// Of two folds over the same range, or crossing each other, the one of
+/// the higher priority stays: a block the AST delimits, then one the text
+/// delimits, then a section of the code around it, then a preprocessor
+/// block.
+enum class Priority : std::uint8_t {
+    Directive,
+    Section,
+    Text,
+    Syntax,
+};
+
+struct Candidate {
+    FoldingRange fold;
+    Priority priority;
+};
+
+/// The folds by position, one per range and none crossing another, the
+/// ones a client can nest.
+std::vector<FoldingRange> nest(std::vector<Candidate> candidates) {
+    std::ranges::stable_sort(candidates, [](const Candidate& lhs, const Candidate& rhs) {
+        return std::tuple(lhs.fold.range.begin, rhs.fold.range.end, rhs.priority) <
+               std::tuple(rhs.fold.range.begin, lhs.fold.range.end, lhs.priority);
+    });
+
+    std::vector<bool> dropped(candidates.size());
+    /// The kept folds holding the current begin, outermost first.
+    llvm::SmallVector<std::size_t> open;
+    for(std::size_t i = 0; i < candidates.size(); i += 1) {
+        auto range = candidates[i].fold.range;
+        if(i > 0 && candidates[i - 1].fold.range == range) {
+            dropped[i] = true;
+            continue;
+        }
+        while(!open.empty() && candidates[open.back()].fold.range.end <= range.begin) {
+            open.pop_back();
+        }
+        while(!open.empty() && candidates[open.back()].fold.range.end < range.end) {
+            if(candidates[open.back()].priority >= candidates[i].priority) {
+                dropped[i] = true;
+                break;
+            }
+            dropped[open.back()] = true;
+            open.pop_back();
+        }
+        if(!dropped[i]) {
+            open.push_back(i);
+        }
+    }
+
+    std::vector<FoldingRange> folds;
+    for(auto [candidate, gone]: llvm::zip(candidates, dropped)) {
+        if(!gone) {
+            folds.push_back(std::move(candidate.fold));
+        }
+    }
+    return folds;
+}
+
 /// Collects folding ranges by walking the unit's cached Semantics node table —
 /// the DFS pre-order record of the main file's written AST — instead of
-/// running another RecursiveASTVisitor over the TU. Folding needs no nesting
-/// state: every recorded decl and stmt contributes its ranges independently.
+/// running another RecursiveASTVisitor over the TU, and by pairing the
+/// brackets of a raw lex of the file. Folding needs no nesting state: every
+/// recorded decl and stmt contributes its ranges independently.
 ///
 /// Fold kinds are plain strings in the protocol (LSP standardizes only `comment`,
 /// `imports` and `region`; servers may add custom values).
 ///
 /// A delimited fold spans its delimiters, which `collapsed_text` repeats; a
-/// section fold (an access-specifier section, a conditional branch, a
-/// region, a module fragment) runs from the end of its header line to the
-/// next header, which stays visible; a run of line comments, include
-/// directives or using declarations on consecutive lines folds below its
+/// section fold (an access-specifier section, a case of a switch, a
+/// conditional branch, a region, a module fragment) runs from the end of
+/// its header line to the next header, which stays visible; a run of line
+/// comments or using declarations on consecutive lines, or of includes and
+/// imports with only blank and comment lines between them, folds below its
 /// first line.
 class FoldingRangeCollector {
 public:
@@ -56,7 +118,7 @@ public:
                 }
                 collect_decl(decl);
             } else if(entry.node.kind() == SemanticNode::Kind::Stmt) {
-                collect_stmt(entry.node.get<clang::Stmt>(), entry.parent);
+                collect_stmt(entry.node.get<clang::Stmt>());
             } else if(entry.node.kind() == SemanticNode::Kind::TypeLoc) {
                 if(auto specialization = entry.node.get<clang::TypeLoc>()
                                              ->getAs<clang::TemplateSpecializationTypeLoc>()) {
@@ -68,37 +130,16 @@ public:
             index += 1;
         }
 
+        collect_brackets();
         collect_block_directives(semantics.block_directives());
         collect_module_fragments(semantics.module_declarations());
         collect_comments(semantics.comments());
         collect_macro_definitions(semantics.macro_definitions());
-        add_runs(semantics.include_directives(), protocol::FoldingRangeKind::Imports);
+        collect_imports();
         collect_raw_strings(semantics.raw_strings());
-        add_runs(usings, "usingDeclaration");
+        add_runs(usings, "usingDeclaration", false);
 
-        // Order by kind and text after position so equal entries are adjacent
-        // and the output stays deterministic under the unstable sort.
-        std::ranges::sort(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
-            if(lhs.range.begin != rhs.range.begin) {
-                return lhs.range.begin < rhs.range.begin;
-            }
-            if(lhs.range.end != rhs.range.end) {
-                return lhs.range.end < rhs.range.end;
-            }
-            if(lhs.kind != rhs.kind) {
-                return lhs.kind < rhs.kind;
-            }
-            return lhs.collapsed_text < rhs.collapsed_text;
-        });
-
-        auto duplicates =
-            std::ranges::unique(ranges, [](const FoldingRange& lhs, const FoldingRange& rhs) {
-                return lhs.range.begin == rhs.range.begin && lhs.range.end == rhs.range.end &&
-                       lhs.kind == rhs.kind && lhs.collapsed_text == rhs.collapsed_text;
-            });
-        ranges.erase(duplicates.begin(), duplicates.end());
-
-        return std::move(ranges);
+        return nest(std::move(candidates));
     }
 
 private:
@@ -115,6 +156,18 @@ private:
             if(auto local = unit.focus_file().produced_range(decl->getSourceRange());
                local && (usings.empty() || usings.back() != *local)) {
                 usings.push_back(*local);
+            }
+            return;
+        }
+
+        if(const auto* import = llvm::dyn_cast<clang::ImportDecl>(decl)) {
+            // `export import` puts the import in an export declaration.
+            auto begin = import->getBeginLoc();
+            if(const auto* exported = llvm::dyn_cast<clang::ExportDecl>(import->getDeclContext())) {
+                begin = exported->getBeginLoc();
+            }
+            if(auto local = unit.focus_file().produced_range({begin, import->getEndLoc()})) {
+                imports.push_back(*local);
             }
             return;
         }
@@ -154,121 +207,25 @@ private:
             return;
         }
 
-        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-            collect_parameter_list(function);
-            if(function->doesThisDeclarationHaveABody()) {
-                add_declaration_block(function->getBody()->getSourceRange(),
-                                      function->getLocation(),
-                                      *declaration_fold_kind(SymbolKind::from(function)));
-            }
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
+           function && function->doesThisDeclarationHaveABody()) {
+            add_declaration_block(function->getBody()->getSourceRange(),
+                                  function->getLocation(),
+                                  *declaration_fold_kind(SymbolKind::from(function)));
         }
     }
 
-    void collect_stmt(const clang::Stmt* stmt, std::uint32_t parent) {
+    void collect_stmt(const clang::Stmt* stmt) {
         if(const auto* lambda = llvm::dyn_cast<clang::LambdaExpr>(stmt)) {
-            add_range(lambda->getIntroducerRange(), "lambdaCapture", "[...]");
             if(!lambda->getExplicitTemplateParameters().empty()) {
                 add_template_parameters(lambda->getTemplateParameterList());
             }
-            if(lambda->hasExplicitParameters()) {
-                collect_parameter_list(lambda->getCallOperator());
-            }
             return;
         }
 
-        if(const auto* compound = llvm::dyn_cast<clang::CompoundStmt>(stmt)) {
-            // A function's body already folds as functionBody at its decl;
-            // every other written block folds on its own braces. A coroutine
-            // stores its written block behind a CoroutineBodyStmt wrapper
-            // sharing the same braces — suppress the compound only when that
-            // wrapper is itself a function's body; a coroutine lambda has no
-            // functionBody producer, so its block must keep folding here.
-            if(parent != Semantics::invalid) {
-                const Semantics::Node& parent_entry = semantics.node(parent);
-                if(const auto* function = parent_entry.node.get<clang::FunctionDecl>();
-                   function && function->getBody() == compound) {
-                    return;
-                }
-                if(const auto* coroutine = parent_entry.node.get<clang::CoroutineBodyStmt>();
-                   coroutine && coroutine->getBody() == compound &&
-                   parent_entry.parent != Semantics::invalid) {
-                    const auto* function =
-                        semantics.node(parent_entry.parent).node.get<clang::FunctionDecl>();
-                    if(function && function->getBody() == coroutine) {
-                        return;
-                    }
-                }
-            }
-            add_range(compound->getSourceRange(), "compoundStmt", "{...}");
-            return;
-        }
-
-        if(const auto* call = llvm::dyn_cast<clang::CallExpr>(stmt)) {
-            auto tokens = unit.focus_file().tokens().expanded(call->getSourceRange());
-            if(tokens.empty() || tokens.back().kind() != clang::tok::r_paren) {
-                return;
-            }
-
-            // The callee may itself contain parens; match the right paren
-            // backwards to find the argument list's left paren.
-            auto right_paren = tokens.back().location();
-            std::size_t depth = 0;
-            while(!tokens.empty()) {
-                auto kind = tokens.back().kind();
-                if(kind == clang::tok::r_paren) {
-                    depth += 1;
-                } else if(kind == clang::tok::l_paren) {
-                    depth -= 1;
-                    if(depth == 0) {
-                        add_range(clang::SourceRange(tokens.back().location(), right_paren),
-                                  "functionCall",
-                                  "(...)");
-                        break;
-                    }
-                }
-                tokens = tokens.drop_back();
-            }
-            return;
-        }
-
-        if(const auto* construct = llvm::dyn_cast<clang::CXXConstructExpr>(stmt)) {
-            if(auto parens = construct->getParenOrBraceRange(); parens.isValid()) {
-                // Brace-form construction renders as an initializer. When an
-                // initializer-list constructor is chosen, the nested
-                // InitListExpr shares these braces and produces an identical
-                // entry, which the post-sort deduplication removes.
-                if(construct->isListInitialization()) {
-                    add_range(parens, "initializer", "{...}");
-                } else {
-                    add_range(parens, "functionCall", "(...)");
-                }
-            }
-            return;
-        }
-
-        if(const auto* init = llvm::dyn_cast<clang::InitListExpr>(stmt)) {
-            add_range(clang::SourceRange(init->getLBraceLoc(), init->getRBraceLoc()),
-                      "initializer",
-                      "{...}");
-            return;
-        }
-
-        if(const auto* requirements = llvm::dyn_cast<clang::RequiresExpr>(stmt)) {
-            // The opening brace is recorded nowhere; it follows the
-            // parameter list, if any.
-            auto range = requirements->getSourceRange();
-            if(auto parameters_end = requirements->getRParenLoc(); parameters_end.isValid()) {
-                range.setBegin(parameters_end);
-            }
-            auto tokens = unit.focus_file().tokens().expanded(range).drop_until(
-                [](const clang::syntax::Token& token) {
-                    return token.kind() == clang::tok::l_brace;
-                });
-            if(!tokens.empty()) {
-                add_range(
-                    clang::SourceRange(tokens.front().location(), requirements->getRBraceLoc()),
-                    "requiresExpression",
-                    "{...}");
+        if(const auto* switch_stmt = llvm::dyn_cast<clang::SwitchStmt>(stmt)) {
+            if(const auto* body = llvm::dyn_cast<clang::CompoundStmt>(switch_stmt->getBody())) {
+                collect_cases(body);
             }
             return;
         }
@@ -284,11 +241,10 @@ private:
             if(!previous) {
                 return;
             }
-            auto focus = unit.focus_file();
-            auto header = focus.offset(previous->getColonLoc());
-            auto end = focus.offset(next);
+            auto header = unit.focus_file().produced_range(previous->getColonLoc());
+            auto end = unit.focus_file().offset(next);
             if(header && end) {
-                add_section(line_text_end(*header), *end, "accessSpecifier");
+                add_section(section_begin(header->end), *end, "accessSpecifier", Priority::Section);
             }
         };
         for(auto* member: record->decls()) {
@@ -298,6 +254,47 @@ private:
             }
         }
         close(record->getBraceRange().getEnd());
+    }
+
+    /// Each case of a switch folds from its label to the next one, or to
+    /// the switch's closing brace. A case holding nothing but a block
+    /// opening on its label's line folds as that block.
+    void collect_cases(const clang::CompoundStmt* body) {
+        struct Case {
+            const clang::SwitchCase* label;
+            bool only_block;
+        };
+
+        llvm::SmallVector<Case> cases;
+        for(const auto* child: body->body()) {
+            if(!llvm::isa<clang::SwitchCase>(child)) {
+                if(!cases.empty()) {
+                    cases.back().only_block = false;
+                }
+                continue;
+            }
+            // `case 1: case 2:` chains the labels each into the one before.
+            for(const auto* label = llvm::dyn_cast<clang::SwitchCase>(child); label;
+                label = llvm::dyn_cast<clang::SwitchCase>(label->getSubStmt())) {
+                cases.push_back({label, llvm::isa<clang::CompoundStmt>(label->getSubStmt())});
+            }
+        }
+
+        auto focus = unit.focus_file();
+        for(auto [index, item]: llvm::enumerate(cases)) {
+            auto next = index + 1 < cases.size() ? cases[index + 1].label->getKeywordLoc()
+                                                 : body->getRBracLoc();
+            auto colon = focus.produced_range(item.label->getColonLoc());
+            auto end = focus.offset(next);
+            if(!colon || !end) {
+                continue;
+            }
+            auto begin = section_begin(colon->end);
+            if(item.only_block && begin == colon->end) {
+                continue;
+            }
+            add_section(begin, *end, "switchCase", Priority::Section);
+        }
     }
 
     /// A template's own parameter list, and the outer lists an out-of-line
@@ -334,9 +331,29 @@ private:
         add_range(clang::SourceRange(left, right), "templateArgs", "<...>");
     }
 
-    void collect_parameter_list(const clang::FunctionDecl* function) {
-        if(auto type = function->getFunctionTypeLoc()) {
-            add_range(type.getParensRange(), "functionParams", "(...)");
+    /// Every bracket pair of the code, skipped code included, but not those
+    /// of directive lines: a macro's body pairs nothing written here.
+    void collect_brackets() {
+        auto tokens = lex(content, unit.lang_options());
+        auto skipped = skipped_tokens(unit, tokens);
+        BracketPairs pairs;
+        for(auto [token, skip]: llvm::zip(tokens, skipped)) {
+            auto open = pairs.visit(token, skip);
+            if(!open || pairs.in_directive()) {
+                continue;
+            }
+            // `[[ ]]` and `(( ))` write one list in two pairs; the outer
+            // one stands for both.
+            if(!candidates.empty() && candidates.back().priority == Priority::Text &&
+               candidates.back().fold.range == LocalSourceRange{open->end, token.range.begin} &&
+               content[open->begin] == content[open->end]) {
+                candidates.pop_back();
+            }
+            add_range(
+                LocalSourceRange{open->begin, token.range.end},
+                std::nullopt,
+                std::format("{}...{}", content.slice(open->begin, open->end), token.text(content)),
+                Priority::Text);
         }
     }
 
@@ -354,7 +371,10 @@ private:
                     }
                     add_section(branches.back()->range.end,
                                 directive.range.begin,
-                                "conditionDirective");
+                                "conditionDirective",
+                                Priority::Directive,
+                                directive.kind == EndIf ? std::optional(directive.range.begin)
+                                                        : std::nullopt);
                     if(directive.kind == Else) {
                         branches.back() = &directive;
                     } else {
@@ -367,7 +387,9 @@ private:
                     if(!regions.empty()) {
                         add_section(regions.pop_back_val()->range.end,
                                     directive.range.begin,
-                                    protocol::FoldingRangeKind::Region);
+                                    protocol::FoldingRangeKind::Region,
+                                    Priority::Directive,
+                                    directive.range.begin);
                     }
                     break;
                 }
@@ -387,7 +409,10 @@ private:
                 const auto& next = modules[index + 1];
                 end = next.export_keyword.valid() ? next.export_keyword.begin : next.keyword.begin;
             }
-            add_section(line_text_end(module.keyword.begin), end, "moduleFragment");
+            add_section(line_text_end(module.keyword.begin),
+                        end,
+                        "moduleFragment",
+                        Priority::Section);
         }
     }
 
@@ -399,10 +424,13 @@ private:
             } else if(begins_line(comment.range.begin)) {
                 // A block comment trailing code would cut across the folds
                 // that start at the end of that code's line.
-                add_range(comment.range, protocol::FoldingRangeKind::Comment, "/*...*/");
+                add_range(comment.range,
+                          protocol::FoldingRangeKind::Comment,
+                          "/*...*/",
+                          Priority::Text);
             }
         }
-        add_runs(line_comments, protocol::FoldingRangeKind::Comment);
+        add_runs(line_comments, protocol::FoldingRangeKind::Comment, false);
     }
 
     /// A definition continued over several lines folds below its first
@@ -411,13 +439,23 @@ private:
         for(auto definition: definitions) {
             auto first_line_end = line_text_end(definition.begin);
             if(first_line_end < definition.end) {
-                ranges.push_back({
-                    .range = {first_line_end, definition.end},
-                    .kind = "macroDefinition",
-                    .lines = definition,
+                candidates.push_back({
+                    .fold = {.range = {first_line_end, line_text_end(definition.end)},
+                             .kind = "macroDefinition",
+                             .lines = definition},
+                    .priority = Priority::Text,
                 });
             }
         }
+    }
+
+    /// Include directives and import declarations fold as one run, blank
+    /// and comment lines between them included.
+    void collect_imports() {
+        auto includes = semantics.include_directives();
+        imports.append(includes.begin(), includes.end());
+        std::ranges::sort(imports, {}, &LocalSourceRange::begin);
+        add_runs(imports, protocol::FoldingRangeKind::Imports, true);
     }
 
     /// A raw string folds on its delimiters, which may carry a custom
@@ -429,7 +467,8 @@ private:
                       "rawString",
                       std::format("{}...{}",
                                   text.take_front(text.find('(') + 1),
-                                  text.drop_front(text.rfind(')'))));
+                                  text.drop_front(text.rfind(')'))),
+                      Priority::Text);
         }
     }
 
@@ -467,8 +506,8 @@ private:
 
     /// The fold added, if any.
     FoldingRange* add_range(clang::SourceRange range,
-                            std::optional<protocol::FoldingRangeKind> kind,
-                            std::string collapsed_text) {
+                            protocol::FoldingRangeKind kind,
+                            llvm::StringRef collapsed_text) {
         if(range.isInvalid()) {
             return nullptr;
         }
@@ -483,42 +522,79 @@ private:
         }
 
         // A block an included file closes folds to the end of this one.
-        auto local = unit.focus_file().produced_range({begin, end});
-        if(!local || local->end <= local->begin) {
+        auto focus = unit.focus_file();
+        auto local = focus.produced_range({begin, end});
+        if(!local) {
             return nullptr;
         }
-        return add_range(*local, std::move(kind), std::move(collapsed_text));
+
+        // A delimiter a macro writes stays visible with its invocation; one
+        // an included file writes is not in the fold.
+        auto [head, tail] = collapsed_text.split("...");
+        if(!content.substr(local->begin).starts_with(head)) {
+            local->begin = focus.produced_range(range.getBegin())->end;
+            head = "";
+        }
+        if(!content.substr(0, local->end).ends_with(tail)) {
+            if(auto closing = focus.produced_range(range.getEnd())) {
+                local->end = closing->begin;
+            }
+            tail = "";
+        }
+        if(local->end <= local->begin) {
+            return nullptr;
+        }
+        return add_range(*local,
+                         std::move(kind),
+                         std::format("{}...{}", head, tail),
+                         Priority::Syntax);
     }
 
     FoldingRange* add_range(LocalSourceRange range,
                             std::optional<protocol::FoldingRangeKind> kind,
-                            std::string collapsed_text) {
+                            std::string collapsed_text,
+                            Priority priority) {
         // Single-line ranges are not worth folding.
         if(!content.substr(range.begin, range.length()).contains('\n')) {
             return nullptr;
         }
 
-        return &ranges.emplace_back(FoldingRange{
-            .range = range,
-            .kind = std::move(kind),
-            .collapsed_text = std::move(collapsed_text),
-        });
+        std::optional<std::uint32_t> closer;
+        auto tail = llvm::StringRef(collapsed_text).split("...").second;
+        if(!tail.empty() && content.substr(0, range.end).ends_with(tail)) {
+            closer = range.end - tail.size();
+        }
+
+        return &candidates
+                    .emplace_back(Candidate{
+                        .fold = {.range = range,
+                                 .kind = std::move(kind),
+                                 .collapsed_text = std::move(collapsed_text),
+                                 .closer = closer},
+                        .priority = priority,
+        })
+                    .fold;
     }
 
-    /// Folds each run of two or more items on consecutive lines below the
-    /// run's first line. Only an item alone on its lines, trailed by nothing
-    /// but its `;` and a line comment, joins a run. Nothing closes a run on
-    /// its last line, so a line-folding client hides that line too.
-    void add_runs(llvm::ArrayRef<LocalSourceRange> items, protocol::FoldingRangeKind kind) {
+    /// Folds each run of two or more items below the run's first line.
+    /// Only an item alone on its lines, trailed by nothing but its `;` and
+    /// a line comment, joins a run, and only from the next line — or,
+    /// `across_blanks`, from any line after blank and comment lines. Nothing
+    /// closes a run on its last line, so a line-folding client hides that
+    /// line too.
+    void add_runs(llvm::ArrayRef<LocalSourceRange> items,
+                  protocol::FoldingRangeKind kind,
+                  bool across_blanks) {
         std::optional<LocalSourceRange> first;
         LocalSourceRange last;
         auto flush = [&] {
             if(first && last != *first) {
                 auto end = line_text_end(last.end);
-                ranges.push_back({
-                    .range = {line_text_end(first->begin), end},
-                    .kind = kind,
-                    .lines = LocalSourceRange{first->begin,                end},
+                candidates.push_back({
+                    .fold = {.range = {line_text_end(first->begin), end},
+                             .kind = kind,
+                             .lines = LocalSourceRange{first->begin, end}},
+                    .priority = Priority::Text,
                 });
             }
         };
@@ -528,9 +604,12 @@ private:
             if(!begins_line(item.begin) || !(rest.empty() || rest.starts_with("//"))) {
                 continue;
             }
-            if(first && line_begin(content, item.begin) == line_end(content, last.end)) {
-                last = item;
-                continue;
+            if(first) {
+                LocalSourceRange gap{line_end(content, last.end), line_begin(content, item.begin)};
+                if(gap.begin == gap.end || (across_blanks && blank(gap))) {
+                    last = item;
+                    continue;
+                }
             }
             flush();
             first = last = item;
@@ -538,19 +617,58 @@ private:
         flush();
     }
 
+    /// Whether `range` holds nothing but blanks and comments.
+    bool blank(LocalSourceRange range) {
+        auto comments = semantics.comments();
+        auto comment = std::ranges::lower_bound(
+            comments,
+            range.begin,
+            {},
+            [](const LexicalInfo::Comment& comment) { return comment.range.begin; });
+        auto begin = range.begin;
+        for(; comment != comments.end() && comment->range.end <= range.end; ++comment) {
+            if(!content.slice(begin, comment->range.begin).trim().empty()) {
+                return false;
+            }
+            begin = comment->range.end;
+        }
+        return content.slice(begin, range.end).trim().empty();
+    }
+
     /// Whether only blanks precede `offset` on its line.
     bool begins_line(std::uint32_t offset) {
         return content.slice(line_begin(content, offset), offset).trim(" \t").empty();
     }
 
+    /// Where a section under a label ending at `label_end` begins: at the
+    /// end of the label's line, or right after the label when code follows
+    /// it there (`public: void f() {`) — the code's own folds start on that
+    /// line too.
+    std::uint32_t section_begin(std::uint32_t label_end) {
+        auto end = line_text_end(label_end);
+        auto rest = content.slice(label_end, end).ltrim(" \t");
+        return rest.empty() || rest.starts_with("//") || rest.starts_with("/*") ? end : label_end;
+    }
+
     /// `begin` ends a header line; a section hiding no whole line is noise.
-    void add_section(std::uint32_t begin, std::uint32_t end, protocol::FoldingRangeKind kind) {
+    /// One the end of the file closes hides through its last line, there
+    /// being no next header to keep visible.
+    void add_section(std::uint32_t begin,
+                     std::uint32_t end,
+                     protocol::FoldingRangeKind kind,
+                     Priority priority,
+                     std::optional<std::uint32_t> closer = std::nullopt) {
         if(end <= begin || content.substr(begin, end - begin).count('\n') < 2) {
             return;
         }
-        ranges.push_back({
-            .range = {begin, end},
-            .kind = std::move(kind)
+        std::optional<LocalSourceRange> lines;
+        if(end == content.size()) {
+            lines = LocalSourceRange{begin, static_cast<std::uint32_t>(content.rtrim().size())};
+        }
+        candidates.push_back({
+            .fold =
+                {.range = {begin, end}, .kind = std::move(kind), .lines = lines, .closer = closer},
+            .priority = priority,
         });
     }
 
@@ -563,13 +681,16 @@ private:
     CompilationUnit& unit;
     const Semantics& semantics;
     llvm::StringRef content;
-    std::vector<FoldingRange> ranges;
+    std::vector<Candidate> candidates;
 
     /// Where each conditional or region directive begins, in source order.
     std::vector<std::uint32_t> block_directives;
 
     /// Using declarations and directives met on the walk, in source order.
     llvm::SmallVector<LocalSourceRange> usings;
+
+    /// Import declarations met on the walk, in source order.
+    llvm::SmallVector<LocalSourceRange> imports;
 };
 
 }  // namespace
@@ -608,63 +729,164 @@ auto declaration_lines(llvm::StringRef content,
     return LocalSourceRange{head, line_begin(content, block.end) - 1};
 }
 
+namespace {
+
+/// A fold as a client folding whole lines sees it.
+struct LineFold {
+    const FoldingRange* item;
+    std::uint32_t start;
+    std::uint32_t end;
+
+    /// The line of the fold's closer, which it may fold too.
+    std::optional<std::uint32_t> closer;
+
+    /// Only blanks and other closers precede the closer on its line.
+    bool closer_leads = false;
+
+    bool joined = false;
+};
+
+/// The text of the line holding `offset`, without its line break.
+llvm::StringRef line_text(llvm::StringRef content, std::uint32_t offset) {
+    return content.slice(line_begin(content, offset), line_end(content, offset)).rtrim("\r\n");
+}
+
+/// What a client showing a fold's collapsed text shows for it: its first
+/// line, the opening brace when that sits alone on the next line, `...`
+/// for what it hides, and the line of its closer when it folds that line
+/// too.
+std::string line_collapsed_text(llvm::StringRef content, const LineFold& fold) {
+    const auto& range = fold.item->range;
+    auto first_line = fold.item->lines.value_or(range).begin;
+    std::string text = line_text(content, first_line).rtrim().str();
+    auto opener_line = line_text(content, range.begin).trim();
+    if(line_begin(content, range.begin) == line_end(content, first_line) &&
+       opener_line == content.substr(range.begin, 1)) {
+        text += ' ';
+        text += opener_line;
+    }
+    text += "...";
+    if(fold.joined) {
+        text += line_text(content, *fold.item->closer).trim();
+    }
+    return text;
+}
+
+}  // namespace
+
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
+                                llvm::StringRef content,
                                 const PositionMap& map,
                                 PositionEncoding encoding,
-                                bool line_folding_only) -> std::vector<protocol::FoldingRange> {
+                                const FoldingClient& client)
+    -> std::vector<protocol::FoldingRange> {
     std::vector<protocol::FoldingRange> result;
-    result.reserve(ranges.size());
-
-    for(const auto& item: ranges) {
-        auto bounds = line_folding_only ? item.lines.value_or(item.range) : item.range;
-        auto start = map.position(bounds.begin, encoding);
-        auto end = map.position(bounds.end, encoding);
-        if(!start || !end)
-            continue;
-
-        protocol::FoldingRange range;
-        if(line_folding_only) {
-            // The client hides whole lines below the start line. The line a
-            // fold's range ends on holds its closing delimiter or the next
-            // header — `} else {`, `#else`, `private:` — and must stay
-            // visible; `lines` ends on its last hidden line instead.
-            auto shown = item.lines ? end->line + 1 : end->line;
-            if(shown <= start->line + 1) {
+    if(!client.line_folding_only) {
+        result.reserve(ranges.size());
+        for(const auto& item: ranges) {
+            auto start = map.position(item.range.begin, encoding);
+            auto end = map.position(item.range.end, encoding);
+            if(!start || !end) {
                 continue;
             }
-            range = {.start_line = start->line, .end_line = shown - 1};
-        } else {
-            range = {
+            protocol::FoldingRange range{
                 .start_line = start->line,
                 .start_character = start->character,
                 .end_line = end->line,
                 .end_character = end->character,
             };
+            if(item.kind) {
+                range.kind = *item.kind;
+            }
+            if(!item.collapsed_text.empty()) {
+                range.collapsed_text = item.collapsed_text;
+            }
+            result.push_back(std::move(range));
         }
-
-        if(item.kind.has_value()) {
-            range.kind = *item.kind;
-        }
-
-        if(!item.collapsed_text.empty()) {
-            range.collapsed_text = item.collapsed_text;
-        }
-
-        result.push_back(std::move(range));
+        return result;
     }
+
+    auto line_of = [&](std::uint32_t offset) -> std::optional<std::uint32_t> {
+        auto position = map.position(offset, encoding);
+        return position ? std::optional(position->line) : std::nullopt;
+    };
+
+    // The client hides whole lines below the start line. The line a fold's
+    // range ends on holds its closing delimiter or the next header —
+    // `} else {`, `#else`, `private:` — and stays visible; `lines` ends on
+    // its last hidden line instead.
+    std::vector<LineFold> folds;
+    llvm::DenseSet<std::uint32_t> starts;
+    for(const auto& item: ranges) {
+        auto bounds = item.lines.value_or(item.range);
+        auto start = line_of(bounds.begin);
+        auto end = line_of(bounds.end);
+        if(!start || !end) {
+            continue;
+        }
+        LineFold fold{.item = &item, .start = *start, .end = item.lines ? *end : *end - 1};
+        if(client.collapsed_text && item.closer) {
+            fold.closer = line_of(*item.closer);
+            fold.closer_leads = content.slice(line_begin(content, *item.closer), *item.closer)
+                                    .ltrim(" \t)]}>")
+                                    .empty();
+        }
+        starts.insert(fold.start);
+        folds.push_back(fold);
+    }
+
+    // A client showing the collapsed text folds the closer's line too,
+    // `int f() {...}`, when nothing but other closers precedes the closer
+    // there — unless the line opens another fold, `} else {`, or a fold
+    // around this one ends before it: a lambda closing in `}, rest);` would
+    // cross the call around it.
+    std::vector<LineFold*> order;
+    for(auto& fold: folds) {
+        order.push_back(&fold);
+    }
+    std::ranges::stable_sort(order, [](const LineFold* lhs, const LineFold* rhs) {
+        return std::tuple(lhs->item->range.begin, rhs->item->range.end) <
+               std::tuple(rhs->item->range.begin, lhs->item->range.end);
+    });
+    llvm::SmallVector<const LineFold*> around;
+    for(auto* fold: order) {
+        while(!around.empty() && around.back()->item->range.end <= fold->item->range.begin) {
+            around.pop_back();
+        }
+        if(fold->closer_leads && !starts.contains(*fold->closer) &&
+           llvm::none_of(around,
+                         [&](const LineFold* outer) { return outer->end + 1 == *fold->closer; })) {
+            fold->end = *fold->closer;
+            fold->joined = true;
+        }
+        around.push_back(fold);
+    }
+    std::erase_if(folds, [](const LineFold& fold) { return fold.end <= fold.start; });
 
     // VS Code keeps only the first fold it sees starting on a line. A body
     // starting on its declaration's line must win over the parameter list
-    // folding from that line, so outer folds go first.
-    if(line_folding_only) {
-        std::ranges::stable_sort(
-            result,
-            [](const protocol::FoldingRange& lhs, const protocol::FoldingRange& rhs) {
-                return std::tie(lhs.start_line, rhs.end_line) <
-                       std::tie(rhs.start_line, lhs.end_line);
-            });
-    }
+    // folding from that line, so outer folds go first; of folds hiding the
+    // same lines, as a call's and the lambda closing it on one line do,
+    // one stays.
+    std::ranges::stable_sort(folds, [](const LineFold& lhs, const LineFold& rhs) {
+        return std::tie(lhs.start, rhs.end) < std::tie(rhs.start, lhs.end);
+    });
+    auto same = std::ranges::unique(folds, [](const LineFold& lhs, const LineFold& rhs) {
+        return lhs.start == rhs.start && lhs.end == rhs.end;
+    });
+    folds.erase(same.begin(), same.end());
 
+    result.reserve(folds.size());
+    for(const auto& fold: folds) {
+        protocol::FoldingRange range{.start_line = fold.start, .end_line = fold.end};
+        if(fold.item->kind) {
+            range.kind = *fold.item->kind;
+        }
+        if(client.collapsed_text) {
+            range.collapsed_text = line_collapsed_text(content, fold);
+        }
+        result.push_back(std::move(range));
+    }
     return result;
 }
 

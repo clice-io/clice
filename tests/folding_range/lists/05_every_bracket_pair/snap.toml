@@ -1,0 +1,16 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { at = "using Callback = void (*)⟦( … const char* message)⟧ (3 lines)", collapsed = "(...)" },
+    { at = "⟦[[deprecated, … nodiscard]]⟧ (2 lines)", collapsed = "[...]" },
+    { kind = "functionBody", at = "int run(int a, int b) ⟦{ … }⟧ (40 lines)", collapsed = "{...}" },
+    { at = "if ⟦(a > 0 && … a != b)⟧ (3 lines)", collapsed = "(...)" },
+    { at = "a != b) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { at = "for ⟦(int i = 0; … i += 1)⟧ (3 lines)", collapsed = "(...)" },
+    { at = "i += 1) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { at = "b += values⟦[ … ]⟧ (3 lines)", collapsed = "[...]" },
+    { at = "auto value = ⟦(a + … compute(a, b))⟧ (3 lines)", collapsed = "(...)" },
+    { at = "auto widened = static_cast<long>⟦( … a * b)⟧ (2 lines)", collapsed = "(...)" },
+    { at = 'static_assert⟦(sizeof(int) >= … "int too small")⟧ (3 lines)', collapsed = "(...)" },
+    { at = "CHECK⟦( … b)⟧ (3 lines)", collapsed = "(...)" },
+    { at = "TABLE⟦( … 3)⟧ (4 lines)", collapsed = "(...)" },
+]

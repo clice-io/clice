@@ -4,7 +4,7 @@
   "subtopic": "runs",
   "title": "Include runs",
   "summary": "Consecutive include directives fold as one run below the first include",
-  "prose": "A blank line, a comment line or another directive ends the run; includes\ninside a conditional branch fold within it, whether or not the branch is\ntaken.",
+  "prose": "Blank lines and comment lines between includes stay in the run; code or\nanother directive ends it. Includes inside a conditional branch fold within\nit, whether or not the branch is taken.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -55,7 +55,7 @@
               {
                 "kind": "imports",
                 "at": {
-                  "$place": "#include \"alpha.h\"⟦ … #include \"gamma.h\"⟧ (3 lines)",
+                  "$place": "#include \"alpha.h\"⟦ … #include \"beta.h\"⟧ (9 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -63,8 +63,8 @@
                       "character": 18
                     },
                     "end": {
-                      "line": 2,
-                      "character": 18
+                      "line": 8,
+                      "character": 17
                     }
                   }
                 }

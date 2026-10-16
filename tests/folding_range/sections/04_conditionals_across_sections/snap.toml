@@ -1,0 +1,9 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "comment", at = "// A conditional branch that cuts across an access section gives way to the⟦ … // section, so every fold nests in the ones around it.⟧ (2 lines)" },
+    { kind = "class", at = "class Tree ⟦{ … }⟧ (11 lines)", collapsed = "{...}" },
+    { kind = "accessSpecifier", at = "public:⟦ … ⟧ (6 lines) @4" },
+    { kind = "accessSpecifier", at = "private:⟦ … ⟧ (5 lines)" },
+    { kind = "class", at = "class View ⟦{ … }⟧ (8 lines)", collapsed = "{...}" },
+    { kind = "accessSpecifier", at = "public:⟦ … ⟧ (6 lines) @17" },
+]

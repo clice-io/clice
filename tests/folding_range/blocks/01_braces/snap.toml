@@ -3,5 +3,5 @@ folding_ranges = [
     { kind = "namespace", at = "namespace store ⟦{ … }⟧ (15 lines)", collapsed = "{...}" },
     { kind = "struct", at = "struct Item ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "int total(const Item& item) ⟦{ … }⟧ (6 lines)", collapsed = "{...}" },
-    { kind = "compoundStmt", at = "auto twice = [](int value) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { at = "auto twice = [](int value) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
 ]

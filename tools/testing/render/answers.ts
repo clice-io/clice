@@ -265,7 +265,7 @@ export function renderInlayHints(
 
 export interface Fold {
     range: Range;
-    kind: string;
+    kind?: string | undefined;
     collapsedText?: string | undefined;
 }
 
@@ -273,7 +273,7 @@ export function renderFolds(path: string, folds: readonly Fold[], scope: RenderS
     return [...folds]
         .sort((a, b) => compareLocations({ path, range: a.range }, { path, range: b.range }))
         .map((fold) => ({
-            kind: fold.kind,
+            ...(fold.kind === undefined ? {} : { kind: fold.kind }),
             at: place({ path, range: fold.range }, scope),
             ...(fold.collapsedText === undefined ? {} : { collapsed: fold.collapsedText }),
         }));

@@ -12,6 +12,7 @@ fold on the name's line, so the folded declaration still shows what it is. A
 client folding by characters starts at the brace and keeps everything before
 it visible anyway.
 
-> **Client support**: VS Code still leaves the closing `}` on a line of its
-> own rather than joining it to the signature line
-> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)).
+> **Client support**: VS Code leaves the closing `}` on a line of its own
+> rather than joining it to the signature line
+> ([vscode#3352](https://github.com/microsoft/vscode/issues/3352)); Neovim
+> joins it (see "Closing lines fold in").

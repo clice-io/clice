@@ -114,7 +114,8 @@ private:
     std::vector<kota::ipc::protocol::Diagnostic>
         to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
 
-    bool line_folding_only = false;
+    /// How the client takes folds (textDocument.foldingRange).
+    feature::FoldingClient folding_client;
 
     /// How the client takes document symbols (textDocument.documentSymbol).
     feature::SymbolClient symbol_client;

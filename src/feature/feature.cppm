@@ -526,6 +526,20 @@ struct FoldingRange {
     /// `range` implies: the line holding `begin` stays visible and the
     /// lines after it hide through the line holding `end`.
     std::optional<LocalSourceRange> lines;
+
+    /// Where the text closing the fold begins: its closing delimiter, the
+    /// `#endif` ending the last branch of a conditional, the
+    /// `#pragma endregion` ending a region.
+    std::optional<std::uint32_t> closer;
+};
+
+/// What a client does with folds.
+struct FoldingClient {
+    /// It folds whole lines, ignoring the character offsets.
+    bool line_folding_only = false;
+
+    /// It shows a fold's collapsed text in place of the fold.
+    bool collapsed_text = false;
 };
 
 /// Result of scanning a unit for preprocessor-inactive regions.
@@ -634,13 +648,17 @@ auto declaration_lines(llvm::StringRef content,
                        llvm::ArrayRef<std::uint32_t> block_directives)
     -> std::optional<LocalSourceRange>;
 
-/// Protocol encoding of computed folds, for the worker's AST results and the
-/// master's index projections alike. A `line_folding_only` client folds
-/// whole lines and ignores the character offsets.
+/// Protocol encoding of computed folds of `content`, for the worker's AST
+/// results and the master's index projections alike. A client folding
+/// whole lines gets one fold per set of hidden lines; when it also shows
+/// collapsed text, that text is the fold's whole first line, and a fold
+/// whose closer sits on a line of its own folds that line too
+/// (`int f() {...}`).
 auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
+                                llvm::StringRef content,
                                 const PositionMap& map,
                                 PositionEncoding encoding,
-                                bool line_folding_only) -> std::vector<protocol::FoldingRange>;
+                                const FoldingClient& client) -> std::vector<protocol::FoldingRange>;
 
 /// The ranges an expanding selection steps through from each offset of the
 /// main file, innermost first, each strictly containing the one before:

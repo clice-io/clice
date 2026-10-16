@@ -125,7 +125,7 @@ public:
                           bool label_parts,
                           kota::cancellation_token token = {});
     RawResult folding_range(Ticket ticket,
-                            bool line_folding_only,
+                            feature::FoldingClient client,
                             kota::cancellation_token token = {});
     /// A flat reply places every symbol at `uri`, the document as the
     /// request names it.

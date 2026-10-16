@@ -77,6 +77,23 @@
                 "collapsed": "R\"(...)\"_query"
               },
               {
+                "at": {
+                  "$place": "auto quoted = QUOTE⟦(R\"( … )\")⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 23,
+                      "character": 3
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
                 "kind": "rawString",
                 "at": {
                   "$place": "auto quoted = QUOTE(⟦R\"( … )\"⟧ (3 lines)",
@@ -95,7 +112,6 @@
                 "collapsed": "R\"(...)\""
               },
               {
-                "kind": "functionCall",
                 "at": {
                   "$place": "auto argument = call⟦(R\"( … )\")⟧ (3 lines)",
                   "path": "main.cpp",

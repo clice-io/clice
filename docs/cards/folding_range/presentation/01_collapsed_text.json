@@ -4,7 +4,7 @@
   "subtopic": "presentation",
   "title": "Collapsed text",
   "summary": "A folded range shows a placeholder, such as `{...}` for a body, while the line it starts on stays visible",
-  "prose": "> **Client support**: VS Code does not show `collapsedText` yet\n> ([vscode#70794](https://github.com/microsoft/vscode/issues/70794)); Neovim\n> does. A client that ignores it still folds, without the placeholder.",
+  "prose": "A client folding by characters, such as Zed, shows the placeholder in place\nof the range. A client folding whole lines, such as Neovim, shows its text in\nplace of the whole first line, so it gets the first line followed by `...`\ninstead (see \"Closing lines fold in\").\n\n> **Client support**: VS Code does not show `collapsedText` yet\n> ([vscode#70794](https://github.com/microsoft/vscode/issues/70794)). A client\n> that ignores it still folds, without the placeholder.",
   "status": "supported",
   "issues": [
     "clangd#2667"

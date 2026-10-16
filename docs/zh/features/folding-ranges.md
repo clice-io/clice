@@ -53,7 +53,7 @@ tests/folding_range/blocks/04_linkage_specifications
 
 ## 列表
 
-跨行的形参列表、实参列表、初始化列表、捕获列表和模板参数列表都可以折叠。
+任何跨行的圆括号、方括号或大括号都可以折叠，模板参数列表和模板实参列表也是如此。
 
 <!-- BEGIN GENERATED ITEMS: folding_range/lists -->
 
@@ -83,11 +83,25 @@ tests/folding_range/lists/02_template_parameters
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**所有括号对**
+
+任何跨行的圆括号、方括号或大括号都可以折叠，无论它们属于哪种语法结构
+
+条件、类型转换、`static_assert`、括号表达式、下标、属性列表、函数类型以及宏调用的实参，都像函数调用的实参一样折叠。写成 `[[...]]` 的属性列表只折叠一次。
+
+```case
+tests/folding_range/lists/05_every_bracket_pair
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-## 访问控制区段
+## 区段
 
-访问说明符下的成员可以作为类中的一个区段整体折叠。
+访问说明符下的成员和 `case` 标签下的语句，都会作为一个区段折叠到下一个标签之前。
 
 <!-- BEGIN GENERATED ITEMS: folding_range/sections -->
 
@@ -103,11 +117,25 @@ tests/folding_range/sections/01_access_specifiers
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**switch 分支**
+
+switch 的每个分支都折叠到下一个标签之前，该标签保持可见
+
+接连书写的多个标签合为一个分支折叠。分支体若是从标签所在行开始的代码块，该分支就按这个代码块折叠。
+
+```case
+tests/folding_range/sections/02_switch_cases
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 注释与连续行组
 
-块注释在其定界符处折叠，连续的行注释、include 指令或 `using` 声明则合为一组折叠。
+块注释在其定界符处折叠，连续的行注释、include 指令、import 声明或 `using` 声明则合为一组折叠。
 
 <!-- BEGIN GENERATED ITEMS: folding_range/runs -->
 
@@ -131,7 +159,7 @@ tests/folding_range/runs/01_comments
 
 连续的 include 指令合为一组，从第一条 include 之下开始折叠
 
-空行、注释行或其他指令会结束这一组；条件分支内的 include 在该分支内部折叠，无论该分支是否被选中。
+include 之间的空行和注释行仍属于这一组，代码或其他指令会结束这一组。条件分支内的 include 在该分支内部折叠，无论该分支是否被选中。
 
 ```case
 tests/folding_range/runs/02_includes
@@ -149,6 +177,20 @@ tests/folding_range/runs/02_includes
 
 ```case
 tests/folding_range/runs/03_using_declarations
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**连续 import 声明组**
+
+连续的 import 声明像 include 指令一样合为一组折叠
+
+`export import` 也会并入这一组。
+
+```case
+tests/folding_range/runs/04_import_declarations
 ```
 
 <!-- END CAPABILITY -->
@@ -179,7 +221,7 @@ tests/folding_range/raw_strings/01_raw_string_literals
 
 ## 预处理条件
 
-预处理条件的每个分支都可以折叠到结束该分支的指令之前，无论该分支是否被选中。
+预处理条件的每个分支都可以折叠到结束该分支的指令之前，无论该分支是否被选中；未选中分支中的代码块同样可以折叠。
 
 <!-- BEGIN GENERATED ITEMS: folding_range/conditionals -->
 
@@ -205,6 +247,20 @@ tests/folding_range/conditionals/01_branches
 
 ```case
 tests/folding_range/conditionals/02_untaken_branches
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**未选中分支中的代码块**
+
+未选中分支中的代码块同样可以折叠，而不只是整个分支
+
+编译时跳过的代码中，函数、类或语句体都在其括号处折叠，因此可以把不参与编译的代码逐块折叠起来。
+
+```case
+tests/folding_range/conditionals/05_blocks_in_untaken_branches
 ```
 
 <!-- END CAPABILITY -->
@@ -263,6 +319,8 @@ tests/folding_range/modules/01_module_blocks
 
 由宏生成的大括号和访问说明符在宏调用处折叠
 
+由宏调用打开、又由宏调用关闭的代码块，在这两处调用之间折叠，两处调用都保持可见；其占位符为 `...`。
+
 ```case
 tests/folding_range/macros/01_macro_spelled_blocks
 ```
@@ -283,9 +341,9 @@ tests/folding_range/macros/02_macro_arguments
 
 <!-- END GENERATED ITEMS -->
 
-## 声明行
+## 按整行折叠
 
-声明体从声明名称所在行开始折叠，因此折叠后仍能辨认出该声明。
+按整行折叠的客户端会把读者需要的内容留在屏幕上：声明体从声明名称所在行开始折叠；显示折叠文本的客户端还会把结尾行一并折叠进去。
 
 <!-- BEGIN GENERATED ITEMS: folding_range/line_folding -->
 
@@ -297,12 +355,31 @@ tests/folding_range/macros/02_macro_arguments
 
 当左大括号位于名称下方，独占一行或跟在跨越多行的签名之后时，按整行折叠的客户端会从名称所在行开始折叠，因此折叠后仍能辨认出该声明。按字符折叠的客户端则从左大括号处开始折叠，其前面的所有内容始终保持可见。
 
-> **客户端支持**：VS Code 仍会将右大括号 `}` 单独留在一行，
+> **客户端支持**：VS Code 会将右大括号 `}` 单独留在一行，
 > 而不会将其合并到签名所在行
-> （[vscode#3352](https://github.com/microsoft/vscode/issues/3352)）。
+> （[vscode#3352](https://github.com/microsoft/vscode/issues/3352)）；
+> Neovim 则会合并（见“结尾行一并折叠”）。
 
 ```case
 tests/folding_range/line_folding/01_declaration_lines
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**结尾行一并折叠**
+
+显示折叠文本的客户端也会折叠代码块的结尾行，显示为 `int area(Point p) {...}`
+
+每个折叠显示其首行，后接 `...`；当右大括号、`#endif` 或 `*/` 独占一行时，该行会一并折叠，并显示在 `...` 之后。同时开始下一个代码块的结尾行（例如 `} else {`）保持可见。
+
+> **客户端支持**：Neovim 通过 `vim.lsp.foldtext()` 显示该文本。
+> VS Code 不显示折叠文本，因此在 VS Code 中结尾行保持可见
+> （[vscode#3352](https://github.com/microsoft/vscode/issues/3352)）。
+
+```case
+tests/folding_range/line_folding/07_collapsed_lines
 ```
 
 <!-- END CAPABILITY -->
@@ -321,10 +398,11 @@ tests/folding_range/line_folding/01_declaration_lines
 
 折叠后的范围会显示占位符，例如用 `{...}` 表示声明体，折叠范围的起始行仍保持可见
 
+按字符折叠的客户端（例如 Zed）用占位符替换折叠范围。按整行折叠的客户端（例如 Neovim）用占位符替换整个首行，因此改为显示首行后接 `...`（见“结尾行一并折叠”）。
+
 > **客户端支持**：VS Code 尚不显示 `collapsedText`
-> （[vscode#70794](https://github.com/microsoft/vscode/issues/70794)）；
-> Neovim 则支持显示。忽略它的客户端仍能折叠，
-> 但不会显示占位符。
+> （[vscode#70794](https://github.com/microsoft/vscode/issues/70794)）。
+> 忽略它的客户端仍能折叠，但不会显示占位符。
 
 ```case
 tests/folding_range/presentation/01_collapsed_text

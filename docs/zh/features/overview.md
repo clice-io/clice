@@ -25,7 +25,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [内联提示](./inlay-hints.md)         | 支持 35 项                                |
 | [文档链接](./document-links.md)      | 支持 7 项 · 部分支持 1 项                 |
 | [文档符号](./document-symbols.md)    | 支持 29 项                                |
-| [折叠范围](./folding-ranges.md)      | 支持 19 项                                |
+| [折叠范围](./folding-ranges.md)      | 支持 24 项                                |
 | [选择范围](./selection-ranges.md)    | 支持 14 项                                |
 | [格式化](./formatting.md)            | 支持 4 项                                 |
 | [C++20 模块](./modules.md)           | 支持 7 项                                 |

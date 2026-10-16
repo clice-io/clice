@@ -1,0 +1,10 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "functionBody", at = "int classify(int code) ⟦{ … }⟧ (26 lines)", collapsed = "{...}" },
+    { at = "switch (code) ⟦{ … }⟧ (22 lines)", collapsed = "{...}" },
+    { kind = "switchCase", at = "case 1:⟦ …         ⟧ (5 lines)" },
+    { kind = "switchCase", at = "case 3:⟦ …         ⟧ (5 lines)" },
+    { at = "case 4: ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+    { kind = "switchCase", at = "case 5:⟦ result = 5; …         ⟧ (4 lines)" },
+    { kind = "switchCase", at = "default:⟦ …     ⟧ (4 lines)" },
+]

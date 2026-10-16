@@ -1,0 +1,9 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "conditionDirective", at = "#ifdef PLATFORM_WINDOWS⟦ … ⟧ (13 lines)" },
+    { at = "int open_handle(const char* path) ⟦{ … }⟧ (6 lines)", collapsed = "{...}" },
+    { at = "if (path == nullptr) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+    { at = "struct Handle ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "conditionDirective", at = "#else⟦ … ⟧ (5 lines)" },
+    { kind = "functionBody", at = "int open_handle(const char* path) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]

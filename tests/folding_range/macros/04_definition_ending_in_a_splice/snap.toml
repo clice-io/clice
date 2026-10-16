@@ -1,0 +1,5 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "macroDefinition", at = '#define COLORS(X) \⟦ … X(green)      \⟧ (3 lines)' },
+    { kind = "enum", at = "enum Color ⟦{ … }⟧ (5 lines)", collapsed = "{...}" },
+]

@@ -1,0 +1,6 @@
+[answers."main.cpp"]
+folding_ranges = [
+    { kind = "moduleFragment", at = "module;⟦ … ⟧ (6 lines)" },
+    { kind = "imports", at = '#include "config.h"⟦ … #include "platform.h"⟧ (2 lines)' },
+    { kind = "imports", at = "export import :core;⟦ … import :util;⟧ (3 lines)" },
+]

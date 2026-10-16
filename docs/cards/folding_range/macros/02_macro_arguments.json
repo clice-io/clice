@@ -41,7 +41,23 @@
                 "collapsed": "{...}"
               },
               {
-                "kind": "functionCall",
+                "at": {
+                  "$place": "CHECK⟦(compute( … 6))⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 11
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
                 "at": {
                   "$place": "CHECK(compute⟦( … 6)⟧ (4 lines)",
                   "path": "main.cpp",
@@ -59,7 +75,23 @@
                 "collapsed": "(...)"
               },
               {
-                "kind": "compoundStmt",
+                "at": {
+                  "$place": "CHECK⟦([] { … }())⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 8
+                    }
+                  }
+                },
+                "collapsed": "(...)"
+              },
+              {
                 "at": {
                   "$place": "CHECK([] ⟦{ … }⟧ (4 lines)",
                   "path": "main.cpp",
@@ -75,6 +107,23 @@
                   }
                 },
                 "collapsed": "{...}"
+              },
+              {
+                "at": {
+                  "$place": "MAKE_STRUCT⟦(Generated, { … })⟧ (4 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 2
+                    }
+                  }
+                },
+                "collapsed": "(...)"
               },
               {
                 "kind": "struct",

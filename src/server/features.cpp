@@ -752,14 +752,15 @@ Features::RawResult Features::inlay_hints(Ticket ticket,
 }
 
 Features::RawResult Features::folding_range(Ticket ticket,
-                                            bool line_folding_only,
+                                            feature::FoldingClient client,
                                             kota::cancellation_token token) {
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::FoldingRange> folds) {
         return to_raw(feature::folding_ranges_to_protocol(folds,
+                                                          session->text,
                                                           session->positions(),
                                                           PositionEncoding::UTF16,
-                                                          line_folding_only));
+                                                          client));
     };
 
     std::optional<index::IndexSource> source;

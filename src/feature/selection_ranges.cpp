@@ -6,12 +6,13 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
+import :feature.raw_tokens;
 import :semantic.decls;
 import :semantic.documentation;
 import :semantic.selection;
 import :semantic.semantics;
 import :support.text;
-import :syntax.lexer;
+import :syntax.token;
 
 namespace clice::feature {
 
@@ -149,59 +150,6 @@ LocalSourceRange quoted_text(llvm::StringRef content, const Token& token) {
             static_cast<std::uint32_t>(token.range.begin + end)};
 }
 
-TokenKind closer(TokenKind opener) {
-    switch(opener) {
-        case clang::tok::l_paren: return clang::tok::r_paren;
-        case clang::tok::l_square: return clang::tok::r_square;
-        case clang::tok::l_brace: return clang::tok::r_brace;
-        default: return clang::tok::unknown;
-    }
-}
-
-/// Bracket pairs over a token stream. Brackets pair within their scope —
-/// a directive line, a stretch the preprocessor skipped — and outside any
-/// across the file; a closer without an opener of its kind (a
-/// conditional's branches can leave both unbalanced) closes nothing, and
-/// the openers a scope leaves open close with it.
-struct Brackets {
-    struct Open {
-        TokenKind closer;
-        LocalSourceRange range;
-    };
-
-    llvm::SmallVector<Open> opens;
-    llvm::SmallVector<std::size_t, 2> scopes;
-
-    void enter() {
-        scopes.push_back(opens.size());
-    }
-
-    void leave() {
-        opens.truncate(scopes.pop_back_val());
-    }
-
-    /// The opener `token` closes, if it is a closer that pairs.
-    std::optional<LocalSourceRange> visit(const Token& token) {
-        if(auto kind = closer(token.kind); kind != clang::tok::unknown) {
-            opens.push_back({kind, token.range});
-            return std::nullopt;
-        }
-        if(!llvm::is_contained({clang::tok::r_paren, clang::tok::r_square, clang::tok::r_brace},
-                               token.kind)) {
-            return std::nullopt;
-        }
-        auto bottom = scopes.empty() ? 0 : scopes.back();
-        for(auto i = opens.size(); i > bottom; i -= 1) {
-            if(opens[i - 1].closer == token.kind) {
-                auto range = opens[i - 1].range;
-                opens.truncate(i - 1);
-                return range;
-            }
-        }
-        return std::nullopt;
-    }
-};
-
 /// The ranges a raw lex of the file shows, the same for every offset: the
 /// names and literals, a literal's text, a comment's text and the comment,
 /// the inside of each bracket pair and the pair, an attribute list, a
@@ -247,14 +195,13 @@ TextSteps scan_text(llvm::StringRef content,
                     llvm::ArrayRef<Token> tokens,
                     llvm::ArrayRef<bool> skipped) {
     TextSteps text;
-    Brackets brackets;
+    BracketPairs brackets;
     std::optional<LocalSourceRange> directive;
     llvm::StringRef directive_name;
     /// The open conditionals: where each starts, and where the text of its
     /// current branch does.
     llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> conditionals;
     std::optional<std::uint32_t> declaration;
-    bool skipping = false;
     std::optional<LocalSourceRange> comments;
     std::size_t comment_count = 0;
 
@@ -267,7 +214,6 @@ TextSteps scan_text(llvm::StringRef content,
 
     auto close_directive = [&] {
         text.ranges.push_back(*directive);
-        brackets.leave();
         if(llvm::is_contained({"if", "ifdef", "ifndef"}, directive_name)) {
             conditionals.emplace_back(directive->begin, directive->end);
         } else if(!conditionals.empty() &&
@@ -308,24 +254,16 @@ TextSteps scan_text(llvm::StringRef content,
         }
         close_comments();
 
+        auto open = brackets.visit(token, !skipped.empty() && skipped[i]);
         if(token.is_eod()) {
             if(directive) {
                 close_directive();
             }
             continue;
         }
-        if(!skipped.empty() && skipped[i] != skipping && !directive) {
-            skipping = skipped[i];
-            if(skipping) {
-                brackets.enter();
-            } else {
-                brackets.leave();
-            }
-        }
         if(token.is_directive_hash()) {
             directive = token.range;
             directive_name = {};
-            brackets.enter();
         } else if(directive) {
             directive->end = token.range.end;
             if(token.is_pp_keyword) {
@@ -343,7 +281,7 @@ TextSteps scan_text(llvm::StringRef content,
                     word = next->text(content);
                 }
             }
-            if(!directive && brackets.opens.empty() && token.is_identifier() &&
+            if(!directive && !brackets.inside() && token.is_identifier() &&
                (word == "module" || word == "import")) {
                 declaration = token.range.begin;
             }
@@ -359,7 +297,7 @@ TextSteps scan_text(llvm::StringRef content,
         if(quoted(token.kind)) {
             text.ranges.push_back(quoted_text(content, token));
         }
-        if(auto open = brackets.visit(token)) {
+        if(open) {
             text.closers.try_emplace(open->begin, token.range.end);
             // `[[ ]]` and `__attribute__(( ))` write one list in two pairs;
             // the inner one, pushed last, is no step of its own.
@@ -445,37 +383,6 @@ std::optional<LocalSourceRange> comment_line(llvm::StringRef content,
         line = line.drop_front();
     }
     return trimmed(content, {static_cast<std::uint32_t>(line.data() - content.data()), end});
-}
-
-std::vector<Token> lex(llvm::StringRef content, const clang::LangOptions& lang_opts) {
-    std::vector<Token> tokens;
-    Lexer lexer(content, {.keep_comments = true, .lang_opts = &lang_opts});
-    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
-        tokens.push_back(token);
-    }
-    return tokens;
-}
-
-/// Per raw token, whether the preprocessor skipped it; a token the unit's
-/// spelled tokens do not start at (a comment, a directive's end) shares
-/// the flag of the one before.
-llvm::SmallVector<bool, 0> skipped_tokens(CompilationUnit& unit, llvm::ArrayRef<Token> tokens) {
-    const auto& semantics = unit.get<Semantics>();
-    auto count = static_cast<std::uint32_t>(semantics.spelled_tokens().size());
-    llvm::SmallVector<bool, 0> skipped(tokens.size());
-    std::uint32_t spelled = 0;
-    bool current = false;
-    for(std::size_t i = 0; i < tokens.size(); i += 1) {
-        auto begin = tokens[i].range.begin;
-        while(spelled < count && semantics.token_offset(spelled) < begin) {
-            spelled += 1;
-        }
-        if(spelled < count && semantics.token_offset(spelled) == begin) {
-            current = semantics.token_preprocessed_away(spelled);
-        }
-        skipped[i] = current;
-    }
-    return skipped;
 }
 
 /// The steps of one offset only the text shows.

@@ -1,0 +1,5 @@
+["whole lines"."main.cpp"]
+folding_ranges = [
+    { kind = "moduleFragment", at = "⟦module :private; … int third() { return 3; }⟧ (7 lines)" },
+    { kind = "functionBody", at = "⟦int first() { … return 1;⟧ (2 lines)" },
+]

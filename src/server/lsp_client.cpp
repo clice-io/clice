@@ -389,7 +389,11 @@ void LSPClient::register_lifecycle() {
 
         if(params.capabilities.text_document.has_value() &&
            params.capabilities.text_document->folding_range.has_value()) {
-            line_folding_only = params.capabilities.text_document->folding_range->line_folding_only;
+            auto& folding = *params.capabilities.text_document->folding_range;
+            folding_client = {
+                .line_folding_only = folding.line_folding_only,
+                .collapsed_text = folding.folding_range && folding.folding_range->collapsed_text,
+            };
         }
 
         if(params.capabilities.text_document.has_value() &&
@@ -830,7 +834,7 @@ void LSPClient::register_language_features() {
                 return kota::outcome_error(unserved(path));
             return holding(project,
                            project->features.folding_range(Ticket::take(session),
-                                                           line_folding_only,
+                                                           folding_client,
                                                            ctx.cancellation));
         });
 
