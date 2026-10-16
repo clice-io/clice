@@ -26,6 +26,6 @@ clice <command> [<operation>] [<target>...] [--option...]
 ```
 
 - 能做几件事的命令，用紧跟其后的一个词指明要做哪一件：`clice query references`、`clice index stats`、`clice analyze modules edge`。有一项首要职能的命令，后面不跟词时就执行这项职能：`clice index` 建立索引，`clice analyze modules` 给出概览。在任何命令或操作后面加上 `--help`，都会列出它接受的参数。
-- 目标，即操作所针对的符号或文件，跟在操作之后：`clice query references "shapes::Circle::area"`、`clice query document-symbols src/main.cpp`。凡是接受符号的地方，都用[定位串](./query.md#locators)（locator）指明符号；文件则用路径指明，可以相对于工作区，也可以是绝对路径。命令自己读写的文件，例如分区文件或输出目录，相对于当前目录。
+- 目标，即操作所针对的符号或文件，跟在操作之后：`clice query references "shapes::Circle::area"`、`clice query document-symbols src/main.cpp`。凡是接受符号的地方，都用[定位串](./query.md#locators)（locator）指明符号；文件则用路径指明，可以相对于工作区（对 `inspect` 而言相对于当前目录），也可以是绝对路径。命令自己读写的文件，例如分区文件或输出目录，相对于当前目录。
 - 选项放在操作之后。一个选项要取多个值时，就重复给出它：`--scope 'src/**' --scope 'include/**'`。
-- `--workspace <dir>` 指定工作区，默认为当前目录（`inspect` 与编辑器一样，取文件所在的项目）；`--configuration <tag>` 固定构建配置，其优先级高于编辑器持久化的选择（参见[切换配置](../guide/configuration.md#switching-configurations)）；`-j`、`--jobs <n>` 指定 `index`、`lint` 和 `format` 同时处理多少个单元或文件；`--log-level` 设置记录哪些日志，默认为警告和错误；`serve`、`index` 和 `lint` 的会话日志记录一次运行做了什么，它们从 `info` 级别起记录。
+- `--workspace <dir>` 指定工作区，默认为当前目录（`inspect` 与编辑器一样，取文件所在的项目）；`--configuration <tag>` 固定构建配置，其优先级高于编辑器持久化的选择（参见[切换配置](../guide/configuration.md#switching-configurations)）；`-j`、`--jobs <n>` 指定 `index`、`lint` 和 `format` 同时处理多少个单元或文件；`--log-level` 设置向 stderr 输出哪些日志，默认为警告和错误（编辑器会显示 `serve` 的 stderr，它从 `info` 级别起输出）；无论该选项取什么值，`serve`、`index` 和 `lint` 的会话日志都保留 `info` 级别。
