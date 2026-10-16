@@ -16,6 +16,7 @@ import :project.command_resolver;
 import :project.project;
 import :server.editor_context;
 import :server.query_commands;
+import :vfs.path;
 
 namespace clice::driver {
 
@@ -145,6 +146,20 @@ struct PlainViewOptions {
     ModelOptions model;
     LogLevelOption log;
 };
+
+/// A file as the facts name it: one under the workspace by its path from
+/// the root, which `<PATH>` may also give absolute.
+std::string fact_path(const WorkspaceOptions& where, const std::string& argument) {
+    if(!path::is_rooted(argument)) {
+        return argument;
+    }
+    CanonicalPath root(where.root());
+    CanonicalPath file(Spelling(argument, where.root()));
+    if(!path::under(file, root)) {
+        return argument;
+    }
+    return llvm::StringRef(file).drop_front(llvm::StringRef(root).size()).ltrim('/').str();
+}
 
 template <typename T>
 int answer(const std::expected<T, std::string>& result) {
@@ -311,13 +326,15 @@ CommandHandler build(const char*) {
     views.push_back({
         .name = "file",
         .description = "What a file names by module, who names its entities, its annotations",
-        .run = module_view<FileViewOptions>(
-            "clice analyze modules file <PATH> [OPTIONS]",
-            {"<PATH>"},
-            0,
-            [](analysis::Report& report, const FileViewOptions&, llvm::ArrayRef<std::string> args) {
-                return answer(report.file(args[0]));
-            }),
+        .run = module_view<FileViewOptions>("clice analyze modules file <PATH> [OPTIONS]",
+                                            {"<PATH>"},
+                                            0,
+                                            [](analysis::Report& report,
+                                               const FileViewOptions& opts,
+                                               llvm::ArrayRef<std::string> args) {
+                                                return answer(report.file(
+                                                    fact_path(opts.model.where, args[0])));
+                                            }),
     });
     views.push_back({
         .name = "obstacles",
