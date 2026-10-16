@@ -280,7 +280,7 @@ tests/semantic_tokens/lexical/09_attributes
 
 格式字符串中的占位符是 `formatSpecifier` Token
 
-传给函数格式字符串形参的字符串会拆分为文本和占位符。这类形参指 `basic_format_string` 形参（`std::format`、`std::print` 和 {fmt} 都这样声明），或由 `format(printf, …)` 属性指明的那个参数。前一种风格的占位符如 `{}` 和 `{:>8.2f}`，printf 风格的如 `%d` 和 `%-8.3f`，原始字符串也不例外。转义的花括号和 `%%` 是转义序列；没有任何函数当作格式字符串读取的字符串则是普通文本。
+传给函数格式字符串形参的字符串会拆分为文本和占位符。这类形参指 `basic_format_string` 形参（`std::format`、`std::print` 和 {fmt} 都这样声明），或由 `format(printf, …)` 或 `format(scanf, …)` 属性指明的那个参数。前一种风格的占位符如 `{}` 和 `{:>8.2f}`，printf 风格的如 `%d` 和 `%-8.3f`，scanf 风格的如 `%ms` 和 `%15[^,\n]`，原始字符串也不例外。转义的花括号和 `%%` 是转义序列；没有任何函数当作格式字符串读取的字符串则是普通文本。
 
 ```case
 tests/semantic_tokens/lexical/12_format_strings

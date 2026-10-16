@@ -16,6 +16,8 @@ enum class FormatStyle : std::uint8_t {
     Std,
     /// printf: `%d`, `%-8.3f`; `%%` writes a percent sign.
     Printf,
+    /// scanf: `%d`, `%ms`, `%[^,]`; `%%` reads a percent sign.
+    Scanf,
 };
 
 /// What the AST or the index knows of a file's written tokens beyond their

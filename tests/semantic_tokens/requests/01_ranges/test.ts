@@ -16,11 +16,12 @@ function decode(data: readonly number[]): number[][] {
     return out;
 }
 
-// The tokens of a range are those of the whole file it overlaps, whole.
+// The tokens of a range are those of the whole file it overlaps, whole; of a
+// comment that spans lines, the lines it overlaps.
 test(async (t) => {
     const s = await t.start();
     await s.diagnostics("main.cpp");
-    const range = { start: { line: 1, character: 6 }, end: { line: 3, character: 0 } };
+    const range = { start: { line: 1, character: 6 }, end: { line: 4, character: 0 } };
     const part = await s.request<proto.SemanticTokens>(
         "textDocument/semanticTokens/range",
         "main.cpp",

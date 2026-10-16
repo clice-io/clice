@@ -354,7 +354,10 @@ private:
         }
         for(const auto* attr: callee->specific_attrs<clang::FormatAttr>()) {
             auto type = attr->getType()->getName();
-            if(!type.contains("printf") && !type.contains("scanf")) {
+            auto style = type.contains("printf")  ? FormatStyle::Printf
+                         : type.contains("scanf") ? FormatStyle::Scanf
+                                                  : std::optional<FormatStyle>();
+            if(!style) {
                 continue;
             }
             // The index counts from 1, past an implicit object parameter,
@@ -366,7 +369,7 @@ private:
                 argument -= 1;
             }
             if(argument >= 0 && static_cast<unsigned>(argument) < call->getNumArgs()) {
-                mark(call->getArg(argument), FormatStyle::Printf);
+                mark(call->getArg(argument), *style);
             }
         }
     }
@@ -596,10 +599,15 @@ public:
         // LSP semantic tokens have no multiline support (unless the client
         // negotiates the capability), so split the token into per-line pieces.
         for(auto line = begin->line; line <= end->line; line += 1) {
+            auto bounds = *map.line_bounds(line);
+            if(window &&
+               ((line == end->line ? token.range.end : bounds.end) <= window->begin ||
+                (line == begin->line ? token.range.begin : bounds.begin) >= window->end)) {
+                continue;
+            }
             auto start = line == begin->line ? begin->character : 0;
-            auto stop = line == end->line
-                            ? end->character
-                            : map.position(map.line_bounds(line)->end, encoding)->character;
+            auto stop =
+                line == end->line ? end->character : map.position(bounds.end, encoding)->character;
             emit(line, start, stop - start, *type, modifiers);
         }
     }

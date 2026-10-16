@@ -23,6 +23,7 @@ void print(format_string<Args...> format, Args&&... args) {}
 }  // namespace fmt
 
 [[gnu::format(printf, 1, 2)]] int log_line(const char* format, ...);
+[[gnu::format(scanf, 1, 2)]] int read_line(const char* format, ...);
 
 struct Logger {
     [[gnu::format(printf, 2, 3)]] void log(const char* format, ...);

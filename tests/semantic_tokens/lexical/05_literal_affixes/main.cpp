@@ -11,4 +11,5 @@ auto unsigned_suffix = 42§(unsigned_suffix)u;
 auto float_suffix = 3.14§(float_suffix)f;
 auto hex_float_suffix = 0x1p4§(hex_float_suffix)f;
 auto separators = 1'000'000;
+auto exponent_separators = 1e1'0§(exponent_separator_suffix)f;
 auto udl = 4§(literal_operator_suffix)_kb;

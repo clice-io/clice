@@ -137,7 +137,7 @@ std::size_t replacement_field_length(llvm::StringRef text) {
 
 /// The length of the printf conversion specification at `text[0]`, a `%`:
 /// flags, width, precision, length and conversion. Zero for none.
-std::size_t conversion_length(llvm::StringRef text) {
+std::size_t printf_conversion_length(llvm::StringRef text) {
     std::size_t i = 1;
     auto skip = [&](llvm::StringRef set) {
         while(i < text.size() && set.contains(text[i])) {
@@ -165,6 +165,34 @@ std::size_t conversion_length(llvm::StringRef text) {
     return 0;
 }
 
+/// The length of the scanf conversion specification at `text[0]`, a `%`:
+/// assignment suppression, width, allocation, length and conversion, a
+/// scanset `[...]` included. Zero for none.
+std::size_t scanf_conversion_length(llvm::StringRef text) {
+    std::size_t i = 1;
+    auto skip = [&](llvm::StringRef set) {
+        while(i < text.size() && set.contains(text[i])) {
+            i += 1;
+        }
+    };
+    skip("*");
+    skip("0123456789");
+    skip("m");
+    skip("hljztLq");
+    if(i < text.size() && text[i] == '[') {
+        // A `]` first in the set, after the `^` too, is one of its characters.
+        i += 1;
+        skip("^");
+        skip("]");
+        auto close = text.find(']', i);
+        return close == llvm::StringRef::npos ? 0 : close + 1;
+    }
+    if(i < text.size() && llvm::StringRef("diouxXeEfFgGaAcspnCS").contains(text[i])) {
+        return i + 1;
+    }
+    return 0;
+}
+
 /// Where the suffix of a numeric literal starts: past its digits,
 /// separators, radix point and exponent.
 std::size_t number_suffix(llvm::StringRef text) {
@@ -187,7 +215,9 @@ std::size_t number_suffix(llvm::StringRef text) {
             // The exponent ends the digits: a hexadecimal one's `f` is a
             // suffix.
             i += 2;
-            while(i < text.size() && llvm::isDigit(text[i])) {
+            while(i < text.size() &&
+                  (llvm::isDigit(text[i]) ||
+                   (text[i] == '\'' && i + 1 < text.size() && llvm::isDigit(text[i + 1])))) {
                 i += 1;
             }
             return i;
@@ -611,12 +641,15 @@ private:
             } else if(format == FormatStyle::Std && text[i] == '{') {
                 length = replacement_field_length(text.slice(i, close));
                 piece = {{.kind = Kind::FormatSpecifier}, true};
-            } else if(format == FormatStyle::Printf && text[i] == '%' && i + 1 < close &&
+            } else if(format != FormatStyle::Std && text[i] == '%' && i + 1 < close &&
                       text[i + 1] == '%') {
                 length = 2;
                 piece = {{.kind = Kind::Escape}, false};
             } else if(format == FormatStyle::Printf && text[i] == '%') {
-                length = conversion_length(text.slice(i, close));
+                length = printf_conversion_length(text.slice(i, close));
+                piece = {{.kind = Kind::FormatSpecifier}, true};
+            } else if(format == FormatStyle::Scanf && text[i] == '%') {
+                length = scanf_conversion_length(text.slice(i, close));
                 piece = {{.kind = Kind::FormatSpecifier}, true};
             }
             if(length == 0) {

@@ -1,4 +1,4 @@
-#ifndef __GNUC__
+#ifndef __clang__
 #define __attribute__(x)
 #endif
 

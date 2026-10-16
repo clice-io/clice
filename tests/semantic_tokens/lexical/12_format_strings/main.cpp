@@ -8,3 +8,7 @@ void report(Logger logger, int count, double ratio, const char* name) {
     logger("%d call", count);
     const char* plain = "{} stays text";
 }
+
+void scan(char** owned, char* word, int* count) {
+    read_line("%ms %15[^,\n], %*d %d", owned, word, count);
+}

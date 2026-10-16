@@ -4,18 +4,18 @@
   "subtopic": "lexical",
   "title": "Format strings",
   "summary": "The placeholders of a format string are `formatSpecifier` tokens",
-  "prose": "A string passed where a function takes a format string — a\n`basic_format_string` parameter as `std::format`, `std::print` and {fmt}\ndeclare it, or the argument a `format(printf, …)` attribute names — splits\ninto its text and its placeholders: `{}` and `{:>8.2f}` in the first style,\n`%d` and `%-8.3f` in printf's, a raw string's too. Escaped braces and `%%`\nare escapes; a string no function reads as a format is plain text.",
+  "prose": "A string passed where a function takes a format string — a\n`basic_format_string` parameter as `std::format`, `std::print` and {fmt}\ndeclare it, or the argument a `format(printf, …)` or `format(scanf, …)`\nattribute names — splits into its text and its placeholders: `{}` and\n`{:>8.2f}` in the first style, `%d` and `%-8.3f` in printf's, `%ms` and\n`%15[^,\\n]` in scanf's, a raw string's too. Escaped braces and `%%` are\nescapes; a string no function reads as a format is plain text.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "fmt.h",
-      "text": "#pragma once\n\nnamespace fmt {\n\ntemplate <class T>\nstruct type_identity {\n    using type = T;\n};\n\ntemplate <class... Args>\nstruct basic_format_string {\n    consteval basic_format_string(const char* text) : text(text) {}\n\n    const char* text;\n};\n\ntemplate <class... Args>\nusing format_string = basic_format_string<typename type_identity<Args>::type...>;\n\ntemplate <class... Args>\nvoid print(format_string<Args...> format, Args&&... args) {}\n\n}  // namespace fmt\n\n[[gnu::format(printf, 1, 2)]] int log_line(const char* format, ...);\n\nstruct Logger {\n    [[gnu::format(printf, 2, 3)]] void log(const char* format, ...);\n    [[gnu::format(printf, 2, 3)]] void operator()(const char* format, ...);\n};\n",
+      "text": "#pragma once\n\nnamespace fmt {\n\ntemplate <class T>\nstruct type_identity {\n    using type = T;\n};\n\ntemplate <class... Args>\nstruct basic_format_string {\n    consteval basic_format_string(const char* text) : text(text) {}\n\n    const char* text;\n};\n\ntemplate <class... Args>\nusing format_string = basic_format_string<typename type_identity<Args>::type...>;\n\ntemplate <class... Args>\nvoid print(format_string<Args...> format, Args&&... args) {}\n\n}  // namespace fmt\n\n[[gnu::format(printf, 1, 2)]] int log_line(const char* format, ...);\n[[gnu::format(scanf, 1, 2)]] int read_line(const char* format, ...);\n\nstruct Logger {\n    [[gnu::format(printf, 2, 3)]] void log(const char* format, ...);\n    [[gnu::format(printf, 2, 3)]] void operator()(const char* format, ...);\n};\n",
       "markers": []
     },
     {
       "path": "main.cpp",
-      "text": "#include \"fmt.h\"\n\nvoid report(Logger logger, int count, double ratio, const char* name) {\n    fmt::print(\"{} items, {:>8.2f} ratio, {{braces}}\\n\", count, ratio);\n    log_line(\"%s: %d of %-8.3f%%\\n\", name, count, ratio);\n    log_line(R\"(%d raw \\n)\", count);\n    logger.log(\"%d member\", count);\n    logger(\"%d call\", count);\n    const char* plain = \"{} stays text\";\n}\n",
+      "text": "#include \"fmt.h\"\n\nvoid report(Logger logger, int count, double ratio, const char* name) {\n    fmt::print(\"{} items, {:>8.2f} ratio, {{braces}}\\n\", count, ratio);\n    log_line(\"%s: %d of %-8.3f%%\\n\", name, count, ratio);\n    log_line(R\"(%d raw \\n)\", count);\n    logger.log(\"%d member\", count);\n    logger(\"%d call\", count);\n    const char* plain = \"{} stays text\";\n}\n\nvoid scan(char** owned, char* word, int* count) {\n    read_line(\"%ms %15[^,\\n], %*d %d\", owned, word, count);\n}\n",
       "markers": []
     }
   ],
@@ -1207,6 +1207,451 @@
                   }
                 },
                 "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "⟦void⟧ scan(char** owned, char* word, int* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 4
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void ⟦scan⟧(char** owned, char* word, int* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 5
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void scan(⟦char⟧** owned, char* word, int* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void scan(char⟦**⟧ owned, char* word, int* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void scan(char** ⟦owned⟧, char* word, int* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void scan(char** owned, ⟦char⟧* word, int* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void scan(char** owned, char⟦*⟧ word, int* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 29
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void scan(char** owned, char* ⟦word⟧, int* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 30
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 34
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void scan(char** owned, char* word, ⟦int⟧* count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 36
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 39
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void scan(char** owned, char* word, int⟦*⟧ count) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 39
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 40
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "declarator"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void scan(char** owned, char* word, int* ⟦count⟧) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 11,
+                      "character": 41
+                    },
+                    "end": {
+                      "line": 11,
+                      "character": 46
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦read_line⟧(\"%ms %15[^,\\n], %*d %d\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "read_line(⟦\"⟧%ms %15[^,\\n], %*d %d\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 15
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"⟦%ms⟧ %15[^,\\n], %*d %d\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "formatSpecifier"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms⟦ ⟧%15[^,\\n], %*d %d\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms ⟦%15[^,\\n]⟧, %*d %d\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "formatSpecifier"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms %15[^,\\n]⟦, ⟧%*d %d\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 30
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms %15[^,\\n], ⟦%*d⟧ %d\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 30
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 33
+                    }
+                  }
+                },
+                "type": "formatSpecifier"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms %15[^,\\n], %*d⟦ ⟧%d\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 33
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 34
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms %15[^,\\n], %*d ⟦%d⟧\", owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 34
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 36
+                    }
+                  }
+                },
+                "type": "formatSpecifier"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms %15[^,\\n], %*d %d⟦\"⟧, owned, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 36
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 37
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms %15[^,\\n], %*d %d\", ⟦owned⟧, word, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 39
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 44
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms %15[^,\\n], %*d %d\", owned, ⟦word⟧, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 46
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 50
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "read_line(\"%ms %15[^,\\n], %*d %d\", owned, word, ⟦count⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 12,
+                      "character": 52
+                    },
+                    "end": {
+                      "line": 12,
+                      "character": 57
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
               }
             ]
           }
