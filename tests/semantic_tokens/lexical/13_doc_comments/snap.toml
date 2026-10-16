@@ -96,5 +96,12 @@ semantic_tokens = [
     { at = "⟦T⟧ x, y;", type = "typeParameter", modifiers = ["member"] },
     { at = "T ⟦x⟧, y;", type = "field", modifiers = ["definition", "member"] },
     { at = "T x, ⟦y⟧;", type = "field", modifiers = ["definition", "member"] },
+    { at = "⟦///⟧@brief Clamps a value.", type = "comment", modifiers = ["documentation"] },
+    { at = "///⟦@brief⟧ Clamps a value.", type = "keyword", modifiers = ["documentation"] },
+    { at = "///@brief⟦ Clamps a value.⟧", type = "comment", modifiers = ["documentation"] },
+    { at = "⟦int⟧ clamp(int value);", type = "primitive" },
+    { at = "int ⟦clamp⟧(int value);", type = "function", modifiers = ["declaration", "global"] },
+    { at = "int clamp(⟦int⟧ value);", type = "primitive" },
+    { at = "int clamp(int ⟦value⟧);", type = "parameter", modifiers = ["definition", "local"] },
     { at = "⟦// @param plain comments have no commands⟧", type = "comment" },
 ]

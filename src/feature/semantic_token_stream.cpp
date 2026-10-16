@@ -135,62 +135,89 @@ std::size_t replacement_field_length(llvm::StringRef text) {
     return 0;
 }
 
-/// The length of the printf conversion specification at `text[0]`, a `%`:
-/// flags, width, precision, length and conversion. Zero for none.
-std::size_t printf_conversion_length(llvm::StringRef text) {
+/// A conversion specification of a format string being read, from its `%`.
+struct ConversionCursor {
+    llvm::StringRef text;
     std::size_t i = 1;
-    auto skip = [&](llvm::StringRef set) {
+
+    bool take(char c) {
+        if(i < text.size() && text[i] == c) {
+            i += 1;
+            return true;
+        }
+        return false;
+    }
+
+    void skip(llvm::StringRef set) {
         while(i < text.size() && set.contains(text[i])) {
             i += 1;
         }
-    };
-    skip("-+ #0'");
-    if(i < text.size() && text[i] == '*') {
-        i += 1;
-    } else {
-        skip("0123456789");
     }
-    if(i < text.size() && text[i] == '.') {
-        i += 1;
-        if(i < text.size() && text[i] == '*') {
-            i += 1;
-        } else {
-            skip("0123456789");
+
+    /// A POSIX argument selector, the `2$` of `%2$d`.
+    void select() {
+        auto digits = i;
+        while(digits < text.size() && llvm::isDigit(text[digits])) {
+            digits += 1;
+        }
+        if(digits > i && digits < text.size() && text[digits] == '$') {
+            i = digits + 1;
         }
     }
-    skip("hljztLqI0123456789");
-    if(i < text.size() && llvm::StringRef("diouxXeEfFgGaAcspnCSm").contains(text[i])) {
-        return i + 1;
+
+    /// The specification's length if one of `conversions` ends it, else zero.
+    std::size_t end(llvm::StringRef conversions) const {
+        return i < text.size() && conversions.contains(text[i]) ? i + 1 : 0;
     }
-    return 0;
+};
+
+/// The length of the printf conversion specification at `text[0]`, a `%`:
+/// argument, flags, width, precision, length and conversion. Zero for none.
+std::size_t printf_conversion_length(llvm::StringRef text) {
+    ConversionCursor cursor{.text = text};
+    cursor.select();
+    cursor.skip("-+ #0'");
+    if(cursor.take('*')) {
+        cursor.select();
+    } else {
+        cursor.skip("0123456789");
+    }
+    if(cursor.take('.')) {
+        if(cursor.take('*')) {
+            cursor.select();
+        } else {
+            cursor.skip("0123456789");
+        }
+    }
+    cursor.skip("hljztLqI0123456789");
+    return cursor.end("diouxXeEfFgGaAcspnCSm");
 }
 
 /// The length of the scanf conversion specification at `text[0]`, a `%`:
-/// assignment suppression, width, allocation, length and conversion, a
-/// scanset `[...]` included. Zero for none.
+/// argument, assignment suppression, width, allocation, length and
+/// conversion, a scanset `[...]` included. Zero for none.
 std::size_t scanf_conversion_length(llvm::StringRef text) {
-    std::size_t i = 1;
-    auto skip = [&](llvm::StringRef set) {
-        while(i < text.size() && set.contains(text[i])) {
-            i += 1;
-        }
-    };
-    skip("*");
-    skip("0123456789");
-    skip("m");
-    skip("hljztLq");
-    if(i < text.size() && text[i] == '[') {
+    ConversionCursor cursor{.text = text};
+    cursor.select();
+    cursor.take('*');
+    cursor.skip("0123456789");
+    cursor.take('m');
+    cursor.skip("hljztLq");
+    if(cursor.take('[')) {
         // A `]` first in the set, after the `^` too, is one of its characters.
-        i += 1;
-        skip("^");
-        skip("]");
-        auto close = text.find(']', i);
+        cursor.take('^');
+        cursor.take(']');
+        auto close = text.find(']', cursor.i);
         return close == llvm::StringRef::npos ? 0 : close + 1;
     }
-    if(i < text.size() && llvm::StringRef("diouxXeEfFgGaAcspnCS").contains(text[i])) {
-        return i + 1;
-    }
-    return 0;
+    return cursor.end("diouxXeEfFgGaAcspnCS");
+}
+
+/// Whether `name` is a check clang evaluates in a condition, whose operand
+/// is no macro: `__has_cpp_attribute(nodiscard)`, `__is_target_os(darwin)`,
+/// `__building_module(Core)`.
+bool is_check(llvm::StringRef name) {
+    return name.starts_with("__has_") || name.starts_with("__is_") || name == "__building_module";
 }
 
 /// Where the suffix of a numeric literal starts: past its digits,
@@ -270,6 +297,9 @@ private:
         Condition,
         /// After `defined` in a condition.
         Defined,
+        /// In the parentheses of a check such as `__has_include`: what it
+        /// tests is no macro.
+        Check,
         /// Anywhere else in a directive.
         Other,
     };
@@ -506,8 +536,19 @@ private:
                 if(spelling == "defined") {
                     piece.classified = {.kind = Kind::Operator};
                     directive = Directive::Defined;
-                } else if(spelling.starts_with("__has_")) {
+                } else if(is_check(spelling)) {
                     piece.classified = {.kind = Kind::Operator};
+                    directive = Directive::Check;
+                    check_depth = depth;
+                } else if(kind == clang::tok::identifier) {
+                    piece = {{.kind = Kind::Macro}, true};
+                }
+                break;
+            }
+            case Directive::Check: {
+                // `bracket` has not left the parenthesis yet.
+                if(kind == clang::tok::r_paren && depth == check_depth + 1) {
+                    directive = Directive::Condition;
                 }
                 break;
             }
@@ -705,7 +746,7 @@ private:
         };
         std::size_t segment = 0;
         for(std::size_t i = 3; i < text.size(); i += 1) {
-            if((text[i] != '@' && text[i] != '\\') || !llvm::isSpace(text[i - 1]) ||
+            if((text[i] != '@' && text[i] != '\\') || (i > 3 && !llvm::isSpace(text[i - 1])) ||
                i + 1 >= text.size() || !llvm::isAlpha(text[i + 1])) {
                 continue;
             }
@@ -819,6 +860,8 @@ private:
 
     Directive directive = Directive::None;
     llvm::SmallVector<llvm::StringRef> macro_parameters;
+    /// The bracket depth of a condition's check.
+    std::uint32_t check_depth = 0;
     bool after_line_export = false;
 
     /// Open brackets, each the bracket depth it opened at.

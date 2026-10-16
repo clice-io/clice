@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "/// Scales a value.\n/// \\param value the value to scale\n/// @param factor how much, at least 1\n/// @return the scaled value\nint scale(int value, int factor);\n\n/**\n * @brief A point on the plane.\n * @tparam T the coordinate type\n */\ntemplate <class T>\nstruct Point {\n    T x, y;\n};\n\n// @param plain comments have no commands\n",
+      "text": "/// Scales a value.\n/// \\param value the value to scale\n/// @param factor how much, at least 1\n/// @return the scaled value\nint scale(int value, int factor);\n\n/**\n * @brief A point on the plane.\n * @tparam T the coordinate type\n */\ntemplate <class T>\nstruct Point {\n    T x, y;\n};\n\n///@brief Clamps a value.\nint clamp(int value);\n\n// @param plain comments have no commands\n",
       "markers": []
     }
   ],
@@ -808,7 +808,7 @@
               },
               {
                 "at": {
-                  "$place": "⟦// @param plain comments have no commands⟧",
+                  "$place": "⟦///⟧@brief Clamps a value.",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -817,6 +817,142 @@
                     },
                     "end": {
                       "line": 15,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "///⟦@brief⟧ Clamps a value.",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 3
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "///@brief⟦ Clamps a value.⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 15,
+                      "character": 9
+                    },
+                    "end": {
+                      "line": 15,
+                      "character": 25
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ clamp(int value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦clamp⟧(int value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 9
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "declaration",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int clamp(⟦int⟧ value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 13
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int clamp(int ⟦value⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦// @param plain comments have no commands⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 18,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 18,
                       "character": 41
                     }
                   }

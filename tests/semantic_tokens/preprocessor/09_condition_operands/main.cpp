@@ -17,3 +17,7 @@ int all_three = 3;
 #if __has_include(<missing_header.h>)
 int with_missing_header = 4;
 #endif
+
+#if UNDEFINED_FEATURE || __has_cpp_attribute(nodiscard)
+int with_undefined = 5;
+#endif

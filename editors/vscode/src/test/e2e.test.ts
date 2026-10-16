@@ -94,16 +94,18 @@ function until<T>(
 suite("inactive span decoding", function () {
     const MASK = 1 << 3;
 
-    test("merges runs and bridges token-free gaps", function () {
+    test("merges consecutive lines into runs", function () {
         const data = [
             ...[1, 0, 3, 0, MASK], // line 1, inactive
-            ...[2, 0, 3, 0, MASK], // line 3: the blank line between bridges
-            ...[1, 0, 3, 0, 0], // line 4, active — ends the run
-            ...[2, 0, 3, 0, MASK], // line 6, a separate region
+            ...[1, 0, 3, 0, MASK], // line 2, inactive
+            ...[2, 0, 3, 0, MASK], // line 4: line 3 sent no token, maybe active code
+            ...[1, 0, 3, 0, 0], // line 5, active
+            ...[1, 0, 3, 0, MASK], // line 6, a separate region
         ];
         assert.deepStrictEqual(inactiveSpans(data, MASK), {
             lines: [
-                [1, 3],
+                [1, 2],
+                [4, 4],
                 [6, 6],
             ],
             tokens: [],

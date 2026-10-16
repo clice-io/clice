@@ -10,8 +10,9 @@ import type { ClientHandle } from "../client";
 /// of the tagged tokens on a line that also runs code — the arguments a
 /// macro drops. Inactive regions are whole lines by construction (the
 /// server scans from the line after the opening directive to the line
-/// before the closing one), so a line holding an untagged token ends a
-/// run, while token-free gaps inside a region (blank lines) bridge it.
+/// before the closing one), so a run is consecutive lines whose tokens are
+/// all tagged: a line without tokens ends it too, being blank or active
+/// code the server sends no token for (lexical tokens off).
 /// Exported for the e2e suite.
 export interface InactiveSpans {
     lines: [number, number][];
@@ -38,7 +39,8 @@ export function inactiveSpans(data: ArrayLike<number>, mask: number): InactiveSp
             flush();
             spans.tokens.push(...tagged);
         } else if (tagged.length > 0) {
-            if (runStart < 0) {
+            if (runStart < 0 || current !== runEnd + 1) {
+                flush();
                 runStart = current;
             }
             runEnd = current;

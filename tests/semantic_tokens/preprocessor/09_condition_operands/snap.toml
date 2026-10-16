@@ -42,4 +42,13 @@ semantic_tokens = [
     { at = "int with_missing_header = ⟦4⟧;", type = "number", modifiers = ["inactive"] },
     { at = "int with_missing_header = 4⟦;⟧", type = "plain", modifiers = ["inactive"] },
     { at = "⟦#endif⟧ @19", type = "directive" },
+    { at = "⟦#if⟧ UNDEFINED_FEATURE || __has_cpp_attribute(nodiscard)", type = "directive" },
+    { at = "#if ⟦UNDEFINED_FEATURE⟧ || __has_cpp_attribute(nodiscard)", type = "macro" },
+    { at = "#if UNDEFINED_FEATURE ⟦||⟧ __has_cpp_attribute(nodiscard)", type = "operator" },
+    { at = "#if UNDEFINED_FEATURE || ⟦__has_cpp_attribute⟧(nodiscard)", type = "operator" },
+    { at = "⟦int⟧ with_undefined = 5;", type = "primitive" },
+    { at = "int ⟦with_undefined⟧ = 5;", type = "variable", modifiers = ["definition", "global"] },
+    { at = "int with_undefined ⟦=⟧ 5;", type = "operator" },
+    { at = "int with_undefined = ⟦5⟧;", type = "number" },
+    { at = "⟦#endif⟧ @23", type = "directive" },
 ]

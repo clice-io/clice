@@ -13,4 +13,7 @@ struct Point {
     T x, y;
 };
 
+///@brief Clamps a value.
+int clamp(int value);
+
 // @param plain comments have no commands

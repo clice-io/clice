@@ -4,13 +4,13 @@
   "subtopic": "preprocessor",
   "title": "Macro names in conditions",
   "summary": "A name a condition tests is a `macro`, defined or not",
-  "prose": "`#ifdef`, `#ifndef`, `defined(…)` and `#undef` name macros whether or not\none is defined; `defined` and `__has_include` are operators, and the file\n`__has_include` tests is a header name.",
+  "prose": "`#ifdef`, `#ifndef`, `defined(…)`, `#undef` and the names an `#if` tests\nname macros whether or not one is defined; `defined` and checks such as\n`__has_include` are operators, what such a check tests is no macro, and the\nfile `__has_include` tests is a header name.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "#define FEATURE 1\n\n#ifdef FEATURE\nint with_feature = 1;\n#endif\n\n#ifndef MISSING\nint without_missing = 2;\n#endif\n\n#if defined(FEATURE) && !defined(MISSING) && __has_include(\"main.cpp\")\nint all_three = 3;\n#endif\n\n#undef FEATURE\n\n#if __has_include(<missing_header.h>)\nint with_missing_header = 4;\n#endif\n",
+      "text": "#define FEATURE 1\n\n#ifdef FEATURE\nint with_feature = 1;\n#endif\n\n#ifndef MISSING\nint without_missing = 2;\n#endif\n\n#if defined(FEATURE) && !defined(MISSING) && __has_include(\"main.cpp\")\nint all_three = 3;\n#endif\n\n#undef FEATURE\n\n#if __has_include(<missing_header.h>)\nint with_missing_header = 4;\n#endif\n\n#if UNDEFINED_FEATURE || __has_cpp_attribute(nodiscard)\nint with_undefined = 5;\n#endif\n",
       "markers": []
     }
   ],
@@ -760,6 +760,163 @@
                     },
                     "end": {
                       "line": 18,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "⟦#if⟧ UNDEFINED_FEATURE || __has_cpp_attribute(nodiscard)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#if ⟦UNDEFINED_FEATURE⟧ || __has_cpp_attribute(nodiscard)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 21
+                    }
+                  }
+                },
+                "type": "macro"
+              },
+              {
+                "at": {
+                  "$place": "#if UNDEFINED_FEATURE ⟦||⟧ __has_cpp_attribute(nodiscard)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 24
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "#if UNDEFINED_FEATURE || ⟦__has_cpp_attribute⟧(nodiscard)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 20,
+                      "character": 25
+                    },
+                    "end": {
+                      "line": 20,
+                      "character": 44
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ with_undefined = 5;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 3
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "int ⟦with_undefined⟧ = 5;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "variable",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int with_undefined ⟦=⟧ 5;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "int with_undefined = ⟦5⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 21,
+                      "character": 21
+                    },
+                    "end": {
+                      "line": 21,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "⟦#endif⟧ @23",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 22,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 22,
                       "character": 6
                     }
                   }

@@ -798,7 +798,7 @@ tests/semantic_tokens/preprocessor/08_empty_macros
 
 条件所检查的名称是 `macro`，无论该宏是否已定义
 
-无论宏是否已定义，`#ifdef`、`#ifndef`、`defined(…)` 和 `#undef` 所写的名称都是宏；`defined` 和 `__has_include` 是运算符，`__has_include` 检查的文件是头文件名。
+无论宏是否已定义，`#ifdef`、`#ifndef`、`defined(…)`、`#undef` 所写的名称以及 `#if` 检测的名称都是宏；`defined` 和 `__has_include` 这类检查是运算符，这类检查所检测的对象不是宏，`__has_include` 检查的文件是头文件名。
 
 ```case
 tests/semantic_tokens/preprocessor/09_condition_operands
