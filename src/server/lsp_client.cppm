@@ -139,6 +139,7 @@ private:
         std::string result_id;
         std::vector<std::uint32_t> data;
     };
+
     llvm::DenseMap<Fid, SentTokens> sent_tokens;
     std::uint64_t next_result_id = 0;
 

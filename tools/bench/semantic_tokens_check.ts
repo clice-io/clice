@@ -265,12 +265,17 @@ async function stop(server: Server): Promise<void> {
         return;
     }
     try {
-        await withTimeout(server.client.sendRequest(proto.ShutdownRequest.type), 60_000, "shutdown");
+        await withTimeout(
+            server.client.sendRequest(proto.ShutdownRequest.type),
+            60_000,
+            "shutdown",
+        );
         await server.client.sendNotification(proto.ExitNotification.type);
     } catch {
         // Killed below.
     }
     server.client.disposed = true;
+    // Hang detection: a server still running after `exit` is killed.
     setTimeout(() => server.client.child.kill("SIGKILL"), 5_000).unref();
     await server.client.exited;
 }
@@ -375,7 +380,9 @@ async function main(): Promise<void> {
                     if (errors.length > 0) {
                         const first = errors[0];
                         const message =
-                            typeof first?.message === "string" ? first.message : first?.message.value;
+                            typeof first?.message === "string"
+                                ? first.message
+                                : first?.message.value;
                         failures.push(
                             `${server.name} ${name}: ${errors.length} errors, first at ${(first?.range.start.line ?? 0) + 1}: ${message}`,
                         );
@@ -544,7 +551,9 @@ async function main(): Promise<void> {
         for (const [key, group] of groups.sorted()) {
             console.log(`- ${group.count} × ${key}  (${group.files.size} files)`);
             for (const e of group.examples) {
-                console.log(`    ${e.at}  ${e.snippet}${e.detail === undefined ? "" : `  [${e.detail}]`}`);
+                console.log(
+                    `    ${e.at}  ${e.snippet}${e.detail === undefined ? "" : `  [${e.detail}]`}`,
+                );
             }
         }
     };
@@ -577,7 +586,11 @@ async function main(): Promise<void> {
             }));
         fs.writeFileSync(
             opts.json,
-            JSON.stringify({ clangd: dump(differences), index: dump(indexGroups), failures }, null, 1),
+            JSON.stringify(
+                { clangd: dump(differences), index: dump(indexGroups), failures },
+                null,
+                1,
+            ),
         );
     }
 }

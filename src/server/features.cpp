@@ -660,13 +660,12 @@ Features::TokensResult Features::semantic_tokens(Ticket ticket, kota::cancellati
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             session->index_served = true;
-            co_return feature::index_semantic_tokens(session->text,
-                                                     index_lang_options(*session),
-                                                     feature::extract_index_entries(*source->shard),
-                                                     [&](index::SymbolHash hash) {
-                                                         return query.symbol_info(hash);
-                                                     },
-                                                     project.config.semantic_tokens);
+            co_return feature::index_semantic_tokens(
+                session->text,
+                index_lang_options(*session),
+                feature::extract_index_entries(*source->shard),
+                [&](index::SymbolHash hash) { return query.symbol_info(hash); },
+                project.config.semantic_tokens);
         }
         case Route::Empty: {
             // The client caches this null, and only a semanticTokens

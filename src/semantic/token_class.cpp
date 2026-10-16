@@ -424,7 +424,7 @@ TokenClass keyword_class(clang::tok::TokenKind kind) {
 }
 
 clang::tok::TokenKind keyword_of(llvm::StringRef name) {
-    static const KeywordTables tables;
+    const static KeywordTables tables;
     for(const auto* keywords: {&tables.cxx_keywords, &tables.c_keywords}) {
         if(auto it = keywords->find(name); it != keywords->end()) {
             return it->second->getTokenID();

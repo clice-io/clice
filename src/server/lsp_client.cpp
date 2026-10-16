@@ -787,8 +787,8 @@ LSPClient::RawResult LSPClient::send_tokens(std::shared_ptr<ProjectServer> proje
          path_id,
          session,
          request = std::move(request),
-         tokens = project->features.semantic_tokens(Ticket::take(session), ctx.cancellation)]()
-            mutable -> RawResult {
+         tokens = project->features.semantic_tokens(Ticket::take(session),
+                                                    ctx.cancellation)]() mutable -> RawResult {
             auto found = co_await std::move(tokens).or_fail();
             if(!found) {
                 co_return kota::codec::RawValue{"null"};
@@ -838,14 +838,14 @@ void LSPClient::register_language_features() {
                                                ctx.cancellation));
     });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::SemanticTokensParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-        if(!session)
-            return kota::outcome_error(unserved(path));
-        return send_tokens(project, path_id, session, ctx, {});
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::SemanticTokensParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            if(!session)
+                return kota::outcome_error(unserved(path));
+            return send_tokens(project, path_id, session, ctx, {});
+        });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::SemanticTokensDeltaParams& params) -> RawResult {

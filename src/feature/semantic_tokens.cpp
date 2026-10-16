@@ -202,8 +202,8 @@ private:
                 const auto* module = node.get<LexicalInfo::ModuleDeclaration>();
                 TokenClass name{
                     .kind = Kind::Module,
-                    .modifiers = mask(unit.defines_module() ? Modifier::Definition
-                                                            : Modifier::Declaration),
+                    .modifiers =
+                        mask(unit.defines_module() ? Modifier::Definition : Modifier::Declaration),
                 };
                 for(auto& part: module->name_parts) {
                     combine(combined[part.begin], name);
@@ -276,9 +276,9 @@ private:
             auto end = occurrence.owns_whole_name() ? occurrence.name_end : clang::SourceLocation();
             auto token = spelled_index(occurrence.location);
             if(occurrence.kind.isDeclOrDef()) {
-                classified.modifiers |=
-                    mask(occurrence.kind.is_one_of(RelationKind::Definition) ? Modifier::Definition
-                                                                             : Modifier::Declaration);
+                classified.modifiers |= mask(occurrence.kind.is_one_of(RelationKind::Definition)
+                                                 ? Modifier::Definition
+                                                 : Modifier::Declaration);
                 anchor_name(occurrence.location, end, classified);
                 if(token) {
                     declared.insert({*token, decl->getCanonicalDecl()});
@@ -393,9 +393,9 @@ private:
             std::uint32_t depth = 0;
             for(auto index = *name + 2; index < spelled.size(); index += 1) {
                 auto kind = spelled[index].kind();
-                bool ends = depth == 0 && (kind == clang::tok::r_paren ||
-                                           (kind == clang::tok::comma &&
-                                            parameter + 1 < macro.getNumParams()));
+                bool ends = depth == 0 &&
+                            (kind == clang::tok::r_paren ||
+                             (kind == clang::tok::comma && parameter + 1 < macro.getNumParams()));
                 if(ends) {
                     if(first && parameter < macro.getNumParams() &&
                        !used(macro.params()[parameter])) {
@@ -490,7 +490,9 @@ private:
     /// parameter's trailing `)`, the `[` of a structured binding, the `(`
     /// of a constructor call written as the type name, an operator
     /// declaration's `operator` keyword — and must not paint it.
-    void anchor_name(clang::SourceLocation location, clang::SourceLocation end, TokenClass classified) {
+    void anchor_name(clang::SourceLocation location,
+                     clang::SourceLocation end,
+                     TokenClass classified) {
         if(classified.kind == Kind::None) {
             return;
         }
@@ -509,8 +511,7 @@ private:
             auto kind = spelled[index].kind();
             bool name = kind == clang::tok::identifier || kind == clang::tok::tilde ||
                         (classified.kind == Kind::Operator &&
-                         (clang::tok::getPunctuatorSpelling(kind) ||
-                          clang::tok::isLiteral(kind)));
+                         (clang::tok::getPunctuatorSpelling(kind) || clang::tok::isLiteral(kind)));
             if(!name || semantics.token_preprocessed_away(index)) {
                 continue;
             }
@@ -755,11 +756,13 @@ auto semantic_tokens_edits(llvm::ArrayRef<std::uint32_t> before,
         return {};
     }
     auto inserted = after.slice(prefix, after.size() - prefix - suffix);
-    return {{
-        .start = static_cast<std::uint32_t>(prefix),
-        .delete_count = static_cast<std::uint32_t>(before.size() - prefix - suffix),
-        .data = std::vector<std::uint32_t>(inserted.begin(), inserted.end()),
-    }};
+    return {
+        {
+         .start = static_cast<std::uint32_t>(prefix),
+         .delete_count = static_cast<std::uint32_t>(before.size() - prefix - suffix),
+         .data = std::vector<std::uint32_t>(inserted.begin(), inserted.end()),
+         }
+    };
 }
 
 }  // namespace clice::feature

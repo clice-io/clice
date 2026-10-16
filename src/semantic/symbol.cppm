@@ -11,31 +11,31 @@ namespace clice {
 /// takes. Semantic tokens have their own (SemanticTokenKind).
 struct SymbolKind {
     enum Kind : std::uint8_t {
-        Comment = 0,     ///< C/C++ comments.
-        Number,          ///< C/C++ number literal.
-        Character,       ///< C/C++ character literal.
-        String,          ///< C/C++ string literal.
-        Keyword,         ///< C/C++ keyword.
-        Directive,       ///< C/C++ preprocessor directive, e.g. `#include`.
-        Header,          ///< C/C++ header name, e.g. `<iostream>` and `"foo.h"`.
-        Module,          ///< C++20 module name.
-        Macro,           ///< C/C++ macro.
-        Namespace,       ///> C++ namespace.
-        Class,           ///> C/C++ class.
-        Struct,          ///> C/C++ struct.
-        Union,           ///> C/C++ union.
-        Enum,            ///> C/C++ enum.
-        Type,            ///> C/C++ type alias and C++ template type parameter.
-        Field,           ///> C/C++ field.
-        EnumMember,      ///> C/C++ enum member.
-        Function,        ///> C/C++ function.
-        Method,          ///> C++ method.
-        Variable,        ///> C/C++ variable, includes C++17 structured bindings.
-        Parameter,       ///> C/C++ parameter.
-        Label,           ///> C/C++ label.
-        Concept,         ///> C++20 concept.
-        Attribute,       ///> GNU/MSVC/C++11/C23 attribute.
-        Operator,        ///> C/C++ operator.
+        Comment = 0,  ///< C/C++ comments.
+        Number,       ///< C/C++ number literal.
+        Character,    ///< C/C++ character literal.
+        String,       ///< C/C++ string literal.
+        Keyword,      ///< C/C++ keyword.
+        Directive,    ///< C/C++ preprocessor directive, e.g. `#include`.
+        Header,       ///< C/C++ header name, e.g. `<iostream>` and `"foo.h"`.
+        Module,       ///< C++20 module name.
+        Macro,        ///< C/C++ macro.
+        Namespace,    ///> C++ namespace.
+        Class,        ///> C/C++ class.
+        Struct,       ///> C/C++ struct.
+        Union,        ///> C/C++ union.
+        Enum,         ///> C/C++ enum.
+        Type,         ///> C/C++ type alias and C++ template type parameter.
+        Field,        ///> C/C++ field.
+        EnumMember,   ///> C/C++ enum member.
+        Function,     ///> C/C++ function.
+        Method,       ///> C++ method.
+        Variable,     ///> C/C++ variable, includes C++17 structured bindings.
+        Parameter,    ///> C/C++ parameter.
+        Label,        ///> C/C++ label.
+        Concept,      ///> C++20 concept.
+        Attribute,    ///> GNU/MSVC/C++11/C23 attribute.
+        Operator,     ///> C/C++ operator.
         Invalid,
     };
 

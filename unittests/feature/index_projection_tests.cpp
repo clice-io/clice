@@ -433,11 +433,13 @@ void g() {
 
 ZEST_CASE(MergedKindsConflict) {
     llvm::StringRef content = "value;\n";
-    auto tokens = project(content,
-                          feature::index_lang_options("main.cpp", false),
-                          {.occurrences = {{.range = {0, 5}, .target = 1},
-                                           {.range = {0, 5}, .target = 2}}},
-                          {SemanticTokenKind::Variable, SemanticTokenKind::Function});
+    auto tokens = project(
+        content,
+        feature::index_lang_options("main.cpp", false),
+        {
+            .occurrences = {{.range = {0, 5}, .target = 1}, {.range = {0, 5}, .target = 2}}
+    },
+        {SemanticTokenKind::Variable, SemanticTokenKind::Function});
     ZASSERT(tokens.size() == std::size_t(1));
     ZASSERT(tokens[0].kind == SemanticTokenKind::Conflict);
 }
@@ -447,11 +449,13 @@ ZEST_CASE(ModuleNameComponents) {
     // name; every identifier component must classify, as on the AST path
     // (separators stay unpainted).
     llvm::StringRef content = "export module demo.core;\nimport foo:part;\n";
-    auto tokens = project(content,
-                          feature::index_lang_options("main.cppm", false),
-                          {.occurrences = {{.range = {14, 23}, .target = 1},
-                                           {.range = {32, 40}, .target = 1}}},
-                          {SemanticTokenKind::Module});
+    auto tokens = project(
+        content,
+        feature::index_lang_options("main.cppm", false),
+        {
+            .occurrences = {{.range = {14, 23}, .target = 1}, {.range = {32, 40}, .target = 1}}
+    },
+        {SemanticTokenKind::Module});
     std::vector<std::pair<std::uint32_t, std::uint32_t>> modules;
     for(auto& token: tokens) {
         if(token.kind == SemanticTokenKind::Module) {
@@ -500,7 +504,8 @@ ZEST_CASE(DriverDefaultKeywords) {
     // The driver turns on `char8_t` from C++20 and the GNU keywords in GNU
     // modes; the language defaults alone leave both off.
     llvm::StringRef content = "char8_t c;\ntypeof(c) d;\n";
-    auto tokens = project(content, feature::index_lang_options("main.cpp", false, "gnu++20"), {}, {});
+    auto tokens =
+        project(content, feature::index_lang_options("main.cpp", false, "gnu++20"), {}, {});
     ZASSERT(kind_at(tokens, 0) == SemanticTokenKind::Primitive);
     ZASSERT(kind_at(tokens, 11) == SemanticTokenKind::Keyword);
 }
@@ -524,15 +529,18 @@ ZEST_CASE(StandardFromCommand) {
     };
     auto kinds = {SemanticTokenKind::Variable};
 
-    auto cxx17 = project(content, feature::index_lang_options("main.cpp", false, "c++17"), entries, kinds);
+    auto cxx17 =
+        project(content, feature::index_lang_options("main.cpp", false, "c++17"), entries, kinds);
     ZASSERT(kind_at(cxx17, 4) == SemanticTokenKind::Variable);
 
-    auto cxx20 = project(content, feature::index_lang_options("main.cpp", false, "c++20"), entries, kinds);
+    auto cxx20 =
+        project(content, feature::index_lang_options("main.cpp", false, "c++20"), entries, kinds);
     ZASSERT(kind_at(cxx20, 4) == SemanticTokenKind::Keyword);
 
     // No -std in the command means the entries were indexed under the
     // driver's default dialect (C++17 today); the fallback matches it.
-    auto fallback = project(content, feature::index_lang_options("main.cpp", false), entries, kinds);
+    auto fallback =
+        project(content, feature::index_lang_options("main.cpp", false), entries, kinds);
     ZASSERT(kind_at(fallback, 4) == SemanticTokenKind::Variable);
 }
 

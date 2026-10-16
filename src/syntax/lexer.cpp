@@ -27,10 +27,10 @@ static clang::LangOptions default_opts;
 Lexer::Lexer(llvm::StringRef content, std::uint32_t start_offset, Options options) :
     keep_comments(options.keep_comments), lexed_end(start_offset), content(content),
     lexer(new clang::Lexer(fake_loc,
-                                             options.lang_opts ? *options.lang_opts : default_opts,
-                                             content.begin(),
-                                             content.begin() + start_offset,
-                                             content.end())) {
+                           options.lang_opts ? *options.lang_opts : default_opts,
+                           content.begin(),
+                           content.begin() + start_offset,
+                           content.end())) {
     // clang's raw lexer reads the terminator as its end sentinel; a prefix
     // slice would make it run past the buffer end.
     assert(content.data() != nullptr && content.data()[content.size()] == '\0' &&

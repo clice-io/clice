@@ -25,7 +25,8 @@ test(async (t) => {
     await t.show(
         "edits",
         delta.edits.map(
-            (edit) => `at ${edit.start}: ${edit.deleteCount} removed, ${edit.data?.length ?? 0} added`,
+            (edit) =>
+                `at ${edit.start}: ${edit.deleteCount} removed, ${edit.data?.length ?? 0} added`,
         ),
     );
 

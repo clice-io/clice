@@ -336,9 +336,7 @@ int y = §(ref)⟦x⟧;
     EXPECT_TOKEN("kw", SemanticTokenKind::Keyword);
     // An implementation unit declares the module its interface defines.
     EXPECT_TOKEN("mod", SemanticTokenKind::Module, mask(SemanticTokenModifier::Declaration));
-    EXPECT_TOKEN("ref",
-                 SemanticTokenKind::Variable,
-                 mask(SemanticTokenModifier::Global));
+    EXPECT_TOKEN("ref", SemanticTokenKind::Variable, mask(SemanticTokenModifier::Global));
 }
 
 ZEST_CASE(ModuleReexport) {

@@ -380,8 +380,9 @@ struct Config {
     <feature::InlayHintsOptions> inlay_hints;
 
     KOTATSU_ANNOTATE(defaulted = true,
-                     description = "The [semantic_tokens] section: what the semantic tokens "
-                                   "hold and the names they are sent by.")
+                     description =
+                         "The [semantic_tokens] section: what the semantic tokens "
+                         "hold and the names they are sent by.")
     <feature::SemanticTokensOptions> semantic_tokens;
 
     KOTATSU_ANNOTATE(defaulted = true,

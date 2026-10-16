@@ -215,28 +215,28 @@ std::optional<kota::codec::RawValue> run_semantic_tokens_check(CompilationUnit& 
     auto focus = unit.focus_file();
     auto text = focus.content().take_front(unit.text_end(focus.file())).str();
     llvm::StringRef content = text;
-    auto ast = named_tokens(
-        feature::semantic_token_stream(content,
-                                       unit.lang_options(),
-                                       feature::semantic_token_facts(unit, {}, true),
-                                       config.semantic_tokens),
-        legend);
+    auto ast =
+        named_tokens(feature::semantic_token_stream(content,
+                                                    unit.lang_options(),
+                                                    feature::semantic_token_facts(unit, {}, true),
+                                                    config.semantic_tokens),
+                     legend);
     auto bytes = index::build_tu_index(unit);
     auto tu = index::TUIndex::from_bytes(bytes);
-    auto projected = named_tokens(
-        feature::index_semantic_tokens(
-            content,
-            unit.lang_options(),
-            feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
-            [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
-                auto identity = tu.find_symbol(hash);
-                if(!identity) {
-                    return std::nullopt;
-                }
-                return index::SymbolRef::from(hash, *identity);
-            },
-            config.semantic_tokens),
-        legend);
+    auto projected =
+        named_tokens(feature::index_semantic_tokens(
+                         content,
+                         unit.lang_options(),
+                         feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
+                         [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+                             auto identity = tu.find_symbol(hash);
+                             if(!identity) {
+                                 return std::nullopt;
+                             }
+                             return index::SymbolRef::from(hash, *identity);
+                         },
+                         config.semantic_tokens),
+                     legend);
 
     auto spell = [](const NamedToken& token) {
         auto spelled = token.kind;

@@ -289,7 +289,8 @@ private:
             if(closes) {
                 brackets.pop_back();
             }
-            emit({middle, token.range.end}, {{.kind = closes ? Kind::Bracket : Kind::Operator}, closes});
+            emit({middle, token.range.end},
+                 {{.kind = closes ? Kind::Bracket : Kind::Operator}, closes});
             after(kind, false);
             return;
         }
@@ -307,7 +308,8 @@ private:
            !tokens.empty() && tokens.back().range.begin == token.range.begin) {
             definition = tokens.size() - 1;
         }
-        after(kind, piece.classified.has(Modifier::Template) || piece.classified.kind == Kind::Concept);
+        after(kind,
+              piece.classified.has(Modifier::Template) || piece.classified.kind == Kind::Concept);
     }
 
     /// Ends a directive: a `#define`'s name learns what its replacement
@@ -356,8 +358,11 @@ private:
 
     /// What a token's spelling says it is, the directive it sits in
     /// included.
-    Piece lexical(Lexer& lexer, const Token& token, clang::tok::TokenKind kind,
-                  llvm::StringRef spelling, bool word) {
+    Piece lexical(Lexer& lexer,
+                  const Token& token,
+                  clang::tok::TokenKind kind,
+                  llvm::StringRef spelling,
+                  bool word) {
         Piece piece{.semantic = false};
         if(clang::tok::getKeywordSpelling(kind)) {
             piece.classified = keyword_class(kind);
@@ -379,7 +384,8 @@ private:
         bool line_head = token.is_at_start_of_line || after_line_export;
         after_line_export = token.is_at_start_of_line && spelling == "export";
         if(kind == clang::tok::identifier && directive == Directive::None) {
-            if(lang_opts.CPlusPlusModules && line_head && (spelling == "module" || spelling == "import")) {
+            if(lang_opts.CPlusPlusModules && line_head &&
+               (spelling == "module" || spelling == "import")) {
                 auto next = lexer.next();
                 bool opens =
                     spelling == "module"
@@ -435,10 +441,12 @@ private:
                 }
                 bool function_like = lexer.next().kind == clang::tok::l_paren &&
                                      lexer.next().range.begin == token.range.end;
-                piece = {{.kind = Kind::Macro,
-                          .modifiers = mask(Modifier::Definition) |
-                                       (function_like ? mask(Modifier::Callable) : 0)},
-                         true};
+                piece = {
+                    {.kind = Kind::Macro,
+                     .modifiers = mask(Modifier::Definition) |
+                                  (function_like ? mask(Modifier::Callable) : 0)},
+                    true
+                };
                 directive = function_like ? Directive::Parameters : Directive::Body;
                 break;
             }
@@ -588,7 +596,12 @@ private:
             return range.begin + static_cast<std::uint32_t>(offset);
         };
         if(open > 0) {
-            emit({range.begin, at(open)}, {{.kind = base, .modifiers = mask(Modifier::Affix)}, false});
+            emit(
+                {
+                    range.begin,
+                    at(open)
+            },
+                {{.kind = base, .modifiers = mask(Modifier::Affix)}, false});
         }
         std::size_t segment = open;
         auto flush = [&](std::size_t until) {
@@ -680,8 +693,18 @@ private:
             if(!is_doc_command(name)) {
                 continue;
             }
-            emit({at(segment), at(i)}, {{.kind = Kind::Comment, .modifiers = documentation}, false});
-            emit({at(i), at(name_end)}, {{.kind = Kind::Keyword, .modifiers = documentation}, false});
+            emit(
+                {
+                    at(segment),
+                    at(i)
+            },
+                {{.kind = Kind::Comment, .modifiers = documentation}, false});
+            emit(
+                {
+                    at(i),
+                    at(name_end)
+            },
+                {{.kind = Kind::Keyword, .modifiers = documentation}, false});
             segment = name_end;
             i = name_end - 1;
             if(name != "param" && name != "tparam") {
@@ -704,13 +727,28 @@ private:
             if(word_end == word) {
                 continue;
             }
-            emit({at(segment), at(word)}, {{.kind = Kind::Comment, .modifiers = documentation}, false});
+            emit(
+                {
+                    at(segment),
+                    at(word)
+            },
+                {{.kind = Kind::Comment, .modifiers = documentation}, false});
             auto kind = name == "param" ? Kind::Parameter : Kind::TypeParameter;
-            emit({at(word), at(word_end)}, {{.kind = kind, .modifiers = documentation}, true});
+            emit(
+                {
+                    at(word),
+                    at(word_end)
+            },
+                {{.kind = kind, .modifiers = documentation}, true});
             segment = word_end;
             i = word_end - 1;
         }
-        emit({at(segment), range.end}, {{.kind = Kind::Comment, .modifiers = documentation}, false});
+        emit(
+            {
+                at(segment),
+                range.end
+        },
+            {{.kind = Kind::Comment, .modifiers = documentation}, false});
     }
 
     /// Whether `range` overlaps an inactive span. Emitted ranges ascend, so
@@ -732,8 +770,8 @@ private:
         auto classified = piece.classified;
         if(inactive(range)) {
             classified = {.kind = options.lexical && classified.kind != Kind::None ? classified.kind
-                                                                                  : Kind::Plain,
-                         .modifiers = classified.modifiers | mask(Modifier::Inactive)};
+                                                                                   : Kind::Plain,
+                          .modifiers = classified.modifiers | mask(Modifier::Inactive)};
         } else if(classified.kind == Kind::None || (!options.lexical && !piece.semantic)) {
             return;
         }
@@ -745,7 +783,8 @@ private:
                 return;
             }
         }
-        tokens.push_back({.range = range, .kind = classified.kind, .modifiers = classified.modifiers});
+        tokens.push_back(
+            {.range = range, .kind = classified.kind, .modifiers = classified.modifiers});
     }
 
     llvm::StringRef content;
@@ -771,6 +810,7 @@ private:
         /// Whether the list opened yet.
         bool entered = false;
     };
+
     std::optional<AttributeList> attribute;
 
     /// The token of the `#define` name being lexed, and what its
