@@ -1181,6 +1181,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
                     .source = source,
                     .diagnostics = std::move(result.value().diagnostics),
                     .line_limit = suffix_line_limit,
+                    .failed = setup_fail,
                 });
             co_return RoundOutcome::Failed;
         }
