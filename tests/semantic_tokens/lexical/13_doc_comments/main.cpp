@@ -13,6 +13,8 @@ struct Point {
     T x, y;
 };
 
+int width; ///<@brief How wide.
+
 ///@brief Clamps a value.
 /// Kept within @f$ [0, 1] @f$.
 int clamp(int value);

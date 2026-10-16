@@ -670,28 +670,31 @@ private:
                 emit({at(segment), at(until)}, {{.kind = base}, false});
             }
         };
-        for(std::size_t i = open + 1; i < close;) {
+        // A raw string's delimiter is no part of its text.
+        auto begin = raw ? text.find('(', open) + 1 : open + 1;
+        auto end = raw ? text.rfind(')', close) : close;
+        for(std::size_t i = begin; i < end;) {
             std::size_t length = 0;
             Piece piece;
             if(!raw && text[i] == '\\') {
-                length = std::min(escape_length(text.substr(i)), close - i);
+                length = std::min(escape_length(text.substr(i)), end - i);
                 piece = {{.kind = Kind::Escape}, false};
             } else if(format == FormatStyle::Std && (text[i] == '{' || text[i] == '}') &&
-                      i + 1 < close && text[i + 1] == text[i]) {
+                      i + 1 < end && text[i + 1] == text[i]) {
                 length = 2;
                 piece = {{.kind = Kind::Escape}, false};
             } else if(format == FormatStyle::Std && text[i] == '{') {
-                length = replacement_field_length(text.slice(i, close), raw);
+                length = replacement_field_length(text.slice(i, end), raw);
                 piece = {{.kind = Kind::FormatSpecifier}, true};
             } else if((format == FormatStyle::Printf || format == FormatStyle::Scanf) &&
-                      text[i] == '%' && i + 1 < close && text[i + 1] == '%') {
+                      text[i] == '%' && i + 1 < end && text[i + 1] == '%') {
                 length = 2;
                 piece = {{.kind = Kind::Escape}, false};
             } else if(format == FormatStyle::Printf && text[i] == '%') {
-                length = printf_conversion_length(text.slice(i, close));
+                length = printf_conversion_length(text.slice(i, end));
                 piece = {{.kind = Kind::FormatSpecifier}, true};
             } else if(format == FormatStyle::Scanf && text[i] == '%') {
-                length = scanf_conversion_length(text.slice(i, close));
+                length = scanf_conversion_length(text.slice(i, end));
                 piece = {{.kind = Kind::FormatSpecifier}, true};
             }
             if(length == 0) {
@@ -746,9 +749,12 @@ private:
             return range.begin + static_cast<std::uint32_t>(offset);
         };
         std::size_t segment = 0;
-        for(std::size_t i = 3; i < text.size(); i += 1) {
-            // The comment's text starts a word right past its marker.
-            if((text[i] != '@' && text[i] != '\\') || (i > 3 && !at_doc_word_start(text, i))) {
+        // The comment's text starts a word right past its marker, `///` or
+        // a trailing one, `///<`.
+        std::size_t payload = text.size() > 3 && text[3] == '<' ? 4 : 3;
+        for(std::size_t i = payload; i < text.size(); i += 1) {
+            if((text[i] != '@' && text[i] != '\\') ||
+               (i > payload && !at_doc_word_start(text, i))) {
                 continue;
             }
             auto name = doc_command_name(text.substr(i + 1));

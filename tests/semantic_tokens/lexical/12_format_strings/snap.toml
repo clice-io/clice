@@ -146,6 +146,17 @@ semantic_tokens = [
     { at = 'fmt::print(R"(⟦{:\<8}⟧)", count);', type = "formatSpecifier" },
     { at = 'fmt::print(R"({:\<8}⟦)"⟧, count);', type = "string" },
     { at = 'fmt::print(R"({:\<8})", ⟦count⟧);', type = "parameter", modifiers = ["local"] },
+    { at = '⟦fmt⟧::print(R"{}({} items){}", count);', type = "namespace", modifiers = ["global"] },
+    {
+        at = 'fmt::⟦print⟧(R"{}({} items){}", count);',
+        type = "function",
+        modifiers = ["global", "template"],
+    },
+    { at = 'fmt::print(⟦R⟧"{}({} items){}", count);', type = "string", modifiers = ["affix"] },
+    { at = 'fmt::print(R⟦"{}(⟧{} items){}", count);', type = "string" },
+    { at = 'fmt::print(R"{}(⟦{}⟧ items){}", count);', type = "formatSpecifier" },
+    { at = 'fmt::print(R"{}({}⟦ items){}"⟧, count);', type = "string" },
+    { at = 'fmt::print(R"{}({} items){}", ⟦count⟧);', type = "parameter", modifiers = ["local"] },
     {
         at = '⟦logger⟧.log("%d member", count);',
         type = "parameter",
