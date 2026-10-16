@@ -51,7 +51,7 @@ Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: the case fram
 ## Build & Test
 
 - **pixi** for environments, **Bazel** for building (npm's bazelisk: `npx bazel`, available once `pixi run install-tests` has run). Build types `Debug` (ASan and assertions) and `RelWithDebInfo` (default), each in its own output directory: `pixi run build [type]` puts clice at `build/[type]/bin/bin/clice`.
-- **Where builds run:** on a box (the build skill), not on this machine unless truly necessary — it hosts every agent's session, and one build saturates it. Several boxes in parallel are fine; while one comes up, push and let CI verify.
+- **Where builds run:** on a box (the build skill), not on this machine unless truly necessary — it hosts every agent's session, and one build saturates it. A session may hold several, one per kind of work (platforms, Debug, A/B); while one comes up, push and let CI verify.
 - Two test suites, both must pass before any push: **unit** (`unittests/`, C++ on zest) and **cases** (`tests/`, every other test: one directory per case, run against a real server, `clice inspect` and the CLI; `tests/README.md` is the contract).
 - **Compat** (`tests/compat/`): real build systems and compilers build a small project; clice must parse the resulting database clean and agree with the compiler. It needs those tools installed, so it runs in CI; run it on a box when changing command handling.
 - TypeScript gate: `npm run check` at the repo root — strict tsc + ESLint across all workspace packages, zero tolerance.

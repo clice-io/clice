@@ -19,7 +19,7 @@ box run $id 'pixi run build RelWithDebInfo'     # run_in_background
 The box belongs to the calling session, not to this skill: build on the id the caller passed, or lease one and report its id. Never `box down` it — the session reuses it, warm, for the tests and every later push, and an idle box stops by itself after an hour.
 
 - A box restores the Bazel and ThinLTO caches of main's CI, RelWithDebInfo only: a Debug build there starts cold.
-- Several boxes in parallel are fine when the work splits (RelWithDebInfo and Debug, platforms, A/B). While a box comes up, push and let CI verify; it runs many jobs at once.
+- A session may hold several boxes, one per kind of work — an OS or architecture, a Debug build beside the RelWithDebInfo one, the two sides of an A/B — each leased once and reused, building in parallel. While a box comes up, push and let CI verify; it runs many jobs at once.
 - Windows programs build on a linux box (the test skill runs them on a windows box).
 
 ## Commands
