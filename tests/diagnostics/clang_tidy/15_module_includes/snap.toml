@@ -1,0 +1,20 @@
+[test."main.cppm"]
+diagnostics = [
+    { at = "export void order(std::vector<int>& v) { ⟦std::sort⟧(v.rbegin(), v.rend()); }", severity = "warning", message = "use a ranges version of this algorithm", source = "clang-tidy", code = "modernize-use-ranges" },
+]
+
+[[test.fixes.code_actions]]
+kind = "quickfix"
+title = "use a ranges version of this algorithm"
+
+[test.fixes.code_actions.edits]
+"main.cppm" = '''
++module;
++#include <algorithm>
++#include <ranges>
+ export module shapes;
+ import ranges;
+
+-export void order(std::vector<int>& v) { std::sort(v.rbegin(), v.rend()); }
++export void order(std::vector<int>& v) { std::ranges::sort(std::views::reverse(v)); }
+'''
