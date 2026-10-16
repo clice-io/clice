@@ -109,7 +109,7 @@ tests/selection_range/syntax_ranges/07_blocks
 
 选区从函数名扩大到函数签名，再扩大到整个声明
 
-签名从返回类型开始（构造函数从其名称开始），包括形参列表和函数类型的其余部分，例如 `const noexcept` 或尾置返回类型。
+签名从返回类型开始（构造函数从其名称开始），包括形参列表以及声明在其后添加的内容，例如 `const noexcept`、尾置返回类型、`override` 或 `requires` 子句。
 
 ```case
 tests/selection_range/syntax_ranges/11_function_signatures

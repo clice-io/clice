@@ -116,8 +116,9 @@ tests/selection_range/syntax_ranges/07_blocks
 A function's name is selected with its signature before the whole declaration
 
 The signature runs from the return type, or from the name of a
-constructor, through the parameters and the rest of the function's type,
-such as `const noexcept` or a trailing return type.
+constructor, through the parameters and what the declaration adds after
+them, such as `const noexcept`, a trailing return type, `override` or a
+`requires` clause.
 
 ```case
 tests/selection_range/syntax_ranges/11_function_signatures
