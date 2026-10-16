@@ -1,1 +1,1 @@
-Checks: "-*,readability-redundant-member-init"
+Checks: "-*,readability-redundant-member-init,modernize-use-nullptr"
