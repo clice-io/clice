@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "[[nodiscard]] int compute();\n[[deprecated(\"use v2\")]] void old_func();\n[[maybe_unused]] int counter = 0;\n\nstruct [[gnu::packed]] Packed {};\n\n__attribute__((noinline)) void slow();\n",
+      "text": "[[nodiscard]] int compute();\n[[deprecated(\"use v2\")]] void old_func();\n[[maybe_unused]] int counter = 0;\n\nstruct [[gnu::packed]] Packed {};\n\n__attribute__((noinline)) void slow();\n[[using gnu: hot]] void warm();\n",
       "markers": [
         {
           "name": "nodiscard",
@@ -54,6 +54,12 @@
           "name": "gnu_style",
           "begin": 156,
           "end": 156,
+          "range": false
+        },
+        {
+          "name": "using_prefix",
+          "begin": 182,
+          "end": 182,
           "range": false
         }
       ]
@@ -130,6 +136,16 @@
             "semantic_token": {
               "text": "noinline",
               "type": "attribute"
+            }
+          }
+        },
+        {
+          "label": "using_prefix",
+          "marker": "using_prefix",
+          "value": {
+            "semantic_token": {
+              "text": "using",
+              "type": "keyword"
             }
           }
         }

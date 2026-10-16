@@ -232,6 +232,10 @@ private:
                 if(const auto* type = node.get<clang::TypeLoc>()) {
                     declarator(*type);
                 }
+                if(const auto* lambda =
+                       llvm::dyn_cast_if_present<clang::LambdaExpr>(node.get<clang::Stmt>())) {
+                    lambda_brackets(*lambda);
+                }
                 if(!entry.flags.in_instantiation) {
                     formats(node);
                 }
@@ -324,6 +328,20 @@ private:
         }
     }
 
+    /// The brackets around a lambda's template parameters, which follow its
+    /// captures with nothing in the text saying a template opens.
+    void lambda_brackets(const clang::LambdaExpr& lambda) {
+        if(lambda.getExplicitTemplateParameters().empty()) {
+            return;
+        }
+        const auto* parameters = lambda.getTemplateParameterList();
+        for(auto location: {parameters->getLAngleLoc(), parameters->getRAngleLoc()}) {
+            if(auto offset = token_at(location)) {
+                owned[*offset] = {.kind = Kind::Bracket};
+            }
+        }
+    }
+
     /// The format strings a call passes: to a format string parameter
     /// (`std::format`), or where the callee's format attribute says
     /// (`printf`).
@@ -338,7 +356,13 @@ private:
                 return;
             }
             for(unsigned i = 0; i < literal->getNumConcatenated(); i += 1) {
-                if(auto offset = token_at(literal->getStrTokenLoc(i))) {
+                // A macro's replacement list stays lexical: one written
+                // there formats only where the macro expands.
+                auto location = literal->getStrTokenLoc(i);
+                if(location.isMacroID() && !sources.isMacroArgExpansion(location)) {
+                    continue;
+                }
+                if(auto offset = token_at(location)) {
                     facts.formats.try_emplace(*offset, style);
                 }
             }

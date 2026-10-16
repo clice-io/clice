@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nstruct Grid {\n    T cells[4];\n};\n\nGrid<int> grid{{1, 2, 3, 4}};\nGrid<Grid<int>> nested;\n\nint first(Grid<int>& grid) {\n    return grid.cells[0];\n}\n",
+      "text": "template <typename T>\nstruct Grid {\n    T cells[4];\n};\n\nGrid<int> grid{{1, 2, 3, 4}};\nGrid<Grid<int>> nested;\n\nint first(Grid<int>& grid) {\n    return grid.cells[0];\n}\n\nauto identity = []<class T>(T value) { return value; };\n",
       "markers": [
         {
           "name": "template_open",
@@ -58,6 +58,12 @@
           "name": "subscript_open",
           "begin": 161,
           "end": 161,
+          "range": false
+        },
+        {
+          "name": "lambda_open",
+          "begin": 187,
+          "end": 187,
           "range": false
         }
       ]
@@ -144,6 +150,16 @@
             "semantic_token": {
               "text": "[",
               "type": "none"
+            }
+          }
+        },
+        {
+          "label": "lambda_open",
+          "marker": "lambda_open",
+          "value": {
+            "semantic_token": {
+              "text": "<",
+              "type": "bracket"
             }
           }
         }

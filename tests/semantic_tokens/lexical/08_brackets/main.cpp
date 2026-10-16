@@ -9,3 +9,5 @@ Grid<Grid<int§(inner_close)>§(outer_close)> nested;
 int first§(paren_open)(Grid<int>& grid) {
     return grid.cells§(subscript_open)[0];
 }
+
+auto identity = []§(lambda_open)<class T>(T value) { return value; };

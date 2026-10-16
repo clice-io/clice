@@ -1055,9 +1055,10 @@ tests/inactive_regions/updates/01_edited_condition
 - While a file's compile is in progress — when it is first opened, or after
   a header it includes changed — its tokens come from the project index. They
   name everything the finished compile names, but leave out what only the
-  compile knows: dependent and `unknown` names, declarator operators, format
-  string placeholders, untaken branches and the arguments macros drop. These
-  appear once the compile finishes.
+  compile knows: dependent and `unknown` names, declarator operators, the
+  brackets of a lambda's template parameters, format string placeholders,
+  untaken branches and the arguments macros drop. These appear once the
+  compile finishes.
 - Code no control flow reaches, and the branch of an `if constexpr` an
   instantiation discards, are not dimmed: the first takes a control flow
   analysis, the second differs from one instantiation to the next

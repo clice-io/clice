@@ -1,13 +1,17 @@
 #include "fmt.h"
 
+#define COUNT_FORMAT "%d items\n"
+
 void report(Logger logger, int count, double ratio, const char* name) {
     fmt::print("{} items, {:>8.2f} ratio, {{braces}}\n", count, ratio);
     log_line("%s: %d of %-8.3f%%\n", name, count, ratio);
     log_line(R"(%d raw \n)", count);
     log_line("%2$s: %1$*3$d\n", count, name, 8);
+    log_line(COUNT_FORMAT, count);
+    fmt::print(R"({:\<8})", count);
     logger.log("%d member", count);
     logger("%d call", count);
-    const char* plain = "{} stays text";
+    const char* plain = "{} and 100%% stay text";
 }
 
 void scan(char** owned, char* word, int* count) {

@@ -25,3 +25,7 @@ type = "attribute"
 [answers.gnu_style.semantic_token]
 text = "noinline"
 type = "attribute"
+
+[answers.using_prefix.semantic_token]
+text = "using"
+type = "keyword"

@@ -29,3 +29,7 @@ type = "none"
 [answers.subscript_open.semantic_token]
 text = "["
 type = "none"
+
+[answers.lambda_open.semantic_token]
+text = "<"
+type = "bracket"

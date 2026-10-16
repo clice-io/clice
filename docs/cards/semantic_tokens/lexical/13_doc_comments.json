@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "/// Scales a value.\n/// \\param value the value to scale\n/// @param factor how much, at least 1\n/// @return the scaled value\nint scale(int value, int factor);\n\n/**\n * @brief A point on the plane.\n * @tparam T the coordinate type\n */\ntemplate <class T>\nstruct Point {\n    T x, y;\n};\n\n///@brief Clamps a value.\nint clamp(int value);\n\n// @param plain comments have no commands\n",
+      "text": "/// Scales a value.\n/// \\param value the value to scale\n/// @param factor how much, at least 1\n/// @return the scaled value\nint scale(int value, int factor);\n\n/**\n * @brief A point on the plane.\n * @tparam T the coordinate type\n */\ntemplate <class T>\nstruct Point {\n    T x, y;\n};\n\n///@brief Clamps a value.\n/// Kept within @f$ [0, 1] @f$.\nint clamp(int value);\n\n// @param plain comments have no commands\n",
       "markers": []
     }
   ],
@@ -868,7 +868,7 @@
               },
               {
                 "at": {
-                  "$place": "⟦int⟧ clamp(int value);",
+                  "$place": "⟦/// Kept within ⟧@f$ [0, 1] @f$.",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -877,6 +877,106 @@
                     },
                     "end": {
                       "line": 16,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// Kept within ⟦@f$⟧ [0, 1] @f$.",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 19
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// Kept within @f$⟦ [0, 1] ⟧@f$.",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 19
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// Kept within @f$ [0, 1] ⟦@f$⟧.",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 27
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 30
+                    }
+                  }
+                },
+                "type": "keyword",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "/// Kept within @f$ [0, 1] @f$⟦.⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 30
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 31
+                    }
+                  }
+                },
+                "type": "comment",
+                "modifiers": [
+                  "documentation"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ clamp(int value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 17,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 17,
                       "character": 3
                     }
                   }
@@ -889,11 +989,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 16,
+                      "line": 17,
                       "character": 4
                     },
                     "end": {
-                      "line": 16,
+                      "line": 17,
                       "character": 9
                     }
                   }
@@ -910,11 +1010,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 16,
+                      "line": 17,
                       "character": 10
                     },
                     "end": {
-                      "line": 16,
+                      "line": 17,
                       "character": 13
                     }
                   }
@@ -927,11 +1027,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 16,
+                      "line": 17,
                       "character": 14
                     },
                     "end": {
-                      "line": 16,
+                      "line": 17,
                       "character": 19
                     }
                   }
@@ -948,11 +1048,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 18,
+                      "line": 19,
                       "character": 0
                     },
                     "end": {
-                      "line": 18,
+                      "line": 19,
                       "character": 41
                     }
                   }

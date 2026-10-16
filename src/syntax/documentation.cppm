@@ -79,6 +79,15 @@ Documentation parse_documentation(llvm::StringRef text, CopiedDocLookup lookup);
 /// command parse_documentation reads.
 bool is_doc_command(llvm::StringRef name);
 
+/// The name of a documentation command whose marker is right before
+/// `text`: a word, or one of the formula delimiters and the group braces.
+llvm::StringRef doc_command_name(llvm::StringRef text);
+
+/// Whether a documentation command may start at `index`: Doxygen reads `@`
+/// and `\` as one only at the start of a word, as `user@example.com` and
+/// `C:\path` show.
+bool at_doc_word_start(llvm::StringRef line, std::size_t index);
+
 /// A name as `@copydoc` writes it: `name`, `Class::member`,
 /// `Class#member`, `::name`, and for one overload of a function its
 /// parameter types, `f(int, const char*)`.

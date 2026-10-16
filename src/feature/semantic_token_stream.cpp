@@ -117,8 +117,9 @@ std::size_t escape_length(llvm::StringRef text) {
 
 /// The length of the std::format replacement field at `text[0]`, a `{`
 /// not doubled, through its `}`; one level of nested fields (`{:{}}`) is
-/// allowed. Zero for a field left open.
-std::size_t replacement_field_length(llvm::StringRef text) {
+/// allowed. Zero for a field left open, which outside a raw string an
+/// escape or the closing quote also ends.
+std::size_t replacement_field_length(llvm::StringRef text, bool raw) {
     std::uint32_t depth = 0;
     for(std::size_t i = 0; i < text.size(); i += 1) {
         if(text[i] == '{') {
@@ -128,7 +129,7 @@ std::size_t replacement_field_length(llvm::StringRef text) {
             if(depth == 0) {
                 return i + 1;
             }
-        } else if(text[i] == '\\' || text[i] == '"') {
+        } else if(!raw && (text[i] == '\\' || text[i] == '"')) {
             return 0;
         }
     }
@@ -353,7 +354,7 @@ private:
         auto piece = lexical(lexer, token, kind, spelling, word);
         if(auto semantic = semantic_of(token, spelling, word)) {
             piece = {*semantic, true};
-        } else if(word && attribute && depth == attribute->depth) {
+        } else if(word && attribute && depth == attribute->depth && kind != clang::tok::kw_using) {
             piece = {{.kind = Kind::Attribute}, true};
         }
         piece = bracket(kind, piece);
@@ -609,7 +610,7 @@ private:
                 break;
             }
             case clang::tok::less: {
-                if(names_template) {
+                if(names_template || piece.classified.kind == Kind::Bracket) {
                     brackets.push_back(depth);
                     return {{.kind = Kind::Bracket}, true};
                 }
@@ -680,10 +681,10 @@ private:
                 length = 2;
                 piece = {{.kind = Kind::Escape}, false};
             } else if(format == FormatStyle::Std && text[i] == '{') {
-                length = replacement_field_length(text.slice(i, close));
+                length = replacement_field_length(text.slice(i, close), raw);
                 piece = {{.kind = Kind::FormatSpecifier}, true};
-            } else if(format != FormatStyle::Std && text[i] == '%' && i + 1 < close &&
-                      text[i + 1] == '%') {
+            } else if((format == FormatStyle::Printf || format == FormatStyle::Scanf) &&
+                      text[i] == '%' && i + 1 < close && text[i + 1] == '%') {
                 length = 2;
                 piece = {{.kind = Kind::Escape}, false};
             } else if(format == FormatStyle::Printf && text[i] == '%') {
@@ -746,18 +747,15 @@ private:
         };
         std::size_t segment = 0;
         for(std::size_t i = 3; i < text.size(); i += 1) {
-            if((text[i] != '@' && text[i] != '\\') || (i > 3 && !llvm::isSpace(text[i - 1])) ||
-               i + 1 >= text.size() || !llvm::isAlpha(text[i + 1])) {
+            // The comment's text starts a word right past its marker.
+            if((text[i] != '@' && text[i] != '\\') || (i > 3 && !at_doc_word_start(text, i))) {
                 continue;
             }
-            auto name_end = i + 1;
-            while(name_end < text.size() && llvm::isAlpha(text[name_end])) {
-                name_end += 1;
-            }
-            auto name = text.slice(i + 1, name_end);
-            if(!is_doc_command(name)) {
+            auto name = doc_command_name(text.substr(i + 1));
+            if(name.empty() || !is_doc_command(name)) {
                 continue;
             }
+            auto name_end = i + 1 + name.size();
             emit(
                 {
                     at(segment),

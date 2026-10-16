@@ -14,6 +14,7 @@ struct Point {
 };
 
 ///@brief Clamps a value.
+/// Kept within @f$ [0, 1] @f$.
 int clamp(int value);
 
 // @param plain comments have no commands
