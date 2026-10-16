@@ -47,8 +47,8 @@ std::string fix_title(llvm::StringRef content, const Diagnostic& diagnostic) {
 /// A fix's edits as the main file takes them. clang-tidy inserts an
 /// include into a file without one at its first byte, which in a module
 /// unit is before its declaration, where no directive may go: there it
-/// goes where an added include goes. And its checks count on the cleanup
-/// clang-tidy does as it applies their fixes.
+/// goes where an added include goes. And a check whose fix removes code
+/// counts on the cleanup clang-tidy does as it applies the fix.
 std::vector<TextReplacement> fix_edits(CompilationUnit& unit,
                                        const Diagnostic& main,
                                        llvm::ArrayRef<TextReplacement> fix) {
@@ -72,7 +72,10 @@ std::vector<TextReplacement> fix_edits(CompilationUnit& unit,
             }
         }
     }
-    if(main.id.source != DiagnosticSource::ClangTidy) {
+    // Only a removal leaves anything dangling: cleaning up after a mere
+    // replacement drops the comma of an empty macro argument on its line.
+    if(main.id.source != DiagnosticSource::ClangTidy ||
+       std::ranges::none_of(edits, [](const TextReplacement& edit) { return edit.text.empty(); })) {
         return edits;
     }
     return cleanup_edits(unit.file_path(unit.focus_file().file()),
