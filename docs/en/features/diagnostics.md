@@ -131,6 +131,20 @@ A diagnostic clang gets wrong can be hidden by its code in the configuration, an
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/suppression -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Suppressing diagnostics**
+
+`suppress` hides diagnostics by their code
+
+A diagnostic clang gets wrong on some code can be hidden by the code it shows with: a compiler warning's option, clang's name for any other diagnostic, or a clang-tidy check. The file's other features work as before, and `clice lint` still reports it.
+
+```case
+tests/diagnostics/suppression/01_by_code
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 - [x] `// NOLINT` comment suppression

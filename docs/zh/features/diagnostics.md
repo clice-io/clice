@@ -9,18 +9,12 @@
 - [x] 跨文件诊断的文件 URI 转换
 - [x] 拉取式诊断模型（`textDocument/diagnostic`），用于声明支持它的客户端；其他客户端的诊断仍由服务端推送
 - [x] 每个缺失的 `#include` 都会报告，而不只是第一个，其后的代码也照常检查
+- [x] clang 在解析之前就拒绝的编译命令（例如未知的目标平台），会在文件顶部显示 clang 给出的原因
 - [ ] 显示源自头文件的诊断的完整包含链（[clangd#1392](https://github.com/clangd/clangd/issues/1392)）
 
   ```
   // current:  "In included file: expected ';'"
   // expected: "In main.cpp → utils.h → detail/impl.h: expected ';'"
-  ```
-
-- [ ] 在诊断中反映头文件的未保存更改（[clangd#488](https://github.com/clangd/clangd/issues/488)）
-
-  ```
-  // header.h (unsaved buffer): added new_func()
-  // main.cpp: calls new_func() → should NOT show "undeclared identifier"
   ```
 
 - [x] Preamble 头文件中的模板实例化错误诊断（[clangd#137](https://github.com/clangd/clangd/issues/137)）
@@ -49,7 +43,7 @@ tests/diagnostics/headers/01_errors_on_include
 
 ## 模板实例化
 
-模板内部的错误会报告在实例化该模板的代码处。
+模板内部的错误或警告会报告在实例化该模板的代码处。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/templates -->
 
@@ -71,7 +65,7 @@ tests/diagnostics/templates/01_instantiation_errors
 
 ## 备注
 
-clang 为错误附加的备注会作为相关信息随错误一同提供。
+clang 为错误附加的备注会作为相关信息随错误一同提供；不接收相关信息的客户端会在诊断消息中看到这些备注。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/notes -->
 
@@ -115,15 +109,16 @@ tests/diagnostics/guidance/01_no_database
 
 ## 标签
 
-- [x] `-Wdeprecated` 诊断和 `modernize-*` clang-tidy 检查结果的 `Deprecated` 标签
+- [x] `-Wdeprecated` 诊断和涉及已弃用头文件与别名的 clang-tidy 检查结果的 `Deprecated` 标签
 - [x] 未使用变量/参数警告和 `misc-unused-*` clang-tidy 检查结果的 `Unnecessary` 标签
 
 ## 发布
 
 - [x] 编译完成时推送诊断
 - [x] 文件关闭时清除诊断
+- [x] 保存头文件或修改 `.clang-tidy` 后，clice 会让客户端重新请求包含它的已打开文件，这些文件随之重新编译；与 clangd 一样，诊断以头文件保存后的内容为准，而不是它未保存的缓冲区
 - [x] 按文件对诊断分组（主文件和头文件）
-- [x] 诊断 `code` 字段包含 Clang 错误代码
+- [x] 诊断 `code` 字段：警告对应的选项（`-Wunused-variable`）、其他诊断在 clang 中的名称、clang-tidy 检查名
 - [x] `codeDescription` 将 clang-tidy 检查结果链接到该检查的文档
 - [ ] `codeDescription` 中提供指向 Clang 文档的链接
 - [x] 诊断 `source` 字段区分 clang 与 clang-tidy
@@ -131,6 +126,26 @@ tests/diagnostics/guidance/01_no_database
 - [ ] 后台索引完成后重新计算已打开文件的诊断（[clangd#2604](https://github.com/clangd/clangd/issues/2604)）
 
 ## 诊断抑制
+
+clang 误报的诊断可以在配置中按诊断代码隐藏，注释则能屏蔽所在行的诊断。
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/suppression -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**抑制诊断**
+
+`suppress` 按诊断代码隐藏诊断
+
+clang 在某些代码上误报的诊断，可以按它显示的诊断代码隐藏：编译器警告的选项、其他诊断在 clang 中的名称，或 clang-tidy 检查名。文件的其他功能照常工作，`clice lint` 也仍会报告这条诊断。
+
+```case
+tests/diagnostics/suppression/01_by_code
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
 
 - [x] 使用 `// NOLINT` 注释抑制诊断
 - [x] 使用 `// NOLINTNEXTLINE` 注释抑制诊断
@@ -255,11 +270,12 @@ tests/diagnostics/clang_tidy/09_turned_off
   ```
 
 - [ ] 将优化备注（`-Rpass`）显示为诊断（[clangd#2519](https://github.com/clangd/clangd/issues/2519)）
-- [ ] 列出整个项目的警告（[clangd#1973](https://github.com/clangd/clangd/issues/1973)）
+- [x] 列出整个项目的警告：`clice lint`（[clangd#1973](https://github.com/clangd/clangd/issues/1973)）
 
 ## 配置文件诊断
 
-- [ ] 为格式错误的 `.clang-tidy` 和 `.clang-format` 文件报告诊断（[clangd#2313](https://github.com/clangd/clangd/issues/2313)、[clangd#2591](https://github.com/clangd/clangd/issues/2591)）
+- [x] 格式错误的 `.clang-tidy` 会在它所配置的文件顶部报告，并且不运行任何检查（[clangd#2313](https://github.com/clangd/clangd/issues/2313)）
+- [ ] 为格式错误的 `.clang-format` 文件报告诊断（[clangd#2591](https://github.com/clangd/clangd/issues/2591)）
 
 ## 诊断正确性
 
