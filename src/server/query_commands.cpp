@@ -789,6 +789,19 @@ Outcome<std::vector<index::SymbolHash>> declaration(Context& ctx, index::SymbolQ
     return hashes;
 }
 
+Outcome<std::vector<index::SymbolHash>> named_symbols(Context& ctx, index::SymbolQuery locator) {
+    hold_to_whole_name(locator);
+    auto candidates = resolve(ctx, std::move(locator));
+    if(!candidates) {
+        return std::unexpected(candidates.error());
+    }
+    std::vector<index::SymbolHash> hashes;
+    for(auto& candidate: *candidates) {
+        hashes.push_back(candidate.symbol.hash);
+    }
+    return hashes;
+}
+
 Outcome<TypeHierarchyResult> type_hierarchy(Context& ctx,
                                             index::SymbolQuery locator,
                                             llvm::StringRef direction) {

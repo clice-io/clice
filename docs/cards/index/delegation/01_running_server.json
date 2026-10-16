@@ -24,21 +24,21 @@
       "name": "asks the running server to index",
       "blocks": [
         {
-          "label": "$ clice index --workers 2",
+          "label": "$ clice index --jobs 2",
           "value": {
             "stdout": "Indexed through the running clice server (pid #).",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol extra --fresh",
+          "label": "$ clice query symbol-search extra --fresh",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"extra\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#c9be3d07e9d6b64f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol extra",
+          "label": "$ clice query symbol-search extra",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"extra\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#c9be3d07e9d6b64f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
@@ -57,14 +57,14 @@
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol compute --fresh",
+          "label": "$ clice query symbol-search compute --fresh",
           "value": {
             "stdout": "{\n  \"error\": \"another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done\",\n  \"stale\": []\n}",
             "exit": 1
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol compute",
+          "label": "$ clice query symbol-search compute",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"container\": null,\n        \"symbol\": \"#81df9416985c4402\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0

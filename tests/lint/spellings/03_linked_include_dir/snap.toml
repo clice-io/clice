@@ -1,4 +1,4 @@
-[test."$ clice lint --workers 2"]
+[test."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/vendor/real/common.h:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 Linted 1 translation unit in #s: 1 finding.

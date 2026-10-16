@@ -1,6 +1,6 @@
 import { test } from "@clice/tools/testing";
 
 test(async (t) => {
-    await t.cli("index --workers 2");
-    await t.cli("refactor rename --symbol compute --to Widget");
+    await t.cli("index --jobs 2");
+    await t.cli("refactor rename compute Widget");
 });

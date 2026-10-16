@@ -11,18 +11,12 @@ test(async (t) => {
         '"rows" path:b.cpp',
         "helper::rows path:a.cpp",
     ]) {
-        await t.cli(["query", "--method", "symbolSearch", "--symbol", text]);
+        await t.cli(["query", "symbol-search", text]);
     }
-    await t.cli(["query", "--method", "definition", "--symbol", "a::rows path:a.cpp"]);
-    const ambiguous = await t.cli([
-        "query",
-        "--method",
-        "definition",
-        "--symbol",
-        '"rows" path:a.cpp',
-    ]);
+    await t.cli(["query", "definition", "a::rows path:a.cpp"]);
+    const ambiguous = await t.cli(["query", "definition", '"rows" path:a.cpp']);
     const { candidates } = ambiguous.json as { candidates: { symbol: string }[] };
     for (const candidate of candidates) {
-        await t.cli(["query", "--method", "definition", "--symbol", candidate.symbol]);
+        await t.cli(["query", "definition", candidate.symbol]);
     }
 });

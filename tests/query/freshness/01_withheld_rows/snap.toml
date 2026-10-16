@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol compute"]
+[test."$ clice query definition compute"]
 stdout = '''
 {
   "error": "symbol not found",
@@ -16,7 +16,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method definition --symbol new.cpp:1:5"]
+[test."$ clice query definition new.cpp:1:5"]
 stdout = '''
 {
   "error": "symbol not found",
@@ -27,7 +27,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method documentSymbols --path main.cpp"]
+[test."$ clice query document-symbols main.cpp"]
 stdout = '''
 {
   "result": {
@@ -40,7 +40,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method documentSymbols --path a.h"]
+[test."$ clice query document-symbols a.h"]
 stdout = '''
 {
   "result": {
@@ -73,7 +73,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method counterparts --path a.h"]
+[test."$ clice query counterparts a.h"]
 stdout = '''
 {
   "result": {

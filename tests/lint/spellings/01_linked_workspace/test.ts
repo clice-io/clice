@@ -6,6 +6,6 @@ test(
     { except: { win32: "a symlink on Windows needs a privilege the CI runners lack" } },
     async (t) => {
         t.disk.symlink("ws", "real");
-        await t.cli("lint --workspace ws --workers 2");
+        await t.cli("lint --workspace ws --jobs 2");
     },
 );

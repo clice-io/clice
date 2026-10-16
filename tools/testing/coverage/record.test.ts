@@ -19,11 +19,11 @@ const recorded = (surface: "method" | "invocation" | "config"): string[] =>
 
 describe("records", () => {
     test("invocations drop values", () => {
-        recordInvocation(["analyze", "modules", "--view=edge", "--from", "core"]);
-        recordInvocation(["inspect", "--configuration", "release", "hover", "/tmp/a.cpp"]);
+        recordInvocation(["analyze", "modules", "--scope=core/**", "--dir-depth", "1"]);
+        recordInvocation(["inspect", "hover", "/tmp/a.cpp", "--configuration", "release"]);
         expect(recorded("invocation")).toEqual([
-            "analyze modules --view --from",
-            "inspect --configuration",
+            "analyze modules --scope --dir-depth",
+            "inspect hover --configuration",
         ]);
     });
 

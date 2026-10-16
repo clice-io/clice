@@ -6,6 +6,7 @@ module clice;
 
 import :config.config;
 import :driver.driver;
+import :index.symbol_query;
 import :project.configuration;
 import :project.open_index;
 import :server.counterparts;
@@ -15,186 +16,134 @@ namespace clice::driver {
 
 namespace {
 
+/// What every question takes.
 struct QueryOptions {
+    WorkspaceOptions where;
+    FreshOption fresh;
+};
+
+/// The file a question is about.
+struct FileTarget {
+    DecoInput(meta_var = "<PATH>",
+              help = "The file, relative to the workspace or absolute",
+              required = false)
+    <std::vector<std::string>> path;
+};
+
+/// The symbol a question is about.
+struct SymbolTarget {
+    DecoInput(meta_var = "<LOCATOR>",
+              help = "The symbol, as a locator: a name, an answer's symbol, or file:line[:column]",
+              required = false)
+    <std::vector<std::string>> locator;
+};
+
+struct FileQuestion {
     kota::deco::decl::HelpOption help;
+    FileTarget target;
+    QueryOptions query;
+    LogLevelOption log;
+};
 
-    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
-    <std::string> workspace;
+struct FileDepsQuestion {
+    kota::deco::decl::HelpOption help;
+    FileTarget target;
 
-    DecoKV(help =
-               "Build configuration to read, one of the tags declared on rules "
-               "(default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
-
-    DecoKV(help =
-               "Question to ask: compileCommand, projectFiles, fileDeps, impactAnalysis, "
-               "counterparts, symbolSearch, readSymbol, documentSymbols, definition, "
-               "references, callGraph, typeHierarchy",
-           required = false)
-    <std::string> method;
-
-    DecoKV(help =
-               "File a file question is about (relative to the workspace): compileCommand, "
-               "fileDeps, impactAnalysis, counterparts, documentSymbols",
-           required = false)
-    <std::string> path;
-
-    DecoKV(help =
-               "Symbol a symbol question is about, or the symbols symbolSearch lists, as a "
-               "locator: a name, an answer's symbol, or file:line[:column]",
-           required = false)
-    <std::string> symbol;
-
-    DecoKV(help = "symbolSearch: at most this many symbols (default 100)", required = false)
-    <int> limit;
-
-    DecoKV(help = "projectFiles: all (default), source, header or module", required = false)
-    <std::string> filter;
-
-    DecoKV(help =
-               "fileDeps: includes, includers or both (default); callGraph: callers, "
-               "callees or both; typeHierarchy: supertypes, subtypes or both",
-           required = false)
+    DecoKV(help = "includes, includers or both (default)", required = false)
     <std::string> direction;
 
-    DecoKV(help = "fileDeps: levels to follow (default 1, 0 for all)", required = false)
+    DecoKV(help = "Levels to follow (default 1, 0 for all)", required = false)
     <int> depth;
 
+    QueryOptions query;
+    LogLevelOption log;
+};
+
+struct ProjectFilesQuestion {
+    kota::deco::decl::HelpOption help;
+
+    DecoKV(help = "all (default), source, header or module", required = false)
+    <std::string> filter;
+
+    QueryOptions query;
+    LogLevelOption log;
+};
+
+struct SearchQuestion {
+    kota::deco::decl::HelpOption help;
+
+    DecoInput(meta_var = "<LOCATOR>",
+              help = "The symbols to list, as a locator (default: every symbol)",
+              required = false)
+    <std::vector<std::string>> locator;
+
+    DecoKV(help = "At most this many symbols (default 100)", required = false)
+    <int> limit;
+
+    QueryOptions query;
+    LogLevelOption log;
+};
+
+struct SymbolQuestion {
+    kota::deco::decl::HelpOption help;
+    SymbolTarget target;
+    QueryOptions query;
+    LogLevelOption log;
+};
+
+struct ReferencesQuestion {
+    kota::deco::decl::HelpOption help;
+    SymbolTarget target;
+
     DecoFlag(names = {"--include-declaration"},
-             help = "references: list the declarations and definition too",
+             help = "List the declarations and the definition too",
              required = false)
     include_declaration;
 
-    DecoFlag(names = {"--fresh"},
-             help =
-                 "Reindex the files whose content changed since they were indexed before "
-                 "answering, through the running server or a batch run of this command",
-             required = false)
-    fresh;
-
-    LogLevelOption log{.log_level = LogLevel::Warn};
+    QueryOptions query;
+    LogLevelOption log;
 };
 
-constexpr llvm::StringLiteral build_methods[] = {"compileCommand",
-                                                 "projectFiles",
-                                                 "fileDeps",
-                                                 "impactAnalysis",
-                                                 "counterparts"};
-constexpr llvm::StringLiteral symbol_methods[] =
-    {"symbolSearch", "readSymbol", "definition", "references", "callGraph", "typeHierarchy"};
-constexpr llvm::StringLiteral index_methods[] = {"symbolSearch",
-                                                 "readSymbol",
-                                                 "documentSymbols",
-                                                 "definition",
-                                                 "references",
-                                                 "callGraph",
-                                                 "typeHierarchy"};
+struct CallGraphQuestion {
+    kota::deco::decl::HelpOption help;
+    SymbolTarget target;
 
-struct Reply {
-    std::string json;
-    int exit_code = 0;
+    DecoKV(help = "callers, callees or both (default)", required = false)
+    <std::string> direction;
+
+    QueryOptions query;
+    LogLevelOption log;
 };
 
-/// Answer the question against the opened index; the argument checks are
-/// the commands' own. `failed` are the units a --fresh refresh could not
-/// index: their shards are as absent as a withheld file's. `dropped` are
-/// the units the load found unservable.
-Reply answer(Project& project,
-             EditorContext& contexts,
-             const QueryOptions& opts,
-             llvm::ArrayRef<std::string> failed,
-             llvm::ArrayRef<Fid> dropped) {
-    index::FreshnessGate gate(project.file_table, {.check_disk = true});
-    index::IndexQuery index_query(project.project_index, project.file_table, &gate, nullptr);
-    query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
+struct TypeHierarchyQuestion {
+    kota::deco::decl::HelpOption help;
+    SymbolTarget target;
 
-    auto method = opts.method.value_or("");
-    auto path = opts.path.value_or("");
-    auto absolute = path.empty() ? Spelling() : inspected_path(project, path);
-    auto direction = opts.direction.value_or("both");
+    DecoKV(help = "supertypes, subtypes or both (default)", required = false)
+    <std::string> direction;
 
-    Reply reply;
-    auto emit = [&](auto outcome) {
-        std::vector<std::string> stale;
-        for(auto file: gate.withheld()) {
-            stale.emplace_back(project.file_table.display(file));
-        }
-        stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
-        stale.insert(stale.end(), failed.begin(), failed.end());
-        for(auto unit: dropped) {
-            stale.emplace_back(project.file_table.display(unit));
-        }
-        std::ranges::sort(stale);
-        auto duplicates = std::ranges::unique(stale);
-        stale.erase(duplicates.begin(), duplicates.end());
-        if(outcome) {
-            reply.json =
-                render_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
-        } else {
-            reply.exit_code = 1;
-            Failure failure{.error = std::move(outcome.error()), .stale = std::move(stale)};
-            if(!ctx.candidates.empty()) {
-                failure.candidates = std::move(ctx.candidates);
-            }
-            reply.json = render_json(failure);
-        }
-    };
+    QueryOptions query;
+    LogLevelOption log;
+};
 
-    if(opts.path && llvm::is_contained(symbol_methods, method)) {
-        emit(query::Outcome<int>(std::unexpected(
-            "--path names the file of a file question; narrow a symbol with path: in --symbol")));
-    } else if(method == "compileCommand") {
-        emit(query::compile_command(ctx, absolute));
-    } else if(method == "projectFiles") {
-        emit(query::project_files(ctx, opts.filter.value_or("all")));
-    } else if(method == "fileDeps") {
-        emit(query::file_deps(ctx, absolute, direction, opts.depth.value_or(1)));
-    } else if(method == "impactAnalysis") {
-        emit(query::impact_analysis(ctx, absolute));
-    } else if(method == "counterparts") {
-        emit(query::counterparts(ctx, absolute));
-    } else if(method == "symbolSearch") {
-        auto limit = opts.limit.value_or(100);
-        emit(query::symbol_search(ctx,
-                                  opts.symbol.value_or(""),
-                                  static_cast<std::size_t>(std::max(limit, 0))));
-    } else if(method == "documentSymbols") {
-        emit(query::document_symbols(ctx, absolute));
-    } else if(auto query = locator_of(opts.symbol.as_optional()); !query) {
-        emit(query::Outcome<int>(std::unexpected(query.error())));
-    } else if(method == "readSymbol") {
-        emit(query::read_symbol(ctx, std::move(*query)));
-    } else if(method == "definition") {
-        emit(query::definition(ctx, std::move(*query)));
-    } else if(method == "references") {
-        emit(
-            query::references(ctx, std::move(*query), static_cast<bool>(opts.include_declaration)));
-    } else if(method == "callGraph") {
-        emit(query::call_graph(ctx, std::move(*query), direction));
-    } else if(method == "typeHierarchy") {
-        emit(query::type_hierarchy(ctx, std::move(*query), direction));
-    }
-    return reply;
-}
-
-int run_query(const QueryOptions& opts, const char* self_path) {
-    auto method = opts.method.value_or("");
-    bool with_build = llvm::is_contained(build_methods, method);
-    if(!with_build && !llvm::is_contained(index_methods, method)) {
-        print_json(Failure{.error = method.empty() ? "--method is required"
-                                                   : std::format("unknown method '{}'", method)});
-        return 1;
-    }
-    auto spelling = workspace_spelling(opts.workspace.value_or(""));
+/// Answer a question against the opened index: `ask` asks it of the query
+/// context. The build questions (`with_build`) walk manifests and
+/// contexts, which only the writer's load restores; the index questions
+/// bind the tables in place and touch nothing else. The answer lists as
+/// stale the files withheld on the way, the units a --fresh refresh could
+/// not index, whose shards are as absent as a withheld file's, and the
+/// units the load found unservable.
+template <typename Ask>
+int run_query(const QueryOptions& opts, bool with_build, const char* self_path, Ask ask) {
+    auto spelling = opts.where.root();
     auto config = Config::load_from_workspace(CanonicalPath(spelling));
-    auto configuration = opts.configuration.value_or("");
+    auto configuration = opts.where.configuration.tag();
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
         print_json(Failure{.error = std::move(checked.error())});
         return 1;
     }
     std::vector<std::string> failed;
-    if(opts.fresh) {
+    if(opts.fresh.fresh) {
         auto refreshed = refresh(spelling, config, configuration, self_path);
         if(!refreshed) {
             print_json(Failure{.error = refreshed.error()});
@@ -202,9 +151,6 @@ int run_query(const QueryOptions& opts, const char* self_path) {
         }
         failed = std::move(*refreshed);
     }
-    // The build questions walk manifests and contexts, which only the
-    // writer's load restores; the index questions bind the tables in
-    // place and touch nothing else.
     FileTable files;
     // Answers name files under the workspace as the command line does.
     files.spell_root(spelling);
@@ -234,20 +180,215 @@ int run_query(const QueryOptions& opts, const char* self_path) {
                 "the index could not be opened (the log above says why); run `clice index` or pass --fresh"});
         return 1;
     }
-    auto reply = answer(project, contexts, opts, failed, dropped);
-    driver::println("{}", reply.json);
-    return reply.exit_code;
+
+    index::FreshnessGate gate(project.file_table, {.check_disk = true});
+    index::IndexQuery index_query(project.project_index, project.file_table, &gate, nullptr);
+    query::Context ctx{.project = project, .contexts = contexts, .query = index_query};
+    auto outcome = ask(ctx);
+
+    std::vector<std::string> stale;
+    for(auto file: gate.withheld()) {
+        stale.emplace_back(project.file_table.display(file));
+    }
+    stale.insert(stale.end(), ctx.unindexed.begin(), ctx.unindexed.end());
+    stale.insert(stale.end(), failed.begin(), failed.end());
+    for(auto unit: dropped) {
+        stale.emplace_back(project.file_table.display(unit));
+    }
+    std::ranges::sort(stale);
+    auto duplicates = std::ranges::unique(stale);
+    stale.erase(duplicates.begin(), duplicates.end());
+    if(outcome) {
+        print_json(Answer{.result = std::move(*outcome), .stale = std::move(stale)});
+        return 0;
+    }
+    Failure failure{.error = std::move(outcome.error()), .stale = std::move(stale)};
+    if(!ctx.candidates.empty()) {
+        failure.candidates = std::move(ctx.candidates);
+    }
+    print_json(failure);
+    return 1;
+}
+
+/// A question about the file `ask` takes, after the query context.
+template <typename Options, typename Ask>
+CommandHandler
+    file_question(std::string_view usage, bool with_build, const char* self_path, Ask ask) {
+    return operation<Options>(usage, "query", Errors::JSON, [=](const Options& opts) {
+        auto args = positional(opts.target.path.as_optional(), {"<PATH>"});
+        if(!args) {
+            return usage_error(Errors::JSON, args.error());
+        }
+        return run_query(opts.query, with_build, self_path, [&](query::Context& ctx) {
+            return ask(ctx, inspected_path(ctx.project, args->front()), opts);
+        });
+    });
+}
+
+/// A question about the symbol `ask` takes, after the query context.
+template <typename Options, typename Ask>
+CommandHandler symbol_question(std::string_view usage, const char* self_path, Ask ask) {
+    return operation<Options>(usage, "query", Errors::JSON, [=](const Options& opts) {
+        auto args = positional(opts.target.locator.as_optional(), {"<LOCATOR>"});
+        if(!args) {
+            return usage_error(Errors::JSON, args.error());
+        }
+        return run_query(opts.query, /*with_build=*/false, self_path, [&](query::Context& ctx) {
+            return index::SymbolQuery::parse(args->front()).and_then([&](auto locator) {
+                return ask(ctx, std::move(locator), opts);
+            });
+        });
+    });
 }
 
 CommandHandler build(const char* self_path) {
-    auto cmd = kota::deco::cli::command<QueryOptions>("clice query [OPTIONS]");
-    cmd.match_all([self_path](QueryOptions opts) {
-           opts.log.apply();
-           logging::stderr_logger("query", logging::options);
-           return run_query(opts, self_path);
-       })
-        .on_error([](auto err) { print_json(Failure{.error = err.message}); });
-    return cmd;
+    auto file = [self_path](std::string_view usage, bool with_build, auto ask) {
+        return file_question<FileQuestion>(usage, with_build, self_path, ask);
+    };
+    auto symbol = [self_path](std::string_view usage, auto ask) {
+        return symbol_question<SymbolQuestion>(usage, self_path, ask);
+    };
+    std::vector<Operation> operations;
+    operations.push_back({
+        .name = "compile-command",
+        .description = "The command the editor compiles a file with, and where it came from",
+        .run = file("clice query compile-command <PATH> [OPTIONS]",
+                    /*with_build=*/true,
+                    [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
+                        return query::compile_command(ctx, path);
+                    }),
+    });
+    operations.push_back({
+        .name = "project-files",
+        .description = "The build's files",
+        .run = operation<ProjectFilesQuestion>(
+            "clice query project-files [OPTIONS]",
+            "query",
+            Errors::JSON,
+            [self_path](const ProjectFilesQuestion& opts) {
+                return run_query(opts.query,
+                                 /*with_build=*/true,
+                                 self_path,
+                                 [&](query::Context& ctx) {
+                                     return query::project_files(ctx, opts.filter.value_or("all"));
+                                 });
+            }),
+    });
+    operations.push_back({
+        .name = "file-deps",
+        .description = "The files a file includes and the files including it",
+        .run = file_question<FileDepsQuestion>(
+            "clice query file-deps <PATH> [OPTIONS]",
+            /*with_build=*/true,
+            self_path,
+            [](query::Context& ctx, const Spelling& path, const FileDepsQuestion& opts) {
+                return query::file_deps(ctx,
+                                        path,
+                                        opts.direction.value_or("both"),
+                                        opts.depth.value_or(1));
+            }),
+    });
+    operations.push_back({
+        .name = "impact-analysis",
+        .description = "What a change to a file reaches: its includers and the modules among them",
+        .run = file("clice query impact-analysis <PATH> [OPTIONS]",
+                    /*with_build=*/true,
+                    [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
+                        return query::impact_analysis(ctx, path);
+                    }),
+    });
+    operations.push_back({
+        .name = "counterparts",
+        .description = "The files a file pairs with: a header's sources, a source's headers",
+        .run = file("clice query counterparts <PATH> [OPTIONS]",
+                    /*with_build=*/true,
+                    [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
+                        return query::counterparts(ctx, path);
+                    }),
+    });
+    operations.push_back({
+        .name = "symbol-search",
+        .description = "The symbols a locator matches, best first",
+        .run = operation<SearchQuestion>(
+            "clice query symbol-search [<LOCATOR>] [OPTIONS]",
+            "query",
+            Errors::JSON,
+            [self_path](const SearchQuestion& opts) {
+                auto args = positional(opts.locator.as_optional(), {"<LOCATOR>"}, 1);
+                if(!args) {
+                    return usage_error(Errors::JSON, args.error());
+                }
+                auto text = args->empty() ? std::string() : args->front();
+                auto limit = static_cast<std::size_t>(std::max(opts.limit.value_or(100), 0));
+                return run_query(
+                    opts.query,
+                    /*with_build=*/false,
+                    self_path,
+                    [&](query::Context& ctx) { return query::symbol_search(ctx, text, limit); });
+            }),
+    });
+    operations.push_back({
+        .name = "read-symbol",
+        .description = "A symbol's definition as text, with its documentation",
+        .run = symbol("clice query read-symbol <LOCATOR> [OPTIONS]",
+                      [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
+                          return query::read_symbol(ctx, std::move(locator));
+                      }),
+    });
+    operations.push_back({
+        .name = "document-symbols",
+        .description = "A file's outline",
+        .run = file("clice query document-symbols <PATH> [OPTIONS]",
+                    /*with_build=*/false,
+                    [](query::Context& ctx, const Spelling& path, const FileQuestion&) {
+                        return query::document_symbols(ctx, path);
+                    }),
+    });
+    operations.push_back({
+        .name = "definition",
+        .description = "Where a symbol is defined, with its documentation",
+        .run = symbol("clice query definition <LOCATOR> [OPTIONS]",
+                      [](query::Context& ctx, index::SymbolQuery locator, const SymbolQuestion&) {
+                          return query::definition(ctx, std::move(locator));
+                      }),
+    });
+    operations.push_back({
+        .name = "references",
+        .description = "Every place naming a symbol",
+        .run = symbol_question<ReferencesQuestion>(
+            "clice query references <LOCATOR> [OPTIONS]",
+            self_path,
+            [](query::Context& ctx, index::SymbolQuery locator, const ReferencesQuestion& opts) {
+                return query::references(ctx,
+                                         std::move(locator),
+                                         static_cast<bool>(opts.include_declaration));
+            }),
+    });
+    operations.push_back({
+        .name = "call-graph",
+        .description = "A function's callers and callees",
+        .run = symbol_question<CallGraphQuestion>(
+            "clice query call-graph <LOCATOR> [OPTIONS]",
+            self_path,
+            [](query::Context& ctx, index::SymbolQuery locator, const CallGraphQuestion& opts) {
+                return query::call_graph(ctx, std::move(locator), opts.direction.value_or("both"));
+            }),
+    });
+    operations.push_back({
+        .name = "type-hierarchy",
+        .description = "A type's supertypes and subtypes",
+        .run = symbol_question<TypeHierarchyQuestion>(
+            "clice query type-hierarchy <LOCATOR> [OPTIONS]",
+            self_path,
+            [](query::Context& ctx, index::SymbolQuery locator, const TypeHierarchyQuestion& opts) {
+                return query::type_hierarchy(ctx,
+                                             std::move(locator),
+                                             opts.direction.value_or("both"));
+            }),
+    });
+    return with_operations("Ask the persisted index about the workspace",
+                           std::move(operations),
+                           Errors::JSON);
 }
 
 [[maybe_unused]] const bool registered = register_command(

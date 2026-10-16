@@ -28,23 +28,10 @@ namespace clice::driver {
 
 namespace {
 
+/// What every feature takes.
 struct InspectOptions {
-    kota::deco::decl::HelpOption help;
-
-    DecoFlag(names = {"--config-schema"},
-             help = "Print the JSON schema of the clice configuration and exit",
-             required = false)
-    config_schema;
-
-    DecoInput(
-        meta_var = "<FEATURE> <PATH>",
-        help =
-            "Feature to run (code_action, code_completion, document_highlight, "
-            "document_links, document_symbol, document_symbol_check, folding_range, hover, hover_check, inlay_hint, "
-            "selection_range, semantic_tokens, signature_help) and a "
-            "source file",
-        required = false)
-    <std::vector<std::string>> inputs;
+    DecoInput(meta_var = "<PATH>", help = "The source file", required = false)
+    <std::vector<std::string>> path;
 
     DecoKV(help = R"(JSON file of the markers in the inspected source file, at byte )"
                   R"(offsets: {"points": {"name": 12}, "ranges": {"name": )"
@@ -62,15 +49,35 @@ struct InspectOptions {
                "Configuration overlay as a JSON object of clice.toml "
                "sections, over the workspace's configuration",
            required = false)
-    <std::string> config;
+    <std::string> config_overlay;
 
-    DecoKV(help =
-               "Build configuration to activate, one of the tags declared on "
-               "rules (default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
+    ConfigurationOption configuration;
+};
 
-    LogLevelOption log{.log_level = LogLevel::Warn};
+struct FeatureOptions {
+    kota::deco::decl::HelpOption help;
+    InspectOptions inspect;
+    LogLevelOption log;
+};
+
+/// The options of a feature that checks its own results.
+struct CheckedFeatureOptions {
+    kota::deco::decl::HelpOption help;
+    InspectOptions inspect;
+
+    DecoFlag(names = {"--check"},
+             help =
+                 "Check the results instead of printing them: report where they differ from "
+                 "the same results computed another way",
+             required = false)
+    check;
+
+    LogLevelOption log;
+};
+
+struct SchemaOptions {
+    kota::deco::decl::HelpOption help;
+    LogLevelOption log;
 };
 
 /// JSON layout of the inspect output. Field names stay snake_case (the
@@ -2141,10 +2148,13 @@ std::optional<kota::codec::RawValue> run_document_highlight(CompilationUnit& uni
 /// A feature runs in exactly one shape: whole-document (`run`), once per
 /// point against a shared unit (`run_at`), once per range with a
 /// whole-document default (`run_over`), once per point (an empty
-/// selection) and per range with no default (`run_select`), or once per
-/// point with its own completion compile (`run_complete`).
+/// selection) and per range with no default (`run_select`), once per
+/// point with its own completion compile (`run_complete`), or over
+/// compiles of its own (`run_compiles`). `check` is what --check runs
+/// instead, for a feature that checks its own results.
 struct FeatureSpec {
     llvm::StringRef name;
+    llvm::StringRef description;
     std::optional<kota::codec::RawValue> (*run)(CompilationUnit&, const Config&) = nullptr;
     std::optional<kota::codec::RawValue> (*run_at)(CompilationUnit&,
                                                    std::uint32_t,
@@ -2160,28 +2170,50 @@ struct FeatureSpec {
     std::optional<kota::codec::RawValue> (*run_compiles)(const CompilationInput&,
                                                          llvm::StringRef,
                                                          const Config&) = nullptr;
+    const FeatureSpec* check = nullptr;
 };
+
+constexpr FeatureSpec document_symbols_check{.name = "document-symbols",
+                                             .run = run_document_symbol_check};
+constexpr FeatureSpec hover_check{.name = "hover", .run_compiles = run_hover_check};
 
 constexpr std::array features = {
-    FeatureSpec{.name = "code_action",           .run_select = run_code_action      },
-    FeatureSpec{.name = "code_completion",       .run_complete = run_code_completion},
-    FeatureSpec{.name = "document_highlight",    .run_at = run_document_highlight   },
-    FeatureSpec{.name = "document_links",        .run = run_document_links          },
-    FeatureSpec{.name = "document_symbol",       .run = run_document_symbols        },
-    FeatureSpec{.name = "document_symbol_check", .run = run_document_symbol_check   },
-    FeatureSpec{.name = "folding_range",         .run = run_folding_ranges          },
-    FeatureSpec{.name = "hover",                 .run_at = run_hover                },
-    FeatureSpec{.name = "hover_check",           .run_compiles = run_hover_check    },
-    FeatureSpec{.name = "inlay_hint",            .run_over = run_inlay_hints        },
-    FeatureSpec{.name = "selection_range",       .run_at = run_selection_range      },
-    FeatureSpec{.name = "semantic_tokens",       .run = run_semantic_tokens         },
-    FeatureSpec{.name = "signature_help",        .run_complete = run_signature_help },
+    FeatureSpec{.name = "code-action",
+                .description = "The code actions on a selection",
+                .run_select = run_code_action},
+    FeatureSpec{.name = "code-completion",
+                .description = "The completions at a point",
+                .run_complete = run_code_completion},
+    FeatureSpec{.name = "document-highlight",
+                .description = "The places naming the symbol at a point",
+                .run_at = run_document_highlight},
+    FeatureSpec{.name = "document-links",
+                .description = "The file's links",
+                .run = run_document_links},
+    FeatureSpec{.name = "document-symbols",
+                .description = "The file's outline",
+                .run = run_document_symbols,
+                .check = &document_symbols_check},
+    FeatureSpec{.name = "folding-range",
+                .description = "The file's folding ranges",
+                .run = run_folding_ranges},
+    FeatureSpec{.name = "hover",
+                .description = "The hover card at a point",
+                .run_at = run_hover,
+                .check = &hover_check},
+    FeatureSpec{.name = "inlay-hint",
+                .description = "The inlay hints over a range, else the file",
+                .run_over = run_inlay_hints},
+    FeatureSpec{.name = "selection-range",
+                .description = "The selection ranges at a point",
+                .run_at = run_selection_range},
+    FeatureSpec{.name = "semantic-tokens",
+                .description = "The file's semantic tokens",
+                .run = run_semantic_tokens},
+    FeatureSpec{.name = "signature-help",
+                .description = "The signature help at a point",
+                .run_complete = run_signature_help},
 };
-
-const FeatureSpec* find_feature(llvm::StringRef name) {
-    auto it = std::ranges::find(features, name, &FeatureSpec::name);
-    return it != features.end() ? &*it : nullptr;
-}
 
 /// The inspected file, with the markers --markers places in it.
 struct SourceFile {
@@ -2432,18 +2464,12 @@ void run_feature(FileEntry& entry,
     entry.markers = std::move(markers);
 }
 
-int run_inspect(const InspectOptions& opts) {
-    auto& inputs = *opts.inputs;
-    llvm::StringRef feature = inputs[0];
-    const auto* spec = find_feature(feature);
-    if(spec == nullptr) {
-        LOG_ERROR("unknown feature '{}', valid: {}",
-                  feature,
-                  features | std::views::transform(&FeatureSpec::name));
-        return 1;
+int run_inspect(const InspectOptions& opts, const FeatureSpec& spec) {
+    auto args = positional(opts.path.as_optional(), {"<PATH>"});
+    if(!args) {
+        return usage_error(Errors::Text, args.error());
     }
-
-    Spelling abs_path(inputs[1], Spelling::cwd());
+    Spelling abs_path(args->front(), Spelling::cwd());
     if(!vfs::exists(abs_path)) {
         LOG_ERROR("no such file or directory: {}", abs_path);
         return 1;
@@ -2499,17 +2525,18 @@ int run_inspect(const InspectOptions& opts) {
     FileTable file_table;
     Project project{file_table};
     CommandResolver commands(project);
-    if(!flags.empty() && opts.configuration.has_value()) {
+    if(!flags.empty() && opts.configuration.configuration) {
         LOG_ERROR("--configuration selects among the workspace's rules; --flags replaces them");
         return 1;
     }
     auto overlay = [&] {
-        if(!opts.config.has_value()) {
+        if(!opts.config_overlay) {
             return true;
         }
-        auto result = kota::codec::json::from_string<StrictJson>(*opts.config, project.config);
+        auto result =
+            kota::codec::json::from_string<StrictJson>(*opts.config_overlay, project.config);
         if(!result) {
-            LOG_ERROR("invalid --config: {}", result.error().message);
+            LOG_ERROR("invalid --config-overlay: {}", result.error().message);
         }
         return result.has_value();
     };
@@ -2523,7 +2550,7 @@ int run_inspect(const InspectOptions& opts) {
         }
         project.config.finalize(root);
         project.config.keep_own_cache_dir();
-        auto requested = opts.configuration.value_or("");
+        auto requested = opts.configuration.tag();
         if(auto checked = check_requested_configuration(project.config, requested); !checked) {
             LOG_ERROR("{}", checked.error());
             return 1;
@@ -2558,12 +2585,12 @@ int run_inspect(const InspectOptions& opts) {
     }
 
     InspectOutput output;
-    output.feature = feature.str();
+    output.feature = spec.name.str();
     auto& entry = output.files[name];
     auto command = file_command(entry, file.path, flags, directory, file_table, commands);
     if(command) {
         command->workspace = project.config.workspace_root.str();
-        run_feature(entry, *spec, file, *command, project.config);
+        run_feature(entry, spec, file, *command, project.config);
     }
 
     auto json = kota::codec::json::to_string<InspectJsonConfig>(output);
@@ -2575,33 +2602,49 @@ int run_inspect(const InspectOptions& opts) {
     return 0;
 }
 
-auto make_command() {
-    return kota::deco::cli::command<InspectOptions>("clice inspect <feature> <path> [OPTIONS]");
-}
-
 CommandHandler build(const char*) {
-    auto cmd = make_command();
-    cmd.match_all([](InspectOptions opts) {
-        // A mode flag like --help: ignores feature/path inputs.
-        if(opts.config_schema) {
-            auto schema = Config::json_schema();
-            if(!schema) {
-                LOG_ERROR("config schema generation failed: {}", schema.error());
-                return 1;
-            }
-            driver::println("{}", *schema);
-            return 0;
-        }
-        opts.log.apply();
-        logging::stderr_logger("inspect", logging::options);
-        if(!opts.inputs.has_value() || opts.inputs->size() != 2) {
-            auto help = make_command();
-            print_usage(help);
-            return 1;
-        }
-        return run_inspect(opts);
+    std::vector<Operation> operations;
+    for(const auto& spec: features) {
+        auto usage = std::format("clice inspect {} <PATH> [OPTIONS]", spec.name);
+        operations.push_back({
+            .name = spec.name,
+            .description = spec.description,
+            .run = spec.check
+                       ? operation<CheckedFeatureOptions>(
+                             usage,
+                             "inspect",
+                             Errors::Text,
+                             [&spec](const CheckedFeatureOptions& opts) {
+                                 return run_inspect(opts.inspect, opts.check ? *spec.check : spec);
+                             })
+                       : operation<FeatureOptions>(usage,
+                                                   "inspect",
+                                                   Errors::Text,
+                                                   [&spec](const FeatureOptions& opts) {
+                                                       return run_inspect(opts.inspect, spec);
+                                                   }),
+        });
+    }
+    operations.push_back({
+        .name = "config-schema",
+        .description = "The JSON schema of the clice configuration",
+        .run = operation<SchemaOptions>("clice inspect config-schema [OPTIONS]",
+                                        "inspect",
+                                        Errors::Text,
+                                        [](const SchemaOptions&) {
+                                            auto schema = Config::json_schema();
+                                            if(!schema) {
+                                                LOG_ERROR("config schema generation failed: {}",
+                                                          schema.error());
+                                                return 1;
+                                            }
+                                            driver::println("{}", *schema);
+                                            return 0;
+                                        }),
     });
-    return cmd;
+    return with_operations("Run a feature on a source file and print raw results as JSON",
+                           std::move(operations),
+                           Errors::Text);
 }
 
 [[maybe_unused]] const bool registered =

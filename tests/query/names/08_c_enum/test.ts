@@ -4,5 +4,5 @@ import { test } from "@clice/tools/testing";
 // sources; references reach every file all the same.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query --method references --symbol a.c:2:22 --include-declaration");
+    await t.cli("query references a.c:2:22 --include-declaration");
 });

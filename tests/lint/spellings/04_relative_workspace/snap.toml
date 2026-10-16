@@ -1,11 +1,11 @@
-[test."$ clice lint --workspace . --workers 2"]
+[test."$ clice lint --workspace . --jobs 2"]
 stdout = '''
 ${WS}/src/main.cpp:2:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 Linted 1 translation unit in #s: 1 finding.
 '''
 exit = 1
 
-[test."$ clice lint --workspace .. --workers 2"]
+[test."$ clice lint --workspace .. --jobs 2"]
 stdout = '''
 ${WS}/src/main.cpp:2:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 Linted 1 translation unit in #s: 1 finding.

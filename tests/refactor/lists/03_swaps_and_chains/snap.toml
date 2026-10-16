@@ -1,4 +1,4 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}

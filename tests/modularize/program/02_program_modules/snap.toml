@@ -1,11 +1,11 @@
-["rewrites program modules"."$ clice index --workers 1"]
+["rewrites program modules"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 8 translation units in #s: 32 file shards (# KB), 69 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["rewrites program modules"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/program.json"]
+["rewrites program modules"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/program.json"]
 stdout = '''
 {
   "wrapping": {
@@ -109,7 +109,7 @@ stdout = '''
 '''
 exit = 0
 
-["rewrites program modules"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/program.json".files]
+["rewrites program modules"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/program.json".files]
 "app/core/all.cppm" = '''
 +module;
 +
@@ -396,14 +396,14 @@ exit = 0
 '''
 "wrap/std.macros.h" = "+#pragma once"
 
-["rejected partitions"."$ clice index --workers 1"]
+["rejected partitions"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 8 translation units in #s: 32 file shards (# KB), 69 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/clash.json"]
+["rejected partitions"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/clash.json"]
 stdout = '''
 {
   "error": "app/core/text.h becomes app/core/text.cppm, the primary interface of its module",
@@ -412,7 +412,7 @@ stdout = '''
 '''
 exit = 1
 
-["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/same_primary.json"]
+["rejected partitions"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/same_primary.json"]
 stdout = '''
 {
   "error": "modules app.core and app.more both put their primary interface at app/core/module.cppm",
@@ -421,7 +421,7 @@ stdout = '''
 '''
 exit = 1
 
-["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/outside.json"]
+["rejected partitions"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/outside.json"]
 stdout = '''
 {
   "error": "module app.core: primary ../m.cppm lies outside the workspace",
@@ -430,7 +430,7 @@ stdout = '''
 '''
 exit = 1
 
-["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/dash.json"]
+["rejected partitions"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/dash.json"]
 stdout = '''
 {
   "error": "module app-core: not a module name to rewrite",
@@ -439,7 +439,7 @@ stdout = '''
 '''
 exit = 1
 
-["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/keyword.json"]
+["rejected partitions"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/keyword.json"]
 stdout = '''
 {
   "error": "module app.class: not a module name to rewrite",
@@ -448,7 +448,7 @@ stdout = '''
 '''
 exit = 1
 
-["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/core_only.json"]
+["rejected partitions"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/core_only.json"]
 stdout = '''
 {
   "error": "app/tool/tool.h stays a header but includes rewritten headers",
@@ -457,7 +457,7 @@ stdout = '''
 '''
 exit = 1
 
-["rejected partitions"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --out wrap --partition partitions/both.json"]
+["rejected partitions"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --out wrap --partition partitions/both.json"]
 stdout = '''
 {
   "error": "app/core/sink.h would overwrite app/core/sink.cppm",

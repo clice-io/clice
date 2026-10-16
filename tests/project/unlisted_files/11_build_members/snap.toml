@@ -1,4 +1,4 @@
-["query lists the members"."$ clice query --method projectFiles"]
+["query lists the members"."$ clice query project-files"]
 stdout = '''
 {
   "result": {

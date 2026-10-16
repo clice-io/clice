@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --view obstacles --scope \"core/**,app/**\""]
+[test."$ clice analyze modules obstacles --scope \"core/**\" --scope \"app/**\""]
 stdout = '''
 {
   "variantHeaders": [
@@ -64,7 +64,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice analyze modules --scope \"core/**,app/**\""]
+[test."$ clice analyze modules --scope \"core/**\" --scope \"app/**\""]
 stdout = '''
 {
   "annotations": [],

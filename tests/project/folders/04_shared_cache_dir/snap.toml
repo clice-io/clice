@@ -1,11 +1,11 @@
-["shared cache directory serves one project"."$ clice index --workspace a --workers 1"]
+["shared cache directory serves one project"."$ clice index --workspace a --jobs 1"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/shared/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["shared cache directory serves one project"."$ clice index --workspace b --workers 1"]
+["shared cache directory serves one project"."$ clice index --workspace b --jobs 1"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/b/.clice/logs/${SESSION}

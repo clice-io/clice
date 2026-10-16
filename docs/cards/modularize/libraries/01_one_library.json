@@ -36,7 +36,7 @@
           }
         },
         {
-          "label": "$ clice modularize --scope \"app/**,third/**\" --partition partition.json --out wrap",
+          "label": "$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap",
           "value": {
             "stdout": "{\n  \"wrapping\": {\n    \"stdSources\": [],\n    \"modules\": [\n      {\n        \"name\": \"alpha\",\n        \"source\": \"alpha.cppm\",\n        \"imports\": [],\n        \"includeRoots\": [\n          \"${WS}/third/alpha\"\n        ],\n        \"mirrors\": []\n      }\n    ],\n    \"mirrors\": [\n      \"mirror/alpha\"\n    ],\n    \"prelude\": \"prelude.h\",\n    \"warnings\": []\n  },\n  \"rewriting\": {\n    \"modules\": [],\n    \"importers\": [],\n    \"macros\": [],\n    \"removed\": [],\n    \"moved\": [],\n    \"warnings\": []\n  }\n}",
             "exit": 0,

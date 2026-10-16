@@ -8,6 +8,6 @@ test(
     async (t) => {
         t.disk.symlink("src", "vendor/real");
         t.disk.database({ "src/main.cpp": [] });
-        await t.cli("lint --workers 2");
+        await t.cli("lint --jobs 2");
     },
 );

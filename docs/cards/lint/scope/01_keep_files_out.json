@@ -39,7 +39,7 @@
       "name": "test",
       "blocks": [
         {
-          "label": "$ clice lint --workers 2",
+          "label": "$ clice lint --jobs 2",
           "value": {
             "stdout": "${WS}/main.cpp:4:12: warning: use nullptr [modernize-use-nullptr]\nLinted 1 translation unit in #s: 1 finding.",
             "exit": 1

@@ -6,8 +6,8 @@ import { test } from "@clice/tools/testing";
 // they read differently wherever the copy lies.
 
 test(async (t) => {
-    await t.cli("index --stats");
-    await t.cli("index --workers 2");
-    await t.cli("index --workers 2");
-    await t.cli("index --show-symbol add");
+    await t.cli("index stats");
+    await t.cli("index --jobs 2");
+    await t.cli("index --jobs 2");
+    await t.cli("index symbol add");
 });

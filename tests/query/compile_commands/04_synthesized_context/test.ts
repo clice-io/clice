@@ -7,6 +7,6 @@ const MISSING = "Toolchain query failed: Driver .*missing-cc not found or not ex
 // does.
 test({ errors: [MISSING] }, async (t) => {
     await t.cli("index");
-    await t.cli("query --method compileCommand --path list.def");
-    await t.cli("query --method compileCommand --path lone.def");
+    await t.cli("query compile-command list.def");
+    await t.cli("query compile-command lone.def");
 });

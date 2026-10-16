@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol add"]
+[test."$ clice query symbol-search add"]
 stdout = '''
 {
   "result": {
@@ -25,7 +25,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol \"#5c1bf8ca24c752f7\""]
+[test."$ clice query definition \"#5c1bf8ca24c752f7\""]
 stdout = '''
 {
   "result": {
@@ -45,7 +45,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol main.cpp:4"]
+[test."$ clice query definition main.cpp:4"]
 stdout = '''
 {
   "result": {
@@ -65,7 +65,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method readSymbol --symbol compute"]
+[test."$ clice query read-symbol compute"]
 stdout = '''
 {
   "result": {
@@ -83,7 +83,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method references --symbol add --include-declaration"]
+[test."$ clice query references add --include-declaration"]
 stdout = '''
 {
   "result": {
@@ -114,7 +114,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method callGraph --symbol add --direction callers"]
+[test."$ clice query call-graph add --direction callers"]
 stdout = '''
 {
   "result": {
@@ -141,7 +141,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method typeHierarchy --symbol Dog --direction supertypes"]
+[test."$ clice query type-hierarchy Dog --direction supertypes"]
 stdout = '''
 {
   "result": {
@@ -168,7 +168,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method documentSymbols --path main.cpp"]
+[test."$ clice query document-symbols main.cpp"]
 stdout = '''
 {
   "result": {
@@ -208,7 +208,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol kind:Struct,Function --limit 10"]
+[test."$ clice query symbol-search kind:Struct,Function --limit 10"]
 stdout = '''
 {
   "result": {

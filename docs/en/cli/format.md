@@ -8,7 +8,7 @@ into clice, as the editor does, several files at a time, with the
 settings of its own: the style comes from clang-format's own discovery, the
 nearest `.clang-format` above each file.
 
-**Usage**: `clice format [--workspace <dir>] [--configuration <tag>] [--check] [--jobs <n>] [<path>...]`
+**Usage**: `clice format [<path>...] [--workspace <dir>] [--configuration <tag>] [--check] [--jobs <n>]`
 
 Without paths it formats the build's own files: every translation unit of the
 compilation database and every file with a C-family suffix they include that

@@ -31,11 +31,9 @@ export async function compileCommand(
     root: string,
     file: string,
 ): Promise<CompileCommand> {
-    const query = await run(
-        clice,
-        ["query", "--workspace", root, "--method", "compileCommand", "--path", file],
-        { env: systemEnv() },
-    );
+    const query = await run(clice, ["query", "compile-command", file, "--workspace", root], {
+        env: systemEnv(),
+    });
     if (query.status !== 0) {
         throw new Error(
             `compileCommand ${file}: ${query.error ?? `exit ${query.status}`}\n${query.stdout}\n${query.stderr}`,

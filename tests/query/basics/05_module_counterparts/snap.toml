@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method counterparts --path store_impl.cpp"]
+[test."$ clice query counterparts store_impl.cpp"]
 stdout = '''
 {
   "result": {
@@ -26,7 +26,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method counterparts --path store.cppm"]
+[test."$ clice query counterparts store.cppm"]
 stdout = '''
 {
   "result": {
@@ -47,7 +47,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method documentSymbols --path store.cppm"]
+[test."$ clice query document-symbols store.cppm"]
 stdout = '''
 {
   "result": {

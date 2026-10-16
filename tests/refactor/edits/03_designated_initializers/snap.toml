@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# KB), 5 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol Point::x --to column"]
+[test."$ clice refactor rename Point::x column"]
 stdout = '''
 {
   "result": {
@@ -83,7 +83,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol Point::x --to column".files]
+[test."$ clice refactor rename Point::x column".files]
 "main.cpp" = '''
  struct Point {
 -    int x;

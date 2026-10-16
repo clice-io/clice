@@ -31,6 +31,6 @@ function commit(root: string): void {
 test(async (t) => {
     await t.cli("index");
     commit(t.root);
-    await t.cli("analyze modules --view impact");
-    await t.cli("analyze modules --view impact --churn-since=");
+    await t.cli("analyze modules impact");
+    await t.cli("analyze modules impact --churn-since=");
 });

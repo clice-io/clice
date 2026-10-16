@@ -283,7 +283,7 @@ export class Inspect extends Client {
     async compileErrors(): Promise<string[]> {
         for (const file of this.sources) {
             if (!this.compiled.has(file)) {
-                this.record(file, await this.run("folding_range", file));
+                this.record(file, await this.run("folding-range", file));
             }
         }
         return [...this.compiled.values()].flat();
@@ -309,7 +309,7 @@ export class Inspect extends Client {
         if (trigger !== undefined) {
             return this.cannot("completion triggered by a character", at);
         }
-        const raw = (await this.atPoint("code_completion", at)) as RawCompletionList;
+        const raw = (await this.atPoint("code-completion", at)) as RawCompletionList;
         return {
             incomplete: raw.is_incomplete,
             items: raw.items.map((item) => {
@@ -349,7 +349,7 @@ export class Inspect extends Client {
         if (popup !== undefined) {
             return this.cannot("signature help asked again with its popup shown", at);
         }
-        const raw = (await this.atPoint("signature_help", at)) as RawSignatureHelp | null;
+        const raw = (await this.atPoint("signature-help", at)) as RawSignatureHelp | null;
         if (raw === null) {
             return signatures(null);
         }
@@ -375,7 +375,7 @@ export class Inspect extends Client {
     }
 
     protected async fetchHighlights(at: Anchor): Promise<Highlight[]> {
-        const raws = ((await this.atPoint("document_highlight", at)) ?? []) as RawHighlight[];
+        const raws = ((await this.atPoint("document-highlight", at)) ?? []) as RawHighlight[];
         return raws.map((raw) => ({
             location: this.location(at.path, raw.range),
             kind: raw.kind === "Read" ? "read" : raw.kind === "Write" ? "write" : "text",
@@ -383,7 +383,7 @@ export class Inspect extends Client {
     }
 
     protected async fetchSelectionRange(at: Anchor): Promise<Range[]> {
-        const raws = ((await this.atPoint("selection_range", at)) ?? []) as RawRange[];
+        const raws = ((await this.atPoint("selection-range", at)) ?? []) as RawRange[];
         return raws.map((raw) => this.range(at.path, raw));
     }
 
@@ -395,7 +395,7 @@ export class Inspect extends Client {
         if (only !== undefined) {
             return this.cannot("code actions of some kinds", file);
         }
-        const raws = ((await this.overRange("code_action", file, selection)) ??
+        const raws = ((await this.overRange("code-action", file, selection)) ??
             []) as RawCodeAction[];
         return raws.map((raw) => {
             const edits = raw.edits.map((edit) => ({
@@ -421,7 +421,7 @@ export class Inspect extends Client {
             fs.writeFileSync(path.join(this.root, rel), applyEdits(context.file(rel), list));
         }
         try {
-            return [...((await this.run("folding_range", file)).diagnostics ?? [])].sort();
+            return [...((await this.run("folding-range", file)).diagnostics ?? [])].sort();
         } finally {
             for (const [rel, text] of originals) {
                 fs.writeFileSync(path.join(this.root, rel), text);
@@ -448,7 +448,7 @@ export class Inspect extends Client {
     protected async fetchTokens(file: string): Promise<Token[]> {
         const source = this.context().file(file);
         const size = Buffer.byteLength(source.text, "utf8");
-        return ((await this.document("semantic_tokens", file)) as RawToken[])
+        return ((await this.document("semantic-tokens", file)) as RawToken[])
             .filter((raw) => raw.range.begin < raw.range.end && raw.range.end <= size)
             .flatMap((raw) => this.pieces(source, raw));
     }
@@ -456,7 +456,7 @@ export class Inspect extends Client {
     protected async fetchInlayHints(file: string, range: Range): Promise<InlayHint[]> {
         const context = this.context();
         const source = context.file(file);
-        const raws = ((await this.overRange("inlay_hint", file, range)) ?? []) as RawInlayHint[];
+        const raws = ((await this.overRange("inlay-hint", file, range)) ?? []) as RawInlayHint[];
         return raws.map((raw) => {
             const kind = LSP_INLAY_KIND[raw.kind];
             if (kind === undefined) {
@@ -486,7 +486,7 @@ export class Inspect extends Client {
     }
 
     protected async fetchFolds(file: string): Promise<Fold[]> {
-        return ((await this.document("folding_range", file)) as RawFold[]).map((raw) => ({
+        return ((await this.document("folding-range", file)) as RawFold[]).map((raw) => ({
             range: this.range(file, raw.range),
             kind: raw.kind ?? "region",
             collapsedText: raw.collapsed_text === "" ? undefined : raw.collapsed_text,
@@ -503,12 +503,12 @@ export class Inspect extends Client {
             tags: raw.deprecated ? ["Deprecated"] : [],
             children: raw.children.map(convert),
         });
-        return ((await this.document("document_symbol", file)) as RawSymbol[]).map(convert);
+        return ((await this.document("document-symbols", file)) as RawSymbol[]).map(convert);
     }
 
     protected async fetchLinks(file: string): Promise<Link[]> {
         const context = this.context();
-        return ((await this.document("document_links", file)) as RawLink[]).map((raw) => ({
+        return ((await this.document("document-links", file)) as RawLink[]).map((raw) => ({
             location: this.location(file, raw.range),
             target: context.pathOfFile(raw.target),
         }));
@@ -676,7 +676,7 @@ export class Inspect extends Client {
             args.push(`--markers=${table}`);
         }
         if (this.config !== undefined) {
-            args.push(`--config=${JSON.stringify(this.config)}`);
+            args.push(`--config-overlay=${JSON.stringify(this.config)}`);
         }
         recordInvocation(args);
         const result = await runProcess(cliceExecutable(), args, {

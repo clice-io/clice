@@ -1,4 +1,4 @@
-[test."$ clice lint --workspace project --workers 2"]
+[test."$ clice lint --workspace project --jobs 2"]
 stdout = '''
 ${WS}/project/main.cpp:8:70: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 Linted 1 translation unit in #s: 1 finding.

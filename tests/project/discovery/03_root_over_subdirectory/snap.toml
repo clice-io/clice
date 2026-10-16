@@ -1,7 +1,7 @@
 ["root wins over subdirectory"."main.cpp"]
 inactive_lines = ["⟦int from_sub = 1;⟧"]
 
-["the order is named"."$ clice index --workers 2"]
+["the order is named"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 2 file shards (# KB), 4 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}

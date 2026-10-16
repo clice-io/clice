@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["cut after the meta pages"."$ clice query --method symbolSearch --symbol add"]
+["cut after the meta pages"."$ clice query symbol-search add"]
 stdout = '''
 {
   "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
@@ -23,7 +23,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 stderr = "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is corrupt (meta failed: MDB_INVALID: File is not an LMDB file); rebuilding"
 exit = 0
 
-["cut after the meta pages"."$ clice query --method symbolSearch --symbol add #2"]
+["cut after the meta pages"."$ clice query symbol-search add #2"]
 stdout = '''
 {
   "result": {
@@ -50,7 +50,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[emptied."$ clice query --method symbolSearch --symbol add"]
+[emptied."$ clice query symbol-search add"]
 stdout = '''
 {
   "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
@@ -67,7 +67,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[emptied."$ clice query --method symbolSearch --symbol add #2"]
+[emptied."$ clice query symbol-search add #2"]
 stdout = '''
 {
   "result": {

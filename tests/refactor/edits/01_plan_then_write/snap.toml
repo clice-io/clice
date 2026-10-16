@@ -1,11 +1,11 @@
-["plans without writing"."$ clice index --workers 2"]
+["plans without writing"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["plans without writing"."$ clice refactor rename --symbol compute --to evaluate --dry-run"]
+["plans without writing"."$ clice refactor rename compute evaluate --dry-run"]
 stdout = '''
 {
   "result": {
@@ -96,14 +96,14 @@ stdout = '''
 '''
 exit = 0
 
-["writes the edits"."$ clice index --workers 2"]
+["writes the edits"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["writes the edits"."$ clice refactor rename --symbol Widget --to Gadget"]
+["writes the edits"."$ clice refactor rename Widget Gadget"]
 stdout = '''
 {
   "result": {
@@ -179,7 +179,7 @@ stdout = '''
 '''
 exit = 0
 
-["writes the edits"."$ clice refactor rename --symbol Widget --to Gadget".files]
+["writes the edits"."$ clice refactor rename Widget Gadget".files]
 "lib.h" = '''
  int compute(int x);
 

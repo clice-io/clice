@@ -32,12 +32,6 @@ struct ServerOptions {
 
     DecoKV(help = "Workspace root directory (optional, skips LSP initialize)", required = false)
     <std::string> workspace;
-
-    DecoKV(help =
-               "Build configuration to activate, one of the tags declared on rules "
-               "(default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
 };
 
 enum class ServerLifecycle : std::uint8_t {
@@ -391,6 +385,6 @@ private:
     std::string session_log_dir;
 };
 
-int run_serve_mode(const ServerOptions& opts, const char* self_path);
+int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration, const char* self_path);
 
 }  // namespace clice

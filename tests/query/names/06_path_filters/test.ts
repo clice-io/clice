@@ -11,6 +11,6 @@ test(async (t) => {
         '"tally" path:b.cpp',
         `sum path:"${t.root}/lib"`,
     ]) {
-        await t.cli(["query", "--method", "symbolSearch", "--symbol", text]);
+        await t.cli(["query", "symbol-search", text]);
     }
 });

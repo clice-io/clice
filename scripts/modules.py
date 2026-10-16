@@ -246,7 +246,7 @@ def merge(clice):
         [
             clice,
             "modularize",
-            "--merge",
+            "merge",
             os.path.join(OUT, "merge.json"),
             "--out",
             os.path.join(ROOT, "modules"),

@@ -1,4 +1,4 @@
-[test."$ clice query --method symbolSearch --symbol add"]
+[test."$ clice query symbol-search add"]
 stdout = '''
 {
   "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
@@ -15,7 +15,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method callGraph --symbol add --direction sideways"]
+[test."$ clice query call-graph add --direction sideways"]
 stdout = '''
 {
   "error": "invalid direction 'sideways': expected callers, callees or both",
@@ -24,7 +24,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method definition --symbol nope"]
+[test."$ clice query definition nope"]
 stdout = '''
 {
   "error": "symbol not found",
@@ -33,7 +33,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method documentSymbols --path gone.cpp"]
+[test."$ clice query document-symbols gone.cpp"]
 stdout = '''
 {
   "error": "no such file: ${WS}/gone.cpp",
@@ -42,7 +42,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method fileDeps --path gone.cpp"]
+[test."$ clice query file-deps gone.cpp"]
 stdout = '''
 {
   "error": "no such file: ${WS}/gone.cpp",
@@ -51,7 +51,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method definition --symbol main.cpp:0"]
+[test."$ clice query definition main.cpp:0"]
 stdout = '''
 {
   "error": "lines and columns count from 1",
@@ -60,7 +60,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method definition --symbol gone.cpp:2"]
+[test."$ clice query definition gone.cpp:2"]
 stdout = '''
 {
   "error": "no such file: ${WS}/gone.cpp",
@@ -69,43 +69,43 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method definition --symbol add --path main.cpp"]
+[test."$ clice query definition add main.cpp"]
 stdout = '''
 {
-  "error": "--path names the file of a file question; narrow a symbol with path: in --symbol",
+  "error": "unexpected argument 'main.cpp'",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-[test."$ clice query --method symbolSearch --symbol add --path main.cpp"]
+[test."$ clice query symbol-search add main.cpp"]
 stdout = '''
 {
-  "error": "--path names the file of a file question; narrow a symbol with path: in --symbol",
+  "error": "unexpected argument 'main.cpp'",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-[test."$ clice query --method definition"]
+[test."$ clice query definition"]
 stdout = '''
 {
-  "error": "name the symbol with --symbol",
+  "error": "missing <LOCATOR>",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-[test."$ clice query --method bogus"]
+[test."$ clice query bogus"]
 stdout = '''
 {
-  "error": "unknown method 'bogus'",
+  "error": "at argv[0]:\n  bogus\n  ^~~~~\n  unknown subcommand 'bogus'",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-[test."$ clice query --method definition --symbol \"main.cpp:4:5 kind:variable\""]
+[test."$ clice query definition \"main.cpp:4:5 kind:variable\""]
 stdout = '''
 {
   "error": "symbol not found",
@@ -114,7 +114,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method symbolSearch --symbol \"add kind:Fnction\""]
+[test."$ clice query symbol-search \"add kind:Fnction\""]
 stdout = '''
 {
   "error": "unknown symbol kind 'Fnction'",

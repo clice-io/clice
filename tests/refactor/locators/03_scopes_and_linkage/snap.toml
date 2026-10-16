@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 4 translation units in #s: 4 file shards (# KB), 12 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol f --to h --dry-run"]
+[test."$ clice refactor rename f h --dry-run"]
 stdout = '''
 {
   "result": {
@@ -52,7 +52,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol \"helper path:src/\" --to h --dry-run"]
+[test."$ clice refactor rename \"helper path:src/\" h --dry-run"]
 stdout = '''
 {
   "result": {
@@ -99,7 +99,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol \"mix path:src/mixed.cpp\" --to h --dry-run"]
+[test."$ clice refactor rename \"mix path:src/mixed.cpp\" h --dry-run"]
 stdout = '''
 {
   "result": {
@@ -163,7 +163,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol S::g --to h --dry-run"]
+[test."$ clice refactor rename S::g h --dry-run"]
 stdout = '''
 {
   "result": {

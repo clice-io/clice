@@ -9,7 +9,7 @@ warning: Toolchain resolve failed for ${WS}/main.cpp: Driver ${WS}/missing-cc no
 '''
 exit = 0
 
-[test."$ clice query --method compileCommand --path list.def"]
+[test."$ clice query compile-command list.def"]
 stdout = '''
 {
   "error": "${WS}/list.def compiles only under a synthesized header context, which needs an editor session",
@@ -22,7 +22,7 @@ warning: Toolchain resolve failed for ${WS}/list.def: Driver ${WS}/missing-cc no
 '''
 exit = 1
 
-[test."$ clice query --method compileCommand --path lone.def"]
+[test."$ clice query compile-command lone.def"]
 stdout = '''
 {
   "result": {

@@ -23,7 +23,7 @@ description: Read before editing anything under docs/, and for the end-of-branch
   segment. Maintained exclusively by `record`; never edit by hand.
 - Each tree has its own hand-maintained `sidebar.yaml`.
 - `docs/public/clice-config.schema.json` — committed output of
-  `clice inspect --config-schema`; CI checks freshness.
+  `clice inspect config-schema`; CI checks freshness.
 
 ## Commands (pixi)
 

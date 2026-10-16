@@ -33,7 +33,7 @@ function leaves(
 
 export function configKeys(clice: string): string[] {
     const schema = JSON.parse(
-        execFileSync(clice, ["inspect", "--config-schema"], { encoding: "utf8" }),
+        execFileSync(clice, ["inspect", "config-schema"], { encoding: "utf8" }),
     ) as SchemaNode & {
         $defs?: Record<string, SchemaNode>;
     };
@@ -42,8 +42,8 @@ export function configKeys(clice: string): string[] {
     return out.sort();
 }
 
-/// Subcommands (`analyze modules` for a nested one) and their flags, from
-/// the help the binary prints.
+/// Subcommands and their operations (`query references`, `analyze modules
+/// edge`) and their flags, from the help the binary prints.
 export function commandsAndFlags(clice: string): { commands: string[]; flags: string[] } {
     const help = (args: string[]): string => {
         try {
@@ -61,7 +61,9 @@ export function commandsAndFlags(clice: string): { commands: string[]; flags: st
         const children = [...listed.matchAll(/^ {2,}([a-z][\w-]*) {2,}\S/gm)].map(
             (match) => match[1] ?? "",
         );
-        if (path.length > 0 && children.length === 0) {
+        // A subcommand that runs without an operation prints its own usage
+        // above its operations.
+        if (path.length > 0 && (children.length === 0 || /^usage: /m.test(text))) {
             commands.push(path.join(" "));
         }
         for (const match of text.matchAll(/^ {2,}(?:-\w\|)?(--[a-z][\w-]*)/gm)) {

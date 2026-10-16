@@ -1,7 +1,7 @@
-[test."$ clice inspect hover_check main.cpp"]
+[test."$ clice inspect hover main.cpp --check"]
 stdout = '''
 {
-  "feature": "hover_check",
+  "feature": "hover",
   "files": {
     "main.cpp": {
       "result": {
@@ -18,10 +18,10 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice inspect hover_check limit.cpp"]
+[test."$ clice inspect hover limit.cpp --check"]
 stdout = '''
 {
-  "feature": "hover_check",
+  "feature": "hover",
   "files": {
     "limit.cpp": {
       "result": {

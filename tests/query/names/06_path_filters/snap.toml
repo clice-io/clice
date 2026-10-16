@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol \"sum path:src/\""]
+[test."$ clice query symbol-search \"sum path:src/\""]
 stdout = '''
 {
   "result": {
@@ -25,7 +25,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:src/a.cpp\""]
+[test."$ clice query symbol-search \"\\\"tally\\\" path:src/a.cpp\""]
 stdout = '''
 {
   "result": {
@@ -45,7 +45,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:./lib/src/b.cpp\""]
+[test."$ clice query symbol-search \"\\\"tally\\\" path:./lib/src/b.cpp\""]
 stdout = '''
 {
   "result": {
@@ -65,7 +65,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:b.cpp\""]
+[test."$ clice query symbol-search \"\\\"tally\\\" path:b.cpp\""]
 stdout = '''
 {
   "result": {
@@ -85,7 +85,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol \"sum path:\\\"${WS}/lib\\\"\""]
+[test."$ clice query symbol-search \"sum path:\\\"${WS}/lib\\\"\""]
 stdout = '''
 {
   "result": {

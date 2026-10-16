@@ -1,4 +1,4 @@
-[test."$ clice index --workers 1"]
+[test."$ clice index --jobs 1"]
 stdout = "Indexing interrupted; progress saved. Rerun `clice index` to resume."
 exit = 130
 

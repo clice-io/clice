@@ -1,11 +1,11 @@
-["library interfaces"."$ clice index --workers 1"]
+["library interfaces"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["library interfaces"."$ clice analyze modules --scope \"app/**,third/**\" --std stdmod --partition partition.json --view interface --module alpha"]
+["library interfaces"."$ clice analyze modules interface alpha --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json"]
 stdout = '''
 [
   {
@@ -129,7 +129,7 @@ stdout = '''
 '''
 exit = 0
 
-["library interfaces"."$ clice analyze modules --scope \"app/**,third/**\" --std stdmod --partition partition.json --view interface --module beta"]
+["library interfaces"."$ clice analyze modules interface beta --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json"]
 stdout = '''
 [
   {
@@ -195,14 +195,14 @@ stdout = '''
 '''
 exit = 0
 
-["C library kept headers"."$ clice index --workers 1"]
+["C library kept headers"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["C library kept headers"."$ clice analyze modules --scope \"app/**,third/**\" --std stdmod --partition partition.json --view interface --module libc"]
+["C library kept headers"."$ clice analyze modules interface libc --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json"]
 stdout = '''
 [
   {
@@ -343,7 +343,7 @@ stdout = '''
 '''
 exit = 0
 
-["C library kept headers"."$ clice analyze modules --scope \"app/**,third/**\" --std stdmod --partition partition.json --view interface --module std"]
+["C library kept headers"."$ clice analyze modules interface std --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json"]
 stdout = '''
 [
   {
@@ -380,14 +380,14 @@ stdout = '''
 '''
 exit = 0
 
-["writes the wrapping"."$ clice index --workers 1"]
+["writes the wrapping"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap"]
+["writes the wrapping"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --out wrap"]
 stdout = '''
 {
   "wrapping": {
@@ -443,7 +443,7 @@ stdout = '''
 '''
 exit = 0
 
-["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap".files]
+["writes the wrapping"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --out wrap".files]
 "wrap/.modularize" = '''
 +std.macros.h
 +libc.macros.h
@@ -542,7 +542,7 @@ exit = 0
 '''
 "wrap/std.macros.h" = "+#pragma once"
 
-["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap #2"]
+["writes the wrapping"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --out wrap #2"]
 stdout = '''
 {
   "wrapping": {
@@ -598,7 +598,7 @@ stdout = '''
 '''
 exit = 0
 
-["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --no-mirrors --out bare"]
+["writes the wrapping"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --no-mirrors --out bare"]
 stdout = '''
 {
   "wrapping": {
@@ -645,7 +645,7 @@ stdout = '''
 '''
 exit = 0
 
-["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --no-mirrors --out bare".files]
+["writes the wrapping"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --no-mirrors --out bare".files]
 "bare/.modularize" = '''
 +std.macros.h
 +libc.macros.h
@@ -734,7 +734,7 @@ exit = 0
 '''
 "bare/std.macros.h" = "+#pragma once"
 
-["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/alpha.json --out wrap"]
+["writes the wrapping"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/alpha.json --out wrap"]
 stdout = '''
 {
   "wrapping": {
@@ -774,7 +774,7 @@ stdout = '''
 '''
 exit = 0
 
-["writes the wrapping"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/alpha.json --out wrap".files]
+["writes the wrapping"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/alpha.json --out wrap".files]
 "wrap/.modularize" = '''
  alpha.cppm
  alpha.macros.h
@@ -799,14 +799,14 @@ exit = 0
 -#include "beta.macros.h"
 '''
 
-["merges configurations"."$ clice index --workers 1"]
+["merges configurations"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["merges configurations"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap"]
+["merges configurations"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --out wrap"]
 stdout = '''
 {
   "wrapping": {
@@ -862,7 +862,7 @@ stdout = '''
 '''
 exit = 0
 
-["merges configurations"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap".files]
+["merges configurations"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --out wrap".files]
 "wrap/.modularize" = '''
 +std.macros.h
 +libc.macros.h
@@ -961,7 +961,7 @@ exit = 0
 '''
 "wrap/std.macros.h" = "+#pragma once"
 
-["merges configurations"."$ clice modularize --merge merges/two.json --out merged"]
+["merges configurations"."$ clice modularize merge merges/two.json --out merged"]
 stdout = '''
 {
   "wrapping": {
@@ -1009,7 +1009,7 @@ stdout = '''
 '''
 exit = 0
 
-["merges configurations"."$ clice modularize --merge merges/two.json --out merged".files]
+["merges configurations"."$ clice modularize merge merges/two.json --out merged".files]
 "merged/.modularize" = '''
 +one/std.macros.h
 +one/libc.macros.h
@@ -1213,7 +1213,7 @@ exit = 0
 '''
 "merged/two/std.macros.h" = "+#pragma once"
 
-["merges configurations"."$ clice modularize --merge merges/two.json --no-mirrors --out bare"]
+["merges configurations"."$ clice modularize merge merges/two.json --no-mirrors --out bare"]
 stdout = '''
 {
   "wrapping": {
@@ -1252,7 +1252,7 @@ stdout = '''
 '''
 exit = 0
 
-["merges configurations"."$ clice modularize --merge merges/two.json --no-mirrors --out bare".files]
+["merges configurations"."$ clice modularize merge merges/two.json --no-mirrors --out bare".files]
 "bare/.modularize" = '''
 +one/std.macros.h
 +one/libc.macros.h
@@ -1444,7 +1444,7 @@ exit = 0
 '''
 "bare/two/std.macros.h" = "+#pragma once"
 
-["merges configurations"."$ clice modularize --merge merges/three.json --out merged"]
+["merges configurations"."$ clice modularize merge merges/three.json --out merged"]
 stdout = '''
 {
   "wrapping": {
@@ -1492,7 +1492,7 @@ stdout = '''
 '''
 exit = 0
 
-["merges configurations"."$ clice modularize --merge merges/three.json --out merged".files]
+["merges configurations"."$ clice modularize merge merges/three.json --out merged".files]
 "merged/.modularize" = '''
  two/beta.macros.h
  two/prelude.h
@@ -1606,7 +1606,7 @@ exit = 0
 '''
 "merged/three/std.macros.h" = "+#pragma once"
 
-["merges configurations"."$ clice modularize --merge merges/unconditioned.json --out merged"]
+["merges configurations"."$ clice modularize merge merges/unconditioned.json --out merged"]
 stdout = '''
 {
   "error": "configuration one has no condition",
@@ -1615,7 +1615,7 @@ stdout = '''
 '''
 exit = 1
 
-["merges configurations"."$ clice modularize --merge merges/three.json --out merged #2"]
+["merges configurations"."$ clice modularize merge merges/three.json --out merged #2"]
 stdout = '''
 {
   "error": "configurations one and three differ in emptying the standard headers",
@@ -1624,7 +1624,7 @@ stdout = '''
 '''
 exit = 1
 
-["merges configurations"."$ clice modularize --merge merges/three.json --no-mirrors --out bare3"]
+["merges configurations"."$ clice modularize merge merges/three.json --no-mirrors --out bare3"]
 stdout = '''
 {
   "wrapping": {
@@ -1663,7 +1663,7 @@ stdout = '''
 '''
 exit = 0
 
-["merges configurations"."$ clice modularize --merge merges/three.json --no-mirrors --out bare3".files]
+["merges configurations"."$ clice modularize merge merges/three.json --no-mirrors --out bare3".files]
 "bare3/.modularize" = '''
 +one/std.macros.h
 +one/libc.macros.h
@@ -1919,7 +1919,7 @@ exit = 0
 '''
 "bare3/two/std.macros.h" = "+#pragma once"
 
-["merges configurations"."$ clice modularize --merge merges/two.json --out merged #2"]
+["merges configurations"."$ clice modularize merge merges/two.json --out merged #2"]
 stdout = '''
 {
   "error": "configurations one and two wrap different modules",
@@ -1928,7 +1928,7 @@ stdout = '''
 '''
 exit = 1
 
-["merges configurations"."$ clice modularize --merge merges/mirror.json --out merged"]
+["merges configurations"."$ clice modularize merge merges/mirror.json --out merged"]
 stdout = '''
 {
   "error": "configuration mirror: not a distinct directory name",
@@ -1937,23 +1937,23 @@ stdout = '''
 '''
 exit = 1
 
-["merges configurations"."$ clice modularize --merge merges/two.json --partition partition.json --out merged"]
+["merges configurations"."$ clice modularize merge merges/two.json --partition partition.json --out merged"]
 stdout = '''
 {
-  "error": "modularize --merge needs --out and no --partition",
+  "error": "at argv[1]:\n  merges/two.json --partition partition.json --out merged\n                  ^~~~~~~~~~~\n  unknown option '--partition'",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-["partition errors"."$ clice index --workers 1"]
+["partition errors"."$ clice index --jobs 1"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 40 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/external.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/external.json --out wrap"]
 stdout = '''
 {
   "error": "module alpha: only std stands for an existing module, given libc++'s sources",
@@ -1962,7 +1962,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/cycle.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/cycle.json --out wrap"]
 stdout = '''
 {
   "error": "modules import each other: alpha -> beta -> alpha",
@@ -1971,7 +1971,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/named.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/named.json --out wrap"]
 stdout = '''
 {
   "error": "module ../escape: not a module name to generate",
@@ -1980,7 +1980,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/flags.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/flags.json --out wrap"]
 stdout = '''
 {
   "error": "module std is both textual and external",
@@ -1989,7 +1989,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/both.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/both.json --out wrap"]
 stdout = '''
 {
   "error": "module libc is both textual and external",
@@ -1998,7 +1998,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/rewritten.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/rewritten.json --out wrap"]
 stdout = '''
 {
   "error": "module alpha is both rewritten and wrapped",
@@ -2007,7 +2007,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/wrapped.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/wrapped.json --out wrap"]
 stdout = '''
 {
   "error": "module alpha is both rewritten and wrapped",
@@ -2016,7 +2016,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partitions/primary.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partitions/primary.json --out wrap"]
 stdout = '''
 {
   "error": "module alpha has a primary interface but is not rewritten",
@@ -2025,7 +2025,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --partition partition.json --out wrap"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap"]
 stdout = '''
 {
   "error": "module libc provided by std.compat: only std.compat, given --std",
@@ -2052,7 +2052,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice modularize --scope \"app/**,third/**\" --std stdmod --partition partition.json --out wrap --configuration nowhere"]
+["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --out wrap --configuration nowhere"]
 stdout = '''
 {
   "error": "--configuration nowhere names no configuration: no rule declares one",

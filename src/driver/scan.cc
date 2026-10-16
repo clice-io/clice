@@ -22,15 +22,6 @@ namespace {
 struct ScanOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
-    <std::string> workspace;
-
-    DecoKV(help =
-               "Build configuration to activate, one of the tags declared on rules "
-               "(default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
-
     DecoFlag(names = {"--json"},
              help =
                  "Print every scanned file with what it includes, the includes no search "
@@ -44,7 +35,8 @@ struct ScanOptions {
            required = false)
     <std::uint32_t> runs;
 
-    LogLevelOption log{.log_level = LogLevel::Warn};
+    WorkspaceOptions where;
+    LogLevelOption log;
 };
 
 struct ScannedFile {
@@ -192,12 +184,12 @@ int run_scan(const ScanOptions& opts) {
         LOG_ERROR("--runs takes a count of at least 1");
         return 1;
     }
-    auto root = workspace_spelling(opts.workspace.value_or(""));
+    auto root = opts.where.root();
     if(!workspace_exists(root)) {
         return 1;
     }
     auto config = Config::load_from_workspace(CanonicalPath(root));
-    auto requested = opts.configuration.value_or("");
+    auto requested = opts.where.configuration.tag();
     if(auto checked = check_requested_configuration(config, requested); !checked) {
         LOG_ERROR("{}", checked.error());
         return 1;
@@ -222,13 +214,7 @@ int run_scan(const ScanOptions& opts) {
 }
 
 CommandHandler build(const char*) {
-    auto cmd = kota::deco::cli::command<ScanOptions>("clice scan [OPTIONS]");
-    cmd.match_all([](ScanOptions opts) {
-        opts.log.apply();
-        logging::stderr_logger("scan", logging::options);
-        return run_scan(opts);
-    });
-    return cmd;
+    return operation<ScanOptions>("clice scan [OPTIONS]", "scan", Errors::Text, run_scan);
 }
 
 [[maybe_unused]] const bool registered = register_command(

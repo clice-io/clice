@@ -10,7 +10,7 @@ warning: Toolchain resolve failed for ${WS}/vendor/b.cpp: Driver ${WS}/missing-c
 '''
 exit = 0
 
-["borrowed through a symlink"."$ clice query --method compileCommand --path a/inc/orphan.h"]
+["borrowed through a symlink"."$ clice query compile-command a/inc/orphan.h"]
 stdout = '''
 {
   "result": {

@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# KB), 15 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method references --symbol Holder"]
+[test."$ clice query references Holder"]
 stdout = '''
 {
   "result": {
@@ -31,7 +31,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol Holder --to Box --dry-run"]
+[test."$ clice refactor rename Holder Box --dry-run"]
 stdout = '''
 {
   "result": {
@@ -151,7 +151,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol \"Holder<bool>\" --to Box --dry-run"]
+[test."$ clice refactor rename \"Holder<bool>\" Box --dry-run"]
 stdout = '''
 {
   "result": {

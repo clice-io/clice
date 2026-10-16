@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method references --symbol util.h:2:12 --include-declaration"]
+[test."$ clice query references util.h:2:12 --include-declaration"]
 stdout = '''
 {
   "result": {
@@ -36,7 +36,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method references --symbol a.cpp:2:18 --include-declaration"]
+[test."$ clice query references a.cpp:2:18 --include-declaration"]
 stdout = '''
 {
   "result": {
@@ -67,7 +67,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method references --symbol b.cpp:2:15 --include-declaration"]
+[test."$ clice query references b.cpp:2:15 --include-declaration"]
 stdout = '''
 {
   "result": {
@@ -98,7 +98,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method documentSymbols --path util.h"]
+[test."$ clice query document-symbols util.h"]
 stdout = '''
 {
   "result": {
@@ -117,7 +117,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method documentSymbols --path b.cpp"]
+[test."$ clice query document-symbols b.cpp"]
 stdout = '''
 {
   "result": {
@@ -136,7 +136,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:${WS}/util.h\""]
+[test."$ clice query definition \"#9cbf31b6d292b357 path:${WS}/util.h\""]
 stdout = '''
 {
   "result": {
@@ -156,7 +156,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:util.h\""]
+[test."$ clice query definition \"#9cbf31b6d292b357 path:util.h\""]
 stdout = '''
 {
   "result": {
@@ -176,7 +176,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:a.cpp\""]
+[test."$ clice query definition \"#9cbf31b6d292b357 path:a.cpp\""]
 stdout = '''
 {
   "result": {
@@ -196,7 +196,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol \"#9cbf31b6d292b357 path:a.cpp\""]
+[test."$ clice query symbol-search \"#9cbf31b6d292b357 path:a.cpp\""]
 stdout = '''
 {
   "result": {
@@ -216,7 +216,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:gone.cpp\""]
+[test."$ clice query definition \"#9cbf31b6d292b357 path:gone.cpp\""]
 stdout = '''
 {
   "error": "no such file: ${WS}/gone.cpp",
@@ -225,7 +225,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method definition --symbol \"#9cbf31b6d292b357 path:new.cpp\""]
+[test."$ clice query definition \"#9cbf31b6d292b357 path:new.cpp\""]
 stdout = '''
 {
   "error": "symbol not found",
@@ -236,7 +236,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice query --method symbolSearch --symbol \"\\\"helper\\\" path:util.h\""]
+[test."$ clice query symbol-search \"\\\"helper\\\" path:util.h\""]
 stdout = '''
 {
   "result": {
@@ -256,7 +256,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol \"\\\"helper\\\" path:a.cpp\""]
+[test."$ clice query symbol-search \"\\\"helper\\\" path:a.cpp\""]
 stdout = '''
 {
   "result": {

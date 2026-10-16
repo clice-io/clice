@@ -119,11 +119,11 @@ test("unknown selection falls back untouched", async (t) => {
 });
 
 test("batch index per configuration", async (t) => {
-    await t.cli("index --configuration release --workers 2");
+    await t.cli("index --configuration release --jobs 2");
     expect(libraries(t)).toEqual(["release"]);
     // The default configuration's library was never written.
-    await t.cli("index --stats");
-    await t.cli("index --workers 2");
+    await t.cli("index stats");
+    await t.cli("index --jobs 2");
     expect(libraries(t)).toEqual(["debug", "release"]);
 });
 
@@ -134,21 +134,21 @@ test(
         // The server falls back so an editor always starts; a batch or
         // inspection run with a misspelt name fails instead of reporting on
         // another configuration.
-        await t.cli("index --configuration nope --workers 2");
-        await t.cli("index --stats --configuration nope");
-        await t.cli("lint --configuration nope --workers 2");
-        await t.cli("inspect --configuration nope hover gated.cpp");
+        await t.cli("index --configuration nope --jobs 2");
+        await t.cli("index stats --configuration nope");
+        await t.cli("lint --configuration nope --jobs 2");
+        await t.cli("inspect hover gated.cpp --configuration nope");
         // --flags replaces the rules the name would select among.
         await t.cli([
             "inspect",
+            "hover",
+            "gated.cpp",
             "--configuration",
             "release",
             "--flags",
             '["clang++"]',
-            "hover",
-            "gated.cpp",
         ]);
         await t.cli("inspect hover gated.cpp");
-        await t.cli("inspect --configuration release hover gated.cpp");
+        await t.cli("inspect hover gated.cpp --configuration release");
     },
 );

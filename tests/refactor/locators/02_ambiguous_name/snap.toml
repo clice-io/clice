@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 5 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol value --to amount --dry-run"]
+[test."$ clice refactor rename value amount --dry-run"]
 stdout = '''
 {
   "result": {
@@ -52,7 +52,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol a::value --to amount --dry-run"]
+[test."$ clice refactor rename a::value amount --dry-run"]
 stdout = '''
 {
   "result": {
@@ -102,7 +102,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol \"#ab73a1a4b609cf4d\" --to amount"]
+[test."$ clice refactor rename \"#ab73a1a4b609cf4d\" amount"]
 stdout = '''
 {
   "result": {
@@ -152,7 +152,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol \"#ab73a1a4b609cf4d\" --to amount".files]
+[test."$ clice refactor rename \"#ab73a1a4b609cf4d\" amount".files]
 "main.cpp" = '''
  namespace a {
 -int value;

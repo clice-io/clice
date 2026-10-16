@@ -8,7 +8,7 @@ import { generate, test, type TestContext } from "@clice/tools/testing";
 
 const SYMBOLS = 6000;
 function inspect(file: string): string[] {
-    return ["inspect", "document_symbol", file];
+    return ["inspect", "document-symbols", file];
 }
 
 const INSPECT = inspect("big.cpp");

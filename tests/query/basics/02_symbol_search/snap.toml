@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol circ --limit 5"]
+[test."$ clice query symbol-search circ --limit 5"]
 stdout = '''
 {
   "result": {

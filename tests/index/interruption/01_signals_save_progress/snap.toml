@@ -1,4 +1,4 @@
-["a second SIGTERM still saves"."$ clice index --workers 1"]
+["a second SIGTERM still saves"."$ clice index --jobs 1"]
 stdout = "Indexing interrupted; progress saved. Rerun `clice index` to resume."
 exit = 130
 
@@ -9,7 +9,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["SIGHUP saves"."$ clice index --workers 1"]
+["SIGHUP saves"."$ clice index --jobs 1"]
 stdout = "Indexing interrupted; progress saved. Rerun `clice index` to resume."
 exit = 130
 

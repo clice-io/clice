@@ -165,7 +165,7 @@ jobs:
       - name: Config schema check
         if: ${{ inputs.target == 'x86_64-unknown-linux-gnu' && inputs.build_type == 'RelWithDebInfo' }}
         run: |
-          build/RelWithDebInfo/bin/bin/clice inspect --config-schema > docs/public/clice-config.schema.json
+          build/RelWithDebInfo/bin/bin/clice inspect config-schema > docs/public/clice-config.schema.json
           git diff --exit-code -- docs/public/clice-config.schema.json
 
       - name: Check artifact dependencies

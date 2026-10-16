@@ -7,14 +7,14 @@ at argv[1]:
 '''
 exit = 2
 
-["log level"."$ clice index --log-level error --workers 1"]
+["log level"."$ clice index --log-level error --jobs 1"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["a missing workspace"."$ clice query --method projectFiles --workspace missing"]
+["a missing workspace"."$ clice query project-files --workspace missing"]
 stdout = '''
 {
   "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",

@@ -22,5 +22,5 @@ test("inspect loads the databases above its inputs", async (t) => {
 });
 
 test("batch indexing finds nested projects", async (t) => {
-    await t.cli("index --workers 2");
+    await t.cli("index --jobs 2");
 });

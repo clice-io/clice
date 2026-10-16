@@ -16,31 +16,21 @@ namespace {
 struct FormatOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
-    <std::string> workspace;
-
-    DecoKV(help =
-               "Build configuration to activate, one of the tags declared on rules "
-               "(default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
-
-    DecoFlag(names = {"--check"},
-             help = "Report the files that need formatting instead of rewriting them",
-             required = false)
-    check;
-
-    DecoKV(help = "Number of files to format at once (default: the CPU count)", required = false)
-    <std::uint32_t> jobs;
-
-    LogLevelOption log;
-
     DecoInput(meta_var = "<PATH>",
               help =
                   "Files to format, or directories to format the build's own files under; "
                   "relative to the workspace (default: the build's own files)",
               required = false)
     <std::vector<std::string>> paths;
+
+    DecoFlag(names = {"--check"},
+             help = "Report the files that need formatting instead of rewriting them",
+             required = false)
+    check;
+
+    WorkspaceOptions where;
+    JobsOption jobs;
+    LogLevelOption log;
 };
 
 int run_format(BatchFormatOptions options) {
@@ -76,23 +66,22 @@ int run_format(BatchFormatOptions options) {
 }
 
 CommandHandler build(const char*) {
-    auto cmd = kota::deco::cli::command<FormatOptions>("clice format [OPTIONS] [<PATH>...]");
-    cmd.match_all([](FormatOptions opts) {
-        opts.log.apply();
-        logging::stderr_logger("format", logging::options);
-
-        BatchFormatOptions options{
-            .root = workspace_root(opts.workspace.value_or("")),
-            .configuration = opts.configuration.value_or(""),
-            .jobs = opts.jobs.value_or(0),
-            .check = static_cast<bool>(opts.check),
-        };
-        for(auto& argument: opts.paths.value_or(std::vector<std::string>{})) {
-            options.paths.emplace_back(argument, Spelling(options.root));
-        }
-        return run_format(std::move(options));
-    });
-    return cmd;
+    return operation<FormatOptions>(
+        "clice format [<PATH>...] [OPTIONS]",
+        "format",
+        Errors::Text,
+        [](const FormatOptions& opts) {
+            BatchFormatOptions options{
+                .root = CanonicalPath(opts.where.root()),
+                .configuration = opts.where.configuration.tag(),
+                .jobs = opts.jobs.jobs.value_or(0),
+                .check = static_cast<bool>(opts.check),
+            };
+            for(auto& argument: opts.paths.value_or(std::vector<std::string>{})) {
+                options.paths.emplace_back(argument, Spelling(options.root));
+            }
+            return run_format(std::move(options));
+        });
 }
 
 [[maybe_unused]] const bool registered =

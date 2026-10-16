@@ -31,42 +31,42 @@
           }
         },
         {
-          "label": "$ clice query --method projectFiles",
+          "label": "$ clice query project-files",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"files\": [\n      {\n        \"path\": \"${WS}/main.cpp\",\n        \"kind\": \"source\",\n        \"moduleName\": null\n      },\n      {\n        \"path\": \"${WS}/a.h\",\n        \"kind\": \"header\",\n        \"moduleName\": null\n      }\n    ],\n    \"total\": 2\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method projectFiles --filter source",
+          "label": "$ clice query project-files --filter source",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"files\": [\n      {\n        \"path\": \"${WS}/main.cpp\",\n        \"kind\": \"source\",\n        \"moduleName\": null\n      }\n    ],\n    \"total\": 1\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method fileDeps --path main.cpp --direction includes",
+          "label": "$ clice query file-deps main.cpp --direction includes",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"file\": \"${WS}/main.cpp\",\n    \"includes\": [\n      {\n        \"path\": \"${WS}/a.h\",\n        \"depth\": 1\n      }\n    ],\n    \"includers\": []\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method fileDeps --path a.h --direction includers",
+          "label": "$ clice query file-deps a.h --direction includers",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"file\": \"${WS}/a.h\",\n    \"includes\": [],\n    \"includers\": [\n      {\n        \"path\": \"${WS}/main.cpp\",\n        \"depth\": 1\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method impactAnalysis --path a.h",
+          "label": "$ clice query impact-analysis a.h",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"directDependents\": [\n      \"${WS}/main.cpp\"\n    ],\n    \"transitiveDependents\": [],\n    \"affectedModules\": []\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method counterparts --path a.h",
+          "label": "$ clice query counterparts a.h",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"file\": \"${WS}/a.h\",\n    \"candidates\": [\n      {\n        \"path\": \"${WS}/main.cpp\",\n        \"reasons\": [\n          \"defines 1 of 1 declaration\"\n        ]\n      }\n    ],\n    \"preferred\": \"${WS}/main.cpp\"\n  },\n  \"stale\": []\n}",
             "exit": 0

@@ -14,14 +14,15 @@ namespace {
 struct ServeOptions {
     kota::deco::decl::HelpOption help;
     ServerOptions server;
-    LogLevelOption log;
+    ConfigurationOption configuration;
+    LogLevelOption log{.log_level = LogLevel::Info};
 };
 
 CommandHandler build(const char* self_path) {
     auto cmd = kota::deco::cli::command<ServeOptions>("clice serve [OPTIONS]");
     cmd.match_all([self_path](ServeOptions opts) {
         opts.log.apply();
-        return run_serve_mode(opts.server, self_path);
+        return run_serve_mode(opts.server, opts.configuration.tag(), self_path);
     });
     return cmd;
 }

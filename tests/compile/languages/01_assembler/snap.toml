@@ -19,7 +19,7 @@ Expands to:
 '''
 range = ".quad ⟦SIZE⟧"
 
-[index."$ clice index --workers 1"]
+[index."$ clice index --jobs 1"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}

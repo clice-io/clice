@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method documentSymbols --path main.cpp"]
+[test."$ clice query document-symbols main.cpp"]
 stdout = '''
 {
   "result": {
@@ -59,7 +59,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method documentSymbols --path api.h"]
+[test."$ clice query document-symbols api.h"]
 stdout = '''
 {
   "result": {
@@ -106,7 +106,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method readSymbol --symbol twice"]
+[test."$ clice query read-symbol twice"]
 stdout = '''
 {
   "result": {

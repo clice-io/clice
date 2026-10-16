@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol compute --to Widget"]
+[test."$ clice refactor rename compute Widget"]
 stdout = '''
 {
   "result": {

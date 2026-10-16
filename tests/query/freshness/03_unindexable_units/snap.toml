@@ -1,4 +1,4 @@
-[test."$ clice query --method symbolSearch --symbol ghost --fresh"]
+[test."$ clice query symbol-search ghost --fresh"]
 stdout = '''
 {
   "result": {

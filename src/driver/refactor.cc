@@ -6,6 +6,7 @@ module clice;
 
 import :config.config;
 import :driver.driver;
+import :index.symbol_query;
 import :project.configuration;
 import :project.open_index;
 import :server.query_commands;
@@ -15,33 +16,19 @@ namespace clice::driver {
 
 namespace {
 
-struct RefactorOptions {
+struct RenameOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoInput(meta_var = "<ACTION>", help = "Refactoring to run: rename", required = false)
+    DecoInput(meta_var = "<LOCATOR> <NEW-NAME>",
+              help =
+                  "The symbol, as a locator: its whole name, an answer's symbol, or "
+                  "file:line[:column]; and its new name",
+              required = false)
     <std::vector<std::string>> inputs;
 
-    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
-    <std::string> workspace;
-
     DecoKV(help =
-               "Build configuration to read, one of the tags declared on rules "
-               "(default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
-
-    DecoKV(help =
-               "rename: the symbol, as a locator: its whole name, an answer's symbol, or "
-               "file:line[:column]",
-           required = false)
-    <std::string> symbol;
-
-    DecoKV(help = "rename: the new name", required = false)
-    <std::string> to;
-
-    DecoKV(help =
-               "rename: a file listing renames to make at once, `<locator> => <new name>` a "
-               "line; - reads them from stdin",
+               "A file listing renames to make at once, `<locator> => <new name>` a line; - "
+               "reads them from stdin",
            required = false)
     <std::string> spec;
 
@@ -50,14 +37,9 @@ struct RefactorOptions {
              required = false)
     dry_run;
 
-    DecoFlag(names = {"--fresh"},
-             help =
-                 "Reindex the files whose content changed since they were indexed before "
-                 "planning, through the running server or a batch run of this command",
-             required = false)
-    fresh;
-
-    LogLevelOption log{.log_level = LogLevel::Warn};
+    WorkspaceOptions where;
+    FreshOption fresh;
+    LogLevelOption log;
 };
 
 /// The renames a list asks for: `<locator> => <new name>` a line, blank
@@ -96,42 +78,37 @@ std::expected<std::vector<query::RenameRequest>, std::string> parse_renames(llvm
     return requests;
 }
 
-/// The renames the options ask for: one by --symbol and --to, or a list by
-/// --spec.
+/// The renames a --spec list asks for.
+std::expected<std::vector<query::RenameRequest>, std::string> read_renames(llvm::StringRef spec) {
+    std::unique_ptr<llvm::MemoryBuffer> list;
+    if(spec == "-") {
+        auto input = llvm::MemoryBuffer::getSTDIN();
+        if(!input) {
+            return std::unexpected(
+                std::format("cannot read the renames from stdin: {}", input.getError().message()));
+        }
+        list = std::move(*input);
+    } else {
+        auto file = vfs::read(spec);
+        if(!file) {
+            return std::unexpected(
+                std::format("cannot read {}: {}", spec.str(), file.error().message()));
+        }
+        list = std::move(*file);
+    }
+    return parse_renames(list->getBuffer());
+}
+
+/// The rename `<LOCATOR> <NEW-NAME>` asks for.
 std::expected<std::vector<query::RenameRequest>, std::string>
-    requests_of(const RefactorOptions& opts) {
-    if(opts.spec) {
-        if(opts.symbol || opts.to) {
-            return std::unexpected("--spec lists the renames; --symbol and --to name one");
-        }
-        std::unique_ptr<llvm::MemoryBuffer> list;
-        if(*opts.spec == "-") {
-            auto input = llvm::MemoryBuffer::getSTDIN();
-            if(!input) {
-                return std::unexpected(std::format("cannot read the renames from stdin: {}",
-                                                   input.getError().message()));
-            }
-            list = std::move(*input);
-        } else {
-            auto file = vfs::read(*opts.spec);
-            if(!file) {
-                return std::unexpected(
-                    std::format("cannot read {}: {}", *opts.spec, file.error().message()));
-            }
-            list = std::move(*file);
-        }
-        return parse_renames(list->getBuffer());
-    }
-    if(!opts.to) {
-        return std::unexpected("--to names the new name");
-    }
-    auto locator = locator_of(opts.symbol.as_optional());
+    one_rename(llvm::ArrayRef<std::string> args) {
+    auto& text = args[0];
+    auto locator = index::SymbolQuery::parse(text);
     if(!locator) {
         return std::unexpected(locator.error());
     }
     std::vector<query::RenameRequest> requests;
-    requests.push_back(
-        {.text = *opts.symbol, .locator = std::move(*locator), .new_name = *opts.to});
+    requests.push_back({.text = text, .locator = std::move(*locator), .new_name = args[1]});
     return requests;
 }
 
@@ -199,21 +176,34 @@ std::expected<void, std::string> apply(FileTable& files, const index::BatchPlan&
     return {};
 }
 
-int run_rename(const RefactorOptions& opts, const char* self_path) {
-    auto requests = requests_of(opts);
+int run_rename(const RenameOptions& opts, const char* self_path) {
+    std::expected<std::vector<query::RenameRequest>, std::string> requests;
+    if(opts.spec) {
+        if(opts.inputs) {
+            return usage_error(Errors::JSON,
+                               "--spec lists the renames; <LOCATOR> <NEW-NAME> names one");
+        }
+        requests = read_renames(*opts.spec);
+    } else {
+        auto args = positional(opts.inputs.as_optional(), {"<LOCATOR>", "<NEW-NAME>"});
+        if(!args) {
+            return usage_error(Errors::JSON, args.error());
+        }
+        requests = one_rename(*args);
+    }
     if(!requests) {
         print_json(Failure{.error = std::move(requests.error())});
         return 1;
     }
-    auto spelling = workspace_spelling(opts.workspace.value_or(""));
+    auto spelling = opts.where.root();
     auto config = Config::load_from_workspace(CanonicalPath(spelling));
-    auto configuration = opts.configuration.value_or("");
+    auto configuration = opts.where.configuration.tag();
     if(auto checked = check_requested_configuration(config, configuration); !checked) {
         print_json(Failure{.error = std::move(checked.error())});
         return 1;
     }
     std::vector<std::string> failed;
-    if(opts.fresh) {
+    if(opts.fresh.fresh) {
         auto refreshed = refresh(spelling, config, configuration, self_path);
         if(!refreshed) {
             print_json(Failure{.error = refreshed.error()});
@@ -279,21 +269,19 @@ int run_rename(const RefactorOptions& opts, const char* self_path) {
 }
 
 CommandHandler build(const char* self_path) {
-    auto cmd = kota::deco::cli::command<RefactorOptions>("clice refactor <ACTION> [OPTIONS]");
-    cmd.match_all([self_path](RefactorOptions opts) {
-           opts.log.apply();
-           logging::stderr_logger("refactor", logging::options);
-           auto action = opts.inputs && opts.inputs->size() == 1 ? opts.inputs->front() : "";
-           if(action != "rename") {
-               print_json(Failure{.error = action.empty()
-                                               ? "name the refactoring to run: rename"
-                                               : std::format("unknown refactoring '{}'", action)});
-               return 1;
-           }
-           return run_rename(opts, self_path);
-       })
-        .on_error([](auto err) { print_json(Failure{.error = err.message}); });
-    return cmd;
+    std::vector<Operation> operations;
+    operations.push_back({
+        .name = "rename",
+        .description = "Rename symbols across the workspace",
+        .run = operation<RenameOptions>(
+            "clice refactor rename (<LOCATOR> <NEW-NAME> | --spec <FILE>) [OPTIONS]",
+            "refactor",
+            Errors::JSON,
+            [self_path](const RenameOptions& opts) { return run_rename(opts, self_path); }),
+    });
+    return with_operations("Rewrite the workspace's sources through the persisted index",
+                           std::move(operations),
+                           Errors::JSON);
 }
 
 [[maybe_unused]] const bool registered = register_command(

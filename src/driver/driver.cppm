@@ -12,7 +12,6 @@ module;
 module clice:driver.driver;
 
 import :config.config;
-import :index.symbol_query;
 import :index.writer_lock;
 import :project.configuration;
 import :sched.batch;
@@ -152,11 +151,11 @@ inline void println() {
 
 enum class LogLevel : std::uint8_t { Trace, Debug, Info, Warn, Error, Off };
 
-/// The --log-level option every subcommand's options hold; a subcommand
-/// that logs less unless asked gives it a default of its own.
+/// The --log-level option every subcommand's options hold; one that logs
+/// more unless asked gives it a default of its own.
 struct LogLevelOption {
     DecoKV(help = "Log level", required = false)
-    <LogLevel> log_level = LogLevel::Info;
+    <LogLevel> log_level = LogLevel::Warn;
 
     /// Make the level given the global log level.
     void apply() const {
@@ -172,12 +171,54 @@ struct LogLevelOption {
     }
 };
 
-/// The workspace a batch subcommand names: the --workspace argument
-/// relative to the current directory, or the current directory when it is
-/// empty, as spelled.
-inline Spelling workspace_spelling(llvm::StringRef argument) {
-    return Spelling(argument, Spelling::cwd());
-}
+/// --configuration: the build configuration a subcommand works in.
+struct ConfigurationOption {
+    DecoKV(help =
+               "Build configuration, one of the tags declared on rules (default: the selected "
+               "one, else default_configuration)",
+           required = false)
+    <std::string> configuration;
+
+    /// The tag given, empty for none.
+    std::string tag() const {
+        return configuration.value_or("");
+    }
+};
+
+/// The workspace a subcommand works in, relative to the current directory,
+/// and its build configuration. The files it names are relative to the
+/// workspace.
+struct WorkspaceOptions {
+    DecoKV(help = "Workspace root directory (default: the current directory)", required = false)
+    <std::string> workspace;
+
+    ConfigurationOption configuration;
+
+    /// The workspace as spelled: the current directory when none is given.
+    Spelling root() const {
+        return Spelling(workspace.value_or(""), Spelling::cwd());
+    }
+};
+
+/// How many units or files a batch subcommand works on at once.
+struct JobsOption {
+    DecoKV(names = {"-j", "--jobs"},
+           help =
+               "How many units or files to work on at once (default: "
+               "project.stateless_worker_count; for format, the CPU count)",
+           required = false)
+    <std::uint32_t> jobs;
+};
+
+/// --fresh, of the subcommands that read the index.
+struct FreshOption {
+    DecoFlag(names = {"--fresh"},
+             help =
+                 "Reindex the files whose content changed since they were indexed first, "
+                 "through the running server or a batch run of this command",
+             required = false)
+    fresh;
+};
 
 /// Whether the workspace a batch subcommand names is a directory; one that
 /// is not is reported, never created for the run's cache and logs.
@@ -189,47 +230,11 @@ inline bool workspace_exists(const Spelling& workspace) {
     return false;
 }
 
-/// The workspace root of a batch subcommand.
-inline CanonicalPath workspace_root(llvm::StringRef argument) {
-    return CanonicalPath(workspace_spelling(argument));
-}
-
 template <typename Parser>
 void print_usage(Parser& cmd) {
     std::ostringstream ss;
     cmd.usage(ss);
     write_output(stdout, ss.str());
-}
-
-/// The error handler of a commander of subcommands: named without one, it
-/// prints its usage and succeeds, as --help does; an unknown subcommand is
-/// a usage error.
-inline auto subcommand_error_handler(kota::deco::cli::SubCommander& commander) {
-    return [&commander](const kota::deco::cli::SubCommandError& err) {
-        if(err.type == kota::deco::cli::SubCommandError::Type::MissingSubCommand) {
-            print_usage(commander);
-            return 0;
-        }
-        driver::println(stderr, "{}", err.message);
-        return kota::deco::cli::parse_error_exit_code;
-    };
-}
-
-/// Run a commander of subcommands on `args`. The commander takes whatever
-/// leads them for a subcommand's name; an option other than --help leading
-/// them is reported as the unknown option it is.
-inline int run_subcommands(kota::deco::cli::SubCommander& commander, std::span<std::string> args) {
-    namespace text = kota::deco::cli::text;
-    if(!args.empty() && args.front().starts_with("-") &&
-       !llvm::is_contained(kota::deco::decl::help_names, args.front())) {
-        driver::println(
-            stderr,
-            "{}",
-            text::render_diagnostic(
-                text::diagnostic_at(args, 0, 1, std::format("unknown option '{}'", args.front()))));
-        return kota::deco::cli::parse_error_exit_code;
-    }
-    return commander(args);
 }
 
 /// "s" when `count` warrants a plural noun, for user-facing summaries.
@@ -268,13 +273,126 @@ void print_json(const T& value) {
     driver::println("{}", render_json(value));
 }
 
-/// The symbol a `--symbol` argument names, as a locator query.
-inline std::expected<index::SymbolQuery, std::string>
-    locator_of(const std::optional<std::string>& symbol) {
-    if(!symbol) {
-        return std::unexpected("name the symbol with --symbol");
+/// How a subcommand reports arguments it cannot take: as text on stderr,
+/// or as the Failure on stdout of one that answers in JSON.
+enum class Errors : std::uint8_t { Text, JSON };
+
+/// Report arguments the subcommand cannot take; returns the exit code of
+/// arguments that do not parse.
+inline int usage_error(Errors errors, std::string message) {
+    if(errors == Errors::JSON) {
+        print_json(Failure{.error = std::move(message)});
+    } else {
+        driver::println(stderr, "{}", message);
     }
-    return index::SymbolQuery::parse(*symbol);
+    return kota::deco::cli::parse_error_exit_code;
+}
+
+/// The positional arguments given, named `names` as the usage spells
+/// them, of which the trailing `optional` may be left out.
+inline std::expected<std::vector<std::string>, std::string>
+    positional(const std::optional<std::vector<std::string>>& given,
+               llvm::ArrayRef<std::string_view> names,
+               std::size_t optional = 0) {
+    auto args = given.value_or(std::vector<std::string>{});
+    if(args.size() + optional < names.size()) {
+        return std::unexpected(std::format("missing {}", names[args.size()]));
+    }
+    if(args.size() > names.size()) {
+        return std::unexpected(std::format("unexpected argument '{}'", args[names.size()]));
+    }
+    return args;
+}
+
+/// A subcommand, or one operation of it, over the options `Options`, whose
+/// LogLevelOption is `log`: it applies the level, logs to stderr as
+/// `logger` and returns what `run` does with the options.
+template <typename Options, typename Run>
+CommandHandler operation(std::string_view usage, std::string_view logger, Errors errors, Run run) {
+    auto command = kota::deco::cli::command<Options>(usage);
+    command.match_all([logger, run = std::move(run)](Options opts) mutable {
+        opts.log.apply();
+        logging::stderr_logger(logger, logging::options);
+        return run(opts);
+    });
+    if(errors == Errors::JSON) {
+        command.on_error([](auto err) { print_json(Failure{.error = err.message}); });
+    }
+    return command;
+}
+
+/// The error handler of a commander of subcommands: named without one, it
+/// prints its usage and succeeds, as --help does; an unknown subcommand is
+/// a usage error.
+inline auto subcommand_error_handler(kota::deco::cli::SubCommander& commander,
+                                     Errors errors = Errors::Text) {
+    return [&commander, errors](const kota::deco::cli::SubCommandError& err) {
+        if(err.type == kota::deco::cli::SubCommandError::Type::MissingSubCommand) {
+            print_usage(commander);
+            return 0;
+        }
+        return usage_error(errors, err.message);
+    };
+}
+
+/// Run a commander of subcommands on `args`. The commander takes whatever
+/// leads them for a subcommand's name; an option other than --help leading
+/// them is reported as the unknown option it is.
+inline int run_subcommands(kota::deco::cli::SubCommander& commander,
+                           std::span<std::string> args,
+                           Errors errors = Errors::Text) {
+    namespace text = kota::deco::cli::text;
+    if(!args.empty() && args.front().starts_with("-") &&
+       !llvm::is_contained(kota::deco::decl::help_names, args.front())) {
+        return usage_error(
+            errors,
+            text::render_diagnostic(
+                text::diagnostic_at(args, 0, 1, std::format("unknown option '{}'", args.front()))));
+    }
+    return commander(args);
+}
+
+/// An operation of a subcommand: the word naming it, its line of the
+/// subcommand's help, and what runs it on the arguments after the word.
+struct Operation {
+    std::string_view name;
+    std::string_view description;
+    CommandHandler run;
+};
+
+/// A subcommand whose first argument names one of its `operations`. With
+/// `main`, the subcommand's own job, arguments naming none (none at all,
+/// or options) run it, and its help lists the operations after its own;
+/// without, they print the operations, which `overview` heads.
+inline CommandHandler with_operations(std::string_view overview,
+                                      std::vector<Operation> operations,
+                                      Errors errors,
+                                      std::optional<CommandHandler> main = std::nullopt) {
+    auto commander = std::make_shared<kota::deco::cli::SubCommander>("", main ? "" : overview);
+    for(auto& operation: operations) {
+        commander->add({.name = operation.name, .description = operation.description},
+                       std::move(operation.run));
+    }
+    commander->when_err(subcommand_error_handler(*commander, errors));
+    if(!main) {
+        commander->enable_help();
+        return [commander, errors](std::span<std::string> args) {
+            return run_subcommands(*commander, args, errors);
+        };
+    }
+    return [commander, main = std::move(*main)](std::span<std::string> args) mutable {
+        if(!args.empty() && !args.front().starts_with("-")) {
+            return (*commander)(args);
+        }
+        auto code = main(args);
+        if(llvm::any_of(args, [](std::string_view arg) {
+               return llvm::is_contained(kota::deco::decl::help_names, arg);
+           })) {
+            driver::println();
+            print_usage(*commander);
+        }
+        return code;
+    };
 }
 
 /// Bring the index up to date with the disk before a --fresh answer:

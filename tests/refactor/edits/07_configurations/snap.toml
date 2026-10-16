@@ -1,18 +1,18 @@
-["each configuration's index"."$ clice index --workers 2"]
+["each configuration's index"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["each configuration's index"."$ clice index --configuration release --workers 2"]
+["each configuration's index"."$ clice index --configuration release --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 3 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["each configuration's index"."$ clice refactor rename --symbol compute --to evaluate --dry-run"]
+["each configuration's index"."$ clice refactor rename compute evaluate --dry-run"]
 stdout = '''
 {
   "result": {
@@ -71,7 +71,7 @@ stdout = '''
 '''
 exit = 0
 
-["each configuration's index"."$ clice refactor rename --symbol compute --to evaluate --configuration release --dry-run"]
+["each configuration's index"."$ clice refactor rename compute evaluate --configuration release --dry-run"]
 stdout = '''
 {
   "result": {
@@ -130,14 +130,14 @@ stdout = '''
 '''
 exit = 0
 
-["an unknown configuration"."$ clice index --workers 2"]
+["an unknown configuration"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["an unknown configuration"."$ clice refactor rename --symbol compute --to evaluate --configuration nope --dry-run"]
+["an unknown configuration"."$ clice refactor rename compute evaluate --configuration nope --dry-run"]
 stdout = '''
 {
   "error": "--configuration nope names no rule's configuration (debug, release)",

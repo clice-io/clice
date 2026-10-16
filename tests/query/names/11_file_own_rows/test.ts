@@ -4,5 +4,5 @@ import { test } from "@clice/tools/testing";
 // a place in the file is answered from the file's own rows.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query --method symbolSearch --symbol local.cpp:1");
+    await t.cli("query symbol-search local.cpp:1");
 });

@@ -5,6 +5,6 @@ import { generate, test } from "@clice/tools/testing";
 
 test({ except: { win32: "Windows has no SIGINT to send a process" } }, async (t) => {
     t.disk.write(generate.units(6));
-    await t.cli("index --workers 1", { interrupt: { units: 1, signals: ["SIGINT"] } });
+    await t.cli("index --jobs 1", { interrupt: { units: 1, signals: ["SIGINT"] } });
     await t.cli("index");
 });

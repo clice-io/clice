@@ -6,6 +6,6 @@ import { test } from "@clice/tools/testing";
 test("beside a server", { errors: ["Cannot persist the index at"] }, async (t) => {
     const s = await t.start();
     await s.indexed();
-    await t.cli("lint --workers 2");
-    await t.cli("lint --index --workers 2");
+    await t.cli("lint --jobs 2");
+    await t.cli("lint --index --jobs 2");
 });

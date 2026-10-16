@@ -14,7 +14,7 @@ test("deleted source withdraws its rows", async (t) => {
     });
     // The persisted index drops the rows as well.
     await s.stop();
-    await t.cli("query --method symbolSearch --symbol registry_reset");
+    await t.cli("query symbol-search registry_reset");
 });
 
 test("closed header edit reaches its includers", async (t) => {

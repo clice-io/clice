@@ -5,6 +5,6 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     await t.cli("index");
     await t.cli("analyze modules --merge core+util");
-    await t.cli("analyze modules --merge core+util,util+meta");
+    await t.cli("analyze modules --merge core+util --merge util+meta");
     await t.cli("analyze modules --partition partition.json");
 });

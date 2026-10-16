@@ -45,7 +45,7 @@ Options:
   --port <value>                  Socket mode TCP port
   --record <value>                Record LSP input to file for replay testing
   --workspace <value>             Workspace root directory (optional, skips LSP initialize)
-  --configuration <value>         Build configuration to activate, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level
 '''
@@ -53,42 +53,30 @@ exit = 0
 
 ["command help"."$ clice query --help"]
 stdout = '''
-usage: clice query [OPTIONS]
+Ask the persisted index about the workspace
 
-Options:
-  -h|--help                       display this help and exit
-  --workspace <value>             Workspace root directory (default: current directory)
-  --configuration <value>         Build configuration to read, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --method <value>                Question to ask: compileCommand, projectFiles, fileDeps, impactAnalysis, counterparts, symbolSearch, readSymbol, documentSymbols, definition, references, callGraph, typeHierarchy
-  --path <value>                  File a file question is about (relative to the workspace): compileCommand, fileDeps, impactAnalysis, counterparts, documentSymbols
-  --symbol <value>                Symbol a symbol question is about, or the symbols symbolSearch lists, as a locator: a name, an answer's symbol, or file:line[:column]
-  --limit <value>                 symbolSearch: at most this many symbols (default 100)
-  --filter <value>                projectFiles: all (default), source, header or module
-  --direction <value>             fileDeps: includes, includers or both (default); callGraph: callers, callees or both; typeHierarchy: supertypes, subtypes or both
-  --depth <value>                 fileDeps: levels to follow (default 1, 0 for all)
-  --include-declaration           references: list the declarations and definition too
-  --fresh                         Reindex the files whose content changed since they were indexed before answering, through the running server or a batch run of this command
-  --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+Subcommands:
+  compile-command   The command the editor compiles a file with, and where it came from
+  project-files     The build's files
+  file-deps         The files a file includes and the files including it
+  impact-analysis   What a change to a file reaches: its includers and the modules among them
+  counterparts      The files a file pairs with: a header's sources, a source's headers
+  symbol-search     The symbols a locator matches, best first
+  read-symbol       A symbol's definition as text, with its documentation
+  document-symbols  A file's outline
+  definition        Where a symbol is defined, with its documentation
+  references        Every place naming a symbol
+  call-graph        A function's callers and callees
+  type-hierarchy    A type's supertypes and subtypes
 '''
 exit = 0
 
 ["command help"."$ clice refactor --help"]
 stdout = '''
-usage: clice refactor <ACTION> [OPTIONS]
+Rewrite the workspace's sources through the persisted index
 
-Options:
-  -h|--help                       display this help and exit
-  <ACTION>...                     Refactoring to run: rename
-  --workspace <value>             Workspace root directory (default: current directory)
-  --configuration <value>         Build configuration to read, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --symbol <value>                rename: the symbol, as a locator: its whole name, an answer's symbol, or file:line[:column]
-  --to <value>                    rename: the new name
-  --spec <value>                  rename: a file listing renames to make at once, `<locator> => <new name>` a line; - reads them from stdin
-  --dry-run                       Answer with the planned edits without writing them
-  --fresh                         Reindex the files whose content changed since they were indexed before planning, through the running server or a batch run of this command
-  --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+Subcommands:
+  rename  Rename symbols across the workspace
 '''
 exit = 0
 
@@ -98,17 +86,17 @@ usage: clice index [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --workspace <value>             Workspace root directory (default: current directory)
-  --configuration <value>         Build configuration to activate, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --workers <value>               Number of indexing workers (default: from config)
-  --stats                         Print statistics of the persisted index instead of indexing
-  --top <value>                   How many of the largest file shards --stats lists
-  --variants                      Print the statistics and then every file shard with its variant count, one tab-separated line each
-  --show-symbol <value>           Print what the persisted index records about a symbol, named by its name, qualified name or #hash, instead of indexing
-  --show-file <value>             Print a file's persisted rows: variants, contributing units and row counts, instead of indexing
-  --show-tu <value>               Print a translation unit's persisted manifest: include tree and contributions, instead of indexing
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level
+
+Subcommands:
+  stats   What the persisted index holds: its sizes and how its records spread
+  symbol  What the persisted index records about symbols
+  file    A file's persisted records: variants, contributing units and counts
+  unit    A translation unit's persisted manifest: include tree and contributions
 '''
 exit = 0
 
@@ -118,10 +106,10 @@ usage: clice lint [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --workspace <value>             Workspace root directory (default: current directory)
-  --configuration <value>         Build configuration to activate, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --workers <value>               Number of lint workers (default: from config)
   --index                         Also build and persist the project index from the same parses
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level
 '''
@@ -129,34 +117,37 @@ exit = 0
 
 ["command help"."$ clice format --help"]
 stdout = '''
-usage: clice format [OPTIONS] [<PATH>...]
+usage: clice format [<PATH>...] [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --workspace <value>             Workspace root directory (default: current directory)
-  --configuration <value>         Build configuration to activate, one of the tags declared on rules (default: the selected one, else default_configuration)
+  <PATH>...                       Files to format, or directories to format the build's own files under; relative to the workspace (default: the build's own files)
   --check                         Report the files that need formatting instead of rewriting them
-  --jobs <value>                  Number of files to format at once (default: the CPU count)
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  -j|--jobs <value>               How many units or files to work on at once (default: project.stateless_worker_count; for format, the CPU count)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level
-  <PATH>...                       Files to format, or directories to format the build's own files under; relative to the workspace (default: the build's own files)
 '''
 exit = 0
 
 ["command help"."$ clice inspect --help"]
 stdout = '''
-usage: clice inspect <feature> <path> [OPTIONS]
+Run a feature on a source file and print raw results as JSON
 
-Options:
-  -h|--help                       display this help and exit
-  --config-schema                 Print the JSON schema of the clice configuration and exit
-  <FEATURE> <PATH>...             Feature to run (code_action, code_completion, document_highlight, document_links, document_symbol, document_symbol_check, folding_range, hover, hover_check, inlay_hint, selection_range, semantic_tokens, signature_help) and a source file
-  --markers <value>               JSON file of the markers in the inspected source file, at byte offsets: {"points": {"name": 12}, "ranges": {"name": {"begin": 3, "end": 7}}}; results are keyed by these names
-  --flags <value>                 Compile flags for the file as a JSON string array; replaces the compile_commands.json lookup
-  --config <value>                Configuration overlay as a JSON object of clice.toml sections, over the workspace's configuration
-  --configuration <value>         Build configuration to activate, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --log-level <trace|debug|info|warn|error|off>
-                                  Log level
+Subcommands:
+  code-action         The code actions on a selection
+  code-completion     The completions at a point
+  document-highlight  The places naming the symbol at a point
+  document-links      The file's links
+  document-symbols    The file's outline
+  folding-range       The file's folding ranges
+  hover               The hover card at a point
+  inlay-hint          The inlay hints over a range, else the file
+  selection-range     The selection ranges at a point
+  semantic-tokens     The file's semantic tokens
+  signature-help      The signature help at a point
+  config-schema       The JSON schema of the clice configuration
 '''
 exit = 0
 
@@ -166,10 +157,10 @@ usage: clice scan [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --workspace <value>             Workspace root directory (default: current directory)
-  --configuration <value>         Build configuration to activate, one of the tags declared on rules (default: the selected one, else default_configuration)
   --json                          Print every scanned file with what it includes, the includes no search found and the modules it provides
   --runs <value>                  Time this many scans, each from a fresh start (cold) and again over what it kept (warm, as after a database reload)
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level
 '''
@@ -190,16 +181,18 @@ usage: clice modularize [OPTIONS]
 
 Options:
   -h|--help                       display this help and exit
-  --workspace <value>             Workspace root directory (default: current directory)
-  --configuration <value>         Build configuration to read, one of the tags declared on rules (default: the selected one, else default_configuration)
-  --scope <value>                 Comma-separated globs over workspace-relative paths, absolute ones outside the workspace: the files the partition and the program span
   --partition <value>             JSON file assigning modules by globs, first match wins; a module is wrapped, "textual": true stays headers, "external": true is std, "provides": "std.compat" names who exports its names, "rewrite": true rewrites a program module into module units, its primary interface at "primary"
+  --scope <value>                 A glob over workspace-relative paths, absolute ones outside the workspace: the files the partition and the program span (may be repeated)
   --std <value>                   libc++'s module sources (share/libc++/v1): the partition's std module is imported as std.compat
   --out <value>                   Directory to write the modules, macro headers, mirrors and prelude into
-  --merge <value>                 JSON file listing build configurations to merge instead, each a name, the preprocessor condition holding in its compilations alone and the --out directory a run for it wrote
   --no-mirrors                    Write no mirrors: what still includes a wrapped header parses it beside the import
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
   --log-level <trace|debug|info|warn|error|off>
                                   Log level
+
+Subcommands:
+  merge  Merge the wrappings of several build configurations
 '''
 exit = 0
 
@@ -217,12 +210,149 @@ Options:
 '''
 exit = 0
 
+["operation help"."$ clice query references --help"]
+stdout = '''
+usage: clice query references <LOCATOR> [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  <LOCATOR>...                    The symbol, as a locator: a name, an answer's symbol, or file:line[:column]
+  --include-declaration           List the declarations and the definition too
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --fresh                         Reindex the files whose content changed since they were indexed first, through the running server or a batch run of this command
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level
+'''
+exit = 0
+
+["operation help"."$ clice index stats --help"]
+stdout = '''
+usage: clice index stats [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  --limit <value>                 How many of the largest file shards to list (default 20)
+  --variants                      Then every file shard with its variant count, one tab-separated line each
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level
+'''
+exit = 0
+
+["operation help"."$ clice analyze modules --help"]
+stdout = '''
+usage: clice analyze modules [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  --limit <value>                 Most hotspots, move and split candidates to list (default 20)
+  --scope <value>                 A glob over workspace-relative paths, absolute ones outside the workspace: analyze only the files it matches (default: every indexed file under the workspace outside a dot directory) (may be repeated)
+  --dir-depth <value>             Directory segments naming a file's default module (default 0: its whole directory)
+  --partition <value>             JSON file assigning modules by globs, first match wins: {"modules": [{"name": "core", "files": ["src/support/**"]}]}
+  --std <value>                   libc++'s module sources (share/libc++/v1), for a partition module provided by std.compat
+  --move <value>                  A hypothetical move: <path>=<module> (may be repeated)
+  --merge <value>                 A hypothetical merge: <module>+<module>[+...] into the first (may be repeated)
+  --move-entity <value>           A hypothetical declaration move: <locator>=<header> (may be repeated)
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --annotation <value>            An annotation file weighing the results: {"name": "compile_time", "unit": "s", "values": {"src/a.cpp": 1.5}} (may be repeated)
+  --churn-since <value>           git log --since value of the churn annotation (default 6.months; empty leaves it out)
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level
+
+Subcommands:
+  edge       Every entity an edge between two modules carries, and its uses
+  module     A module's files by their dependencies, the lines it splits along
+  file       What a file names by module, who names its entities, its annotations
+  obstacles  What a mechanical rewrite into modules cannot carry over
+  macros     The macros crossing modules
+  impact     What a change to each module rebuilds
+  interface  Per module, what a wrapper module over its headers needs
+'''
+exit = 0
+
+["operation help"."$ clice analyze modules edge --help"]
+stdout = '''
+usage: clice analyze modules edge <FROM> <TO> [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  <FROM> <TO>...                  The module whose files name the other's entities, and the module named
+  --scope <value>                 A glob over workspace-relative paths, absolute ones outside the workspace: analyze only the files it matches (default: every indexed file under the workspace outside a dot directory) (may be repeated)
+  --dir-depth <value>             Directory segments naming a file's default module (default 0: its whole directory)
+  --partition <value>             JSON file assigning modules by globs, first match wins: {"modules": [{"name": "core", "files": ["src/support/**"]}]}
+  --std <value>                   libc++'s module sources (share/libc++/v1), for a partition module provided by std.compat
+  --move <value>                  A hypothetical move: <path>=<module> (may be repeated)
+  --merge <value>                 A hypothetical merge: <module>+<module>[+...] into the first (may be repeated)
+  --move-entity <value>           A hypothetical declaration move: <locator>=<header> (may be repeated)
+  --workspace <value>             Workspace root directory (default: the current directory)
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level
+'''
+exit = 0
+
+["operation help"."$ clice inspect hover --help"]
+stdout = '''
+usage: clice inspect hover <PATH> [OPTIONS]
+
+Options:
+  -h|--help                       display this help and exit
+  <PATH>...                       The source file
+  --markers <value>               JSON file of the markers in the inspected source file, at byte offsets: {"points": {"name": 12}, "ranges": {"name": {"begin": 3, "end": 7}}}; results are keyed by these names
+  --flags <value>                 Compile flags for the file as a JSON string array; replaces the compile_commands.json lookup
+  --config-overlay <value>        Configuration overlay as a JSON object of clice.toml sections, over the workspace's configuration
+  --configuration <value>         Build configuration, one of the tags declared on rules (default: the selected one, else default_configuration)
+  --check                         Check the results instead of printing them: report where they differ from the same results computed another way
+  --log-level <trace|debug|info|warn|error|off>
+                                  Log level
+'''
+exit = 0
+
 ["unknown subcommand"."$ clice bogus"]
 stderr = '''
 at argv[0]:
   bogus
   ^~~~~
   unknown subcommand 'bogus'
+'''
+exit = 2
+
+["unknown operation"."$ clice query bogus"]
+stdout = '''
+{
+  "error": "at argv[0]:\n  bogus\n  ^~~~~\n  unknown subcommand 'bogus'",
+  "stale": []
+}
+'''
+exit = 2
+
+["unknown operation"."$ clice index bogus"]
+stderr = '''
+at argv[0]:
+  bogus
+  ^~~~~
+  unknown subcommand 'bogus'
+'''
+exit = 2
+
+["unknown operation"."$ clice analyze modules bogus"]
+stdout = '''
+{
+  "error": "at argv[0]:\n  bogus\n  ^~~~~\n  unknown subcommand 'bogus'",
+  "stale": []
+}
+'''
+exit = 2
+
+["unknown operation"."$ clice modularize bogus"]
+stdout = '''
+{
+  "error": "at argv[0]:\n  bogus\n  ^~~~~\n  unknown subcommand 'bogus'",
+  "stale": []
+}
 '''
 exit = 2
 
@@ -299,11 +429,11 @@ at argv[0]:
 exit = 2
 
 ["unknown option"."$ clice analyze --bogus"]
-stderr = '''
-at argv[0]:
-  --bogus
-  ^~~~~~~
-  unknown option '--bogus'
+stdout = '''
+{
+  "error": "at argv[0]:\n  --bogus\n  ^~~~~~~\n  unknown option '--bogus'",
+  "stale": []
+}
 '''
 exit = 2
 

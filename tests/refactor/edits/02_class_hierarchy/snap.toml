@@ -1,11 +1,11 @@
-["renames a class"."$ clice index --workers 2"]
+["renames a class"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 12 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["renames a class"."$ clice refactor rename --symbol Shape --to Figure --dry-run"]
+["renames a class"."$ clice refactor rename Shape Figure --dry-run"]
 stdout = '''
 {
   "result": {
@@ -128,14 +128,14 @@ stdout = '''
 '''
 exit = 0
 
-["a constructor names its class"."$ clice index --workers 2"]
+["a constructor names its class"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 12 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["a constructor names its class"."$ clice refactor rename --symbol Circle::Circle --to Disk --dry-run"]
+["a constructor names its class"."$ clice refactor rename Circle::Circle Disk --dry-run"]
 stdout = '''
 {
   "result": {
@@ -251,14 +251,14 @@ stdout = '''
 '''
 exit = 0
 
-["renames the overrides"."$ clice index --workers 2"]
+["renames the overrides"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 12 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["renames the overrides"."$ clice refactor rename --symbol Circle::area --to size --dry-run"]
+["renames the overrides"."$ clice refactor rename Circle::area size --dry-run"]
 stdout = '''
 {
   "result": {

@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method references --symbol a.cpp:2:18 --include-declaration"]
+[test."$ clice query references a.cpp:2:18 --include-declaration"]
 stdout = '''
 {
   "result": {

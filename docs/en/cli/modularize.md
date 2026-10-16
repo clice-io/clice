@@ -6,9 +6,9 @@
 
 The program's own code can follow: modules the partition marks for rewriting have their files rewritten in place into module units, headers into partitions and includes into imports.
 
-**Usage**: `clice modularize --partition <file> --out <dir> [--std <dir>] [--no-mirrors] [--scope <glob,...>] [--workspace <dir>] [--configuration <tag>]`
+**Usage**: `clice modularize --partition <file> --out <dir> [--std <dir>] [--no-mirrors] [--scope <glob>...] [--workspace <dir>] [--configuration <tag>]`
 
-Every fact comes from the persisted index, as [`clice analyze modules --view interface`](./analyze.md#modules) reports it: run `clice index` first. The command writes files and prints what the build needs; it never edits a build file.
+Every fact comes from the persisted index, as [`clice analyze modules interface`](./analyze.md#modules) reports it: run `clice index` first. The command writes files and prints what the build needs; it never edits a build file.
 
 ## Partition
 
@@ -57,7 +57,7 @@ Which modules to rewrite and how coarse they are is the partition's choice: one 
 
 A wrapping holds what the headers declare and define in one build configuration: the platform's C library, the macros a library's configuration header sets, the names a library declares for one target alone. A program built for several platforms or configurations runs modularize once for each, on an index of that configuration and into a directory of its own, then merges the results.
 
-**Usage**: `clice modularize --merge <file> --out <dir> [--no-mirrors]`
+**Usage**: `clice modularize merge <file> --out <dir> [--no-mirrors]`
 
 ```json
 {
@@ -202,7 +202,7 @@ tests/modularize/program/01_one_module
 - Only the files the index holds are rewritten: a source no compilation of the indexed configuration enters, as another platform's, keeps its includes.
 - Clang does not take the global module fragment of an implementation partition as reachable from a unit importing it through another partition, though the standard has that unit import it too. A rewritten file therefore includes the headers that stay headers which such partitions include, and parses them again.
 - An include of a rewritten header under a preprocessor condition becomes an unconditional import.
-- A header compiles once as a partition: one whose declarations differ by includer, or that tests a macro its includers define, keeps one reading only. `clice analyze modules --view obstacles` lists such headers to clear first.
+- A header compiles once as a partition: one whose declarations differ by includer, or that tests a macro its includers define, keeps one reading only. `clice analyze modules obstacles` lists such headers to clear first.
 - An include of a file outside the scope stays where it is written; past the leading directives it lands in the purview, attaching what it declares to the module.
 - modularize stops with an error, before writing anything, when a header that stays a header includes a rewritten one or when a file it writes would overwrite another.
 - What the compiler reports on the rewritten tree is left to the build: headers of one module or of two rewritten modules including each other, a `static` entity in a header that becomes a partition, a rewritten source defining what a header that stays a header declares.

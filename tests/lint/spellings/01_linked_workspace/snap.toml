@@ -1,4 +1,4 @@
-[test."$ clice lint --workspace ws --workers 2"]
+[test."$ clice lint --workspace ws --jobs 2"]
 stdout = '''
 ${WS}/ws/main.cpp:4:10: warning: argument name 'disabled' in comment does not match parameter name 'enabled' [bugprone-argument-comment]
 ${WS}/ws/common.h:3:16: note: 'enabled' declared here

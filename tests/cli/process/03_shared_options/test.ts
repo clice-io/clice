@@ -4,17 +4,11 @@ import { test } from "@clice/tools/testing";
 
 test("log level", async (t) => {
     await t.cli("index --log-level bogus");
-    await t.cli("index --log-level error --workers 1");
+    await t.cli("index --log-level error --jobs 1");
 });
 
 test("a missing workspace", async (t) => {
-    for (const command of [
-        "query --method projectFiles",
-        "format --check",
-        "lint",
-        "index",
-        "scan",
-    ]) {
+    for (const command of ["query project-files", "format --check", "lint", "index", "scan"]) {
         await t.cli(`${command} --workspace missing`);
     }
     // What the runs left where the workspace was named.

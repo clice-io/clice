@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol measure"]
+[test."$ clice query definition measure"]
 stdout = '''
 {
   "error": "ambiguous: 2 symbols match; name one by the `symbol` of a candidate",

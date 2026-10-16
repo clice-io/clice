@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --view impact"]
+[test."$ clice analyze modules impact"]
 stdout = '''
 [
   {

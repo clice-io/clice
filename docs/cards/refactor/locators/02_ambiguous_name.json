@@ -19,28 +19,28 @@
       "name": "test",
       "blocks": [
         {
-          "label": "$ clice index --workers 2",
+          "label": "$ clice index --jobs 2",
           "value": {
             "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 5 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice refactor rename --symbol value --to amount --dry-run",
+          "label": "$ clice refactor rename value amount --dry-run",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"applied\": false,\n    \"renames\": [\n      {\n        \"line\": null,\n        \"locator\": \"value\",\n        \"name\": \"\",\n        \"kind\": \"\",\n        \"symbol\": \"\",\n        \"newName\": \"amount\",\n        \"edits\": 0,\n        \"conflicts\": [],\n        \"warnings\": [],\n        \"error\": \"ambiguous: 2 symbols match; name one by the `symbol` of a candidate\",\n        \"candidates\": [\n          {\n            \"name\": \"value\",\n            \"kind\": \"Variable\",\n            \"file\": \"${WS}/main.cpp\",\n            \"line\": 6,\n            \"container\": \"b\",\n            \"symbol\": \"#2d69354e2aeb0cf6\"\n          },\n          {\n            \"name\": \"value\",\n            \"kind\": \"Variable\",\n            \"file\": \"${WS}/main.cpp\",\n            \"line\": 2,\n            \"container\": \"a\",\n            \"symbol\": \"#ab73a1a4b609cf4d\"\n          }\n        ]\n      }\n    ],\n    \"files\": [],\n    \"unconfirmed\": [],\n    \"conflicts\": [],\n    \"stale\": []\n  },\n  \"stale\": []\n}",
             "exit": 1
           }
         },
         {
-          "label": "$ clice refactor rename --symbol a::value --to amount --dry-run",
+          "label": "$ clice refactor rename a::value amount --dry-run",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"applied\": false,\n    \"renames\": [\n      {\n        \"line\": null,\n        \"locator\": \"a::value\",\n        \"name\": \"value\",\n        \"kind\": \"Variable\",\n        \"symbol\": \"#ab73a1a4b609cf4d\",\n        \"newName\": \"amount\",\n        \"edits\": 2,\n        \"conflicts\": [],\n        \"warnings\": [],\n        \"error\": null,\n        \"candidates\": null\n      }\n    ],\n    \"files\": [\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"edits\": [\n          {\n            \"line\": 2,\n            \"column\": 5,\n            \"name\": \"value\",\n            \"newName\": \"amount\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 9,\n            \"column\": 23,\n            \"name\": \"value\",\n            \"newName\": \"amount\",\n            \"heuristic\": false\n          }\n        ]\n      }\n    ],\n    \"unconfirmed\": [],\n    \"conflicts\": [],\n    \"stale\": []\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice refactor rename --symbol \"#ab73a1a4b609cf4d\" --to amount",
+          "label": "$ clice refactor rename \"#ab73a1a4b609cf4d\" amount",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"applied\": true,\n    \"renames\": [\n      {\n        \"line\": null,\n        \"locator\": \"#ab73a1a4b609cf4d\",\n        \"name\": \"value\",\n        \"kind\": \"Variable\",\n        \"symbol\": \"#ab73a1a4b609cf4d\",\n        \"newName\": \"amount\",\n        \"edits\": 2,\n        \"conflicts\": [],\n        \"warnings\": [],\n        \"error\": null,\n        \"candidates\": null\n      }\n    ],\n    \"files\": [\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"edits\": [\n          {\n            \"line\": 2,\n            \"column\": 5,\n            \"name\": \"value\",\n            \"newName\": \"amount\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 9,\n            \"column\": 23,\n            \"name\": \"value\",\n            \"newName\": \"amount\",\n            \"heuristic\": false\n          }\n        ]\n      }\n    ],\n    \"unconfirmed\": [],\n    \"conflicts\": [],\n    \"stale\": []\n  },\n  \"stale\": []\n}",
             "exit": 0,

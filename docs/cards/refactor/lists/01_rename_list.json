@@ -34,7 +34,7 @@
       "name": "test",
       "blocks": [
         {
-          "label": "$ clice index --workers 2",
+          "label": "$ clice index --jobs 2",
           "value": {
             "stdout": "Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0

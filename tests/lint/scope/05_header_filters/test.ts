@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // widen that as in clang-tidy, matched against the path the include found,
 // spelled with the host's separators.
 test("defaults", async (t) => {
-    await t.cli("lint --workers 2");
+    await t.cli("lint --jobs 2");
 });
 
 test("configured", async (t) => {
@@ -19,5 +19,5 @@ test("configured", async (t) => {
             "",
         ].join("\n"),
     );
-    await t.cli("lint --workers 2");
+    await t.cli("lint --jobs 2");
 });

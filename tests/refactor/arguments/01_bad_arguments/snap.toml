@@ -1,43 +1,43 @@
 [test."$ clice refactor"]
 stdout = '''
-{
-  "error": "name the refactoring to run: rename",
-  "stale": []
-}
+Rewrite the workspace's sources through the persisted index
+
+Subcommands:
+  rename  Rename symbols across the workspace
 '''
-exit = 1
+exit = 0
 
 [test."$ clice refactor extract"]
 stdout = '''
 {
-  "error": "unknown refactoring 'extract'",
+  "error": "at argv[0]:\n  extract\n  ^~~~~~~\n  unknown subcommand 'extract'",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-[test."$ clice refactor rename --symbol compute"]
+[test."$ clice refactor rename compute"]
 stdout = '''
 {
-  "error": "--to names the new name",
+  "error": "missing <NEW-NAME>",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-[test."$ clice refactor rename --to evaluate"]
+[test."$ clice refactor rename"]
 stdout = '''
 {
-  "error": "name the symbol with --symbol",
+  "error": "missing <LOCATOR>",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-[test."$ clice refactor rename --symbol compute --to \"\""]
+[test."$ clice refactor rename compute \"\""]
 stdout = '''
 {
-  "error": "at argv[3]:\n  rename --symbol compute --to \n                          ^~~~\n  missing argument value",
+  "error": "missing <NEW-NAME>",
   "stale": []
 }
 '''

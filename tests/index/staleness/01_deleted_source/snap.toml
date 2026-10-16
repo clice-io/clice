@@ -6,7 +6,7 @@ definition = ["include/registry.h │ int ⟦registry_count⟧();"]
 references = ["return ⟦registry_count⟧();", "include/registry.h │ int ⟦registry_count⟧();"]
 symbols = []
 
-["deleted source withdraws its rows"."$ clice query --method symbolSearch --symbol registry_reset"]
+["deleted source withdraws its rows"."$ clice query symbol-search registry_reset"]
 stdout = '''
 {
   "result": {

@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[records."$ clice index --show-symbol geo::area"]
+[records."$ clice index symbol geo::area"]
 stdout = '''
 symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
   parent #b8d40a731e70f055  kind=Namespace  name=geo
@@ -16,7 +16,7 @@ symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  
 '''
 exit = 0
 
-[records."$ clice index --show-symbol \"#410bf4404641a3b4\""]
+[records."$ clice index symbol \"#410bf4404641a3b4\""]
 stdout = '''
 symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
   parent #b8d40a731e70f055  kind=Namespace  name=geo
@@ -27,7 +27,7 @@ symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  
 '''
 exit = 0
 
-[records."$ clice index --show-symbol area"]
+[records."$ clice index symbol area"]
 stdout = '''
 symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
   parent #b8d40a731e70f055  kind=Namespace  name=geo
@@ -38,7 +38,7 @@ symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  
 '''
 exit = 0
 
-[records."$ clice index --show-file geo.h"]
+[records."$ clice index file geo.h"]
 stdout = '''
 file ${WS}/geo.h
   blob=# B  content size=65  content hash=#9dd4e54be8a63a99  text=not stored (ASCII)
@@ -54,7 +54,7 @@ file ${WS}/geo.h
 '''
 exit = 0
 
-[records."$ clice index --show-tu main.cpp"]
+[records."$ clice index unit main.cpp"]
 stdout = '''
 translation unit ${WS}/main.cpp
   built at #time  generation=1  content hash=#f296566f561e8eb5
@@ -73,14 +73,14 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["names nothing recorded"."$ clice index --show-symbol nowhere"]
-stdout = "No symbol named nowhere in the index (names cover the global table; file-local symbols are reachable by #hash)."
+["names nothing recorded"."$ clice index symbol nowhere"]
+stdout = "nowhere: symbol not found"
 exit = 1
 
-["names nothing recorded"."$ clice index --show-file gone.h"]
+["names nothing recorded"."$ clice index file gone.h"]
 stdout = "No rows for ${WS}/gone.h in the index."
 exit = 1
 
-["names nothing recorded"."$ clice index --show-tu geo.h"]
+["names nothing recorded"."$ clice index unit geo.h"]
 stdout = "No manifest for ${WS}/geo.h in the index."
 exit = 1

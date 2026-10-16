@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --scope \"core/**,util/**,lib/**,feature/**,app/**\""]
+[test."$ clice analyze modules --scope \"core/**\" --scope \"util/**\" --scope \"lib/**\" --scope \"feature/**\" --scope \"app/**\""]
 stdout = '''
 {
   "annotations": [],
@@ -234,7 +234,7 @@ stdout = '''
 stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 0
 
-[test."$ clice analyze modules --scope \"core/**,util/**,lib/**,feature/**,app/**\" --limit 1"]
+[test."$ clice analyze modules --scope \"core/**\" --scope \"util/**\" --scope \"lib/**\" --scope \"feature/**\" --scope \"app/**\" --limit 1"]
 stdout = '''
 {
   "annotations": [],

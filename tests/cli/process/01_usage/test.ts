@@ -27,8 +27,28 @@ test("command help", async (t) => {
     }
 });
 
+// One of each way a command takes operations: words only, a job of its
+// own beside them, and one level further down.
+test("operation help", async (t) => {
+    for (const operation of [
+        "query references",
+        "index stats",
+        "analyze modules",
+        "analyze modules edge",
+        "inspect hover",
+    ]) {
+        await t.cli([...operation.split(" "), "--help"]);
+    }
+});
+
 test("unknown subcommand", async (t) => {
     await t.cli("bogus");
+});
+
+test("unknown operation", async (t) => {
+    for (const command of ["query", "index", "analyze modules", "modularize"]) {
+        await t.cli([...command.split(" "), "bogus"]);
+    }
 });
 
 test("unknown option", async (t) => {

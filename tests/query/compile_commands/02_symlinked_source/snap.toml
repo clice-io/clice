@@ -9,7 +9,7 @@ warning: Toolchain resolve failed for ${WS}/real/main.cpp: Driver ${WS}/missing-
 '''
 exit = 0
 
-["through a symlink"."$ clice query --method compileCommand --path link/main.cpp"]
+["through a symlink"."$ clice query compile-command link/main.cpp"]
 stdout = '''
 {
   "result": {

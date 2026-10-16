@@ -6,13 +6,13 @@ import { test, type TestContext } from "@clice/tools/testing";
 // for it: std.cppm includes the headers `import std` stands for and
 // std.compat exports fake_puts. The partition wraps alpha and beta, stands
 // std for the standard library and keeps the C library headers.
-const ARGS = "--scope app/**,third/** --std stdmod";
+const ARGS = "--scope app/** --scope third/** --std stdmod";
 
 // One worker: which header provides fake_widen, declared both in
 // <cwide.h> and in a fragment widen.h pastes, depends on the order the
 // units are indexed in (analyze/dependencies/06_unit_order).
 async function indexed(t: TestContext): Promise<void> {
-    await t.cli("index --workers 1");
+    await t.cli("index --jobs 1");
 }
 
 /// A copy of a run's output directory, as another machine's run left it.
@@ -24,12 +24,8 @@ function copy(t: TestContext, from: string, to: string): void {
 
 test("library interfaces", async (t) => {
     await indexed(t);
-    await t.cli(
-        `analyze modules ${ARGS} --partition partition.json --view interface --module alpha`,
-    );
-    await t.cli(
-        `analyze modules ${ARGS} --partition partition.json --view interface --module beta`,
-    );
+    await t.cli(`analyze modules interface alpha ${ARGS} --partition partition.json`);
+    await t.cli(`analyze modules interface beta ${ARGS} --partition partition.json`);
 });
 
 // main.cpp reaches <cio.h> only through <fakecstdio>, which `import std`
@@ -39,10 +35,8 @@ test("library interfaces", async (t) => {
 // itself, in a fragment it pastes.
 test("C library kept headers", async (t) => {
     await indexed(t);
-    await t.cli(
-        `analyze modules ${ARGS} --partition partition.json --view interface --module libc`,
-    );
-    await t.cli(`analyze modules ${ARGS} --partition partition.json --view interface --module std`);
+    await t.cli(`analyze modules interface libc ${ARGS} --partition partition.json`);
+    await t.cli(`analyze modules interface std ${ARGS} --partition partition.json`);
 });
 
 test("writes the wrapping", async (t) => {
@@ -87,26 +81,26 @@ test("merges configurations", async (t) => {
     await indexed(t);
     await t.cli(`modularize ${ARGS} --partition partition.json --out wrap`);
     secondConfiguration(t);
-    await t.cli("modularize --merge merges/two.json --out merged");
-    await t.cli("modularize --merge merges/two.json --no-mirrors --out bare");
+    await t.cli("modularize merge merges/two.json --out merged");
+    await t.cli("modularize merge merges/two.json --no-mirrors --out bare");
     expect(t.disk.read("bare/alpha.cppm")).toBe(t.disk.read("merged/alpha.cppm"));
 
     // A third configuration like the second: what both export is under
     // either condition.
     copy(t, "two", "three");
-    await t.cli("modularize --merge merges/three.json --out merged");
+    await t.cli("modularize merge merges/three.json --out merged");
 
-    await t.cli("modularize --merge merges/unconditioned.json --out merged");
+    await t.cli("modularize merge merges/unconditioned.json --out merged");
     t.disk.write(
         "three/.modularize",
         t.disk.read("three/.modularize").replace(/^mirror\/std\/.*\n/gm, ""),
     );
-    await t.cli("modularize --merge merges/three.json --out merged");
-    await t.cli("modularize --merge merges/three.json --no-mirrors --out bare3");
+    await t.cli("modularize merge merges/three.json --out merged");
+    await t.cli("modularize merge merges/three.json --no-mirrors --out bare3");
     t.disk.write("two/.modularize", t.disk.read("two/.modularize").replace("beta.cppm\n", ""));
-    await t.cli("modularize --merge merges/two.json --out merged");
-    await t.cli("modularize --merge merges/mirror.json --out merged");
-    await t.cli("modularize --merge merges/two.json --partition partition.json --out merged");
+    await t.cli("modularize merge merges/two.json --out merged");
+    await t.cli("modularize merge merges/mirror.json --out merged");
+    await t.cli("modularize merge merges/two.json --partition partition.json --out merged");
 });
 
 test("partition errors", async (t) => {
@@ -123,7 +117,7 @@ test("partition errors", async (t) => {
     ]) {
         await t.cli(`modularize ${ARGS} --partition partitions/${partition}.json --out wrap`);
     }
-    await t.cli("modularize --scope app/**,third/** --partition partition.json --out wrap");
+    await t.cli("modularize --scope app/** --scope third/** --partition partition.json --out wrap");
     await t.cli("modularize --partition partition.json --std third/std --out wrap");
     await t.cli("modularize --out wrap");
     await t.cli(`modularize ${ARGS} --partition partition.json --out wrap --configuration nowhere`);

@@ -23,8 +23,8 @@ test(async (t) => {
     // Offline, the host's command changes and its include of a.h goes.
     t.disk.write("main.cpp", "int app_entry() { return 0; }\n");
     t.disk.database({ "main.cpp": ["-DHOST_V2"] });
-    await t.cli("index --workers 2");
-    await t.cli("index --workers 2");
+    await t.cli("index --jobs 2");
+    await t.cli("index --jobs 2");
     t.disk.rm("a.h");
-    await t.cli("index --workers 2");
+    await t.cli("index --jobs 2");
 });

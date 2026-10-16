@@ -34,7 +34,7 @@
       "name": "test",
       "blocks": [
         {
-          "label": "$ clice lint --workers 2",
+          "label": "$ clice lint --jobs 2",
           "value": {
             "stdout": "${WS}/average.cpp:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]\n${WS}/ratio.h:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]\nLinted 2 translation units in #s: 2 findings.",
             "exit": 1

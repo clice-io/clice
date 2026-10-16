@@ -8,7 +8,7 @@ for (const [name, signals] of [
 ] as const) {
     test(name, POSIX, async (t) => {
         t.disk.write(generate.units(6));
-        await t.cli("index --workers 1", { interrupt: { units: 1, signals: [...signals] } });
+        await t.cli("index --jobs 1", { interrupt: { units: 1, signals: [...signals] } });
         await t.cli("index");
     });
 }

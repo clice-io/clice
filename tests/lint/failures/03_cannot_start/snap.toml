@@ -1,19 +1,19 @@
-["no database"."$ clice lint --workers 2"]
+["no database"."$ clice lint --jobs 2"]
 stderr = "error: Nothing to lint: no compile_commands.json found under ${WS}"
 exit = 2
 
-["missing workspace"."$ clice lint --workspace nowhere --workers 2"]
+["missing workspace"."$ clice lint --workspace nowhere --jobs 2"]
 stderr = "error: ${WS}/nowhere: not a directory"
 exit = 2
 
 ["missing workspace".created]
 value = []
 
-["invalid worker count"."$ clice lint --workers many"]
+["invalid worker count"."$ clice lint --jobs many"]
 stderr = '''
 at argv[1]:
-  --workers many
-            ^~~~
+  --jobs many
+         ^~~~
   invalid integer value: many
 '''
 exit = 2

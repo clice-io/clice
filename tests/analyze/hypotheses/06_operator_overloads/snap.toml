@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --view edge --from app --to core"]
+[test."$ clice analyze modules edge app core"]
 stdout = '''
 {
   "from": "app",
@@ -52,7 +52,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice analyze modules --move-entity operator+=app/ops.h --view edge --from app --to core"]
+[test."$ clice analyze modules edge app core --move-entity operator+=app/ops.h"]
 stdout = '''
 {
   "from": "app",

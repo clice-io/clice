@@ -1137,7 +1137,9 @@ static kota::task<> accept_connections(MasterServer& server,
     co_await group.join();
 }
 
-int run_serve_mode(const ServerOptions& opts, const char* self_path) {
+int run_serve_mode(const ServerOptions& opts,
+                   llvm::StringRef configuration,
+                   const char* self_path) {
     logging::options.never_block_stderr = true;
     logging::stderr_logger("master", logging::options);
 
@@ -1160,7 +1162,7 @@ int run_serve_mode(const ServerOptions& opts, const char* self_path) {
     }
 
     kota::event_loop loop;
-    MasterServer server(loop, self_path, opts.configuration.value_or(""));
+    MasterServer server(loop, self_path, configuration.str());
 
     if(mode == ServerMode::Pipe) {
         auto transport = kota::ipc::StreamTransport::open_stdio(loop);

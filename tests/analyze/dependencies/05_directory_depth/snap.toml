@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --view edge --from src/util --to src/core"]
+[test."$ clice analyze modules edge src/util src/core"]
 stdout = '''
 {
   "from": "src/util",
@@ -25,7 +25,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice analyze modules --depth 1 --view module --module src"]
+[test."$ clice analyze modules module src --dir-depth 1"]
 stdout = '''
 {
   "name": "src",

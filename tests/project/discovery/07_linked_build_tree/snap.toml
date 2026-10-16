@@ -1,4 +1,4 @@
-["batch indexing finds a linked build tree"."$ clice index --workspace project --workers 2"]
+["batch indexing finds a linked build tree"."$ clice index --workspace project --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/project/.clice/logs/${SESSION}

@@ -1,11 +1,11 @@
-["without a configuration"."$ clice lint --workers 2"]
+["without a configuration"."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/main.cpp:5:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 Linted 1 translation unit in #s: 1 finding.
 '''
 exit = 1
 
-["checks without -*"."$ clice lint --workers 2"]
+["checks without -*"."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/main.cpp:9:9: warning: unused variable 'unused' [clang-diagnostic-unused-variable]
 ${WS}/main.cpp:10:12: warning: use nullptr [modernize-use-nullptr]

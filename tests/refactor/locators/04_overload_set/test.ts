@@ -2,26 +2,24 @@ import { test, type TestContext } from "@clice/tools/testing";
 
 /// The id of the symbol defined at `anchor`, as `clice query` answers it.
 async function symbolAt(t: TestContext, anchor: string): Promise<string> {
-    const run = await t.cli(
-        `query --method definition --symbol ${t.place(t.at("main.cpp", anchor))}`,
-    );
+    const run = await t.cli(`query definition ${t.place(t.at("main.cpp", anchor))}`);
     return (run.json as { result: { symbol: string } }).result.symbol;
 }
 
 test("renames the set", async (t) => {
-    await t.cli("index --workers 2");
+    await t.cli("index --jobs 2");
     // Renamed together, the template's open call keeps naming them.
-    await t.cli("refactor rename --symbol scale --to resize --dry-run");
+    await t.cli("refactor rename scale resize --dry-run");
 });
 
 test("renames one overload", async (t) => {
-    await t.cli("index --workers 2");
+    await t.cli("index --jobs 2");
     const symbol = await symbolAt(t, "double |scale");
-    await t.cli(["refactor", "rename", "--symbol", symbol, "--to", "resize", "--dry-run"]);
+    await t.cli(["refactor", "rename", symbol, "resize", "--dry-run"]);
 });
 
 test("lists both overloads", async (t) => {
-    await t.cli("index --workers 2");
+    await t.cli("index --jobs 2");
     const first = await symbolAt(t, "int |scale");
     const second = await symbolAt(t, "double |scale");
     // The macro body spells both: it is noted once.

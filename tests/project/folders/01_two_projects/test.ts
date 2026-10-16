@@ -136,7 +136,7 @@ test("removed only folder goes rootless", async (t) => {
 test("batch index asks the folder's server", async (t) => {
     const s = await t.start(FOLDERS);
     await s.indexed();
-    await t.cli("index --workspace beta --workers 1");
+    await t.cli("index --workspace beta --jobs 1");
 });
 
 test("indexing progress ends across folders", async (t) => {

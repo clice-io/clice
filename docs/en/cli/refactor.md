@@ -4,7 +4,7 @@
 
 `clice refactor` rewrites the workspace's sources from the persisted index, the same index `clice query` reads. Nothing is compiled, so a refactoring over a large tree takes about as long as a query. `rename` is the one refactoring today; an editor's rename runs the same engine.
 
-**Usage**: `clice refactor rename (--symbol <locator> --to <name> | --spec <file>) [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
+**Usage**: `clice refactor rename (<locator> <new-name> | --spec <file>) [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
 
 ## Rename
 
@@ -98,7 +98,7 @@ A name several symbols spell renames nothing until a locator picks one.
 A name two symbols spell lists both, and a scoped name or a candidate's `symbol` picks one
 
 Nothing is renamed while the name is ambiguous. Each candidate carries a
-`symbol` to pass back to `--symbol` as it is.
+`symbol` to pass back as it is.
 
 ```case
 tests/refactor/locators/02_ambiguous_name

@@ -6,20 +6,20 @@ import { test } from "@clice/tools/testing";
 // lacks fails to run, and the report says it is partial.
 test("syntax errors", async (t) => {
     t.disk.database({ "syntax.cpp": [] });
-    await t.cli("lint --workers 2");
+    await t.cli("lint --jobs 2");
 });
 
 test("missing include", async (t) => {
     t.disk.database({ "include.cpp": [] });
-    await t.cli("lint --workers 2");
+    await t.cli("lint --jobs 2");
 });
 
 test("missing forced include", async (t) => {
     t.disk.database({ "healthy.cpp": ["-include", "missing.h"] });
-    await t.cli("lint --workers 2");
+    await t.cli("lint --jobs 2");
 });
 
 test("missing source", async (t) => {
     t.disk.database({ "healthy.cpp": [], "ghost.cpp": [] });
-    await t.cli("lint --workers 2");
+    await t.cli("lint --jobs 2");
 });

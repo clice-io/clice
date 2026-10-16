@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice index --show-symbol alpha"]
+[test."$ clice index symbol alpha"]
 stdout = '''
 symbol #1631ac4f1048cdac  kind=Function  name=alpha  args=  qualified=alpha  flags=HasDefinition,Completable  form=Identifier
   scope=External  file=${WS}/a.cpp  reference files=2

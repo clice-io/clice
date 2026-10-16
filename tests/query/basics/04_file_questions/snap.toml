@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method projectFiles"]
+[test."$ clice query project-files"]
 stdout = '''
 {
   "result": {
@@ -28,7 +28,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method projectFiles --filter source"]
+[test."$ clice query project-files --filter source"]
 stdout = '''
 {
   "result": {
@@ -46,7 +46,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method fileDeps --path main.cpp --direction includes"]
+[test."$ clice query file-deps main.cpp --direction includes"]
 stdout = '''
 {
   "result": {
@@ -64,7 +64,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method fileDeps --path a.h --direction includers"]
+[test."$ clice query file-deps a.h --direction includers"]
 stdout = '''
 {
   "result": {
@@ -82,7 +82,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method impactAnalysis --path a.h"]
+[test."$ clice query impact-analysis a.h"]
 stdout = '''
 {
   "result": {
@@ -97,7 +97,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method counterparts --path a.h"]
+[test."$ clice query counterparts a.h"]
 stdout = '''
 {
   "result": {

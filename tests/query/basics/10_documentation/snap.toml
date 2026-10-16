@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method readSymbol --symbol area"]
+[test."$ clice query read-symbol area"]
 stdout = '''
 {
   "result": {
@@ -23,7 +23,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol surface"]
+[test."$ clice query definition surface"]
 stdout = '''
 {
   "result": {
@@ -43,7 +43,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method readSymbol --symbol Square::draw"]
+[test."$ clice query read-symbol Square::draw"]
 stdout = '''
 {
   "result": {
@@ -61,7 +61,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol Shape::sides"]
+[test."$ clice query definition Shape::sides"]
 stdout = '''
 {
   "result": {

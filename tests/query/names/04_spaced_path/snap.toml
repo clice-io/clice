@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method documentSymbols --path \"my dir/util.h\""]
+[test."$ clice query document-symbols \"my dir/util.h\""]
 stdout = '''
 {
   "result": {
@@ -24,7 +24,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method definition --symbol \"#cc85f8008b8ef85d path:\\\"${WS}/my dir/util.h\\\"\""]
+[test."$ clice query definition \"#cc85f8008b8ef85d path:\\\"${WS}/my dir/util.h\\\"\""]
 stdout = '''
 {
   "result": {

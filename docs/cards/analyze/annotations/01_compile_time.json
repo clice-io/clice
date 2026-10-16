@@ -56,7 +56,7 @@
           }
         },
         {
-          "label": "$ clice analyze modules --view impact",
+          "label": "$ clice analyze modules impact",
           "value": {
             "stdout": "[\n  {\n    \"path\": \"core/fast.h\",\n    \"baseline\": 1,\n    \"partitioned\": 3,\n    \"churn\": null,\n    \"internal\": false\n  },\n  {\n    \"path\": \"core/str.h\",\n    \"baseline\": 3,\n    \"partitioned\": 3,\n    \"churn\": null,\n    \"internal\": false\n  },\n  {\n    \"path\": \"util/clock.h\",\n    \"baseline\": 2,\n    \"partitioned\": 2,\n    \"churn\": null,\n    \"internal\": false\n  }\n]",
             "stderr": "warning: no churn annotation: Process git ended with exit code 128",
@@ -64,7 +64,7 @@
           }
         },
         {
-          "label": "$ clice analyze modules --view impact --annotation compile_time.json",
+          "label": "$ clice analyze modules impact --annotation compile_time.json",
           "value": {
             "stdout": "[\n  {\n    \"path\": \"core/fast.h\",\n    \"baseline\": 10,\n    \"partitioned\": 12,\n    \"churn\": null,\n    \"internal\": false\n  },\n  {\n    \"path\": \"core/str.h\",\n    \"baseline\": 12,\n    \"partitioned\": 12,\n    \"churn\": null,\n    \"internal\": false\n  },\n  {\n    \"path\": \"util/clock.h\",\n    \"baseline\": 11,\n    \"partitioned\": 11,\n    \"churn\": null,\n    \"internal\": false\n  }\n]",
             "stderr": "warning: no churn annotation: Process git ended with exit code 128",

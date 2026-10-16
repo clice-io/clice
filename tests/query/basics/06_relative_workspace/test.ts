@@ -5,6 +5,6 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     await t.cli("index");
     t.disk.write("build/.keep", "");
-    await t.cli("query --workspace .. --method definition --symbol Animal", { cwd: "build" });
-    await t.cli("query --workspace .. --method projectFiles", { cwd: "build" });
+    await t.cli("query definition Animal --workspace ..", { cwd: "build" });
+    await t.cli("query project-files --workspace ..", { cwd: "build" });
 });

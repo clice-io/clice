@@ -1,4 +1,4 @@
-[test."$ clice lint --workers 1"]
+[test."$ clice lint --jobs 1"]
 stdout = '''
 ${WS}/healthy.cpp:2:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 Linted 1 translation unit in #s: 1 finding.

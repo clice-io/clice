@@ -4,5 +4,5 @@ import { test } from "@clice/tools/testing";
 // finding exists only under the define they add.
 
 test(async (t) => {
-    await t.cli("lint --workers 2");
+    await t.cli("lint --jobs 2");
 });

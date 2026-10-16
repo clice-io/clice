@@ -46,7 +46,7 @@
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol circ --limit 5",
+          "label": "$ clice query symbol-search circ --limit 5",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"Circle\",\n        \"kind\": \"Class\",\n        \"file\": \"${WS}/include/shapes/circle.h\",\n        \"line\": 7,\n        \"container\": \"shapes\",\n        \"symbol\": \"#dd68185c34da1cfd\"\n      },\n      {\n        \"name\": \"circumference\",\n        \"kind\": \"Method\",\n        \"file\": \"${WS}/src/circle.cpp\",\n        \"line\": 9,\n        \"container\": \"shapes::Circle\",\n        \"symbol\": \"#1792a4d7c19a13df\"\n      },\n      {\n        \"name\": \"Circle\",\n        \"kind\": \"Method\",\n        \"file\": \"${WS}/include/shapes/circle.h\",\n        \"line\": 9,\n        \"container\": \"shapes::Circle\",\n        \"symbol\": \"#ed83a00043ec4620\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0

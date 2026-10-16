@@ -11,6 +11,6 @@ test(
     async (t) => {
         t.disk.symlink("a/inc", "vendor/real");
         await t.cli("index");
-        await t.cli("query --method compileCommand --path a/inc/orphan.h");
+        await t.cli("query compile-command a/inc/orphan.h");
     },
 );

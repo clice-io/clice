@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --view module --module nowhere"]
+[test."$ clice analyze modules module nowhere"]
 stdout = '''
 {
   "error": "no module nowhere",
@@ -14,7 +14,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice analyze modules --view file --file nowhere.h"]
+[test."$ clice analyze modules file nowhere.h"]
 stdout = '''
 {
   "error": "no scoped file nowhere.h",
@@ -24,23 +24,23 @@ stdout = '''
 stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 1
 
-[test."$ clice analyze modules --view nope"]
+[test."$ clice analyze modules nope"]
 stdout = '''
 {
-  "error": "unknown view nope",
+  "error": "at argv[0]:\n  nope\n  ^~~~\n  unknown subcommand 'nope'",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
-[test."$ clice analyze modules --view edge --from core"]
+[test."$ clice analyze modules edge core"]
 stdout = '''
 {
-  "error": "--view edge needs --from and --to",
+  "error": "missing <TO>",
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
 [test."$ clice analyze modules --scope \"[\""]
 stdout = '''
@@ -97,10 +97,10 @@ stdout = '''
 stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 1
 
-[test."$ clice analyze modules --depth deep"]
+[test."$ clice analyze modules --dir-depth deep"]
 stdout = '''
 {
-  "error": "at argv[1]:\n  --depth deep\n          ^~~~\n  invalid integer value: deep",
+  "error": "at argv[1]:\n  --dir-depth deep\n              ^~~~\n  invalid integer value: deep",
   "stale": []
 }
 '''

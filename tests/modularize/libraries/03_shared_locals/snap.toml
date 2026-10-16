@@ -1,11 +1,11 @@
-[test."$ clice index --workers 1"]
+[test."$ clice index --jobs 1"]
 stdout = '''
 Indexed 3 translation units in #s: 25 file shards (# KB), 43 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --scope \"app/**,third/**\" --partition partition.json --std stdmod --view interface --module alpha"]
+[test."$ clice analyze modules interface alpha --scope \"app/**\" --scope \"third/**\" --partition partition.json --std stdmod"]
 stdout = '''
 [
   {
@@ -172,7 +172,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice analyze modules --scope \"app/**,third/**\" --partition partition.json --std stdmod --view interface --module beta"]
+[test."$ clice analyze modules interface beta --scope \"app/**\" --scope \"third/**\" --partition partition.json --std stdmod"]
 stdout = '''
 [
   {
@@ -281,7 +281,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice modularize --scope \"app/**,third/**\" --partition partition.json --std stdmod --out wrap"]
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --std stdmod --out wrap"]
 stdout = '''
 {
   "wrapping": {
@@ -339,7 +339,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice modularize --scope \"app/**,third/**\" --partition partition.json --std stdmod --out wrap".files]
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --std stdmod --out wrap".files]
 "wrap/.modularize" = '''
 +std.macros.h
 +libc.macros.h

@@ -4,6 +4,6 @@ import { test } from "@clice/tools/testing";
 // only the header whose readings declare different entities.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("analyze modules --view obstacles --scope core/**,app/**");
-    await t.cli("analyze modules --scope core/**,app/**");
+    await t.cli("analyze modules obstacles --scope core/** --scope app/**");
+    await t.cli("analyze modules --scope core/** --scope app/**");
 });

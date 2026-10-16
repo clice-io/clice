@@ -1,4 +1,4 @@
-[test."$ clice lint --workers 2"]
+[test."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/main.cpp:8:23: warning: use nullptr [modernize-use-nullptr]
 ${WS}/registry.h:8:30: warning: use nullptr [modernize-use-nullptr]

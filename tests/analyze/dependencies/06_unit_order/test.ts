@@ -6,10 +6,10 @@ import { test } from "@clice/tools/testing";
 // depend on that order.
 test(async (t) => {
     t.disk.database({ "app/a.cpp": [], "util/b.cpp": [] });
-    await t.cli("index --workers 1");
-    await t.cli("analyze modules --view file --file util/b.cpp");
+    await t.cli("index --jobs 1");
+    await t.cli("analyze modules file util/b.cpp");
     t.disk.rm(".clice");
     t.disk.database({ "util/b.cpp": [], "app/a.cpp": [] });
-    await t.cli("index --workers 1");
-    await t.cli("analyze modules --view file --file util/b.cpp");
+    await t.cli("index --jobs 1");
+    await t.cli("analyze modules file util/b.cpp");
 });

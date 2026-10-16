@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // defines, where each starts and ends.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query --method documentSymbols --path main.cpp");
-    await t.cli("query --method documentSymbols --path api.h");
-    await t.cli("query --method readSymbol --symbol twice");
+    await t.cli("query document-symbols main.cpp");
+    await t.cli("query document-symbols api.h");
+    await t.cli("query read-symbol twice");
 });

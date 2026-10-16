@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --view edge --from util --to core"]
+[test."$ clice analyze modules edge util core"]
 stdout = '''
 {
   "from": "util",

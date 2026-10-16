@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method impactAnalysis --path base.h"]
+[test."$ clice query impact-analysis base.h"]
 stdout = '''
 {
   "result": {
@@ -27,7 +27,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method impactAnalysis --path shapes.cppm"]
+[test."$ clice query impact-analysis shapes.cppm"]
 stdout = '''
 {
   "result": {
@@ -44,7 +44,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method fileDeps --path base.h --direction includers --depth 0"]
+[test."$ clice query file-deps base.h --direction includers --depth 0"]
 stdout = '''
 {
   "result": {
@@ -74,7 +74,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method fileDeps --path main.cpp --direction includes --depth 0"]
+[test."$ clice query file-deps main.cpp --direction includes --depth 0"]
 stdout = '''
 {
   "result": {

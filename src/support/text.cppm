@@ -45,15 +45,4 @@ inline std::string format_bytes(std::uint64_t bytes) {
     return std::format("{} B", bytes);
 }
 
-/// The items of a comma-separated list, each trimmed.
-inline std::vector<std::string> comma_list(llvm::StringRef text) {
-    llvm::SmallVector<llvm::StringRef> parts;
-    text.split(parts, ',', -1, false);
-    std::vector<std::string> items;
-    for(auto part: parts) {
-        items.push_back(part.trim().str());
-    }
-    return items;
-}
-
 }  // namespace clice

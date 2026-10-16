@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol length --to size --dry-run"]
+[test."$ clice refactor rename length size --dry-run"]
 stdout = '''
 {
   "result": {
@@ -35,7 +35,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol \"length path:main.cpp\" --to size --dry-run"]
+[test."$ clice refactor rename \"length path:main.cpp\" size --dry-run"]
 stdout = '''
 {
   "result": {

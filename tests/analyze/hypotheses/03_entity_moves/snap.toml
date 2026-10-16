@@ -176,7 +176,7 @@ stdout = '''
 stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 0
 
-["moved declarations"."$ clice analyze modules --view edge --from core --to util"]
+["moved declarations"."$ clice analyze modules edge core util"]
 stdout = '''
 {
   "from": "core",
@@ -205,7 +205,7 @@ stdout = '''
 '''
 exit = 0
 
-["moved declarations"."$ clice analyze modules --move-entity \"#602700486b07890d=core/clock.h\" --view edge --from core --to util"]
+["moved declarations"."$ clice analyze modules edge core util --move-entity \"#602700486b07890d=core/clock.h\""]
 stdout = '''
 {
   "from": "core",
@@ -225,7 +225,7 @@ stdout = '''
 '''
 exit = 0
 
-["moved declarations"."$ clice analyze modules --move-entity Clock=meta/clock.h --view edge --from meta --to core"]
+["moved declarations"."$ clice analyze modules edge meta core --move-entity Clock=meta/clock.h"]
 stdout = '''
 {
   "from": "meta",
@@ -254,7 +254,7 @@ stdout = '''
 '''
 exit = 0
 
-["moved declarations"."$ clice analyze modules --move-entity Clock=meta/clock.h --view edge --from core --to meta"]
+["moved declarations"."$ clice analyze modules edge core meta --move-entity Clock=meta/clock.h"]
 stdout = '''
 {
   "from": "core",
@@ -281,7 +281,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["repeated moves"."$ clice analyze modules --move-entity twice=core/twice.h --view edge --from core --to util"]
+["repeated moves"."$ clice analyze modules edge core util --move-entity twice=core/twice.h"]
 stdout = '''
 {
   "from": "core",
@@ -301,7 +301,7 @@ stdout = '''
 '''
 exit = 0
 
-["repeated moves"."$ clice analyze modules --move-entity twice=core/twice.h --move-entity \"kind:struct,class Clock=core/clock.h\" --view edge --from core --to util"]
+["repeated moves"."$ clice analyze modules edge core util --move-entity twice=core/twice.h --move-entity \"kind:struct,class Clock=core/clock.h\""]
 stdout = '''
 {
   "from": "core",

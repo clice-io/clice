@@ -1,11 +1,11 @@
-["a changed file"."$ clice index --workers 2"]
+["a changed file"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["a changed file"."$ clice refactor rename --symbol compute --to evaluate"]
+["a changed file"."$ clice refactor rename compute evaluate"]
 stdout = '''
 {
   "result": {
@@ -88,7 +88,7 @@ stdout = '''
 '''
 exit = 1
 
-["a changed file"."$ clice refactor rename --symbol compute --to evaluate --fresh --dry-run"]
+["a changed file"."$ clice refactor rename compute evaluate --fresh --dry-run"]
 stdout = '''
 {
   "result": {
@@ -190,14 +190,14 @@ indexing 2/2 units, 0 failed
 '''
 exit = 0
 
-["a unit never indexed"."$ clice index --workers 2"]
+["a unit never indexed"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["a unit never indexed"."$ clice refactor rename --symbol compute --to evaluate --dry-run"]
+["a unit never indexed"."$ clice refactor rename compute evaluate --dry-run"]
 stdout = '''
 {
   "result": {
@@ -292,7 +292,7 @@ stdout = '''
 '''
 exit = 1
 
-["a unit never indexed"."$ clice refactor rename --symbol compute --to evaluate --fresh --dry-run"]
+["a unit never indexed"."$ clice refactor rename compute evaluate --fresh --dry-run"]
 stdout = '''
 {
   "result": {
@@ -399,14 +399,14 @@ indexing 3/3 units, 0 failed
 '''
 exit = 0
 
-["a file outside the build"."$ clice index --workers 2"]
+["a file outside the build"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["a file outside the build"."$ clice refactor rename --symbol new.cpp:1:5 --to evaluate"]
+["a file outside the build"."$ clice refactor rename new.cpp:1:5 evaluate"]
 stdout = '''
 {
   "result": {

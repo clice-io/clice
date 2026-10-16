@@ -7,5 +7,5 @@ test(async (t) => {
     t.disk.write("a.cpp", `int alpha() { return 1; }\n${generate.functions(200)}`);
     const env = { CLICE_TEST_MAX_INDEX_BYTES: "1024" };
     await t.cli("index", { env });
-    await t.cli("index --show-symbol alpha", { env });
+    await t.cli("index symbol alpha", { env });
 });

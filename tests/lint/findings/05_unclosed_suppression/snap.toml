@@ -1,4 +1,4 @@
-[test."$ clice lint --workers 2"]
+[test."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/main.cpp:3:4: error: unmatched 'NOLINTBEGIN' comment without a subsequent 'NOLINTEND' comment [clang-tidy-nolint]
 ${WS}/main.cpp:5:12: warning: use nullptr [modernize-use-nullptr]

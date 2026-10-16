@@ -31,35 +31,35 @@
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol \"sum path:src/\"",
+          "label": "$ clice query symbol-search \"sum path:src/\"",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"sum_src\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/src/a.cpp\",\n        \"line\": 2,\n        \"container\": null,\n        \"symbol\": \"#1021c69a8dde905f\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:src/a.cpp\"",
+          "label": "$ clice query symbol-search \"\\\"tally\\\" path:src/a.cpp\"",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"tally\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/src/a.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#6c0f5b9087ce07a0 path:${WS}/src/a.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:./lib/src/b.cpp\"",
+          "label": "$ clice query symbol-search \"\\\"tally\\\" path:./lib/src/b.cpp\"",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"tally\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/lib/src/b.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#420d45808a85b99e path:${WS}/lib/src/b.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol \"\\\"tally\\\" path:b.cpp\"",
+          "label": "$ clice query symbol-search \"\\\"tally\\\" path:b.cpp\"",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"tally\",\n        \"kind\": \"Variable\",\n        \"file\": \"${WS}/lib/src/b.cpp\",\n        \"line\": 1,\n        \"container\": null,\n        \"symbol\": \"#420d45808a85b99e path:${WS}/lib/src/b.cpp\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol \"sum path:\\\"${WS}/lib\\\"\"",
+          "label": "$ clice query symbol-search \"sum path:\\\"${WS}/lib\\\"\"",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"sum_lib\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/lib/src/b.cpp\",\n        \"line\": 2,\n        \"container\": null,\n        \"symbol\": \"#39a8aa13717d58d5\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0

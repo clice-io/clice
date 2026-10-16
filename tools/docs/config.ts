@@ -1,7 +1,7 @@
 /// Render the configuration reference from the committed JSON schema.
 ///
 /// The schema (docs/public/clice-config.schema.json) is dumped by
-/// `clice inspect --config-schema` from the annotated config structs —
+/// `clice inspect config-schema` from the annotated config structs —
 /// the single source of truth for option names, types, defaults and
 /// descriptions. This script rewrites the generated regions of
 /// docs/en/guide/configuration.md from it:

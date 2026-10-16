@@ -6,7 +6,7 @@ clice integrates clang-tidy as a built-in linting engine. `clice lint` runs
 the checks of your `.clang-tidy` over the workspace's translation units with a
 resident worker pool and prints one merged report.
 
-**Usage**: `clice lint [--workspace <dir>] [--configuration <tag>] [--workers <n>] [--index]`
+**Usage**: `clice lint [--workspace <dir>] [--configuration <tag>] [--jobs <n>] [--index]`
 
 Runs clang-tidy over every translation unit of the compilation database that
 the lint set below admits, prints the merged findings, and exits non-zero when

@@ -12,9 +12,9 @@ async function damaged(t: TestContext, cut: (library: string) => number): Promis
     expect(libraries).toHaveLength(1);
     const library = libraries.join("");
     t.disk.truncate(library, cut(library));
-    await t.cli("query --method symbolSearch --symbol add");
+    await t.cli("query symbol-search add");
     await t.cli("index");
-    await t.cli("query --method symbolSearch --symbol add");
+    await t.cli("query symbol-search add");
 }
 
 // Only the two meta pages are left, so the pages they declare end past the

@@ -1,4 +1,4 @@
-[test."$ clice lint --workers 2"]
+[test."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/a.cpp:12:10: warning: argument name 'disabled' in comment does not match parameter name 'enabled' [bugprone-argument-comment]
 ${WS}/common.h:3:16: note: 'enabled' declared here

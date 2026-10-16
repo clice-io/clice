@@ -99,7 +99,7 @@
       "name": "index",
       "blocks": [
         {
-          "label": "$ clice index --workers 1",
+          "label": "$ clice index --jobs 1",
           "value": {
             "stdout": "Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0

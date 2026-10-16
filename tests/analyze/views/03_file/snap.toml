@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --view file --file util/clock.h"]
+[test."$ clice analyze modules file util/clock.h"]
 stdout = '''
 {
   "path": "util/clock.h",
@@ -45,7 +45,7 @@ stdout = '''
 stderr = "warning: no churn annotation: Process git ended with exit code 128"
 exit = 0
 
-[test."$ clice analyze modules --view file --file app/main.cpp"]
+[test."$ clice analyze modules file app/main.cpp"]
 stdout = '''
 {
   "path": "app/main.cpp",

@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --workspace .. --method definition --symbol Animal"]
+[test."$ clice query definition Animal --workspace .."]
 stdout = '''
 {
   "result": {
@@ -25,7 +25,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --workspace .. --method projectFiles"]
+[test."$ clice query project-files --workspace .."]
 stdout = '''
 {
   "result": {

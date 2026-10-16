@@ -5,5 +5,5 @@ import { test } from "@clice/tools/testing";
 // database names a source that does not exist.
 test(async (t) => {
     t.disk.database({ "main.cpp": [], "ghost.cpp": [] });
-    await t.cli("query --method symbolSearch --symbol ghost --fresh");
+    await t.cli("query symbol-search ghost --fresh");
 });

@@ -111,4 +111,4 @@ clice index --workspace /path/to/project
 
 The run is resumable — interrupting it with Ctrl-C saves progress, and the
 next invocation continues where it left off instead of starting over.
-`clice index --stats` prints what the persisted index currently contains.
+`clice index stats` prints what the persisted index currently contains.

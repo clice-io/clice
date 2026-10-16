@@ -1,6 +1,6 @@
 import { test } from "@clice/tools/testing";
 
 test(async (t) => {
-    await t.cli("index --workers 2");
-    await t.cli("refactor rename --symbol Point::x --to column");
+    await t.cli("index --jobs 2");
+    await t.cli("refactor rename Point::x column");
 });

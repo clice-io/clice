@@ -1,4 +1,4 @@
-[defaults."$ clice lint --workers 2"]
+[defaults."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/detail/private.h:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 ${WS}/include/public.h:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
@@ -6,7 +6,7 @@ Linted 1 translation unit in #s: 2 findings.
 '''
 exit = 1
 
-[configured."$ clice lint --workers 2"]
+[configured."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/include/public.h:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 ${WS}/system/platform.h:4:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]

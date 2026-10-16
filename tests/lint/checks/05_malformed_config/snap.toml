@@ -1,4 +1,4 @@
-[test."$ clice lint --workers 2"]
+[test."$ clice lint --jobs 2"]
 stdout = '''
 Linted 0 translation units in #s: 0 findings.
 2 translation units failed to run (see the log); the report is partial.

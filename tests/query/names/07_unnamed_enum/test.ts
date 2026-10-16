@@ -4,5 +4,5 @@ import { test } from "@clice/tools/testing";
 // source including it.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query --method references --symbol a.cpp:2:18 --include-declaration");
+    await t.cli("query references a.cpp:2:18 --include-declaration");
 });

@@ -31,35 +31,35 @@
           }
         },
         {
-          "label": "$ clice query --method definition --symbol compute",
+          "label": "$ clice query definition compute",
           "value": {
             "stdout": "{\n  \"error\": \"symbol not found\",\n  \"stale\": [\n    \"${WS}/main.cpp\"\n  ]\n}",
             "exit": 1
           }
         },
         {
-          "label": "$ clice query --method definition --symbol new.cpp:1:5",
+          "label": "$ clice query definition new.cpp:1:5",
           "value": {
             "stdout": "{\n  \"error\": \"symbol not found\",\n  \"stale\": [\n    \"${WS}/new.cpp\"\n  ]\n}",
             "exit": 1
           }
         },
         {
-          "label": "$ clice query --method documentSymbols --path main.cpp",
+          "label": "$ clice query document-symbols main.cpp",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": []\n  },\n  \"stale\": [\n    \"${WS}/main.cpp\"\n  ]\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method documentSymbols --path a.h",
+          "label": "$ clice query document-symbols a.h",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"add\",\n        \"kind\": \"Function\",\n        \"startLine\": 2,\n        \"endLine\": 2,\n        \"symbol\": \"#5c1bf8ca24c752f7\"\n      },\n      {\n        \"name\": \"Animal\",\n        \"kind\": \"Struct\",\n        \"startLine\": 3,\n        \"endLine\": 3,\n        \"symbol\": \"#a1654fc0dd5efb6c\"\n      },\n      {\n        \"name\": \"~Animal\",\n        \"kind\": \"Method\",\n        \"startLine\": 3,\n        \"endLine\": 3,\n        \"symbol\": \"#2dbb9112f1fa26ec\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method counterparts --path a.h",
+          "label": "$ clice query counterparts a.h",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"file\": \"${WS}/a.h\",\n    \"candidates\": [],\n    \"preferred\": null\n  },\n  \"stale\": [\n    \"${WS}/main.cpp\"\n  ]\n}",
             "exit": 0

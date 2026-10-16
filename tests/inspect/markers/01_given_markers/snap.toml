@@ -23,10 +23,10 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice inspect inlay_hint main.cpp --markers=markers.json"]
+[test."$ clice inspect inlay-hint main.cpp --markers=markers.json"]
 stdout = '''
 {
-  "feature": "inlay_hint",
+  "feature": "inlay-hint",
   "files": {
     "main.cpp": {
       "result": null,

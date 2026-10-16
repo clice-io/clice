@@ -1,8 +1,8 @@
-["asks the running server to index"."$ clice index --workers 2"]
+["asks the running server to index"."$ clice index --jobs 2"]
 stdout = "Indexed through the running clice server (pid #)."
 exit = 0
 
-["asks the running server to index"."$ clice query --method symbolSearch --symbol extra --fresh"]
+["asks the running server to index"."$ clice query symbol-search extra --fresh"]
 stdout = '''
 {
   "result": {
@@ -22,7 +22,7 @@ stdout = '''
 '''
 exit = 0
 
-["asks the running server to index"."$ clice query --method symbolSearch --symbol extra"]
+["asks the running server to index"."$ clice query symbol-search extra"]
 stdout = '''
 {
   "result": {
@@ -46,7 +46,7 @@ exit = 0
 stderr = "error: another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done"
 exit = 1
 
-["refuses a writer it cannot ask"."$ clice query --method symbolSearch --symbol compute --fresh"]
+["refuses a writer it cannot ask"."$ clice query symbol-search compute --fresh"]
 stdout = '''
 {
   "error": "another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done",
@@ -55,7 +55,7 @@ stdout = '''
 '''
 exit = 1
 
-["refuses a writer it cannot ask"."$ clice query --method symbolSearch --symbol compute"]
+["refuses a writer it cannot ask"."$ clice query symbol-search compute"]
 stdout = '''
 {
   "result": {

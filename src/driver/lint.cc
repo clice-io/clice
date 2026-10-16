@@ -19,23 +19,13 @@ namespace {
 struct LintOptions {
     kota::deco::decl::HelpOption help;
 
-    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
-    <std::string> workspace;
-
-    DecoKV(help =
-               "Build configuration to activate, one of the tags declared on rules "
-               "(default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
-
-    DecoKV(help = "Number of lint workers (default: from config)", required = false)
-    <std::uint32_t> workers;
-
     DecoFlag(names = {"--index"},
              help = "Also build and persist the project index from the same parses",
              required = false)
     index;
 
+    WorkspaceOptions where;
+    JobsOption jobs;
     LogLevelOption log;
 };
 
@@ -65,7 +55,7 @@ void print_findings(llvm::ArrayRef<worker::TidyDiagnostic> diagnostics) {
 
 int run_lint(Spelling root,
              std::string configuration,
-             std::uint32_t workers,
+             std::uint32_t jobs,
              bool with_index,
              const char* self_path) {
     auto config = Config::load_from_workspace(CanonicalPath(root));
@@ -77,7 +67,7 @@ int run_lint(Spelling root,
         .root = std::move(root),
         .config = std::move(config),
         .configuration = std::move(configuration),
-        .workers = workers,
+        .workers = jobs,
         .self_path = self_path,
         .with_index = with_index,
     });
@@ -107,22 +97,20 @@ int run_lint(Spelling root,
 }
 
 CommandHandler build(const char* self_path) {
-    auto cmd = kota::deco::cli::command<LintOptions>("clice lint [OPTIONS]");
-    cmd.match_all([self_path](LintOptions opts) {
-        opts.log.apply();
-        logging::stderr_logger("lint", logging::options);
-
-        auto workspace = workspace_spelling(opts.workspace.value_or(""));
-        if(!workspace_exists(workspace)) {
-            return 2;
-        }
-        return run_lint(std::move(workspace),
-                        opts.configuration.value_or(""),
-                        opts.workers.value_or(0),
-                        static_cast<bool>(opts.index),
-                        self_path);
-    });
-    return cmd;
+    return operation<LintOptions>("clice lint [OPTIONS]",
+                                  "lint",
+                                  Errors::Text,
+                                  [self_path](const LintOptions& opts) {
+                                      auto workspace = opts.where.root();
+                                      if(!workspace_exists(workspace)) {
+                                          return 2;
+                                      }
+                                      return run_lint(std::move(workspace),
+                                                      opts.where.configuration.tag(),
+                                                      opts.jobs.jobs.value_or(0),
+                                                      static_cast<bool>(opts.index),
+                                                      self_path);
+                                  });
 }
 
 [[maybe_unused]] const bool registered =

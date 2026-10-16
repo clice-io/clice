@@ -8,7 +8,6 @@ import :analysis.module_graph;
 import :analysis.rewriting;
 import :analysis.wrapping;
 import :driver.driver;
-import :support.text;
 import :vfs.file_system;
 
 namespace clice::driver {
@@ -22,23 +21,22 @@ struct Plan {
     analysis::Rewriting::Plan rewriting;
 };
 
+/// Where a run writes, and whether it writes mirrors.
+struct OutputOptions {
+    DecoKV(help = "Directory to write the modules, macro headers, mirrors and prelude into",
+           required = false)
+    <std::string> out;
+
+    DecoFlag(names = {"--no-mirrors"},
+             help =
+                 "Write no mirrors: what still includes a wrapped header parses it beside "
+                 "the import",
+             required = false)
+    no_mirrors;
+};
+
 struct ModularizeOptions {
     kota::deco::decl::HelpOption help;
-
-    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
-    <std::string> workspace;
-
-    DecoKV(help =
-               "Build configuration to read, one of the tags declared on rules "
-               "(default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
-
-    DecoKV(help =
-               "Comma-separated globs over workspace-relative paths, absolute ones outside "
-               "the workspace: the files the partition and the program span",
-           required = false)
-    <std::string> scope;
 
     DecoKV(help =
                "JSON file assigning modules by globs, first match wins; a module is wrapped, "
@@ -49,30 +47,35 @@ struct ModularizeOptions {
     <std::string> partition;
 
     DecoKV(help =
+               "A glob over workspace-relative paths, absolute ones outside the workspace: "
+               "the files the partition and the program span",
+           required = false)
+    <std::vector<std::string>> scope;
+
+    DecoKV(help =
                "libc++'s module sources (share/libc++/v1): the partition's std module is "
                "imported as std.compat",
            required = false)
     <std::string> std;
 
-    DecoKV(help = "Directory to write the modules, macro headers, mirrors and prelude into",
-           required = false)
-    <std::string> out;
+    OutputOptions output;
+    WorkspaceOptions where;
+    LogLevelOption log;
+};
 
-    DecoKV(help =
-               "JSON file listing build configurations to merge instead, each a name, the "
-               "preprocessor condition holding in its compilations alone and the --out "
-               "directory a run for it wrote",
-           required = false)
-    <std::string> merge;
+struct MergeOptions {
+    kota::deco::decl::HelpOption help;
 
-    DecoFlag(names = {"--no-mirrors"},
-             help =
-                 "Write no mirrors: what still includes a wrapped header parses it beside "
-                 "the import",
-             required = false)
-    no_mirrors;
+    DecoInput(meta_var = "<FILE>",
+              help =
+                  "JSON file listing the build configurations to merge, each a name, the "
+                  "preprocessor condition holding in its compilations alone and the --out "
+                  "directory a run for it wrote",
+              required = false)
+    <std::vector<std::string>> file;
 
-    LogLevelOption log{.log_level = LogLevel::Warn};
+    OutputOptions output;
+    LogLevelOption log;
 };
 
 struct MergeFile {
@@ -193,32 +196,37 @@ std::expected<std::vector<analysis::Configuration>, std::string>
     return configurations;
 }
 
-int run_modularize(const ModularizeOptions& opts) {
-    auto fail = [](std::string error) {
-        print_json(Failure{.error = std::move(error)});
-        return 1;
-    };
+int fail(std::string error) {
+    print_json(Failure{.error = std::move(error)});
+    return 1;
+}
 
-    if(opts.merge) {
-        if(opts.partition || !opts.out) {
-            return fail("modularize --merge needs --out and no --partition");
-        }
-        auto configurations = read_configurations(*opts.merge);
-        if(!configurations) {
-            return fail(configurations.error());
-        }
-        auto merged = analysis::merge(*configurations, !opts.no_mirrors);
-        if(!merged) {
-            return fail(merged.error());
-        }
-        if(auto written = write_files(Spelling(*opts.out, Spelling::cwd()).str(), merged->files);
-           !written) {
-            return fail(written.error());
-        }
-        print_json(Plan{.wrapping = std::move(merged->plan)});
-        return 0;
+int run_merge(const MergeOptions& opts) {
+    auto args = positional(opts.file.as_optional(), {"<FILE>"});
+    if(!args) {
+        return usage_error(Errors::JSON, args.error());
     }
-    if(!opts.partition || !opts.out) {
+    if(!opts.output.out) {
+        return fail("modularize merge needs --out");
+    }
+    auto configurations = read_configurations(args->front());
+    if(!configurations) {
+        return fail(configurations.error());
+    }
+    auto merged = analysis::merge(*configurations, !opts.output.no_mirrors);
+    if(!merged) {
+        return fail(merged.error());
+    }
+    if(auto written = write_files(Spelling(*opts.output.out, Spelling::cwd()).str(), merged->files);
+       !written) {
+        return fail(written.error());
+    }
+    print_json(Plan{.wrapping = std::move(merged->plan)});
+    return 0;
+}
+
+int run_modularize(const ModularizeOptions& opts) {
+    if(!opts.partition || !opts.output.out) {
         return fail("modularize needs --partition and --out");
     }
     auto libcxx = analysis::read_std_modules(opts.std.value_or(""));
@@ -229,9 +237,9 @@ int run_modularize(const ModularizeOptions& opts) {
     if(!spec) {
         return fail(spec.error());
     }
-    auto loaded = analysis::load_facts(workspace_spelling(opts.workspace.value_or("")),
-                                       opts.configuration.value_or(""),
-                                       comma_list(opts.scope.value_or("")));
+    auto loaded = analysis::load_facts(opts.where.root(),
+                                       opts.where.configuration.tag(),
+                                       opts.scope.value_or(std::vector<std::string>{}));
     if(!loaded) {
         print_json(Failure{.error = std::move(loaded.error().message),
                            .stale = std::move(loaded.error().dropped)});
@@ -250,12 +258,12 @@ int run_modularize(const ModularizeOptions& opts) {
         return fail(interfaces.error());
     }
     auto wrapping =
-        analysis::wrap(*partition, *interfaces, *libcxx, loaded->root, !opts.no_mirrors);
+        analysis::wrap(*partition, *interfaces, *libcxx, loaded->root, !opts.output.no_mirrors);
     if(!wrapping) {
         return fail(wrapping.error());
     }
 
-    Spelling out_spelling(*opts.out, Spelling::cwd());
+    Spelling out_spelling(*opts.output.out, Spelling::cwd());
     auto out = out_spelling.str();
     std::optional<analysis::Rewriting> rewriting;
     if(llvm::any_of(partition->primaries, [](auto& primary) { return !primary.empty(); })) {
@@ -303,15 +311,22 @@ int run_modularize(const ModularizeOptions& opts) {
 }
 
 CommandHandler build(const char*) {
-    auto command = kota::deco::cli::command<ModularizeOptions>("clice modularize [OPTIONS]");
-    command
-        .match_all([](ModularizeOptions opts) {
-            opts.log.apply();
-            logging::stderr_logger("modularize", logging::options);
-            return run_modularize(opts);
-        })
-        .on_error([](auto err) { print_json(Failure{.error = err.message}); });
-    return command;
+    std::vector<Operation> operations;
+    operations.push_back({
+        .name = "merge",
+        .description = "Merge the wrappings of several build configurations",
+        .run = operation<MergeOptions>("clice modularize merge <FILE> [OPTIONS]",
+                                       "modularize",
+                                       Errors::JSON,
+                                       run_merge),
+    });
+    return with_operations("",
+                           std::move(operations),
+                           Errors::JSON,
+                           operation<ModularizeOptions>("clice modularize [OPTIONS]",
+                                                        "modularize",
+                                                        Errors::JSON,
+                                                        run_modularize));
 }
 
 [[maybe_unused]] const bool registered = register_command(

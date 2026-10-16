@@ -1,7 +1,7 @@
-[test."$ clice inspect document_symbol_check main.cpp"]
+[test."$ clice inspect document-symbols main.cpp --check"]
 stdout = '''
 {
-  "feature": "document_symbol_check",
+  "feature": "document-symbols",
   "files": {
     "main.cpp": {
       "result": {
@@ -18,10 +18,10 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice inspect document_symbol_check marks.cpp"]
+[test."$ clice inspect document-symbols marks.cpp --check"]
 stdout = '''
 {
-  "feature": "document_symbol_check",
+  "feature": "document-symbols",
   "files": {
     "marks.cpp": {
       "result": {

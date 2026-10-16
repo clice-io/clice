@@ -11,12 +11,15 @@ import :driver.driver;
 import :index.database;
 import :index.query;
 import :index.serialization;
+import :index.symbol_query;
 import :index.writer_lock;
 import :project.configuration;
 import :project.open_index;
 import :project.project;
 import :sched.batch;
 import :server.control_client;
+import :server.editor_context;
+import :server.query_commands;
 import :support.text;
 import :support.timer;
 
@@ -26,52 +29,47 @@ namespace {
 
 struct IndexOptions {
     kota::deco::decl::HelpOption help;
+    WorkspaceOptions where;
+    JobsOption jobs;
+    LogLevelOption log;
+};
 
-    DecoKV(help = "Workspace root directory (default: current directory)", required = false)
-    <std::string> workspace;
+struct StatsOptions {
+    kota::deco::decl::HelpOption help;
 
-    DecoKV(help =
-               "Build configuration to activate, one of the tags declared on rules "
-               "(default: the selected one, else default_configuration)",
-           required = false)
-    <std::string> configuration;
-
-    DecoKV(help = "Number of indexing workers (default: from config)", required = false)
-    <std::uint32_t> workers;
-
-    DecoFlag(names = {"--stats"},
-             help = "Print statistics of the persisted index instead of indexing",
-             required = false)
-    stats;
-
-    DecoKV(help = "How many of the largest file shards --stats lists", required = false)
-    <std::uint32_t> top;
+    DecoKV(help = "How many of the largest file shards to list (default 20)", required = false)
+    <std::uint32_t> limit;
 
     DecoFlag(names = {"--variants"},
-             help =
-                 "Print the statistics and then every file shard with its variant "
-                 "count, one tab-separated line each",
+             help = "Then every file shard with its variant count, one tab-separated line each",
              required = false)
     variants;
 
-    DecoKV(help =
-               "Print what the persisted index records about a symbol, named by its "
-               "name, qualified name or #hash, instead of indexing",
-           required = false)
-    <std::string> show_symbol;
+    WorkspaceOptions where;
+    LogLevelOption log;
+};
 
-    DecoKV(help =
-               "Print a file's persisted rows: variants, contributing units and row "
-               "counts, instead of indexing",
-           required = false)
-    <std::string> show_file;
+struct SymbolOptions {
+    kota::deco::decl::HelpOption help;
 
-    DecoKV(help =
-               "Print a translation unit's persisted manifest: include tree and "
-               "contributions, instead of indexing",
-           required = false)
-    <std::string> show_tu;
+    DecoInput(meta_var = "<LOCATOR>",
+              help = "The symbols, as a locator: a name, an answer's symbol, or file:line[:column]",
+              required = false)
+    <std::vector<std::string>> locator;
 
+    WorkspaceOptions where;
+    LogLevelOption log;
+};
+
+struct FileOptions {
+    kota::deco::decl::HelpOption help;
+
+    DecoInput(meta_var = "<PATH>",
+              help = "The file, relative to the workspace or absolute",
+              required = false)
+    <std::vector<std::string>> path;
+
+    WorkspaceOptions where;
     LogLevelOption log;
 };
 
@@ -536,43 +534,25 @@ llvm::StringRef kind_name(SymbolKind kind) {
     return kota::meta::enum_name(static_cast<SymbolKind::Kind>(kind), "Invalid");
 }
 
-/// The symbol a `--show-symbol` argument names: `#<hex>` is a hash, anything
-/// else a display name (`Box<int>`) or a qualified one (`ns::Box<int>`).
-std::vector<index::SymbolHash> matching_symbols(Project& project,
-                                                index::IndexQuery& query,
-                                                llvm::StringRef wanted) {
-    std::vector<index::SymbolHash> matches;
-    if(wanted.starts_with("#")) {
-        if(auto hash = index::parse_symbol_id(wanted)) {
-            matches.push_back(*hash);
-        }
-        return matches;
+/// What the index records about every symbol `text`, a locator, names:
+/// a name, every symbol it spells whole.
+int run_show_symbol(Project& project, CommandResolver& commands, llvm::StringRef text) {
+    auto locator = index::SymbolQuery::parse(text);
+    if(!locator) {
+        LOG_ERROR("{}", locator.error());
+        return 1;
     }
-    bool qualified = wanted.contains("::");
-    project.project_index.for_each_symbol(
-        [&](index::SymbolHash hash, const index::SymbolIdentity& symbol, std::uint32_t) {
-            if((symbol.name + symbol.args).str() == wanted ||
-               (qualified && query.qualified_name(hash) == wanted)) {
-                matches.push_back(hash);
-            }
-            return true;
-        });
-    std::ranges::sort(matches);
-    return matches;
-}
-
-int run_show_symbol(Project& project, llvm::StringRef wanted) {
+    ContextsBlob saved;
+    EditorContext contexts{project, commands, saved};
     index::IndexQuery query(project.project_index, project.file_table, nullptr, nullptr);
-    auto matches = matching_symbols(project, query, wanted);
-    if(matches.empty()) {
-        driver::println(
-            "No symbol named {} in the index (names cover the global table; "
-            "file-local symbols are reachable by #hash).",
-            std::string_view(wanted));
+    query::Context ctx{.project = project, .contexts = contexts, .query = query};
+    auto matches = query::named_symbols(ctx, std::move(*locator));
+    if(!matches) {
+        driver::println("{}: {}", std::string_view(text), matches.error());
         return 1;
     }
     int rc = 0;
-    for(auto hash: matches) {
+    for(auto hash: *matches) {
         auto info = query.symbol_info(hash);
         if(!info) {
             driver::println("{}: no table knows this hash", format_hash(hash));
@@ -785,64 +765,108 @@ int run_show_tu(Project& project, llvm::StringRef argument) {
     return 0;
 }
 
-CommandHandler build(const char* self_path) {
-    auto cmd = kota::deco::cli::command<IndexOptions>("clice index [OPTIONS]");
-    cmd.match_all([self_path](IndexOptions opts) {
-        opts.log.apply();
-        logging::stderr_logger("index", logging::options);
+/// Open the persisted index of the workspace and hand it to `run`, which
+/// reads it.
+template <typename Run>
+int read_index(const WorkspaceOptions& where, Run run) {
+    auto spelling = where.root();
+    if(!workspace_exists(spelling)) {
+        return 1;
+    }
+    auto configuration = where.configuration.tag();
+    auto config = Config::load_from_workspace(CanonicalPath(spelling));
+    if(auto checked = check_requested_configuration(config, configuration); !checked) {
+        LOG_ERROR("{}", checked.error());
+        return 1;
+    }
+    FileTable files;
+    // Answers name files under the workspace as the command line does.
+    files.spell_root(spelling);
+    Project project{files};
+    CommandResolver commands{project};
+    auto loaded =
+        load_index(project, commands, std::move(config), configuration, /*with_build=*/false);
+    if(!loaded) {
+        return 1;
+    }
+    return run(project, commands, *loaded);
+}
 
-        auto spelling = workspace_spelling(opts.workspace.value_or(""));
-        if(!workspace_exists(spelling)) {
-            return 1;
+/// An operation reading the record of the one file it names.
+template <typename Show>
+CommandHandler show_file(std::string_view usage, Show show) {
+    return operation<FileOptions>(usage, "index", Errors::Text, [show](const FileOptions& opts) {
+        auto args = positional(opts.path.as_optional(), {"<PATH>"});
+        if(!args) {
+            return usage_error(Errors::Text, args.error());
         }
-        auto configuration = opts.configuration.value_or("");
-        std::size_t modes = (opts.show_symbol ? 1 : 0) + (opts.show_file ? 1 : 0) +
-                            (opts.show_tu ? 1 : 0) + (opts.stats || opts.variants ? 1 : 0);
-        if(modes > 1) {
-            LOG_ERROR(
-                "--stats, --variants, --show-symbol, --show-file and --show-tu are "
-                "separate modes; pass one of them");
-            return 1;
-        }
-        if(opts.show_symbol || opts.show_file || opts.show_tu || opts.stats || opts.variants) {
-            auto config = Config::load_from_workspace(CanonicalPath(spelling));
-            if(auto checked = check_requested_configuration(config, configuration); !checked) {
-                LOG_ERROR("{}", checked.error());
-                return 1;
-            }
-            FileTable files;
-            // Answers name files under the workspace as the command line does.
-            files.spell_root(spelling);
-            Project project{files};
-            CommandResolver commands{project};
-            auto loaded = load_index(project,
-                                     commands,
-                                     std::move(config),
-                                     configuration,
-                                     /*with_build=*/false);
-            if(!loaded) {
-                return 1;
-            }
-            if(opts.show_symbol) {
-                return run_show_symbol(project, *opts.show_symbol);
-            }
-            if(opts.show_file) {
-                return run_show_file(project, *opts.show_file);
-            }
-            if(opts.show_tu) {
-                return run_show_tu(project, *opts.show_tu);
-            }
-            return run_stats(project,
-                             loaded->dropped,
-                             opts.top.value_or(20),
-                             static_cast<bool>(opts.variants));
-        }
-        return run_indexing(std::move(spelling),
-                            std::move(configuration),
-                            opts.workers.value_or(0),
-                            self_path);
+        return read_index(opts.where, [&](Project& project, CommandResolver&, LoadedIndex&) {
+            return show(project, args->front());
+        });
     });
-    return cmd;
+}
+
+CommandHandler build(const char* self_path) {
+    std::vector<Operation> operations;
+    operations.push_back({
+        .name = "stats",
+        .description = "What the persisted index holds: its sizes and how its records spread",
+        .run = operation<StatsOptions>(
+            "clice index stats [OPTIONS]",
+            "index",
+            Errors::Text,
+            [](const StatsOptions& opts) {
+                return read_index(opts.where,
+                                  [&](Project& project, CommandResolver&, LoadedIndex& loaded) {
+                                      return run_stats(project,
+                                                       loaded.dropped,
+                                                       opts.limit.value_or(20),
+                                                       static_cast<bool>(opts.variants));
+                                  });
+            }),
+    });
+    operations.push_back({
+        .name = "symbol",
+        .description = "What the persisted index records about symbols",
+        .run = operation<SymbolOptions>(
+            "clice index symbol <LOCATOR> [OPTIONS]",
+            "index",
+            Errors::Text,
+            [](const SymbolOptions& opts) {
+                auto args = positional(opts.locator.as_optional(), {"<LOCATOR>"});
+                if(!args) {
+                    return usage_error(Errors::Text, args.error());
+                }
+                return read_index(opts.where,
+                                  [&](Project& project, CommandResolver& commands, LoadedIndex&) {
+                                      return run_show_symbol(project, commands, args->front());
+                                  });
+            }),
+    });
+    operations.push_back({
+        .name = "file",
+        .description = "A file's persisted records: variants, contributing units and counts",
+        .run = show_file("clice index file <PATH> [OPTIONS]", run_show_file),
+    });
+    operations.push_back({
+        .name = "unit",
+        .description = "A translation unit's persisted manifest: include tree and contributions",
+        .run = show_file("clice index unit <PATH> [OPTIONS]", run_show_tu),
+    });
+    auto index = operation<IndexOptions>("clice index [OPTIONS]",
+                                         "index",
+                                         Errors::Text,
+                                         [self_path](const IndexOptions& opts) {
+                                             auto spelling = opts.where.root();
+                                             if(!workspace_exists(spelling)) {
+                                                 return 1;
+                                             }
+                                             return run_indexing(std::move(spelling),
+                                                                 opts.where.configuration.tag(),
+                                                                 opts.jobs.jobs.value_or(0),
+                                                                 self_path);
+                                         });
+    return with_operations("", std::move(operations), Errors::Text, std::move(index));
 }
 
 [[maybe_unused]] const bool registered =

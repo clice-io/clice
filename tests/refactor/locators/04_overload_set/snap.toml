@@ -1,11 +1,11 @@
-["renames the set"."$ clice index --workers 2"]
+["renames the set"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# KB), 5 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["renames the set"."$ clice refactor rename --symbol scale --to resize --dry-run"]
+["renames the set"."$ clice refactor rename scale resize --dry-run"]
 stdout = '''
 {
   "result": {
@@ -78,14 +78,14 @@ stdout = '''
 '''
 exit = 0
 
-["renames one overload"."$ clice index --workers 2"]
+["renames one overload"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# KB), 5 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["renames one overload"."$ clice query --method definition --symbol main.cpp:2:8"]
+["renames one overload"."$ clice query definition main.cpp:2:8"]
 stdout = '''
 {
   "result": {
@@ -105,7 +105,7 @@ stdout = '''
 '''
 exit = 0
 
-["renames one overload"."$ clice refactor rename --symbol \"#e4d8e937e2717771\" --to resize --dry-run"]
+["renames one overload"."$ clice refactor rename \"#e4d8e937e2717771\" resize --dry-run"]
 stdout = '''
 {
   "result": {
@@ -165,14 +165,14 @@ stdout = '''
 '''
 exit = 0
 
-["lists both overloads"."$ clice index --workers 2"]
+["lists both overloads"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# KB), 5 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["lists both overloads"."$ clice query --method definition --symbol main.cpp:1:5"]
+["lists both overloads"."$ clice query definition main.cpp:1:5"]
 stdout = '''
 {
   "result": {
@@ -192,7 +192,7 @@ stdout = '''
 '''
 exit = 0
 
-["lists both overloads"."$ clice query --method definition --symbol main.cpp:2:8"]
+["lists both overloads"."$ clice query definition main.cpp:2:8"]
 stdout = '''
 {
   "result": {

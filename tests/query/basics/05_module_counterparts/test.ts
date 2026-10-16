@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // interface's outline from the index lists the module it declares.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query --method counterparts --path store_impl.cpp");
-    await t.cli("query --method counterparts --path store.cppm");
-    await t.cli("query --method documentSymbols --path store.cppm");
+    await t.cli("query counterparts store_impl.cpp");
+    await t.cli("query counterparts store.cppm");
+    await t.cli("query document-symbols store.cppm");
 });

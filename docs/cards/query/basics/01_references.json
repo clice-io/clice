@@ -46,7 +46,7 @@
           }
         },
         {
-          "label": "$ clice query --method references --symbol shapes::Circle::measure --include-declaration",
+          "label": "$ clice query references shapes::Circle::measure --include-declaration",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"measure\",\n    \"kind\": \"Method\",\n    \"symbol\": \"#c9fbbb30710c2348\",\n    \"references\": [\n      {\n        \"file\": \"${WS}/include/shapes/circle.h\",\n        \"line\": 11,\n        \"context\": \"    double measure() const override;\"\n      },\n      {\n        \"file\": \"${WS}/src/circle.cpp\",\n        \"line\": 5,\n        \"context\": \"double Circle::measure() const {\"\n      },\n      {\n        \"file\": \"${WS}/test/circle_test.cpp\",\n        \"line\": 4,\n        \"context\": \"    return shapes::Circle(1.0).measure() > 3 ? 0 : 1;\"\n      }\n    ],\n    \"total\": 3\n  },\n  \"stale\": []\n}",
             "exit": 0

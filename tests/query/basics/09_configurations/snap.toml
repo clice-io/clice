@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --configuration release --method symbolSearch --symbol release_only"]
+[test."$ clice query symbol-search release_only --configuration release"]
 stdout = '''
 {
   "result": {
@@ -25,7 +25,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol debug_only"]
+[test."$ clice query symbol-search debug_only"]
 stdout = '''
 {
   "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
@@ -42,7 +42,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol debug_only #2"]
+[test."$ clice query symbol-search debug_only #2"]
 stdout = '''
 {
   "result": {
@@ -62,7 +62,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --configuration nope --method symbolSearch --symbol debug_only"]
+[test."$ clice query symbol-search debug_only --configuration nope"]
 stdout = '''
 {
   "error": "--configuration nope names no rule's configuration (debug, release)",

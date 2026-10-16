@@ -15,7 +15,7 @@ test(async (t) => {
         ranges: { use: { begin: source.indexOf("int use"), end: source.length } },
     };
     await t.cli(["inspect", "hover", "main.cpp", markers(table)]);
-    await t.cli(["inspect", "inlay_hint", "main.cpp", markers(table)]);
+    await t.cli(["inspect", "inlay-hint", "main.cpp", markers(table)]);
     await t.cli(["inspect", "hover", "main.cpp", markers({ points: { far: source.length + 1 } })]);
     await t.cli([
         "inspect",

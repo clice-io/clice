@@ -50,7 +50,7 @@ errors = [
     { at = "#⟦error⟧ missing IN_ALPHA", severity = "error", message = "missing IN_ALPHA", source = "clang", code = "err_pp_hash_error" },
 ]
 
-["batch index asks the folder's server"."$ clice index --workspace beta --workers 1"]
+["batch index asks the folder's server"."$ clice index --workspace beta --jobs 1"]
 stdout = "Indexed through the running clice server (pid #)."
 exit = 0
 

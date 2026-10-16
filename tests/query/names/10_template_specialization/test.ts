@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // the template, the specialization is named with its arguments.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query --method references --symbol Holder");
-    await t.cli(["query", "--method", "references", "--symbol", "Holder<bool>"]);
-    await t.cli("query --method symbolSearch --symbol Holder");
+    await t.cli("query references Holder");
+    await t.cli(["query", "references", "Holder<bool>"]);
+    await t.cli("query symbol-search Holder");
 });

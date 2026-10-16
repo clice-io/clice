@@ -10,6 +10,6 @@ test(
     async (t) => {
         t.disk.symlink("link", "real");
         await t.cli("index");
-        await t.cli("query --method compileCommand --path link/main.cpp");
+        await t.cli("query compile-command link/main.cpp");
     },
 );

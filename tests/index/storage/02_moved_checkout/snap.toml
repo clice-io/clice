@@ -5,7 +5,7 @@ Session log: ${WS}/before/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --workspace before --method symbolSearch --symbol UTIL_LIMIT"]
+[test."$ clice query symbol-search UTIL_LIMIT --workspace before"]
 stdout = '''
 {
   "result": {
@@ -25,7 +25,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --workspace before --method symbolSearch --symbol src/a.cpp:2"]
+[test."$ clice query symbol-search src/a.cpp:2 --workspace before"]
 stdout = '''
 {
   "result": {
@@ -52,7 +52,7 @@ Session log: ${WS}/after/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --workspace after --method symbolSearch --symbol UTIL_LIMIT"]
+[test."$ clice query symbol-search UTIL_LIMIT --workspace after"]
 stdout = '''
 {
   "result": {
@@ -72,7 +72,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --workspace after --method symbolSearch --symbol src/a.cpp:2"]
+[test."$ clice query symbol-search src/a.cpp:2 --workspace after"]
 stdout = '''
 {
   "result": {

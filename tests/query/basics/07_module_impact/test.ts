@@ -5,8 +5,8 @@ import { test } from "@clice/tools/testing";
 // base.h.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query --method impactAnalysis --path base.h");
-    await t.cli("query --method impactAnalysis --path shapes.cppm");
-    await t.cli("query --method fileDeps --path base.h --direction includers --depth 0");
-    await t.cli("query --method fileDeps --path main.cpp --direction includes --depth 0");
+    await t.cli("query impact-analysis base.h");
+    await t.cli("query impact-analysis shapes.cppm");
+    await t.cli("query file-deps base.h --direction includers --depth 0");
+    await t.cli("query file-deps main.cpp --direction includes --depth 0");
 });

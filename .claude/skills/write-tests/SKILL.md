@@ -110,7 +110,7 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
 
 Until a file's AST is current, the server answers its outline from the
 index, and both answers must be the same. `clice inspect
-document_symbol_check <file>` compiles the file, projects the outline from
+document-symbols <file> --check` compiles the file, projects the outline from
 its own TU index and lists each entry where the two differ (`only_ast`,
 `only_index`, `name`, `kind`, `range`, `parent`, `detail`, `deprecated`) at
 its 1-based line and column. When a change touches the outline or the index

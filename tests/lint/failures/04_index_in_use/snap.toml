@@ -1,11 +1,11 @@
-["beside a server"."$ clice lint --workers 2"]
+["beside a server"."$ clice lint --jobs 2"]
 stdout = '''
 ${WS}/main.cpp:2:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
 Linted 1 translation unit in #s: 1 finding.
 '''
 exit = 1
 
-["beside a server"."$ clice lint --index --workers 2"]
+["beside a server"."$ clice lint --index --jobs 2"]
 stderr = '''
 warning: Another clice process (pid #) is writing the index cache at ${WS}/.clice; index persistence is disabled for this process
 error: Cannot persist the index at ${WS}/.clice; see the log for the cause and rerun

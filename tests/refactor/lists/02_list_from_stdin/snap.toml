@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol compute --to evaluate"]
+[test."$ clice refactor rename compute evaluate"]
 stdout = '''
 {
   "result": {
@@ -96,7 +96,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol compute --to evaluate".files]
+[test."$ clice refactor rename compute evaluate".files]
 "lib.h" = '''
  #pragma once
 
@@ -125,7 +125,7 @@ exit = 0
 +int again() { return evaluate(3); }
 '''
 
-[test."$ clice index --workers 2 #2"]
+[test."$ clice index --jobs 2 #2"]
 stdout = '''
 Indexed 2 translation units in #s: 3 file shards (# KB), 10 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}

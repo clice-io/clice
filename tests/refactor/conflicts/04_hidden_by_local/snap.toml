@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol compute --to evaluate --dry-run"]
+[test."$ clice refactor rename compute evaluate --dry-run"]
 wrong = "the local `evaluate` in `report` hides the renamed function there, so `evaluate(evaluate)` no longer compiles, yet no conflict is reported"
 stdout = '''
 {

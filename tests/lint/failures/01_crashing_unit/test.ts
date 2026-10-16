@@ -4,5 +4,5 @@ import { test } from "@clice/tools/testing";
 // run gives up on it at once, still checks the rest, and says the report is
 // partial.
 test(async (t) => {
-    await t.cli("lint --workers 1", { crash: { request: "tuRun", file: "poison.cpp" } });
+    await t.cli("lint --jobs 1", { crash: { request: "tuRun", file: "poison.cpp" } });
 });

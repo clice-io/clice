@@ -31,28 +31,28 @@
           }
         },
         {
-          "label": "$ clice query --method readSymbol --symbol area",
+          "label": "$ clice query read-symbol area",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"area\",\n    \"kind\": \"Function\",\n    \"file\": \"${WS}/geometry.cpp\",\n    \"startLine\": 4,\n    \"endLine\": 6,\n    \"documentation\": \"Computes the area of a rectangle.\\n\\nParameters:  \\n- `width` — The horizontal extent.\\n- `height` — The vertical extent.\\n\\nReturns: The product of both sides.\",\n    \"text\": \"int area(int width, int height) {\\n    return width * height;\\n}\",\n    \"symbol\": \"#7b938a3382a6f65a\"\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method definition --symbol surface",
+          "label": "$ clice query definition surface",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"surface\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#a2ee286bd8d3dc88\",\n    \"documentation\": \"Computes the area of a rectangle.\\n\\nParameters:  \\n- `width` — The horizontal extent.\\n- `height` — The vertical extent.\\n\\nReturns: The product of both sides.\",\n    \"definition\": {\n      \"file\": \"${WS}/geometry.cpp\",\n      \"startLine\": 8,\n      \"endLine\": 10,\n      \"text\": \"int surface(int width, int height) {\\n    return area(width, height);\\n}\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method readSymbol --symbol Square::draw",
+          "label": "$ clice query read-symbol Square::draw",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"draw\",\n    \"kind\": \"Method\",\n    \"file\": \"${WS}/geometry.cpp\",\n    \"startLine\": 14,\n    \"endLine\": 14,\n    \"documentation\": \"Draws the shape.\",\n    \"text\": \"void Square::draw() {}\",\n    \"symbol\": \"#e3c8e20a05689894\"\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method definition --symbol Shape::sides",
+          "label": "$ clice query definition Shape::sides",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"sides\",\n    \"kind\": \"Field\",\n    \"symbol\": \"#17762968bcc5b2cf\",\n    \"documentation\": \"How many sides it has.\",\n    \"definition\": {\n      \"file\": \"${WS}/include/geometry.h\",\n      \"startLine\": 16,\n      \"endLine\": 16,\n      \"text\": \"int sides\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0

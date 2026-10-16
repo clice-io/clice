@@ -5,7 +5,7 @@ Session log: ${WS}/project/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice analyze modules --workspace project --view edge --from app --to core"]
+[test."$ clice analyze modules edge app core --workspace project"]
 stdout = '''
 {
   "from": "app",

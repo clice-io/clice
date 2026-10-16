@@ -1,6 +1,6 @@
 import { test } from "@clice/tools/testing";
 
-const SCOPE = "--scope core/**,util/**,lib/**,feature/**,app/**";
+const SCOPE = "--scope core/** --scope util/** --scope lib/** --scope feature/** --scope app/**";
 
 test(async (t) => {
     await t.cli("index");

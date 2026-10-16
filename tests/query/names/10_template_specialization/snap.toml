@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method references --symbol Holder"]
+[test."$ clice query references Holder"]
 stdout = '''
 {
   "result": {
@@ -26,7 +26,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method references --symbol \"Holder<bool>\""]
+[test."$ clice query references \"Holder<bool>\""]
 stdout = '''
 {
   "result": {
@@ -47,7 +47,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol Holder"]
+[test."$ clice query symbol-search Holder"]
 stdout = '''
 {
   "result": {

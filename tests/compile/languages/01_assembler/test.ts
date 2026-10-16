@@ -10,5 +10,5 @@ test("open", async (t) => {
 });
 
 test("index", async (t) => {
-    await t.cli("index --workers 1");
+    await t.cli("index --jobs 1");
 });

@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice modularize --scope \"app/**,third/**\" --partition partition.json --out wrap"]
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap"]
 stdout = '''
 {
   "wrapping": {
@@ -39,7 +39,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice modularize --scope \"app/**,third/**\" --partition partition.json --out wrap".files]
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap".files]
 "wrap/.modularize" = '''
 +mirror/alpha/alpha/alpha.h
 +alpha.cppm

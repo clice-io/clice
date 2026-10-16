@@ -29,14 +29,14 @@
       "name": "plans without writing",
       "blocks": [
         {
-          "label": "$ clice index --workers 2",
+          "label": "$ clice index --jobs 2",
           "value": {
             "stdout": "Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice refactor rename --symbol compute --to evaluate --dry-run",
+          "label": "$ clice refactor rename compute evaluate --dry-run",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"applied\": false,\n    \"renames\": [\n      {\n        \"line\": null,\n        \"locator\": \"compute\",\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"symbol\": \"#0129094638d1b328\",\n        \"newName\": \"evaluate\",\n        \"edits\": 4,\n        \"conflicts\": [],\n        \"warnings\": [],\n        \"error\": null,\n        \"candidates\": null\n      }\n    ],\n    \"files\": [\n      {\n        \"file\": \"${WS}/lib.h\",\n        \"edits\": [\n          {\n            \"line\": 3,\n            \"column\": 5,\n            \"name\": \"compute\",\n            \"newName\": \"evaluate\",\n            \"heuristic\": false\n          }\n        ]\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"edits\": [\n          {\n            \"line\": 3,\n            \"column\": 5,\n            \"name\": \"compute\",\n            \"newName\": \"evaluate\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 7,\n            \"column\": 20,\n            \"name\": \"compute\",\n            \"newName\": \"evaluate\",\n            \"heuristic\": false\n          }\n        ]\n      },\n      {\n        \"file\": \"${WS}/other.cpp\",\n        \"edits\": [\n          {\n            \"line\": 3,\n            \"column\": 22,\n            \"name\": \"compute\",\n            \"newName\": \"evaluate\",\n            \"heuristic\": false\n          }\n        ]\n      }\n    ],\n    \"unconfirmed\": [\n      {\n        \"file\": \"${WS}/lib.h\",\n        \"line\": 10,\n        \"column\": 14,\n        \"name\": \"compute\",\n        \"reason\": \"inside a preprocessor directive, which the index does not resolve\",\n        \"text\": \"#define CALL compute(1)\"\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 7,\n        \"column\": 33,\n        \"name\": \"compute\",\n        \"reason\": \"the name is written here as `CALL`\",\n        \"text\": \"int use() { return compute(2) + CALL; }\"\n      }\n    ],\n    \"conflicts\": [],\n    \"stale\": []\n  },\n  \"stale\": []\n}",
             "exit": 0
@@ -48,14 +48,14 @@
       "name": "writes the edits",
       "blocks": [
         {
-          "label": "$ clice index --workers 2",
+          "label": "$ clice index --jobs 2",
           "value": {
             "stdout": "Indexed 2 translation units in #s: 3 file shards (# KB), 8 symbols.\nSession log: ${WS}/.clice/logs/${SESSION}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice refactor rename --symbol Widget --to Gadget",
+          "label": "$ clice refactor rename Widget Gadget",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"applied\": true,\n    \"renames\": [\n      {\n        \"line\": null,\n        \"locator\": \"Widget\",\n        \"name\": \"Widget\",\n        \"kind\": \"Struct\",\n        \"symbol\": \"#5b52580eb5b8875a\",\n        \"newName\": \"Gadget\",\n        \"edits\": 5,\n        \"conflicts\": [],\n        \"warnings\": [],\n        \"error\": null,\n        \"candidates\": null\n      }\n    ],\n    \"files\": [\n      {\n        \"file\": \"${WS}/lib.h\",\n        \"edits\": [\n          {\n            \"line\": 5,\n            \"column\": 8,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 6,\n            \"column\": 5,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          }\n        ]\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"edits\": [\n          {\n            \"line\": 5,\n            \"column\": 1,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 5,\n            \"column\": 9,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          },\n          {\n            \"line\": 10,\n            \"column\": 5,\n            \"name\": \"Widget\",\n            \"newName\": \"Gadget\",\n            \"heuristic\": false\n          }\n        ]\n      }\n    ],\n    \"unconfirmed\": [],\n    \"conflicts\": [],\n    \"stale\": []\n  },\n  \"stale\": []\n}",
             "exit": 0,

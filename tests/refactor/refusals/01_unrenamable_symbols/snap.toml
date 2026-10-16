@@ -1,11 +1,11 @@
-[test."$ clice index --workers 2"]
+[test."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 2 file shards (# KB), 11 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice refactor rename --symbol CALL --to INVOKE"]
+[test."$ clice refactor rename CALL INVOKE"]
 stdout = '''
 {
   "result": {
@@ -35,7 +35,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol print_line --to print --dry-run"]
+[test."$ clice refactor rename print_line print --dry-run"]
 stdout = '''
 {
   "result": {
@@ -65,7 +65,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol getter --to fetch --dry-run"]
+[test."$ clice refactor rename getter fetch --dry-run"]
 stdout = '''
 {
   "result": {
@@ -95,7 +95,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol Meters::operator+ --to plus --dry-run"]
+[test."$ clice refactor rename Meters::operator+ plus --dry-run"]
 stdout = '''
 {
   "result": {
@@ -125,7 +125,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol main.cpp:13:14 --to number --dry-run"]
+[test."$ clice refactor rename main.cpp:13:14 number --dry-run"]
 stdout = '''
 {
   "result": {
@@ -155,7 +155,7 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --symbol main.cpp:16:18 --to meters --dry-run"]
+[test."$ clice refactor rename main.cpp:16:18 meters --dry-run"]
 stdout = '''
 {
   "result": {

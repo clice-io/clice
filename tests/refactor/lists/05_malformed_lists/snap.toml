@@ -52,11 +52,11 @@ stdout = '''
 '''
 exit = 1
 
-[test."$ clice refactor rename --spec - --symbol compute --to evaluate"]
+[test."$ clice refactor rename compute evaluate --spec -"]
 stdout = '''
 {
-  "error": "--spec lists the renames; --symbol and --to name one",
+  "error": "--spec lists the renames; <LOCATOR> <NEW-NAME> names one",
   "stale": []
 }
 '''
-exit = 1
+exit = 2

@@ -1,11 +1,11 @@
-["class members"."$ clice index --workers 2"]
+["class members"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# KB), 14 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["class members"."$ clice refactor rename --symbol Base::size --to capacity --dry-run"]
+["class members"."$ clice refactor rename Base::size capacity --dry-run"]
 stdout = '''
 {
   "result": {
@@ -57,7 +57,7 @@ stdout = '''
 '''
 exit = 1
 
-["class members"."$ clice refactor rename --symbol Derived::capacity --to size --dry-run"]
+["class members"."$ clice refactor rename Derived::capacity size --dry-run"]
 stdout = '''
 {
   "result": {
@@ -109,7 +109,7 @@ stdout = '''
 '''
 exit = 1
 
-["class members"."$ clice refactor rename --symbol Base::grow --to Base --dry-run"]
+["class members"."$ clice refactor rename Base::grow Base --dry-run"]
 stdout = '''
 {
   "result": {
@@ -168,7 +168,7 @@ stdout = '''
 '''
 exit = 1
 
-["class members"."$ clice refactor rename --symbol Derived --to capacity --dry-run"]
+["class members"."$ clice refactor rename Derived capacity --dry-run"]
 stdout = '''
 {
   "result": {
@@ -220,14 +220,14 @@ stdout = '''
 '''
 exit = 1
 
-["one scope"."$ clice index --workers 2"]
+["one scope"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# KB), 14 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["one scope"."$ clice refactor rename --symbol alpha --to beta --dry-run"]
+["one scope"."$ clice refactor rename alpha beta --dry-run"]
 stdout = '''
 {
   "result": {
@@ -279,7 +279,7 @@ stdout = '''
 '''
 exit = 1
 
-["one scope"."$ clice refactor rename --symbol volume --to LIMIT --dry-run"]
+["one scope"."$ clice refactor rename volume LIMIT --dry-run"]
 stdout = '''
 {
   "result": {
@@ -331,7 +331,7 @@ stdout = '''
 '''
 exit = 1
 
-["one scope"."$ clice refactor rename --symbol area --to volume --dry-run"]
+["one scope"."$ clice refactor rename area volume --dry-run"]
 wrong = "`volume` takes the same parameters as `area`, so the rename makes a redefinition, which does not compile, and it only warns"
 stdout = '''
 {
@@ -391,14 +391,14 @@ stdout = '''
 '''
 exit = 0
 
-["one function"."$ clice index --workers 2"]
+["one function"."$ clice index --jobs 2"]
 stdout = '''
 Indexed 1 translation unit in #s: 1 file shard (# KB), 14 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-["one function"."$ clice refactor rename --symbol \"factor path:main.cpp\" --to length --dry-run"]
+["one function"."$ clice refactor rename \"factor path:main.cpp\" length --dry-run"]
 stdout = '''
 {
   "result": {
@@ -450,7 +450,7 @@ stdout = '''
 '''
 exit = 1
 
-["one function"."$ clice refactor rename --symbol \"result path:main.cpp\" --to length --dry-run"]
+["one function"."$ clice refactor rename \"result path:main.cpp\" length --dry-run"]
 wrong = "`length` is a parameter of the same function: the renamed local would redeclare it in the function's outermost block, which does not compile, yet no conflict is reported"
 stdout = '''
 {

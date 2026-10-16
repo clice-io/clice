@@ -4,16 +4,16 @@
 
 `clice query` asks the persisted index a structured question and prints the answer as JSON on stdout — for scripts and coding agents that want the facts a language server has without speaking LSP. It reads the index straight from disk, the same index `clice index` builds and an editor session keeps up to date, so it works while the editor is open and needs no server when it is not.
 
-**Usage**: `clice query --method <question> [--workspace <dir>] [--configuration <tag>] [--fresh] [question options]`
+**Usage**: `clice query <question> [<locator> | <file>] [--workspace <dir>] [--configuration <tag>] [--fresh] [question options]`
 
 ## Questions
 
-- `symbolSearch --symbol <locator> [--limit <n>]` lists the symbols a [locator](#locators) matches, best first, with their kind, file, line, container and `symbol`.
-- `definition`, `readSymbol`, `references [--include-declaration]`, `callGraph [--direction callers|callees|both]` and `typeHierarchy [--direction supertypes|subtypes|both]` answer about the one symbol `--symbol <locator>` names. A locator several symbols match lists them as `candidates`; a name none spells exactly lists the closest matches the same way. `definition` and `readSymbol` also give the symbol's `documentation`: its documentation comment as markdown, read as the editor's hover reads it — `@param`, `@return` and `@copydoc` resolved, an undocumented override showing what it overrides.
-- `documentSymbols --path <file>` is the file's outline.
-- `compileCommand --path <file>` is the command the editor would compile the file with, and where it came from: the file's own database entry, a host source for a header, a rule's default command, a command borrowed from a nearby unit — for a provisional member (`provisional`) or a file outside the build (`inferred`) — or the fallback. The command is the one the compiler resolves it to, with its target and system include directories; when asking the compiler failed, `toolchainError` says why and the command stays the unresolved driver command.
-- `projectFiles [--filter all|source|header|module]` lists the build's files; `fileDeps --path <file> [--direction includes|includers|both] [--depth <n>]` follow the include graph, and `impactAnalysis --path <file>` the include graph and the files that import a module the file is part of.
-- `counterparts --path <file>` lists the files the file pairs with — a header's sources, a source's headers, a module's interface and implementation units — best first, each with its reasons, and names the one an editor would open without asking as `preferred` (see [Switch Source/Header](../features/navigation.md#switch-source-header)).
+- `symbol-search [<locator>] [--limit <n>]` lists the symbols a [locator](#locators) matches, best first, with their kind, file, line, container and `symbol`.
+- `definition <locator>`, `read-symbol <locator>`, `references <locator> [--include-declaration]`, `call-graph <locator> [--direction callers|callees|both]` and `type-hierarchy <locator> [--direction supertypes|subtypes|both]` answer about the one symbol the locator names. A locator several symbols match lists them as `candidates`; a name none spells exactly lists the closest matches the same way. `definition` and `read-symbol` also give the symbol's `documentation`: its documentation comment as markdown, read as the editor's hover reads it — `@param`, `@return` and `@copydoc` resolved, an undocumented override showing what it overrides.
+- `document-symbols <file>` is the file's outline.
+- `compile-command <file>` is the command the editor would compile the file with, and where it came from: the file's own database entry, a host source for a header, a rule's default command, a command borrowed from a nearby unit — for a provisional member (`provisional`) or a file outside the build (`inferred`) — or the fallback. The command is the one the compiler resolves it to, with its target and system include directories; when asking the compiler failed, `toolchainError` says why and the command stays the unresolved driver command.
+- `project-files [--filter all|source|header|module]` lists the build's files; `file-deps <file> [--direction includes|includers|both] [--depth <n>]` follow the include graph, and `impact-analysis <file>` the include graph and the files that import a module the file is part of.
+- `counterparts <file>` lists the files the file pairs with — a header's sources, a source's headers, a module's interface and implementation units — best first, each with its reasons, and names the one an editor would open without asking as `preferred` (see [Switch Source/Header](../features/navigation.md#switch-source-header)).
 
 Paths are workspace-relative or absolute in questions, absolute in answers; lines are 1-based.
 
@@ -38,11 +38,11 @@ A locator names symbols, wherever a command takes one. It is one string: spaces 
 
 A local, a parameter and an entity of internal linkage — `static`, or in an anonymous namespace — are known only to the files that see them: a name finds them only together with `path:` naming their file or its directory.
 
-Every symbol an answer lists carries `symbol`, a locator naming it back: its id, followed by `path:` and its file for a symbol only some files see. Pass it to `--symbol` as it is. On a shell command line, quote the whole locator: `#` there starts a comment, `<` and `>` redirect and `*` expands.
+Every symbol an answer lists carries `symbol`, a locator naming it back: its id, followed by `path:` and its file for a symbol only some files see. Pass it back as it is. On a shell command line, quote the whole locator: `#` there starts a comment, `<` and `>` redirect and `*` expands.
 
 ## Answers
 
-Every answer is one JSON object: `{"result": ..., "stale": [...]}` on success, `{"error": "...", "stale": [...]}` with exit code 1 when the question cannot be answered (an unknown symbol, a file that does not exist, an option value it does not take), or 2 when the arguments do not parse. An error for a locator that matched several symbols lists them in `candidates`, each with its `symbol`.
+Every answer is one JSON object: `{"result": ..., "stale": [...]}` on success, `{"error": "...", "stale": [...]}` with exit code 1 when the question cannot be answered (an unknown symbol, a file that does not exist, an option value it does not take), or 2 when the arguments do not parse (an unknown question, a locator or file missing or too many). An error for a locator that matched several symbols lists them in `candidates`, each with its `symbol`.
 
 `stale` lists the files whose rows the answer had to leave out because their content on disk no longer matches what was indexed — the positions the index holds for them would point into text that moved. A file that changed only because a header it includes changed keeps answering from its last rows. A symbol whose definition sits in a stale file is reported as not found, with the file named, so a reader can tell "does not exist" from "not indexed yet". Only files the answer consulted are checked: a symbol added to a file after it was indexed is simply absent, since no row leads to that file — `--fresh` is the way to ask about the current disk. The index never sees unsaved editor buffers: the disk is the truth it describes.
 

@@ -31,63 +31,63 @@
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol add",
+          "label": "$ clice query symbol-search add",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"add\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 2,\n        \"container\": null,\n        \"symbol\": \"#5c1bf8ca24c752f7\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method definition --symbol \"#5c1bf8ca24c752f7\"",
+          "label": "$ clice query definition \"#5c1bf8ca24c752f7\"",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"add\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#5c1bf8ca24c752f7\",\n    \"documentation\": null,\n    \"definition\": {\n      \"file\": \"${WS}/main.cpp\",\n      \"startLine\": 2,\n      \"endLine\": 2,\n      \"text\": \"int add(int a, int b) { return a + b; }\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method definition --symbol main.cpp:4",
+          "label": "$ clice query definition main.cpp:4",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"compute\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#81df9416985c4402\",\n    \"documentation\": null,\n    \"definition\": {\n      \"file\": \"${WS}/main.cpp\",\n      \"startLine\": 4,\n      \"endLine\": 4,\n      \"text\": \"int compute() { return add(1, 2); }\"\n    }\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method readSymbol --symbol compute",
+          "label": "$ clice query read-symbol compute",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"compute\",\n    \"kind\": \"Function\",\n    \"file\": \"${WS}/main.cpp\",\n    \"startLine\": 4,\n    \"endLine\": 4,\n    \"documentation\": null,\n    \"text\": \"int compute() { return add(1, 2); }\",\n    \"symbol\": \"#81df9416985c4402\"\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method references --symbol add --include-declaration",
+          "label": "$ clice query references add --include-declaration",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"name\": \"add\",\n    \"kind\": \"Function\",\n    \"symbol\": \"#5c1bf8ca24c752f7\",\n    \"references\": [\n      {\n        \"file\": \"${WS}/a.h\",\n        \"line\": 2,\n        \"context\": \"int add(int a, int b);\"\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 2,\n        \"context\": \"int add(int a, int b) { return a + b; }\"\n      },\n      {\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"context\": \"int compute() { return add(1, 2); }\"\n      }\n    ],\n    \"total\": 3\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method callGraph --symbol add --direction callers",
+          "label": "$ clice query call-graph add --direction callers",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"root\": {\n      \"name\": \"add\",\n      \"kind\": \"Function\",\n      \"file\": \"${WS}/main.cpp\",\n      \"line\": 2,\n      \"symbol\": \"#5c1bf8ca24c752f7\"\n    },\n    \"callers\": [\n      {\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"symbol\": \"#81df9416985c4402\"\n      }\n    ],\n    \"callees\": []\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method typeHierarchy --symbol Dog --direction supertypes",
+          "label": "$ clice query type-hierarchy Dog --direction supertypes",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"root\": {\n      \"name\": \"Dog\",\n      \"kind\": \"Struct\",\n      \"file\": \"${WS}/main.cpp\",\n      \"line\": 3,\n      \"symbol\": \"#7316a0a19122a8ae\"\n    },\n    \"supertypes\": [\n      {\n        \"name\": \"Animal\",\n        \"kind\": \"Struct\",\n        \"file\": \"${WS}/a.h\",\n        \"line\": 3,\n        \"symbol\": \"#a1654fc0dd5efb6c\"\n      }\n    ],\n    \"subtypes\": []\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method documentSymbols --path main.cpp",
+          "label": "$ clice query document-symbols main.cpp",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"add\",\n        \"kind\": \"Function\",\n        \"startLine\": 2,\n        \"endLine\": 2,\n        \"symbol\": \"#5c1bf8ca24c752f7\"\n      },\n      {\n        \"name\": \"Dog\",\n        \"kind\": \"Struct\",\n        \"startLine\": 3,\n        \"endLine\": 3,\n        \"symbol\": \"#7316a0a19122a8ae\"\n      },\n      {\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"startLine\": 4,\n        \"endLine\": 4,\n        \"symbol\": \"#81df9416985c4402\"\n      },\n      {\n        \"name\": \"main\",\n        \"kind\": \"Function\",\n        \"startLine\": 5,\n        \"endLine\": 5,\n        \"symbol\": \"#70b5c0d150872970\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0
           }
         },
         {
-          "label": "$ clice query --method symbolSearch --symbol kind:Struct,Function --limit 10",
+          "label": "$ clice query symbol-search kind:Struct,Function --limit 10",
           "value": {
             "stdout": "{\n  \"result\": {\n    \"symbols\": [\n      {\n        \"name\": \"Animal\",\n        \"kind\": \"Struct\",\n        \"file\": \"${WS}/a.h\",\n        \"line\": 3,\n        \"container\": null,\n        \"symbol\": \"#a1654fc0dd5efb6c\"\n      },\n      {\n        \"name\": \"add\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 2,\n        \"container\": null,\n        \"symbol\": \"#5c1bf8ca24c752f7\"\n      },\n      {\n        \"name\": \"Dog\",\n        \"kind\": \"Struct\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 3,\n        \"container\": null,\n        \"symbol\": \"#7316a0a19122a8ae\"\n      },\n      {\n        \"name\": \"compute\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 4,\n        \"container\": null,\n        \"symbol\": \"#81df9416985c4402\"\n      },\n      {\n        \"name\": \"main\",\n        \"kind\": \"Function\",\n        \"file\": \"${WS}/main.cpp\",\n        \"line\": 5,\n        \"container\": null,\n        \"symbol\": \"#70b5c0d150872970\"\n      }\n    ]\n  },\n  \"stale\": []\n}",
             "exit": 0

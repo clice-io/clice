@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol local.cpp:1"]
+[test."$ clice query symbol-search local.cpp:1"]
 stdout = '''
 {
   "result": {

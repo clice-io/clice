@@ -1,4 +1,4 @@
-[test."$ clice query --method symbolSearch --symbol compute --fresh"]
+[test."$ clice query symbol-search compute --fresh"]
 stdout = '''
 {
   "result": {
@@ -22,7 +22,7 @@ indexing 1/1 units, 0 failed
 '''
 exit = 0
 
-[test."$ clice query --method symbolSearch --symbol extra --fresh"]
+[test."$ clice query symbol-search extra --fresh"]
 stdout = '''
 {
   "result": {

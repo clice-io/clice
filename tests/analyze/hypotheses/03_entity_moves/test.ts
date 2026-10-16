@@ -11,47 +11,35 @@ interface Edge {
 test("moved declarations", async (t) => {
     await t.cli("index");
     await t.cli("analyze modules --move-entity Clock=core/clock.h");
-    const edge = await t.cli("analyze modules --view edge --from core --to util");
+    const edge = await t.cli("analyze modules edge core util");
     const clock = (edge.json as Edge).entities.find((entry) => entry.entity === "Clock");
     expect(clock).toBeDefined();
     await t.cli([
         "analyze",
         "modules",
+        "edge",
+        "core",
+        "util",
         "--move-entity",
         `${clock?.id ?? ""}=core/clock.h`,
-        "--view",
-        "edge",
-        "--from",
-        "core",
-        "--to",
-        "util",
     ]);
-    await t.cli(
-        "analyze modules --move-entity Clock=meta/clock.h --view edge --from meta --to core",
-    );
-    await t.cli(
-        "analyze modules --move-entity Clock=meta/clock.h --view edge --from core --to meta",
-    );
+    await t.cli("analyze modules edge meta core --move-entity Clock=meta/clock.h");
+    await t.cli("analyze modules edge core meta --move-entity Clock=meta/clock.h");
 });
 
 // Each repetition is one more move.
 test("repeated moves", async (t) => {
     await t.cli("index");
-    await t.cli(
-        "analyze modules --move-entity twice=core/twice.h --view edge --from core --to util",
-    );
+    await t.cli("analyze modules edge core util --move-entity twice=core/twice.h");
     await t.cli([
         "analyze",
         "modules",
+        "edge",
+        "core",
+        "util",
         "--move-entity",
         "twice=core/twice.h",
         "--move-entity",
         "kind:struct,class Clock=core/clock.h",
-        "--view",
-        "edge",
-        "--from",
-        "core",
-        "--to",
-        "util",
     ]);
 });
