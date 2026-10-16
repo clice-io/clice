@@ -454,22 +454,13 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
 
     // Strip the temporary probe file so results contain no input path
     // (render appends the real source file at the end), and the module
-    // output the driver derives from it (-fmodule-output=<probe>.pcm for a
-    // module unit): it names the deleted temp file and clice manages outputs
-    // itself. The probe path uses an exact match: all supported drivers echo
+    // output, which clice manages itself (the driver derives
+    // -fmodule-output=<probe>.pcm for a module unit, naming the deleted temp
+    // file). The probe path uses an exact match: all supported drivers echo
     // input paths verbatim, without canonicalizing them.
-    //
-    // The importers of the real build read a reduced BMI where the driver
-    // asks for one, but --precompile writes the full one to -o whatever it
-    // asks: clice builds the kind they read, as a reduced BMI drops what the
-    // global module fragment declares and the purview never names, partial
-    // specializations among them.
-    bool precompile =
-        ranges::any_of(spec.argv, [](llvm::StringRef arg) { return arg == "--precompile"; });
     std::erase_if(*queried, [&](const std::string& arg) {
         llvm::StringRef s(arg);
-        return s == *src_path || (s == "-fmodules-reduced-bmi" && precompile) ||
-               s.starts_with("-fmodule-output");
+        return s == *src_path || s.starts_with("-fmodule-output");
     });
 
     if(queried->empty())
@@ -756,6 +747,17 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
     Resolved resolved;
     resolved.driver = tokens[0];
 
+    /// The PCM clice builds is the BMI the importers of the real build read:
+    /// a reduced one drops what the global module fragment declares and the
+    /// purview never names, partial specializations among them. --precompile
+    /// writes a full BMI to -o whatever the driver asks for, and a reduced
+    /// one only to a module output the command names.
+    auto has = [&](unsigned id) {
+        return ranges::any_of(config.args, [&](const Arg& arg) { return arg.opt_id == id; });
+    };
+    bool full_bmi = has(option::OPT__precompile) && !has(option::OPT_fmodule_output) &&
+                    !has(option::OPT_fmodule_output_EQ);
+
     /// The driver, then -cc1.
     std::vector<std::string> parse_args(tokens.begin() + 2, tokens.end());
     auto parse_options = kota::option::ParseOptions{.visibility = option::CC1Option};
@@ -768,6 +770,9 @@ Toolchain::ResolvedID Toolchain::synthesize(ConfigID id, llvm::ArrayRef<const ch
         /// canonicalized echo would slip through here).
         if(parsed &&
            (parsed->id == option::OPT_main_file_name || parsed->id == option::OPT_INPUT)) {
+            continue;
+        }
+        if(parsed && parsed->id == option::OPT_fmodules_reduced_bmi && full_bmi) {
             continue;
         }
         staged.push_back(db.local_arg(parsed, parse_args));

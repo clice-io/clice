@@ -268,22 +268,6 @@ ZEST_CASE(QueryFakeDriver, skip = Windows) {
     ZEXPECT(*result == expected);
 }
 
-ZEST_CASE(QueryPrecompileFullBMI, skip = Windows) {
-    // --precompile writes the full BMI whatever the driver asks for.
-    auto driver = create_fake_clang(fake_cc1_line);
-    ZASSERT(driver);
-
-    auto result = Toolchain::query({driver->c_str(), "--precompile"}, "/tmp/a.cppm");
-    ZASSERT(result);
-
-    std::vector<std::string> expected = {"/usr/bin/clang-22",
-                                         "-cc1",
-                                         "-triple",
-                                         "x86_64-unknown-linux-gnu",
-                                         "-std=c++23"};
-    ZEXPECT(*result == expected);
-}
-
 ZEST_CASE(FailedQueryRetries, skip = Windows) {
     // A transient driver failure must not poison the key for the session:
     // the negative cache expires after the retry cooldown, and the next
@@ -630,6 +614,31 @@ ZEST_CASE(ResolveAttachesUserContent, skip = Windows) {
     ZEXPECT(has_include);
     ZEXPECT(has_define);
     ZEXPECT(has_main_file);
+}
+
+ZEST_CASE(ResolvePrecompileFullBMI, skip = Windows) {
+    auto driver = create_fake_clang(fake_cc1_line);
+    ZASSERT(driver);
+
+    // Whether the module unit's cc1 asks for a reduced BMI.
+    auto reduced = [&](llvm::ArrayRef<const char*> flags) {
+        std::vector<const char*> arguments = {driver->c_str()};
+        arguments.insert(arguments.end(), flags.begin(), flags.end());
+        arguments.push_back("/tmp/a.cppm");
+        Fixture f;
+        auto ref = f.add("/tmp", "/tmp/a.cppm", arguments);
+        return std::ranges::any_of(f.db.render(ref), [](llvm::StringRef arg) {
+            return arg == "-fmodules-reduced-bmi";
+        });
+    };
+
+    // --precompile writes the full BMI whatever the driver asks for, and the
+    // reduced one only to a module output the command names.
+    ZEXPECT(reduced({}));
+    ZEXPECT(!reduced({"--precompile"}));
+    ZEXPECT(reduced({"--precompile", "-fmodule-output"}));
+    ZEXPECT(reduced({"--precompile", "-fmodule-output=/tmp/a.pcm"}));
+    ZEXPECT(reduced({"--precompile-reduced-bmi"}));
 }
 
 ZEST_CASE(WarmDedupesProbes, skip = Windows) {
