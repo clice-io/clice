@@ -409,7 +409,7 @@ kota::task<std::vector<protocol::DocumentLink>, kota::ipc::Error>
     co_return links;
 }
 
-kota::task<std::vector<protocol::Diagnostic>>
+kota::task<std::vector<feature::FileDiagnostic>>
     Features::diagnostics(std::shared_ptr<Session> session) {
     while(session->serving == ServingMode::Escalated && !session->closed) {
         auto ticket = Ticket::take(session);
@@ -421,15 +421,15 @@ kota::task<std::vector<protocol::Diagnostic>>
     co_return finished_diagnostics(*session);
 }
 
-std::vector<protocol::Diagnostic> Features::finished_diagnostics(const Session& session) const {
-    std::vector<protocol::Diagnostic> diagnostics;
+std::vector<feature::FileDiagnostic> Features::finished_diagnostics(const Session& session) const {
+    std::vector<feature::FileDiagnostic> diagnostics;
     if(session.closed) {
         return diagnostics;
     }
     // A compile that failed or is barred left an output of an older
     // buffer, whose ranges a versionless report would place on this one.
     if(auto projection = ast.projections.projection_at(session.path_id, session.version)) {
-        diagnostics = format_diagnostics(*projection->output);
+        diagnostics = format_diagnostics(*projection->output, project.config.diagnostics);
     }
     append_crash_notes(session, diagnostics);
     return diagnostics;

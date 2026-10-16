@@ -90,12 +90,12 @@ public:
     /// has no bound of its own: a client that no longer wants the answer
     /// cancels the pull. A session the policy keeps un-compiled waits for
     /// nothing.
-    kota::task<std::vector<protocol::Diagnostic>> diagnostics(std::shared_ptr<Session> session);
+    kota::task<std::vector<feature::FileDiagnostic>> diagnostics(std::shared_ptr<Session> session);
 
     /// What diagnostics answers once the compile finished, without waiting
     /// for one: the output's diagnostics while it describes the buffer,
     /// then the crash notes; nothing once the session closed.
-    std::vector<protocol::Diagnostic> finished_diagnostics(const Session& session) const;
+    std::vector<feature::FileDiagnostic> finished_diagnostics(const Session& session) const;
 
     /// Go-to-definition, assembled across all providers: preamble directive
     /// targets, the index, and the directives the worker's AST sees, with

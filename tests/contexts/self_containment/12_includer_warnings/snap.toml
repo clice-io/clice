@@ -1,6 +1,6 @@
 [test."main.cpp"]
 diagnostics = [
-    { at = "int main() { return ⟦old_api⟧(); }", severity = "warning", message = "'old_api' is deprecated", source = "clang", code = "warn_deprecated" },
+    { at = "int main() { return ⟦old_api⟧(); }", severity = "warning", message = "'old_api' is deprecated", source = "clang", code = "-Wdeprecated-declarations" },
 ]
 
 [test."api.h"]

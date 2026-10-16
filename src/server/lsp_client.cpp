@@ -127,6 +127,7 @@ LSPClient::LSPClient(MasterServer& server, kota::ipc::JSONPeer& peer) : server(s
     });
     progress_conn = server.on_index_progress.connect([this]() { report_index_progress(); });
     serving_conn = server.on_serving_index_changed.connect([this]() { refresh_index_served(); });
+    inputs_conn = server.on_inputs_changed.connect([this]() { refresh_stale(); });
     held_conn = server.probe.on_held.connect([this](std::uint64_t id) {
         this->peer.send_notification("clice/internal/held", ext::HeldParams{id});
     });
@@ -165,6 +166,15 @@ static void publish(kota::ipc::JSONPeer& peer, const protocol::PublishDiagnostic
 /// The answer to a diagnostics pull.
 static kota::codec::RawValue full_report(std::vector<protocol::Diagnostic> items) {
     return to_raw(protocol::RelatedFullDocumentDiagnosticReport{.items = std::move(items)});
+}
+
+std::vector<protocol::Diagnostic>
+    LSPClient::to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics) {
+    std::vector<protocol::Diagnostic> shaped;
+    for(const auto& diagnostic: diagnostics) {
+        shaped.push_back(feature::to_protocol(diagnostic, related_information));
+    }
+    return shaped;
 }
 
 /// Fold versioned document changes into the plain `changes` map for a
@@ -239,6 +249,9 @@ std::string LSPClient::divergence_message(const AliasDocument& alias) {
 
 void LSPClient::refresh_diagnostics() {
     if(diagnostic_refresh) {
+        // The client pulls every document again: no report it pulled is
+        // one it holds any more.
+        pulled.clear();
         fire_refresh(server.loop, peer, protocol::DiagnosticRefreshParams{});
     }
 }
@@ -265,11 +278,13 @@ void LSPClient::publish_alias(AliasDocument& alias, const Session* owner, Projec
     params.uri = feature::to_uri(alias.spelling);
     params.version = alias.buffer.version;
     if(diverged) {
-        params.diagnostics.push_back(feature::file_warning(divergence_message(alias)));
+        params.diagnostics = to_client({feature::file_warning(divergence_message(alias))});
     } else if(auto projection =
                   project.ast.projections.projection_at(owner->path_id, owner->version)) {
-        params.diagnostics = format_diagnostics(*projection->output);
-        append_crash_notes(*owner, params.diagnostics);
+        auto diagnostics =
+            format_diagnostics(*projection->output, project.project.config.diagnostics);
+        append_crash_notes(*owner, diagnostics);
+        params.diagnostics = to_client(diagnostics);
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
@@ -347,6 +362,13 @@ void LSPClient::register_lifecycle() {
 
         pull_diagnostics = params.capabilities.text_document.has_value() &&
                            params.capabilities.text_document->diagnostic.has_value();
+
+        if(auto& text_document = params.capabilities.text_document) {
+            auto& pushed = text_document->publish_diagnostics;
+            auto& pulled = text_document->diagnostic;
+            related_information =
+                (pushed && pushed->related_information) || (pulled && pulled->related_information);
+        }
 
         label_parts = params.capabilities.text_document.has_value() &&
                       params.capabilities.text_document->inlay_hint.has_value();
@@ -841,35 +863,35 @@ void LSPClient::register_language_features() {
 
     // A pull is always answered with a report, never an error: on an
     // error, clients clear what they hold or stop pulling the document.
-    peer.on_request(
-        [this](RequestContext& ctx, const protocol::DocumentDiagnosticParams& params) -> RawResult {
-            this->server.pool.foreground_pulse();
-            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-            std::vector<protocol::Diagnostic> items;
-            if(session) {
-                items = co_await project->features.diagnostics(session);
+    peer.on_request([this](RequestContext& ctx,
+                           const protocol::DocumentDiagnosticParams& params) -> RawResult {
+        this->server.pool.foreground_pulse();
+        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+        std::vector<feature::FileDiagnostic> items;
+        if(session) {
+            items = co_await project->features.diagnostics(session);
+        }
+        // A second name answers the warning once its text parted from the
+        // first name's, before the pull or while it waited.
+        if(auto* alias = find_alias(path);
+           alias && (!session || alias->buffer.text != session->text)) {
+            co_return full_report(to_client({feature::file_warning(divergence_message(*alias))}));
+        }
+        auto report = full_report(to_client(items));
+        if(session) {
+            // Recorded against the live session: one that replaced this
+            // pull's meanwhile (the document moved to another project)
+            // compiles the same text, and its commit must correct the
+            // empty answer the closed one gave.
+            if(auto live = server.find_session(path_id)) {
+                pulled[path_id] = {
+                    .version = live->version,
+                    .report = llvm::xxh3_64bits(report.data),
+                };
             }
-            // A second name answers the warning once its text parted from the
-            // first name's, before the pull or while it waited.
-            if(auto* alias = find_alias(path);
-               alias && (!session || alias->buffer.text != session->text)) {
-                co_return full_report({feature::file_warning(divergence_message(*alias))});
-            }
-            auto report = full_report(std::move(items));
-            if(session) {
-                // Recorded against the live session: one that replaced this
-                // pull's meanwhile (the document moved to another project)
-                // compiles the same text, and its commit must correct the
-                // empty answer the closed one gave.
-                if(auto live = server.find_session(path_id)) {
-                    pulled[path_id] = {
-                        .version = live->version,
-                        .report = llvm::xxh3_64bits(report.data),
-                    };
-                }
-            }
-            co_return report;
-        });
+        }
+        co_return report;
+    });
 
     peer.on_request(
         [this](RequestContext& ctx, const protocol::CodeActionParams& params) -> RawResult {
@@ -1485,15 +1507,16 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
            it != pulled.end() && it->second.version == session.version &&
            it->second.report !=
                llvm::xxh3_64bits(
-                   full_report(project.features.finished_diagnostics(session)).data)) {
+                   full_report(to_client(project.features.finished_diagnostics(session))).data)) {
             refresh_diagnostics();
         }
     } else {
         protocol::PublishDiagnosticsParams params;
         params.uri = feature::to_uri(server.files.display(session.path_id));
         params.version = output.version;
-        params.diagnostics = format_diagnostics(output);
-        append_crash_notes(session, params.diagnostics);
+        auto diagnostics = format_diagnostics(output, project.project.config.diagnostics);
+        append_crash_notes(session, diagnostics);
+        params.diagnostics = to_client(diagnostics);
         publish(peer, params);
         publish_aliases(session.path_id);
     }
@@ -1535,6 +1558,17 @@ void LSPClient::refresh_index_served() {
     }
     if(folding_range_refresh) {
         fire_refresh(server.loop, peer, protocol::FoldingRangeRefreshParams{});
+    }
+}
+
+void LSPClient::refresh_stale() {
+    if(!client_ready) {
+        return;
+    }
+    if(pull_diagnostics) {
+        refresh_diagnostics();
+    } else if(semantic_tokens_refresh) {
+        fire_refresh(server.loop, peer, protocol::SemanticTokensRefreshParams{});
     }
 }
 

@@ -1,0 +1,1 @@
+Checks: "-*,modernize-deprecated-headers,modernize-use-nullptr,misc-unused-alias-decls"

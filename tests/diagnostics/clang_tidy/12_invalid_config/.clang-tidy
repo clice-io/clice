@@ -1,0 +1,2 @@
+Checks: "-*,bugprone-integer-division
+HeaderFilterRegex: [

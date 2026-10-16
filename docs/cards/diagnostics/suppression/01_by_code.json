@@ -1,0 +1,78 @@
+{
+  "id": "diagnostics/suppression/01_by_code",
+  "topic": "diagnostics",
+  "subtopic": "suppression",
+  "title": "Suppressing diagnostics",
+  "summary": "`suppress` hides diagnostics by their code",
+  "prose": "A diagnostic clang gets wrong on some code can be hidden by the code it shows with: a compiler warning's option, clang's name for any other diagnostic, or a clang-tidy check. The file's other features work as before, and `clice lint` still reports it.",
+  "status": "supported",
+  "issues": [],
+  "files": [
+    {
+      "path": "clice.toml",
+      "text": "[diagnostics]\nsuppress = [\"err_ovl_no_viable_function_in_call\", \"-Wunused-variable\"]\n",
+      "markers": []
+    },
+    {
+      "path": "main.cpp",
+      "text": "void report(int value);\n\nint caller() {\n    int unused = 0;\n    report(1, 2);\n    return missing;\n}\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "test",
+      "blocks": [
+        {
+          "label": "main.cpp",
+          "value": {
+            "diagnostics": [
+              {
+                "at": {
+                  "$place": "return ⟦missing⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 18
+                    }
+                  }
+                },
+                "severity": "error",
+                "message": "use of undeclared identifier 'missing'",
+                "source": "clang",
+                "code": "err_undeclared_var_use"
+              }
+            ]
+          }
+        },
+        {
+          "label": "hover",
+          "value": {
+            "hover": {
+              "markdown": "**function** `report`\n\n```cpp\nvoid report(int value)\n```",
+              "range": {
+                "$place": "⟦report⟧(1, 2);",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 4,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 10
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+[[test."main.cpp".diagnostics]]
+at = "int ⟦count⟧ = 2;"
+severity = "error"
+message = '''
+redefinition of 'count'
+
+main.cpp:1:5: previous definition is here
+'''
+source = "clang"
+code = "err_redefinition"
+related = []
+
+[[test."main.cpp".diagnostics]]
+at = "⟦report⟧(1, 2);"
+severity = "error"
+message = '''
+no matching function for call to 'report'
+
+main.cpp:4:6: candidate function not viable: requires single argument 'value', but 2 arguments were provided
+'''
+source = "clang"
+code = "err_ovl_no_viable_function_in_call"
+related = []

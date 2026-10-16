@@ -235,7 +235,11 @@ kota::task<RoundOutcome> TURunFamily::round(RoundContext& ctx, Fid path_id) {
     }
 
     if(reply.has_value()) {
-        finished[path_id] = {.result = Result::Failed, .error = reply.value().error};
+        finished[path_id] = {
+            .result = Result::Failed,
+            .tidy_diagnostics = std::move(reply.value().tidy_diagnostics),
+            .error = reply.value().error,
+        };
         co_return RoundOutcome::Failed;
     }
     if(reply.error().code == worker::dispatch_errc::cancelled) {

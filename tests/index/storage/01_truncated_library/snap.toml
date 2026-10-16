@@ -12,7 +12,7 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is shorter than its pages (# KB of # KB); run `clice index` to repair it"
+stderr = "warning: Index database at ${WS}/.clice/cache/v15/index/default/index.mdb is shorter than its pages (# KB of # KB); run `clice index` to repair it"
 exit = 1
 
 ["cut after the meta pages"."$ clice index #2"]
@@ -20,7 +20,7 @@ stdout = '''
 Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is corrupt (meta failed: MDB_INVALID: File is not an LMDB file); rebuilding"
+stderr = "warning: Index database at ${WS}/.clice/cache/v15/index/default/index.mdb is corrupt (meta failed: MDB_INVALID: File is not an LMDB file); rebuilding"
 exit = 0
 
 ["cut after the meta pages"."$ clice query --method symbolSearch --symbol add #2"]
@@ -57,7 +57,7 @@ stdout = '''
   "stale": []
 }
 '''
-stderr = "warning: Index database at ${WS}/.clice/cache/v14/index/default/index.mdb is empty; run `clice index` to repair it"
+stderr = "warning: Index database at ${WS}/.clice/cache/v15/index/default/index.mdb is empty; run `clice index` to repair it"
 exit = 1
 
 [emptied."$ clice index #2"]

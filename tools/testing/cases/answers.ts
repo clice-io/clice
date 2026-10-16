@@ -81,6 +81,7 @@ const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
         },
         inlayHint: {},
         rename: { prepareSupport: true },
+        publishDiagnostics: { relatedInformation: true },
     },
 };
 

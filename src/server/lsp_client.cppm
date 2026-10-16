@@ -70,6 +70,13 @@ private:
     /// capability-gated.
     void refresh_index_served();
 
+    /// Ask the client to request again what it holds of documents whose
+    /// inputs changed on disk: a pulling client pulls the diagnostics, any
+    /// other asks for semantic tokens, and either request recompiles the
+    /// document, whose diagnostics then reach it. Invoked by
+    /// MasterServer's on_inputs_changed signal; capability-gated.
+    void refresh_stale();
+
     /// Send every not-yet-forwarded notify-log message as
     /// window/logMessage, advancing notify_cursor. Invoked once from the
     /// constructor (a headless server may have accumulated messages) and
@@ -98,6 +105,14 @@ private:
     /// re-pull signal for a pulled answer gone stale with no edit of its
     /// own (see pulled).
     bool diagnostic_refresh = false;
+
+    /// Whether the client takes a diagnostic's notes as related
+    /// information; otherwise they go into its message.
+    bool related_information = false;
+
+    /// The diagnostics in the shape the client takes.
+    std::vector<kota::ipc::protocol::Diagnostic>
+        to_client(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
 
     bool line_folding_only = false;
 
@@ -204,6 +219,10 @@ private:
     /// Subscription to serving-index replacements by background merges;
     /// disconnects on destruction.
     Signal<>::Connection serving_conn;
+
+    /// Subscription to open documents' inputs changing on disk; disconnects
+    /// on destruction.
+    Signal<>::Connection inputs_conn;
 
     /// Subscription to guidance/anomaly message wake-ups; disconnects on
     /// destruction.

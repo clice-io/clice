@@ -60,7 +60,7 @@ std::optional<std::string> hand_over_index(std::string blob,
 
 /// What a compile reports in place of an index that could not be handed
 /// over.
-inline kota::ipc::protocol::Diagnostic index_unavailable(llvm::StringRef cause) {
+inline feature::FileDiagnostic index_unavailable(llvm::StringRef cause) {
     return feature::file_warning(std::format(
         "{}; features that read the file's own index, such as references within it, are "
         "unavailable",

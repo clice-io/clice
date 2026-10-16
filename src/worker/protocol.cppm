@@ -169,9 +169,9 @@ struct CompileParams {
 };
 
 /// Outcome of a stateful compile. Anything but `Done` is a non-result: the
-/// master must not commit the result to the session, record dependencies,
-/// or publish the (empty) diagnostics as current — doing so freezes the
-/// document on a product that never existed.
+/// master must not commit the result to the session or record
+/// dependencies — doing so freezes the document on a product that never
+/// existed. A setup failure's diagnostics say why it failed.
 enum class CompileStatus : uint8_t {
     /// The parse produced a usable product — a complete AST, or a fatal
     /// error whose diagnostics describe the user's code.
@@ -197,7 +197,7 @@ struct CompileResult {
     bool pch_suspect = false;
 
     int version;
-    std::vector<protocol::Diagnostic> diagnostics;
+    std::vector<feature::FileDiagnostic> diagnostics;
     /// Milliseconds since epoch, sampled before the compile started. Files
     /// whose mtime is past this moment may differ from what the build read.
     std::int64_t build_at = 0;

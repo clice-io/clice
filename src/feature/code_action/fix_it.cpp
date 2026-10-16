@@ -44,6 +44,28 @@ std::string fix_title(llvm::StringRef content, const Diagnostic& diagnostic) {
     return title;
 }
 
+/// A fix's edits as the main file takes them. clang-tidy inserts an
+/// include into a file without one at its first byte, which in a module
+/// unit is before its declaration, where no directive may go: there it
+/// goes where an added include goes.
+std::vector<TextReplacement> placed(CompilationUnit& unit, llvm::ArrayRef<TextReplacement> fix) {
+    std::vector<TextReplacement> edits(fix.begin(), fix.end());
+    if(!unit.is_named_module()) {
+        return edits;
+    }
+    for(auto& edit: edits) {
+        llvm::StringRef header = edit.text;
+        if(edit.range.begin == 0 && edit.range.length() == 0 && header.consume_front("#include ")) {
+            auto insertion = include_insertion(unit);
+            edit = {
+                {insertion.offset, insertion.offset},
+                insertion.text(header.trim())
+            };
+        }
+    }
+    return edits;
+}
+
 }  // namespace
 
 void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
@@ -56,7 +78,7 @@ void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<Code
             out.push_back(CodeAction{
                 .title = fix_title(content, main),
                 .kind = protocol::CodeActionKind::QuickFix,
-                .edits = main.fix,
+                .edits = placed(unit, main.fix),
             });
         }
         // A note's fix is an alternative the note itself describes.
@@ -65,7 +87,7 @@ void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<Code
                 out.push_back(CodeAction{
                     .title = note.message,
                     .kind = protocol::CodeActionKind::QuickFix,
-                    .edits = note.fix,
+                    .edits = placed(unit, note.fix),
                 });
             }
         }

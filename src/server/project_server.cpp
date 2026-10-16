@@ -431,13 +431,18 @@ void ProjectServer::dispatch(llvm::ArrayRef<FileEvent> events) {
     // in-flight round's commit-as-current) without touching generation —
     // the buffer is still the same buffer, and the round still publishes
     // its product as bounded staleness; the next request recompiles.
+    bool inputs_changed = false;
     for(auto path_id: dirty.mark_ast_dirty) {
         if(auto session = sessions.find(path_id)) {
             ast.invalidate(path_id);
             session->trial_done = false;
             session->quarantine->on_change(Quarantine::Clock::now());
+            inputs_changed |= session->serving == ServingMode::Escalated;
         }
         commands.forget_self_contained(path_id);
+    }
+    if(inputs_changed) {
+        server.on_inputs_changed.emit();
     }
 
     // A live round sends a compile of its own, which puts the AST back on

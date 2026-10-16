@@ -387,7 +387,25 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     auto compile_ms = compile_timer.ms();
     if(!unit->completed()) {
         LOG_WARN("TU run failed: file={}, {}ms", params.file, timer.ms());
-        return {false, "TU run compilation failed"};
+        auto errors = collect_errors(*unit);
+        if(errors.empty()) {
+            return {false, "TU run compilation failed"};
+        }
+        // A command clang rejects before parsing: lint reports why, as
+        // clang-tidy does.
+        worker::TURunResult result{.success = false, .error = llvm::join(errors, "; ")};
+        if(params.tidy) {
+            for(auto& error: errors) {
+                result.tidy_diagnostics.push_back({
+                    .file = params.file,
+                    .error = true,
+                    .compiler_error = true,
+                    .message = std::move(error),
+                    .check = "clang-diagnostic-error",
+                });
+            }
+        }
+        return result;
     }
 
     // Building and serializing the index costs a large share of the pass;

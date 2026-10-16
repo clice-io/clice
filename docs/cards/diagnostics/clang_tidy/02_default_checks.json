@@ -24,7 +24,7 @@
             "diagnostics": [
               {
                 "at": {
-                  "$place": "⟦namespace geo = geometry; … ⟧ (2 lines)",
+                  "$place": "⟦namespace geo = geometry;⟧",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -32,8 +32,8 @@
                       "character": 0
                     },
                     "end": {
-                      "line": 3,
-                      "character": 0
+                      "line": 2,
+                      "character": 25
                     }
                   }
                 },

@@ -12,7 +12,7 @@ stdout = '''
 stderr = '''
 warning: Failed to read file for scanning: ${WS}/ghost.cpp
 indexing 0/2 units, 0 failed
-warning: [2/2] Index failed for ${WS}/ghost.cpp: TU run compilation failed
+warning: [2/2] Index failed for ${WS}/ghost.cpp: error reading '${WS}/ghost.cpp': No such file or directory
 indexing 2/2 units, 1 failed
 '''
 exit = 0

@@ -9,18 +9,12 @@
 - [x] File URI conversion for cross-file diagnostics
 - [x] Pull diagnostics model (`textDocument/diagnostic`) for clients that declare support for it; other clients get their diagnostics pushed
 - [x] Every missing `#include` is reported, not just the first, and the code after it is still checked
+- [x] A compile command clang rejects before parsing (an unknown target) shows clang's reason at the top of the file
 - [ ] Show the full include chain for diagnostics originating in header files ([clangd#1392](https://github.com/clangd/clangd/issues/1392))
 
   ```
   // current:  "In included file: expected ';'"
   // expected: "In main.cpp → utils.h → detail/impl.h: expected ';'"
-  ```
-
-- [ ] Reflect unsaved header file changes in diagnostics ([clangd#488](https://github.com/clangd/clangd/issues/488))
-
-  ```
-  // header.h (unsaved buffer): added new_func()
-  // main.cpp: calls new_func() → should NOT show "undeclared identifier"
   ```
 
 - [x] Diagnostics for template instantiation errors in preamble headers ([clangd#137](https://github.com/clangd/clangd/issues/137))
@@ -49,7 +43,7 @@ tests/diagnostics/headers/01_errors_on_include
 
 ## Template Instantiations
 
-An error inside a template is reported on the code that instantiates it.
+An error or a warning inside a template is reported on the code that instantiates it.
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/templates -->
 
@@ -71,7 +65,7 @@ tests/diagnostics/templates/01_instantiation_errors
 
 ## Notes
 
-The notes clang attaches to an error travel with it as related information.
+The notes clang attaches to an error travel with it as related information; a client that takes no related information gets them in the message.
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/notes -->
 
@@ -115,15 +109,16 @@ tests/diagnostics/guidance/01_no_database
 
 ## Tags
 
-- [x] `Deprecated` tag for `-Wdeprecated` diagnostics and `modernize-*` clang-tidy findings
+- [x] `Deprecated` tag for `-Wdeprecated` diagnostics and clang-tidy findings about deprecated headers and aliases
 - [x] `Unnecessary` tag for unused variable/parameter warnings and `misc-unused-*` clang-tidy findings
 
 ## Publishing
 
 - [x] Push diagnostics on compilation completion
 - [x] Clear diagnostics on file close
+- [x] A saved header, or an edited `.clang-tidy`, asks the client to request the open files including it again, which recompiles them; diagnostics follow headers as saved, not their unsaved buffers, as in clangd
 - [x] Per-file diagnostic grouping (main file + headers)
-- [x] Diagnostic `code` field with Clang error codes
+- [x] Diagnostic `code` field: a warning's option (`-Wunused-variable`), clang's name for any other diagnostic, the clang-tidy check
 - [x] `codeDescription` linking a clang-tidy finding to its check's documentation
 - [ ] `codeDescription` with links to Clang documentation
 - [x] Diagnostic `source` field distinguishing clang vs clang-tidy
@@ -131,6 +126,12 @@ tests/diagnostics/guidance/01_no_database
 - [ ] Recompute diagnostics in open files when background indexing completes ([clangd#2604](https://github.com/clangd/clangd/issues/2604))
 
 ## Diagnostic Suppression
+
+A diagnostic clang gets wrong can be hidden by its code in the configuration, and comments silence the lines they are on.
+
+<!-- BEGIN GENERATED ITEMS: diagnostics/suppression -->
+
+<!-- END GENERATED ITEMS -->
 
 - [x] `// NOLINT` comment suppression
 - [x] `// NOLINTNEXTLINE` comment suppression
@@ -255,11 +256,12 @@ tests/diagnostics/clang_tidy/09_turned_off
   ```
 
 - [ ] Show optimization remarks (`-Rpass`) as diagnostics ([clangd#2519](https://github.com/clangd/clangd/issues/2519))
-- [ ] Project-wide warning listing ([clangd#1973](https://github.com/clangd/clangd/issues/1973))
+- [x] Project-wide warning listing: `clice lint` ([clangd#1973](https://github.com/clangd/clangd/issues/1973))
 
 ## Config File Diagnostics
 
-- [ ] Report diagnostics for malformed `.clang-tidy` and `.clang-format` files ([clangd#2313](https://github.com/clangd/clangd/issues/2313), [clangd#2591](https://github.com/clangd/clangd/issues/2591))
+- [x] A malformed `.clang-tidy` is reported at the top of the files it configures, and runs no check ([clangd#2313](https://github.com/clangd/clangd/issues/2313))
+- [ ] Report diagnostics for malformed `.clang-format` files ([clangd#2591](https://github.com/clangd/clangd/issues/2591))
 
 ## Diagnostic Correctness
 

@@ -116,7 +116,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 ["batch index per configuration"."$ clice index --stats"]
-stderr = "error: No index cache at ${WS}/.clice/cache/v14/index/debug~50f0a9a717df05f7; run `clice index` first"
+stderr = "error: No index cache at ${WS}/.clice/cache/v15/index/debug~50f0a9a717df05f7; run `clice index` first"
 exit = 1
 
 ["batch index per configuration"."$ clice index --workers 2"]

@@ -1,0 +1,20 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "#include ⟦<stdlib.h>⟧",
+        severity = "warning",
+        message = "inclusion of deprecated C++ header 'stdlib.h'; consider using 'cstdlib' instead",
+        source = "clang-tidy",
+        code = "modernize-deprecated-headers",
+        tags = ["Deprecated"],
+    },
+    {
+        at = "⟦namespace geo = geometry;⟧",
+        severity = "warning",
+        message = "namespace alias decl 'geo' is unused",
+        source = "clang-tidy",
+        code = "misc-unused-alias-decls",
+        tags = ["Unnecessary"],
+    },
+    { at = "int* origin = ⟦0⟧;", severity = "warning", message = "use nullptr", source = "clang-tidy", code = "modernize-use-nullptr", tags = [] },
+]
