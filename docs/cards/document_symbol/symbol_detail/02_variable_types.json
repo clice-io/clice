@@ -3,7 +3,7 @@
   "topic": "document_symbol",
   "subtopic": "symbol_detail",
   "title": "Variable and field types",
-  "summary": "A variable or field shows its declared type as detail, a lambda what calling it takes",
+  "summary": "A variable or field shows its declared type as detail, a lambda what calling it takes and returns",
   "prose": "",
   "status": "supported",
   "issues": [],

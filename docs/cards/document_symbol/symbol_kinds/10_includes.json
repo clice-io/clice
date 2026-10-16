@@ -3,7 +3,7 @@
   "topic": "document_symbol",
   "subtopic": "symbol_kinds",
   "title": "Include directives",
-  "summary": "`#include` directives do not list in the outline, whose document links lead to the files they name",
+  "summary": "`#include` directives do not list in the outline; their document links lead to the files they name",
   "prose": "",
   "status": "supported",
   "issues": [],

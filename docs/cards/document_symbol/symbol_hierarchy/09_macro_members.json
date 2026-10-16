@@ -3,7 +3,7 @@
   "topic": "document_symbol",
   "subtopic": "symbol_hierarchy",
   "title": "Members a macro declares",
-  "summary": "What one macro invocation declares under names written nowhere lists under the invocation, each declaration once: a test macro's test, the members a class macro adds; a name written in the macro's arguments lists as written",
+  "summary": "What one macro invocation declares under names written nowhere lists under the invocation, with what it names in its arguments: a test macro's test, the members a class macro adds; an invocation that declares only names its arguments write lists them as written",
   "prose": "",
   "status": "supported",
   "issues": [
