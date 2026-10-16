@@ -1,7 +1,7 @@
 {
-  "id": "selection_range/text_ranges/05_documented_declarations",
+  "id": "selection_range/syntax_ranges/19_documented_declarations",
   "topic": "selection_range",
-  "subtopic": "text_ranges",
+  "subtopic": "syntax_ranges",
   "title": "Documented declarations",
   "summary": "A declaration is selected with the comment documenting it, from inside either one",
   "prose": "Inside a block comment over several lines, the line under the cursor\ncomes first, without the `*` it begins with.",
@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "/// The largest size a buffer takes.\nconstexpr int limit = 64;\n\nstruct Buffer {\n    int used = 0; ///< Bytes in use.\n};\n\n/**\n * Copies the bytes over.\n * Returns how many it copied.\n */\nint copy(Buffer& to, const Buffer& from);\n",
+      "text": "/// The largest size a buffer takes.\nconstexpr int limit = 64;\n\nstruct Buffer {\n    int used = 0; ///< Bytes in use.\n};\n\n/**\n * Copies the bytes over.\n * Returns how many it copied.\n */\nint copy(Buffer& to, const Buffer& from);\n\nint spare(const Buffer& buffer) {\n    /// Bytes still free.\n    int left = limit - buffer.used;\n    return left;\n}\n",
       "markers": [
         {
           "name": "comment",
@@ -34,6 +34,12 @@
           "name": "parameter",
           "begin": 221,
           "end": 221,
+          "range": false
+        },
+        {
+          "name": "local",
+          "begin": 297,
+          "end": 297,
           "range": false
         }
       ]
@@ -363,6 +369,112 @@
                   "end": {
                     "line": 11,
                     "character": 41
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "local",
+          "marker": "local",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "int ⟦left⟧ = limit - buffer.used;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 8
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 12
+                  }
+                }
+              },
+              {
+                "$place": "⟦int left = limit - buffer.used⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 34
+                  }
+                }
+              },
+              {
+                "$place": "⟦int left = limit - buffer.used;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 15,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 35
+                  }
+                }
+              },
+              {
+                "$place": "⟦/// Bytes still free. … int left = limit - buffer.used;⟧ (2 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 15,
+                    "character": 35
+                  }
+                }
+              },
+              {
+                "$place": "⟦/// Bytes still free. … return left;⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 14,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 16,
+                    "character": 16
+                  }
+                }
+              },
+              {
+                "$place": "int spare(const Buffer& buffer) ⟦{ … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 32
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦int spare(const Buffer& buffer) { … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 13,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 17,
+                    "character": 1
                   }
                 }
               }

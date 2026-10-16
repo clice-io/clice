@@ -4,10 +4,21 @@ selection_ranges = [
     "[[nodiscard]] ⟦long elapsed(int scale) const noexcept⟧;",
     "⟦[[nodiscard]] long elapsed(int scale) const noexcept⟧;",
     "⟦[[nodiscard]] long elapsed(int scale) const noexcept;⟧",
-    "⟦Timer(int ticks); … [[nodiscard]] long elapsed(int scale) const noexcept;⟧ (2 lines)",
-    "struct Timer ⟦{ … }⟧ (4 lines)",
-    "⟦struct Timer { … }⟧ (4 lines)",
-    "⟦struct Timer { … };⟧ (4 lines)",
+    "⟦Timer(int ticks); … const char* label() const;⟧ (3 lines)",
+    "struct Timer ⟦{ … }⟧ (5 lines)",
+    "⟦struct Timer { … }⟧ (5 lines)",
+    "⟦struct Timer { … };⟧ (5 lines)",
+]
+
+[answers.qualified]
+selection_ranges = [
+    "const char* ⟦label⟧() const;",
+    "⟦const char* label() const⟧;",
+    "⟦const char* label() const;⟧",
+    "⟦Timer(int ticks); … const char* label() const;⟧ (3 lines)",
+    "struct Timer ⟦{ … }⟧ (5 lines)",
+    "⟦struct Timer { … }⟧ (5 lines)",
+    "⟦struct Timer { … };⟧ (5 lines)",
 ]
 
 [answers.constructor]

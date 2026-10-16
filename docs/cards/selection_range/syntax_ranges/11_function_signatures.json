@@ -4,13 +4,13 @@
   "subtopic": "syntax_ranges",
   "title": "Function signatures",
   "summary": "A function's name is selected with its signature before the whole declaration",
-  "prose": "The signature runs from the return type, or from the name of a\nconstructor, through the parameters and what follows them, such as\n`const noexcept` or a trailing return type.",
+  "prose": "The signature runs from the return type, or from the name of a\nconstructor, through the parameters and the rest of the function's type,\nsuch as `const noexcept` or a trailing return type.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Timer {\n    Timer(int ticks);\n    [[nodiscard]] long elapsed(int scale) const noexcept;\n};\n\nTimer::Timer(int ticks) {}\n\nauto tick(int step) -> long {\n    return step;\n}\n",
+      "text": "struct Timer {\n    Timer(int ticks);\n    [[nodiscard]] long elapsed(int scale) const noexcept;\n    const char* label() const;\n};\n\nTimer::Timer(int ticks) {}\n\nauto tick(int step) -> long {\n    return step;\n}\n",
       "markers": [
         {
           "name": "method",
@@ -19,15 +19,21 @@
           "range": false
         },
         {
+          "name": "qualified",
+          "begin": 111,
+          "end": 111,
+          "range": false
+        },
+        {
           "name": "constructor",
-          "begin": 106,
-          "end": 106,
+          "begin": 137,
+          "end": 137,
           "range": false
         },
         {
           "name": "trailing",
-          "begin": 132,
-          "end": 132,
+          "begin": 163,
+          "end": 163,
           "range": false
         }
       ]
@@ -99,7 +105,7 @@
                 }
               },
               {
-                "$place": "⟦Timer(int ticks); … [[nodiscard]] long elapsed(int scale) const noexcept;⟧ (2 lines)",
+                "$place": "⟦Timer(int ticks); … const char* label() const;⟧ (3 lines)",
                 "path": "main.cpp",
                 "range": {
                   "start": {
@@ -107,13 +113,13 @@
                     "character": 4
                   },
                   "end": {
-                    "line": 2,
-                    "character": 57
+                    "line": 3,
+                    "character": 30
                   }
                 }
               },
               {
-                "$place": "struct Timer ⟦{ … }⟧ (4 lines)",
+                "$place": "struct Timer ⟦{ … }⟧ (5 lines)",
                 "path": "main.cpp",
                 "range": {
                   "start": {
@@ -121,13 +127,13 @@
                     "character": 13
                   },
                   "end": {
-                    "line": 3,
+                    "line": 4,
                     "character": 1
                   }
                 }
               },
               {
-                "$place": "⟦struct Timer { … }⟧ (4 lines)",
+                "$place": "⟦struct Timer { … }⟧ (5 lines)",
                 "path": "main.cpp",
                 "range": {
                   "start": {
@@ -135,13 +141,13 @@
                     "character": 0
                   },
                   "end": {
-                    "line": 3,
+                    "line": 4,
                     "character": 1
                   }
                 }
               },
               {
-                "$place": "⟦struct Timer { … };⟧ (4 lines)",
+                "$place": "⟦struct Timer { … };⟧ (5 lines)",
                 "path": "main.cpp",
                 "range": {
                   "start": {
@@ -149,7 +155,113 @@
                     "character": 0
                   },
                   "end": {
+                    "line": 4,
+                    "character": 2
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "label": "qualified",
+          "marker": "qualified",
+          "value": {
+            "selection_ranges": [
+              {
+                "$place": "const char* ⟦label⟧() const;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
                     "line": 3,
+                    "character": 16
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 21
+                  }
+                }
+              },
+              {
+                "$place": "⟦const char* label() const⟧;",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 29
+                  }
+                }
+              },
+              {
+                "$place": "⟦const char* label() const;⟧",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 3,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 30
+                  }
+                }
+              },
+              {
+                "$place": "⟦Timer(int ticks); … const char* label() const;⟧ (3 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 4
+                  },
+                  "end": {
+                    "line": 3,
+                    "character": 30
+                  }
+                }
+              },
+              {
+                "$place": "struct Timer ⟦{ … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Timer { … }⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 1
+                  }
+                }
+              },
+              {
+                "$place": "⟦struct Timer { … };⟧ (5 lines)",
+                "path": "main.cpp",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
                     "character": 2
                   }
                 }
@@ -167,11 +279,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 5,
+                    "line": 6,
                     "character": 7
                   },
                   "end": {
-                    "line": 5,
+                    "line": 6,
                     "character": 12
                   }
                 }
@@ -181,11 +293,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 5,
+                    "line": 6,
                     "character": 0
                   },
                   "end": {
-                    "line": 5,
+                    "line": 6,
                     "character": 23
                   }
                 }
@@ -195,11 +307,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 5,
+                    "line": 6,
                     "character": 0
                   },
                   "end": {
-                    "line": 5,
+                    "line": 6,
                     "character": 26
                   }
                 }
@@ -217,11 +329,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 7,
+                    "line": 8,
                     "character": 5
                   },
                   "end": {
-                    "line": 7,
+                    "line": 8,
                     "character": 9
                   }
                 }
@@ -231,11 +343,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 7,
+                    "line": 8,
                     "character": 0
                   },
                   "end": {
-                    "line": 7,
+                    "line": 8,
                     "character": 27
                   }
                 }
@@ -245,11 +357,11 @@
                 "path": "main.cpp",
                 "range": {
                   "start": {
-                    "line": 7,
+                    "line": 8,
                     "character": 0
                   },
                   "end": {
-                    "line": 9,
+                    "line": 10,
                     "character": 1
                   }
                 }

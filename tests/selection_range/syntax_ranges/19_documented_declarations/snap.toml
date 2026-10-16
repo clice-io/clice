@@ -34,3 +34,14 @@ selection_ranges = [
     "⟦int copy(Buffer& to, const Buffer& from);⟧",
     "⟦/** … int copy(Buffer& to, const Buffer& from);⟧ (5 lines)",
 ]
+
+[answers.local]
+selection_ranges = [
+    "int ⟦left⟧ = limit - buffer.used;",
+    "⟦int left = limit - buffer.used⟧;",
+    "⟦int left = limit - buffer.used;⟧",
+    "⟦/// Bytes still free. … int left = limit - buffer.used;⟧ (2 lines)",
+    "⟦/// Bytes still free. … return left;⟧ (3 lines)",
+    "int spare(const Buffer& buffer) ⟦{ … }⟧ (5 lines)",
+    "⟦int spare(const Buffer& buffer) { … }⟧ (5 lines)",
+]

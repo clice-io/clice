@@ -5,7 +5,7 @@
 #define FAST 1
 
 #if FAST
-int fast(int value) {
+int fast(int §(crossing)value) {
 #else
 int slow(int value) {
 #endif

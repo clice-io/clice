@@ -10,3 +10,9 @@ struct Buffer {
  * Returns how many it copied.
  */
 int copy(Buffer& to, const Buffer& §(parameter)from);
+
+int spare(const Buffer& buffer) {
+    /// Bytes still free.
+    int §(local)left = limit - buffer.used;
+    return left;
+}

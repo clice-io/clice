@@ -13,7 +13,6 @@ selection_ranges = [
     '[[deprecated(⟦"use other"⟧)]] int old_api();',
     '[[deprecated⟦("use other")⟧]] int old_api();',
     '[[⟦deprecated("use other")⟧]] int old_api();',
-    '[⟦[deprecated("use other")]⟧] int old_api();',
     '⟦[[deprecated("use other")]]⟧ int old_api();',
     '⟦[[deprecated("use other")]] int old_api()⟧;',
     '⟦[[deprecated("use other")]] int old_api();⟧',
@@ -23,8 +22,7 @@ selection_ranges = [
 selection_ranges = [
     "int counter __attribute__((⟦aligned⟧(8)));",
     "int counter __attribute__((⟦aligned(8)⟧));",
-    "int counter __attribute__(⟦(aligned(8))⟧);",
-    "int counter __attribute__⟦((aligned(8)))⟧;",
+    "int counter ⟦__attribute__((aligned(8)))⟧;",
     "⟦int counter __attribute__((aligned(8)))⟧;",
     "⟦int counter __attribute__((aligned(8)));⟧",
 ]
@@ -33,8 +31,31 @@ selection_ranges = [
 selection_ranges = [
     "[[using gnu: ⟦hot⟧]] void warm();",
     "[[⟦using gnu: hot⟧]] void warm();",
-    "[⟦[using gnu: hot]⟧] void warm();",
     "⟦[[using gnu: hot]]⟧ void warm();",
     "⟦[[using gnu: hot]] void warm()⟧;",
     "⟦[[using gnu: hot]] void warm();⟧",
 ]
+
+[answers.second]
+selection_ranges = [
+    "int ignored __attribute__((unknown_name, ⟦aligned⟧(8)));",
+    "int ignored __attribute__((unknown_name, ⟦aligned(8)⟧));",
+    "int ignored __attribute__((⟦unknown_name, aligned(8)⟧));",
+    "int ignored ⟦__attribute__((unknown_name, aligned(8)))⟧;",
+    "⟦int ignored __attribute__((unknown_name, aligned(8)))⟧;",
+    "⟦int ignored __attribute__((unknown_name, aligned(8)));⟧",
+]
+
+[answers.macro]
+selection_ranges = [
+    "[[⟦UNUSED⟧]] int spare;",
+    "⟦[[UNUSED]]⟧ int spare;",
+    "⟦[[UNUSED]] int spare⟧;",
+    "⟦[[UNUSED]] int spare;⟧",
+]
+
+[answers.pragma]
+selection_ranges = ["void ⟦rarely⟧();", "⟦void rarely()⟧;", "⟦void rarely();⟧"]
+
+[answers.inherited]
+selection_ranges = ["void ⟦retired⟧() {}", "⟦void retired()⟧ {}", "⟦void retired() {}⟧"]

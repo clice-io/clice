@@ -20,13 +20,6 @@ bool is_templated(const clang::Decl* decl);
 /// open the end of its file.
 auto written_range(const clang::Decl* decl) -> clang::SourceRange;
 
-/// Where the attribute specifier holding `attr`, the first attribute of
-/// it, is written: at the `[[` its range leaves out (`[[using gnu: hot]]`
-/// starts at the namespace), a macro spelling it at the macro's name.
-auto attribute_begin(const clang::Attr& attr,
-                     const clang::SourceManager& sources,
-                     const clang::LangOptions& lang_opts) -> clang::SourceLocation;
-
 /// Whether a `#pragma clang attribute` region applies the attribute at
 /// `location`, as a directive or as the `_Pragma` operator in a macro: the
 /// attribute is written on the pragma's line, not on the declaration.

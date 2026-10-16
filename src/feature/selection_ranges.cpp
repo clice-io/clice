@@ -204,15 +204,20 @@ struct Brackets {
 
 /// The ranges a raw lex of the file shows, the same for every offset: the
 /// names and literals, a literal's text, a comment's text and the comment,
-/// the inside of each bracket pair and the pair, a directive line, a
-/// module or import declaration; loose, the inside of each branch of a
-/// conditional and the whole conditional, a run of whole-line comments.
+/// the inside of each bracket pair and the pair, an attribute list, a
+/// directive line, a module or import declaration; loose, the inside of
+/// each branch of a conditional and the whole conditional, a run of
+/// whole-line comments.
 struct TextSteps {
     std::vector<LocalSourceRange> ranges;
     std::vector<LocalSourceRange> loose;
 
     /// Where the closer of the bracket opening at each offset ends.
     llvm::DenseMap<std::uint32_t, std::uint32_t> closers;
+
+    /// The attribute lists in order: `[[…]]`, `__attribute__((…))`,
+    /// `__declspec(…)`.
+    std::vector<LocalSourceRange> attributes;
 };
 
 /// The first token at or after `offset` that is not a comment.
@@ -222,6 +227,19 @@ const Token* token_after(llvm::ArrayRef<Token> tokens, std::uint32_t offset) {
         tokens.end(),
         [](const Token& t) { return t.kind != clang::tok::comment; });
     return it == tokens.end() ? nullptr : &*it;
+}
+
+/// The last token before `offset` that is not a comment.
+const Token* token_before(llvm::ArrayRef<Token> tokens, std::uint32_t offset) {
+    auto it =
+        std::ranges::lower_bound(tokens, offset, {}, [](const Token& t) { return t.range.begin; });
+    while(it != tokens.begin()) {
+        it = std::prev(it);
+        if(it->kind != clang::tok::comment) {
+            return &*it;
+        }
+    }
+    return nullptr;
 }
 
 /// `skipped` flags the tokens the preprocessor skipped, when known.
@@ -342,9 +360,30 @@ TextSteps scan_text(llvm::StringRef content,
             text.ranges.push_back(quoted_text(content, token));
         }
         if(auto open = brackets.visit(token)) {
-            text.ranges.push_back(trimmed(content, {open->end, token.range.begin}));
-            text.ranges.push_back({open->begin, token.range.end});
             text.closers.try_emplace(open->begin, token.range.end);
+            // `[[ ]]` and `__attribute__(( ))` write one list in two pairs;
+            // the inner one, pushed last, is no step of its own.
+            const auto* inner = token_after(tokens, open->end);
+            bool doubled = tokens[i - 1].kind == token.kind &&
+                           text.closers.lookup(inner->range.begin) == tokens[i - 1].range.end;
+            const auto* keyword = token_before(tokens, open->begin);
+            auto after = [&](llvm::StringRef word) {
+                return keyword && keyword->text(content) == word;
+            };
+            if(doubled && token.kind == clang::tok::r_square) {
+                text.ranges.back() = {open->begin, token.range.end};
+                text.attributes.push_back(text.ranges.back());
+            } else if(doubled && token.kind == clang::tok::r_paren && after("__attribute__")) {
+                text.ranges.back() = {keyword->range.begin, token.range.end};
+                text.attributes.push_back(text.ranges.back());
+            } else {
+                text.ranges.push_back(trimmed(content, {open->end, token.range.begin}));
+                text.ranges.push_back({open->begin, token.range.end});
+                if(token.kind == clang::tok::r_paren && after("__declspec")) {
+                    text.ranges.push_back({keyword->range.begin, token.range.end});
+                    text.attributes.push_back(text.ranges.back());
+                }
+            }
         }
     }
     close_comments();
@@ -547,52 +586,38 @@ LocalSourceRange attribute_range(llvm::ArrayRef<Token> tokens,
     return range;
 }
 
-/// Where an attribute is written: with its argument list and the `[[ ]]`,
-/// `__attribute__(( ))` or `__declspec( )` around it.
+/// Where an attribute is written: with its argument list, and the
+/// attribute list it is in.
 std::optional<LocalSourceRange> attribute_extent(CompilationUnit& unit,
-                                                 llvm::StringRef content,
                                                  llvm::ArrayRef<Token> tokens,
                                                  const TextSteps& text,
                                                  const clang::Attr& attr) {
-    auto& context = unit.context();
-    auto begin = decls::attribute_begin(attr, context.getSourceManager(), context.getLangOpts());
-    auto range = focus_range(unit, clang::SourceRange(begin, attr.getRange().getEnd()));
+    auto range = focus_range(unit, attr.getRange());
     if(!range) {
         return std::nullopt;
     }
-    *range = attribute_range(tokens, text, *range);
-    auto it = std::ranges::lower_bound(tokens, range->begin, {}, [](const Token& t) {
-        return t.range.begin;
-    });
-    const Token* opener = nullptr;
-    if(it != tokens.end() && it->range.begin == range->begin && it->kind == clang::tok::l_square) {
-        opener = &*it;
-    } else {
-        llvm::SmallVector<const Token*, 3> before;
-        while(it != tokens.begin() && before.size() < 3) {
-            it = std::prev(it);
-            if(it->kind != clang::tok::comment) {
-                before.push_back(&*it);
-            }
-        }
-        auto is = [&](std::size_t back, TokenKind kind) {
-            return back < before.size() && before[back]->kind == kind;
-        };
-        auto spelled = [&](std::size_t back, llvm::StringRef word) {
-            return back < before.size() && before[back]->text(content) == word;
-        };
-        if(is(0, clang::tok::l_paren) && is(1, clang::tok::l_paren) &&
-           spelled(2, "__attribute__")) {
-            opener = before[1];
-            range->begin = before[2]->range.begin;
-        } else if(is(0, clang::tok::l_paren) && spelled(1, "__declspec")) {
-            opener = before[0];
-            range->begin = before[1]->range.begin;
-        }
+    auto list =
+        std::ranges::upper_bound(text.attributes, range->begin, {}, &LocalSourceRange::begin);
+    if(list != text.attributes.begin() && std::prev(list)->contains(*range)) {
+        return *std::prev(list);
     }
-    if(opener) {
-        if(auto close = text.closers.find(opener->range.begin); close != text.closers.end()) {
-            range->end = std::max(range->end, close->second);
+    return attribute_range(tokens, text, *range);
+}
+
+/// `range`, a declaration's, over the attributes written on it.
+LocalSourceRange with_attributes(CompilationUnit& unit,
+                                 llvm::ArrayRef<Token> tokens,
+                                 const TextSteps& text,
+                                 const clang::Decl& decl,
+                                 LocalSourceRange range) {
+    for(const auto* attr: decl.attrs()) {
+        auto written = attr->getRange();
+        if(attr->isImplicit() || attr->isInherited() || written.isInvalid() ||
+           decls::applied_by_pragma(decl.getASTContext(), written.getBegin())) {
+            continue;
+        }
+        if(auto extent = attribute_extent(unit, tokens, text, *attr)) {
+            range = hull(range, *extent);
         }
     }
     return range;
@@ -601,7 +626,6 @@ std::optional<LocalSourceRange> attribute_extent(CompilationUnit& unit,
 /// A node's step: a type's with its qualifier, a declaration's with the
 /// attributes written on it, an attribute's with its argument list.
 std::optional<LocalSourceRange> node_range(CompilationUnit& unit,
-                                           llvm::StringRef content,
                                            llvm::ArrayRef<Token> tokens,
                                            const TextSteps& text,
                                            const SelectionTree::Node& node) {
@@ -618,18 +642,10 @@ std::optional<LocalSourceRange> node_range(CompilationUnit& unit,
         return std::nullopt;
     }
     if(const auto* decl = node.get<clang::Decl>()) {
-        for(const auto* attr: decl->attrs()) {
-            auto written = attr->getRange();
-            if(attr->isImplicit() || attr->isInherited() || written.isInvalid() ||
-               decls::applied_by_pragma(decl->getASTContext(), written.getBegin())) {
-                continue;
-            }
-            if(auto extent = attribute_extent(unit, content, tokens, text, *attr)) {
-                range = hull(*range, *extent);
-            }
-        }
-    } else if(node.get<clang::Attr>()) {
-        range = attribute_range(tokens, text, *range);
+        return with_attributes(unit, tokens, text, *decl, *range);
+    }
+    if(node.get<clang::Attr>()) {
+        return attribute_range(tokens, text, *range);
     }
     return range;
 }
@@ -739,11 +755,9 @@ llvm::SmallVector<clang::SourceRange, 2> angles(const SelectionTree::Node& node)
     return lists;
 }
 
-/// The declaration `decl` shares with the declarators after it
-/// (`int a = 1, b = 2`), from its range through the last of them.
-std::optional<LocalSourceRange> declarators(CompilationUnit& unit,
-                                            const clang::Decl& decl,
-                                            LocalSourceRange range) {
+/// The last of the declarators sharing `decl`'s declaration
+/// (`int a = 1, b = 2`).
+const clang::Decl& last_declarator(const clang::Decl& decl) {
     const clang::Decl* last = &decl;
     for(const auto* next = decl.getNextDeclInContext(); next; next = next->getNextDeclInContext()) {
         if(next->isImplicit()) {
@@ -754,24 +768,32 @@ std::optional<LocalSourceRange> declarators(CompilationUnit& unit,
         }
         last = next;
     }
-    if(last == &decl) {
-        return std::nullopt;
-    }
-    auto group = focus_range(unit, last->getSourceRange());
-    return group ? std::optional(hull(range, *group)) : std::nullopt;
+    return *last;
 }
 
 /// A function's signature — from its return type, or from the name a
-/// constructor's parameters follow, through the parameters and what is
-/// written after them — and a constructor's initializer list.
-void add_function(CompilationUnit& unit, const clang::FunctionDecl& function, Steps& steps) {
+/// constructor's parameters follow, through the parameters and the rest
+/// of its type — and a constructor's initializer list.
+void add_function(CompilationUnit& unit,
+                  llvm::StringRef content,
+                  llvm::ArrayRef<Token> tokens,
+                  const clang::FunctionDecl& function,
+                  Steps& steps) {
     if(auto type = function.getFunctionTypeLoc()) {
         auto name = function.getQualifierLoc() ? function.getQualifierLoc().getBeginLoc()
                                                : function.getNameInfo().getBeginLoc();
         auto written = focus_range(unit, type.getSourceRange());
         auto named = focus_range(unit, name);
         if(written && named) {
-            steps.add({std::min(written->begin, named->begin), written->end});
+            auto begin = std::min(written->begin, named->begin);
+            // A type's location leaves out the qualifiers written before it
+            // (`const std::string& name()` starts at `std`).
+            for(const auto* token = token_before(tokens, begin);
+                token && llvm::is_contained({"const", "volatile"}, token->text(content));
+                token = token_before(tokens, begin)) {
+                begin = token->range.begin;
+            }
+            steps.add({begin, written->end});
         }
     }
     const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(&function);
@@ -792,6 +814,15 @@ void add_function(CompilationUnit& unit, const clang::FunctionDecl& function, St
     }
 }
 
+/// Whether a statement of a switch's body is a `case` or `default` label,
+/// also with attributes (`[[likely]] case 1:`).
+bool is_label(const clang::Stmt* statement) {
+    if(const auto* attributed = llvm::dyn_cast<clang::AttributedStmt>(statement)) {
+        statement = attributed->getSubStmt();
+    }
+    return llvm::isa<clang::SwitchCase>(statement);
+}
+
 /// The section of a switch's body a statement of it belongs to: from the
 /// `case` or `default` label before it through the last statement before
 /// the next label. None for a label leading no statement but its own.
@@ -803,14 +834,14 @@ std::optional<clang::SourceRange> case_section(const SelectionTree::Node& node) 
     }
     llvm::ArrayRef<clang::Stmt*> statements(body->body_begin(), body->body_end());
     auto first = static_cast<std::size_t>(llvm::find(statements, statement) - statements.begin());
-    while(first > 0 && !llvm::isa<clang::SwitchCase>(statements[first])) {
+    while(first > 0 && !is_label(statements[first])) {
         first -= 1;
     }
-    if(!llvm::isa<clang::SwitchCase>(statements[first])) {
+    if(!is_label(statements[first])) {
         return std::nullopt;
     }
     auto last = first;
-    while(last + 1 < statements.size() && !llvm::isa<clang::SwitchCase>(statements[last + 1])) {
+    while(last + 1 < statements.size() && !is_label(statements[last + 1])) {
         last += 1;
     }
     if(last == first) {
@@ -841,7 +872,7 @@ void add_ast(CompilationUnit& unit,
     for(auto anchor: anchors(unit, steps.offset)) {
         auto tree = SelectionTree::create_right(unit, anchor);
         for(const auto* node = tree.common_ancestor(); node && node->parent; node = node->parent) {
-            auto range = node_range(unit, content, tokens, text, *node);
+            auto range = node_range(unit, tokens, text, *node);
             if(!range) {
                 continue;
             }
@@ -873,11 +904,14 @@ void add_ast(CompilationUnit& unit,
             if(!decl) {
                 continue;
             }
-            if(auto group = declarators(unit, *decl, *range)) {
-                extent = with_semicolon(*group);
+            if(const auto& last = last_declarator(*decl); &last != decl) {
+                if(auto group = focus_range(unit, last.getSourceRange())) {
+                    extent = with_semicolon(
+                        hull(*range, with_attributes(unit, tokens, text, last, *group)));
+                }
             }
             if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-                add_function(unit, *function, steps);
+                add_function(unit, content, tokens, *function, steps);
             }
             if(node->parent->get<clang::DeclStmt>()) {
                 if(auto whole = focus_range(unit, node->parent->source_range())) {
@@ -886,7 +920,7 @@ void add_ast(CompilationUnit& unit,
             }
             if(auto comments = doc_comment_range(unit, decl);
                comments && comments->first == focus) {
-                steps.add(hull(extent, comments->second));
+                steps.add_loose(hull(extent, comments->second));
             }
         }
     }

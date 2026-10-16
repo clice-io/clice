@@ -1,4 +1,4 @@
-/// Selection range sweep: ask clice — and, given a binary, clangd — for the
+/// Selection range check: ask clice — and, given a binary, clangd — for the
 /// selection ranges at every token boundary (and some blank space) of real
 /// files, check the invariants of every chain and diff the two servers'
 /// chains, grouped by the shape of the step that differs.
@@ -15,7 +15,7 @@
 ///   --batch <N>            positions per request (default 64)
 ///   --json <path>          write every finding as JSON
 ///   --at <line:column>     print both chains at these 1-based positions
-///                          instead of sweeping; repeatable
+///                          instead of checking every position; repeatable
 ///   --markers              print both chains at each `§` of the files,
 ///                          which are sent without them
 ///
@@ -583,6 +583,10 @@ async function start(name: "clice" | "clangd", binary: string, workspace: string
 }
 
 async function stop(server: Server): Promise<void> {
+    if (server.name === "clice") {
+        await server.client.shutdown();
+        return;
+    }
     try {
         await withTimeout(
             server.client.sendRequest(proto.ShutdownRequest.type),
