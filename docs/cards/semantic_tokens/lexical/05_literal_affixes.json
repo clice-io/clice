@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "using size_type = decltype(sizeof(0));\nconstexpr size_type operator\"\"_kb(unsigned long long n) {\n    return n * 1024;\n}\n\nauto wide = L\"wide string\";\nauto utf8 = u8\"utf-8 string\";\nauto hex = 0xFF;\nauto binary = 0b1010;\nauto unsigned_suffix = 42u;\nauto float_suffix = 3.14f;\nauto separators = 1'000'000;\nauto udl = 4_kb;\n",
+      "text": "using size_type = decltype(sizeof(0));\nconstexpr size_type operator\"\"_kb(unsigned long long n) {\n    return n * 1024;\n}\n\nauto wide = L\"wide string\";\nauto utf8 = u8\"utf-8 string\";\nauto hex = 0xFF;\nauto binary = 0b1010;\nauto unsigned_suffix = 42u;\nauto float_suffix = 3.14f;\nauto hex_float_suffix = 0x1p4f;\nauto separators = 1'000'000;\nauto udl = 4_kb;\n",
       "markers": [
         {
           "name": "wide_prefix",
@@ -37,9 +37,15 @@
           "range": false
         },
         {
+          "name": "hex_float_suffix",
+          "begin": 302,
+          "end": 302,
+          "range": false
+        },
+        {
           "name": "literal_operator_suffix",
-          "begin": 314,
-          "end": 314,
+          "begin": 346,
+          "end": 346,
           "range": false
         }
       ]
@@ -91,6 +97,19 @@
         {
           "label": "float_suffix",
           "marker": "float_suffix",
+          "value": {
+            "semantic_token": {
+              "text": "f",
+              "type": "number",
+              "modifiers": [
+                "affix"
+              ]
+            }
+          }
+        },
+        {
+          "label": "hex_float_suffix",
+          "marker": "hex_float_suffix",
           "value": {
             "semantic_token": {
               "text": "f",

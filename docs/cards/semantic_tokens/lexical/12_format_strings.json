@@ -15,7 +15,7 @@
     },
     {
       "path": "main.cpp",
-      "text": "#include \"fmt.h\"\n\nvoid report(int count, double ratio, const char* name) {\n    fmt::print(\"{} items, {:>8.2f} ratio, {{braces}}\\n\", count, ratio);\n    log_line(\"%s: %d of %-8.3f%%\\n\", name, count, ratio);\n    const char* plain = \"{} stays text\";\n}\n",
+      "text": "#include \"fmt.h\"\n\nvoid report(int count, double ratio, const char* name) {\n    fmt::print(\"{} items, {:>8.2f} ratio, {{braces}}\\n\", count, ratio);\n    log_line(\"%s: %d of %-8.3f%%\\n\", name, count, ratio);\n    log_line(R\"(%d raw \\n)\", count);\n    const char* plain = \"{} stays text\";\n}\n",
       "markers": []
     }
   ],
@@ -702,7 +702,7 @@
               },
               {
                 "at": {
-                  "$place": "⟦const⟧ char* plain = \"{} stays text\";",
+                  "$place": "⟦log_line⟧(R\"(%d raw \\n)\", count);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -711,6 +711,117 @@
                     },
                     "end": {
                       "line": 5,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "function",
+                "modifiers": [
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "log_line(⟦R⟧\"(%d raw \\n)\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "string",
+                "modifiers": [
+                  "affix"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "log_line(R⟦\"(⟧%d raw \\n)\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "log_line(R\"(⟦%d⟧ raw \\n)\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "formatSpecifier"
+              },
+              {
+                "at": {
+                  "$place": "log_line(R\"(%d⟦ raw \\n)\"⟧, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "log_line(R\"(%d raw \\n)\", ⟦count⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 5,
+                      "character": 29
+                    },
+                    "end": {
+                      "line": 5,
+                      "character": 34
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦const⟧ char* plain = \"{} stays text\";",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 6,
                       "character": 9
                     }
                   }
@@ -723,11 +834,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 6,
                       "character": 10
                     },
                     "end": {
-                      "line": 5,
+                      "line": 6,
                       "character": 14
                     }
                   }
@@ -740,11 +851,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 6,
                       "character": 14
                     },
                     "end": {
-                      "line": 5,
+                      "line": 6,
                       "character": 15
                     }
                   }
@@ -760,11 +871,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 6,
                       "character": 16
                     },
                     "end": {
-                      "line": 5,
+                      "line": 6,
                       "character": 21
                     }
                   }
@@ -781,11 +892,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 6,
                       "character": 22
                     },
                     "end": {
-                      "line": 5,
+                      "line": 6,
                       "character": 23
                     }
                   }
@@ -798,11 +909,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 6,
                       "character": 24
                     },
                     "end": {
-                      "line": 5,
+                      "line": 6,
                       "character": 39
                     }
                   }

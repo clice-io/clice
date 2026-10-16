@@ -4,13 +4,13 @@
   "subtopic": "modifiers",
   "title": "Callable variables",
   "summary": "A variable, parameter or field whose type can be called is `callable`",
-  "prose": "Function pointers, pointers to member functions, lambdas and objects of a\nclass with an `operator()` all carry it, at their declaration and at every\nuse.",
+  "prose": "Function pointers, pointers to member functions, lambdas and objects of a\nclass with an `operator()`, its own or a base's, all carry it, at their\ndeclaration and at every use.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Adder {\n    int operator()(int left, int right) const;\n};\n\nint apply(int (*operation)(int, int), Adder adder, int value) {\n    auto twice = [](int x) { return x * 2; };\n    void (Adder::*member)() = nullptr;\n    return operation(value, value) + adder(value, value) + twice(value);\n}\n",
+      "text": "struct Adder {\n    int operator()(int left, int right) const;\n};\n\nstruct Counter : Adder {};\n\nint apply(int (*operation)(int, int), Adder adder, Counter counter, int value) {\n    auto twice = [](int x) { return x * 2; };\n    void (Adder::*member)() = nullptr;\n    return operation(value, value) + adder(value, value) + counter(value, 1) + twice(value);\n}\n",
       "markers": []
     }
   ],
@@ -212,7 +212,7 @@
               },
               {
                 "at": {
-                  "$place": "⟦int⟧ apply(int (*operation)(int, int), Adder adder, int value) {",
+                  "$place": "⟦struct⟧ Counter : Adder {};",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -221,6 +221,64 @@
                     },
                     "end": {
                       "line": 4,
+                      "character": 6
+                    }
+                  }
+                },
+                "type": "keyword"
+              },
+              {
+                "at": {
+                  "$place": "struct ⟦Counter⟧ : Adder {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "definition",
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "struct Counter : ⟦Adder⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 17
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 22
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦int⟧ apply(int (*operation)(int, int), Adder adder, Counter counter, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 6,
                       "character": 3
                     }
                   }
@@ -229,15 +287,15 @@
               },
               {
                 "at": {
-                  "$place": "int ⟦apply⟧(int (*operation)(int, int), Adder adder, int value) {",
+                  "$place": "int ⟦apply⟧(int (*operation)(int, int), Adder adder, Counter counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 4
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 9
                     }
                   }
@@ -250,15 +308,15 @@
               },
               {
                 "at": {
-                  "$place": "int apply(⟦int⟧ (*operation)(int, int), Adder adder, int value) {",
+                  "$place": "int apply(⟦int⟧ (*operation)(int, int), Adder adder, Counter counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 10
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 13
                     }
                   }
@@ -267,15 +325,15 @@
               },
               {
                 "at": {
-                  "$place": "int apply(int (⟦*⟧operation)(int, int), Adder adder, int value) {",
+                  "$place": "int apply(int (⟦*⟧operation)(int, int), Adder adder, Counter counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 15
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 16
                     }
                   }
@@ -287,15 +345,15 @@
               },
               {
                 "at": {
-                  "$place": "int apply(int (*⟦operation⟧)(int, int), Adder adder, int value) {",
+                  "$place": "int apply(int (*⟦operation⟧)(int, int), Adder adder, Counter counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 16
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 25
                     }
                   }
@@ -309,15 +367,15 @@
               },
               {
                 "at": {
-                  "$place": "int apply(int (*operation)(⟦int⟧, int), Adder adder, int value) {",
+                  "$place": "int apply(int (*operation)(⟦int⟧, int), Adder adder, Counter counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 27
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 30
                     }
                   }
@@ -326,15 +384,15 @@
               },
               {
                 "at": {
-                  "$place": "int apply(int (*operation)(int, ⟦int⟧), Adder adder, int value) {",
+                  "$place": "int apply(int (*operation)(int, ⟦int⟧), Adder adder, Counter counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 32
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 35
                     }
                   }
@@ -343,15 +401,15 @@
               },
               {
                 "at": {
-                  "$place": "int apply(int (*operation)(int, int), ⟦Adder⟧ adder, int value) {",
+                  "$place": "int apply(int (*operation)(int, int), ⟦Adder⟧ adder, Counter counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 38
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 43
                     }
                   }
@@ -363,15 +421,15 @@
               },
               {
                 "at": {
-                  "$place": "int apply(int (*operation)(int, int), Adder ⟦adder⟧, int value) {",
+                  "$place": "int apply(int (*operation)(int, int), Adder ⟦adder⟧, Counter counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 44
                     },
                     "end": {
-                      "line": 4,
+                      "line": 6,
                       "character": 49
                     }
                   }
@@ -385,16 +443,58 @@
               },
               {
                 "at": {
-                  "$place": "int apply(int (*operation)(int, int), Adder adder, ⟦int⟧ value) {",
+                  "$place": "int apply(int (*operation)(int, int), Adder adder, ⟦Counter⟧ counter, int value) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
+                      "line": 6,
                       "character": 51
                     },
                     "end": {
-                      "line": 4,
-                      "character": 54
+                      "line": 6,
+                      "character": 58
+                    }
+                  }
+                },
+                "type": "struct",
+                "modifiers": [
+                  "global"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*operation)(int, int), Adder adder, Counter ⟦counter⟧, int value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 59
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 66
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "int apply(int (*operation)(int, int), Adder adder, Counter counter, ⟦int⟧ value) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 68
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 71
                     }
                   }
                 },
@@ -402,16 +502,16 @@
               },
               {
                 "at": {
-                  "$place": "int apply(int (*operation)(int, int), Adder adder, int ⟦value⟧) {",
+                  "$place": "int apply(int (*operation)(int, int), Adder adder, Counter counter, int ⟦value⟧) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 4,
-                      "character": 55
+                      "line": 6,
+                      "character": 72
                     },
                     "end": {
-                      "line": 4,
-                      "character": 60
+                      "line": 6,
+                      "character": 77
                     }
                   }
                 },
@@ -427,11 +527,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 4
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 8
                     }
                   }
@@ -444,11 +544,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 9
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 14
                     }
                   }
@@ -466,11 +566,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 15
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 16
                     }
                   }
@@ -483,11 +583,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 20
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 23
                     }
                   }
@@ -500,11 +600,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 24
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 25
                     }
                   }
@@ -521,11 +621,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 29
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 35
                     }
                   }
@@ -541,11 +641,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 36
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 37
                     }
                   }
@@ -561,11 +661,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 38
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 39
                     }
                   }
@@ -578,11 +678,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 5,
+                      "line": 7,
                       "character": 40
                     },
                     "end": {
-                      "line": 5,
+                      "line": 7,
                       "character": 41
                     }
                   }
@@ -595,11 +695,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 4
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 8
                     }
                   }
@@ -612,11 +712,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 10
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 15
                     }
                   }
@@ -632,11 +732,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 17
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 18
                     }
                   }
@@ -652,11 +752,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 18
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 24
                     }
                   }
@@ -674,11 +774,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 28
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 29
                     }
                   }
@@ -691,11 +791,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 30
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 37
                     }
                   }
@@ -707,15 +807,15 @@
               },
               {
                 "at": {
-                  "$place": "⟦return⟧ operation(value, value) + adder(value, value) + twice(value);",
+                  "$place": "⟦return⟧ operation(value, value) + adder(value, value) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 4
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 10
                     }
                   }
@@ -727,15 +827,15 @@
               },
               {
                 "at": {
-                  "$place": "return ⟦operation⟧(value, value) + adder(value, value) + twice(value);",
+                  "$place": "return ⟦operation⟧(value, value) + adder(value, value) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 11
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 20
                     }
                   }
@@ -748,15 +848,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(⟦value⟧, value) + adder(value, value) + twice(value);",
+                  "$place": "return operation(⟦value⟧, value) + adder(value, value) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 21
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 26
                     }
                   }
@@ -768,15 +868,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, ⟦value⟧) + adder(value, value) + twice(value);",
+                  "$place": "return operation(value, ⟦value⟧) + adder(value, value) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 28
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 33
                     }
                   }
@@ -788,15 +888,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) ⟦+⟧ adder(value, value) + twice(value);",
+                  "$place": "return operation(value, value) ⟦+⟧ adder(value, value) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 35
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 36
                     }
                   }
@@ -805,15 +905,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + ⟦adder⟧(value, value) + twice(value);",
+                  "$place": "return operation(value, value) + ⟦adder⟧(value, value) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 37
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 42
                     }
                   }
@@ -826,15 +926,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder⟦(⟧value, value) + twice(value);",
+                  "$place": "return operation(value, value) + adder⟦(⟧value, value) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 42
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 43
                     }
                   }
@@ -848,15 +948,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder(⟦value⟧, value) + twice(value);",
+                  "$place": "return operation(value, value) + adder(⟦value⟧, value) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 43
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 48
                     }
                   }
@@ -868,15 +968,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder(value, ⟦value⟧) + twice(value);",
+                  "$place": "return operation(value, value) + adder(value, ⟦value⟧) + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 50
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 55
                     }
                   }
@@ -888,15 +988,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder(value, value⟦)⟧ + twice(value);",
+                  "$place": "return operation(value, value) + adder(value, value⟦)⟧ + counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 55
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 56
                     }
                   }
@@ -910,15 +1010,15 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder(value, value) ⟦+⟧ twice(value);",
+                  "$place": "return operation(value, value) + adder(value, value) ⟦+⟧ counter(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 57
                     },
                     "end": {
-                      "line": 7,
+                      "line": 9,
                       "character": 58
                     }
                   }
@@ -927,16 +1027,135 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder(value, value) + ⟦twice⟧(value);",
+                  "$place": "return operation(value, value) + adder(value, value) + ⟦counter⟧(value, 1) + twice(value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
+                      "line": 9,
                       "character": 59
                     },
                     "end": {
-                      "line": 7,
-                      "character": 64
+                      "line": 9,
+                      "character": 66
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + counter⟦(⟧value, 1) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 66
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 67
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "readonly",
+                  "member",
+                  "userDefined"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + counter(⟦value⟧, 1) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 67
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 72
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + counter(value, ⟦1⟧) + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 74
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 75
+                    }
+                  }
+                },
+                "type": "number"
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + counter(value, 1⟦)⟧ + twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 75
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 76
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "readonly",
+                  "member",
+                  "userDefined"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + counter(value, 1) ⟦+⟧ twice(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 77
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 78
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
+                  "$place": "return operation(value, value) + adder(value, value) + counter(value, 1) + ⟦twice⟧(value);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 79
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 84
                     }
                   }
                 },
@@ -948,16 +1167,16 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder(value, value) + twice⟦(⟧value);",
+                  "$place": "return operation(value, value) + adder(value, value) + counter(value, 1) + twice⟦(⟧value);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
-                      "character": 64
+                      "line": 9,
+                      "character": 84
                     },
                     "end": {
-                      "line": 7,
-                      "character": 65
+                      "line": 9,
+                      "character": 85
                     }
                   }
                 },
@@ -971,16 +1190,16 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder(value, value) + twice(⟦value⟧);",
+                  "$place": "return operation(value, value) + adder(value, value) + counter(value, 1) + twice(⟦value⟧);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
-                      "character": 65
+                      "line": 9,
+                      "character": 85
                     },
                     "end": {
-                      "line": 7,
-                      "character": 70
+                      "line": 9,
+                      "character": 90
                     }
                   }
                 },
@@ -991,16 +1210,16 @@
               },
               {
                 "at": {
-                  "$place": "return operation(value, value) + adder(value, value) + twice(value⟦)⟧;",
+                  "$place": "return operation(value, value) + adder(value, value) + counter(value, 1) + twice(value⟦)⟧;",
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 7,
-                      "character": 70
+                      "line": 9,
+                      "character": 90
                     },
                     "end": {
-                      "line": 7,
-                      "character": 71
+                      "line": 9,
+                      "character": 91
                     }
                   }
                 },

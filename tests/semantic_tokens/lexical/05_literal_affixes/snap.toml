@@ -18,6 +18,11 @@ text = "f"
 type = "number"
 modifiers = ["affix"]
 
+[answers.hex_float_suffix.semantic_token]
+text = "f"
+type = "number"
+modifiers = ["affix"]
+
 [answers.literal_operator_suffix.semantic_token]
 text = "_kb"
 type = "number"
