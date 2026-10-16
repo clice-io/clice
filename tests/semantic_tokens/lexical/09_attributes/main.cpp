@@ -3,3 +3,5 @@
 [[§(maybe_unused)maybe_unused]] int counter = 0;
 
 struct [[§(vendor)gnu::§(packed)packed]] Packed {};
+
+__attribute__((§(gnu_style)noinline)) void slow();

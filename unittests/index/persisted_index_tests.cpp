@@ -580,6 +580,27 @@ ZEST_CASE(GlobalDuplicateSymbolRejected) {
     ZASSERT(!loaded.load_global(bytes_of(*descending), pool, pins).has_value());
 }
 
+ZEST_CASE(GlobalTokenKindRejected) {
+    // A symbol's token kind indexes the legend's tables: one past the enum
+    // marks a corrupt blob.
+    GlobalBlobMirror mirror;
+    mirror.paths = four_paths();
+    mirror.add_symbol(42, "sym", index::write_bitmap(clice::Bitmap{}));
+    mirror.sym_token_kinds = {200};
+
+    clice::FileTable pool;
+    llvm::DenseMap<VersionID, std::uint64_t> pins;
+    auto corrupt = encode(mirror);
+    ZASSERT(corrupt);
+    index::ProjectIndex loaded;
+    ZASSERT(!loaded.load_global(bytes_of(*corrupt), pool, pins).has_value());
+
+    mirror.sym_token_kinds = {0};
+    auto valid = encode(mirror);
+    ZASSERT(valid);
+    ZASSERT(loaded.load_global(bytes_of(*valid), pool, pins));
+}
+
 ZEST_CASE(GlobalReservedKeysRejected) {
     // The two DenseMap sentinel key values can never sit in the in-memory
     // tables, so the writer can never emit them; a blob carrying one is

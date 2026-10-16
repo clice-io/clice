@@ -293,8 +293,7 @@ private:
     llvm::DenseMap<Fid, std::unique_ptr<kota::cancellation_source>> compile_interrupts;
 };
 
-/// Discriminators for Quarantine's per-kind records; query kinds follow
-/// past Count.
+/// Discriminators for Quarantine's per-kind records.
 enum class EvidenceKind : std::uint8_t {
     Compile,
     /// The compile's clang-tidy pass: a crash under it retries the compile
@@ -312,15 +311,12 @@ enum class EvidenceKind : std::uint8_t {
     SignatureHelp,
     Format,
     SemanticTokens,
+    Hover,
     Count,
 };
 
 constexpr std::uint8_t evidence_kind(EvidenceKind kind) {
     return static_cast<std::uint8_t>(kind);
-}
-
-constexpr std::uint8_t evidence_kind(worker::QueryKind kind) {
-    return static_cast<std::uint8_t>(EvidenceKind::Count) + static_cast<std::uint8_t>(kind);
 }
 
 /// The diagnostics telling what of the document is paused by crashes, and

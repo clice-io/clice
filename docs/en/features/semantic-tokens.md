@@ -16,31 +16,31 @@ the names it knows, and the configuration renames clice's to those.
 
 ## Kinds
 
-| Kind                               | Marks                                                                                 |
-| ---------------------------------- | ------------------------------------------------------------------------------------- |
-| `comment`                          | a comment                                                                             |
-| `string`, `character`, `number`    | a literal, its prefix and suffix included                                             |
-| `escape`                           | an escape sequence in a literal: `\n`, `\x41`, `{{` in a format string                |
-| `formatSpecifier`                  | a placeholder of a format string: `{}`, `{:>8}`, `%d`                                 |
-| `keyword`                          | a keyword; `module`, `import`, `override` and `final` where they act as one           |
-| `primitive`                        | a built-in type: `int`, `bool`, `char8_t`                                             |
-| `operator`                         | an operator, built-in or overloaded, words such as `sizeof`, `new` and `and` included |
-| `bracket`                          | the `<` and `>` around template arguments and parameters                              |
-| `directive`, `header`              | a preprocessor directive; a header name                                               |
-| `namespace`, `module`              | a namespace or namespace alias; a C++20 module name                                   |
-| `class`, `struct`, `union`, `enum` | a class by the keyword that declares it                                               |
-| `typeAlias`                        | a `typedef` or `using` alias                                                          |
-| `typeParameter`                    | a template type or template template parameter                                        |
-| `templateParameter`                | a non-type template parameter                                                         |
-| `concept`                          | a concept                                                                             |
-| `function`, `method`               | a free function; a member function, constructors and destructors included             |
-| `variable`, `parameter`, `field`   | a variable, a function parameter, a data member                                       |
-| `enumMember`, `label`              | an enumerator; a label                                                                |
-| `macro`, `macroParameter`          | a macro; a parameter of a function-like macro, in its definition                      |
-| `attribute`                        | an attribute name: `nodiscard`, `gnu::packed`                                         |
-| `unknown`                          | a dependent name only an instantiation resolves: `T::reset()`, `value.size()`         |
-| `conflict`                         | a name meaning entities of different kinds at once                                    |
-| `plain`                            | a token with no kind of its own in an untaken branch, sent for its `inactive`         |
+| Kind                               | Marks                                                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `comment`                          | a comment                                                                                                     |
+| `string`, `character`, `number`    | a literal, its prefix and suffix included                                                                     |
+| `escape`                           | an escape sequence in a literal: `\n`, `\x41`, `{{` in a format string                                        |
+| `formatSpecifier`                  | a placeholder of a format string: `{}`, `{:>8}`, `%d`                                                         |
+| `keyword`                          | a keyword; `module`, `import`, `override` and `final` where they act as one                                   |
+| `primitive`                        | a built-in type: `int`, `bool`, `char8_t`                                                                     |
+| `operator`                         | an operator, built-in or overloaded, words such as `sizeof`, `new` and `and` included                         |
+| `bracket`                          | the `<` and `>` around template arguments and parameters                                                      |
+| `directive`, `header`              | a preprocessor directive; a header name                                                                       |
+| `namespace`, `module`              | a namespace or namespace alias; a C++20 module name                                                           |
+| `class`, `struct`, `union`, `enum` | a class by the keyword that declares it                                                                       |
+| `typeAlias`                        | a `typedef` or `using` alias                                                                                  |
+| `typeParameter`                    | a template type or template template parameter                                                                |
+| `templateParameter`                | a non-type template parameter                                                                                 |
+| `concept`                          | a concept                                                                                                     |
+| `function`, `method`               | a free function; a member function, constructors and destructors included                                     |
+| `variable`, `parameter`, `field`   | a variable, a function parameter, a data member                                                               |
+| `enumMember`, `label`              | an enumerator; a label                                                                                        |
+| `macro`, `macroParameter`          | a macro; a parameter of a function-like macro, in its definition                                              |
+| `attribute`                        | an attribute name: `nodiscard`, `gnu::packed`                                                                 |
+| `unknown`                          | a dependent name only an instantiation resolves: `T::reset()`, `value.size()`                                 |
+| `conflict`                         | a name meaning entities of different kinds at once                                                            |
+| `plain`                            | a token in an untaken branch with no kind of its own, or any with lexical tokens off, sent for its `inactive` |
 
 ## Modifiers
 
@@ -59,9 +59,9 @@ on every kind:
 | `documentation`  | inside a documentation comment                                                                                              |
 | `modification`   | the entity changes there: assigned, incremented, passed by reference or address to non-const                                |
 
-Every name carries where it is visible from: `local` (in its function or
-block), `member` (in its class), `internal` (in its translation unit, as
-`static` and unnamed namespaces make it) or `global`.
+A name a declaration gives carries where it is visible from: `local` (in its
+function or block), `member` (in its class), `internal` (in its translation
+unit, as `static` and unnamed namespaces make it) or `global`.
 
 The rest are clice's own, and some mean something of their own on each kind:
 
@@ -70,7 +70,7 @@ The rest are clice's own, and some mean something of their own on each kind:
 | `template`                  | a class, alias, variable or function        | a template, or a specialization of one                                                |
 | `dependent`                 | any name                                    | depends on a template parameter; every `unknown` name carries it                      |
 | `virtual`                   | a method; a class                           | a virtual method; a polymorphic class                                                 |
-| `constexpr`                 | a function, variable or `templateParameter` | usable in constant expressions                                                        |
+| `constexpr`                 | a function, variable or `templateParameter` | `constexpr`, `consteval` or `constinit`, or a non-type template parameter             |
 | `constructor`, `destructor` | a method                                    | a constructor; a destructor                                                           |
 | `callable`                  | a macro                                     | a function-like macro                                                                 |
 |                             | a variable, parameter or field              | of a type that can be called: a function pointer, a lambda, a class with `operator()` |
@@ -93,8 +93,9 @@ The rest are clice's own, and some mean something of their own on each kind:
   groups of clice's names to the groups colorschemes style, as defaults a
   colorscheme can override.
 - **Other editors** — Zed, Kate, Emacs, Sublime Text — color the standard LSP
-  names. `[semantic_tokens.kinds]` gives each clice kind the standard name
-  closest to it:
+  names. Renaming clice's kinds to the standard names closest to them, in the
+  editor's settings (its `initializationOptions` for clice, as JSON) rather
+  than a `clice.toml` other editors read too, colors them there:
 
 ```toml
 [semantic_tokens.kinds]
@@ -116,15 +117,16 @@ attribute = "decorator"
 ```
 
 Zed asks for semantic tokens only once `semantic_tokens` is `"combined"` (or
-`"full"`) for C and C++; the mapping then goes in its settings, under
-`lsp.clice.initialization_options`, as JSON.
+`"full"`) for C and C++; the mapping goes under
+`lsp.clice.initialization_options`.
 
 ## Configuration
 
 The `[semantic_tokens]` section of `clice.toml`, or the same keys in the
 editor's `initializationOptions`, holds the switch for lexical tokens and the
 two renaming tables. The names are announced once, when the editor connects:
-a change takes a server restart. See the
+they come from the editor's settings and the first workspace folder's
+`clice.toml`, and a change takes a server restart. See the
 [configuration guide](../guide/configuration.md#semantic-tokens) for details.
 
 <!-- BEGIN GENERATED ITEMS: semantic_tokens/options -->
@@ -1039,7 +1041,7 @@ tests/inactive_regions/updates/01_edited_condition
 - [x] Full document semantic tokens (`textDocument/semanticTokens/full`)
 - [x] Range requests (`textDocument/semanticTokens/range`): the tokens a range overlaps
 - [x] Delta updates (`textDocument/semanticTokens/full/delta`): the changes since the answer the editor holds
-- [x] Positions in the encoding the editor negotiated, a token spanning lines split per line
+- [x] UTF-16 positions, a token spanning lines split per line
 
 ## Known Limitations
 

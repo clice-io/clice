@@ -356,6 +356,8 @@ export interface ServerOptions {
     capabilities?: proto.ClientCapabilities | undefined;
     /// clice serves the files read-only.
     readonly?: boolean | undefined;
+    /// More of clice's configuration, as initializationOptions.
+    config?: Record<string, unknown> | undefined;
 }
 
 /// A server on the workspace `workspace`, whose compile_commands.json both
@@ -386,6 +388,7 @@ export async function start(
                           stateful_worker_count: 1,
                           readonly: options.readonly === true ? "on" : "off",
                       },
+                      ...options.config,
                   }
                 : {},
     });

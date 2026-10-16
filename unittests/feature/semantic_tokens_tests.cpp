@@ -93,8 +93,8 @@ void EXPECT_TOKEN(llvm::StringRef name,
 
 ZEST_CASE(PreambleDefineUnderPch) {
     // The leading `#define` sits in the preamble, so under the PCH split no
-    // MacroDefine record exists in the main compile; the macro name must
-    // still classify as a definition through the lexical directive fallback.
+    // MacroDefine record exists in the main compile; the macro name still
+    // classifies as a definition, read from the directive's text.
     run(R"cpp(
 §(d1)⟦#define⟧ §(m0)⟦FOO⟧
 §(k0)⟦int⟧ main() { §(k1)⟦return⟧ 0; }
@@ -159,13 +159,12 @@ template <class T> struct D : B<T> {
 ZEST_CASE(UTF16LengthDiffersFromUTF8) {
     run(R"cpp(
 int main() {
-§(lit)⟦u8"你"⟧;
+u8"你";
 }
 )cpp");
 
     // The `u8` prefix is a piece of its own; the quoted text follows it.
     auto string_type = *legend.type_of[static_cast<std::size_t>(SemanticTokenKind::String)];
-    auto lit = range("lit");
     auto body = encode(PositionEncoding::UTF8);
     auto wide = encode(PositionEncoding::UTF16);
     auto length = [&](const protocol::SemanticTokens& encoded) {
@@ -175,7 +174,6 @@ int main() {
         });
         return it == decoded.end() ? 0u : it->length;
     };
-    ZASSERT(lit.length() == 7U);
     ZASSERT(length(body) == 5U);
     ZASSERT(length(wide) == 3U);
 }

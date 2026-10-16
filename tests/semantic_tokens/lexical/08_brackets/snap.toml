@@ -14,6 +14,14 @@ type = "bracket"
 text = "{"
 type = "none"
 
+[answers.inner_close.semantic_token]
+text = ">>"
+type = "bracket"
+
+[answers.outer_close.semantic_token]
+text = ">>"
+type = "bracket"
+
 [answers.paren_open.semantic_token]
 text = "("
 type = "none"

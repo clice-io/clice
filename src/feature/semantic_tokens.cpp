@@ -357,10 +357,12 @@ private:
             if(!type.contains("printf") && !type.contains("scanf")) {
                 continue;
             }
-            // The index counts from 1, past an implicit object parameter.
+            // The index counts from 1, past an implicit object parameter,
+            // which only an operator call's arguments hold.
             auto argument = attr->getFormatIdx() - 1;
             if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(callee);
-               method && method->isImplicitObjectMemberFunction()) {
+               method && method->isImplicitObjectMemberFunction() &&
+               !llvm::isa<clang::CXXOperatorCallExpr>(call)) {
                 argument -= 1;
             }
             if(argument >= 0 && static_cast<unsigned>(argument) < call->getNumArgs()) {
@@ -420,13 +422,20 @@ private:
                 }
             }
         }
-        std::ranges::sort(dropped);
-        std::vector<std::uint32_t> arguments;
-        for(auto [begin, end]: dropped) {
-            arguments.push_back(begin);
-            arguments.push_back(end);
+        // An argument may hold a whole untaken branch: overlapping spans
+        // join.
+        for(std::size_t i = 0; i + 1 < inactive_regions.size(); i += 2) {
+            dropped.emplace_back(inactive_regions[i], inactive_regions[i + 1]);
         }
-        std::ranges::merge(inactive_regions, arguments, std::back_inserter(facts.inactive));
+        std::ranges::sort(dropped);
+        for(auto [begin, end]: dropped) {
+            if(!facts.inactive.empty() && begin <= facts.inactive.back()) {
+                facts.inactive.back() = std::max(facts.inactive.back(), end);
+            } else {
+                facts.inactive.push_back(begin);
+                facts.inactive.push_back(end);
+            }
+        }
     }
 
     /// The offset of the spelled token written at `location`, macro
@@ -483,13 +492,7 @@ private:
 
     /// Anchor a declaration name at `location` and, through `end` for a
     /// name of several tokens its declaration owns whole (`~Widget`), at
-    /// every token of it, over the names nested in it. A written name can
-    /// only be spelled as an identifier, a destructor's `~`, the
-    /// punctuation of an operator or a user-defined literal; an occurrence
-    /// resolving to any other token names nothing written — an anonymous
-    /// parameter's trailing `)`, the `[` of a structured binding, the `(`
-    /// of a constructor call written as the type name, an operator
-    /// declaration's `operator` keyword — and must not paint it.
+    /// every token of it names_token takes, over the names nested in it.
     void anchor_name(clang::SourceLocation location,
                      clang::SourceLocation end,
                      TokenClass classified) {
@@ -508,11 +511,8 @@ private:
         }
         auto spelled = semantics.spelled_tokens();
         for(auto index = *first; index <= *last; index += 1) {
-            auto kind = spelled[index].kind();
-            bool name = kind == clang::tok::identifier || kind == clang::tok::tilde ||
-                        (classified.kind == Kind::Operator &&
-                         (clang::tok::getPunctuatorSpelling(kind) || clang::tok::isLiteral(kind)));
-            if(!name || semantics.token_preprocessed_away(index)) {
+            if(!names_token(spelled[index].kind(), classified) ||
+               semantics.token_preprocessed_away(index)) {
                 continue;
             }
             auto offset = semantics.token_offset(index);
@@ -561,8 +561,8 @@ private:
     llvm::DenseMap<std::uint32_t, TokenClass> unresolved;
 };
 
-std::string lower_first(std::string_view name) {
-    std::string result(name);
+std::string lower_first(llvm::StringRef name) {
+    auto result = name.str();
     if(!result.empty()) {
         result[0] = static_cast<char>(llvm::toLower(result[0]));
     }
@@ -585,12 +585,7 @@ public:
         if(!type) {
             return;
         }
-        std::uint32_t modifiers = 0;
-        for(std::uint32_t bit = 0; bit < SemanticTokenLegend::modifier_count; bit += 1) {
-            if(token.modifiers & (std::uint32_t(1) << bit)) {
-                modifiers |= legend.bit_of[bit];
-            }
-        }
+        auto modifiers = legend.bits(token.modifiers);
 
         if(window && (token.range.end <= window->begin || token.range.begin >= window->end)) {
             return;

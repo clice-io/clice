@@ -36,6 +36,19 @@ struct TokenFacts {
     std::vector<std::uint32_t> inactive;
 };
 
+/// Whether a name classified `token` paints a token of `kind`. A written
+/// name is spelled as an identifier, a destructor's `~`, or for an
+/// operator the punctuation or the user-defined literal spelling it; a name
+/// resolving to any other token — an anonymous parameter's trailing `)`,
+/// the `[` of a structured binding, the `(` of a constructor call written
+/// as the type name, an operator declaration's `operator` keyword — names
+/// nothing written.
+bool names_token(clang::tok::TokenKind kind, const TokenClass& token);
+
+/// Whether `spelling` is a contextual keyword of overriding: `override`,
+/// `final`, MSVC's `sealed`.
+bool is_override_keyword(llvm::StringRef spelling);
+
 /// What the compiled unit knows of its focus file's tokens, inactive
 /// regions merged in. With `index_known`, only what the file's index
 /// records too, the facts its index route has: no inactive code or

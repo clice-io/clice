@@ -4,6 +4,10 @@
 /// group every difference by its shape: which kinds, which modifiers, the
 /// punctuation around the token.
 ///
+/// clice runs with its kinds and modifiers renamed to clangd's names for
+/// the same things, through its own `[semantic_tokens]` mapping, so the two
+/// compare by name; what only one legend names is not compared.
+///
 /// Usage:
 ///   node tools/bench/semantic_tokens_check.ts --cdb <dir> [options] <file>...
 ///
@@ -11,7 +15,6 @@
 ///   --clice <path>     clice executable (default build/RelWithDebInfo/bin/bin/clice)
 ///   --clangd <path>    clangd executable; no clangd diff without it
 ///   --no-index         skip the index projection check
-///   --examples <N>     examples per group (default 4)
 ///   --json <path>      write every group with its examples as JSON
 ///   --dump <file>      print each server's tokens of one file side by side
 ///                      instead of checking
@@ -25,10 +28,9 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { parseArgs } from "node:util";
 import * as proto from "vscode-languageserver-protocol";
-import { CliceClient } from "../client/client.ts";
-import { Workspace } from "../client/workspace.ts";
 import { withTimeout } from "../promise.ts";
 import { REPO_ROOT } from "../repo.ts";
+import { Groups, Lines, type Server, snippet, start, stop } from "./lsp_check.ts";
 
 /// A decoded token, at UTF-16 offsets of the document.
 interface Token {
@@ -38,95 +40,45 @@ interface Token {
     modifiers: string[];
 }
 
-/// clice's kinds by the clangd type that names the same thing; a clice
-/// kind missing here is one clangd has no type for (literals, keywords,
-/// directives, punctuation), never compared.
-const COUNTERPARTS: Record<string, string[]> = {
-    namespace: ["namespace"],
-    module: ["namespace"],
-    class: ["class"],
-    struct: ["class"],
-    union: ["class"],
-    enum: ["enum"],
-    type: ["type", "typeParameter", "class", "enum"],
-    field: ["property"],
-    enumMember: ["enumMember"],
-    function: ["function"],
-    method: ["method"],
-    variable: ["variable"],
-    parameter: ["parameter", "typeParameter"],
-    label: ["label"],
-    concept: ["concept"],
-    macro: ["macro"],
-    operator: ["operator"],
-    keyword: ["modifier"],
-    angle: ["bracket"],
+interface Example {
+    at: string;
+    snippet: string;
+    detail?: string;
+}
+
+/// clice's kinds and modifiers by clangd's name for what they mark.
+const CLANGD_NAMES = {
+    kinds: {
+        struct: "class",
+        union: "class",
+        module: "namespace",
+        typeAlias: "type",
+        templateParameter: "parameter",
+        field: "property",
+    },
+    modifiers: {
+        local: "functionScope",
+        member: "classScope",
+        internal: "fileScope",
+        global: "globalScope",
+        dependent: "dependentName",
+        modification: "usedAsMutableReference",
+        constructor: "constructorOrDestructor",
+        destructor: "constructorOrDestructor",
+    },
 };
 
-const OVERRIDES = ["override", "final", "sealed"];
+const ROLES = ["definition", "declaration"];
+const SCOPES = ["functionScope", "classScope", "fileScope", "globalScope"];
 
-/// Modifiers both legends name; the others are one server's own.
-const SHARED_MODIFIERS = [
-    "declaration",
-    "definition",
-    "deprecated",
-    "readonly",
-    "static",
-    "abstract",
-    "virtual",
-    "dependentName",
-    "defaultLibrary",
-    "usedAsMutableReference",
-    "usedAsMutablePointer",
-    "constructorOrDestructor",
-    "userDefined",
-    "functionScope",
-    "classScope",
-    "fileScope",
-    "globalScope",
-];
-
-class Lines {
-    readonly starts: number[] = [0];
-    readonly text: string;
-
-    constructor(text: string) {
-        this.text = text;
-        for (let i = 0; i < text.length; i += 1) {
-            if (text[i] === "\n") {
-                this.starts.push(i + 1);
-            }
-        }
+function legendOf(server: Server): proto.SemanticTokensLegend {
+    const provider = server.client.initResult?.capabilities.semanticTokensProvider as
+        | proto.SemanticTokensOptions
+        | undefined;
+    if (provider === undefined) {
+        throw new Error(`${server.name} offers no semantic tokens`);
     }
-
-    offset(line: number, character: number): number {
-        return (this.starts[line] ?? this.text.length) + character;
-    }
-
-    position(offset: number): { line: number; character: number } {
-        let low = 0;
-        let high = this.starts.length - 1;
-        while (low < high) {
-            const mid = (low + high + 1) >> 1;
-            if ((this.starts[mid] ?? 0) <= offset) {
-                low = mid;
-            } else {
-                high = mid - 1;
-            }
-        }
-        return { line: low, character: offset - (this.starts[low] ?? 0) };
-    }
-
-    /// The token's line with the token marked: `a ⟦b⟧ c`.
-    snippet(begin: number, end: number): string {
-        const { line } = this.position(begin);
-        const from = this.starts[line] ?? 0;
-        let to = this.text.indexOf("\n", from);
-        to = to < 0 ? this.text.length : to;
-        const stop = Math.min(end, to);
-        const marked = `${this.text.slice(from, begin)}⟦${this.text.slice(begin, stop)}⟧${this.text.slice(stop, to)}`;
-        return marked.trim().replace(/\s+/g, " ").slice(0, 160);
-    }
+    return provider.legend;
 }
 
 function decode(data: number[], legend: proto.SemanticTokensLegend, lines: Lines): Token[] {
@@ -137,14 +89,13 @@ function decode(data: number[], legend: proto.SemanticTokensLegend, lines: Lines
         const deltaLine = data[i] ?? 0;
         line += deltaLine;
         character = deltaLine === 0 ? character + (data[i + 1] ?? 0) : (data[i + 1] ?? 0);
-        const begin = lines.offset(line, character);
+        const begin = (lines.starts[line] ?? lines.text.length) + character;
         const bits = data[i + 4] ?? 0;
-        const modifiers = legend.tokenModifiers.filter((_, bit) => (bits & (1 << bit)) !== 0);
         tokens.push({
             begin,
             end: begin + (data[i + 2] ?? 0),
             type: legend.tokenTypes[data[i + 3] ?? 0] ?? "?",
-            modifiers,
+            modifiers: legend.tokenModifiers.filter((_, bit) => (bits & (1 << bit)) !== 0),
         });
     }
     return tokens;
@@ -158,126 +109,18 @@ function context(text: string, begin: number, end: number): string {
     return `${before?.[1] ?? ""}_${after?.[1] ?? ""}`;
 }
 
-const ROLES = ["definition", "declaration"];
-const SCOPES = ["functionScope", "classScope", "fileScope", "globalScope"];
-
-/// The modifiers to compare, a definition's role and a token's scope each
-/// folded into one value: clangd marks a definition as both a declaration
-/// and a definition.
-function normalized(token: Token): Map<string, string> {
+/// The modifiers `shared` names, a token's role and its scope each folded
+/// into one value: clangd marks a definition as a declaration too.
+function normalized(token: Token, shared: readonly string[]): Map<string, string> {
     const values = new Map<string, string>();
-    const role = ROLES.find((r) => token.modifiers.includes(r));
-    values.set("role", role ?? "reference");
+    values.set("role", ROLES.find((r) => token.modifiers.includes(r)) ?? "reference");
     values.set("scope", SCOPES.find((s) => token.modifiers.includes(s)) ?? "none");
-    for (const modifier of SHARED_MODIFIERS) {
+    for (const modifier of shared) {
         if (!ROLES.includes(modifier) && !SCOPES.includes(modifier)) {
             values.set(modifier, token.modifiers.includes(modifier) ? "yes" : "no");
         }
     }
     return values;
-}
-
-interface Example {
-    at: string;
-    snippet: string;
-    detail?: string;
-}
-
-class Groups {
-    readonly groups = new Map<string, { count: number; files: Set<string>; examples: Example[] }>();
-
-    private readonly limit: number;
-
-    constructor(limit: number) {
-        this.limit = limit;
-    }
-
-    add(key: string, file: string, example: () => Example): void {
-        let group = this.groups.get(key);
-        if (group === undefined) {
-            group = { count: 0, files: new Set(), examples: [] };
-            this.groups.set(key, group);
-        }
-        group.count += 1;
-        // Examples from as many files as possible.
-        if (group.examples.length < this.limit && !group.files.has(file)) {
-            group.examples.push(example());
-        }
-        group.files.add(file);
-    }
-
-    sorted() {
-        return [...this.groups].sort((a, b) => b[1].count - a[1].count);
-    }
-}
-
-interface Server {
-    name: "clice" | "clangd";
-    client: CliceClient;
-    legend: proto.SemanticTokensLegend;
-}
-
-const CAPABILITIES: proto.ClientCapabilities = {
-    textDocument: {
-        semanticTokens: {
-            requests: { full: true },
-            tokenTypes: [],
-            tokenModifiers: [],
-            formats: ["relative"],
-            multilineTokenSupport: false,
-            overlappingTokenSupport: false,
-        },
-        publishDiagnostics: {},
-    },
-};
-
-async function start(name: "clice" | "clangd", binary: string, workspace: string): Promise<Server> {
-    const client = CliceClient.start(binary, {
-        args:
-            name === "clice"
-                ? ["serve"]
-                : [`--compile-commands-dir=${workspace}`, "--background-index=false", "-j=2"],
-        cwd: workspace,
-    });
-    await client.initialize(new Workspace(workspace), {
-        testDefaults: false,
-        capabilities: CAPABILITIES,
-        initializationOptions:
-            name === "clice"
-                ? {
-                      rules: [{ compile_commands: [workspace] }],
-                      project: { enable_indexing: false, stateful_worker_count: 1 },
-                  }
-                : {},
-    });
-    const provider = client.initResult?.capabilities.semanticTokensProvider as
-        | proto.SemanticTokensOptions
-        | undefined;
-    if (provider === undefined) {
-        throw new Error(`${name} offers no semantic tokens`);
-    }
-    return { name, client, legend: provider.legend };
-}
-
-async function stop(server: Server): Promise<void> {
-    if (server.name === "clice") {
-        await server.client.shutdown();
-        return;
-    }
-    try {
-        await withTimeout(
-            server.client.sendRequest(proto.ShutdownRequest.type),
-            60_000,
-            "shutdown",
-        );
-        await server.client.sendNotification(proto.ExitNotification.type);
-    } catch {
-        // Killed below.
-    }
-    server.client.disposed = true;
-    // Hang detection: a server still running after `exit` is killed.
-    setTimeout(() => server.client.child.kill("SIGKILL"), 5_000).unref();
-    await server.client.exited;
 }
 
 interface IndexDifference {
@@ -318,7 +161,6 @@ function options() {
             clangd: { type: "string" },
             cdb: { type: "string" },
             "no-index": { type: "boolean", default: false },
-            examples: { type: "string", default: "4" },
             json: { type: "string" },
             dump: { type: "string" },
         },
@@ -336,7 +178,6 @@ function options() {
         clangd: values.clangd ?? null,
         cdb: path.resolve(values.cdb),
         index: !values["no-index"],
-        examples: Number(values.examples),
         json: values.json ?? null,
         dump: values.dump === undefined ? null : path.resolve(values.dump),
         files: positionals.map((file) => path.resolve(file)),
@@ -345,16 +186,27 @@ function options() {
 
 async function main(): Promise<void> {
     const opts = options();
-    const differences = new Groups(opts.examples);
-    const indexGroups = new Groups(opts.examples);
+    const differences = new Groups<Example>();
+    const indexGroups = new Groups<Example>();
     const counts = new Map<string, number>();
     const failures: string[] = [];
     let tokenCount = 0;
 
-    const servers = [await start("clice", opts.clice, opts.cdb)];
+    const servers = [
+        await start("clice", opts.clice, opts.cdb, {
+            config: { semantic_tokens: CLANGD_NAMES },
+        }),
+    ];
     if (opts.clangd !== null) {
         servers.push(await start("clangd", opts.clangd, opts.cdb));
     }
+    const legends = servers.map(legendOf);
+    const [ourLegend, theirLegend] = legends;
+    const sharedTypes = new Set(
+        ourLegend?.tokenTypes.filter((t) => theirLegend?.tokenTypes.includes(t)) ?? [],
+    );
+    const sharedModifiers =
+        ourLegend?.tokenModifiers.filter((m) => theirLegend?.tokenModifiers.includes(m)) ?? [];
 
     const files = opts.dump === null ? opts.files : [opts.dump];
     for (const file of files) {
@@ -367,7 +219,7 @@ async function main(): Promise<void> {
         };
 
         const results = await Promise.all(
-            servers.map(async (server) => {
+            servers.map(async (server, index) => {
                 try {
                     const [uri] = await withTimeout(
                         server.client.openAndWait(file, 600_000, { text }),
@@ -377,14 +229,12 @@ async function main(): Promise<void> {
                     const errors = (server.client.diagnostics.get(uri) ?? []).filter(
                         (d) => d.severity === proto.DiagnosticSeverity.Error,
                     );
-                    if (errors.length > 0) {
-                        const first = errors[0];
+                    const first = errors[0];
+                    if (first !== undefined) {
                         const message =
-                            typeof first?.message === "string"
-                                ? first.message
-                                : first?.message.value;
+                            typeof first.message === "string" ? first.message : first.message.value;
                         failures.push(
-                            `${server.name} ${name}: ${errors.length} errors, first at ${(first?.range.start.line ?? 0) + 1}: ${message}`,
+                            `${server.name} ${name}: ${errors.length} errors, first at ${first.range.start.line + 1}: ${message}`,
                         );
                     }
                     const reply = await withTimeout(
@@ -393,7 +243,8 @@ async function main(): Promise<void> {
                         `${server.name} semanticTokens`,
                     );
                     server.client.close(uri);
-                    return decode(reply?.data ?? [], server.legend, lines);
+                    const legend = legends[index];
+                    return legend === undefined ? null : decode(reply?.data ?? [], legend, lines);
                 } catch (error) {
                     failures.push(`${server.name} ${name}: ${String(error)}`);
                     return null;
@@ -429,27 +280,19 @@ async function main(): Promise<void> {
         }
 
         if (theirs !== null && theirs !== undefined) {
-            const mine = new Map(ours.map((t) => [t.begin, t]));
             const spelled = (t: Token) => text.slice(t.begin, t.end);
             const example = (t: Token, detail?: string) => () => ({
                 at: at(t.begin),
-                snippet: lines.snippet(t.begin, t.end),
+                snippet: snippet(lines, t),
                 ...(detail === undefined ? {} : { detail }),
             });
-            // clangd paints inactive code as comment lines and keywords
-            // not at all but `override` and `final`.
+            // clangd paints inactive code as comment lines.
             const compared = (t: Token) =>
-                !t.modifiers.includes("inactive") &&
-                (t.type !== "keyword" || OVERRIDES.includes(spelled(t)));
-            for (const t of ours) {
-                if (!compared(t)) {
-                    mine.delete(t.begin);
-                }
-            }
-            for (const other of theirs) {
-                if (other.type === "comment") {
-                    continue;
-                }
+                sharedTypes.has(t.type) &&
+                t.type !== "comment" &&
+                !t.modifiers.includes("inactive");
+            const mine = new Map(ours.filter(compared).map((t) => [t.begin, t]));
+            for (const other of theirs.filter(compared)) {
                 const token = mine.get(other.begin);
                 const where = context(text, other.begin, other.end);
                 if (token === undefined) {
@@ -460,25 +303,20 @@ async function main(): Promise<void> {
                     );
                     const key =
                         covering === undefined
-                            ? `clangd only: ${other.type} [${other.modifiers.filter((m) => SHARED_MODIFIERS.includes(m) && !SCOPES.includes(m)).join(" ")}] ${where}`
+                            ? `clangd only: ${other.type} ${where}`
                             : `range: clice ${covering.type} covers clangd ${other.type}`;
-                    differences.add(key, name, example(other, covering && spelled(covering)));
-                    continue;
-                }
-                mine.delete(other.begin);
-                const counterparts = COUNTERPARTS[token.type];
-                if (counterparts === undefined) {
                     differences.add(
-                        `kind: clice ${token.type} (no clangd counterpart) vs clangd ${other.type} ${where}`,
-                        name,
-                        example(token),
+                        key,
+                        `${name}:${other.begin}`,
+                        example(other, covering && spelled(covering)),
                     );
                     continue;
                 }
-                if (!counterparts.includes(other.type)) {
+                mine.delete(other.begin);
+                if (token.type !== other.type) {
                     differences.add(
                         `kind: clice ${token.type} vs clangd ${other.type} ${where}`,
-                        name,
+                        `${name}:${token.begin}`,
                         example(token),
                     );
                     continue;
@@ -486,30 +324,26 @@ async function main(): Promise<void> {
                 if (token.end !== other.end) {
                     differences.add(
                         `range: ${token.type} clice \`${spelled(token)}\` vs clangd \`${spelled(other)}\``,
-                        name,
+                        `${name}:${token.begin}`,
                         example(token),
                     );
                 }
-                const a = normalized(token);
-                const b = normalized(other);
+                const a = normalized(token, sharedModifiers);
+                const b = normalized(other, sharedModifiers);
                 for (const [modifier, value] of a) {
-                    const theirs = b.get(modifier);
-                    if (value !== theirs) {
+                    if (value !== b.get(modifier)) {
                         differences.add(
-                            `modifier ${modifier}: clice ${value} vs clangd ${theirs ?? "?"} on ${token.type}/${other.type} ${where}`,
-                            name,
+                            `modifier ${modifier}: clice ${value} vs clangd ${b.get(modifier) ?? "?"} on ${token.type} ${where}`,
+                            `${name}:${token.begin}:${modifier}`,
                             example(token),
                         );
                     }
                 }
             }
             for (const token of mine.values()) {
-                if (COUNTERPARTS[token.type] === undefined) {
-                    continue;
-                }
                 differences.add(
                     `clice only: ${token.type} ${context(text, token.begin, token.end)}`,
-                    name,
+                    `${name}:${token.begin}`,
                     example(token),
                 );
             }
@@ -521,14 +355,9 @@ async function main(): Promise<void> {
                 failures.push(`clice inspect ${name}: ${found.slice(0, 300)}`);
             } else {
                 for (const difference of found) {
-                    const strip = (s: string) =>
-                        s
-                            .split(" ")
-                            .filter((w) => !/Scope$|^Readonly$|^Static$/.test(w))
-                            .join(" ");
                     indexGroups.add(
-                        `${difference.field}: ast ${strip(difference.ast)} | index ${strip(difference.index)}`,
-                        name,
+                        `${difference.field}: ast ${difference.ast} | index ${difference.index}`,
+                        `${name}:${difference.line}:${difference.column}`,
                         () => ({
                             at: `${name}:${difference.line}:${difference.column}`,
                             snippet: difference.text.slice(0, 80),
@@ -546,10 +375,10 @@ async function main(): Promise<void> {
         return;
     }
 
-    const print = (title: string, groups: Groups) => {
+    const print = (title: string, groups: Groups<Example>) => {
         console.log(`\n## ${title}\n`);
         for (const [key, group] of groups.sorted()) {
-            console.log(`- ${group.count} × ${key}  (${group.files.size} files)`);
+            console.log(`- ${group.count} × ${key}`);
             for (const e of group.examples) {
                 console.log(
                     `    ${e.at}  ${e.snippet}${e.detail === undefined ? "" : `  [${e.detail}]`}`,
@@ -577,11 +406,10 @@ async function main(): Promise<void> {
         }
     }
     if (opts.json !== null) {
-        const dump = (groups: Groups) =>
+        const dump = (groups: Groups<Example>) =>
             groups.sorted().map(([key, group]) => ({
                 key,
                 count: group.count,
-                files: group.files.size,
                 examples: group.examples,
             }));
         fs.writeFileSync(

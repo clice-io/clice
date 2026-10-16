@@ -626,11 +626,7 @@ Features::RawResult Features::hover(Ticket ticket,
         }
     }
 
-    auto raw = co_await dispatcher.query(worker::QueryKind::Hover,
-                                         ticket,
-                                         position,
-                                         std::move(token),
-                                         markup);
+    auto raw = co_await dispatcher.hover(ticket, position, std::move(token), markup);
     if(raw.has_value() && to_lsp::is_null(raw.value()) && ast.projections.current(path_id)) {
         // The preamble region is the one place a null from the AST is not
         // authoritative — it is compiled into the PCH and invisible to

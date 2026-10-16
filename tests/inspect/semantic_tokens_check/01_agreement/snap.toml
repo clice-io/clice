@@ -1,0 +1,19 @@
+[test."$ clice inspect semantic-tokens main.cpp --check"]
+stdout = '''
+{
+  "feature": "semantic-tokens",
+  "files": {
+    "main.cpp": {
+      "result": {
+        "ast": 118,
+        "index": 118,
+        "differences": []
+      },
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0

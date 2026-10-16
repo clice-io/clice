@@ -189,7 +189,7 @@
               "type": "typeAlias",
               "modifiers": [
                 "definition",
-                "internal"
+                "global"
               ]
             }
           }
@@ -203,7 +203,7 @@
               "type": "typeAlias",
               "modifiers": [
                 "definition",
-                "internal"
+                "global"
               ]
             }
           }
@@ -242,7 +242,7 @@
               "text": "PointAlias",
               "type": "typeAlias",
               "modifiers": [
-                "internal"
+                "global"
               ]
             }
           }

@@ -1,7 +1,7 @@
 [answers.Byte.semantic_token]
 text = "Byte"
 type = "typeAlias"
-modifiers = ["internal"]
+modifiers = ["global"]
 
 [answers.A.semantic_token]
 text = "A"

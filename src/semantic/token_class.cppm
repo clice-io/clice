@@ -184,6 +184,18 @@ inline void combine(TokenClass& result, TokenClass candidate) {
     }
 }
 
+/// Whether a statement led by `kind` leaves the code around it: `return`,
+/// `break`, `continue`, `goto`, `throw`, `co_return`.
+inline bool leaves_enclosing(clang::tok::TokenKind kind) {
+    return llvm::is_contained({clang::tok::kw_return,
+                               clang::tok::kw_break,
+                               clang::tok::kw_continue,
+                               clang::tok::kw_goto,
+                               clang::tok::kw_throw,
+                               clang::tok::kw_co_return},
+                              kind);
+}
+
 /// What every written name of `decl` shows: its kind and the modifiers it
 /// carries at each occurrence. The tokens of the AST and the symbols the
 /// index stores for its projection both come from here.

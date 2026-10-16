@@ -230,7 +230,7 @@ struct WorkerPoolFixture {
             auto result = co_await deliver(
                 pool,
                 true,
-                [&]() -> RequestResult<worker::QueryParams> {
+                [&]() -> RequestResult<worker::HoverParams> {
                     auto attempt = static_cast<std::size_t>(delivery.sends);
                     delivery.sends += 1;
                     if(attempt < codes.size()) {
@@ -1652,7 +1652,7 @@ ZEST_CASE(DeadlineKillsAndNames) {
     f.set_deadlines(std::chrono::seconds(10), std::chrono::seconds(1));
     // A build outlives the query deadline; a query does not.
     auto build = f.dispatch(0, true, "clice/worker/compile /a.cpp", std::chrono::seconds(2), true);
-    auto hung = f.dispatch(1, true, "clice/worker/query:Hover /b.cpp", std::chrono::seconds(2));
+    auto hung = f.dispatch(1, true, "clice/worker/hover /b.cpp", std::chrono::seconds(2));
 
     f.add_stateless(true, true);
     auto run = f.dispatch(0, false, "clice/worker/tuRun /c.cpp", std::chrono::seconds(20), true);
@@ -1661,13 +1661,13 @@ ZEST_CASE(DeadlineKillsAndNames) {
     f.add_stateful(true);
     auto compiling =
         f.dispatch(2, true, "clice/worker/compile /d.cpp", std::chrono::seconds(5), true);
-    auto queued = f.dispatch(2, true, "clice/worker/query:Hover /d.cpp", std::chrono::seconds(5));
+    auto queued = f.dispatch(2, true, "clice/worker/hover /d.cpp", std::chrono::seconds(5));
 
     f.tick_deadlines();
     ZEXPECT(f.state(2, true) == WorkerPoolFixture::SlotState::Alive);
     ZEXPECT(f.state(0, true) == WorkerPoolFixture::SlotState::Alive);
     ZEXPECT(f.state(1, true) == WorkerPoolFixture::SlotState::Dying);
-    ZEXPECT(f.death(1, true)->culprit == "clice/worker/query:Hover /b.cpp");
+    ZEXPECT(f.death(1, true)->culprit == "clice/worker/hover /b.cpp");
     ZEXPECT(f.death(1, true)->cause.contains("1 seconds"));
     ZEXPECT(f.state(0, false) == WorkerPoolFixture::SlotState::Dying);
     ZEXPECT(f.death(0, false)->culprit == "clice/worker/tuRun /c.cpp");

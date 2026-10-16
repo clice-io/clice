@@ -4,6 +4,7 @@ struct Grid {
 };
 
 Grid§(argument_open)<int> grid§(brace_open){{1, 2, 3, 4}};
+Grid<Grid<int§(inner_close)>§(outer_close)> nested;
 
 int first§(paren_open)(Grid<int>& grid) {
     return grid.cells§(subscript_open)[0];

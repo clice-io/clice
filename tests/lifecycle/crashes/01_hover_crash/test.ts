@@ -1,7 +1,7 @@
 import { test } from "@clice/tools/testing";
 
 test("hover alone pauses", async (t) => {
-    const s = await t.start({ crash: { request: "query:Hover", file: "main.cpp" } });
+    const s = await t.start({ crash: { request: "hover", file: "main.cpp" } });
     const add = t.marker("add");
     s.open("main.cpp");
     await s.sync();

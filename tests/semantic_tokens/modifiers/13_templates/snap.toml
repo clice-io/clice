@@ -22,7 +22,7 @@ semantic_tokens = [
     {
         at = "using ⟦Boxes⟧ = Box<T>[4];",
         type = "typeAlias",
-        modifiers = ["definition", "internal", "template"],
+        modifiers = ["definition", "global", "template"],
     },
     { at = "using Boxes ⟦=⟧ Box<T>[4];", type = "operator" },
     { at = "using Boxes = ⟦Box⟧<T>[4];", type = "struct", modifiers = ["global", "template"] },

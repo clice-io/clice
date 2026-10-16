@@ -61,8 +61,8 @@ static std::uint32_t physical_parallelism() {
 }
 
 std::uint32_t default_stateless_worker_count() {
-    // Config is constructed on every worker request (QueryParams /
-    // build params carry one); query the core count once, not per request.
+    // Config is constructed on every worker request (the feature and build
+    // params carry one); query the core count once, not per request.
     const static std::uint32_t count = std::max(physical_parallelism() / 2, 2u);
     return count;
 }

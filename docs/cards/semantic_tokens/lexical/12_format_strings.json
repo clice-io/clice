@@ -4,18 +4,18 @@
   "subtopic": "lexical",
   "title": "Format strings",
   "summary": "The placeholders of a format string are `formatSpecifier` tokens",
-  "prose": "A string passed where a function takes a format string — a\n`basic_format_string` parameter as `std::format`, `std::print` and {fmt}\ndeclare it, or the argument a `format(printf, …)` attribute names — splits\ninto its text and its placeholders: `{}` and `{:>8.2f}` in the first style,\n`%d` and `%-8.3f` in printf's. Escaped braces and `%%` stay text, and so does\na string no function reads as a format.",
+  "prose": "A string passed where a function takes a format string — a\n`basic_format_string` parameter as `std::format`, `std::print` and {fmt}\ndeclare it, or the argument a `format(printf, …)` attribute names — splits\ninto its text and its placeholders: `{}` and `{:>8.2f}` in the first style,\n`%d` and `%-8.3f` in printf's, a raw string's too. Escaped braces and `%%`\nare escapes; a string no function reads as a format is plain text.",
   "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "fmt.h",
-      "text": "#pragma once\n\nnamespace fmt {\n\ntemplate <class T>\nstruct type_identity {\n    using type = T;\n};\n\ntemplate <class... Args>\nstruct basic_format_string {\n    consteval basic_format_string(const char* text) : text(text) {}\n\n    const char* text;\n};\n\ntemplate <class... Args>\nusing format_string = basic_format_string<typename type_identity<Args>::type...>;\n\ntemplate <class... Args>\nvoid print(format_string<Args...> format, Args&&... args) {}\n\n}  // namespace fmt\n\n[[gnu::format(printf, 1, 2)]] int log_line(const char* format, ...);\n",
+      "text": "#pragma once\n\nnamespace fmt {\n\ntemplate <class T>\nstruct type_identity {\n    using type = T;\n};\n\ntemplate <class... Args>\nstruct basic_format_string {\n    consteval basic_format_string(const char* text) : text(text) {}\n\n    const char* text;\n};\n\ntemplate <class... Args>\nusing format_string = basic_format_string<typename type_identity<Args>::type...>;\n\ntemplate <class... Args>\nvoid print(format_string<Args...> format, Args&&... args) {}\n\n}  // namespace fmt\n\n[[gnu::format(printf, 1, 2)]] int log_line(const char* format, ...);\n\nstruct Logger {\n    [[gnu::format(printf, 2, 3)]] void log(const char* format, ...);\n    [[gnu::format(printf, 2, 3)]] void operator()(const char* format, ...);\n};\n",
       "markers": []
     },
     {
       "path": "main.cpp",
-      "text": "#include \"fmt.h\"\n\nvoid report(int count, double ratio, const char* name) {\n    fmt::print(\"{} items, {:>8.2f} ratio, {{braces}}\\n\", count, ratio);\n    log_line(\"%s: %d of %-8.3f%%\\n\", name, count, ratio);\n    log_line(R\"(%d raw \\n)\", count);\n    const char* plain = \"{} stays text\";\n}\n",
+      "text": "#include \"fmt.h\"\n\nvoid report(Logger logger, int count, double ratio, const char* name) {\n    fmt::print(\"{} items, {:>8.2f} ratio, {{braces}}\\n\", count, ratio);\n    log_line(\"%s: %d of %-8.3f%%\\n\", name, count, ratio);\n    log_line(R\"(%d raw \\n)\", count);\n    logger.log(\"%d member\", count);\n    logger(\"%d call\", count);\n    const char* plain = \"{} stays text\";\n}\n",
       "markers": []
     }
   ],
@@ -63,7 +63,7 @@
               },
               {
                 "at": {
-                  "$place": "⟦void⟧ report(int count, double ratio, const char* name) {",
+                  "$place": "⟦void⟧ report(Logger logger, int count, double ratio, const char* name) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -80,7 +80,7 @@
               },
               {
                 "at": {
-                  "$place": "void ⟦report⟧(int count, double ratio, const char* name) {",
+                  "$place": "void ⟦report⟧(Logger logger, int count, double ratio, const char* name) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -101,7 +101,7 @@
               },
               {
                 "at": {
-                  "$place": "void report(⟦int⟧ count, double ratio, const char* name) {",
+                  "$place": "void report(⟦Logger⟧ logger, int count, double ratio, const char* name) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -110,62 +110,66 @@
                     },
                     "end": {
                       "line": 2,
-                      "character": 15
+                      "character": 18
                     }
                   }
                 },
-                "type": "primitive"
+                "type": "struct",
+                "modifiers": [
+                  "global"
+                ]
               },
               {
                 "at": {
-                  "$place": "void report(int ⟦count⟧, double ratio, const char* name) {",
+                  "$place": "void report(Logger ⟦logger⟧, int count, double ratio, const char* name) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
                       "line": 2,
-                      "character": 16
+                      "character": 19
                     },
                     "end": {
                       "line": 2,
-                      "character": 21
+                      "character": 25
                     }
                   }
                 },
                 "type": "parameter",
                 "modifiers": [
                   "definition",
-                  "local"
+                  "local",
+                  "callable"
                 ]
               },
               {
                 "at": {
-                  "$place": "void report(int count, ⟦double⟧ ratio, const char* name) {",
+                  "$place": "void report(Logger logger, ⟦int⟧ count, double ratio, const char* name) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
                       "line": 2,
-                      "character": 23
+                      "character": 27
                     },
                     "end": {
-                      "line": 2,
-                      "character": 29
-                    }
-                  }
-                },
-                "type": "primitive"
-              },
-              {
-                "at": {
-                  "$place": "void report(int count, double ⟦ratio⟧, const char* name) {",
-                  "path": "main.cpp",
-                  "range": {
-                    "start": {
                       "line": 2,
                       "character": 30
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void report(Logger logger, int ⟦count⟧, double ratio, const char* name) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 31
                     },
                     "end": {
                       "line": 2,
-                      "character": 35
+                      "character": 36
                     }
                   }
                 },
@@ -177,16 +181,54 @@
               },
               {
                 "at": {
-                  "$place": "void report(int count, double ratio, ⟦const⟧ char* name) {",
+                  "$place": "void report(Logger logger, int count, ⟦double⟧ ratio, const char* name) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
                       "line": 2,
-                      "character": 37
+                      "character": 38
                     },
                     "end": {
                       "line": 2,
-                      "character": 42
+                      "character": 44
+                    }
+                  }
+                },
+                "type": "primitive"
+              },
+              {
+                "at": {
+                  "$place": "void report(Logger logger, int count, double ⟦ratio⟧, const char* name) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 45
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 50
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "definition",
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "void report(Logger logger, int count, double ratio, ⟦const⟧ char* name) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 52
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 57
                     }
                   }
                 },
@@ -194,16 +236,16 @@
               },
               {
                 "at": {
-                  "$place": "void report(int count, double ratio, const ⟦char⟧* name) {",
+                  "$place": "void report(Logger logger, int count, double ratio, const ⟦char⟧* name) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
                       "line": 2,
-                      "character": 43
+                      "character": 58
                     },
                     "end": {
                       "line": 2,
-                      "character": 47
+                      "character": 62
                     }
                   }
                 },
@@ -211,16 +253,16 @@
               },
               {
                 "at": {
-                  "$place": "void report(int count, double ratio, const char⟦*⟧ name) {",
+                  "$place": "void report(Logger logger, int count, double ratio, const char⟦*⟧ name) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
                       "line": 2,
-                      "character": 47
+                      "character": 62
                     },
                     "end": {
                       "line": 2,
-                      "character": 48
+                      "character": 63
                     }
                   }
                 },
@@ -231,16 +273,16 @@
               },
               {
                 "at": {
-                  "$place": "void report(int count, double ratio, const char* ⟦name⟧) {",
+                  "$place": "void report(Logger logger, int count, double ratio, const char* ⟦name⟧) {",
                   "path": "main.cpp",
                   "range": {
                     "start": {
                       "line": 2,
-                      "character": 49
+                      "character": 64
                     },
                     "end": {
                       "line": 2,
-                      "character": 53
+                      "character": 68
                     }
                   }
                 },
@@ -813,7 +855,7 @@
               },
               {
                 "at": {
-                  "$place": "⟦const⟧ char* plain = \"{} stays text\";",
+                  "$place": "⟦logger⟧.log(\"%d member\", count);",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -822,6 +864,252 @@
                     },
                     "end": {
                       "line": 6,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "logger.⟦log⟧(\"%d member\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "method",
+                "modifiers": [
+                  "member"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "logger.log(⟦\"⟧%d member\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 15
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 16
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "logger.log(\"⟦%d⟧ member\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 16
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 18
+                    }
+                  }
+                },
+                "type": "formatSpecifier"
+              },
+              {
+                "at": {
+                  "$place": "logger.log(\"%d⟦ member\"⟧, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 18
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 26
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "logger.log(\"%d member\", ⟦count⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 6,
+                      "character": 28
+                    },
+                    "end": {
+                      "line": 6,
+                      "character": 33
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦logger⟧(\"%d call\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 10
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local",
+                  "callable"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "logger⟦(⟧\"%d call\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 11
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "member",
+                  "userDefined"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "logger(⟦\"⟧%d call\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 11
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 12
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "logger(\"⟦%d⟧ call\", count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 12
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 14
+                    }
+                  }
+                },
+                "type": "formatSpecifier"
+              },
+              {
+                "at": {
+                  "$place": "logger(\"%d⟦ call\"⟧, count);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 14
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 20
+                    }
+                  }
+                },
+                "type": "string"
+              },
+              {
+                "at": {
+                  "$place": "logger(\"%d call\", ⟦count⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 22
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 27
+                    }
+                  }
+                },
+                "type": "parameter",
+                "modifiers": [
+                  "local"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "logger(\"%d call\", count⟦)⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 27
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 28
+                    }
+                  }
+                },
+                "type": "operator",
+                "modifiers": [
+                  "member",
+                  "userDefined"
+                ]
+              },
+              {
+                "at": {
+                  "$place": "⟦const⟧ char* plain = \"{} stays text\";",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 8,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 8,
                       "character": 9
                     }
                   }
@@ -834,11 +1122,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 10
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 14
                     }
                   }
@@ -851,11 +1139,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 14
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 15
                     }
                   }
@@ -871,11 +1159,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 16
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 21
                     }
                   }
@@ -892,11 +1180,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 22
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 23
                     }
                   }
@@ -909,11 +1197,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 8,
                       "character": 24
                     },
                     "end": {
-                      "line": 6,
+                      "line": 8,
                       "character": 39
                     }
                   }

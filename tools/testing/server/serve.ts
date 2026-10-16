@@ -74,7 +74,7 @@ import { DAMAGE, describeChange, type Disk } from "../cases/disk.ts";
 import { FAILED_TEARDOWN_MS, StepRecord } from "./steps.ts";
 
 /// A crash or kill the test provokes in the worker running `request` on
-/// `file` ("query:Hover", "compile", "buildPch").
+/// `file` ("hover", "compile", "buildPch").
 export interface WorkerFault {
     request: string;
     file: string;
@@ -935,7 +935,7 @@ export class Serve extends Client {
     /// Park the next `work` on `file` until the test releases it: at its
     /// reply, for a build ("compile", "pch", "pcm", "index"; held in the
     /// master as clice/internal/hold), or where it starts in its worker
-    /// ("compile", "completion", "tuRun", "query:Hover"; gated as
+    /// ("compile", "completion", "tuRun", "hover"; gated as
     /// clice/internal/gate), so a cancel, an edit or a death arrives mid-work.
     /// Resolves once placed; a park left unreleased goes with the server.
     async park(work: string, file: string, options: { at: "reply" | "worker" }): Promise<Park> {

@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "template <typename T>\nstruct Grid {\n    T cells[4];\n};\n\nGrid<int> grid{{1, 2, 3, 4}};\n\nint first(Grid<int>& grid) {\n    return grid.cells[0];\n}\n",
+      "text": "template <typename T>\nstruct Grid {\n    T cells[4];\n};\n\nGrid<int> grid{{1, 2, 3, 4}};\nGrid<Grid<int>> nested;\n\nint first(Grid<int>& grid) {\n    return grid.cells[0];\n}\n",
       "markers": [
         {
           "name": "template_open",
@@ -37,15 +37,27 @@
           "range": false
         },
         {
+          "name": "inner_close",
+          "begin": 99,
+          "end": 99,
+          "range": false
+        },
+        {
+          "name": "outer_close",
+          "begin": 100,
+          "end": 100,
+          "range": false
+        },
+        {
           "name": "paren_open",
-          "begin": 96,
-          "end": 96,
+          "begin": 120,
+          "end": 120,
           "range": false
         },
         {
           "name": "subscript_open",
-          "begin": 137,
-          "end": 137,
+          "begin": 161,
+          "end": 161,
           "range": false
         }
       ]
@@ -92,6 +104,26 @@
             "semantic_token": {
               "text": "{",
               "type": "none"
+            }
+          }
+        },
+        {
+          "label": "inner_close",
+          "marker": "inner_close",
+          "value": {
+            "semantic_token": {
+              "text": ">>",
+              "type": "bracket"
+            }
+          }
+        },
+        {
+          "label": "outer_close",
+          "marker": "outer_close",
+          "value": {
+            "semantic_token": {
+              "text": ">>",
+              "type": "bracket"
             }
           }
         },

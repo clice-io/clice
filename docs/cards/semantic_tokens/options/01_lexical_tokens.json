@@ -4,7 +4,7 @@
   "subtopic": "options",
   "title": "Lexical tokens",
   "summary": "With `lexical` off, only what the editor's own grammar cannot tell is sent",
-  "prose": "Keywords, literals, comments, built-in operators and directives are left\nto the editor's grammar. Names, template brackets, declarator operators and\nthe code of untaken branches are still sent: an inactive token without a\nkind of its own is `plain`, so the grammar's color stays and only dims.",
+  "prose": "Keywords, literals, comments, built-in operators and directives are left\nto the editor's grammar. Names, template brackets and declarator operators\nare still sent, and so is the code of untaken branches, as `plain` tokens:\nthe grammar's color stays and only dims.",
   "status": "supported",
   "issues": [],
   "files": [

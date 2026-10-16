@@ -166,12 +166,7 @@ std::vector<NamedToken> named_tokens(llvm::ArrayRef<feature::SemanticToken> toke
             continue;
         }
         NamedToken entry{.range = token.range, .kind = legend.types[*type]};
-        std::uint32_t bits = 0;
-        for(std::size_t bit = 0; bit < legend.bit_of.size(); bit += 1) {
-            if(token.modifiers & (std::uint32_t(1) << bit)) {
-                bits |= legend.bit_of[bit];
-            }
-        }
+        auto bits = legend.bits(token.modifiers);
         for(auto [position, name]: llvm::enumerate(legend.modifiers)) {
             if(bits & (std::uint32_t(1) << position)) {
                 entry.modifiers.push_back(name);

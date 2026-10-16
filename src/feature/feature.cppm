@@ -544,7 +544,7 @@ struct SemanticToken {
 };
 
 /// The legend clice's tokens are sent with: the names of their kinds and
-/// modifiers after the `[semantic_tokens]` renames, and where each lands.
+/// modifiers after the `[semantic_tokens]` renames, and where each goes.
 struct SemanticTokenLegend {
     constexpr static auto kind_count = kota::meta::reflection<SemanticTokenKind>::member_count;
     constexpr static auto modifier_count =
@@ -558,6 +558,17 @@ struct SemanticTokenLegend {
 
     /// The legend bit of each SemanticTokenModifier, 0 for one dropped.
     std::array<std::uint32_t, modifier_count> bit_of{};
+
+    /// The legend bits of a token's modifier set.
+    std::uint32_t bits(std::uint32_t modifiers) const {
+        std::uint32_t result = 0;
+        for(std::size_t modifier = 0; modifier < modifier_count; modifier += 1) {
+            if(modifiers & (std::uint32_t(1) << modifier)) {
+                result |= bit_of[modifier];
+            }
+        }
+        return result;
+    }
 
     /// The names the options map that name no kind or modifier.
     std::vector<std::string> unknown;
@@ -1203,7 +1214,7 @@ auto index_lang_options(llvm::StringRef path, bool c_only, llvm::StringRef stand
 
 /// The tokens of `content` as the AST's would be, from what the index
 /// records: each symbol's classified from `resolve` at its occurrences, the
-/// roles `decls` give, the writes `relations` record.
+/// roles `decls` give, the writes `writes` record.
 auto index_semantic_tokens(llvm::StringRef content,
                            const clang::LangOptions& lang_opts,
                            const IndexEntries& entries,

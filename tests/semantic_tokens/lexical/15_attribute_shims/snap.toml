@@ -1,0 +1,40 @@
+[answers."main.cpp"]
+semantic_tokens = [
+    { at = "⟦#ifndef⟧ __GNUC__", type = "directive" },
+    { at = "#ifndef ⟦__GNUC__⟧", type = "macro" },
+    { at = "⟦#define⟧ __attribute__(x)", type = "directive", modifiers = ["inactive"] },
+    {
+        at = "#define ⟦__attribute__⟧(x)",
+        type = "macro",
+        modifiers = ["definition", "callable", "empty", "inactive"],
+    },
+    { at = "#define __attribute__⟦(⟧x)", type = "plain", modifiers = ["inactive"] },
+    { at = "#define __attribute__(⟦x⟧)", type = "macroParameter", modifiers = ["inactive"] },
+    { at = "#define __attribute__(x⟦)⟧", type = "plain", modifiers = ["inactive"] },
+    { at = "⟦#endif⟧", type = "directive" },
+    { at = "⟦namespace⟧ {", type = "keyword" },
+    { at = "⟦int⟧ helper(int value, const char* name);", type = "primitive" },
+    {
+        at = "int ⟦helper⟧(int value, const char* name);",
+        type = "function",
+        modifiers = ["declaration", "internal"],
+    },
+    { at = "int helper(⟦int⟧ value, const char* name);", type = "primitive" },
+    {
+        at = "int helper(int ⟦value⟧, const char* name);",
+        type = "parameter",
+        modifiers = ["definition", "local"],
+    },
+    { at = "int helper(int value, ⟦const⟧ char* name);", type = "keyword" },
+    { at = "int helper(int value, const ⟦char⟧* name);", type = "primitive" },
+    {
+        at = "int helper(int value, const char⟦*⟧ name);",
+        type = "operator",
+        modifiers = ["declarator"],
+    },
+    {
+        at = "int helper(int value, const char* ⟦name⟧);",
+        type = "parameter",
+        modifiers = ["definition", "local"],
+    },
+]

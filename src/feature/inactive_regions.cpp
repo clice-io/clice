@@ -13,8 +13,10 @@ namespace clice::feature {
 
 /// Where the directive at `offset` ends: past the lines a backslash
 /// continues and a block comment spans.
-static std::uint32_t directive_end(llvm::StringRef content, std::uint32_t offset) {
-    auto lexer = Lexer::from_line(content, offset);
+static std::uint32_t directive_end(llvm::StringRef content,
+                                   std::uint32_t offset,
+                                   const clang::LangOptions& lang_opts) {
+    auto lexer = Lexer::from_line(content, offset, {.lang_opts = &lang_opts});
     return line_end(content, lexer.advance_until(clang::tok::eod).range.begin);
 }
 
@@ -79,7 +81,8 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                 case Condition::BranchKind::Ifndef: {
                     stack.push_back({});
                     if(is_inactive(condition)) {
-                        stack.back().inactive_begin = directive_end(content, offset);
+                        stack.back().inactive_begin =
+                            directive_end(content, offset, unit.lang_options());
                     } else {
                         stack.back().taken = true;
                     }
@@ -93,7 +96,8 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                     }
                     close_pending(stack.back(), line_begin(content, offset));
                     if(is_inactive(condition)) {
-                        stack.back().inactive_begin = directive_end(content, offset);
+                        stack.back().inactive_begin =
+                            directive_end(content, offset, unit.lang_options());
                     } else {
                         stack.back().taken = true;
                     }
@@ -107,7 +111,8 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                     // #else has no condition value: it is inactive exactly
                     // when an earlier branch of this level was taken.
                     if(stack.back().taken) {
-                        stack.back().inactive_begin = directive_end(content, offset);
+                        stack.back().inactive_begin =
+                            directive_end(content, offset, unit.lang_options());
                     }
                     break;
                 }

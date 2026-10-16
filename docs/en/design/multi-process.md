@@ -75,7 +75,7 @@ The allocation strategy for new files is **least loaded** — the worker current
 
 1. The master process sends CompileParams (source text, compilation flags, PCH/PCM paths, etc.)
 2. The worker compiles the AST and caches it in an in-memory DocumentEntry
-3. Subsequent QueryParams (hover, semantic tokens, document symbol, etc.) reuse the cached AST
+3. Subsequent feature requests (hover, semantic tokens, document symbols, etc.) reuse the cached AST
 4. When file content changes (didChange), the master process sends a DocumentUpdate notification
 5. On the next compilation request, the worker recompiles the AST with the new content
 

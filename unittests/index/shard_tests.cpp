@@ -646,6 +646,11 @@ ZEST_CASE(ReservedLocalParentRejected) {
 
     blob.local_parents = {~std::uint64_t(0)};
     ZASSERT(!make_shard(bytes_of()).loaded());
+
+    // So does a token kind past the enum: it indexes the legend's tables.
+    blob.local_parents = {0};
+    blob.local_token_kinds = {200};
+    ZASSERT(!make_shard(bytes_of()).loaded());
 }
 
 ZEST_CASE(ContentHashMismatchRejected) {

@@ -486,24 +486,18 @@ void StatefulWorker::register_handlers() {
         release_free_memory();
     });
 
-    // === Query (hover, definition, semantic tokens, etc.) ===
+    // === Hover ===
     peer.on_request(
         [this](RequestContext& ctx,
-               const worker::QueryParams& params) -> RequestResult<worker::QueryParams> {
-            using K = worker::QueryKind;
-            auto kind = kota::meta::enum_name(params.kind, "Unknown");
-            switch(params.kind) {
-                case K::Hover:
-                    return with_ast(kind, params, [&](DocumentEntry& doc) {
-                        auto result = feature::hover(*doc.unit,
-                                                     params.offset,
-                                                     params.config.hover,
-                                                     params.config.documentation,
-                                                     params.markup);
-                        return result ? to_raw(*result) : kota::codec::RawValue{"null"};
-                    });
-            }
-            std::unreachable();
+               const worker::HoverParams& params) -> RequestResult<worker::HoverParams> {
+            return with_ast("Hover", params, [&](DocumentEntry& doc) {
+                auto result = feature::hover(*doc.unit,
+                                             params.offset,
+                                             params.config.hover,
+                                             params.config.documentation,
+                                             params.markup);
+                return result ? to_raw(*result) : kota::codec::RawValue{"null"};
+            });
         });
 }
 

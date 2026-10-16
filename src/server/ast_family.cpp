@@ -39,13 +39,6 @@ struct CrashSubject {
 };
 
 CrashSubject crash_subject(std::uint8_t kind) {
-    using Q = worker::QueryKind;
-    if(kind >= evidence_kind(EvidenceKind::Count)) {
-        switch(static_cast<Q>(kind - evidence_kind(EvidenceKind::Count))) {
-            case Q::Hover: return {"computing hover for", "Hover is"};
-        }
-        std::unreachable();
-    }
     switch(static_cast<EvidenceKind>(kind)) {
         case EvidenceKind::Compile: return {"compiling", "Semantic features are"};
         case EvidenceKind::Tidy: return {"running clang-tidy on", "clang-tidy is"};
@@ -68,6 +61,7 @@ CrashSubject crash_subject(std::uint8_t kind) {
         case EvidenceKind::Format: return {"formatting", "Formatting is"};
         case EvidenceKind::SemanticTokens:
             return {"computing semantic highlighting for", "Semantic highlighting is"};
+        case EvidenceKind::Hover: return {"computing hover for", "Hover is"};
         case EvidenceKind::Count: break;
     }
     std::unreachable();

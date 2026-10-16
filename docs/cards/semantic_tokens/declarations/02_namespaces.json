@@ -118,7 +118,7 @@
               "type": "namespace",
               "modifiers": [
                 "definition",
-                "internal"
+                "global"
               ]
             }
           }
@@ -157,7 +157,7 @@
               "text": "alias",
               "type": "namespace",
               "modifiers": [
-                "internal"
+                "global"
               ]
             }
           }

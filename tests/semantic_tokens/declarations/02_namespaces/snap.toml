@@ -16,7 +16,7 @@ modifiers = ["definition", "global"]
 [answers.alias_def.semantic_token]
 text = "alias"
 type = "namespace"
-modifiers = ["definition", "internal"]
+modifiers = ["definition", "global"]
 
 [answers.demo_use.semantic_token]
 text = "demo"
@@ -31,7 +31,7 @@ modifiers = ["global"]
 [answers.alias_use.semantic_token]
 text = "alias"
 type = "namespace"
-modifiers = ["internal"]
+modifiers = ["global"]
 
 [answers.value.semantic_token]
 text = "value"

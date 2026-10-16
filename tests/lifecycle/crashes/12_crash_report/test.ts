@@ -8,7 +8,7 @@ import { test } from "@clice/tools/testing";
 // and the version and target line. The master's log never holds it.
 
 test(async (t) => {
-    const s = await t.start({ crash: { request: "query:Hover", file: "main.cpp" } });
+    const s = await t.start({ crash: { request: "hover", file: "main.cpp" } });
     s.open("main.cpp");
     await s.sync();
     await t.show("hover", s.hover(t.at("main.cpp", "int |add")));

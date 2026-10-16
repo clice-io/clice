@@ -2638,6 +2638,12 @@ ZEST_CASE(FromRejectsSymbolColumns) {
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
     }
     {
+        // Token kinds index the legend's tables.
+        auto hostile = honest;
+        hostile.sym_token_kinds[1] = 200;
+        ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());
+    }
+    {
         auto hostile = honest;
         hostile.sym_name_ends[0] = 100;
         ZEXPECT(!index::TUIndex::from_bytes(hostile.bytes()).loaded());

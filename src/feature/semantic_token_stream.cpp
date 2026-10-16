@@ -63,18 +63,10 @@ bool is_operator(clang::tok::TokenKind kind) {
     }
 }
 
-bool is_string_literal(clang::tok::TokenKind kind) {
-    return clang::tok::isStringLiteral(kind);
-}
-
 bool is_char_literal(clang::tok::TokenKind kind) {
     return kind == clang::tok::char_constant || kind == clang::tok::wide_char_constant ||
            kind == clang::tok::utf8_char_constant || kind == clang::tok::utf16_char_constant ||
            kind == clang::tok::utf32_char_constant;
-}
-
-bool is_hex_digit(char c) {
-    return llvm::isHexDigit(c);
 }
 
 /// The length of the escape sequence at `text[0]`, a backslash.
@@ -98,14 +90,14 @@ std::size_t escape_length(llvm::StringRef text) {
             if(text.size() > 2 && text[2] == '{') {
                 return braced(3);
             }
-            return run(2, text.size(), is_hex_digit);
+            return run(2, text.size(), llvm::isHexDigit);
         }
         case 'u':
         case 'U': {
             if(text.size() > 2 && text[2] == '{') {
                 return braced(3);
             }
-            return run(2, text[1] == 'u' ? 4 : 8, is_hex_digit);
+            return run(2, text[1] == 'u' ? 4 : 8, llvm::isHexDigit);
         }
         case 'N':
         case 'o': {
@@ -183,7 +175,7 @@ std::size_t number_suffix(llvm::StringRef text) {
         i = 2;
     }
     auto digit = [&](char c) {
-        return hex ? is_hex_digit(c) : binary ? (c == '0' || c == '1') : llvm::isDigit(c);
+        return hex ? llvm::isHexDigit(c) : binary ? (c == '0' || c == '1') : llvm::isDigit(c);
     };
     while(i < text.size()) {
         char c = text[i];
@@ -271,7 +263,7 @@ private:
         }
         bool word = clang::tok::isAnyIdentifier(kind) || clang::tok::getKeywordSpelling(kind);
 
-        if(is_string_literal(kind) || is_char_literal(kind)) {
+        if(clang::tok::isStringLiteral(kind) || is_char_literal(kind)) {
             literal(token.range, kind);
             after(kind, false);
             return;
@@ -332,6 +324,7 @@ private:
         definition_control = false;
         directive = Directive::None;
         macro_parameters.clear();
+        attribute.reset();
     }
 
     /// Where attribute names are written: in `[[...]]`, in the double
@@ -341,7 +334,9 @@ private:
         if(attribute) {
             if(depth >= attribute->depth) {
                 attribute->entered = true;
-            } else if(attribute->entered) {
+            } else if(attribute->entered || kind != clang::tok::l_paren) {
+                // Out of the list, or no list after all: a macro named
+                // like the keyword (`#define __attribute__(x)`).
                 attribute.reset();
             }
             return;
@@ -405,8 +400,7 @@ private:
                     return {{.kind = Kind::Keyword}, true};
                 }
             }
-            if(lang_opts.CPlusPlus &&
-               (spelling == "override" || spelling == "final" || spelling == "sealed")) {
+            if(lang_opts.CPlusPlus && is_override_keyword(spelling)) {
                 return {{.kind = Kind::Keyword}, true};
             }
         }
@@ -465,13 +459,7 @@ private:
                 break;
             }
             case Directive::Body: {
-                definition_control |= llvm::is_contained({clang::tok::kw_return,
-                                                          clang::tok::kw_break,
-                                                          clang::tok::kw_continue,
-                                                          clang::tok::kw_goto,
-                                                          clang::tok::kw_throw,
-                                                          clang::tok::kw_co_return},
-                                                         kind);
+                definition_control |= leaves_enclosing(kind);
                 if(word && llvm::is_contained(macro_parameters, spelling)) {
                     piece = {{.kind = Kind::MacroParameter}, true};
                 }
@@ -488,6 +476,8 @@ private:
                 if(spelling == "defined") {
                     piece.classified = {.kind = Kind::Operator};
                     directive = Directive::Defined;
+                } else if(spelling.starts_with("__has_")) {
+                    piece.classified = {.kind = Kind::Operator};
                 }
                 break;
             }
@@ -586,10 +576,6 @@ private:
         }
         bool raw = open > 0 && text[open - 1] == 'R';
 
-        auto user_defined = [&] {
-            auto it = facts.semantic.find(range.begin);
-            return it != facts.semantic.end() && it->second.has(Modifier::UserDefined);
-        }();
         std::optional<FormatStyle> format;
         if(auto it = facts.formats.find(range.begin); it != facts.formats.end()) {
             format = it->second;
@@ -644,30 +630,32 @@ private:
         }
         flush(close + 1);
         if(close + 1 < text.size()) {
-            suffix({at(close + 1), range.end}, base, user_defined);
+            suffix({at(close + 1), range.end}, base, user_defined(range.begin));
         }
     }
 
     void number(LocalSourceRange range) {
         auto text = content.slice(range.begin, range.end);
         auto split = number_suffix(text);
-        auto user_defined = [&] {
-            auto it = facts.semantic.find(range.begin);
-            return it != facts.semantic.end() && it->second.has(Modifier::UserDefined);
-        }();
         auto at = range.begin + static_cast<std::uint32_t>(split);
         emit({range.begin, at}, {{.kind = Kind::Number}, false});
         if(at < range.end) {
-            suffix({at, range.end}, Kind::Number, user_defined);
+            suffix({at, range.end}, Kind::Number, user_defined(range.begin));
         }
     }
 
-    void suffix(LocalSourceRange range, Kind base, bool user_defined) {
+    /// Whether the facts take the literal at `begin` for a user-defined one.
+    bool user_defined(std::uint32_t begin) const {
+        auto it = facts.semantic.find(begin);
+        return it != facts.semantic.end() && it->second.has(Modifier::UserDefined);
+    }
+
+    void suffix(LocalSourceRange range, Kind base, bool user_literal) {
         TokenClass classified{.kind = base, .modifiers = mask(Modifier::Affix)};
-        if(user_defined) {
+        if(user_literal) {
             classified.modifiers |= mask(Modifier::UserDefined);
         }
-        emit(range, {classified, user_defined});
+        emit(range, {classified, user_literal});
     }
 
     /// A comment; a documentation comment's commands as keywords and the
@@ -827,6 +815,16 @@ private:
 };
 
 }  // namespace
+
+bool names_token(clang::tok::TokenKind kind, const TokenClass& token) {
+    return kind == clang::tok::identifier || kind == clang::tok::tilde ||
+           (token.kind == SemanticTokenKind::Operator &&
+            (clang::tok::getPunctuatorSpelling(kind) || clang::tok::isLiteral(kind)));
+}
+
+bool is_override_keyword(llvm::StringRef spelling) {
+    return spelling == "override" || spelling == "final" || spelling == "sealed";
+}
 
 auto semantic_token_stream(llvm::StringRef content,
                            const clang::LangOptions& lang_opts,

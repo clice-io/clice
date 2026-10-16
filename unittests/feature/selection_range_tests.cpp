@@ -33,11 +33,9 @@ ZEST_CASE(UnterminatedLiterals) {
     for(llvm::StringRef text: {R"(f("open)", R"(R"x(open)", R"(R"open)", "u8'"}) {
         ZEXPECT(steps_at(text, text.size() - 1) == std::vector<std::string>{""});
     }
-}
-
-ZEST_CASE(UnterminatedComment) {
-    llvm::StringRef text = "int x; /* open";
-    ZEXPECT(steps_at(text, text.size() - 1) == std::vector<std::string>{"open", "/* open"});
+    // A comment left open runs to the end of the file.
+    llvm::StringRef comment = "int x; /* open";
+    ZEXPECT(steps_at(comment, comment.size() - 1) == std::vector<std::string>{"open", "/* open"});
 }
 
 ZEST_CASE(StrayClosers) {

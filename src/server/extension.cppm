@@ -295,7 +295,7 @@ struct HoldResult {
 /// worker, where the work starts: the worker is busy with it (see
 /// BuildProbe::gate). `request` is the worker request's name as its crash
 /// tag spells it ("compile", "completion", "signatureHelp", "format",
-/// "buildPch", "tuRun", "query:Hover"). The reply is a hold id:
+/// "buildPch", "tuRun", "hover"). The reply is a hold id:
 /// clice/internal/held announces the park, clice/internal/release lets the
 /// work go on.
 struct GateParams {

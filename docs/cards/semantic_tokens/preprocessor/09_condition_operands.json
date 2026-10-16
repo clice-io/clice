@@ -443,6 +443,23 @@
               },
               {
                 "at": {
+                  "$place": "#if defined(FEATURE) && !defined(MISSING) && ⟦__has_include⟧(\"main.cpp\")",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 45
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 58
+                    }
+                  }
+                },
+                "type": "operator"
+              },
+              {
+                "at": {
                   "$place": "#if defined(FEATURE) && !defined(MISSING) && __has_include(⟦\"main.cpp\"⟧)",
                   "path": "main.cpp",
                   "range": {
@@ -597,6 +614,23 @@
                   }
                 },
                 "type": "directive"
+              },
+              {
+                "at": {
+                  "$place": "#if ⟦__has_include⟧(<missing_header.h>)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 17
+                    }
+                  }
+                },
+                "type": "operator"
               },
               {
                 "at": {

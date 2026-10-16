@@ -70,13 +70,6 @@ LangProfile& profile_for(clang::Language lang, clang::LangStandard::Kind std) {
     return profiles.try_emplace({lang, std}, lang, std).first->second;
 }
 
-/// Whether `spelling` is a contextual keyword of overriding — `override`,
-/// `final`, MSVC's `sealed` — which leads to the methods it overrides
-/// without spelling their names.
-bool overrides(llvm::StringRef spelling) {
-    return spelling == "override" || spelling == "final" || spelling == "sealed";
-}
-
 LangProfile& profile_for(const clang::LangOptions& lang_opts) {
     return profile_for(lang_opts.CPlusPlus ? clang::Language::CXX : clang::Language::C,
                        lang_opts.LangStd);
@@ -168,9 +161,7 @@ auto index_semantic_tokens(llvm::StringRef content,
     using Kind = SemanticTokenKind;
     using Modifier = SemanticTokenModifier;
 
-    // The rule the AST applies to the token a name occurrence resolves
-    // to: an identifier, a destructor's `~`, or for an operator the
-    // punctuation or the user-defined literal spelling it.
+    // The token kinds names_token reads.
     llvm::DenseMap<std::uint32_t, clang::tok::TokenKind> lexed;
     Lexer lexer(content, {.lang_opts = &profile.opts});
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
@@ -183,13 +174,7 @@ auto index_semantic_tokens(llvm::StringRef content,
     }
     auto anchors = [&](std::uint32_t offset, const TokenClass& token) {
         auto it = lexed.find(offset);
-        if(it == lexed.end()) {
-            return false;
-        }
-        auto kind = it->second;
-        return kind == clang::tok::identifier || kind == clang::tok::tilde ||
-               (token.kind == Kind::Operator &&
-                (clang::tok::getPunctuatorSpelling(kind) || clang::tok::isLiteral(kind)));
+        return it != lexed.end() && names_token(it->second, token);
     };
 
     TokenFacts facts;
@@ -241,7 +226,7 @@ auto index_semantic_tokens(llvm::StringRef content,
         // `override` and `final` lead to the methods they override without
         // spelling them.
         auto spelling = content.slice(begin, occurrence.range.end);
-        if(overrides(spelling) && info->name != spelling) {
+        if(is_override_keyword(spelling) && info->name != spelling) {
             continue;
         }
         paint(occurrence.range, info->token_class);

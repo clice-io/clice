@@ -21,3 +21,7 @@ type = "attribute"
 [answers.packed.semantic_token]
 text = "packed"
 type = "attribute"
+
+[answers.gnu_style.semantic_token]
+text = "noinline"
+type = "attribute"

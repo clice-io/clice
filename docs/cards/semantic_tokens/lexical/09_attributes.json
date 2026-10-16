@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "[[nodiscard]] int compute();\n[[deprecated(\"use v2\")]] void old_func();\n[[maybe_unused]] int counter = 0;\n\nstruct [[gnu::packed]] Packed {};\n",
+      "text": "[[nodiscard]] int compute();\n[[deprecated(\"use v2\")]] void old_func();\n[[maybe_unused]] int counter = 0;\n\nstruct [[gnu::packed]] Packed {};\n\n__attribute__((noinline)) void slow();\n",
       "markers": [
         {
           "name": "nodiscard",
@@ -48,6 +48,12 @@
           "name": "packed",
           "begin": 120,
           "end": 120,
+          "range": false
+        },
+        {
+          "name": "gnu_style",
+          "begin": 156,
+          "end": 156,
           "range": false
         }
       ]
@@ -113,6 +119,16 @@
           "value": {
             "semantic_token": {
               "text": "packed",
+              "type": "attribute"
+            }
+          }
+        },
+        {
+          "label": "gnu_style",
+          "marker": "gnu_style",
+          "value": {
+            "semantic_token": {
+              "text": "noinline",
               "type": "attribute"
             }
           }

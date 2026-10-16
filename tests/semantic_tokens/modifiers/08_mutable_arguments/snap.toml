@@ -12,3 +12,8 @@ modifiers = ["modification", "local"]
 text = "value"
 type = "variable"
 modifiers = ["local"]
+
+[answers.by_pointer_to_const.semantic_token]
+text = "value"
+type = "variable"
+modifiers = ["local"]

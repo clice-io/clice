@@ -1019,8 +1019,7 @@ ZEST_CASE(ClientCancelSparesCompile) {
         kota::task_group<> group;
         auto cancelled_waiter = [&]() -> kota::task<> {
             auto hover = [&]() -> Dispatcher::RawResult {
-                co_return co_await stack.dispatcher.query(worker::QueryKind::Hover,
-                                                          Ticket::take(session),
+                co_return co_await stack.dispatcher.hover(Ticket::take(session),
                                                           protocol::Position{0, 4},
                                                           source.token());
             };
@@ -1028,9 +1027,8 @@ ZEST_CASE(ClientCancelSparesCompile) {
             cancelled_returned = r.is_cancelled();
         };
         auto other_waiter = [&]() -> kota::task<> {
-            auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
-                                                          Ticket::take(session),
-                                                          protocol::Position{0, 4});
+            auto result =
+                co_await stack.dispatcher.hover(Ticket::take(session), protocol::Position{0, 4});
             other_answered = result.has_value();
         };
         auto gate = stack.gate_compile(session->path_id);
@@ -1084,9 +1082,8 @@ ZEST_CASE(StaleReplyBecomesContentModified) {
         ZASSERT(stack.pool.start(opts));
 
         // Warm the AST: the next query's only suspension is its worker send.
-        auto warm = co_await stack.dispatcher.query(worker::QueryKind::Hover,
-                                                    Ticket::take(session),
-                                                    protocol::Position{0, 4});
+        auto warm =
+            co_await stack.dispatcher.hover(Ticket::take(session), protocol::Position{0, 4});
         ZASSERT(warm);
 
         auto ticket = Ticket::take(session);
@@ -1140,9 +1137,8 @@ ZEST_CASE(HarmlessKindKeepsBar) {
         opts.stateful_count = 1;
         ZASSERT(stack.pool.start(opts));
 
-        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
-                                                      Ticket::take(session),
-                                                      protocol::Position{0, 4});
+        auto result =
+            co_await stack.dispatcher.hover(Ticket::take(session), protocol::Position{0, 4});
         ZEXPECT(result);
         ZEXPECT(session->quarantine->barred(tokens_kind, Quarantine::Clock::now()));
 
@@ -1415,9 +1411,7 @@ ZEST_CASE(EvictedDocumentRecompiles) {
 
         ZASSERT(co_await stack.ast.ensure_compiled(a));
         ZASSERT(co_await stack.ast.ensure_compiled(b));
-        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
-                                                      Ticket::take(a),
-                                                      protocol::Position{0, 5});
+        auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
         ZEXPECT(result.value().data != "null");
 
@@ -1464,9 +1458,7 @@ ZEST_CASE(EvictedAgainRecompiles) {
 
         ZASSERT(co_await stack.ast.ensure_compiled(a));
         evict();
-        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
-                                                      Ticket::take(a),
-                                                      protocol::Position{0, 5});
+        auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
         ZEXPECT(result.value().data != "null");
         ZEXPECT(outputs == 3);
@@ -1490,7 +1482,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
 
     Stack stack;
     auto a = stack.open(tmp.path("a.cpp"), "int alpha = 1;\n");
-    auto hover = evidence_kind(worker::QueryKind::Hover);
+    auto hover = evidence_kind(EvidenceKind::Hover);
     a->quarantine->on_crash(hover, "d1", "cause", Quarantine::Clock::now());
     a->quarantine->on_save();
     int published = 0;
@@ -1507,9 +1499,7 @@ ZEST_CASE(AnswerClearsQueryRecord) {
 
         ZASSERT(co_await stack.ast.ensure_compiled(a));
         auto before = published;
-        auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
-                                                      Ticket::take(a),
-                                                      protocol::Position{0, 5});
+        auto result = co_await stack.dispatcher.hover(Ticket::take(a), protocol::Position{0, 5});
         ZASSERT(result);
         ZEXPECT(result.value().data != "null");
         ZEXPECT(!a->quarantine->crashed(hover));
@@ -1554,9 +1544,7 @@ ZEST_CASE(CloseDuringQueryEnds) {
         auto ticket = Ticket::take(a);
         kota::task_group<> group;
         auto hover = [&]() -> kota::task<> {
-            auto result = co_await stack.dispatcher.query(worker::QueryKind::Hover,
-                                                          ticket,
-                                                          protocol::Position{0, 5});
+            auto result = co_await stack.dispatcher.hover(ticket, protocol::Position{0, 5});
             modified = !result.has_value() && result.error().code == content_modified_code;
         };
         group.spawn(hover());

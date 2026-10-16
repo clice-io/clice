@@ -293,8 +293,7 @@ ZEST_CASE(HoverWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::Hover;
+        worker::HoverParams params;
         params.path = "/tmp/nonexistent.cpp";
         params.offset = 0;
 
@@ -334,8 +333,7 @@ ZEST_CASE(CompileThenHover) {
 
         // After successful compilation, hover should return info.
         // "int foo() { return 42; }\n" is 25 chars, then char 22 on line 1 = offset 47
-        worker::QueryParams hp;
-        hp.kind = worker::QueryKind::Hover;
+        worker::HoverParams hp;
         hp.path = src;
         hp.offset = 47;  // position of 'foo' in 'return foo();'
 
@@ -369,8 +367,7 @@ ZEST_CASE(InvalidUTF8Replaced) {
         cp.arguments = make_args(src);
         ZASSERT(co_await w.peer->send_request(cp));
 
-        worker::QueryParams hp;
-        hp.kind = worker::QueryKind::Hover;
+        worker::HoverParams hp;
         hp.path = src;
         hp.offset = static_cast<std::uint32_t>(text.find("foo()"));
         auto result = co_await w.peer->send_request(hp);
@@ -526,8 +523,7 @@ ZEST_CASE(MultipleSequentialRequests) {
         ZASSERT(cr);
 
         // Now send multiple different feature requests sequentially.
-        worker::QueryParams hp;
-        hp.kind = worker::QueryKind::Hover;
+        worker::HoverParams hp;
         hp.path = src;
         hp.offset = 4;  // 'foo' on line 0
         auto r1 = co_await w.peer->send_request(hp);
@@ -588,8 +584,7 @@ ZEST_CASE(MultipleDocuments) {
 
         // Hover on each document after compilation.
         for(int i = 0; i < 3; i++) {
-            worker::QueryParams hp;
-            hp.kind = worker::QueryKind::Hover;
+            worker::HoverParams hp;
             hp.path = paths[i];
             hp.offset = 4;  // 'var_N'
 
@@ -616,8 +611,7 @@ ZEST_CASE(EvictNotification) {
         w.peer->send_notification(ep);
 
         // Hover on the evicted document reports it unloaded.
-        worker::QueryParams hp;
-        hp.kind = worker::QueryKind::Hover;
+        worker::HoverParams hp;
         hp.path = "/tmp/evict_test.cpp";
         hp.offset = 0;
 
@@ -667,8 +661,7 @@ ZEST_CASE(DocumentLimitEvicts) {
 
         // The third compile overflowed the 2-document cap: the least
         // recently used document was evicted and announced to the master.
-        worker::QueryParams hp;
-        hp.kind = worker::QueryKind::Hover;
+        worker::HoverParams hp;
         hp.path = paths[0];
         hp.offset = 4;  // 'var_0'
 

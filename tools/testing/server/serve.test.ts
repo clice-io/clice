@@ -13,13 +13,13 @@ function logged(lines: readonly string[]): Workspace {
 
 function crash(workspace: Workspace, file: string): string[] {
     return [
-        `[t] [warning] [thread 1] [pool.cpp:39] [SF-0] clice worker crashed in: clice/worker/query:Hover ${workspace.displayPath(file)}`,
+        `[t] [warning] [thread 1] [pool.cpp:39] [SF-0] clice worker crashed in: clice/worker/hover ${workspace.displayPath(file)}`,
         "[t] [error] [thread 1] [pool.cpp:578] [anomaly:WorkerCrash] Worker SF-0 killed by signal 4 (SIGILL)",
     ];
 }
 
 describe("gateLogs", () => {
-    const hover = { crash: { request: "query:Hover", file: "a.cpp" } };
+    const hover = { crash: { request: "hover", file: "a.cpp" } };
 
     test("the declared crash passes", () => {
         const workspace = logged([]);
@@ -46,7 +46,7 @@ describe("gateLogs", () => {
         const workspace = logged(["[t] [info] [thread 1] [x.cpp:1] nothing"]);
         const [error] = gateLogs(
             workspace,
-            { servers: [hover, { crash: { request: "query:Hover", file: "b.cpp" } }] },
+            { servers: [hover, { crash: { request: "hover", file: "b.cpp" } }] },
             false,
         ) as Error[];
         expect(error?.message).toMatch(/never happened:\n.*a.cpp\n.*b.cpp/);

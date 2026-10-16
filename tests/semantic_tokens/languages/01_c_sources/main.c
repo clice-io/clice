@@ -1,5 +1,6 @@
 // A C file: struct tags, typedefs and enumerators are colored as in C++, and
-// `bool` and `true` are the macros <stdbool.h> defines.
+// `bool`, `true` and `and` are the macros <stdbool.h> and <iso646.h> define.
+#include <iso646.h>
 #include <stdbool.h>
 
 struct point {
@@ -16,5 +17,5 @@ static int count;
 bool same(const point_t* a, const struct point* b) {
     enum color c = RED;
     _Bool flag = true;
-    return a->x == b->x && c == RED && flag && count;
+    return a->x == b->x and c == RED && flag && count;
 }

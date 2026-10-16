@@ -55,7 +55,7 @@ SemanticTokenKind kind_of(const clang::NamedDecl* decl) {
         }
         std::unreachable();
     }
-    if(llvm::isa<clang::FieldDecl, clang::IndirectFieldDecl, clang::MSPropertyDecl>(decl)) {
+    if(llvm::isa<clang::FieldDecl, clang::MSPropertyDecl>(decl)) {
         return Field;
     }
     if(llvm::isa<clang::EnumConstantDecl>(decl)) {
@@ -115,9 +115,11 @@ std::optional<SemanticTokenModifier> scope_of(const clang::NamedDecl* decl) {
     if(context->isTranslationUnit() && decl->isTemplateParameter()) {
         return std::nullopt;
     }
-    // Visible, not external, linkage: a C enumerator has no linkage yet
-    // reaches every file its enum does.
-    if(!clang::isExternallyVisible(decl->getLinkageInternal())) {
+    // Linkage, not visibility: a typedef, a namespace alias or a C
+    // enumerator has none, yet reaches every file its scope does.
+    auto linkage = decl->getLinkageInternal();
+    if(linkage == clang::Linkage::Internal || linkage == clang::Linkage::UniqueExternal ||
+       decl->isInAnonymousNamespace()) {
         return Internal;
     }
     return Global;
@@ -340,20 +342,16 @@ TokenClass token_class(const clang::MacroInfo& macro, const clang::SourceManager
     if(macro.tokens_empty()) {
         add(Empty);
     }
-    for(const auto& token: macro.tokens()) {
-        if(token.isOneOf(clang::tok::kw_return,
-                         clang::tok::kw_break,
-                         clang::tok::kw_continue,
-                         clang::tok::kw_goto,
-                         clang::tok::kw_throw,
-                         clang::tok::kw_co_return)) {
-            add(ControlFlow);
-            break;
-        }
+    if(llvm::any_of(macro.tokens(),
+                    [](const clang::Token& token) { return leaves_enclosing(token.getKind()); })) {
+        add(ControlFlow);
     }
+    // Not a predefined one (`__GNUC__`), defined in no file: no index holds
+    // it, and the references a preamble's index answers for would go
+    // without.
     auto location = macro.getDefinitionLoc();
-    if(macro.isBuiltinMacro() || location.isInvalid() || sources.isInSystemHeader(location) ||
-       sources.isWrittenInBuiltinFile(location)) {
+    if(sources.isInSystemHeader(location) &&
+       sources.getFileEntryRefForID(sources.getFileID(location))) {
         add(DefaultLibrary);
     }
     return result;
@@ -431,7 +429,11 @@ TokenClass keyword_class(clang::tok::TokenKind kind) {
         case clang::tok::kw_nullptr:
         case clang::tok::kw___null: return {.kind = Keyword, .modifiers = mask(Literal)};
 
-        default: return {.kind = Keyword};
+        default: {
+            // An alternative operator spelling (`and`) lexes as the
+            // punctuator it spells.
+            return {.kind = clang::tok::getPunctuatorSpelling(kind) ? Operator : Keyword};
+        }
     }
 }
 

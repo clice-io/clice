@@ -75,7 +75,7 @@ Master Process (MasterServer)
 
 1. 主进程发送 CompileParams（源码文本、编译参数、PCH/PCM 路径等）
 2. 工作进程编译 AST，并将其缓存在内存中的 DocumentEntry 中
-3. 后续的 QueryParams（悬停、语义 Token、文档符号等）复用缓存的 AST
+3. 后续的功能请求（悬停、语义 Token、文档符号等）复用缓存的 AST
 4. 当文件内容发生变化（didChange）时，主进程发送 DocumentUpdate 通知
 5. 下次收到编译请求时，工作进程使用新内容重新编译 AST
 

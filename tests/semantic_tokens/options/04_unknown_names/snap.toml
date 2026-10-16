@@ -1,0 +1,5 @@
+[test.guidance]
+value = [
+    "[semantic_tokens] renames `feild`, which names no token kind or modifier",
+    "[semantic_tokens] renames `scope`, which names no token kind or modifier",
+]

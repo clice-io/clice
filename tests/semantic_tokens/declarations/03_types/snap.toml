@@ -31,12 +31,12 @@ modifiers = ["global"]
 [answers.PointAlias_def.semantic_token]
 text = "PointAlias"
 type = "typeAlias"
-modifiers = ["definition", "internal"]
+modifiers = ["definition", "global"]
 
 [answers.WidgetAlias.semantic_token]
 text = "WidgetAlias"
 type = "typeAlias"
-modifiers = ["definition", "internal"]
+modifiers = ["definition", "global"]
 
 [answers.Widget_use.semantic_token]
 text = "Widget"
@@ -51,7 +51,7 @@ modifiers = ["global"]
 [answers.PointAlias_use.semantic_token]
 text = "PointAlias"
 type = "typeAlias"
-modifiers = ["internal"]
+modifiers = ["global"]
 
 [answers.Mode_use.semantic_token]
 text = "Mode"

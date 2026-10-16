@@ -3,7 +3,7 @@
   "topic": "semantic_tokens",
   "subtopic": "modifiers",
   "title": "Scope modifiers",
-  "summary": "Every name carries where it is visible from: its function, its class, its file or everywhere",
+  "summary": "A declared name carries where it is visible from: its function, its class, its file or everywhere",
   "prose": "",
   "status": "supported",
   "issues": [

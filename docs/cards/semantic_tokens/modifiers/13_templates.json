@@ -314,7 +314,7 @@
                 "type": "typeAlias",
                 "modifiers": [
                   "definition",
-                  "internal",
+                  "global",
                   "template"
                 ]
               },

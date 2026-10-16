@@ -1,12 +1,12 @@
 [answers.Ptr_def.semantic_token]
 text = "Ptr"
 type = "typeAlias"
-modifiers = ["definition", "internal", "template"]
+modifiers = ["definition", "global", "template"]
 
 [answers.BoxPtr.semantic_token]
 text = "BoxPtr"
 type = "typeAlias"
-modifiers = ["definition", "internal", "template"]
+modifiers = ["definition", "global", "template"]
 
 [answers.Box.semantic_token]
 text = "Box"
@@ -16,4 +16,4 @@ modifiers = ["global", "template"]
 [answers.Ptr_use.semantic_token]
 text = "Ptr"
 type = "typeAlias"
-modifiers = ["internal", "template"]
+modifiers = ["global", "template"]

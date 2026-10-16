@@ -140,16 +140,15 @@ Outcome Dispatcher::finish(const Ticket& ticket,
     return result;
 }
 
-Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
-                                        const Ticket& ticket,
+Dispatcher::RawResult Dispatcher::hover(const Ticket& ticket,
                                         std::optional<protocol::Position> position,
                                         kota::cancellation_token token,
                                         protocol::MarkupKind markup) {
     auto& session = *ticket.session;
     auto path_id = session.path_id;
     auto path = std::string(project.file_table.resolve(path_id));
-    auto evidence = evidence_kind(kind);
-    auto label = kota::meta::enum_name(kind, "Unknown");
+    auto evidence = evidence_kind(EvidenceKind::Hover);
+    llvm::StringRef label = "Hover";
 
     if(session.quarantine->barred(evidence, Quarantine::Clock::now())) {
         co_return serde_raw{"null"};
@@ -170,8 +169,7 @@ Dispatcher::RawResult Dispatcher::query(worker::QueryKind kind,
     }
     auto wait_ms = timer.ms_f();
 
-    worker::QueryParams wp;
-    wp.kind = kind;
+    worker::HoverParams wp;
     wp.path = path;
     wp.config = project.config;
     wp.markup = markup;

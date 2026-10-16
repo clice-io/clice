@@ -54,8 +54,7 @@ public:
     /// shared compile a query waits on is deliberately NOT cancelled: it
     /// serves every waiter, not this request.
     /// `markup`: what a hover card renders as.
-    RawResult query(worker::QueryKind kind,
-                    const Ticket& ticket,
+    RawResult hover(const Ticket& ticket,
                     std::optional<protocol::Position> position = {},
                     kota::cancellation_token token = {},
                     protocol::MarkupKind markup = protocol::MarkupKind::Markdown);

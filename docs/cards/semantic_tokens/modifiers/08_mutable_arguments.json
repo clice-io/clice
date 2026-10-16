@@ -12,24 +12,30 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "void modify(int& out);\nvoid modify_through(int* out);\nvoid inspect(const int& in);\n\nvoid run() {\n    int value = 0;\n    modify(value);\n    modify_through(&value);\n    inspect(value);\n}\n",
+      "text": "void modify(int& out);\nvoid modify_through(int* out);\nvoid inspect(const int& in);\nvoid peek(const int* in);\n\nvoid run() {\n    int value = 0;\n    modify(value);\n    modify_through(&value);\n    inspect(value);\n    peek(&value);\n}\n",
       "markers": [
         {
           "name": "by_reference",
-          "begin": 127,
-          "end": 127,
+          "begin": 153,
+          "end": 153,
           "range": false
         },
         {
           "name": "by_pointer",
-          "begin": 155,
-          "end": 155,
+          "begin": 181,
+          "end": 181,
           "range": false
         },
         {
           "name": "by_const_reference",
-          "begin": 175,
-          "end": 175,
+          "begin": 201,
+          "end": 201,
+          "range": false
+        },
+        {
+          "name": "by_pointer_to_const",
+          "begin": 219,
+          "end": 219,
           "range": false
         }
       ]
@@ -70,6 +76,19 @@
         {
           "label": "by_const_reference",
           "marker": "by_const_reference",
+          "value": {
+            "semantic_token": {
+              "text": "value",
+              "type": "variable",
+              "modifiers": [
+                "local"
+              ]
+            }
+          }
+        },
+        {
+          "label": "by_pointer_to_const",
+          "marker": "by_pointer_to_const",
           "value": {
             "semantic_token": {
               "text": "value",
