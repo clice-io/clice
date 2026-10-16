@@ -876,8 +876,20 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
     });
     folds.erase(same.begin(), same.end());
 
+    // Folds nesting by characters can still cross by lines where clang's
+    // recovery from broken code closes a declaration's block at another
+    // brace than the text pairs: the outer one stays.
+    llvm::SmallVector<std::uint32_t> ends;
     result.reserve(folds.size());
     for(const auto& fold: folds) {
+        while(!ends.empty() && ends.back() < fold.start) {
+            ends.pop_back();
+        }
+        if(!ends.empty() && fold.end > ends.back()) {
+            continue;
+        }
+        ends.push_back(fold.end);
+
         protocol::FoldingRange range{.start_line = fold.start, .end_line = fold.end};
         if(fold.item->kind) {
             range.kind = *fold.item->kind;
