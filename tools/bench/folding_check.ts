@@ -1,8 +1,9 @@
-/// Folding range check: ask clice — as a client folding whole lines and as
-/// one folding by characters — and, given a binary, clangd for the folding
-/// ranges of real files, check the invariants of every reply, check that
-/// the two clice replies agree, and diff clice's whole-line folds against
-/// clangd's, grouped by the construct that differs.
+/// Folding range check: ask clice — as a client folding by characters, one
+/// folding whole lines as VS Code does, and one also showing collapsed text
+/// as Neovim does — and, given a binary, clangd for the folding ranges of
+/// real files, check the invariants of every reply, check that the
+/// character and whole-line replies agree, and diff clice's whole-line folds
+/// against clangd's, grouped by the construct that differs.
 ///
 /// Usage:
 ///   node tools/bench/folding_check.ts --cdb <dir> [options] <file>...
@@ -24,7 +25,7 @@ import { parseArgs } from "node:util";
 import * as proto from "vscode-languageserver-protocol";
 import { withTimeout } from "../promise.ts";
 import { REPO_ROOT } from "../repo.ts";
-import { Groups, Lines, snippet, start, stop } from "./lsp_check.ts";
+import { Groups, KEYWORDS, Lines, type Token, lex, snippet, start, stop } from "./lsp_check.ts";
 
 /// VS Code's `editor.foldingMaximumRegions` default.
 const VSCODE_REGION_LIMIT = 5000;
@@ -46,115 +47,29 @@ interface Pair {
     close: number;
 }
 
-/// The bracket pairs of the code outside comments, literals and directive
-/// lines; null when the brackets do not balance (a conditional whose
-/// branches unbalance them).
-function bracketPairs(text: string): Pair[] | null {
+/// The bracket pairs of the code outside directive lines; null when the
+/// brackets do not balance (a conditional whose branches unbalance them).
+function bracketPairs(text: string, tokens: Token[]): Pair[] | null {
     const pairs: Pair[] = [];
     const stack: Bracket[] = [];
-    let i = 0;
-    let lastToken = -1;
-    let lineStart = true;
-    const n = text.length;
-    const isIdent = (c: string | undefined) => c !== undefined && /[A-Za-z0-9_$]/.test(c);
-    while (i < n) {
-        const c = text[i] ?? "";
-        if (c === "\n") {
-            lineStart = true;
-            i += 1;
+    let before = -1;
+    for (const token of tokens) {
+        if (token.kind === "comment" || token.directive) {
             continue;
         }
-        if (c === " " || c === "\t" || c === "\r" || c === "\f" || c === "\v") {
-            i += 1;
-            continue;
-        }
-        if (text.startsWith("//", i)) {
-            while (i < n && text[i] !== "\n") {
-                i += text[i] === "\\" && text[i + 1] === "\n" ? 2 : 1;
-            }
-            continue;
-        }
-        if (text.startsWith("/*", i)) {
-            const close = text.indexOf("*/", i + 2);
-            i = close < 0 ? n : close + 2;
-            continue;
-        }
-        if (c === "#" && lineStart) {
-            // Skip the directive's logical line, comments inside it included.
-            while (i < n && text[i] !== "\n") {
-                if (text.startsWith("/*", i)) {
-                    const close = text.indexOf("*/", i + 2);
-                    i = close < 0 ? n : close + 2;
-                } else if (text.startsWith("//", i)) {
-                    while (i < n && text[i] !== "\n") {
-                        i += 1;
-                    }
-                } else if (
-                    text[i] === "\\" &&
-                    (text[i + 1] === "\n" || text.startsWith("\r\n", i + 1))
-                ) {
-                    i += text[i + 1] === "\n" ? 2 : 3;
-                } else {
-                    i += 1;
-                }
-            }
-            continue;
-        }
-        lineStart = false;
-        const start = i;
-        if (isIdent(c)) {
-            while (isIdent(text[i])) {
-                i += 1;
-            }
-            const word = text.slice(start, i);
-            if (/^(u8|u|U|L)?R$/.test(word) && text[i] === '"') {
-                const open = text.indexOf("(", i);
-                const delimiter = text.slice(i + 1, open);
-                const close = text.indexOf(`)${delimiter}"`, open);
-                i = close < 0 ? n : close + delimiter.length + 2;
-            } else if (/^(u8|u|U|L)$/.test(word) && (text[i] === '"' || text[i] === "'")) {
-                i = quoted(text, i + 1, text[i] ?? '"');
-            } else if (/^[0-9]/.test(word)) {
-                // A pp-number: digit separators and exponent signs.
-                while (
-                    i < n &&
-                    (isIdent(text[i]) ||
-                        text[i] === "." ||
-                        (text[i] === "'" && isIdent(text[i + 1])) ||
-                        ((text[i] === "+" || text[i] === "-") && /[eEpP]/.test(text[i - 1] ?? "")))
-                ) {
-                    i += 1;
-                }
-            }
-            lastToken = start;
-            continue;
-        }
-        if (c === '"' || c === "'") {
-            i = quoted(text, i + 1, c);
-            lastToken = start;
-            continue;
-        }
-        if (OPENERS[c] !== undefined) {
-            stack.push({ char: c, offset: i, before: lastToken });
-        } else if (c === ")" || c === "]" || c === "}") {
+        const spelling = text.slice(token.begin, token.end);
+        if (token.kind === "punct" && OPENERS[spelling] !== undefined) {
+            stack.push({ char: spelling, offset: token.begin, before });
+        } else if (token.kind === "punct" && /^[)\]}]$/.test(spelling)) {
             const open = stack.pop();
-            if (open === undefined || OPENERS[open.char] !== c) {
+            if (open === undefined || OPENERS[open.char] !== spelling) {
                 return null;
             }
-            pairs.push({ open, close: i });
+            pairs.push({ open, close: token.begin });
         }
-        lastToken = start;
-        i += 1;
+        before = token.begin;
     }
     return stack.length === 0 ? pairs : null;
-}
-
-function quoted(text: string, start: number, quote: string): number {
-    let k = start;
-    while (k < text.length && text[k] !== quote && text[k] !== "\n") {
-        k += text[k] === "\\" ? 2 : 1;
-    }
-    return Math.min(text.length, k + 1);
 }
 
 /// The lines a whole-line fold hides, shown as its start line and its
@@ -653,7 +568,7 @@ async function main(): Promise<void> {
         // A whole-line fold hides both sides of a bracket pair or neither;
         // only the bracket opening on its start line closes on the line
         // after it, and a conditional's branch may hold half a block.
-        const pairs = bracketPairs(text);
+        const pairs = bracketPairs(text, lex(text));
         if (pairs !== null) {
             for (const fold of folds) {
                 if (fold.kind === "conditionDirective") {
@@ -794,10 +709,7 @@ async function main(): Promise<void> {
                                 : (/^[A-Za-z_]\w*/.exec(text.slice(pair.open.before))?.[0] ??
                                   text[pair.open.before] ??
                                   "");
-                        const keyword =
-                            /^(if|while|for|switch|catch|return|sizeof|alignof|decltype|noexcept|static_assert|requires|operator|template|new|delete|throw|co_await|co_return|co_yield|do|else|try|case|default|namespace|class|struct|union|enum|const|override|final|mutable)$/.test(
-                                before,
-                            );
+                        const keyword = KEYWORDS.has(before);
                         const word = /^[A-Za-z_]/.test(before)
                             ? keyword
                                 ? before

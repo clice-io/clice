@@ -386,8 +386,8 @@ private:
                (token.kind == clang::tok::r_brace && !pairs.in_skipped())) {
                 continue;
             }
-            // `[[ ]]` and `(( ))` write one list in two pairs; the outer
-            // one stands for both.
+            // A pair filling another of its kind exactly, as `[[ ]]` and
+            // `(( ))` do, folds as the outer one.
             if(!candidates.empty() && candidates.back().priority == Priority::Text &&
                candidates.back().fold.range == LocalSourceRange{open->end, token.range.begin} &&
                content[open->begin] == content[open->end]) {
@@ -784,11 +784,9 @@ struct LineFold {
     std::uint32_t start;
     std::uint32_t end;
 
-    /// The line of the fold's closer, which it may fold too.
-    std::optional<std::uint32_t> closer;
-
-    /// Only blanks and other closers precede the closer on its line.
-    bool closer_leads = false;
+    /// The line of the fold's closer when only blanks and other closers
+    /// precede it there: the fold may hide that line too.
+    std::optional<std::uint32_t> closer_line;
 
     bool joined = false;
 };
@@ -872,11 +870,11 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
             continue;
         }
         LineFold fold{.item = &item, .start = *start, .end = item.lines ? *end : *end - 1};
-        if(client.collapsed_text && item.closer) {
-            fold.closer = line_of(*item.closer);
-            fold.closer_leads = content.slice(line_begin(content, *item.closer), *item.closer)
-                                    .ltrim(" \t)]}>")
-                                    .empty();
+        if(client.collapsed_text && item.closer &&
+           content.slice(line_begin(content, *item.closer), *item.closer)
+               .ltrim(" \t)]}>")
+               .empty()) {
+            fold.closer_line = line_of(*item.closer);
         }
         starts.insert(fold.start);
         folds.push_back(fold);
@@ -900,10 +898,10 @@ auto folding_ranges_to_protocol(llvm::ArrayRef<FoldingRange> ranges,
         while(!around.empty() && around.back()->item->range.end <= fold->item->range.begin) {
             around.pop_back();
         }
-        if(fold->closer_leads && !starts.contains(*fold->closer) &&
-           llvm::none_of(around,
-                         [&](const LineFold* outer) { return outer->end + 1 == *fold->closer; })) {
-            fold->end = *fold->closer;
+        auto line = fold->closer_line;
+        if(line && !starts.contains(*line) &&
+           llvm::none_of(around, [&](const LineFold* outer) { return outer->end + 1 == *line; })) {
+            fold->end = *line;
             fold->joined = true;
         }
         around.push_back(fold);
