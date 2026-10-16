@@ -296,6 +296,34 @@ Show how the compiler lays out a class or a field wherever it is hovered: size, 
 
 <!-- END GENERATED CONFIG -->
 
+## `[document_symbols]`
+
+The `[document_symbols]` section controls what the outline of a file lists.
+
+<!-- BEGIN GENERATED CONFIG: document_symbols -->
+
+<div class="config-option">
+
+| Option   | Type   | Default |
+| -------- | ------ | ------- |
+| `macros` | `bool` | `true`  |
+
+List the `#define`s the file writes; an include guard's never lists.
+
+</div>
+
+<div class="config-option">
+
+| Option   | Type   | Default |
+| -------- | ------ | ------- |
+| `locals` | `bool` | `true`  |
+
+List what a function's body declares: its variables, types and lambdas, under the function.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[inlay_hints]`
 
 The `[inlay_hints]` section controls which inlay hints the server produces and how long they may grow. Changes take effect after a server restart; no recompile is involved.

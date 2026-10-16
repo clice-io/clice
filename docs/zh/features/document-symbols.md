@@ -73,14 +73,26 @@ tests/document_symbol/symbol_hierarchy/05_friend_definitions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#499 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **访问控制区段**
 
-成员尚未按所属的 `public` 和 `private` 访问控制区段分组
+成员按代码中的书写顺序列出；所属的 `public` 和 `private` 访问控制区段不构成大纲中的一层
 
 ```case
 tests/document_symbol/symbol_hierarchy/06_access_sections
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#500 -->
+
+**宏声明的成员**
+
+一次宏调用以代码中没有写出的名称声明的内容会列在该调用之下，每个声明只列一次，例如测试宏生成的测试、类宏添加的成员；写在宏实参中的名称则按书写形式列出
+
+```case
+tests/document_symbol/symbol_hierarchy/09_macro_members
 ```
 
 <!-- END CAPABILITY -->
@@ -105,13 +117,11 @@ tests/document_symbol/symbol_kinds/01_core_kinds
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **模板**
 
-类模板、函数模板和变量模板的详细信息中会显示 `template`，Concept 和简写模板（abbreviated templates）也会列出
-
-主模板（primary template）的范围从 `template <...>` 所在行之后开始，而模板特化（template specialization）的范围则包含这一行。
+类模板、函数模板和变量模板的详细信息中会显示 `template`，其范围从 `template` 关键字开始；Concept 和简写模板（abbreviated templates）也会列出
 
 ```case
 tests/document_symbol/symbol_kinds/02_templates
@@ -119,7 +129,7 @@ tests/document_symbol/symbol_kinds/02_templates
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **模板特化和推导指引（deduction guides）**
 
@@ -131,7 +141,7 @@ tests/document_symbol/symbol_kinds/03_specializations
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **类型别名**
 
@@ -143,7 +153,7 @@ tests/document_symbol/symbol_kinds/04_type_aliases
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **显式实例化**
 
@@ -161,8 +171,6 @@ tests/document_symbol/symbol_kinds/05_explicit_instantiations
 
 对象式宏和函数式宏都会列出，函数式宏还会在详细信息中显示其参数
 
-文件开头、首个声明之前的一连串预处理指令中的宏，目前还不会显示在编辑器大纲中。
-
 ```case
 tests/document_symbol/symbol_kinds/06_macros
 ```
@@ -173,7 +181,7 @@ tests/document_symbol/symbol_kinds/06_macros
 
 **模块声明**
 
-模块接口单元会列出其声明的模块
+模块单元会列出其声明或所属的模块
 
 ```case
 tests/document_symbol/symbol_kinds/07_modules
@@ -181,11 +189,11 @@ tests/document_symbol/symbol_kinds/07_modules
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2226 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **包含指令**
 
-`#include` 指令目前还不会显示在大纲中
+`#include` 指令不会列在大纲中，它们的文档链接会跳转到所指的文件
 
 ```case
 tests/document_symbol/symbol_kinds/10_includes
@@ -205,6 +213,30 @@ tests/document_symbol/symbol_kinds/11_pragma_marks
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**命名空间别名**
+
+命名空间别名作为命名空间列出，详细信息为 `namespace alias`
+
+```case
+tests/document_symbol/symbol_kinds/20_namespace_aliases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**头文件保护（include guards）**
+
+头文件保护所用的宏不会列出，即包住整个头文件的 `#ifndef` 和 `#define`
+
+```case
+tests/document_symbol/symbol_kinds/21_include_guards
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 符号详细信息
@@ -217,7 +249,7 @@ tests/document_symbol/symbol_kinds/11_pragma_marks
 
 **函数签名**
 
-`detail` 字段中的参数类型和返回类型用于区分重载；构造函数会省略 `void` 返回类型
+`detail` 字段显示函数的参数（包括参数名）和返回类型，借此区分重载；构造函数不显示返回类型
 
 ```case
 tests/document_symbol/symbol_detail/01_detail_signatures
@@ -229,7 +261,7 @@ tests/document_symbol/symbol_detail/01_detail_signatures
 
 **变量和字段类型**
 
-变量或字段在详细信息中显示其声明类型，Lambda 则显示 `(lambda)`
+变量或字段在详细信息中显示其声明类型，Lambda 则显示调用它时所接受的参数
 
 ```case
 tests/document_symbol/symbol_detail/02_variable_types
@@ -237,11 +269,11 @@ tests/document_symbol/symbol_detail/02_variable_types
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#221 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **默认实参**
 
-函数的详细信息会列出参数类型，不包含默认值
+函数的详细信息会列出参数及其默认值
 
 ```case
 tests/document_symbol/symbol_detail/03_default_arguments
@@ -249,11 +281,11 @@ tests/document_symbol/symbol_detail/03_default_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported clangd#601 -->
 
 **基类**
 
-派生类的详细信息目前还不会显示其基类名称
+派生类的详细信息会按书写形式列出其基类，并带上访问权限
 
 ```case
 tests/document_symbol/symbol_detail/04_base_classes
@@ -261,7 +293,7 @@ tests/document_symbol/symbol_detail/04_base_classes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **带作用域的类型**
 
@@ -349,11 +381,11 @@ tests/document_symbol/symbol_tags/01_deprecated
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2123 -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**访问权限与存储属性标签**
+**成员标记**
 
-大纲尚未用标签标明成员的访问权限、`static`、`virtual` 或抽象性
+成员为 `static`、`virtual` 或 `= 0` 时，其详细信息会注明；协议的标签只能表达弃用，访问权限不显示
 
 ```case
 tests/document_symbol/symbol_tags/02_modifiers

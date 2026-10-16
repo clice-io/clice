@@ -73,14 +73,26 @@ tests/document_symbol/symbol_hierarchy/05_friend_definitions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#499 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Access sections**
 
-Members are not grouped under their `public` and `private` sections yet
+Members list in the order they are written; their `public` and `private` sections are no level of the outline
 
 ```case
 tests/document_symbol/symbol_hierarchy/06_access_sections
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clangd#500 -->
+
+**Members a macro declares**
+
+What one macro invocation declares under names written nowhere lists under the invocation, each declaration once: a test macro's test, the members a class macro adds; a name written in the macro's arguments lists as written
+
+```case
+tests/document_symbol/symbol_hierarchy/09_macro_members
 ```
 
 <!-- END CAPABILITY -->
@@ -105,14 +117,11 @@ tests/document_symbol/symbol_kinds/01_core_kinds
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Templates**
 
-Class, function and variable templates read `template` in their detail, and concepts and abbreviated templates list too
-
-A primary template's extent starts after its `template <...>` line, where
-a specialization's includes it.
+Class, function and variable templates read `template` in their detail, and their extent starts at the `template` keyword; concepts and abbreviated templates list too
 
 ```case
 tests/document_symbol/symbol_kinds/02_templates
@@ -120,7 +129,7 @@ tests/document_symbol/symbol_kinds/02_templates
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Specializations and deduction guides**
 
@@ -132,7 +141,7 @@ tests/document_symbol/symbol_kinds/03_specializations
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Type aliases**
 
@@ -144,7 +153,7 @@ tests/document_symbol/symbol_kinds/04_type_aliases
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Explicit instantiations**
 
@@ -162,9 +171,6 @@ tests/document_symbol/symbol_kinds/05_explicit_instantiations
 
 Object-like and function-like macros list, a function-like one with its parameters as detail
 
-Macros in the leading run of directives, before any declaration, are
-missing from the editor's outline yet.
-
 ```case
 tests/document_symbol/symbol_kinds/06_macros
 ```
@@ -175,7 +181,7 @@ tests/document_symbol/symbol_kinds/06_macros
 
 **Module declarations**
 
-A module interface unit lists the module it declares
+A module unit lists the module it declares or belongs to
 
 ```case
 tests/document_symbol/symbol_kinds/07_modules
@@ -183,11 +189,11 @@ tests/document_symbol/symbol_kinds/07_modules
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2226 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Include directives**
 
-`#include` directives do not list in the outline yet
+`#include` directives do not list in the outline, whose document links lead to the files they name
 
 ```case
 tests/document_symbol/symbol_kinds/10_includes
@@ -207,6 +213,30 @@ tests/document_symbol/symbol_kinds/11_pragma_marks
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Namespace aliases**
+
+A namespace alias lists as a namespace, `namespace alias` its detail
+
+```case
+tests/document_symbol/symbol_kinds/20_namespace_aliases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Include guards**
+
+An include guard's macro does not list: the `#ifndef` and `#define` that wrap the whole header
+
+```case
+tests/document_symbol/symbol_kinds/21_include_guards
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Symbol Detail
@@ -219,7 +249,7 @@ The `detail` beside a name tells overloads apart and shows a variable's declared
 
 **Function signatures**
 
-Parameter and return types in the `detail` field disambiguate overloads; constructors drop the `void` return type
+The `detail` field shows a function's parameters, names included, and its return type, which tells overloads apart; constructors show no return type
 
 ```case
 tests/document_symbol/symbol_detail/01_detail_signatures
@@ -231,7 +261,7 @@ tests/document_symbol/symbol_detail/01_detail_signatures
 
 **Variable and field types**
 
-A variable or field shows its declared type as detail, a lambda `(lambda)`
+A variable or field shows its declared type as detail, a lambda what calling it takes
 
 ```case
 tests/document_symbol/symbol_detail/02_variable_types
@@ -239,11 +269,11 @@ tests/document_symbol/symbol_detail/02_variable_types
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#221 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Default arguments**
 
-A function's detail lists its parameter types without their default values
+A function's detail lists its parameters with their default values
 
 ```case
 tests/document_symbol/symbol_detail/03_default_arguments
@@ -251,11 +281,11 @@ tests/document_symbol/symbol_detail/03_default_arguments
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported clangd#601 -->
 
 **Base classes**
 
-A derived class's detail does not name its base classes yet
+A derived class's detail names its base classes as written, with their access
 
 ```case
 tests/document_symbol/symbol_detail/04_base_classes
@@ -263,7 +293,7 @@ tests/document_symbol/symbol_detail/04_base_classes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Scoped types**
 
@@ -351,11 +381,11 @@ tests/document_symbol/symbol_tags/01_deprecated
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2123 -->
+<!-- BEGIN CAPABILITY: supported -->
 
-**Access and storage tags**
+**Member markers**
 
-The outline does not tag members with their access, `static`, `virtual` or abstractness yet
+A member's detail says `static`, `virtual` and `= 0` where the member is so; the protocol's tags carry only deprecation, and access is not shown
 
 ```case
 tests/document_symbol/symbol_tags/02_modifiers
