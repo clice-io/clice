@@ -158,17 +158,17 @@ async function clangFindings(opts: Options, entry: DatabaseEntry): Promise<Findi
         env: systemEnv(),
     });
     const findings: Finding[] = [];
-    for (const line of ran.stderr.split("\n")) {
-        const match = COMPILER_LINE.exec(line);
+    for (const text of ran.stderr.split("\n")) {
+        const match = COMPILER_LINE.exec(text);
         if (match === null) {
             continue;
         }
-        const [, where = "", row = "0", , level = "", message = "", flags = ""] = match;
+        const [, where = "", line = "0", , level = "", message = "", flags = ""] = match;
         if (level === "note" || path.resolve(entry.directory, where) !== file) {
             continue;
         }
         findings.push({
-            line: Number(row),
+            line: Number(line),
             severity: severity(level),
             message: normalize(message),
             name: flags.split(",")[0] ?? "",
@@ -268,16 +268,16 @@ async function lintFindings(opts: Options): Promise<Map<string, Finding[]>> {
         env: systemEnv(),
     });
     const result = new Map<string, Finding[]>();
-    for (const line of linted.stdout.split("\n")) {
-        const match = LINT_LINE.exec(line);
+    for (const text of linted.stdout.split("\n")) {
+        const match = LINT_LINE.exec(text);
         if (match === null) {
             continue;
         }
-        const [, file = "", row = "0", , level = "", message = "", check = ""] = match;
+        const [, file = "", line = "0", , level = "", message = "", check = ""] = match;
         const compiler = check.startsWith("clang-diagnostic-");
         const findings = result.get(file) ?? [];
         findings.push({
-            line: Number(row),
+            line: Number(line),
             severity: severity(level),
             message: normalize(message),
             name: compiler ? `-W${check.slice("clang-diagnostic-".length)}` : check,

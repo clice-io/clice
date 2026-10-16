@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :compile.diagnostic;
 import :feature.feature;
 import :server.format;
 
@@ -12,8 +13,7 @@ namespace clice {
 /// Clang diagnostics indicating that an input file could not be found —
 /// the symptom of a guessed compile command missing include paths.
 static bool is_file_not_found(const feature::FileDiagnostic& diagnostic) {
-    return diagnostic.source == DiagnosticSource::Clang &&
-           diagnostic.origin != feature::DiagnosticOrigin::IncluderContext &&
+    return diagnostic.origin != feature::DiagnosticOrigin::IncluderContext &&
            (diagnostic.id == clang::diag::err_pp_file_not_found ||
             diagnostic.id == clang::diag::err_pp_error_opening_file ||
             diagnostic.id == clang::diag::err_module_not_found);
@@ -46,10 +46,20 @@ static feature::FileDiagnostic make_unmatched_context_diagnostic(llvm::StringRef
 
 std::vector<feature::FileDiagnostic>
     format_diagnostics(const CompileOutput& output, const feature::DiagnosticsOptions& options) {
+    // Of the diagnostics moved from other files to one spot, the first
+    // error and the first warning show: a broken header's every error
+    // would pile up on its #include.
+    llvm::DenseSet<std::tuple<std::uint32_t, std::uint32_t, bool>> relocated;
     auto diagnostics = output.diagnostics;
     std::erase_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
-        return (output.line_limit && diagnostic.range.start.line >= *output.line_limit) ||
-               llvm::is_contained(options.suppress, diagnostic.code);
+        auto start = diagnostic.range.start;
+        return (output.line_limit && start.line >= *output.line_limit) ||
+               llvm::is_contained(options.suppress, diagnostic.code) ||
+               (diagnostic.origin != feature::DiagnosticOrigin::File &&
+                !relocated
+                     .insert(
+                         {start.line, start.character, diagnostic.level >= DiagnosticLevel::Error})
+                     .second);
     });
 
     // Guidance (and only when it can explain something): an exact CDB match

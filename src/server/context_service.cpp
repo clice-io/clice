@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :compile.diagnostic;
 import :feature.feature;
 import :project.command_resolver;
 import :project.configuration;
@@ -40,8 +41,7 @@ std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagn
         diag::err_pp_unterminated_conditional,
     };
     return llvm::count_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
-        return diagnostic.source == DiagnosticSource::Clang &&
-               diagnostic.level >= DiagnosticLevel::Error && llvm::is_contained(ids, diagnostic.id);
+        return diagnostic.level >= DiagnosticLevel::Error && llvm::is_contained(ids, diagnostic.id);
     });
 }
 

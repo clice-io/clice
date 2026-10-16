@@ -1528,8 +1528,8 @@ void LSPClient::push_output(ProjectServer& project, const Session& session) {
     // tokens (including their inactive regions), hints and folds with no
     // didChange to trigger the client's own re-pull. Edit-driven compiles
     // need neither: the client re-pulls on didChange and that pull awaits
-    // the fresh AST.
-    if(output.version.has_value()) {
+    // the fresh AST. A compile that failed before parsing reshaped nothing.
+    if(output.version.has_value() && !output.failed) {
         auto [it, inserted] = output_versions.try_emplace(session.path_id, *output.version);
         bool same_text = !inserted && it->second == *output.version;
         it->second = *output.version;

@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :compile.diagnostic;
 import :compile.tidy;
 import :feature.feature;
 import :index.tu_index;
@@ -172,8 +173,7 @@ static void explain_failed_imports(std::vector<feature::FileDiagnostic>& diagnos
         }
         auto not_found = std::format("module '{}' not found", modules.module_of(module));
         for(auto& diagnostic: diagnostics) {
-            if(diagnostic.source == DiagnosticSource::Clang &&
-               diagnostic.id == clang::diag::err_module_not_found &&
+            if(diagnostic.id == clang::diag::err_module_not_found &&
                diagnostic.message == not_found) {
                 diagnostic.message = message;
                 // As clang codes it: a cycle only where the imported module

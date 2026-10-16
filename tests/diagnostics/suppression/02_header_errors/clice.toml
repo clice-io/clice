@@ -1,0 +1,2 @@
+[diagnostics]
+suppress = ["err_init_conversion_failed"]

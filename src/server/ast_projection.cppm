@@ -35,6 +35,10 @@ struct CompileOutput {
     /// The host whose includer context the compile needed but could not
     /// rebuild (Resolution::unmatched_host), as shown; empty otherwise.
     std::string unmatched_host;
+
+    /// The compile failed before parsing: its diagnostics say why, and
+    /// nothing else came of it.
+    bool failed = false;
 };
 
 /// One open document's compilation products, owned by the AST family and

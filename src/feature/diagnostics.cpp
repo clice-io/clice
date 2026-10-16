@@ -173,9 +173,8 @@ private:
     /// Locate the diagnostic in the main file. One from another file moves
     /// there: to the instantiation the main file requested, else an error
     /// to the #include that brought its file in, else to the top of the
-    /// file — saying where it happened and pointing back at it, only the
-    /// first of those landing on one spot kept; any other to its first
-    /// note in the main file. A borrowed includer context is the host's
+    /// file — saying where it happened and pointing back at it; any other
+    /// to its first note in the main file. A borrowed includer context is the host's
     /// code: an error raised there moves to where the main file takes part
     /// in it, a note, and to the top a fatal one, which silences
     /// everything after it, or a missing header, the likely cause of what
@@ -253,14 +252,13 @@ private:
         return true;
     }
 
-    /// Show a diagnostic of another file at `anchor` in the main file,
-    /// unless one moved there already.
+    /// Show a diagnostic of another file at `anchor` in the main file.
     bool relocate(const Diagnostic& main,
                   FileDiagnostic& diagnostic,
                   LocalSourceRange anchor,
                   DiagnosticOrigin origin) {
         auto range = map.range(anchor, encoding);
-        if(!range || !relocated.insert(anchor.begin).second) {
+        if(!range) {
             return false;
         }
         diagnostic.range = *range;
@@ -322,9 +320,6 @@ private:
     CompilationUnit& unit;
     PositionEncoding encoding;
     PositionMap map;
-
-    /// Where diagnostics from other files were moved to.
-    llvm::DenseSet<std::uint32_t> relocated;
 };
 
 constexpr protocol::Range file_top = {
