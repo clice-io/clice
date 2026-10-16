@@ -59,3 +59,34 @@ selection_ranges = ["void ⟦rarely⟧();", "⟦void rarely()⟧;", "⟦void rar
 
 [answers.inherited]
 selection_ranges = ["void ⟦retired⟧() {}", "⟦void retired()⟧ {}", "⟦void retired() {}⟧"]
+
+[answers.argument]
+selection_ranges = [
+    "CXX(nodiscard) int ⟦make⟧();",
+    "CXX(nodiscard) ⟦int make()⟧;",
+    "⟦CXX(nodiscard) int make()⟧;",
+    "⟦CXX(nodiscard) int make();⟧",
+]
+
+[answers.alias]
+selection_ranges = [
+    "int ⟦plain⟧ __attribute((unused));",
+    "⟦int plain __attribute((unused))⟧;",
+    "⟦int plain __attribute((unused));⟧",
+]
+
+[answers.inner]
+selection_ranges = [
+    "[[maybe_unused]] int ⟦eight⟧ = 8;",
+    "⟦[[maybe_unused]] int eight = 8⟧;",
+    "⟦[[maybe_unused]] int eight = 8;⟧",
+    "⟦[[maybe_unused]] int eight = 8; … return eight;⟧ (2 lines)",
+    "int aligned_by __attribute__((aligned([] ⟦{ … }⟧ (4 lines)",
+    "int aligned_by __attribute__((aligned(⟦[] { … }⟧ (4 lines)",
+    "int aligned_by __attribute__((aligned(⟦[] { … }()⟧ (4 lines)",
+    "int aligned_by __attribute__((aligned⟦([] { … }())⟧ (4 lines)",
+    "int aligned_by __attribute__((⟦aligned([] { … }())⟧ (4 lines)",
+    "int aligned_by ⟦__attribute__((aligned([] { … }())))⟧ (4 lines)",
+    "⟦int aligned_by __attribute__((aligned([] { … }())))⟧ (4 lines)",
+    "⟦int aligned_by __attribute__((aligned([] { … }())));⟧ (4 lines)",
+]

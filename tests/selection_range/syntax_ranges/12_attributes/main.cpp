@@ -19,3 +19,13 @@ void §(pragma)rarely();
 
 [[deprecated]] void retired();
 void §(inherited)retired() {}
+
+#define CXX(x) [[x]]
+CXX(nodiscard) int §(argument)make();
+
+int §(alias)plain __attribute((unused));
+
+int aligned_by __attribute__((aligned([] {
+    [[maybe_unused]] int §(inner)eight = 8;
+    return eight;
+}())));

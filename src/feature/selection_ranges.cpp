@@ -215,8 +215,8 @@ struct TextSteps {
     /// Where the closer of the bracket opening at each offset ends.
     llvm::DenseMap<std::uint32_t, std::uint32_t> closers;
 
-    /// The attribute lists in order: `[[…]]`, `__attribute__((…))`,
-    /// `__declspec(…)`.
+    /// The attribute lists in the order they close: `[[…]]`,
+    /// `__attribute__((…))`, `__declspec(…)`.
     std::vector<LocalSourceRange> attributes;
 };
 
@@ -373,7 +373,8 @@ TextSteps scan_text(llvm::StringRef content,
             if(doubled && token.kind == clang::tok::r_square) {
                 text.ranges.back() = {open->begin, token.range.end};
                 text.attributes.push_back(text.ranges.back());
-            } else if(doubled && token.kind == clang::tok::r_paren && after("__attribute__")) {
+            } else if(doubled && token.kind == clang::tok::r_paren &&
+                      (after("__attribute__") || after("__attribute"))) {
                 text.ranges.back() = {keyword->range.begin, token.range.end};
                 text.attributes.push_back(text.ranges.back());
             } else {
@@ -586,20 +587,32 @@ LocalSourceRange attribute_range(llvm::ArrayRef<Token> tokens,
     return range;
 }
 
-/// Where an attribute is written: with its argument list, and the
-/// attribute list it is in.
+/// Where an attribute of the declaration at `decl` is written: with its
+/// argument list, and the attribute list it is in.
 std::optional<LocalSourceRange> attribute_extent(CompilationUnit& unit,
                                                  llvm::ArrayRef<Token> tokens,
                                                  const TextSteps& text,
-                                                 const clang::Attr& attr) {
+                                                 const clang::Attr& attr,
+                                                 LocalSourceRange decl) {
     auto range = focus_range(unit, attr.getRange());
     if(!range) {
         return std::nullopt;
     }
-    auto list =
-        std::ranges::upper_bound(text.attributes, range->begin, {}, &LocalSourceRange::begin);
-    if(list != text.attributes.begin() && std::prev(list)->contains(*range)) {
-        return *std::prev(list);
+    // Of the lists ending after the attribute, the first holding it is the
+    // innermost (an attribute in a lambda in another's argument).
+    auto list = std::ranges::find_if(
+        std::ranges::lower_bound(text.attributes, range->end, {}, &LocalSourceRange::end),
+        text.attributes.end(),
+        [&](const LocalSourceRange& list) { return list.contains(*range); });
+    if(list != text.attributes.end()) {
+        return *list;
+    }
+    // A macro argument naming the attribute the macro writes the list of
+    // (`#define CXX(x) [[x]]`) is written as the whole invocation, unless
+    // the declaration is in it too.
+    if(auto invocation = unit.focus_file().produced_range(attr.getRange());
+       invocation && !invocation->contains(decl)) {
+        *range = hull(*range, *invocation);
     }
     return attribute_range(tokens, text, *range);
 }
@@ -616,7 +629,7 @@ LocalSourceRange with_attributes(CompilationUnit& unit,
            decls::applied_by_pragma(decl.getASTContext(), written.getBegin())) {
             continue;
         }
-        if(auto extent = attribute_extent(unit, tokens, text, *attr)) {
+        if(auto extent = attribute_extent(unit, tokens, text, *attr, range)) {
             range = hull(range, *extent);
         }
     }
