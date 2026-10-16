@@ -239,13 +239,14 @@ async function serverFindings(
         },
     });
     const result = new Map<string, Finding[]>();
+    let done = 0;
     const queue = [...entries];
     const worker = async () => {
         for (let entry = queue.shift(); entry !== undefined; entry = queue.shift()) {
             const file = entrySource(entry);
             const [uri] = client.open(file);
-            let diagnostics: proto.Diagnostic[] = [];
             try {
+                let diagnostics: proto.Diagnostic[];
                 if (tool === "clice") {
                     diagnostics = await withTimeout(client.pullDiagnostics(uri), 300_000, file);
                 } else {
@@ -253,12 +254,13 @@ async function serverFindings(
                     await withTimeout(arrived, 300_000, file);
                     diagnostics = client.diagnostics.get(uri) ?? [];
                 }
+                result.set(file, diagnostics.map(fromLSP));
             } catch (error) {
                 process.stderr.write(`${tool}: ${file}: ${String(error)}\n`);
             }
             client.close(uri);
-            result.set(file, diagnostics.map(fromLSP));
-            process.stderr.write(`${tool}: ${result.size}/${entries.length}\r`);
+            done += 1;
+            process.stderr.write(`${tool}: ${done}/${entries.length}\r`);
         }
     };
     await Promise.all(Array.from({ length: opts.jobs }, worker));
@@ -282,28 +284,34 @@ async function serverFindings(
 /// the first.
 const LINT_LINE = /^(.*?):(?:(\d+):(\d+):)? (error|warning): (.*) \[([^\]]+)\]$/;
 
-/// `clice lint` over the whole workspace, its findings by file.
-async function lintFindings(opts: Options): Promise<Map<string, Finding[]>> {
+/// `clice lint` over the whole workspace, its findings in the files
+/// compared.
+async function lintFindings(
+    opts: Options,
+    entries: DatabaseEntry[],
+): Promise<Map<string, Finding[]>> {
     const linted = await run(opts.clice, ["lint", "--workspace", opts.workspace], {
         env: systemEnv(),
     });
-    const result = new Map<string, Finding[]>();
+    const result = new Map<string, Finding[]>(entries.map((entry) => [entrySource(entry), []]));
     for (const text of linted.stdout.split("\n")) {
         const match = LINT_LINE.exec(text);
         if (match === null) {
             continue;
         }
-        const [, file = "", line = "1", , level = "", message = "", check = ""] = match;
+        const [, written = "", line = "1", , level = "", message = "", check = ""] = match;
+        const file = [...result.keys()].find((source) => samePath(source, written));
+        if (file === undefined) {
+            continue;
+        }
         const compiler = check.startsWith("clang-diagnostic-");
-        const findings = result.get(file) ?? [];
-        findings.push({
+        result.get(file)?.push({
             line: Number(line),
             severity: severity(level),
             message: normalize(message),
             name: compiler ? `-W${check.slice("clang-diagnostic-".length)}` : check,
             tidy: !compiler,
         });
-        result.set(file, findings);
     }
     return result;
 }
@@ -382,10 +390,11 @@ function report(
     for (const entry of entries) {
         const file = entrySource(entry);
         const by: Partial<Record<Tool, Finding[]>> = {};
+        // A tool that did not check the file is left out of its comparison.
         for (const tool of TOOLS) {
-            const map = found[tool];
-            if (map !== undefined && !(tool === "clang" && unchecked.has(file))) {
-                by[tool] = map.get(file) ?? [];
+            const findings = found[tool]?.get(file);
+            if (findings !== undefined) {
+                by[tool] = findings;
             }
         }
         all.push(...differences(file, by));
@@ -450,7 +459,7 @@ async function main() {
         found.clangd = await serverFindings("clangd", opts, entries);
     }
     if (opts.lint) {
-        found.lint = await lintFindings(opts);
+        found.lint = await lintFindings(opts, entries);
     }
 
     if (opts.json !== null) {
@@ -462,7 +471,7 @@ async function main() {
                 ...Object.fromEntries(
                     TOOLS.filter((tool) => found[tool] !== undefined).map((tool) => [
                         tool,
-                        found[tool]?.get(file) ?? [],
+                        found[tool]?.get(file) ?? null,
                     ]),
                 ),
             };
