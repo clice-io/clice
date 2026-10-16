@@ -110,12 +110,21 @@ private:
 
     void record_invocation(clang::SourceRange range);
 
+    /// The macro argument tokens set_macro_origins meets: those the
+    /// expansion getMacroArgExpandedLocation picks stands for, and the
+    /// first expanded copy of each.
+    struct ArgumentCopies {
+        llvm::DenseSet<std::uint32_t> picked;
+        llvm::DenseMap<std::uint32_t, std::uint32_t> first;
+    };
+
     /// Sets the origins of expanded tokens [begin, end), a run of macro
     /// FileID `fid` lexed from the main file; `name` is their invocation's.
     void set_macro_origins(clang::FileID fid,
                            std::uint32_t begin,
                            std::uint32_t end,
-                           std::uint32_t name);
+                           std::uint32_t name,
+                           ArgumentCopies& arguments);
 
     bool in_main_file(clang::SourceLocation location) const {
         return location.isFileID() && main_begin <= location && location < main_end;
