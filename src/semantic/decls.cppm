@@ -20,6 +20,11 @@ bool is_templated(const clang::Decl* decl);
 /// open the end of its file.
 auto written_range(const clang::Decl* decl) -> clang::SourceRange;
 
+/// Whether a `#pragma clang attribute` region applies the attribute at
+/// `location`, as a directive or as the `_Pragma` operator in a macro: the
+/// attribute is written on the pragma's line, not on the declaration.
+bool applied_by_pragma(const clang::ASTContext& context, clang::SourceLocation location);
+
 /// Check whether the decl names an entity its module exports: declared at
 /// namespace scope by an `export` declaration, or a namespace holding one.
 /// Members of an exported class are not exported entities of their own.
