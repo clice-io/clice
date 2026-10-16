@@ -970,6 +970,13 @@ auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
 auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
     -> std::vector<TextReplacement>;
 
+/// `edits` with what they leave dangling removed, as clang-tidy cleans up
+/// the fixes it applies: the comma before `)` a removed argument leaves,
+/// the `:` of a constructor whose initializers are all removed.
+auto cleanup_edits(llvm::StringRef file,
+                   llvm::StringRef content,
+                   std::vector<TextReplacement> edits) -> std::vector<TextReplacement>;
+
 /// `text` reformatted as a standalone snippet with the style configured
 /// for `file`; unchanged without one.
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string;
