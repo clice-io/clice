@@ -18,10 +18,10 @@ Branch (CLAUDE.md) → code → commit → self-review and fixes → pre-push ch
 1. **Docs sync — once, at the end, delegated.** If the branch touched documented cases (a `README.md` or the output of a case that has one), config annotations, or anything under `docs/`, hand the sync to an Opus subagent following the docs skill's "Syncing docs at the end of a branch". Repeat on later pushes only when those inputs changed again.
 2. `pixi run format`.
 3. `npm run check` at the repo root when TypeScript changed; `pixi run check-layers` when C++ imports or includes changed; `pixi run check-timers` when C++ waits on the clock.
-4. The unit tests, the cases and `npm test -w tools` pass locally (the test skill). Changes to async code, shutdown or position math run the Debug suites too: ASan and the assertions of clang and kotatsu live only there.
+4. The unit tests, the cases and `npm test -w tools` pass on a box (the test skill), or in CI when you push while the box comes up. Changes to async code, shutdown or position math run the Debug suites too: ASan and the assertions of clang and kotatsu live only there.
 5. Read results from a full log, not a pipe: `cmd > /tmp/x.log 2>&1`, then the exit code and the log tail (`Build did NOT complete successfully`, `FAILED`, the suite summary). `| tail` reports tail's exit code (a failed build looks green), `pipefail` + `| grep error` fails when there is nothing to find. Before running a suite, check the test binary is newer than your last source edit — a pass on a stale binary verifies nothing.
-6. Long local runs (build, suites, codex) go through Bash `run_in_background`, which notifies on exit — not a detached script polled by timed wake-ups.
-7. A platform failure is reproduced and fixed on that platform before pushing — a Windows checkout reachable from WSL, or a box (the agent-box skill).
+6. Long runs (`box run` builds and suites, codex) go through Bash `run_in_background`, which notifies on exit — not a detached script polled by timed wake-ups.
+7. A platform failure is reproduced and fixed on that platform before pushing — a box of that OS (the test skill).
 
 ## Pushing
 

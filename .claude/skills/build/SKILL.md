@@ -1,10 +1,27 @@
 ---
 name: build
-description: Build clice on this machine. Optional arg = build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context; only the outcome returns.
+description: Build clice, on a box unless a local build is truly necessary. Optional arg = build type (Debug | RelWithDebInfo, default RelWithDebInfo). Runs in a forked context; only the outcome returns.
 context: fork
 ---
 
 Build the project with the requested build type (default `RelWithDebInfo`).
+
+## Where it runs
+
+On a box, not on this machine: this machine hosts every agent's session, and one build saturates it. Build here only when truly necessary. The agent-box skill covers the tool itself (leases, limits, safety); for clice:
+
+```bash
+id=$(box up clice-io/clice)                     # ~1 min; reuse yours from `box ls`
+box push $id                                    # the working tree's tracked files
+box run $id 'pixi run build RelWithDebInfo'     # run_in_background; warm for the whole lease
+box down $id                                    # at the end of the task, also on failure
+```
+
+- A box restores the Bazel and ThinLTO caches of main's CI, RelWithDebInfo only: a Debug build there starts cold.
+- Several boxes in parallel are fine when the work splits (RelWithDebInfo and Debug, platforms, A/B). While a box comes up, push and let CI verify; it runs many jobs at once.
+- Windows programs build on a linux box (the test skill runs them on a windows box).
+
+## Commands
 
 - Build: `pixi run build [type]` = `npx bazel build --config=[type] //:dist` (npm's bazelisk). Each type has its own output directory: `build/[type]/bin` is Bazel's output tree, with `bin/clice`, `bin/unittests` and the resource directory `lib/clang` in it — the tests and everything else run `build/[type]/bin/bin/clice`.
 - Other targets or Bazel options go after `--`: `pixi run build RelWithDebInfo -- //:bin/pipeline_benchmark`; `//:package` and `//:symbols` are the release archive and the symbol package, `clice.gsym` (`build/[type]/bin/clice.tar.gz` and `clice-symbol.tar.xz`, `.zip` on Windows). A target of the host's OS on another architecture builds with `--platforms=@xclang//platforms:<triple>`.
