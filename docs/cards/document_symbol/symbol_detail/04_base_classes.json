@@ -3,10 +3,12 @@
   "topic": "document_symbol",
   "subtopic": "symbol_detail",
   "title": "Base classes",
-  "summary": "A derived class's detail does not name its base classes yet",
+  "summary": "A derived class's detail names its base classes as written, with their access",
   "prose": "",
-  "status": "partial",
-  "issues": [],
+  "status": "supported",
+  "issues": [
+    "clangd#601"
+  ],
   "files": [
     {
       "path": "main.cpp",
@@ -21,7 +23,6 @@
         {
           "label": "outline",
           "value": {
-            "wrong": "Circle's detail does not name its base class Shape",
             "document_symbols": [
               {
                 "name": "Shape",
@@ -59,7 +60,7 @@
                     }
                   }
                 },
-                "detail": "struct",
+                "detail": "struct : Shape",
                 "children": [
                   {
                     "name": "radius",

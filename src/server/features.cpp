@@ -792,29 +792,45 @@ Features::RawResult Features::folding_range(Ticket ticket,
     co_return convert(*folds);
 }
 
-Features::RawResult Features::document_symbol(Ticket ticket, kota::cancellation_token token) {
+Features::RawResult Features::document_symbol(Ticket ticket,
+                                              feature::SymbolClient client,
+                                              kota::cancellation_token token) {
     auto& session = ticket.session;
+    auto convert = [&](llvm::ArrayRef<feature::DocumentSymbol> symbols) {
+        if(client.hierarchical) {
+            return to_raw(feature::document_symbols_to_protocol(symbols,
+                                                                session->positions(),
+                                                                PositionEncoding::UTF16,
+                                                                client));
+        }
+        return to_raw(feature::document_symbols_to_information(
+            symbols,
+            session->positions(),
+            PositionEncoding::UTF16,
+            client,
+            feature::to_uri(project.file_table.display(session->path_id))));
+    };
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
-            auto entries = feature::extract_index_entries(*source->shard);
-            auto symbols =
-                feature::index_document_symbols(entries.decls, [&](index::SymbolHash hash) {
-                    return query.symbol_info(hash);
-                });
+            auto symbols = feature::index_document_symbols(
+                session->text,
+                index_lang_options(*session),
+                feature::extract_index_entries(*source->shard),
+                [&](index::SymbolHash hash) { return query.symbol_info(hash); },
+                project.config.document_symbols);
             session->index_served = true;
-            co_return to_raw(feature::document_symbols_to_protocol(symbols,
-                                                                   session->positions(),
-                                                                   PositionEncoding::UTF16));
+            co_return convert(symbols);
         }
         case Route::Empty: co_return serde_raw{"[]"};
         case Route::Ast: break;
     }
-    co_return co_await dispatcher.query(worker::QueryKind::DocumentSymbol,
-                                        ticket,
-                                        {},
-                                        std::move(token));
+    auto symbols = co_await dispatcher.document_symbols(ticket, std::move(token)).or_fail();
+    if(!symbols) {
+        co_return serde_raw{"null"};
+    }
+    co_return convert(*symbols);
 }
 
 Features::RawResult Features::selection_range(Ticket ticket,

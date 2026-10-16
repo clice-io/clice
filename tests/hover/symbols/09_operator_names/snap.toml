@@ -61,7 +61,7 @@ range = "operator ⟦Handle⟧*() const;"
 
 [answers.literal_keyword.hover]
 markdown = '''
-**function** `operator ""_km`
+**function** `operator""_km`
 
 ```cpp
 unsigned long long operator""_km(unsigned long long value)
@@ -71,7 +71,7 @@ range = 'unsigned long long ⟦operator⟧""_km(unsigned long long value);'
 
 [answers.literal_suffix.hover]
 markdown = '''
-**function** `operator ""_km`
+**function** `operator""_km`
 
 ```cpp
 unsigned long long operator""_km(unsigned long long value)

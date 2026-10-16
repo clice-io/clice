@@ -27,6 +27,17 @@ nvim-lspconfig 收录了 [`editors/nvim`](https://github.com/clice-io/clice/tree
 
 Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。
 
+Zed 默认用 tree-sitter 生成大纲面板和面包屑；要让它们显示 clice 给出的文档符号，在 Zed 的 `settings.json` 里为 C 和 C++ 打开 `document_symbols`：
+
+```json
+{
+  "languages": {
+    "C": { "document_symbols": "on" },
+    "C++": { "document_symbols": "on" }
+  }
+}
+```
+
 ## 通用 LSP 客户端
 
 ### Helix

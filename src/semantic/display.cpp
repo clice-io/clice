@@ -258,10 +258,8 @@ auto identifier_of(const clang::Expr* expr) -> llvm::StringRef {
 namespace {
 
 /// The bare declaration name, printed with the hand-rolled switch the bare
-/// form historically used. It diverges from DeclarationName::print in a few
-/// corners (deduction guides print the plain template name, literal
-/// operators keep a space after `operator ""`); unifying the two printers
-/// is a deliberate, snapshot-reviewed change.
+/// form historically used. It diverges from DeclarationName::print where
+/// a deduction guide prints the plain template name.
 std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
     llvm::SmallString<128> result;
 
@@ -326,7 +324,7 @@ std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
         }
 
         case clang::DeclarationName::CXXLiteralOperatorName: {
-            result += R"(operator "")";
+            result += R"(operator"")";
             result += name.getCXXLiteralIdentifier()->getName();
             break;
         }
@@ -408,6 +406,19 @@ auto name_of(const clang::NamedDecl* decl, const Options& options) -> std::strin
     os << template_args(*decl);
 
     return name;
+}
+
+auto symbol_name(const clang::NamedDecl* decl) -> SymbolName {
+    // A deduction guide is listed under its label rather than the
+    // template's name, which completion prefers for its candidates.
+    if(llvm::isa<clang::CXXDeductionGuideDecl>(decl)) {
+        return {.text = name_of(decl)};
+    }
+    auto name = name_of(decl, {.suppress_ctor_template_args = true, .qualified = false});
+    if(name.empty()) {
+        return {.text = name_of(decl), .unnamed = true};
+    }
+    return {.text = std::move(name)};
 }
 
 auto summarize(const clang::Expr* expr) -> std::string {
@@ -1163,6 +1174,25 @@ auto method_qualifiers(const clang::CXXMethodDecl& method) -> std::string {
 auto parameter_name(const clang::FunctionDecl& function, unsigned index) -> llvm::StringRef {
     auto named = decls::named_parameters(function, index);
     return named.empty() ? llvm::StringRef() : named.front()->getIdentifier()->deuglifiedName();
+}
+
+auto call_signature(const clang::FunctionDecl& function, const Options& options) -> std::string {
+    llvm::SmallVector<std::string> parameters;
+    for(unsigned index = function.hasCXXExplicitFunctionObjectParameter() ? 1 : 0;
+        index < function.getNumParams();
+        index += 1) {
+        parameters.push_back(
+            parameter(*function.getParamDecl(index), parameter_name(function, index), options));
+    }
+    if(function.isVariadic()) {
+        parameters.push_back("...");
+    }
+    auto signature = "(" + llvm::join(parameters, ", ") + ")";
+    if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function);
+       method && !function.hasCXXExplicitFunctionObjectParameter()) {
+        signature += method_qualifiers(*method);
+    }
+    return signature;
 }
 
 auto param(const clang::ParmVarDecl* param, const Options& options) -> Param {

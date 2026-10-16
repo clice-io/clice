@@ -3,7 +3,7 @@
   "topic": "document_symbol",
   "subtopic": "symbol_kinds",
   "title": "Module declarations",
-  "summary": "A module interface unit lists the module it declares",
+  "summary": "A module unit lists the module it declares or belongs to",
   "prose": "",
   "status": "supported",
   "issues": [],

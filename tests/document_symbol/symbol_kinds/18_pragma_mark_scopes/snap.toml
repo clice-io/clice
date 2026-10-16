@@ -1,6 +1,5 @@
 [answers.outline]
 document_symbols = [
-    { name = "Helpers", kind = "File", at = "⟦#pragma mark Helpers⟧" },
     { name = "helper", kind = "Function", at = "int ⟦helper⟧();", detail = "int ()" },
     {
         name = "Widget",
@@ -28,11 +27,11 @@ document_symbols = [
         ],
     },
     { name = "after", kind = "Function", at = "int ⟦after⟧();", detail = "int ()" },
+    { name = "Helpers", kind = "File", at = "⟦#pragma mark Helpers⟧" },
 ]
 
 [answers.extents]
 document_symbols = [
-    { name = "Helpers", kind = "File", at = "⟦#pragma mark Helpers⟧", range = "⟦#pragma mark Helpers⟧" },
     { name = "helper", kind = "Function", at = "int ⟦helper⟧();", range = "⟦int helper()⟧;" },
     {
         name = "Widget",
@@ -62,4 +61,5 @@ document_symbols = [
         ],
     },
     { name = "after", kind = "Function", at = "int ⟦after⟧();", range = "⟦int after()⟧;" },
+    { name = "Helpers", kind = "File", at = "⟦#pragma mark Helpers⟧", range = "⟦#pragma mark Helpers⟧" },
 ]

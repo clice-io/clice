@@ -119,6 +119,8 @@ enum class SymbolFlags : std::uint16_t {
     /// Declared in an anonymous namespace inside the scope its qualified
     /// name starts from, which the parent chain skips.
     AnonymousNamespace = 1 << 14,
+    /// A template parameter.
+    TemplateParameter = 1 << 15,
 };
 
 constexpr SymbolFlags operator|(SymbolFlags lhs, SymbolFlags rhs) {

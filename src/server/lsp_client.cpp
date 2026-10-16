@@ -371,6 +371,15 @@ void LSPClient::register_lifecycle() {
         }
 
         if(params.capabilities.text_document.has_value() &&
+           params.capabilities.text_document->document_symbol.has_value()) {
+            auto& symbols = *params.capabilities.text_document->document_symbol;
+            symbol_client = {
+                .hierarchical = symbols.hierarchical_document_symbol_support,
+                .all_kinds = symbols.symbol_kind && symbols.symbol_kind->value_set,
+            };
+        }
+
+        if(params.capabilities.text_document.has_value() &&
            params.capabilities.text_document->completion.has_value() &&
            params.capabilities.text_document->completion->completion_item.has_value()) {
             auto& item = *params.capabilities.text_document->completion->completion_item;
@@ -815,15 +824,17 @@ void LSPClient::register_language_features() {
                                                              ctx.cancellation));
         });
 
-    peer.on_request([this](RequestContext& ctx,
-                           const protocol::DocumentSymbolParams& params) -> RawResult {
-        this->server.pool.foreground_pulse();
-        auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
-        if(!session)
-            return kota::outcome_error(unserved(path));
-        return holding(project,
-                       project->features.document_symbol(Ticket::take(session), ctx.cancellation));
-    });
+    peer.on_request(
+        [this](RequestContext& ctx, const protocol::DocumentSymbolParams& params) -> RawResult {
+            this->server.pool.foreground_pulse();
+            auto [path, path_id, session, project] = resolve_uri(params.text_document.uri);
+            if(!session)
+                return kota::outcome_error(unserved(path));
+            return holding(project,
+                           project->features.document_symbol(Ticket::take(session),
+                                                             symbol_client,
+                                                             ctx.cancellation));
+        });
 
     peer.on_request([this](RequestContext& ctx,
                            const protocol::DocumentLinkParams& params) -> RawResult {

@@ -27,6 +27,17 @@ nvim-lspconfig carries a copy of the config in [`editors/nvim`](https://github.c
 
 The Zed extension lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed).
 
+Zed builds its outline panel and breadcrumbs with tree-sitter by default; to have them show clice's document symbols, turn on `document_symbols` for C and C++ in Zed's `settings.json`:
+
+```json
+{
+  "languages": {
+    "C": { "document_symbols": "on" },
+    "C++": { "document_symbols": "on" }
+  }
+}
+```
+
 ## Generic LSP Clients
 
 ### Helix

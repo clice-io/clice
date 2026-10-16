@@ -331,7 +331,7 @@
                             }
                           }
                         },
-                        "detail": "int"
+                        "detail": "static int"
                       }
                     ]
                   },
@@ -409,7 +409,7 @@
                         }
                       }
                     },
-                    "detail": "(lambda)"
+                    "detail": "int (int x)"
                   }
                 ]
               }

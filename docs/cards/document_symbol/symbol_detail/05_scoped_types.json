@@ -5,12 +5,12 @@
   "title": "Scoped types",
   "summary": "A type written with its class scope keeps that scope once in the detail, dependent names included",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [],
   "files": [
     {
       "path": "main.cpp",
-      "text": "namespace scoped {\n\nstruct Outer {\n    struct Inner {};\n    template <typename T> struct Box {};\n    using Alias = int;\n};\n\nstruct User {\n    Outer::Inner plain;\n    Outer::Box<int> boxed;\n    Outer::Alias aliased;\n    const Outer::Inner frozen;\n};\n\ntemplate <typename T>\nstruct Holder {\n    typename T::type value;\n    typename T::inner::type deep;\n    typename T::template rebind<int> bound;\n};\n\n}  // namespace scoped\n",
+      "text": "namespace scoped {\n\nstruct Outer {\n    struct Inner {};\n    template <typename T> struct Box {};\n    using Alias = int;\n};\n\nstruct User {\n    Outer::Inner plain;\n    Outer::Box<int> boxed;\n    Outer::Alias aliased;\n    const Outer::Inner frozen;\n};\n\nvoid take(Outer::Box<int> boxed, Outer::Inner plain);\n\ntemplate <typename T>\nstruct Holder {\n    typename T::type value;\n    typename T::inner::type deep;\n    typename T::template rebind<int> bound;\n};\n\n}  // namespace scoped\n",
       "markers": []
     }
   ],
@@ -216,6 +216,25 @@
                     ]
                   },
                   {
+                    "name": "take",
+                    "kind": "Function",
+                    "at": {
+                      "$place": "void ⟦take⟧(Outer::Box<int> boxed, Outer::Inner plain);",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 5
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 9
+                        }
+                      }
+                    },
+                    "detail": "void (Outer::Box<int> boxed, Outer::Inner plain)"
+                  },
+                  {
                     "name": "Holder",
                     "kind": "Struct",
                     "at": {
@@ -223,11 +242,11 @@
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 16,
+                          "line": 18,
                           "character": 7
                         },
                         "end": {
-                          "line": 16,
+                          "line": 18,
                           "character": 13
                         }
                       }
@@ -242,11 +261,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 17,
+                              "line": 19,
                               "character": 21
                             },
                             "end": {
-                              "line": 17,
+                              "line": 19,
                               "character": 26
                             }
                           }
@@ -261,11 +280,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 18,
+                              "line": 20,
                               "character": 28
                             },
                             "end": {
-                              "line": 18,
+                              "line": 20,
                               "character": 32
                             }
                           }
@@ -280,11 +299,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 19,
+                              "line": 21,
                               "character": 37
                             },
                             "end": {
-                              "line": 19,
+                              "line": 21,
                               "character": 42
                             }
                           }
@@ -301,7 +320,6 @@
         {
           "label": "extents",
           "value": {
-            "wrong": "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it",
             "document_symbols": [
               {
                 "name": "scoped",
@@ -321,7 +339,7 @@
                   }
                 },
                 "range": {
-                  "$place": "⟦namespace scoped { … }⟧ (23 lines)",
+                  "$place": "⟦namespace scoped { … }⟧ (25 lines)",
                   "path": "main.cpp",
                   "range": {
                     "start": {
@@ -329,7 +347,7 @@
                       "character": 0
                     },
                     "end": {
-                      "line": 22,
+                      "line": 24,
                       "character": 1
                     }
                   }
@@ -417,12 +435,12 @@
                           }
                         },
                         "range": {
-                          "$place": "template <typename T> ⟦struct Box {}⟧;",
+                          "$place": "⟦template <typename T> struct Box {}⟧;",
                           "path": "main.cpp",
                           "range": {
                             "start": {
                               "line": 4,
-                              "character": 26
+                              "character": 4
                             },
                             "end": {
                               "line": 4,
@@ -628,6 +646,38 @@
                     ]
                   },
                   {
+                    "name": "take",
+                    "kind": "Function",
+                    "at": {
+                      "$place": "void ⟦take⟧(Outer::Box<int> boxed, Outer::Inner plain);",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 5
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 9
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦void take(Outer::Box<int> boxed, Outer::Inner plain)⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 15,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 15,
+                          "character": 52
+                        }
+                      }
+                    }
+                  },
+                  {
                     "name": "Holder",
                     "kind": "Struct",
                     "at": {
@@ -635,25 +685,25 @@
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 16,
+                          "line": 18,
                           "character": 7
                         },
                         "end": {
-                          "line": 16,
+                          "line": 18,
                           "character": 13
                         }
                       }
                     },
                     "range": {
-                      "$place": "⟦struct Holder { … }⟧ (5 lines)",
+                      "$place": "⟦template <typename T> … }⟧ (6 lines)",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 16,
+                          "line": 17,
                           "character": 0
                         },
                         "end": {
-                          "line": 20,
+                          "line": 22,
                           "character": 1
                         }
                       }
@@ -667,11 +717,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 17,
+                              "line": 19,
                               "character": 21
                             },
                             "end": {
-                              "line": 17,
+                              "line": 19,
                               "character": 26
                             }
                           }
@@ -681,11 +731,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 17,
+                              "line": 19,
                               "character": 4
                             },
                             "end": {
-                              "line": 17,
+                              "line": 19,
                               "character": 26
                             }
                           }
@@ -699,11 +749,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 18,
+                              "line": 20,
                               "character": 28
                             },
                             "end": {
-                              "line": 18,
+                              "line": 20,
                               "character": 32
                             }
                           }
@@ -713,11 +763,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 18,
+                              "line": 20,
                               "character": 4
                             },
                             "end": {
-                              "line": 18,
+                              "line": 20,
                               "character": 32
                             }
                           }
@@ -731,11 +781,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 19,
+                              "line": 21,
                               "character": 37
                             },
                             "end": {
-                              "line": 19,
+                              "line": 21,
                               "character": 42
                             }
                           }
@@ -745,11 +795,11 @@
                           "path": "main.cpp",
                           "range": {
                             "start": {
-                              "line": 19,
+                              "line": 21,
                               "character": 4
                             },
                             "end": {
-                              "line": 19,
+                              "line": 21,
                               "character": 42
                             }
                           }

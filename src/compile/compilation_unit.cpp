@@ -149,7 +149,7 @@ auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
     if(end.file != begin.file) {
         return {
             begin.file,
-            {begin.offset, static_cast<std::uint32_t>(file_content(begin.file).size())}
+            {begin.offset, text_end(begin.file)}
         };
     }
     return {
@@ -261,6 +261,18 @@ const SynthesizedOrigin* CompilationUnit::origin(clang::FileID fid) {
     }
     auto it = params.input.synthesized.find(file_path(*entry));
     return it != params.input.synthesized.end() ? &it->second : nullptr;
+}
+
+auto CompilationUnit::text_end(clang::FileID fid) -> std::uint32_t {
+    auto content = file_content(fid);
+    if(borrows_context() && fid == SM().getMainFileID()) {
+        auto& includes = directives()[fid].includes;
+        if(!includes.empty() && synthesized(includes.back().fid)) {
+            auto keyword = SM().getFileOffset(includes.back().location);
+            return static_cast<std::uint32_t>(content.rfind('\n', keyword));
+        }
+    }
+    return static_cast<std::uint32_t>(content.size());
 }
 
 bool CompilationUnit::synthesized(clang::FileID fid) {

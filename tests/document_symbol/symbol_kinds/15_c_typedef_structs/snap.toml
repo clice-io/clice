@@ -1,51 +1,85 @@
 [answers.outline]
-wrong = "the struct that Point names lists as an anonymous struct beside the alias, instead of one Point holding x and y"
 document_symbols = [
-    { name = "Point", kind = "Class", at = "} ⟦Point⟧;", detail = "type alias" },
     {
-        name = "(anonymous struct)",
+        name = "Point",
         kind = "Struct",
-        at = "typedef ⟦struct⟧ {",
+        at = "} ⟦Point⟧;",
         detail = "struct",
         children = [
             { name = "x", kind = "Field", at = "int ⟦x⟧;", detail = "int" },
             { name = "y", kind = "Field", at = "int ⟦y⟧;", detail = "int" },
         ],
     },
-    { name = "Node", kind = "Class", at = "} ⟦Node⟧;", detail = "type alias" },
     {
         name = "Node",
         kind = "Struct",
-        at = "typedef struct ⟦Node⟧ {",
+        at = "} ⟦Node⟧;",
         detail = "struct",
         children = [
             { name = "next", kind = "Field", at = "struct Node* ⟦next⟧;", detail = "struct Node *" },
         ],
     },
+    {
+        name = "Color",
+        kind = "Enum",
+        at = "typedef enum { Red, Green } ⟦Color⟧;",
+        detail = "enum",
+        children = [
+            { name = "Red", kind = "EnumMember", at = "typedef enum { ⟦Red⟧, Green } Color;", detail = "int" },
+            { name = "Green", kind = "EnumMember", at = "typedef enum { Red, ⟦Green⟧ } Color;", detail = "int" },
+        ],
+    },
+    { name = "Point3Ref", kind = "Class", at = "} *⟦Point3Ref⟧;", detail = "type alias" },
+    {
+        name = "Point3",
+        kind = "Struct",
+        at = "typedef struct ⟦Point3⟧ {",
+        detail = "struct",
+        children = [
+            { name = "z", kind = "Field", at = "int ⟦z⟧;", detail = "int" },
+        ],
+    },
 ]
 
 [answers.extents]
-wrong = "the struct that Point names lists as an anonymous struct beside the alias, instead of one Point holding x and y"
 document_symbols = [
-    { name = "Point", kind = "Class", at = "} ⟦Point⟧;", range = "⟦typedef struct { … } Point⟧ (4 lines)" },
     {
-        name = "(anonymous struct)",
+        name = "Point",
         kind = "Struct",
-        at = "typedef ⟦struct⟧ {",
-        range = "typedef ⟦struct { … }⟧ (4 lines)",
+        at = "} ⟦Point⟧;",
+        range = "⟦typedef struct { … } Point⟧ (4 lines)",
         children = [
             { name = "x", kind = "Field", at = "int ⟦x⟧;", range = "⟦int x⟧;" },
             { name = "y", kind = "Field", at = "int ⟦y⟧;", range = "⟦int y⟧;" },
         ],
     },
-    { name = "Node", kind = "Class", at = "} ⟦Node⟧;", range = "⟦typedef struct Node { … } Node⟧ (3 lines)" },
     {
         name = "Node",
         kind = "Struct",
-        at = "typedef struct ⟦Node⟧ {",
-        range = "typedef ⟦struct Node { … }⟧ (3 lines)",
+        at = "} ⟦Node⟧;",
+        range = "⟦typedef struct Node { … } Node⟧ (3 lines)",
         children = [
             { name = "next", kind = "Field", at = "struct Node* ⟦next⟧;", range = "⟦struct Node* next⟧;" },
+        ],
+    },
+    {
+        name = "Color",
+        kind = "Enum",
+        at = "typedef enum { Red, Green } ⟦Color⟧;",
+        range = "⟦typedef enum { Red, Green } Color⟧;",
+        children = [
+            { name = "Red", kind = "EnumMember", at = "typedef enum { ⟦Red⟧, Green } Color;", range = "typedef enum { ⟦Red⟧, Green } Color;" },
+            { name = "Green", kind = "EnumMember", at = "typedef enum { Red, ⟦Green⟧ } Color;", range = "typedef enum { Red, ⟦Green⟧ } Color;" },
+        ],
+    },
+    { name = "Point3Ref", kind = "Class", at = "} *⟦Point3Ref⟧;", range = "⟦typedef struct Point3 { … } *Point3Ref⟧ (3 lines)" },
+    {
+        name = "Point3",
+        kind = "Struct",
+        at = "typedef struct ⟦Point3⟧ {",
+        range = "typedef ⟦struct Point3 { … }⟧ (3 lines)",
+        children = [
+            { name = "z", kind = "Field", at = "int ⟦z⟧;", range = "⟦int z⟧;" },
         ],
     },
 ]

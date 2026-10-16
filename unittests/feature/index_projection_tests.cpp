@@ -19,6 +19,7 @@ ZEST_SUITE(index_projection, Tester) {
 /// way the router's index slice does it in production.
 index::TUIndex tu;
 std::string bytes;
+feature::IndexEntries entries;
 std::vector<index::Occurrence> occurrences;
 std::vector<feature::IndexDecl> decls;
 
@@ -27,9 +28,9 @@ void extract_entries() {
     tu = index::TUIndex::from_bytes(bytes);
 
     auto main_id = tu.path_count() - 1;
-    auto entries = feature::extract_index_entries(tu.shard_of(main_id));
-    occurrences = std::move(entries.occurrences);
-    decls = std::move(entries.decls);
+    entries = feature::extract_index_entries(tu.shard_of(main_id));
+    occurrences = entries.occurrences;
+    decls = entries.decls;
 }
 
 std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
@@ -55,6 +56,15 @@ auto resolver() {
     return [this](index::SymbolHash hash) {
         return resolve(hash);
     };
+}
+
+/// The outline the index projects from the unit's own entries.
+auto projected_outline() -> std::vector<feature::DocumentSymbol> {
+    return feature::index_document_symbols(unit->focus_file().content(),
+                                           unit->lang_options(),
+                                           entries,
+                                           resolver(),
+                                           {});
 }
 
 /// The projected tokens of the compiled unit equal the AST's, down to the
@@ -182,8 +192,8 @@ export int entry();
     ZASSERT(compile());
     extract_entries();
 
-    auto ast = feature::document_symbols(*unit);
-    auto projected = feature::index_document_symbols(decls, resolver());
+    auto ast = feature::document_symbols(*unit, {});
+    auto projected = projected_outline();
     ZASSERT(ast.size() == std::size_t(2));
     ZASSERT(ast[0].name == "demo.core");
     ZASSERT(ast[0].kind.value_of() == SymbolKind(SymbolKind::Module).value_of());
@@ -198,21 +208,42 @@ export int entry();
 ZEST_CASE(OutlineMatchesAst) {
     add_main("main.cpp", R"cpp(
 #define LIMIT 10
+#define FIELDS int generated_a; int generated_b;
 
 namespace app {
 
 struct Point {
-    int x;
+    int x, y;
     int sum();
+    friend void inspect(Point&);
+    FIELDS
 };
+
+int Point::sum() {
+    return x + y;
+}
+
+typedef struct {
+    int width;
+} Size;
+
+template <typename T>
+struct Box {
+    T value;
+};
+
+template struct Box<int>;
+
+namespace alias = app;
 
 enum class Color {
     Red,
     Blue,
 };
 
-int scale(int value) {
-    return value * 2;
+[[nodiscard]] int scale(int value) {
+    int doubled = value * 2;
+    return doubled;
 }
 
 }
@@ -220,8 +251,8 @@ int scale(int value) {
     ZASSERT(compile());
     extract_entries();
 
-    auto ast = feature::document_symbols(*unit);
-    auto projected = feature::index_document_symbols(decls, resolver());
+    auto ast = feature::document_symbols(*unit, {});
+    auto projected = projected_outline();
 
     auto compare = [](auto& self,
                       const std::vector<feature::DocumentSymbol>& lhs,
@@ -230,6 +261,9 @@ int scale(int value) {
         for(std::size_t i = 0; i < lhs.size(); i += 1) {
             ZASSERT(lhs[i].name == rhs[i].name);
             ZASSERT(lhs[i].kind.value_of() == rhs[i].kind.value_of());
+            ZASSERT(lhs[i].range == rhs[i].range);
+            ZASSERT(lhs[i].selection_range == rhs[i].selection_range);
+            ZASSERT(lhs[i].deprecated == rhs[i].deprecated);
             self(self, lhs[i].children, rhs[i].children);
         }
     };
@@ -385,33 +419,6 @@ void g() {
     ZASSERT(folds.size() == std::size_t(1));
     ZASSERT(folds[0].range.begin == static_cast<std::uint32_t>(content.find("{", g_begin)));
     ZASSERT(folds[0].range.end == g_end);
-}
-
-ZEST_CASE(CollapsedDeclsBecomeSiblings) {
-    std::vector<feature::IndexDecl> input = {
-        {.range = {8, 9},   .extent = {0, 100}, .symbol = 1, .definition = true},
-        {.range = {20, 25}, .extent = {20, 50}, .symbol = 2, .definition = true},
-        {.range = {20, 25}, .extent = {20, 50}, .symbol = 3, .definition = true},
-    };
-    auto resolve_synthetic = [](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
-        switch(hash) {
-            case 1:
-                return index::SymbolRef{.hash = 1,
-                                        .name = "outer",
-                                        .args = "<int>",
-                                        .kind = SymbolKind::Struct};
-            case 2: return index::SymbolRef{.hash = 2, .name = "first", .kind = SymbolKind::Field};
-            case 3: return index::SymbolRef{.hash = 3, .name = "second", .kind = SymbolKind::Field};
-            default: return std::nullopt;
-        }
-    };
-
-    auto symbols = feature::index_document_symbols(input, resolve_synthetic);
-    ZASSERT(symbols.size() == std::size_t(1));
-    ZASSERT(symbols[0].name == "outer<int>");
-    ZASSERT(symbols[0].children.size() == std::size_t(2));
-    ZASSERT(symbols[0].children[0].children.size() == std::size_t(0));
-    ZASSERT(symbols[0].children[1].children.size() == std::size_t(0));
 }
 
 ZEST_CASE(MergedKindsConflict) {

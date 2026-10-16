@@ -119,7 +119,7 @@
                         }
                       }
                     },
-                    "detail": "(lambda)"
+                    "detail": "int (int x)"
                   },
                   {
                     "name": "Pair",

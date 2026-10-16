@@ -133,6 +133,17 @@ auto identifier_of(const clang::Expr* expr) -> llvm::StringRef;
 /// nameless entities yield an empty string.
 auto name_of(const clang::NamedDecl* decl, const Options& options = {}) -> std::string;
 
+/// The name a declaration goes by in the index and the outline: its bare
+/// name, a constructor's without its class template's arguments, a
+/// deduction guide's label (`<deduction guide for Box>`); a nameless
+/// entity's presentation, `unnamed` set.
+struct SymbolName {
+    std::string text;
+    bool unnamed = false;
+};
+
+auto symbol_name(const clang::NamedDecl* decl) -> SymbolName;
+
 /// The template arguments of a template specialization as written in the
 /// source code ("<int, 4>"). Empty if the decl is not a specialization.
 auto template_args(const clang::NamedDecl& decl) -> std::string;
@@ -251,6 +262,12 @@ auto parameter_name(const clang::FunctionDecl& function, unsigned index) -> llvm
 /// What a member function's declaration writes after its parameters:
 /// ` const`, ` &`, ` &&`; empty for none.
 auto method_qualifiers(const clang::CXXMethodDecl& method) -> std::string;
+
+/// The parameters a call of `function` passes arguments to, as every feature
+/// shows them — under their names, with their defaults — then the
+/// function's qualifiers: `(int x, float y = 1) const`. An explicit object
+/// parameter is the object the call is made on, no argument.
+auto call_signature(const clang::FunctionDecl& function, const Options& options) -> std::string;
 
 /// Render a function parameter with its default value, under the first name
 /// its declarations write (decls::named_parameters).

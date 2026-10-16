@@ -13,7 +13,14 @@ symbols = [
 ["each include is a context"."include 2"]
 diagnostics = []
 symbols = [
-    { name = "get_alpha", kind = "Function", at = "⟦X⟧(alpha)" },
+    {
+        name = "X(alpha)",
+        kind = "Constant",
+        at = "⟦X⟧(alpha)",
+        children = [
+            { name = "get_alpha", kind = "Function", at = "⟦X⟧(alpha)" },
+        ],
+    },
 ]
 
 ["an include past the last is refused".current.current_context]

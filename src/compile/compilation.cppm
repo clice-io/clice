@@ -483,6 +483,11 @@ private:
     /// What the synthesized file `fid` was cut from; null for any other.
     const SynthesizedOrigin* origin(clang::FileID fid);
 
+    /// Where the text of `fid` ends: in a compile that borrows an includer
+    /// context, the main file's ends at the line break before the include
+    /// of the includer's remainder appended past the editor's text.
+    auto text_end(clang::FileID fid) -> std::uint32_t;
+
     /// Create the `clang::CompilerInvocation` of the compile: the command,
     /// with every flag clice needs set and every one it must not see reset.
     std::unique_ptr<clang::CompilerInvocation>

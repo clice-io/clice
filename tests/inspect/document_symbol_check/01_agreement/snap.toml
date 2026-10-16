@@ -1,0 +1,19 @@
+[test."$ clice inspect document_symbol_check main.cpp"]
+stdout = '''
+{
+  "feature": "document_symbol_check",
+  "files": {
+    "main.cpp": {
+      "result": {
+        "ast": 48,
+        "index": 48,
+        "differences": []
+      },
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0

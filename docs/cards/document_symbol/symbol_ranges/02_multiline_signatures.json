@@ -60,7 +60,7 @@
                     }
                   }
                 },
-                "detail": "void (const Config &, int)"
+                "detail": "void (const Config &cfg, int flags)"
               }
             ]
           }

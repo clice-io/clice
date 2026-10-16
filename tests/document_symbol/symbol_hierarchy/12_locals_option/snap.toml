@@ -1,0 +1,13 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "Accumulator",
+        kind = "Struct",
+        at = "struct ⟦Accumulator⟧ {",
+        detail = "struct",
+        children = [
+            { name = "total", kind = "Field", at = "int ⟦total⟧;", detail = "int" },
+        ],
+    },
+    { name = "compute", kind = "Function", at = "int ⟦compute⟧() {", detail = "int ()" },
+]

@@ -18,17 +18,16 @@ document_symbols = [
             },
         ],
     },
-    { name = "Inner", kind = "Struct", at = "template struct Outer<int>::⟦Inner⟧;", detail = "struct" },
+    { name = "Outer<int>::Inner", kind = "Struct", at = "template struct Outer<int>::⟦Inner⟧;", detail = "struct" },
 ]
 
 [answers.extents]
-wrong = "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it"
 document_symbols = [
     {
         name = "Outer",
         kind = "Struct",
         at = "struct ⟦Outer⟧ {",
-        range = "⟦struct Outer { … }⟧ (6 lines)",
+        range = "⟦template <class T> … }⟧ (7 lines)",
         children = [
             {
                 name = "Inner",
@@ -42,5 +41,5 @@ document_symbols = [
             },
         ],
     },
-    { name = "Inner", kind = "Struct", at = "template struct Outer<int>::⟦Inner⟧;", range = "⟦template struct Outer<int>::Inner⟧;" },
+    { name = "Outer<int>::Inner", kind = "Struct", at = "template struct Outer<int>::⟦Inner⟧;", range = "⟦template struct Outer<int>::Inner⟧;" },
 ]

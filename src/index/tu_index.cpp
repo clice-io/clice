@@ -365,7 +365,18 @@ public:
         auto hash = unit.get<EntityTable>().entity(decl);
         auto [it, success] = symbols.try_emplace(hash);
         if(success) {
-            it->second = describe(decl);
+            // The entity's own declaration describes it: a reference can
+            // reach it first through a template (a member body calling
+            // `begin<T>()` above `begin`) or a using-declaration's shadow,
+            // which share its hash (EntityTable::entity).
+            const auto* described = decl;
+            if(const auto* shadow = llvm::dyn_cast<clang::UsingShadowDecl>(described)) {
+                described = shadow->getTargetDecl();
+            }
+            if(const auto* tmpl = llvm::dyn_cast<clang::RedeclarableTemplateDecl>(described)) {
+                described = tmpl->getTemplatedDecl();
+            }
+            it->second = describe(described);
             if(focus_only && decl->isFromASTFile() && decl->isInNamedModule() &&
                !llvm::isa<clang::NamespaceDecl>(decl)) {
                 imported.push_back(decl);
@@ -380,16 +391,9 @@ public:
     Symbol describe(const clang::NamedDecl* decl) {
         Symbol symbol;
         auto flags = SymbolFlags::None;
-        // A deduction guide is listed under its label rather than the
-        // template's name, which completion prefers for its candidates.
-        if(llvm::isa<clang::CXXDeductionGuideDecl>(decl)) {
-            symbol.name = display::name_of(decl);
-        } else {
-            symbol.name =
-                display::name_of(decl, {.suppress_ctor_template_args = true, .qualified = false});
-        }
-        if(symbol.name.empty()) {
-            symbol.name = display::name_of(decl);
+        auto name = display::symbol_name(decl);
+        symbol.name = std::move(name.text);
+        if(name.unnamed) {
             flags |= SymbolFlags::Unnamed;
         }
         symbol.args = display::template_args(*decl);
@@ -420,6 +424,9 @@ public:
         }
         if(in_anonymous_namespace(decl)) {
             flags |= SymbolFlags::AnonymousNamespace;
+        }
+        if(decl->isTemplateParameter()) {
+            flags |= SymbolFlags::TemplateParameter;
         }
         // `FWD(Expr)` forward-declares a class defined by hand.
         if(llvm::all_of(decl->redecls(), [](const clang::Decl* redecl) {
@@ -527,6 +534,24 @@ public:
         }
 
         index->relations[ensure_symbol(decls::normalize(decl))].emplace_back(relation);
+    }
+
+    /// The Instantiation relation of an explicit instantiation, at its name
+    /// (a macro's invocation that writes none), with the directive's extent.
+    void add_instantiation(const clang::ExplicitInstantiationDecl& directive) {
+        auto location = unit.context().getSourceManager().getFileLoc(directive.getNameLoc());
+        auto [fid, range] = *unit.written_range(location);
+        auto* index = file_index(fid);
+        if(!index) {
+            return;
+        }
+        Relation relation{.kind = RelationKind::Instantiation, .range = range, .target_symbol = 0};
+        if(auto [extent_fid, extent] = unit.produced_range(directive.getSourceRange());
+           extent_fid == fid) {
+            relation.set_definition_range(extent);
+        }
+        index->relations[ensure_symbol(decls::normalize(directive.getSpecialization()))]
+            .emplace_back(relation);
     }
 
     /// A symbol-to-symbol relation (type-of, inheritance, overrides, ctor/dtor
@@ -894,6 +919,11 @@ public:
 
         auto* D = node.get<clang::Decl>();
         if(!D) {
+            return;
+        }
+
+        if(auto* EID = llvm::dyn_cast<clang::ExplicitInstantiationDecl>(D)) {
+            add_instantiation(*EID);
             return;
         }
 

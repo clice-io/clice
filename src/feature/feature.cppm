@@ -14,6 +14,7 @@ import :semantic.symbol;
 import :support.anomaly;
 import :support.markup;
 import :syntax.documentation;
+import :syntax.lexical_scan;
 import :syntax.position;
 import :vfs.ids;
 import :vfs.path;
@@ -373,6 +374,21 @@ struct InlayHintLengths {
     <std::uint32_t> endif = 60;
 };
 
+/// Corresponds to the `[document_symbols]` section in clice.toml.
+struct DocumentSymbolsOptions {
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "List the `#define`s the file writes; an include guard's never "
+                         "lists.")
+    <bool> macros = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "List what a function's body declares: its variables, types and "
+                         "lambdas, under the function.")
+    <bool> locals = true;
+};
+
 /// Corresponds to the `[inlay_hints]` section in clice.toml. Every switch
 /// shows one kind of hint.
 struct InlayHintsOptions {
@@ -524,6 +540,10 @@ struct DocumentSymbol {
     LocalSourceRange selection_range;
     bool deprecated = false;
     std::vector<DocumentSymbol> children;
+
+    /// The entity it declares (EntityTable), the index's symbol hash; 0 for
+    /// a macro invocation, a mark and a module declaration.
+    std::uint64_t entity = 0;
 };
 
 enum class HintCategory : std::uint8_t {
@@ -631,19 +651,86 @@ auto selection_range_to_protocol(llvm::ArrayRef<LocalSourceRange> ranges,
                                  const PositionMap& map,
                                  PositionEncoding encoding) -> protocol::SelectionRange;
 
+/// One declaration, macro or module declaration the outline lists, before
+/// it is named from the text and nested: the AST and the index each give
+/// these, and outline() makes both into the same tree.
+struct OutlineEntry {
+    /// The name the declaration goes by (display::symbol_name); outline()
+    /// adds the qualifier and template arguments the text writes.
+    std::string name;
+    std::string detail;
+    SymbolKind kind = SymbolKind::Invalid;
+    LocalSourceRange range;
+    LocalSourceRange selection_range;
+    bool deprecated = false;
+
+    /// The entity declared and the one it is named in (EntityTable), 0
+    /// for macros and modules.
+    std::uint64_t entity = 0;
+    std::uint64_t parent = 0;
+
+    bool definition = false;
+
+    /// The name is a presentation, `(anonymous struct)`.
+    bool unnamed = false;
+
+    /// The name comes out of a macro's body or a token paste and is
+    /// written nowhere: the selection range is the macro invocation's.
+    bool from_macro = false;
+};
+
+/// Whether the outline lists a declaration of `kind`: a nameless one only
+/// when it is a scope, a template parameter never.
+bool outline_lists(SymbolKind kind, bool unnamed, bool template_parameter);
+
+/// The outline the entries make in the file `content` holds, with its
+/// `#define` directives (`macros`, those the preprocessor read), module
+/// declarations and `#pragma mark`s (`marks`) as lexical_scan gives them:
+/// the entries are named as the text writes them, members of one macro
+/// invocation listed under it, nested by where they are written, and
+/// sections made of the marks.
+auto outline(std::vector<OutlineEntry> entries,
+             llvm::ArrayRef<LocalSourceRange> macros,
+             llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules,
+             llvm::ArrayRef<LexicalInfo::PragmaMark> marks,
+             llvm::StringRef content,
+             const clang::LangOptions& lang_opts,
+             const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
+
 /// The outline of the main file, a `#define` in it only outside the
 /// inactive regions. The overload without a regions argument scans the
 /// unit itself — correct only for units compiled without a PCH, as with
 /// semantic_tokens.
-auto document_symbols(CompilationUnit& unit) -> std::vector<DocumentSymbol>;
+auto document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions& options)
+    -> std::vector<DocumentSymbol>;
 auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
-                      PositionEncoding encoding) -> std::vector<protocol::DocumentSymbol>;
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
+
+/// How a client takes document symbols: as a tree, or flat
+/// (`SymbolInformation`) when it declares no
+/// hierarchicalDocumentSymbolSupport; in every kind when it declares a set
+/// of them (and so takes others gracefully), in the protocol's first 18
+/// otherwise.
+struct SymbolClient {
+    bool hierarchical = true;
+    bool all_kinds = true;
+};
 
 auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
                                   const PositionMap& map,
-                                  PositionEncoding encoding)
+                                  PositionEncoding encoding,
+                                  const SymbolClient& client)
     -> std::vector<protocol::DocumentSymbol>;
+
+/// The symbols flat, for a client taking no tree: each in `uri`, naming the
+/// symbol it nests in.
+auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
+                                     const PositionMap& map,
+                                     PositionEncoding encoding,
+                                     const SymbolClient& client,
+                                     llvm::StringRef uri)
+    -> std::vector<protocol::SymbolInformation>;
 
 auto inlay_hints(CompilationUnit& unit,
                  LocalSourceRange target,
@@ -939,6 +1026,10 @@ struct IndexDecl {
 struct IndexEntries {
     std::vector<index::Occurrence> occurrences;
     std::vector<IndexDecl> decls;
+
+    /// The explicit instantiations, as decl entries of what they
+    /// instantiate (RelationKind::Instantiation).
+    std::vector<IndexDecl> instantiations;
 };
 
 auto extract_index_entries(const index::Shard& shard) -> IndexEntries;
@@ -975,24 +1066,13 @@ auto index_semantic_tokens(llvm::StringRef content,
 /// differs (see to_lsp::symbol_kind).
 auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind;
 
-/// One declaration the outline lists: its symbol, its whole extent and the
-/// name within it.
-struct IndexOutlineEntry {
-    index::SymbolRef symbol;
-    LocalSourceRange range;
-    LocalSourceRange selection_range;
-};
-
-/// The declarations an outline lists, one per symbol and extent, in source
-/// order: a declaration before the ones its extent holds.
-auto index_outline(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
-    -> std::vector<IndexOutlineEntry>;
-
-/// Outline tree built from declaration extents by range containment;
-/// extents that merely overlap (macro-generated siblings collapse onto one
-/// invocation range) become siblings in source order. `detail` stays empty.
-auto index_document_symbols(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
-    -> std::vector<DocumentSymbol>;
+/// The outline of the file `content` holds, from its index entries: the
+/// AST's (outline()) without details, a macro's parameters aside.
+auto index_document_symbols(llvm::StringRef content,
+                            const clang::LangOptions& lang_opts,
+                            const IndexEntries& entries,
+                            IndexSymbolResolver resolve,
+                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
 /// Declaration folds: each definition extent folds its last balanced brace
 /// group (brace matching over a raw lex, so braces in strings, comments

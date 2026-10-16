@@ -36,13 +36,14 @@ struct InspectOptions {
              required = false)
     config_schema;
 
-    DecoInput(meta_var = "<FEATURE> <PATH>",
-              help =
-                  "Feature to run (code_action, code_completion, document_highlight, "
-                  "document_links, document_symbol, folding_range, hover, hover_check, inlay_hint, "
-                  "selection_range, semantic_tokens, signature_help) and a "
-                  "source file",
-              required = false)
+    DecoInput(
+        meta_var = "<FEATURE> <PATH>",
+        help =
+            "Feature to run (code_action, code_completion, document_highlight, "
+            "document_links, document_symbol, document_symbol_check, folding_range, hover, hover_check, inlay_hint, "
+            "selection_range, semantic_tokens, signature_help) and a "
+            "source file",
+        required = false)
     <std::vector<std::string>> inputs;
 
     DecoKV(help = R"(JSON file of the markers in the inspected source file, at byte )"
@@ -146,8 +147,179 @@ std::optional<kota::codec::RawValue> run_semantic_tokens(CompilationUnit& unit,
 }
 
 std::optional<kota::codec::RawValue> run_document_symbols(CompilationUnit& unit,
-                                                          [[maybe_unused]] const Config& config) {
-    return to_raw_json(feature::document_symbols(unit));
+                                                          const Config& config) {
+    return to_raw_json(feature::document_symbols(unit, config.document_symbols));
+}
+
+/// One way the outline the index projects differs from the AST's, at the
+/// name of the entry it concerns (1-based line and column).
+struct OutlineDifference {
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+    /// only_ast, only_index, name, kind, range, parent, detail or
+    /// deprecated.
+    std::string field;
+    std::string ast;
+    std::string index;
+};
+
+struct OutlineCheck {
+    std::uint32_t ast = 0;
+    std::uint32_t index = 0;
+    std::vector<OutlineDifference> differences;
+};
+
+/// The file's outline as the AST gives it beside the one the index projects
+/// from the unit's own TU index, as the server serves a file before its AST
+/// is current: an entry of one matches the other's entry of the same name
+/// range, the same name first. The index knows no signatures, so a detail
+/// differs only where the index gives one.
+std::optional<kota::codec::RawValue> run_document_symbol_check(CompilationUnit& unit,
+                                                               const Config& config) {
+    auto ast = feature::document_symbols(unit, config.document_symbols);
+    auto bytes = index::build_tu_index(unit);
+    auto tu = index::TUIndex::from_bytes(bytes);
+    auto projected = feature::index_document_symbols(
+        unit.focus_file().content(),
+        unit.lang_options(),
+        feature::extract_index_entries(tu.shard_of(tu.path_count() - 1)),
+        [&](index::SymbolHash hash) -> std::optional<index::SymbolRef> {
+            auto identity = tu.find_symbol(hash);
+            if(!identity) {
+                return std::nullopt;
+            }
+            return index::SymbolRef::from(hash, *identity);
+        },
+        config.document_symbols);
+
+    struct Flat {
+        const feature::DocumentSymbol* symbol;
+        std::int32_t parent;
+    };
+
+    auto flatten = [](this auto& self,
+                      llvm::ArrayRef<feature::DocumentSymbol> symbols,
+                      std::int32_t parent,
+                      std::vector<Flat>& out) -> void {
+        for(const auto& symbol: symbols) {
+            auto at = static_cast<std::int32_t>(out.size());
+            out.push_back({&symbol, parent});
+            self(symbol.children, at, out);
+        }
+    };
+    std::vector<Flat> left;
+    std::vector<Flat> right;
+    flatten(ast, -1, left);
+    flatten(projected, -1, right);
+
+    std::multimap<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> by_name_range;
+    for(auto [at, flat]: llvm::enumerate(right)) {
+        auto selection = flat.symbol->selection_range;
+        by_name_range.emplace(std::pair(selection.begin, selection.end),
+                              static_cast<std::int32_t>(at));
+    }
+    std::vector<std::int32_t> partner(left.size(), -1);
+    std::vector<bool> taken(right.size(), false);
+    for(auto [at, flat]: llvm::enumerate(left)) {
+        auto selection = flat.symbol->selection_range;
+        auto [first, last] = by_name_range.equal_range(std::pair(selection.begin, selection.end));
+        std::int32_t chosen = -1;
+        for(auto it = first; it != last; ++it) {
+            if(taken[it->second]) {
+                continue;
+            }
+            if(chosen == -1) {
+                chosen = it->second;
+            }
+            if(right[it->second].symbol->name == flat.symbol->name) {
+                chosen = it->second;
+                break;
+            }
+        }
+        if(chosen != -1) {
+            partner[at] = chosen;
+            taken[chosen] = true;
+        }
+    }
+
+    const auto& map = unit.focus_file().positions();
+    auto spell_range = [&](LocalSourceRange range) {
+        auto converted = map.range(range, PositionEncoding::UTF8);
+        if(!converted) {
+            return std::string("?");
+        }
+        return std::format("{}:{}-{}:{}",
+                           converted->start.line + 1,
+                           converted->start.character + 1,
+                           converted->end.line + 1,
+                           converted->end.character + 1);
+    };
+    auto kind_name = [](SymbolKind kind) {
+        return std::string(kota::meta::enum_name(feature::to_protocol_symbol_kind(kind), "?"));
+    };
+    auto parent_name = [](const std::vector<Flat>& flats, std::int32_t parent) {
+        return parent == -1 ? std::string("(top level)") : flats[parent].symbol->name;
+    };
+
+    OutlineCheck check{
+        .ast = static_cast<std::uint32_t>(left.size()),
+        .index = static_cast<std::uint32_t>(right.size()),
+    };
+    auto report = [&](const feature::DocumentSymbol& symbol,
+                      llvm::StringRef field,
+                      std::string ast_value,
+                      std::string index_value) {
+        auto position = map.position(symbol.selection_range.begin, PositionEncoding::UTF8);
+        check.differences.push_back({
+            .line = position ? position->line + 1 : 0,
+            .column = position ? position->character + 1 : 0,
+            .field = field.str(),
+            .ast = std::move(ast_value),
+            .index = std::move(index_value),
+        });
+    };
+    for(auto [at, flat]: llvm::enumerate(left)) {
+        const auto& lhs = *flat.symbol;
+        if(partner[at] == -1) {
+            report(lhs, "only_ast", std::format("{} {}", kind_name(lhs.kind), lhs.name), "");
+            continue;
+        }
+        const auto& other = right[partner[at]];
+        const auto& rhs = *other.symbol;
+        if(lhs.name != rhs.name) {
+            report(lhs, "name", lhs.name, rhs.name);
+        }
+        if(kind_name(lhs.kind) != kind_name(rhs.kind)) {
+            report(lhs, "kind", kind_name(lhs.kind), kind_name(rhs.kind));
+        }
+        if(lhs.range != rhs.range) {
+            report(lhs, "range", spell_range(lhs.range), spell_range(rhs.range));
+        }
+        bool same_parent =
+            flat.parent == -1 ? other.parent == -1 : partner[flat.parent] == other.parent;
+        if(!same_parent) {
+            report(lhs, "parent", parent_name(left, flat.parent), parent_name(right, other.parent));
+        }
+        if(!rhs.detail.empty() && lhs.detail != rhs.detail) {
+            report(lhs, "detail", lhs.detail, rhs.detail);
+        }
+        if(lhs.deprecated != rhs.deprecated) {
+            report(lhs,
+                   "deprecated",
+                   lhs.deprecated ? "true" : "false",
+                   rhs.deprecated ? "true" : "false");
+        }
+    }
+    for(auto [at, flat]: llvm::enumerate(right)) {
+        if(!taken[at]) {
+            const auto& rhs = *flat.symbol;
+            report(rhs, "only_index", "", std::format("{} {}", kind_name(rhs.kind), rhs.name));
+        }
+    }
+    std::ranges::stable_sort(check.differences, {}, [](const OutlineDifference& difference) {
+        return std::pair(difference.line, difference.column);
+    });
+    return to_raw_json(check);
 }
 
 std::optional<kota::codec::RawValue> run_document_links(CompilationUnit& unit,
@@ -1991,18 +2163,19 @@ struct FeatureSpec {
 };
 
 constexpr std::array features = {
-    FeatureSpec{.name = "code_action",        .run_select = run_code_action      },
-    FeatureSpec{.name = "code_completion",    .run_complete = run_code_completion},
-    FeatureSpec{.name = "document_highlight", .run_at = run_document_highlight   },
-    FeatureSpec{.name = "document_links",     .run = run_document_links          },
-    FeatureSpec{.name = "document_symbol",    .run = run_document_symbols        },
-    FeatureSpec{.name = "folding_range",      .run = run_folding_ranges          },
-    FeatureSpec{.name = "hover",              .run_at = run_hover                },
-    FeatureSpec{.name = "hover_check",        .run_compiles = run_hover_check    },
-    FeatureSpec{.name = "inlay_hint",         .run_over = run_inlay_hints        },
-    FeatureSpec{.name = "selection_range",    .run_at = run_selection_range      },
-    FeatureSpec{.name = "semantic_tokens",    .run = run_semantic_tokens         },
-    FeatureSpec{.name = "signature_help",     .run_complete = run_signature_help },
+    FeatureSpec{.name = "code_action",           .run_select = run_code_action      },
+    FeatureSpec{.name = "code_completion",       .run_complete = run_code_completion},
+    FeatureSpec{.name = "document_highlight",    .run_at = run_document_highlight   },
+    FeatureSpec{.name = "document_links",        .run = run_document_links          },
+    FeatureSpec{.name = "document_symbol",       .run = run_document_symbols        },
+    FeatureSpec{.name = "document_symbol_check", .run = run_document_symbol_check   },
+    FeatureSpec{.name = "folding_range",         .run = run_folding_ranges          },
+    FeatureSpec{.name = "hover",                 .run_at = run_hover                },
+    FeatureSpec{.name = "hover_check",           .run_compiles = run_hover_check    },
+    FeatureSpec{.name = "inlay_hint",            .run_over = run_inlay_hints        },
+    FeatureSpec{.name = "selection_range",       .run_at = run_selection_range      },
+    FeatureSpec{.name = "semantic_tokens",       .run = run_semantic_tokens         },
+    FeatureSpec{.name = "signature_help",        .run_complete = run_signature_help },
 };
 
 const FeatureSpec* find_feature(llvm::StringRef name) {

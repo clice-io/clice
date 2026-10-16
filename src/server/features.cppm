@@ -127,7 +127,9 @@ public:
     RawResult folding_range(Ticket ticket,
                             bool line_folding_only,
                             kota::cancellation_token token = {});
-    RawResult document_symbol(Ticket ticket, kota::cancellation_token token = {});
+    RawResult document_symbol(Ticket ticket,
+                              feature::SymbolClient client,
+                              kota::cancellation_token token = {});
 
     /// One chain of selection ranges per position: from the AST, or for a
     /// document without one from the raw lex of its text.

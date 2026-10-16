@@ -1,0 +1,13 @@
+[answers.outline]
+document_symbols = [
+    { name = "table", kind = "Variable", at = "auto ⟦table⟧ = std::make_unique<std::map<int, std::string>>();", detail = "std::unique_ptr<std::map<int, std::string>>" },
+    { name = "lookup", kind = "Function", at = "void ⟦lookup⟧(const std::map<int, std::string>& entries, std::string_view key);", detail = "void (const std::map<int, std::string> &entries, std::string_view key)" },
+    { name = "names", kind = "Function", at = "auto ⟦names⟧() {", detail = "std::vector<std::string> ()" },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "table", kind = "Variable", at = "auto ⟦table⟧ = std::make_unique<std::map<int, std::string>>();", range = "⟦auto table = std::make_unique<std::map<int, std::string>>()⟧;" },
+    { name = "lookup", kind = "Function", at = "void ⟦lookup⟧(const std::map<int, std::string>& entries, std::string_view key);", range = "⟦void lookup(const std::map<int, std::string>& entries, std::string_view key)⟧;" },
+    { name = "names", kind = "Function", at = "auto ⟦names⟧() {", range = "⟦auto names() { … }⟧ (3 lines)" },
+]

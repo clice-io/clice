@@ -37,7 +37,7 @@ range = "(void)⟦alignof⟧(double);"
 
 [answers.udl_digits.hover]
 markdown = '''
-**function** `operator ""_unit`
+**function** `operator""_unit`
 
 ```cpp
 int operator""_unit(unsigned long long value)
@@ -47,7 +47,7 @@ range = "return ⟦12_unit⟧ + 12_unit;"
 
 [answers.udl_suffix.hover]
 markdown = '''
-**function** `operator ""_unit`
+**function** `operator""_unit`
 
 ```cpp
 int operator""_unit(unsigned long long value)

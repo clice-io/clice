@@ -1,0 +1,33 @@
+[answers.outline]
+document_symbols = [
+    { name = "checked", kind = "Function", at = "[[nodiscard]] int ⟦checked⟧();", detail = "int ()" },
+    { name = "unchecked", kind = "Function", at = '[[deprecated("use checked")]] [[maybe_unused]] int ⟦unchecked⟧();', detail = "int ()" },
+    { name = "made", kind = "Function", at = "[[nodiscard]] T ⟦made⟧();", detail = "template T ()" },
+    {
+        name = "Holder",
+        kind = "Struct",
+        at = "struct ⟦Holder⟧ {",
+        detail = "template struct",
+        children = [
+            { name = "as", kind = "Method", at = "U ⟦as⟧() const;", detail = "template U () const" },
+        ],
+    },
+    { name = "Holder<T>::as", kind = "Method", at = "U Holder<T>::⟦as⟧() const {", detail = "template U () const" },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "checked", kind = "Function", at = "[[nodiscard]] int ⟦checked⟧();", range = "⟦[[nodiscard]] int checked()⟧;" },
+    { name = "unchecked", kind = "Function", at = '[[deprecated("use checked")]] [[maybe_unused]] int ⟦unchecked⟧();', range = '⟦[[deprecated("use checked")]] [[maybe_unused]] int unchecked()⟧;' },
+    { name = "made", kind = "Function", at = "[[nodiscard]] T ⟦made⟧();", range = "⟦template <typename T> … [[nodiscard]] T made()⟧ (2 lines)" },
+    {
+        name = "Holder",
+        kind = "Struct",
+        at = "struct ⟦Holder⟧ {",
+        range = "⟦template <typename T> … }⟧ (5 lines) @-1",
+        children = [
+            { name = "as", kind = "Method", at = "U ⟦as⟧() const;", range = "⟦template <typename U> … U as() const⟧ (2 lines)" },
+        ],
+    },
+    { name = "Holder<T>::as", kind = "Method", at = "U Holder<T>::⟦as⟧() const {", range = "⟦template <typename T> … }⟧ (5 lines) @-2" },
+]

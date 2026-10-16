@@ -1,5 +1,4 @@
 [answers.outline]
-wrong = "the outline carries no access, static, virtual or abstract tags (clangd#2123)"
 document_symbols = [
     {
         name = "Base",
@@ -8,8 +7,8 @@ document_symbols = [
         detail = "class",
         tags = [],
         children = [
-            { name = "render", kind = "Method", at = "virtual void ⟦render⟧() = 0;", detail = "void ()", tags = [] },
-            { name = "instances", kind = "Method", at = "static int ⟦instances⟧();", detail = "int ()", tags = [] },
+            { name = "render", kind = "Method", at = "virtual void ⟦render⟧() = 0;", detail = "virtual void () = 0", tags = [] },
+            { name = "instances", kind = "Method", at = "static int ⟦instances⟧();", detail = "static int ()", tags = [] },
             { name = "id", kind = "Field", at = "int ⟦id⟧;", detail = "int", tags = [] },
         ],
     },

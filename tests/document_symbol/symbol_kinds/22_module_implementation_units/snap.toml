@@ -1,0 +1,5 @@
+[answers.outline]
+document_symbols = [
+    { name = "app", kind = "Module", at = "module ⟦app⟧;" },
+    { name = "helper", kind = "Function", at = "int ⟦helper⟧();", detail = "int ()" },
+]

@@ -4,7 +4,7 @@
   "subtopic": "symbol_kinds",
   "title": "Macros",
   "summary": "Object-like and function-like macros list, a function-like one with its parameters as detail",
-  "prose": "Macros in the leading run of directives, before any declaration, are\nmissing from the editor's outline yet.",
+  "prose": "",
   "status": "supported",
   "issues": [
     "clangd#1744"

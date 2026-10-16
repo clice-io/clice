@@ -5,14 +5,14 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦detail⟧ {",
         children = [
-            { name = "open_file", kind = "Function", at = "void ⟦open_file⟧(const char* path, int mode = 0644);", detail = "void (const char *, int)" },
+            { name = "open_file", kind = "Function", at = "void ⟦open_file⟧(const char* path, int mode = 0644);", detail = "void (const char *path, int mode = 0644)" },
             {
                 name = "Server",
                 kind = "Struct",
                 at = "struct ⟦Server⟧ {",
                 detail = "struct",
                 children = [
-                    { name = "listen", kind = "Method", at = "void ⟦listen⟧(int port = 8080, int backlog = 128);", detail = "void (int, int)" },
+                    { name = "listen", kind = "Method", at = "void ⟦listen⟧(int port = 8080, int backlog = 128);", detail = "void (int port = 8080, int backlog = 128)" },
                 ],
             },
         ],

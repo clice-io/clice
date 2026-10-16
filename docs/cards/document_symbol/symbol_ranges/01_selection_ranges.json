@@ -95,7 +95,7 @@
                             }
                           }
                         },
-                        "detail": "(int)"
+                        "detail": "(int size)"
                       },
                       {
                         "name": "~Widget",
@@ -132,7 +132,7 @@
                             }
                           }
                         },
-                        "detail": "Widget &(const Widget &)"
+                        "detail": "Widget &(const Widget &other)"
                       },
                       {
                         "name": "operator==",
@@ -151,7 +151,7 @@
                             }
                           }
                         },
-                        "detail": "bool (const Widget &) const"
+                        "detail": "bool (const Widget &other) const"
                       },
                       {
                         "name": "operator bool",
@@ -189,7 +189,7 @@
                             }
                           }
                         },
-                        "detail": "int ()"
+                        "detail": "static int ()"
                       },
                       {
                         "name": "size",
@@ -267,7 +267,7 @@
                         }
                       }
                     },
-                    "detail": "(int)"
+                    "detail": "(int size)"
                   },
                   {
                     "name": "Widget::instances",
@@ -286,7 +286,7 @@
                         }
                       }
                     },
-                    "detail": "int ()"
+                    "detail": "static int ()"
                   }
                 ]
               }

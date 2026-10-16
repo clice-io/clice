@@ -3,12 +3,10 @@
   "topic": "document_symbol",
   "subtopic": "symbol_kinds",
   "title": "Include directives",
-  "summary": "`#include` directives do not list in the outline yet",
+  "summary": "`#include` directives do not list in the outline, whose document links lead to the files they name",
   "prose": "",
-  "status": "unsupported",
-  "issues": [
-    "clangd#2226"
-  ],
+  "status": "supported",
+  "issues": [],
   "files": [
     {
       "path": "config.h",
@@ -28,7 +26,6 @@
         {
           "label": "outline",
           "value": {
-            "wrong": "#include directives do not appear in the outline (clangd#2226)",
             "document_symbols": [
               {
                 "name": "uses_config",
@@ -55,7 +52,6 @@
         {
           "label": "extents",
           "value": {
-            "wrong": "#include directives do not appear in the outline (clangd#2226)",
             "document_symbols": [
               {
                 "name": "uses_config",

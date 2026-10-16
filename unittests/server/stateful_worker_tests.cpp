@@ -161,12 +161,11 @@ ZEST_CASE(IpcCancelInterruptsCompile) {
         co_await group.join();
         ZASSERT(cancelled);
 
-        worker::QueryParams qp;
-        qp.kind = worker::QueryKind::DocumentSymbol;
+        worker::DocumentSymbolParams qp;
         qp.path = src;
         auto symbols = co_await w.peer->send_request(qp);
         ZASSERT(symbols);
-        ZEXPECT(symbols.value().data == "null");
+        ZEXPECT(!symbols.value().has_value());
 
         test_done = true;
     });
@@ -221,14 +220,13 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
         co_await group.join();
         ZASSERT(cancelled);
 
-        worker::QueryParams qp;
-        qp.kind = worker::QueryKind::DocumentSymbol;
+        worker::DocumentSymbolParams qp;
         qp.path = src;
         // Hang detection: a reply that never comes fails here, before the
         // watchdog.
         auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
         ZASSERT(symbols);
-        ZEXPECT(symbols.value().data == "null");
+        ZEXPECT(!symbols.value().has_value());
 
         test_done = true;
     });
@@ -452,8 +450,7 @@ ZEST_CASE(DocumentSymbolWithoutCompile) {
     bool test_done = false;
 
     w.run([&]() -> kota::task<> {
-        worker::QueryParams params;
-        params.kind = worker::QueryKind::DocumentSymbol;
+        worker::DocumentSymbolParams params;
         params.path = "/tmp/nonexistent.cpp";
 
         auto result = co_await w.peer->send_request(params);

@@ -171,7 +171,7 @@ stdout = '''
         "edits": 0,
         "conflicts": [],
         "warnings": [],
-        "error": "`operator \"\"_m` is named by the language, not by an identifier",
+        "error": "`operator\"\"_m` is named by the language, not by an identifier",
         "candidates": null
       }
     ],

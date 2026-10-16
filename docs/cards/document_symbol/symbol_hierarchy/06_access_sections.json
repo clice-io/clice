@@ -3,12 +3,10 @@
   "topic": "document_symbol",
   "subtopic": "symbol_hierarchy",
   "title": "Access sections",
-  "summary": "Members are not grouped under their `public` and `private` sections yet",
+  "summary": "Members list in the order they are written; their `public` and `private` sections are no level of the outline",
   "prose": "",
-  "status": "unsupported",
-  "issues": [
-    "clangd#499"
-  ],
+  "status": "supported",
+  "issues": [],
   "files": [
     {
       "path": "main.cpp",
@@ -23,7 +21,6 @@
         {
           "label": "outline",
           "value": {
-            "wrong": "public and private members are not grouped under their access (clangd#499)",
             "document_symbols": [
               {
                 "name": "Widget",
@@ -128,7 +125,6 @@
         {
           "label": "extents",
           "value": {
-            "wrong": "public and private members are not grouped under their access (clangd#499)",
             "document_symbols": [
               {
                 "name": "Widget",

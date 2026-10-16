@@ -58,7 +58,7 @@
                         }
                       }
                     },
-                    "detail": "void (Owner &)"
+                    "detail": "void (Owner &o)"
                   },
                   {
                     "name": "operator==",
@@ -77,7 +77,7 @@
                         }
                       }
                     },
-                    "detail": "bool (const Owner &, const Owner &)"
+                    "detail": "bool (const Owner &lhs, const Owner &rhs)"
                   }
                 ]
               }

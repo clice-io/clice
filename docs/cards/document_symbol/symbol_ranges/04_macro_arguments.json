@@ -82,8 +82,8 @@
                 "detail": "()"
               },
               {
-                "name": "counter_from_body",
-                "kind": "Variable",
+                "name": "COUNTER()",
+                "kind": "Constant",
                 "at": {
                   "$place": "⟦COUNTER⟧()",
                   "path": "main.cpp",
@@ -98,7 +98,27 @@
                     }
                   }
                 },
-                "detail": "int"
+                "children": [
+                  {
+                    "name": "counter_from_body",
+                    "kind": "Variable",
+                    "at": {
+                      "$place": "⟦COUNTER⟧()",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 7
+                        }
+                      }
+                    },
+                    "detail": "int"
+                  }
+                ]
               }
             ]
           }
@@ -204,8 +224,8 @@
                 }
               },
               {
-                "name": "counter_from_body",
-                "kind": "Variable",
+                "name": "COUNTER()",
+                "kind": "Constant",
                 "at": {
                   "$place": "⟦COUNTER⟧()",
                   "path": "main.cpp",
@@ -233,7 +253,41 @@
                       "character": 9
                     }
                   }
-                }
+                },
+                "children": [
+                  {
+                    "name": "counter_from_body",
+                    "kind": "Variable",
+                    "at": {
+                      "$place": "⟦COUNTER⟧()",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 7
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦COUNTER()⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 8,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 8,
+                          "character": 9
+                        }
+                      }
+                    }
+                  }
+                ]
               }
             ]
           }

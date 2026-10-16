@@ -13,6 +13,8 @@ struct User {
     const Outer::Inner frozen;
 };
 
+void take(Outer::Box<int> boxed, Outer::Inner plain);
+
 template <typename T>
 struct Holder {
     typename T::type value;

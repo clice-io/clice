@@ -36,7 +36,7 @@ document_symbols = [
         name = "a",
         kind = "Namespace",
         at = "namespace ⟦a⟧ {",
-        range = "⟦namespace a⟧ {",
+        range = "⟦namespace a { … ⟧ (3 lines)",
         children = [
             { name = "x", kind = "Variable", at = "int ⟦x⟧;", range = "⟦int x⟧;" },
         ],

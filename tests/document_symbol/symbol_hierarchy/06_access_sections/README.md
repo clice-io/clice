@@ -1,7 +1,3 @@
----
-issues: [clangd#499]
----
-
 # Access sections
 
-Members are not grouped under their `public` and `private` sections yet
+Members list in the order they are written; their `public` and `private` sections are no level of the outline

@@ -27,7 +27,7 @@ document_symbols = [
                     { name = "Y", kind = "EnumMember", at = "enum class Axis { X, ⟦Y⟧ };", detail = "Axis" },
                 ],
             },
-            { name = "origin_distance", kind = "Function", at = "int ⟦origin_distance⟧(const Point& p);", detail = "int (const Point &)" },
+            { name = "origin_distance", kind = "Function", at = "int ⟦origin_distance⟧(const Point& p);", detail = "int (const Point &p)" },
             {
                 name = "inner",
                 kind = "Namespace",

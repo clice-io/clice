@@ -1,0 +1,24 @@
+[answers."widget.h"]
+document_symbols = [
+    { name = "WIDGET_LIMIT", kind = "Constant", at = "#define ⟦WIDGET_LIMIT⟧ 8" },
+    {
+        name = "Widget",
+        kind = "Struct",
+        at = "struct ⟦Widget⟧ {",
+        detail = "struct",
+        children = [
+            { name = "size", kind = "Field", at = "int ⟦size⟧;", detail = "int" },
+        ],
+    },
+]
+
+[answers."defined.h"]
+document_symbols = [
+    { name = "defined_value", kind = "Function", at = "int ⟦defined_value⟧();", detail = "int ()" },
+]
+
+[answers."unguarded.h"]
+document_symbols = [
+    { name = "before", kind = "Function", at = "int ⟦before⟧();", detail = "int ()" },
+    { name = "SETTING", kind = "Constant", at = "#define ⟦SETTING⟧ 1" },
+]

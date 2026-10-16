@@ -372,6 +372,10 @@ struct Config {
     <feature::HoverOptions> hover;
 
     KOTATSU_ANNOTATE(defaulted = true,
+                     description = "The [document_symbols] section: what the outline lists.")
+    <feature::DocumentSymbolsOptions> document_symbols;
+
+    KOTATSU_ANNOTATE(defaulted = true,
                      description = "The [inlay_hints] section: inlay hint options.")
     <feature::InlayHintsOptions> inlay_hints;
 

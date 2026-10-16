@@ -1,0 +1,1233 @@
+{
+  "id": "document_symbol/symbol_hierarchy/09_macro_members",
+  "topic": "document_symbol",
+  "subtopic": "symbol_hierarchy",
+  "title": "Members a macro declares",
+  "summary": "What one macro invocation declares under names written nowhere lists under the invocation, each declaration once: a test macro's test, the members a class macro adds; a name written in the macro's arguments lists as written",
+  "prose": "",
+  "status": "supported",
+  "issues": [
+    "clangd#500"
+  ],
+  "files": [
+    {
+      "path": "main.cpp",
+      "text": "struct MetaObject {};\n\n#define OBJECT                                          \\\npublic:                                                 \\\n    static const MetaObject staticMetaObject;           \\\n    virtual const MetaObject* metaObject() const;       \\\n                                                        \\\nprivate:                                                \\\n    static void static_metacall(int, void**);\n\nclass Window {\n    OBJECT\npublic:\n    void show();\n};\n\n#define TEST(suite, name)                               \\\n    class suite##_##name##_Test {                       \\\n    public:                                             \\\n        suite##_##name##_Test() = default;              \\\n                                                        \\\n    private:                                            \\\n        void TestBody();                                \\\n        static const int test_info_;                    \\\n    };                                                  \\\n    const int suite##_##name##_Test::test_info_ = 0;    \\\n    void suite##_##name##_Test::TestBody()\n\nTEST(Math, Adds) {\n    int sum = 1 + 1;\n}\n\nTEST(Math, Subtracts) {\n    int difference = 2 - 1;\n}\n\n#define HANDLER(name) void name()\n\nHANDLER(on_ready);\n",
+      "markers": []
+    }
+  ],
+  "tests": [
+    {
+      "name": "answers",
+      "blocks": [
+        {
+          "label": "outline",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "MetaObject",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦MetaObject⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 17
+                    }
+                  }
+                },
+                "detail": "struct"
+              },
+              {
+                "name": "OBJECT",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦OBJECT⟧                                          \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 14
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Window",
+                "kind": "Class",
+                "at": {
+                  "$place": "class ⟦Window⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "class",
+                "children": [
+                  {
+                    "name": "OBJECT",
+                    "kind": "Constant",
+                    "at": {
+                      "$place": "⟦OBJECT⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 11,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 11,
+                          "character": 10
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "metaObject",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "detail": "virtual const MetaObject *() const"
+                      },
+                      {
+                        "name": "staticMetaObject",
+                        "kind": "Variable",
+                        "at": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "detail": "static const MetaObject"
+                      },
+                      {
+                        "name": "static_metacall",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "detail": "static void (int, void **)"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "show",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "void ⟦show⟧();",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 9
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "detail": "void ()"
+                  }
+                ]
+              },
+              {
+                "name": "TEST",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦TEST⟧(suite, name)                               \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "(suite, name)"
+              },
+              {
+                "name": "TEST(Math, Adds)",
+                "kind": "Constant",
+                "at": {
+                  "$place": "⟦TEST⟧(Math, Adds) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 4
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Math_Adds_Test",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Adds) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "detail": "class"
+                  },
+                  {
+                    "name": "Math_Adds_Test",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Adds) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "detail": "()"
+                  },
+                  {
+                    "name": "test_info_",
+                    "kind": "Variable",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Adds) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "detail": "static const int"
+                  },
+                  {
+                    "name": "TestBody",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Adds) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "detail": "void ()",
+                    "children": [
+                      {
+                        "name": "sum",
+                        "kind": "Variable",
+                        "at": {
+                          "$place": "int ⟦sum⟧ = 1 + 1;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 29,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 29,
+                              "character": 11
+                            }
+                          }
+                        },
+                        "detail": "int"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "TEST(Math, Subtracts)",
+                "kind": "Constant",
+                "at": {
+                  "$place": "⟦TEST⟧(Math, Subtracts) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 32,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 32,
+                      "character": 4
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Math_Subtracts_Test",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Subtracts) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "detail": "class"
+                  },
+                  {
+                    "name": "Math_Subtracts_Test",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Subtracts) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "detail": "()"
+                  },
+                  {
+                    "name": "test_info_",
+                    "kind": "Variable",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Subtracts) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "detail": "static const int"
+                  },
+                  {
+                    "name": "TestBody",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Subtracts) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "detail": "void ()",
+                    "children": [
+                      {
+                        "name": "difference",
+                        "kind": "Variable",
+                        "at": {
+                          "$place": "int ⟦difference⟧ = 2 - 1;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 33,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 33,
+                              "character": 18
+                            }
+                          }
+                        },
+                        "detail": "int"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "HANDLER",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦HANDLER⟧(name) void name()",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 36,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 36,
+                      "character": 15
+                    }
+                  }
+                },
+                "detail": "(name)"
+              },
+              {
+                "name": "on_ready",
+                "kind": "Function",
+                "at": {
+                  "$place": "HANDLER(⟦on_ready⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 38,
+                      "character": 16
+                    }
+                  }
+                },
+                "detail": "void ()"
+              }
+            ]
+          }
+        },
+        {
+          "label": "extents",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "MetaObject",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦MetaObject⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 17
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦struct MetaObject {}⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 0,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 0,
+                      "character": 20
+                    }
+                  }
+                }
+              },
+              {
+                "name": "OBJECT",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦OBJECT⟧                                          \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 14
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "#define ⟦OBJECT                                          \\ … static void static_metacall(int, void**);⟧ (7 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 8,
+                      "character": 45
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Window",
+                "kind": "Class",
+                "at": {
+                  "$place": "class ⟦Window⟧ {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 10,
+                      "character": 12
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦class Window { … }⟧ (5 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 10,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 14,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "OBJECT",
+                    "kind": "Constant",
+                    "at": {
+                      "$place": "⟦OBJECT⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 11,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 11,
+                          "character": 10
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦OBJECT⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 11,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 11,
+                          "character": 10
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "metaObject",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "staticMetaObject",
+                        "kind": "Variable",
+                        "at": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "name": "static_metacall",
+                        "kind": "Method",
+                        "at": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦OBJECT⟧",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 11,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 11,
+                              "character": 10
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "name": "show",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "void ⟦show⟧();",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 9
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 13
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦void show()⟧;",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 4
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 15
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "TEST",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦TEST⟧(suite, name)                               \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 16,
+                      "character": 12
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "#define ⟦TEST(suite, name)                               \\ … void suite##_##name##_Test::TestBody()⟧ (11 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 16,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 26,
+                      "character": 42
+                    }
+                  }
+                }
+              },
+              {
+                "name": "TEST(Math, Adds)",
+                "kind": "Constant",
+                "at": {
+                  "$place": "⟦TEST⟧(Math, Adds) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 28,
+                      "character": 4
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦TEST(Math, Adds) { … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 28,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 30,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Math_Adds_Test",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Adds) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦TEST(Math, Adds)⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 16
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "Math_Adds_Test",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Adds) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦TEST(Math, Adds)⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 16
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "test_info_",
+                    "kind": "Variable",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Adds) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦TEST(Math, Adds)⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 16
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "TestBody",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Adds) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 28,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦TEST(Math, Adds) { … }⟧ (3 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 28,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 30,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "sum",
+                        "kind": "Variable",
+                        "at": {
+                          "$place": "int ⟦sum⟧ = 1 + 1;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 29,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 29,
+                              "character": 11
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦int sum = 1 + 1⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 29,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 29,
+                              "character": 19
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "TEST(Math, Subtracts)",
+                "kind": "Constant",
+                "at": {
+                  "$place": "⟦TEST⟧(Math, Subtracts) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 32,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 32,
+                      "character": 4
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦TEST(Math, Subtracts) { … }⟧ (3 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 32,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 34,
+                      "character": 1
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Math_Subtracts_Test",
+                    "kind": "Class",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Subtracts) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦TEST(Math, Subtracts)⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 21
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "Math_Subtracts_Test",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Subtracts) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦TEST(Math, Subtracts)⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 21
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "test_info_",
+                    "kind": "Variable",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Subtracts) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦TEST(Math, Subtracts)⟧ {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 21
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "TestBody",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "⟦TEST⟧(Math, Subtracts) {",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 32,
+                          "character": 4
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦TEST(Math, Subtracts) { … }⟧ (3 lines)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 32,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 34,
+                          "character": 1
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "name": "difference",
+                        "kind": "Variable",
+                        "at": {
+                          "$place": "int ⟦difference⟧ = 2 - 1;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 33,
+                              "character": 8
+                            },
+                            "end": {
+                              "line": 33,
+                              "character": 18
+                            }
+                          }
+                        },
+                        "range": {
+                          "$place": "⟦int difference = 2 - 1⟧;",
+                          "path": "main.cpp",
+                          "range": {
+                            "start": {
+                              "line": 33,
+                              "character": 4
+                            },
+                            "end": {
+                              "line": 33,
+                              "character": 26
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "HANDLER",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦HANDLER⟧(name) void name()",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 36,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 36,
+                      "character": 15
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "#define ⟦HANDLER(name) void name()⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 36,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 36,
+                      "character": 33
+                    }
+                  }
+                }
+              },
+              {
+                "name": "on_ready",
+                "kind": "Function",
+                "at": {
+                  "$place": "HANDLER(⟦on_ready⟧);",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 38,
+                      "character": 16
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦HANDLER(on_ready)⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 38,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 38,
+                      "character": 17
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

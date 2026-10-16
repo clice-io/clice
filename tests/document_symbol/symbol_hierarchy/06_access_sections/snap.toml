@@ -1,5 +1,4 @@
 [answers.outline]
-wrong = "public and private members are not grouped under their access (clangd#499)"
 document_symbols = [
     {
         name = "Widget",
@@ -16,7 +15,6 @@ document_symbols = [
 ]
 
 [answers.extents]
-wrong = "public and private members are not grouped under their access (clangd#499)"
 document_symbols = [
     {
         name = "Widget",

@@ -16,7 +16,7 @@ document_symbols = [
                     { name = "total", kind = "Field", at = "int ⟦total⟧;", detail = "int" },
                 ],
             },
-            { name = "twice", kind = "Variable", at = "auto ⟦twice⟧ = [](int x) {", detail = "(lambda)" },
+            { name = "twice", kind = "Variable", at = "auto ⟦twice⟧ = [](int x) {", detail = "int (int x)" },
             {
                 name = "Pair",
                 kind = "Struct",

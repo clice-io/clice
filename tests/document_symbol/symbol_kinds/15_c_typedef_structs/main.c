@@ -8,3 +8,9 @@ typedef struct {
 typedef struct Node {
     struct Node* next;
 } Node;
+
+typedef enum { Red, Green } Color;
+
+typedef struct Point3 {
+    int z;
+} *Point3Ref;

@@ -627,20 +627,20 @@ CheckResult relations_ok(BlobView root) {
         }
     }
 
-    // The writer splits payloads by kind — decl/def relations carry a
-    // definition range, every other payload names a target symbol — and
+    // The writer splits payloads by kind — decl/def and instantiation
+    // relations carry an extent, every other payload names a target symbol — and
     // the readers decode whichever sparse table holds the relation without
     // consulting its kind. A relation in the wrong table would serve one
     // payload's bit pattern as the other (a source range as a symbol
     // hash, or vice versa), so enforce the partition, which also keeps
     // the tables disjoint.
     for(auto entry: table.sym_entries) {
-        if(table.kind_of(entry).isDeclOrDef()) {
+        if(table.kind_of(entry).carries_extent()) {
             return std::unexpected("declaration row in the target table");
         }
     }
     for(auto entry: table.def_entries) {
-        if(!table.kind_of(entry).isDeclOrDef()) {
+        if(!table.kind_of(entry).carries_extent()) {
             return std::unexpected("non-declaration row in the definition range table");
         }
     }
@@ -1289,7 +1289,7 @@ llvm::DenseSet<SymbolHash> referenced_symbols(const MergedEntries<MaskT>& merged
         referenced.insert(group.symbol);
         for(auto& entry: group.entries) {
             auto& relation = entry.relation;
-            if(relation.target_symbol != 0 && !RelationKind(relation.kind).isDeclOrDef()) {
+            if(relation.target_symbol != 0 && !RelationKind(relation.kind).carries_extent()) {
                 referenced.insert(relation.target_symbol);
             }
         }
@@ -1624,7 +1624,7 @@ void emit_blob(const MergedEntries<MaskT>& merged,
             auto& relation = entry.relation;
             blob.rel_kinds.push_back(static_cast<std::uint8_t>(relation.kind));
             if(relation.target_symbol != 0) {
-                if(RelationKind(relation.kind).isDeclOrDef()) {
+                if(RelationKind(relation.kind).carries_extent()) {
                     auto range = std::bit_cast<LocalSourceRange>(relation.target_symbol);
                     blob.rel_def_entries.push_back(rels.count);
                     blob.rel_def_begins.push_back(range.begin);

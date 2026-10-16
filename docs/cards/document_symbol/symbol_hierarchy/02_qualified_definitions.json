@@ -213,7 +213,7 @@
                         }
                       }
                     },
-                    "detail": "int (const Point &)"
+                    "detail": "int (const Point &p)"
                   },
                   {
                     "name": "inner",

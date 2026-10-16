@@ -17,7 +17,7 @@ document_symbols = [
                     { name = "backoff", kind = "Field", at = "double ⟦backoff⟧;", detail = "double" },
                 ],
             },
-            { name = "on_error", kind = "Variable", at = "auto ⟦on_error⟧ = [](int code) {", detail = "(lambda)" },
+            { name = "on_error", kind = "Variable", at = "auto ⟦on_error⟧ = [](int code) {", detail = "bool (int code)" },
         ],
     },
 ]

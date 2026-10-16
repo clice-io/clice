@@ -522,6 +522,7 @@ std::string flag_names(index::SymbolFlags flags) {
         {index::SymbolFlags::Exported,           "Exported"          },
         {index::SymbolFlags::AnonymousScope,     "AnonymousScope"    },
         {index::SymbolFlags::AnonymousNamespace, "AnonymousNamespace"},
+        {index::SymbolFlags::TemplateParameter,  "TemplateParameter" },
     };
     for(auto [bit, name]: bits) {
         if(index::has_flag(flags, bit)) {
