@@ -190,7 +190,6 @@ std::unique_ptr<clang::CompilerInvocation>
 
         case CompilationKind::ModuleInterface: {
             front_opts.OutputFile = params.output_file;
-            front_opts.ProgramAction = clang::frontend::GenerateReducedModuleInterface;
             break;
         }
 
@@ -355,12 +354,16 @@ private:
     CompilationUnit& unit;
 };
 
-static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind kind) {
+static std::unique_ptr<clang::FrontendAction> frontend_action(CompilationKind kind,
+                                                              bool reduced_bmi) {
     switch(kind) {
         case CompilationKind::Preprocess: return std::make_unique<clang::PreprocessOnlyAction>();
         case CompilationKind::Preamble: return std::make_unique<clang::GeneratePCHAction>();
         case CompilationKind::ModuleInterface:
-            return std::make_unique<clang::GenerateReducedModuleInterfaceAction>();
+            if(reduced_bmi) {
+                return std::make_unique<clang::GenerateReducedModuleInterfaceAction>();
+            }
+            return std::make_unique<clang::GenerateModuleInterfaceAction>();
         case CompilationKind::Content:
         case CompilationKind::Whole:
         case CompilationKind::Completion: return std::make_unique<clang::SyntaxOnlyAction>();
@@ -410,7 +413,9 @@ CompilationStatus CompilationUnit::run() {
         instance->setCodeCompletionConsumer(params.completion.consumer.release());
     }
 
-    action = std::make_unique<ParseAction>(frontend_action(params.kind), *this);
+    action = std::make_unique<ParseAction>(
+        frontend_action(params.kind, instance->getFrontendOpts().GenReducedBMI),
+        *this);
 
     if(!action->BeginSourceFile(*instance, instance->getFrontendOpts().Inputs[0])) {
         /// If the action is not empty, we will call `EndSourceFile` in the destructor.

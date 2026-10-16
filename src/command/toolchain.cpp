@@ -453,15 +453,25 @@ kota::task<std::expected<std::vector<std::string>, std::string>> query_one(const
         co_return std::move(queried);
 
     // Strip the temporary probe file so results contain no input path
-    // (render appends the real source file at the end). Also strip module
-    // output flags the driver derives from the probe input (clang >= 22 emits
-    // -fmodules-reduced-bmi -fmodule-output=<probe>.pcm for module units);
-    // they reference the deleted temp file and clice manages outputs itself.
-    // The probe path uses an exact match: all supported drivers echo input
-    // paths verbatim, without canonicalizing them.
+    // (render appends the real source file at the end), and the module
+    // output the driver derives from it (-fmodule-output=<probe>.pcm for a
+    // module unit): it names the deleted temp file and clice manages outputs
+    // itself. The probe path uses an exact match: all supported drivers echo
+    // input paths verbatim, without canonicalizing them.
+    //
+    // -fmodules-reduced-bmi stays only beside that module output, where the
+    // real build writes the reduced BMI its importers read (--precompile
+    // hands them the full one): clice builds the same kind, as a reduced BMI
+    // drops what the global module fragment declares and the purview never
+    // names, partial specializations among them.
+    bool reduced_bmi = ranges::contains(*queried, "-fmodules-reduced-bmi") &&
+                       ranges::any_of(*queried, [](llvm::StringRef arg) {
+                           return arg.starts_with("-fmodule-output");
+                       });
     std::erase_if(*queried, [&](const std::string& arg) {
         llvm::StringRef s(arg);
-        return s == *src_path || s == "-fmodules-reduced-bmi" || s.starts_with("-fmodule-output");
+        return s == *src_path || (s == "-fmodules-reduced-bmi" && !reduced_bmi) ||
+               s.starts_with("-fmodule-output");
     });
 
     if(queried->empty())
