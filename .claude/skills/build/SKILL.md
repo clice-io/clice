@@ -16,7 +16,7 @@ box push $id                                    # the working tree's tracked fil
 box run $id 'pixi run build RelWithDebInfo'     # run_in_background
 ```
 
-The box belongs to the caller's task, not to this skill: build on the id the caller passed, or lease one and report its id. Never `box down` it — its warm build is what the test skill and every later push run on. Nobody needs to: an idle box stops by itself after an hour, so the caller keeps and reuses it across tasks instead of leasing again.
+The box belongs to the calling session, not to this skill: build on the id the caller passed, or lease one and report its id. Never `box down` it — the session reuses it, warm, for the tests and every later push, and an idle box stops by itself after an hour.
 
 - A box restores the Bazel and ThinLTO caches of main's CI, RelWithDebInfo only: a Debug build there starts cold.
 - Several boxes in parallel are fine when the work splits (RelWithDebInfo and Debug, platforms, A/B). While a box comes up, push and let CI verify; it runs many jobs at once.
