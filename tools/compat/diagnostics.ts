@@ -307,25 +307,43 @@ interface Difference {
 /// The diagnostics of one file the tools disagree on: each message, with
 /// the lines the tools that report it put it on, kept when one of the
 /// tools compared on this kind of diagnostic misses it or puts it
-/// elsewhere. The compiler's diagnostics are compared across all four,
-/// clang-tidy's between clice, clangd and lint.
+/// elsewhere; a message raised several times is matched occurrence by
+/// occurrence, in line order. The compiler's diagnostics are compared
+/// across all four, clang-tidy's between clice, clangd and lint.
 function differences(file: string, by: Partial<Record<Tool, Finding[]>>): Difference[] {
-    const merged = new Map<string, Difference>();
+    const merged = new Map<string, { finding: Finding; lines: Partial<Record<Tool, number[]>> }>();
     for (const tool of TOOLS) {
         for (const finding of by[tool] ?? []) {
             const key = `${finding.tidy}|${finding.message}`;
-            const difference = merged.get(key) ?? { lines: {}, file, finding };
-            difference.lines[tool] ??= finding.line;
-            merged.set(key, difference);
+            const entry = merged.get(key) ?? { finding, lines: {} };
+            (entry.lines[tool] ??= []).push(finding.line);
+            merged.set(key, entry);
         }
     }
-    return [...merged.values()].filter((difference) => {
+    const result: Difference[] = [];
+    for (const { finding, lines } of merged.values()) {
         const tools = TOOLS.filter(
-            (tool) => by[tool] !== undefined && !(difference.finding.tidy && tool === "clang"),
+            (tool) => by[tool] !== undefined && !(finding.tidy && tool === "clang"),
         );
-        const lines = tools.map((tool) => difference.lines[tool]);
-        return lines.some((line) => line !== lines[0]);
-    });
+        for (const list of Object.values(lines)) {
+            list.sort((a, b) => a - b);
+        }
+        const count = Math.max(...tools.map((tool) => lines[tool]?.length ?? 0));
+        for (let i = 0; i < count; i += 1) {
+            const at = tools.map((tool) => lines[tool]?.[i]);
+            if (at.some((line) => line !== at[0])) {
+                const occurrence: Partial<Record<Tool, number>> = {};
+                for (const tool of TOOLS) {
+                    const line = lines[tool]?.[i];
+                    if (line !== undefined) {
+                        occurrence[tool] = line;
+                    }
+                }
+                result.push({ lines: occurrence, file, finding });
+            }
+        }
+    }
+    return result;
 }
 
 function report(

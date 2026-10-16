@@ -53,13 +53,19 @@ std::vector<TextReplacement> placed(CompilationUnit& unit, llvm::ArrayRef<TextRe
     if(!unit.is_named_module()) {
         return edits;
     }
+    std::optional<IncludeInsertion> insertion;
     for(auto& edit: edits) {
         llvm::StringRef header = edit.text;
         if(edit.range.begin == 0 && edit.range.length() == 0 && header.consume_front("#include ")) {
-            auto insertion = include_insertion(unit);
+            // The fragment the first include opens holds the others.
+            if(insertion) {
+                insertion->opens_fragment = false;
+            } else {
+                insertion = include_insertion(unit);
+            }
             edit = {
-                {insertion.offset, insertion.offset},
-                insertion.text(header.trim())
+                {insertion->offset, insertion->offset},
+                insertion->text(header.trim())
             };
         }
     }

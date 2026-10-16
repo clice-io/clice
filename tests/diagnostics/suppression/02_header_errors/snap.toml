@@ -1,0 +1,13 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = '#include ⟦"bad.h"⟧',
+        severity = "error",
+        message = "In included file: use of undeclared identifier 'undeclared_name'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+        related = [
+            { at = "bad.h │ int second = ⟦undeclared_name⟧;", message = "error occurred here" },
+        ],
+    },
+]

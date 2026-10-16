@@ -3,7 +3,13 @@ struct Old {
 };
 
 template <typename T>
+struct Box {
+    decltype(T().size()) value;
+};
+
+template <typename T>
 int use(T t) {
     int v = T::get();
-    return v + t.size();
+    Box<T> box;
+    return v;
 }
