@@ -49,7 +49,7 @@ std::vector<feature::FileDiagnostic>
     // Of the diagnostics moved from other files to one spot, the first
     // error and the first warning show: a broken header's every error
     // would pile up on its #include.
-    llvm::DenseSet<std::tuple<std::uint32_t, std::uint32_t, bool>> relocated;
+    std::set<std::tuple<std::uint32_t, std::uint32_t, bool>> relocated;
     auto diagnostics = output.diagnostics;
     std::erase_if(diagnostics, [&](const feature::FileDiagnostic& diagnostic) {
         auto start = diagnostic.range.start;
