@@ -410,6 +410,20 @@ void StatefulWorker::register_handlers() {
             [&](DocumentEntry& doc) { return std::optional(feature::folding_ranges(*doc.unit)); });
     });
 
+    // === DocumentSymbol ===
+    peer.on_request([this](RequestContext& ctx, const worker::DocumentSymbolParams& params)
+                        -> RequestResult<worker::DocumentSymbolParams> {
+        return with_ast_or(
+            "DocumentSymbol",
+            params,
+            std::optional<std::vector<feature::DocumentSymbol>>{},
+            [&](DocumentEntry& doc) {
+                auto regions = doc.inactive_regions();
+                return std::optional(
+                    feature::document_symbols(*doc.unit, regions, params.config.document_symbols));
+            });
+    });
+
     // === CodeAction ===
     peer.on_request(
         [this](RequestContext& ctx,
@@ -479,12 +493,6 @@ void StatefulWorker::register_handlers() {
                         auto regions = doc.inactive_regions();
                         return to_raw(
                             feature::semantic_tokens(*doc.unit, regions, PositionEncoding::UTF16));
-                    });
-                case K::DocumentSymbol:
-                    return with_ast(kind, params, [&](DocumentEntry& doc) {
-                        auto regions = doc.inactive_regions();
-                        return to_raw(
-                            feature::document_symbols(*doc.unit, regions, PositionEncoding::UTF16));
                     });
             }
             std::unreachable();

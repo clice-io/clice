@@ -1,0 +1,35 @@
+[headers."widget.h"]
+document_symbols = [
+    { name = "WIDGET_LIMIT", kind = "Constant", at = "#define ⟦WIDGET_LIMIT⟧ 8" },
+    {
+        name = "Widget",
+        kind = "Struct",
+        at = "struct ⟦Widget⟧ {",
+        detail = "struct",
+        children = [
+            { name = "size", kind = "Field", at = "int ⟦size⟧;", detail = "int" },
+        ],
+    },
+]
+
+[headers."defined.h"]
+document_symbols = [
+    { name = "defined_value", kind = "Function", at = "int ⟦defined_value⟧();", detail = "int ()" },
+]
+
+[headers."unguarded.h"]
+document_symbols = [
+    { name = "before", kind = "Function", at = "int ⟦before⟧();", detail = "int ()" },
+    { name = "SETTING", kind = "Constant", at = "#define ⟦SETTING⟧ 1" },
+]
+
+[headers."limits.h"]
+document_symbols = [
+    { name = "LIMIT", kind = "Constant", at = "#define ⟦LIMIT⟧ 64" },
+    { name = "limited", kind = "Function", at = "int ⟦limited⟧();", detail = "int ()" },
+]
+
+["in its includer's context"."needs_host.h"]
+document_symbols = [
+    { name = "make_widget", kind = "Function", at = "Widget ⟦make_widget⟧();" },
+]

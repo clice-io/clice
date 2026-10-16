@@ -350,6 +350,11 @@ public:
     /// a header, compiled as its host sees it.
     bool borrows_context();
 
+    /// Where the text of `fid` ends: in a compile that borrows an includer
+    /// context, the main file's ends at the line break before the include
+    /// of the includer's remainder appended past the editor's text.
+    auto text_end(clang::FileID fid) -> std::uint32_t;
+
     /// The path of the file `fid` stands for: its own, or for a synthesized
     /// file the one its text was cut from.
     auto source_path(clang::FileID fid) -> llvm::StringRef;

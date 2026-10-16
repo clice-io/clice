@@ -285,6 +285,8 @@ export interface OutlineSymbol extends Item {
     range?: Location | undefined;
     /// Its symbol tags by name (`Deprecated`).
     tags?: string[] | undefined;
+    /// Of a flat reply, the name of the symbol it nests in.
+    container?: string | undefined;
     children: OutlineSymbol[];
 }
 
@@ -300,6 +302,7 @@ export function renderOutline(
         const { path, range } = symbol.selection;
         return {
             ...renderItem(symbol, scope),
+            ...(symbol.container === undefined ? {} : { container: symbol.container }),
             ...(parts.has("detail") && symbol.detail !== undefined && symbol.detail !== ""
                 ? { detail: symbol.detail }
                 : {}),

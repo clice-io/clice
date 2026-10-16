@@ -127,7 +127,12 @@ public:
     RawResult folding_range(Ticket ticket,
                             bool line_folding_only,
                             kota::cancellation_token token = {});
-    RawResult document_symbol(Ticket ticket, kota::cancellation_token token = {});
+    /// A flat reply places every symbol at `uri`, the document as the
+    /// request names it.
+    RawResult document_symbol(Ticket ticket,
+                              feature::SymbolClient client,
+                              std::string uri,
+                              kota::cancellation_token token = {});
 
     /// One chain of selection ranges per position: from the AST, or for a
     /// document without one from the raw lex of its text.
@@ -272,7 +277,7 @@ private:
 
     struct RouteOptions {
         /// The projection raw-lexes the whole buffer (semantic tokens,
-        /// folds): it follows the investment policy once the buffer is
+        /// folds, the outline): it follows the investment policy once the buffer is
         /// oversized, while index- and cursor-backed answers serve at any
         /// size.
         bool full_lex = false;

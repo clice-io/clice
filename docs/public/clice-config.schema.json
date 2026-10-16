@@ -53,6 +53,14 @@
                 "layout": true
             }
         },
+        "document_symbols": {
+            "$ref": "#/$defs/DocumentSymbolsOptions",
+            "description": "The [document_symbols] section: what the outline lists.",
+            "default": {
+                "macros": true,
+                "locals": true
+            }
+        },
         "inlay_hints": {
             "$ref": "#/$defs/InlayHintsOptions",
             "description": "The [inlay_hints] section: inlay hint options.",
@@ -251,6 +259,22 @@
                 "layout": {
                     "type": "boolean",
                     "description": "Show how the compiler lays out a class or a field wherever it is hovered: size, alignment, a field's offset, and the padding.",
+                    "default": true
+                }
+            },
+            "additionalProperties": false
+        },
+        "DocumentSymbolsOptions": {
+            "type": "object",
+            "properties": {
+                "macros": {
+                    "type": "boolean",
+                    "description": "List the `#define`s the file writes; an include guard's never lists.",
+                    "default": true
+                },
+                "locals": {
+                    "type": "boolean",
+                    "description": "List what a function's body declares: its variables, types and lambdas, under the function.",
                     "default": true
                 }
             },

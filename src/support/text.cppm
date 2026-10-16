@@ -20,6 +20,20 @@ inline std::uint32_t line_end(llvm::StringRef content, std::uint32_t offset) {
                                             : static_cast<std::uint32_t>(newline + 1);
 }
 
+/// The length of the line splice `text` starts with: a backslash, the
+/// blanks clang tolerates after it, and a line break; zero for none.
+inline std::size_t splice_length(llvm::StringRef text) {
+    if(!text.starts_with('\\')) {
+        return 0;
+    }
+    auto rest = text.drop_front().ltrim(" \t\v\f");
+    auto skipped = text.size() - rest.size();
+    if(rest.starts_with("\r\n")) {
+        return skipped + 2;
+    }
+    return rest.starts_with('\n') || rest.starts_with('\r') ? skipped + 1 : 0;
+}
+
 /// A size in bytes as the commands print it: B, KB or MB.
 inline std::string format_bytes(std::uint64_t bytes) {
     if(bytes >= 1024 * 1024) {

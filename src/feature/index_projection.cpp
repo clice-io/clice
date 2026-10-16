@@ -9,6 +9,7 @@ import :feature.lexical_classify;
 import :index.shard;
 import :syntax.documentation;
 import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice::feature {
 
@@ -31,12 +32,13 @@ IndexEntries extract_index_entries(const index::Shard& shard) {
     std::vector<index::Occurrence> names;
     shard.for_each_relation([&](index::SymbolHash hash, const index::Relation& relation) {
         RelationKind kind(relation.kind);
-        if(kind.isDeclOrDef()) {
+        if(kind.carries_extent()) {
             auto copy = relation;
-            entries.decls.push_back({.range = relation.range,
-                                     .extent = copy.definition_range(),
-                                     .symbol = hash,
-                                     .definition = kind.is_one_of(RelationKind::Definition)});
+            auto& into = kind.isDeclOrDef() ? entries.decls : entries.instantiations;
+            into.push_back({.range = relation.range,
+                            .extent = copy.definition_range(),
+                            .symbol = hash,
+                            .definition = kind.is_one_of(RelationKind::Definition)});
         } else if(kind.isReference() && nested(relation.range)) {
             names.push_back({.range = relation.range, .target = hash});
         }
@@ -74,27 +76,6 @@ bool overrides(llvm::StringRef spelling) {
 LangProfile& profile_for(const clang::LangOptions& lang_opts) {
     return profile_for(lang_opts.CPlusPlus ? clang::Language::CXX : clang::Language::C,
                        lang_opts.LangStd);
-}
-
-bool outline_kind(SymbolKind kind) {
-    switch(kind) {
-        case SymbolKind::Macro:
-        case SymbolKind::Module:
-        case SymbolKind::Namespace:
-        case SymbolKind::Class:
-        case SymbolKind::Struct:
-        case SymbolKind::Union:
-        case SymbolKind::Enum:
-        case SymbolKind::Type:
-        case SymbolKind::Concept:
-        case SymbolKind::Field:
-        case SymbolKind::EnumMember:
-        case SymbolKind::Function:
-        case SymbolKind::Method:
-        case SymbolKind::Operator:
-        case SymbolKind::Variable: return true;
-        default: return false;
-    }
 }
 
 struct Brace {
@@ -364,110 +345,90 @@ auto index_semantic_tokens(llvm::StringRef content,
     return tokens;
 }
 
-auto index_outline(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
-    -> std::vector<IndexOutlineEntry> {
-    std::vector<IndexOutlineEntry> entries;
-    for(const auto& decl: decls) {
+auto index_document_symbols(llvm::StringRef content,
+                            const clang::LangOptions& lang_opts,
+                            const IndexEntries& entries,
+                            IndexSymbolResolver resolve,
+                            const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    // A name the text writes is where an occurrence of its symbol starts.
+    llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> written;
+    for(const auto& occurrence: entries.occurrences) {
+        written.insert({occurrence.range.begin, occurrence.target});
+    }
+
+    std::vector<OutlineEntry> declarations;
+    std::vector<std::uint32_t> macro_names;
+    llvm::DenseSet<std::uint32_t> module_names;
+    auto add = [&](const IndexDecl& decl) {
         if(!decl.extent.valid() || decl.extent.begin >= decl.extent.end) {
-            continue;
+            return;
         }
         auto info = resolve(decl.symbol);
-        if(!info || info->name.empty() || !outline_kind(info->kind)) {
-            continue;
+        if(!info) {
+            return;
         }
-        auto selection = decl.range;
-        if(selection.begin < decl.extent.begin || selection.end > decl.extent.end) {
-            selection = decl.extent;
+        if(info->kind == SymbolKind::Macro) {
+            macro_names.push_back(decl.range.begin);
+            return;
         }
-        entries.push_back(
-            {.symbol = std::move(*info), .range = decl.extent, .selection_range = selection});
-    }
-
-    // Merged shard entries can duplicate an anchor (a symbol's Declaration
-    // and Definition relations of an inline definition share it, and so do
-    // context variants); one outline entry per (site, symbol identity).
-    // Descending end puts a strict container before everything inside it.
-    std::ranges::sort(entries, [](const IndexOutlineEntry& lhs, const IndexOutlineEntry& rhs) {
-        if(lhs.range.begin != rhs.range.begin) {
-            return lhs.range.begin < rhs.range.begin;
+        if(info->kind == SymbolKind::Module) {
+            module_names.insert(decl.range.begin);
+            return;
         }
-        if(lhs.range.end != rhs.range.end) {
-            return lhs.range.end > rhs.range.end;
+        auto flag = [&](index::SymbolFlags bit) {
+            return index::has_flag(info->flags, bit);
+        };
+        bool unnamed = flag(index::SymbolFlags::Unnamed);
+        if(!outline_lists(info->kind, unnamed, flag(index::SymbolFlags::TemplateParameter))) {
+            return;
         }
-        if(lhs.selection_range.begin != rhs.selection_range.begin) {
-            return lhs.selection_range.begin < rhs.selection_range.begin;
-        }
-        if(auto lhs_name = lhs.symbol.display_name(), rhs_name = rhs.symbol.display_name();
-           lhs_name != rhs_name) {
-            return lhs_name < rhs_name;
-        }
-        return lhs.symbol.hash < rhs.symbol.hash;
-    });
-    auto duplicates =
-        std::ranges::unique(entries,
-                            [](const IndexOutlineEntry& lhs, const IndexOutlineEntry& rhs) {
-                                return lhs.symbol.hash == rhs.symbol.hash &&
-                                       lhs.range == rhs.range &&
-                                       lhs.selection_range == rhs.selection_range;
-                            });
-    entries.erase(duplicates.begin(), duplicates.end());
-    return entries;
-}
-
-auto index_document_symbols(llvm::ArrayRef<IndexDecl> decls, IndexSymbolResolver resolve)
-    -> std::vector<DocumentSymbol> {
-    auto entries = index_outline(decls, resolve);
-
-    // Entries are sorted by (begin asc, end desc): a strict container
-    // precedes everything it contains, so a stack builds the tree; equal
-    // or merely overlapping extents fail the containment test and become
-    // siblings in source order.
-    std::vector<DocumentSymbol> roots;
-    auto contains = [](const LocalSourceRange& outer, const LocalSourceRange& inner) {
-        return outer.begin <= inner.begin && inner.end <= outer.end && outer != inner;
-    };
-    std::vector<std::pair<const IndexOutlineEntry*, std::vector<DocumentSymbol>>> pending;
-
-    auto close_top = [&] {
-        auto [entry, children] = std::move(pending.back());
-        pending.pop_back();
-        auto& into = pending.empty() ? roots : pending.back().second;
-        into.push_back({
-            .name = entry->symbol.display_name(),
-            .kind = entry->symbol.kind,
-            .range = entry->range,
-            .selection_range = entry->selection_range,
-            .deprecated = index::has_flag(entry->symbol.flags, index::SymbolFlags::Deprecated),
-            .children = std::move(children),
+        declarations.push_back({
+            .name = std::move(info->name),
+            .kind = info->kind,
+            .range = decl.extent,
+            .selection_range = decl.range,
+            .deprecated = flag(index::SymbolFlags::Deprecated),
+            .entity = decl.symbol,
+            .parent = info->parent,
+            .definition = decl.definition,
+            .unnamed = unnamed,
+            .from_macro = !written.contains({decl.range.begin, decl.symbol}),
         });
     };
-
-    for(auto& entry: entries) {
-        while(!pending.empty() && !contains(pending.back().first->range, entry.range)) {
-            close_top();
-        }
-        pending.emplace_back(&entry, std::vector<DocumentSymbol>{});
+    for(const auto& decl: entries.decls) {
+        add(decl);
     }
-    while(!pending.empty()) {
-        close_top();
+    for(const auto& decl: entries.instantiations) {
+        add(decl);
     }
 
-    // Sibling order matches the AST outline's final sort: position
-    // ascending, shorter range first.
-    auto order = [](auto& self, std::vector<DocumentSymbol>& symbols) -> void {
-        std::ranges::sort(symbols, [](const DocumentSymbol& lhs, const DocumentSymbol& rhs) {
-            if(lhs.range.begin != rhs.range.begin) {
-                return lhs.range.begin < rhs.range.begin;
-            }
-            return lhs.range.end < rhs.range.end;
-        });
-        for(auto& symbol: symbols) {
-            self(self, symbol.children);
+    // The `#define`s the preprocessor read, the ones whose macro the index
+    // knows.
+    std::ranges::sort(macro_names);
+    auto lexical = lexical_scan(content, &lang_opts);
+    std::vector<LocalSourceRange> macros;
+    for(auto directive: lexical.macro_definitions) {
+        auto name = std::ranges::lower_bound(macro_names, directive.begin);
+        if(name != macro_names.end() && *name < directive.end) {
+            macros.push_back(directive);
         }
-    };
-    order(order, roots);
-
-    return roots;
+    }
+    // The module declarations the compile took for one: a raw scan also
+    // reads C code such as `module AP_MODULE_DECLARE_DATA example = {`.
+    std::vector<LexicalInfo::ModuleDeclaration> modules;
+    for(const auto& module: lexical.modules) {
+        if(module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration &&
+           module_names.contains(module.name_range().begin)) {
+            modules.push_back(module);
+        }
+    }
+    return outline(std::move(declarations),
+                   macros,
+                   modules,
+                   lexical.pragma_marks,
+                   content,
+                   lang_opts,
+                   options);
 }
 
 auto index_folding_ranges(llvm::StringRef content,

@@ -28,6 +28,7 @@ document_symbols = [
                     { name = "frozen", kind = "Field", at = "const Outer::Inner ⟦frozen⟧;", detail = "const Outer::Inner" },
                 ],
             },
+            { name = "take", kind = "Function", at = "void ⟦take⟧(Outer::Box<int> boxed, Outer::Inner plain);", detail = "void (Outer::Box<int> boxed, Outer::Inner plain)" },
             {
                 name = "Holder",
                 kind = "Struct",
@@ -44,13 +45,12 @@ document_symbols = [
 ]
 
 [answers.extents]
-wrong = "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it"
 document_symbols = [
     {
         name = "scoped",
         kind = "Namespace",
         at = "namespace ⟦scoped⟧ {",
-        range = "⟦namespace scoped { … }⟧ (23 lines)",
+        range = "⟦namespace scoped { … }⟧ (25 lines)",
         children = [
             {
                 name = "Outer",
@@ -59,7 +59,7 @@ document_symbols = [
                 range = "⟦struct Outer { … }⟧ (5 lines)",
                 children = [
                     { name = "Inner", kind = "Struct", at = "struct ⟦Inner⟧ {};", range = "⟦struct Inner {}⟧;" },
-                    { name = "Box", kind = "Struct", at = "template <typename T> struct ⟦Box⟧ {};", range = "template <typename T> ⟦struct Box {}⟧;" },
+                    { name = "Box", kind = "Struct", at = "template <typename T> struct ⟦Box⟧ {};", range = "⟦template <typename T> struct Box {}⟧;" },
                     { name = "Alias", kind = "Class", at = "using ⟦Alias⟧ = int;", range = "⟦using Alias = int⟧;" },
                 ],
             },
@@ -75,11 +75,12 @@ document_symbols = [
                     { name = "frozen", kind = "Field", at = "const Outer::Inner ⟦frozen⟧;", range = "⟦const Outer::Inner frozen⟧;" },
                 ],
             },
+            { name = "take", kind = "Function", at = "void ⟦take⟧(Outer::Box<int> boxed, Outer::Inner plain);", range = "⟦void take(Outer::Box<int> boxed, Outer::Inner plain)⟧;" },
             {
                 name = "Holder",
                 kind = "Struct",
                 at = "struct ⟦Holder⟧ {",
-                range = "⟦struct Holder { … }⟧ (5 lines)",
+                range = "⟦template <typename T> … }⟧ (6 lines)",
                 children = [
                     { name = "value", kind = "Field", at = "typename T::type ⟦value⟧;", range = "⟦typename T::type value⟧;" },
                     { name = "deep", kind = "Field", at = "typename T::inner::type ⟦deep⟧;", range = "⟦typename T::inner::type deep⟧;" },

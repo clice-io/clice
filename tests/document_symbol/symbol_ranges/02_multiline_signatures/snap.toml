@@ -1,7 +1,7 @@
 [answers.outline]
 document_symbols = [
     { name = "Config", kind = "Struct", at = "struct ⟦Config⟧ {};", detail = "struct" },
-    { name = "process_data", kind = "Function", at = "void ⟦process_data⟧(", detail = "void (const Config &, int)" },
+    { name = "process_data", kind = "Function", at = "void ⟦process_data⟧(", detail = "void (const Config &cfg, int flags)" },
 ]
 
 [answers.extents]

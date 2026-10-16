@@ -25,7 +25,6 @@ document_symbols = [
 ]
 
 [answers.extents]
-wrong = "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it"
 document_symbols = [
     {
         name = "lib",
@@ -42,7 +41,7 @@ document_symbols = [
         name = "Box",
         kind = "Struct",
         at = "struct ⟦Box⟧ {",
-        range = "⟦struct Box { … }⟧ (6 lines)",
+        range = "⟦template <class T> … }⟧ (7 lines)",
         children = [
             { name = "operator T &", kind = "Method", at = "⟦operator T&⟧();", range = "⟦operator T&()⟧;" },
             { name = "operator Handle", kind = "Method", at = "⟦operator Handle⟧();", range = "⟦operator Handle()⟧;" },

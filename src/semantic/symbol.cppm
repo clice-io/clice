@@ -217,6 +217,11 @@ struct RelationKind {
         /// declaration: navigation from the keyword reaches it, but the
         /// keyword is no reference to it.
         Implied,
+        /// At an explicit instantiation's name (`template struct Box<int>;`),
+        /// the specialization it instantiates, with the directive's extent:
+        /// the outline lists the directive, which navigation reaches through
+        /// the Reference beside it and never as a declaration.
+        Instantiation,
     };
 
     constexpr RelationKind() = default;
@@ -238,6 +243,12 @@ struct RelationKind {
 
     constexpr bool isDeclOrDef() const {
         return is_one_of(Declaration, Definition);
+    }
+
+    /// Whether the relation's target field holds the extent of what it
+    /// declares rather than a symbol.
+    constexpr bool carries_extent() const {
+        return is_one_of(Declaration, Definition, Instantiation);
     }
 
     constexpr bool isReference() const {

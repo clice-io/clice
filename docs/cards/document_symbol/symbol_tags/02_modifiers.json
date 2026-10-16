@@ -2,13 +2,11 @@
   "id": "document_symbol/symbol_tags/02_modifiers",
   "topic": "document_symbol",
   "subtopic": "symbol_tags",
-  "title": "Access and storage tags",
-  "summary": "The outline does not tag members with their access, `static`, `virtual` or abstractness yet",
+  "title": "Member markers",
+  "summary": "A member's detail says `static`, `virtual` and `= 0` where the member is so; the protocol's tags carry only deprecation, and access is not shown",
   "prose": "",
-  "status": "unsupported",
-  "issues": [
-    "clangd#2123"
-  ],
+  "status": "supported",
+  "issues": [],
   "files": [
     {
       "path": "main.cpp",
@@ -23,7 +21,6 @@
         {
           "label": "outline",
           "value": {
-            "wrong": "the outline carries no access, static, virtual or abstract tags (clangd#2123)",
             "document_symbols": [
               {
                 "name": "Base",
@@ -62,7 +59,7 @@
                         }
                       }
                     },
-                    "detail": "void ()",
+                    "detail": "virtual void () = 0",
                     "tags": []
                   },
                   {
@@ -82,7 +79,7 @@
                         }
                       }
                     },
-                    "detail": "int ()",
+                    "detail": "static int ()",
                     "tags": []
                   },
                   {

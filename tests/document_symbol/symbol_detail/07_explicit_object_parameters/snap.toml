@@ -1,0 +1,29 @@
+[answers.outline]
+document_symbols = [
+    {
+        name = "Widget",
+        kind = "Struct",
+        at = "struct ⟦Widget⟧ {",
+        detail = "struct",
+        children = [
+            { name = "visit", kind = "Method", at = "void ⟦visit⟧(this Widget& self);", detail = "void (this Widget &self)" },
+            { name = "visit", kind = "Method", at = "void ⟦visit⟧(this Widget&& self);", detail = "void (this Widget &&self)" },
+            { name = "size", kind = "Method", at = "int ⟦size⟧() const;", detail = "int () const" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "Widget",
+        kind = "Struct",
+        at = "struct ⟦Widget⟧ {",
+        range = "⟦struct Widget { … }⟧ (5 lines)",
+        children = [
+            { name = "visit", kind = "Method", at = "void ⟦visit⟧(this Widget& self);", range = "⟦void visit(this Widget& self)⟧;" },
+            { name = "visit", kind = "Method", at = "void ⟦visit⟧(this Widget&& self);", range = "⟦void visit(this Widget&& self)⟧;" },
+            { name = "size", kind = "Method", at = "int ⟦size⟧() const;", range = "⟦int size() const⟧;" },
+        ],
+    },
+]

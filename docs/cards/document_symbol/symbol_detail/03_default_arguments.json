@@ -3,12 +3,10 @@
   "topic": "document_symbol",
   "subtopic": "symbol_detail",
   "title": "Default arguments",
-  "summary": "A function's detail lists its parameter types without their default values",
+  "summary": "A function's detail lists its parameters with their default values",
   "prose": "",
   "status": "supported",
-  "issues": [
-    "clangd#221"
-  ],
+  "issues": [],
   "files": [
     {
       "path": "main.cpp",
@@ -59,7 +57,7 @@
                         }
                       }
                     },
-                    "detail": "void (const char *, int)"
+                    "detail": "void (const char *path, int mode = 0644)"
                   },
                   {
                     "name": "Server",
@@ -97,7 +95,7 @@
                             }
                           }
                         },
-                        "detail": "void (int, int)"
+                        "detail": "void (int port = 8080, int backlog = 128)"
                       }
                     ]
                   }

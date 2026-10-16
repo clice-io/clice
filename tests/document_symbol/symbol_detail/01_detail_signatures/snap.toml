@@ -5,8 +5,8 @@ document_symbols = [
         kind = "Namespace",
         at = "namespace ⟦detail⟧ {",
         children = [
-            { name = "process", kind = "Function", at = "void ⟦process⟧(int x);", detail = "void (int)" },
-            { name = "process", kind = "Function", at = "void ⟦process⟧(const char* s);", detail = "void (const char *)" },
+            { name = "process", kind = "Function", at = "void ⟦process⟧(int x);", detail = "void (int x)" },
+            { name = "process", kind = "Function", at = "void ⟦process⟧(const char* s);", detail = "void (const char *s)" },
             {
                 name = "Task",
                 kind = "Struct",
@@ -14,8 +14,8 @@ document_symbols = [
                 detail = "struct",
                 children = [
                     { name = "Task", kind = "Method", at = "⟦Task⟧();", detail = "()" },
-                    { name = "Task", kind = "Method", at = "⟦Task⟧(int priority);", detail = "(int)" },
-                    { name = "run", kind = "Method", at = "int ⟦run⟧(bool async) const;", detail = "int (bool) const" },
+                    { name = "Task", kind = "Method", at = "⟦Task⟧(int priority);", detail = "(int priority)" },
+                    { name = "run", kind = "Method", at = "int ⟦run⟧(bool async) const;", detail = "int (bool async) const" },
                 ],
             },
         ],

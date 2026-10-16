@@ -1,8 +1,5 @@
 [test.outline]
-document_symbols = [
-    { name = "twice", kind = "Function", at = "int ⟦twice⟧(int x) {" },
-    { name = "main", kind = "Function", at = "int ⟦main⟧() { return twice(2); }" },
-]
+document_symbols = []
 
 [test.links]
 document_links = [

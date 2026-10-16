@@ -1,0 +1,157 @@
+[answers.outline]
+document_symbols = [
+    { name = "MetaObject", kind = "Struct", at = "struct ⟦MetaObject⟧ {};", detail = "struct" },
+    { name = "OBJECT", kind = "Constant", at = '#define ⟦OBJECT⟧                                          \' },
+    {
+        name = "Window",
+        kind = "Class",
+        at = "class ⟦Window⟧ {",
+        detail = "class",
+        children = [
+            {
+                name = "OBJECT",
+                kind = "Constant",
+                at = "⟦OBJECT⟧",
+                children = [
+                    { name = "metaObject", kind = "Method", at = "⟦OBJECT⟧", detail = "virtual const MetaObject *() const" },
+                    { name = "staticMetaObject", kind = "Variable", at = "⟦OBJECT⟧", detail = "static const MetaObject" },
+                    { name = "static_metacall", kind = "Method", at = "⟦OBJECT⟧", detail = "static void (int, void **)" },
+                ],
+            },
+            { name = "show", kind = "Method", at = "void ⟦show⟧();", detail = "void ()" },
+        ],
+    },
+    { name = "TEST", kind = "Constant", at = '#define ⟦TEST⟧(suite, name)                               \', detail = "(suite, name)" },
+    {
+        name = "TEST(Math, Adds)",
+        kind = "Constant",
+        at = "⟦TEST⟧(Math, Adds) {",
+        children = [
+            { name = "Math_Adds_Test", kind = "Class", at = "⟦TEST⟧(Math, Adds) {", detail = "class" },
+            { name = "Math_Adds_Test", kind = "Method", at = "⟦TEST⟧(Math, Adds) {", detail = "()" },
+            { name = "test_info_", kind = "Variable", at = "⟦TEST⟧(Math, Adds) {", detail = "static const int" },
+            {
+                name = "TestBody",
+                kind = "Method",
+                at = "⟦TEST⟧(Math, Adds) {",
+                detail = "void ()",
+                children = [
+                    { name = "sum", kind = "Variable", at = "int ⟦sum⟧ = 1 + 1;", detail = "int" },
+                ],
+            },
+        ],
+    },
+    {
+        name = "TEST(Math, Subtracts)",
+        kind = "Constant",
+        at = "⟦TEST⟧(Math, Subtracts) {",
+        children = [
+            { name = "Math_Subtracts_Test", kind = "Class", at = "⟦TEST⟧(Math, Subtracts) {", detail = "class" },
+            { name = "Math_Subtracts_Test", kind = "Method", at = "⟦TEST⟧(Math, Subtracts) {", detail = "()" },
+            { name = "test_info_", kind = "Variable", at = "⟦TEST⟧(Math, Subtracts) {", detail = "static const int" },
+            {
+                name = "TestBody",
+                kind = "Method",
+                at = "⟦TEST⟧(Math, Subtracts) {",
+                detail = "void ()",
+                children = [
+                    { name = "difference", kind = "Variable", at = "int ⟦difference⟧ = 2 - 1;", detail = "int" },
+                ],
+            },
+        ],
+    },
+    { name = "HANDLER", kind = "Constant", at = "#define ⟦HANDLER⟧(name) void name()", detail = "(name)" },
+    { name = "on_ready", kind = "Function", at = "HANDLER(⟦on_ready⟧);", detail = "void ()" },
+    { name = "STRONG_TYPEDEF", kind = "Constant", at = '#define ⟦STRONG_TYPEDEF⟧(base, name)                      \', detail = "(base, name)" },
+    {
+        name = "STRONG_TYPEDEF(int, Meters)",
+        kind = "Constant",
+        at = "⟦STRONG_TYPEDEF⟧(int, Meters)",
+        children = [
+            { name = "Meters", kind = "Struct", at = "STRONG_TYPEDEF(int, ⟦Meters⟧)", detail = "struct" },
+            { name = "Meters", kind = "Method", at = "STRONG_TYPEDEF(int, ⟦Meters⟧)", detail = "()" },
+            { name = "value", kind = "Field", at = "⟦STRONG_TYPEDEF⟧(int, Meters)", detail = "int" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    { name = "MetaObject", kind = "Struct", at = "struct ⟦MetaObject⟧ {};", range = "⟦struct MetaObject {}⟧;" },
+    { name = "OBJECT", kind = "Constant", at = '#define ⟦OBJECT⟧                                          \', range = '#define ⟦OBJECT                                          \ … static void static_metacall(int, void**);⟧ (7 lines)' },
+    {
+        name = "Window",
+        kind = "Class",
+        at = "class ⟦Window⟧ {",
+        range = "⟦class Window { … }⟧ (5 lines)",
+        children = [
+            {
+                name = "OBJECT",
+                kind = "Constant",
+                at = "⟦OBJECT⟧",
+                range = "⟦OBJECT⟧",
+                children = [
+                    { name = "metaObject", kind = "Method", at = "⟦OBJECT⟧", range = "⟦OBJECT⟧" },
+                    { name = "staticMetaObject", kind = "Variable", at = "⟦OBJECT⟧", range = "⟦OBJECT⟧" },
+                    { name = "static_metacall", kind = "Method", at = "⟦OBJECT⟧", range = "⟦OBJECT⟧" },
+                ],
+            },
+            { name = "show", kind = "Method", at = "void ⟦show⟧();", range = "⟦void show()⟧;" },
+        ],
+    },
+    { name = "TEST", kind = "Constant", at = '#define ⟦TEST⟧(suite, name)                               \', range = '#define ⟦TEST(suite, name)                               \ … void suite##_##name##_Test::TestBody()⟧ (11 lines)' },
+    {
+        name = "TEST(Math, Adds)",
+        kind = "Constant",
+        at = "⟦TEST⟧(Math, Adds) {",
+        range = "⟦TEST(Math, Adds) { … }⟧ (3 lines)",
+        children = [
+            { name = "Math_Adds_Test", kind = "Class", at = "⟦TEST⟧(Math, Adds) {", range = "⟦TEST(Math, Adds)⟧ {" },
+            { name = "Math_Adds_Test", kind = "Method", at = "⟦TEST⟧(Math, Adds) {", range = "⟦TEST(Math, Adds)⟧ {" },
+            { name = "test_info_", kind = "Variable", at = "⟦TEST⟧(Math, Adds) {", range = "⟦TEST(Math, Adds)⟧ {" },
+            {
+                name = "TestBody",
+                kind = "Method",
+                at = "⟦TEST⟧(Math, Adds) {",
+                range = "⟦TEST(Math, Adds) { … }⟧ (3 lines)",
+                children = [
+                    { name = "sum", kind = "Variable", at = "int ⟦sum⟧ = 1 + 1;", range = "⟦int sum = 1 + 1⟧;" },
+                ],
+            },
+        ],
+    },
+    {
+        name = "TEST(Math, Subtracts)",
+        kind = "Constant",
+        at = "⟦TEST⟧(Math, Subtracts) {",
+        range = "⟦TEST(Math, Subtracts) { … }⟧ (3 lines)",
+        children = [
+            { name = "Math_Subtracts_Test", kind = "Class", at = "⟦TEST⟧(Math, Subtracts) {", range = "⟦TEST(Math, Subtracts)⟧ {" },
+            { name = "Math_Subtracts_Test", kind = "Method", at = "⟦TEST⟧(Math, Subtracts) {", range = "⟦TEST(Math, Subtracts)⟧ {" },
+            { name = "test_info_", kind = "Variable", at = "⟦TEST⟧(Math, Subtracts) {", range = "⟦TEST(Math, Subtracts)⟧ {" },
+            {
+                name = "TestBody",
+                kind = "Method",
+                at = "⟦TEST⟧(Math, Subtracts) {",
+                range = "⟦TEST(Math, Subtracts) { … }⟧ (3 lines)",
+                children = [
+                    { name = "difference", kind = "Variable", at = "int ⟦difference⟧ = 2 - 1;", range = "⟦int difference = 2 - 1⟧;" },
+                ],
+            },
+        ],
+    },
+    { name = "HANDLER", kind = "Constant", at = "#define ⟦HANDLER⟧(name) void name()", range = "#define ⟦HANDLER(name) void name()⟧" },
+    { name = "on_ready", kind = "Function", at = "HANDLER(⟦on_ready⟧);", range = "⟦HANDLER(on_ready)⟧;" },
+    { name = "STRONG_TYPEDEF", kind = "Constant", at = '#define ⟦STRONG_TYPEDEF⟧(base, name)                      \', range = '#define ⟦STRONG_TYPEDEF(base, name)                      \ … };⟧ (6 lines)' },
+    {
+        name = "STRONG_TYPEDEF(int, Meters)",
+        kind = "Constant",
+        at = "⟦STRONG_TYPEDEF⟧(int, Meters)",
+        range = "⟦STRONG_TYPEDEF(int, Meters)⟧",
+        children = [
+            { name = "Meters", kind = "Struct", at = "STRONG_TYPEDEF(int, ⟦Meters⟧)", range = "⟦STRONG_TYPEDEF(int, Meters)⟧" },
+            { name = "Meters", kind = "Method", at = "STRONG_TYPEDEF(int, ⟦Meters⟧)", range = "⟦STRONG_TYPEDEF(int, Meters)⟧" },
+            { name = "value", kind = "Field", at = "⟦STRONG_TYPEDEF⟧(int, Meters)", range = "⟦STRONG_TYPEDEF(int, Meters)⟧" },
+        ],
+    },
+]

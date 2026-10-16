@@ -71,14 +71,13 @@ ZEST_CASE(HandlerCancelChainsThrough) {
 
         // The worker must have seen the IPC cancel: an interrupted (or
         // never started) compile leaves the document without an AST.
-        worker::QueryParams qp;
-        qp.kind = worker::QueryKind::DocumentSymbol;
+        worker::DocumentSymbolParams qp;
         qp.path = src;
         // Hang detection: a reply that never comes fails here, before the
         // watchdog.
         auto symbols = co_await w.peer->send_request(qp, {.timeout = std::chrono::seconds(30)});
         ZASSERT(symbols);
-        ZEXPECT(symbols.value().data == "null");
+        ZEXPECT(!symbols.value().has_value());
 
         test_done = true;
         w.peer->close_output();

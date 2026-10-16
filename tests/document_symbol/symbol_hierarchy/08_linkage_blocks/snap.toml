@@ -1,6 +1,6 @@
 [answers.outline]
 document_symbols = [
-    { name = "c_api", kind = "Function", at = "void ⟦c_api⟧(int handle);", detail = "void (int)" },
+    { name = "c_api", kind = "Function", at = "void ⟦c_api⟧(int handle);", detail = "void (int handle)" },
     { name = "single_c", kind = "Function", at = 'extern "C" void ⟦single_c⟧(int);', detail = "void (int)" },
     {
         name = "lib",

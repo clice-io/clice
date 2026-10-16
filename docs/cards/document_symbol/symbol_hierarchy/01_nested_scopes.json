@@ -154,7 +154,7 @@
                             }
                           }
                         },
-                        "detail": "void (Season)"
+                        "detail": "void (Season season)"
                       }
                     ]
                   },
@@ -175,7 +175,7 @@
                         }
                       }
                     },
-                    "detail": "void (Bed &)"
+                    "detail": "void (Bed &bed)"
                   }
                 ]
               }

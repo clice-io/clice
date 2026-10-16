@@ -224,7 +224,12 @@ export class AnswerContext {
         }));
     }
 
-    outline(path: string, reply: proto.DocumentSymbol[] | null): OutlineSymbol[] {
+    /// A tree, or a flat reply to a client that takes no tree: each symbol
+    /// at its whole extent, beside the name of the one it nests in.
+    outline(
+        path: string,
+        reply: proto.DocumentSymbol[] | proto.SymbolInformation[] | null,
+    ): OutlineSymbol[] {
         const convert = (symbol: proto.DocumentSymbol): OutlineSymbol => ({
             name: symbol.name,
             kind: enumName(proto.SymbolKind, symbol.kind),
@@ -234,7 +239,18 @@ export class AnswerContext {
             tags: (symbol.tags ?? []).map((tag) => enumName(proto.SymbolTag, tag)),
             children: (symbol.children ?? []).map(convert),
         });
-        return (reply ?? []).map(convert);
+        return (reply ?? []).map((symbol) =>
+            "selectionRange" in symbol
+                ? convert(symbol)
+                : {
+                      name: symbol.name,
+                      kind: enumName(proto.SymbolKind, symbol.kind),
+                      selection: this.location(symbol.location),
+                      tags: (symbol.tags ?? []).map((tag) => enumName(proto.SymbolTag, tag)),
+                      container: symbol.containerName,
+                      children: [],
+                  },
+        );
     }
 
     links(path: string, reply: proto.DocumentLink[] | null): Link[] {

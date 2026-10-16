@@ -434,13 +434,18 @@ export class CliceClient {
             // Versioned workspace edits and diagnostics' related
             // information, like every editor client: code action replies
             // then carry the buffer version they apply to, and a
-            // diagnostic's notes point at their places.
+            // diagnostic's notes point at their places. Document symbols
+            // as a tree in every kind, as every editor takes them.
             capabilities: options.capabilities ?? {
                 workspace: { workspaceEdit: { documentChanges: true } },
                 textDocument: {
                     hover: { contentFormat: ["markdown", "plaintext"] },
                     rename: { prepareSupport: true },
                     publishDiagnostics: { relatedInformation: true },
+                    documentSymbol: {
+                        hierarchicalDocumentSymbolSupport: true,
+                        symbolKind: { valueSet: Object.values(proto.SymbolKind) },
+                    },
                 },
             },
             rootUri: options.folders?.length === 0 ? null : wsUri,

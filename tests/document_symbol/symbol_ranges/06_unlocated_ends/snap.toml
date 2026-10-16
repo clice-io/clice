@@ -7,7 +7,7 @@ document_symbols = [
 
 [answers.extents]
 document_symbols = [
-    { name = "First", kind = "Class", at = "using ⟦First⟧ = Ts...[0];", range = "⟦using First⟧ = Ts...[0];" },
+    { name = "First", kind = "Class", at = "using ⟦First⟧ = Ts...[0];", range = "⟦template <class... Ts> … using First⟧ (2 lines)" },
     { name = "v8hi", kind = "Class", at = "using ⟦v8hi⟧ = short __attribute__((vector_size(16)));", range = "⟦using v8hi⟧ = short __attribute__((vector_size(16)));" },
     { name = "after", kind = "Variable", at = "int ⟦after⟧ = 0;", range = "⟦int after = 0⟧;" },
 ]

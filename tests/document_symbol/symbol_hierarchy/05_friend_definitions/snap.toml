@@ -6,8 +6,8 @@ document_symbols = [
         at = "struct ⟦Owner⟧ {",
         detail = "struct",
         children = [
-            { name = "inline_friend", kind = "Function", at = "friend void ⟦inline_friend⟧(Owner& o) {}", detail = "void (Owner &)" },
-            { name = "operator==", kind = "Operator", at = "friend bool ⟦operator==⟧(const Owner& lhs, const Owner& rhs) {", detail = "bool (const Owner &, const Owner &)" },
+            { name = "inline_friend", kind = "Function", at = "friend void ⟦inline_friend⟧(Owner& o) {}", detail = "void (Owner &o)" },
+            { name = "operator==", kind = "Operator", at = "friend bool ⟦operator==⟧(const Owner& lhs, const Owner& rhs) {", detail = "bool (const Owner &lhs, const Owner &rhs)" },
         ],
     },
 ]

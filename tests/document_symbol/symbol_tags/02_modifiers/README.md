@@ -1,7 +1,3 @@
----
-issues: [clangd#2123]
----
+# Member markers
 
-# Access and storage tags
-
-The outline does not tag members with their access, `static`, `virtual` or abstractness yet
+A member's detail says `static`, `virtual` and `= 0` where the member is so; the protocol's tags carry only deprecation, and access is not shown

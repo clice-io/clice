@@ -518,25 +518,51 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
     if(!source) {
         return result;
     }
+    auto file_path = ctx.project.file_table.resolve(**file);
+    auto text = vfs::read(file_path);
+    if(!text) {
+        return result;
+    }
     // The outline the editor shows of a file it has not compiled; a
     // function's locals are no part of it.
     auto entries = feature::extract_index_entries(*source->shard);
-    auto outline = feature::index_outline(entries.decls, [&](index::SymbolHash hash) {
-        auto info = ctx.query.symbol_info(hash, **file);
-        return info && info->scope != index::SymbolScope::FileLocal ? info : std::nullopt;
-    });
-    for(auto& entry: outline) {
-        auto extent = source->site(entry.range);
-        auto name = source->site(entry.selection_range);
-        auto lines = lines_of(*extent);
-        result.symbols.push_back({
-            .name = entry.symbol.display_name(),
-            .kind = kind_name(entry.symbol.kind),
-            .start_line = lines.start,
-            .end_line = lines.end,
-            .symbol = symbol_of({.symbol = entry.symbol, .site = *name, .extent = *extent}),
-        });
+    auto resolve = [&](index::SymbolHash hash) {
+        return ctx.query.symbol_info(hash, **file);
+    };
+    auto outline = feature::index_document_symbols((*text)->getBuffer(),
+                                                   feature::index_lang_options(file_path, false),
+                                                   entries,
+                                                   resolve,
+                                                   {.locals = false});
+    // The entry of a `#define` or a module declaration is where its symbol
+    // is declared.
+    llvm::DenseMap<std::uint32_t, index::SymbolHash> declared;
+    for(const auto& decl: entries.decls) {
+        if(auto info = resolve(decl.symbol);
+           info && (info->kind == SymbolKind::Macro || info->kind == SymbolKind::Module)) {
+            declared.try_emplace(decl.range.begin, decl.symbol);
+        }
     }
+    auto list = [&](this auto& self, llvm::ArrayRef<feature::DocumentSymbol> symbols) -> void {
+        for(const auto& symbol: symbols) {
+            auto hash =
+                symbol.entity != 0 ? symbol.entity : declared.lookup(symbol.selection_range.begin);
+            if(auto info = hash != 0 ? resolve(hash) : std::nullopt) {
+                auto extent = source->site(symbol.range);
+                auto name = source->site(symbol.selection_range);
+                auto lines = lines_of(*extent);
+                result.symbols.push_back({
+                    .name = symbol.name,
+                    .kind = kind_name(symbol.kind),
+                    .start_line = lines.start,
+                    .end_line = lines.end,
+                    .symbol = symbol_of({.symbol = *info, .site = *name, .extent = *extent}),
+                });
+            }
+            self(symbol.children);
+        }
+    };
+    list(outline);
     return result;
 }
 

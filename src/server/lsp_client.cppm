@@ -116,6 +116,9 @@ private:
 
     bool line_folding_only = false;
 
+    /// How the client takes document symbols (textDocument.documentSymbol).
+    feature::SymbolClient symbol_client;
+
     /// The client takes inlay hint labels in parts (LSP 3.17
     /// textDocument.inlayHint): the names in them link to their symbols.
     bool label_parts = false;

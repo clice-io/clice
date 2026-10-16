@@ -1,0 +1,10 @@
+[answers.value.hover]
+markdown = '''
+**variable** `value` · function `main`
+
+```cpp
+auto [index, value] = lib::make(0.5)
+```
+Type: `double`
+'''
+range = "auto [index, ⟦value⟧] = lib::make(0.5);"

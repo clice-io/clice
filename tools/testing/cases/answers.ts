@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type * as proto from "vscode-languageserver-protocol";
+import * as proto from "vscode-languageserver-protocol";
 import { Workspace } from "../../client/workspace.ts";
 import { withTimeout } from "../../promise.ts";
 import { Inspect } from "../inspect/inspect.ts";
@@ -82,6 +82,10 @@ const EDITOR_CAPABILITIES: proto.ClientCapabilities = {
         inlayHint: {},
         rename: { prepareSupport: true },
         publishDiagnostics: { relatedInformation: true },
+        documentSymbol: {
+            hierarchicalDocumentSymbolSupport: true,
+            symbolKind: { valueSet: Object.values(proto.SymbolKind) },
+        },
     },
 };
 

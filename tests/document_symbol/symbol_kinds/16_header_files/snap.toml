@@ -1,6 +1,5 @@
 [answers.outline]
 document_symbols = [
-    { name = "WIDGET_H", kind = "Constant", at = "#define ⟦WIDGET_H⟧" },
     { name = "WIDGET_LIMIT", kind = "Constant", at = "#define ⟦WIDGET_LIMIT⟧ 8" },
     {
         name = "Widget",
@@ -16,7 +15,6 @@ document_symbols = [
 
 [answers.extents]
 document_symbols = [
-    { name = "WIDGET_H", kind = "Constant", at = "#define ⟦WIDGET_H⟧", range = "#define ⟦WIDGET_H⟧" },
     { name = "WIDGET_LIMIT", kind = "Constant", at = "#define ⟦WIDGET_LIMIT⟧ 8", range = "#define ⟦WIDGET_LIMIT 8⟧" },
     {
         name = "Widget",

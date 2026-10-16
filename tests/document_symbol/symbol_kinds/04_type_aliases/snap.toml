@@ -24,7 +24,6 @@ document_symbols = [
 ]
 
 [answers.extents]
-wrong = "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it"
 document_symbols = [
     {
         name = "aliases",
@@ -35,8 +34,8 @@ document_symbols = [
             { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ {};", range = "⟦struct Widget {}⟧;" },
             { name = "LegacyWidget", kind = "Class", at = "typedef Widget ⟦LegacyWidget⟧;", range = "⟦typedef Widget LegacyWidget⟧;" },
             { name = "ModernWidget", kind = "Class", at = "using ⟦ModernWidget⟧ = Widget;", range = "⟦using ModernWidget = Widget⟧;" },
-            { name = "Box", kind = "Struct", at = "struct ⟦Box⟧ {};", range = "⟦struct Box {}⟧;" },
-            { name = "BoxOf", kind = "Class", at = "using ⟦BoxOf⟧ = Box<T>;", range = "⟦using BoxOf = Box<T>⟧;" },
+            { name = "Box", kind = "Struct", at = "struct ⟦Box⟧ {};", range = "⟦template <typename T> … struct Box {}⟧ (2 lines)" },
+            { name = "BoxOf", kind = "Class", at = "using ⟦BoxOf⟧ = Box<T>;", range = "⟦template <typename T> … using BoxOf = Box<T>⟧ (2 lines)" },
             {
                 name = "Holder",
                 kind = "Struct",

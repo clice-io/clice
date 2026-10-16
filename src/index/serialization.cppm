@@ -98,8 +98,12 @@ inline std::optional<SymbolHash> parse_symbol_id(llvm::StringRef id) {
 /// relation), and a smart pointer's pointee is a type definition of what
 /// holds it); v32: a template's declaration extent starts at its
 /// `template` keyword; v33: symbols in an anonymous namespace carry the
-/// AnonymousNamespace flag.
-constexpr inline std::uint32_t index_format_version = 33;
+/// AnonymousNamespace flag; v34: template parameters carry the
+/// TemplateParameter flag, an explicit instantiation's name an
+/// Instantiation relation with the directive's extent, a declaration's
+/// extent its leading attributes, and a symbol first reached through its
+/// template or a using-declaration is described by its own declaration.
+constexpr inline std::uint32_t index_format_version = 34;
 
 /// Serialize a reflected index blob to `os` as a verified-readable
 /// flatbuffer. Encoding only fails on structural impossibilities (e.g. more

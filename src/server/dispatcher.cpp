@@ -283,6 +283,16 @@ kota::task<std::optional<std::vector<feature::FoldingRange>>, kota::ipc::Error>
                              std::move(token));
 }
 
+kota::task<std::optional<std::vector<feature::DocumentSymbol>>, kota::ipc::Error>
+    Dispatcher::document_symbols(const Ticket& ticket, kota::cancellation_token token) {
+    auto path = std::string(project.file_table.resolve(ticket.session->path_id));
+    co_return co_await typed(ticket,
+                             EvidenceKind::DocumentSymbol,
+                             "DocumentSymbol",
+                             worker::DocumentSymbolParams{std::move(path), project.config},
+                             std::move(token));
+}
+
 kota::task<std::vector<std::vector<LocalSourceRange>>, kota::ipc::Error>
     Dispatcher::selection_ranges(const Ticket& ticket,
                                  std::vector<std::uint32_t> offsets,

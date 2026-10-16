@@ -11,6 +11,7 @@ module clice;
 
 import :semantic.decls;
 import :semantic.unifier;
+import :support.text;
 
 namespace clice::decls {
 
@@ -29,6 +30,35 @@ bool is_templated(const clang::Decl* decl) {
     return false;
 }
 
+namespace {
+
+/// Where the attribute specifier holding `attr`, the first attribute of
+/// it, is written: at the `[[` its range leaves out (`[[using gnu: hot]]`
+/// starts at the namespace), a macro spelling it at the macro's name.
+auto attribute_begin(const clang::Attr& attr,
+                     const clang::SourceManager& sources,
+                     const clang::LangOptions& lang_opts) -> clang::SourceLocation {
+    auto begin = attr.getRange().getBegin();
+    if(begin.isMacroID() || !attr.isStandardAttributeSyntax() || attr.isAlignas()) {
+        return sources.getExpansionLoc(begin);
+    }
+    auto at = begin;
+    for(int tokens = 0; tokens < 5; tokens += 1) {
+        auto previous = clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
+        if(!previous) {
+            break;
+        }
+        at = previous->getLocation();
+        if(previous->is(clang::tok::l_square)) {
+            auto outer = clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
+            return outer && outer->is(clang::tok::l_square) ? outer->getLocation() : begin;
+        }
+    }
+    return begin;
+}
+
+}  // namespace
+
 auto written_range(const clang::Decl* decl) -> clang::SourceRange {
     if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
        named && is_instantiation(named)) {
@@ -36,10 +66,52 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
             return written_range(pattern);
         }
     }
-    if(const auto* described = decl->getDescribedTemplate()) {
-        return described->getSourceRange();
+    auto& sources = decl->getASTContext().getSourceManager();
+    auto before = [&](clang::SourceLocation lhs, clang::SourceLocation rhs) {
+        return rhs.isInvalid() ||
+               (lhs.isValid() && sources.isBeforeInTranslationUnit(sources.getExpansionLoc(lhs),
+                                                                   sources.getExpansionLoc(rhs)));
+    };
+    auto range = decl->getSourceRange();
+    // An out-of-line member template of a class template starts at the
+    // class's `template` header, which its own leaves out.
+    if(const auto* described = decl->getDescribedTemplate();
+       described && before(described->getBeginLoc(), range.getBegin())) {
+        range.setBegin(described->getBeginLoc());
     }
-    return decl->getSourceRange();
+    // The first attribute written before the declaration; one a `#pragma
+    // clang attribute` applies is written on the pragma's line.
+    const clang::Attr* leading = nullptr;
+    for(const auto* attr: decl->attrs()) {
+        auto begin = attr->getRange().getBegin();
+        if(attr->isImplicit() || attr->isInherited() || begin.isInvalid() ||
+           !before(begin, range.getBegin())) {
+            continue;
+        }
+        auto [file, offset] = sources.getDecomposedExpansionLoc(begin);
+        auto content = sources.getBufferData(file);
+        if(content.substr(line_begin(content, offset)).ltrim(" \t").starts_with("#")) {
+            continue;
+        }
+        if(!leading || before(begin, leading->getRange().getBegin())) {
+            leading = attr;
+        }
+    }
+    if(leading) {
+        range.setBegin(attribute_begin(*leading, sources, decl->getASTContext().getLangOpts()));
+    }
+    // Clang leaves a bound it cannot locate unset, on valid code too:
+    // `short __attribute__((vector_size(16)))`, `Ts...[0]`, the typeless
+    // `for(x : v)`; an unclosed `namespace a {` runs to the end of its file.
+    if(range.getBegin().isInvalid()) {
+        range.setBegin(decl->getLocation());
+    }
+    if(range.getEnd().isInvalid()) {
+        range.setEnd(llvm::isa<clang::NamespaceDecl>(decl)
+                         ? sources.getLocForEndOfFile(sources.getFileID(range.getBegin()))
+                         : decl->getLocation());
+    }
+    return range;
 }
 
 bool is_exported(const clang::Decl* decl) {

@@ -146,15 +146,19 @@ auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
     auto begin = decompose(SM, SM.getExpansionLoc(range.getBegin()));
     auto last = SM.getExpansionRange(range.getEnd());
     auto end = decompose(SM, last.getEnd());
+    auto text = text_end(begin.file);
     if(end.file != begin.file) {
         return {
             begin.file,
-            {begin.offset, static_cast<std::uint32_t>(file_content(begin.file).size())}
+            {begin.offset, text}
         };
     }
+    // A scope left open in a header compiled in its includer's context
+    // ends past its text, after the includer's remainder.
+    auto stop = end.offset + (last.isTokenRange() ? token_length(last.getEnd()) : 0);
     return {
         begin.file,
-        {begin.offset, end.offset + (last.isTokenRange() ? token_length(last.getEnd()) : 0)}
+        {begin.offset, std::min(stop, text)}
     };
 }
 
@@ -261,6 +265,21 @@ const SynthesizedOrigin* CompilationUnit::origin(clang::FileID fid) {
     }
     auto it = params.input.synthesized.find(file_path(*entry));
     return it != params.input.synthesized.end() ? &it->second : nullptr;
+}
+
+auto CompilationUnit::text_end(clang::FileID fid) -> std::uint32_t {
+    auto content = file_content(fid);
+    auto size = static_cast<std::uint32_t>(content.size());
+    if(!borrows_context() || fid != SM().getMainFileID()) {
+        return size;
+    }
+    auto it = directives().find(fid);
+    if(it == directives().end() || it->second.includes.empty() ||
+       !synthesized(it->second.includes.back().fid)) {
+        return size;
+    }
+    auto keyword = SM().getFileOffset(it->second.includes.back().location);
+    return static_cast<std::uint32_t>(content.rfind('\n', keyword));
 }
 
 bool CompilationUnit::synthesized(clang::FileID fid) {

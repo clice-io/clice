@@ -3,7 +3,7 @@
   "topic": "document_symbol",
   "subtopic": "symbol_detail",
   "title": "Function signatures",
-  "summary": "Parameter and return types in the `detail` field disambiguate overloads; constructors drop the `void` return type",
+  "summary": "The `detail` field shows a function's parameters, names included, and its return type, which tells overloads apart; constructors show no return type",
   "prose": "",
   "status": "supported",
   "issues": [
@@ -61,7 +61,7 @@
                         }
                       }
                     },
-                    "detail": "void (int)"
+                    "detail": "void (int x)"
                   },
                   {
                     "name": "process",
@@ -80,7 +80,7 @@
                         }
                       }
                     },
-                    "detail": "void (const char *)"
+                    "detail": "void (const char *s)"
                   },
                   {
                     "name": "Task",
@@ -137,7 +137,7 @@
                             }
                           }
                         },
-                        "detail": "(int)"
+                        "detail": "(int priority)"
                       },
                       {
                         "name": "run",
@@ -156,7 +156,7 @@
                             }
                           }
                         },
-                        "detail": "int (bool) const"
+                        "detail": "int (bool async) const"
                       }
                     ]
                   }

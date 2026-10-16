@@ -1,9 +1,9 @@
 import { expect } from "vitest";
 import { generate, test } from "@clice/tools/testing";
 
-// Past 8 MiB the server stops lexing a file whole: semantic tokens and
-// folding ranges are not served, while what the index rows answer still
-// is.
+// Past 8 MiB the server stops lexing a file whole: semantic tokens, folding
+// ranges and the outline are not served, while what the index rows answer
+// still is.
 const MAIN = `#include "header.h"
 
 /// Doubles a value.

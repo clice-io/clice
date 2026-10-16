@@ -689,11 +689,7 @@ export class Serve extends Client {
     protected fetchSymbols(file: string): Promise<OutlineSymbol[]> {
         const uri = this.uri(file);
         return this.ask(`document symbols of ${file}`, async (client) => {
-            const reply = await client.documentSymbols(uri);
-            if (reply?.some((symbol) => !("selectionRange" in symbol))) {
-                throw new Error("clice replies with hierarchical document symbols");
-            }
-            return this.context().outline(file, reply as proto.DocumentSymbol[] | null);
+            return this.context().outline(file, await client.documentSymbols(uri));
         });
     }
 

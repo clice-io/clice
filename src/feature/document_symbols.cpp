@@ -6,10 +6,14 @@ module clice;
 
 import :compile.compilation;
 import :feature.feature;
+import :semantic.decls;
 import :semantic.display;
+import :semantic.identity;
 import :semantic.semantics;
 import :semantic.symbol;
+import :support.text;
 import :syntax.lexer;
+import :syntax.lexical_scan;
 
 namespace clice::feature {
 
@@ -61,71 +65,755 @@ auto to_protocol_symbol_kind(SymbolKind kind) -> protocol::SymbolKind {
     return Variable;
 }
 
+bool outline_lists(SymbolKind kind, bool unnamed, bool template_parameter) {
+    if(template_parameter) {
+        return false;
+    }
+    switch(kind) {
+        case SymbolKind::Namespace:
+        case SymbolKind::Class:
+        case SymbolKind::Struct:
+        case SymbolKind::Union:
+        case SymbolKind::Enum: return true;
+        case SymbolKind::Type:
+        case SymbolKind::Concept:
+        case SymbolKind::Field:
+        case SymbolKind::EnumMember:
+        case SymbolKind::Function:
+        case SymbolKind::Method:
+        case SymbolKind::Operator:
+        case SymbolKind::Variable: return !unnamed;
+        default: return false;
+    }
+}
+
 namespace {
 
-auto symbol_detail(clang::ASTContext& context, const clang::NamedDecl& decl) -> std::string {
-    display::Options options = {
-        .suppress_scope = true,
-        .suppress_unwritten_scope = true,
-        .polish_for_declaration = true,
+/// Source text without its line splices: `SPLIT_\<newline>LIMIT` spells
+/// `SPLIT_LIMIT`.
+std::string unspliced(llvm::StringRef text) {
+    std::string result;
+    for(auto splice = text.find('\\'); splice != llvm::StringRef::npos; splice = text.find('\\')) {
+        auto length = splice_length(text.drop_front(splice));
+        result += text.take_front(length != 0 ? splice : splice + 1);
+        text = text.drop_front(splice + std::max<std::size_t>(length, 1));
+    }
+    result += text;
+    return result;
+}
+
+std::string spelling(llvm::StringRef content, const Token& token) {
+    return unspliced(token.text(content));
+}
+
+bool is_word(const Token& token) {
+    return token.is_identifier() || token.kind == clang::tok::numeric_constant;
+}
+
+/// Tokens as one text: a space between two words and after a comma, none
+/// elsewhere.
+std::string joined(llvm::StringRef content, llvm::ArrayRef<Token> tokens) {
+    std::string text;
+    const Token* previous = nullptr;
+    for(const auto& token: tokens) {
+        if(previous &&
+           ((is_word(*previous) && is_word(token)) || previous->kind == clang::tok::comma)) {
+            text += ' ';
+        }
+        text += spelling(content, token);
+        previous = &token;
+    }
+    return text;
+}
+
+/// Whether the text at `selection` spells `name`, whitespace aside.
+bool spells(llvm::StringRef content, LocalSourceRange selection, llvm::StringRef name) {
+    auto squeezed = [](llvm::StringRef text) {
+        std::string result;
+        for(char c: text) {
+            if(!clang::isWhitespace(c) && c != '\\') {
+                result += c;
+            }
+        }
+        return result;
+    };
+    return squeezed(content.slice(selection.begin, selection.end)) == squeezed(name);
+}
+
+/// `name` with the nested name qualifier written before it and the template
+/// argument list written after it, `selection` spelling the name in the
+/// declaration `range`: `Box<T*>::reset`, `Box<void>`.
+std::string written_name(llvm::StringRef content,
+                         const clang::LangOptions& lang_opts,
+                         clang::IdentifierTable& keywords,
+                         LocalSourceRange range,
+                         LocalSourceRange selection,
+                         llvm::StringRef name) {
+    auto lexer = Lexer::from_line(content, range.begin, {.lang_opts = &lang_opts});
+    llvm::SmallVector<Token> before;
+    auto token = lexer.advance();
+    for(; !token.is_eof() && token.range.begin < selection.begin; token = lexer.advance()) {
+        if(token.range.begin >= range.begin) {
+            before.push_back(token);
+        }
+    }
+    for(; !token.is_eof() && token.range.begin < selection.end; token = lexer.advance()) {}
+
+    llvm::SmallVector<Token> arguments;
+    if(token.kind == clang::tok::less) {
+        std::int32_t angles = 0;
+        std::int32_t brackets = 0;
+        for(; !token.is_eof() && !token.is_eod(); token = lexer.advance()) {
+            arguments.push_back(token);
+            switch(token.kind) {
+                case clang::tok::l_paren:
+                case clang::tok::l_square:
+                case clang::tok::l_brace: brackets += 1; break;
+                case clang::tok::r_paren:
+                case clang::tok::r_square:
+                case clang::tok::r_brace: brackets -= 1; break;
+                case clang::tok::less: angles += brackets == 0 ? 1 : 0; break;
+                case clang::tok::greater: angles -= brackets == 0 ? 1 : 0; break;
+                case clang::tok::greatergreater: angles -= brackets == 0 ? 2 : 0; break;
+                default: break;
+            }
+            if(angles <= 0) {
+                break;
+            }
+        }
+        if(angles != 0) {
+            arguments.clear();
+        }
+    }
+
+    // Back from the name over `component ::` pairs, a component a name with
+    // its template arguments: `ns::Box<T>::`.
+    auto named = [&](const Token& token) {
+        return token.is_identifier() &&
+               keywords.get(spelling(content, token)).getTokenID() == clang::tok::identifier;
+    };
+    auto start = before.size();
+    while(start > 1 && before[start - 1].kind == clang::tok::coloncolon) {
+        auto component = start - 2;
+        if(before[component].kind == clang::tok::greater ||
+           before[component].kind == clang::tok::greatergreater) {
+            std::int32_t depth = 0;
+            auto at = component + 1;
+            for(; at > 0; at -= 1) {
+                auto kind = before[at - 1].kind;
+                depth += kind == clang::tok::greater          ? 1
+                         : kind == clang::tok::greatergreater ? 2
+                         : kind == clang::tok::less           ? -1
+                                                              : 0;
+                if(depth <= 0) {
+                    break;
+                }
+            }
+            if(depth != 0 || at < 2) {
+                break;
+            }
+            component = at - 2;
+        }
+        if(!named(before[component])) {
+            break;
+        }
+        start = component;
+        if(start > 0 && before[start - 1].is_identifier() &&
+           before[start - 1].text(content) == "template") {
+            start -= 1;
+        }
+    }
+
+    auto qualifier = joined(content, llvm::ArrayRef(before).drop_front(start));
+    return qualifier + name.str() + joined(content, arguments);
+}
+
+/// The outline entry of the `#define` directive `directive`: its name, as
+/// detail the parameters a function-like macro takes, and the range from
+/// the name through the last token.
+std::optional<OutlineEntry> macro_entry(llvm::StringRef content,
+                                        const clang::LangOptions& lang_opts,
+                                        LocalSourceRange directive) {
+    auto lexer = Lexer::from_line(content, directive.begin, {.lang_opts = &lang_opts});
+    lexer.advance();
+    lexer.advance();
+    auto name = lexer.advance();
+    if(!name.is_identifier()) {
+        return std::nullopt;
+    }
+
+    OutlineEntry entry{
+        .name = spelling(content, name),
+        .kind = SymbolKind::Macro,
+        .selection_range = name.range,
+        .definition = true,
+    };
+    auto token = lexer.advance();
+    if(token.kind == clang::tok::l_paren && token.range.begin == name.range.end) {
+        std::string detail = "(";
+        for(token = lexer.advance(); token.kind != clang::tok::r_paren && !token.is_eod();
+            token = lexer.advance()) {
+            detail += token.kind == clang::tok::comma ? ", " : spelling(content, token);
+        }
+        detail += ')';
+        entry.detail = std::move(detail);
+    }
+    auto last = name;
+    for(; !token.is_eod() && !token.is_eof(); token = lexer.advance()) {
+        last = token;
+    }
+    entry.range = {name.range.begin, last.range.end};
+    return entry;
+}
+
+/// The name an include guard defines: the text is `#ifndef X` (or `#if
+/// !defined X`), `#define X`, and everything up to the `#endif` closing
+/// the first, the last thing written.
+std::optional<LocalSourceRange> include_guard(llvm::StringRef content,
+                                              const clang::LangOptions& lang_opts) {
+    Lexer lexer(content, {.lang_opts = &lang_opts});
+    auto token = lexer.advance();
+    auto skip_line = [&] {
+        while(!token.is_eod() && !token.is_eof()) {
+            token = lexer.advance();
+        }
+        token = lexer.advance();
+    };
+    auto word = [&](llvm::StringRef text) {
+        return token.is_identifier() && token.text(content) == text;
     };
 
-    std::string detail;
-    llvm::raw_string_ostream stream(detail);
-
-    if(decl.getDescribedTemplateParams()) {
-        stream << "template ";
+    if(!token.is_directive_hash()) {
+        return std::nullopt;
     }
-
-    if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(&decl)) {
-        if(llvm::isa<clang::CXXConstructorDecl>(value)) {
-            std::string type = display::type(context, value->getType(), options).text;
-            llvm::StringRef without_void = type;
-            without_void.consume_front("void ");
-            stream << without_void;
-        } else if(!llvm::isa<clang::CXXDestructorDecl>(value)) {
-            stream << display::type(context, value->getType(), options).text;
+    token = lexer.advance();
+    std::optional<Token> guarded;
+    if(word("ifndef")) {
+        token = lexer.advance();
+        guarded = token;
+    } else if(word("if")) {
+        token = lexer.advance();
+        if(token.kind == clang::tok::exclaim) {
+            token = lexer.advance();
+            if(word("defined")) {
+                token = lexer.advance();
+                bool parenthesized = token.kind == clang::tok::l_paren;
+                if(parenthesized) {
+                    token = lexer.advance();
+                }
+                guarded = token;
+                if(parenthesized) {
+                    token = lexer.advance();
+                    if(token.kind != clang::tok::r_paren) {
+                        return std::nullopt;
+                    }
+                }
+            }
         }
-    } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(&decl)) {
-        stream << tag->getKindName();
-    } else if(llvm::isa<clang::TypedefNameDecl>(&decl)) {
-        stream << "type alias";
-    } else if(llvm::isa<clang::ConceptDecl>(&decl)) {
-        stream << "concept";
+    }
+    if(!guarded || !guarded->is_identifier()) {
+        return std::nullopt;
+    }
+    auto macro = spelling(content, *guarded);
+    token = lexer.advance();
+    if(!token.is_eod()) {
+        return std::nullopt;
     }
 
-    return detail;
+    token = lexer.advance();
+    if(!token.is_directive_hash()) {
+        return std::nullopt;
+    }
+    token = lexer.advance();
+    if(!word("define")) {
+        return std::nullopt;
+    }
+    token = lexer.advance();
+    if(!token.is_identifier() || spelling(content, token) != macro) {
+        return std::nullopt;
+    }
+    auto guard = token.range;
+    skip_line();
+
+    std::int32_t depth = 1;
+    while(!token.is_eof()) {
+        if(depth == 0 || !token.is_directive_hash()) {
+            if(depth == 0) {
+                return std::nullopt;
+            }
+            token = lexer.advance();
+            continue;
+        }
+        token = lexer.advance();
+        if(word("if") || word("ifdef") || word("ifndef")) {
+            depth += 1;
+        } else if(depth == 1 &&
+                  (word("else") || word("elif") || word("elifdef") || word("elifndef"))) {
+            return std::nullopt;
+        } else if(word("endif")) {
+            depth -= 1;
+        }
+        skip_line();
+    }
+    return depth == 0 ? std::optional(guard) : std::nullopt;
 }
 
-/// The template arguments an explicit instantiation of a function names:
-/// as written, or as deduced when it writes none.
-auto instantiation_args(const clang::ExplicitInstantiationDecl& directive,
-                        const clang::FunctionDecl& function) -> std::string {
-    std::string args;
-    llvm::raw_string_ostream stream(args);
-    clang::PrintingPolicy policy(function.getASTContext().getLangOpts());
-    if(auto count = directive.getNumTemplateArgs(); count && *count != 0) {
-        llvm::SmallVector<clang::TemplateArgumentLoc> written;
-        for(unsigned index = 0; index < *count; index += 1) {
-            written.push_back(directive.getTemplateArg(index));
-        }
-        clang::printTemplateArgumentList(stream, written, policy);
-    } else if(const auto* deduced = function.getTemplateSpecializationArgs()) {
-        clang::printTemplateArgumentList(stream, deduced->asArray(), policy);
+/// The macro invocation whose name `name` is: as written, the arguments
+/// cut after 80 characters, and the range it spans.
+std::pair<std::string, LocalSourceRange> invocation(llvm::StringRef content,
+                                                    const clang::LangOptions& lang_opts,
+                                                    LocalSourceRange name) {
+    auto lexer = Lexer::from_line(content, name.begin, {.lang_opts = &lang_opts});
+    auto token = lexer.advance();
+    while(!token.is_eof() && token.range.begin < name.begin) {
+        token = lexer.advance();
     }
-    return args;
+    auto text = spelling(content, token);
+    LocalSourceRange range = name;
+    token = lexer.advance();
+    if(token.kind != clang::tok::l_paren) {
+        return {std::move(text), range};
+    }
+    llvm::SmallVector<Token> arguments;
+    std::int32_t depth = 0;
+    for(; !token.is_eof(); token = lexer.advance()) {
+        arguments.push_back(token);
+        depth += token.kind == clang::tok::l_paren ? 1 : token.kind == clang::tok::r_paren ? -1 : 0;
+        if(depth == 0) {
+            break;
+        }
+    }
+    if(depth != 0) {
+        return {std::move(text), range};
+    }
+    range.end = token.range.end;
+    constexpr std::size_t limit = 80;
+    auto written = joined(content, arguments);
+    if(written.size() > limit) {
+        // At a character's first byte, not inside a UTF-8 sequence.
+        auto cut = limit;
+        while(cut > 0 && (static_cast<unsigned char>(written[cut]) & 0xC0) == 0x80) {
+            cut -= 1;
+        }
+        written.resize(cut);
+        written += "...)";
+    }
+    return {text + written, range};
 }
 
-/// Collects the outline by walking the unit's cached Semantics node table —
-/// the DFS pre-order record of the main file's written AST — instead of
-/// running another RecursiveASTVisitor over the TU. Nesting comes for free:
-/// a symbol's frame stays open while the walk index is inside its subtree.
+/// The name a module declaration writes: `app.core:detail`.
+std::string module_name(llvm::StringRef content, const LexicalInfo::ModuleDeclaration& module) {
+    auto dotted = [&](llvm::ArrayRef<LocalSourceRange> parts) {
+        llvm::SmallVector<std::string> names;
+        for(auto part: parts) {
+            names.push_back(unspliced(content.slice(part.begin, part.end)));
+        }
+        return llvm::join(names, ".");
+    };
+    auto name = dotted(module.name_parts);
+    if(!module.partition_parts.empty()) {
+        name += ":" + dotted(module.partition_parts);
+    }
+    return name;
+}
+
+/// Xcode's sections, which clangd follows: `#pragma mark - Name` groups
+/// the symbols of its scope after it, up to the scope's next mark or
+/// its end; `#pragma mark Name` is an entry of its own.
+void add_marks(std::vector<DocumentSymbol>& symbols,
+               llvm::ArrayRef<LexicalInfo::PragmaMark> marks,
+               llvm::StringRef content) {
+    DocumentSymbol root{
+        .range = {0, static_cast<std::uint32_t>(content.size())},
+        .children = std::move(symbols),
+    };
+
+    auto child_containing = [](DocumentSymbol& scope, LocalSourceRange range) -> DocumentSymbol* {
+        auto child = llvm::find_if(scope.children, [&](const DocumentSymbol& child) {
+            return child.range.contains(range);
+        });
+        return child == scope.children.end() ? nullptr : &*child;
+    };
+
+    for(auto [index, mark]: llvm::enumerate(marks)) {
+        auto* scope = &root;
+        while(auto* child = child_containing(*scope, mark.range)) {
+            scope = child;
+        }
+
+        DocumentSymbol symbol{
+            .kind = SymbolKind::Directive,
+            .range = mark.range,
+            .selection_range = mark.range,
+        };
+        auto text = content.slice(mark.text.begin, mark.text.end).trim();
+        auto group = text;
+        if(!group.consume_front("-") || (!group.empty() && group.ltrim() == group)) {
+            symbol.name = text.empty() ? "(unnamed mark)" : text.str();
+            scope->children.push_back(std::move(symbol));
+            continue;
+        }
+        symbol.name = group.empty() ? "(unnamed group)" : group.ltrim().str();
+
+        auto end = scope->range.end;
+        for(const auto& next: marks.drop_front(index + 1)) {
+            if(!scope->range.contains(next.range)) {
+                break;
+            }
+            if(!child_containing(*scope, next.range)) {
+                end = next.range.begin;
+                break;
+            }
+        }
+
+        auto& siblings = scope->children;
+        auto owned = std::ranges::stable_partition(siblings, [&](const DocumentSymbol& sibling) {
+            return sibling.range.begin < mark.range.begin || sibling.range.begin >= end;
+        });
+        for(auto& child: owned) {
+            symbol.range.end = std::max(symbol.range.end, child.range.end);
+            symbol.children.push_back(std::move(child));
+        }
+        siblings.erase(owned.begin(), owned.end());
+        siblings.push_back(std::move(symbol));
+    }
+
+    symbols = std::move(root.children);
+}
+
+/// Sibling order: by position, a shorter range first, then by name and
+/// kind — the members of one macro invocation share their range.
+void sort_symbols(std::vector<DocumentSymbol>& symbols) {
+    std::ranges::stable_sort(symbols, {}, [](const DocumentSymbol& symbol) {
+        return std::tuple(symbol.range.begin,
+                          symbol.range.end,
+                          std::string_view(symbol.name),
+                          symbol.kind.value());
+    });
+    for(auto& symbol: symbols) {
+        sort_symbols(symbol.children);
+    }
+}
+
+bool is_record(SymbolKind kind) {
+    return kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Union;
+}
+
+bool is_tag(SymbolKind kind) {
+    return is_record(kind) || kind == SymbolKind::Enum;
+}
+
+/// What a function or a variable declares lists under it, as the locals
+/// option decides.
+bool holds_locals(SymbolKind kind) {
+    return kind == SymbolKind::Function || kind == SymbolKind::Method ||
+           kind == SymbolKind::Operator || kind == SymbolKind::Variable ||
+           kind == SymbolKind::Field;
+}
+
+/// An entry while the outline nests it.
+struct Node {
+    OutlineEntry entry;
+
+    /// Where the entry is named for nesting: an entry holds those written
+    /// after it there. A struct a typedef names is named at the struct.
+    LocalSourceRange anchor;
+
+    /// The macro invocation node of an entry it makes; its members list
+    /// flat under it.
+    std::optional<std::uint32_t> group;
+    bool is_group = false;
+
+    /// Of a macro invocation node, the invocation's text.
+    LocalSourceRange invocation;
+
+    std::vector<std::uint32_t> children;
+};
+
+/// Whether `outer` holds `inner` in the outline.
+bool holds(llvm::ArrayRef<Node> nodes, std::uint32_t outer_index, const Node& inner) {
+    const auto& outer = nodes[outer_index];
+    if(outer.entry.range.begin > inner.entry.range.begin ||
+       inner.entry.range.end > outer.entry.range.end) {
+        return false;
+    }
+    if(inner.group == outer_index) {
+        return true;
+    }
+    // What an invocation's arguments name lists beside what its body makes.
+    if(outer.group &&
+       (outer.group == inner.group || nodes[*outer.group].invocation.contains(inner.anchor))) {
+        return false;
+    }
+    return outer.anchor.end <= inner.anchor.begin;
+}
+
+/// Whether a typedef names the tag written before its name, not a
+/// pointer, reference or array of it (`} *Ref;`, `} Point, *Ref;`,
+/// `} Grid[3];`).
+bool names_tag(llvm::StringRef content,
+               const clang::LangOptions& lang_opts,
+               const OutlineEntry& tag,
+               const OutlineEntry& alias) {
+    if(alias.range.end > alias.selection_range.end) {
+        return false;
+    }
+    auto lexer = Lexer::from_line(content, tag.range.end, {.lang_opts = &lang_opts});
+    for(auto token = lexer.advance();
+        !token.is_eof() && token.range.begin < alias.selection_range.begin;
+        token = lexer.advance()) {
+        if(token.range.begin < tag.range.end) {
+            continue;
+        }
+        switch(token.kind) {
+            case clang::tok::star:
+            case clang::tok::amp:
+            case clang::tok::ampamp:
+            case clang::tok::caret:
+            case clang::tok::comma: return false;
+            default: break;
+        }
+    }
+    return true;
+}
+
+/// `typedef struct { ... } Point;`: the struct the typedef declares and
+/// names, unnamed or named alike, lists once, as the typedef's name.
+void merge_typedefs(std::vector<Node>& nodes,
+                    llvm::StringRef content,
+                    const clang::LangOptions& lang_opts) {
+    std::vector<std::uint32_t> tags;
+    for(auto [index, node]: llvm::enumerate(nodes)) {
+        if(is_tag(node.entry.kind)) {
+            tags.push_back(static_cast<std::uint32_t>(index));
+        }
+    }
+    std::ranges::sort(tags, {}, [&](std::uint32_t index) {
+        return nodes[index].entry.range.begin;
+    });
+
+    std::vector<bool> merged(nodes.size(), false);
+    for(auto& alias: nodes) {
+        if(alias.entry.kind != SymbolKind::Type) {
+            continue;
+        }
+        auto first = std::ranges::upper_bound(tags, alias.entry.range.begin, {}, [&](auto index) {
+            return nodes[index].entry.range.begin;
+        });
+        for(auto it = first; it != tags.end(); ++it) {
+            auto& tag = nodes[*it];
+            if(tag.entry.range.begin >= alias.entry.selection_range.begin) {
+                break;
+            }
+            if(merged[*it] || tag.entry.range.end > alias.entry.selection_range.begin ||
+               (!tag.entry.unnamed && tag.entry.name != alias.entry.name) ||
+               !names_tag(content, lang_opts, tag.entry, alias.entry)) {
+                continue;
+            }
+            merged[*it] = true;
+            alias.entry.kind = tag.entry.kind;
+            alias.entry.detail = std::move(tag.entry.detail);
+            alias.entry.deprecated |= tag.entry.deprecated;
+            alias.entry.entity = tag.entry.entity;
+            alias.entry.parent = tag.entry.parent;
+            alias.entry.definition = tag.entry.definition;
+            alias.anchor = tag.anchor;
+            break;
+        }
+    }
+    std::uint32_t index = 0;
+    std::erase_if(nodes, [&](const Node&) {
+        bool erased = merged[index];
+        index += 1;
+        return erased;
+    });
+}
+
+}  // namespace
+
+auto outline(std::vector<OutlineEntry> entries,
+             llvm::ArrayRef<LocalSourceRange> macros,
+             llvm::ArrayRef<LexicalInfo::ModuleDeclaration> modules,
+             llvm::ArrayRef<LexicalInfo::PragmaMark> marks,
+             llvm::StringRef content,
+             const clang::LangOptions& lang_opts,
+             const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    clang::IdentifierTable keywords(lang_opts);
+    for(auto& entry: entries) {
+        if(!entry.from_macro && !entry.unnamed &&
+           spells(content, entry.selection_range, entry.name)) {
+            entry.name = written_name(content,
+                                      lang_opts,
+                                      keywords,
+                                      entry.range,
+                                      entry.selection_range,
+                                      entry.name);
+        }
+    }
+    if(options.macros) {
+        auto guard = include_guard(content, lang_opts);
+        for(auto directive: macros) {
+            if(auto entry = macro_entry(content, lang_opts, directive);
+               entry && entry->selection_range != guard) {
+                entries.push_back(std::move(*entry));
+            }
+        }
+    }
+    for(const auto& module: modules) {
+        if(module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration) {
+            auto name = module.name_range();
+            entries.push_back({
+                .name = module_name(content, module),
+                .kind = SymbolKind::Module,
+                .range = name,
+                .selection_range = name,
+                .definition = true,
+            });
+        }
+    }
+
+    // LSP wants the selection inside the range; a macro invocation's
+    // expansion range may be narrower than the name its argument spells.
+    for(auto& entry: entries) {
+        entry.range.begin = std::min(entry.range.begin, entry.selection_range.begin);
+        entry.range.end = std::max(entry.range.end, entry.selection_range.end);
+    }
+
+    // A merged index holds a declaration once per context it compiles in,
+    // and an explicit instantiation's local once more: a written name is
+    // one entry, whatever entities the index gives it there, with the
+    // widest extent among them.
+    auto key = [](const OutlineEntry& entry) {
+        return std::tuple(entry.selection_range.begin,
+                          entry.selection_range.end,
+                          entry.from_macro ? entry.entity : 0,
+                          std::string_view(entry.name),
+                          entry.kind.value());
+    };
+    auto width = [](const OutlineEntry& entry) {
+        return entry.range.end - entry.range.begin;
+    };
+    std::ranges::stable_sort(entries, [&](const OutlineEntry& lhs, const OutlineEntry& rhs) {
+        return std::tuple(key(lhs), width(rhs)) < std::tuple(key(rhs), width(lhs));
+    });
+    auto duplicates = std::ranges::unique(entries, {}, key);
+    entries.erase(duplicates.begin(), duplicates.end());
+
+    std::vector<Node> nodes;
+    nodes.reserve(entries.size());
+    for(auto& entry: entries) {
+        auto anchor = entry.selection_range;
+        nodes.push_back({.entry = std::move(entry), .anchor = anchor});
+    }
+    merge_typedefs(nodes, content, lang_opts);
+
+    // The members a macro invocation makes list under it.
+    std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> groups;
+    auto count = static_cast<std::uint32_t>(nodes.size());
+    for(std::uint32_t index = 0; index < count; index += 1) {
+        if(!nodes[index].entry.from_macro) {
+            continue;
+        }
+        auto name = nodes[index].entry.selection_range;
+        auto [group, created] = groups.try_emplace({name.begin, name.end}, nodes.size());
+        if(created) {
+            auto [text, range] = invocation(content, lang_opts, name);
+            nodes.push_back({
+                .entry = {.name = std::move(text),
+                          .kind = SymbolKind::Macro,
+                          .range = range,
+                          .selection_range = name,
+                          .definition = true},
+                .anchor = name,
+                .is_group = true,
+                .invocation = range,
+            });
+        }
+        auto& node = nodes[index];
+        auto& invoked = nodes[group->second];
+        invoked.entry.range.begin = std::min(invoked.entry.range.begin, node.entry.range.begin);
+        invoked.entry.range.end = std::max(invoked.entry.range.end, node.entry.range.end);
+        node.group = group->second;
+    }
+
+    std::vector<std::uint32_t> order(nodes.size());
+    std::iota(order.begin(), order.end(), 0U);
+    std::ranges::stable_sort(order, [&](std::uint32_t lhs, std::uint32_t rhs) {
+        const auto& left = nodes[lhs];
+        const auto& right = nodes[rhs];
+        if(left.entry.range.begin != right.entry.range.begin) {
+            return left.entry.range.begin < right.entry.range.begin;
+        }
+        if(left.entry.range.end != right.entry.range.end) {
+            return left.entry.range.end > right.entry.range.end;
+        }
+        if(left.is_group != right.is_group) {
+            return left.is_group;
+        }
+        return std::tie(left.anchor.begin, left.entry.name) <
+               std::tie(right.anchor.begin, right.entry.name);
+    });
+
+    // Each entry under the innermost open one holding it. Open entries
+    // that end before it hold nothing after it; the others stay open, as
+    // the members of one invocation overlap without holding each other.
+    std::vector<std::uint32_t> roots;
+    std::vector<std::uint32_t> open;
+    for(auto index: order) {
+        auto& node = nodes[index];
+        auto holder = std::find_if(open.rbegin(), open.rend(), [&](std::uint32_t candidate) {
+            return holds(nodes, candidate, node);
+        });
+        auto* parent = holder == open.rend() ? nullptr : &nodes[*holder];
+        std::erase_if(open, [&](std::uint32_t candidate) {
+            return nodes[candidate].entry.range.end <= node.entry.range.begin;
+        });
+        // A friend declaration names an entity of the enclosing scope; only
+        // a hidden friend's definition lives nowhere else in the outline.
+        if(parent && is_record(parent->entry.kind) && !node.entry.definition &&
+           node.entry.parent != parent->entry.entity) {
+            continue;
+        }
+        (parent ? parent->children : roots).push_back(index);
+        open.push_back(index);
+    }
+
+    auto build = [&](this auto& self,
+                     llvm::ArrayRef<std::uint32_t> indices) -> std::vector<DocumentSymbol> {
+        std::vector<DocumentSymbol> symbols;
+        for(auto index: indices) {
+            auto& node = nodes[index];
+            bool locals = options.locals || !holds_locals(node.entry.kind);
+            symbols.push_back({
+                .name = std::move(node.entry.name),
+                .detail = std::move(node.entry.detail),
+                .kind = node.entry.kind,
+                .range = node.entry.range,
+                .selection_range = node.entry.selection_range,
+                .deprecated = node.entry.deprecated,
+                .children = locals ? self(node.children) : std::vector<DocumentSymbol>{},
+                .entity = node.entry.entity,
+            });
+        }
+        return symbols;
+    };
+    auto symbols = build(roots);
+    add_marks(symbols, marks, content);
+    sort_symbols(symbols);
+    return symbols;
+}
+
+namespace {
+
+/// The declarations of the unit's focus file the outline lists, from the
+/// unit's cached Semantics node table — the DFS pre-order record of the
+/// file's written AST — instead of another RecursiveASTVisitor over the TU.
 class Collector {
 public:
-    Collector(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> inactive_regions) :
-        unit(unit), inactive_regions(inactive_regions) {}
+    explicit Collector(CompilationUnit& unit) :
+        unit(unit), entities(unit.get<EntityTable>()), readable(unit.context(), {}) {}
 
-    auto collect() -> std::vector<DocumentSymbol> {
+    auto collect() -> std::vector<OutlineEntry> {
         auto nodes = unit.get<Semantics>().node_entries();
         std::uint32_t index = 0;
         while(index < nodes.size()) {
@@ -135,8 +823,6 @@ public:
                 break;
             }
 
-            close_frames(index);
-
             // Implicit instantiations (and anything below an instantiation
             // head) are located at the pattern, not here.
             if(entry.flags.in_instantiation) {
@@ -144,79 +830,34 @@ public:
                 continue;
             }
 
-            if(entry.node.kind() == SemanticNode::Kind::Decl) {
-                if(!handle_decl(entry.node.get<clang::Decl>(), entry.subtree_end)) {
-                    index = entry.subtree_end;
-                    continue;
-                }
+            if(entry.node.kind() == SemanticNode::Kind::Decl &&
+               !visit(entry.node.get<clang::Decl>())) {
+                index = entry.subtree_end;
+                continue;
             }
 
             index += 1;
         }
-
-        for(; index < nodes.size(); index += 1) {
-            auto& node = nodes[index].node;
-            if(node.kind() == SemanticNode::Kind::Module) {
-                add_module(*node.get<LexicalInfo::ModuleDeclaration>());
-            }
-        }
-
-        for(auto directive: unit.get<Semantics>().macro_definitions()) {
-            if(!inactive(directive.begin)) {
-                add_macro(directive);
-            }
-        }
-
-        add_marks();
-
-        return std::move(symbols);
+        return std::move(entries);
     }
 
 private:
-    bool inactive(std::uint32_t offset) const {
-        auto bounds = std::ranges::upper_bound(inactive_regions, offset) - inactive_regions.begin();
-        return bounds % 2 == 1;
-    }
-
-    /// Restore the insertion cursor of every symbol whose subtree the walk
-    /// has left.
-    void close_frames(std::uint32_t index) {
-        while(!frames.empty() && index >= frames.back().subtree_end) {
-            cursor = frames.back().previous;
-            frames.pop_back();
-        }
-    }
-
     /// Returns false when the decl's whole subtree should be skipped.
-    bool handle_decl(const clang::Decl* decl, std::uint32_t subtree_end) {
-        // An explicit instantiation directive outlines as a childless symbol
+    bool visit(const clang::Decl* decl) {
+        // An explicit instantiation directive outlines as a childless entry
         // of its specialization: the instantiated members sit at the pattern.
         if(const auto* directive = llvm::dyn_cast<clang::ExplicitInstantiationDecl>(decl)) {
-            const auto* specialization = directive->getSpecialization();
-            auto* symbol =
-                add_symbol(*specialization, directive->getNameLoc(), directive->getSourceRange());
-            // name_of spells the arguments of a function specialization
-            // only when it is an explicit specialization: a library's
-            // `extern template` would otherwise name every use of it so.
-            const auto* function = llvm::dyn_cast<clang::FunctionDecl>(specialization);
-            if(symbol && function &&
-               clang::isTemplateInstantiation(function->getTemplateSpecializationKind())) {
-                symbol->name += instantiation_args(*directive, *function);
-            }
+            add(*directive->getSpecialization(),
+                directive->getNameLoc(),
+                directive->getSourceRange(),
+                false);
             return false;
         }
 
-        // A friend declaration names an entity of the enclosing scope; only
-        // a hidden friend's definition lives nowhere else in the outline.
-        if(const auto* friend_decl = llvm::dyn_cast<clang::FriendDecl>(decl)) {
-            const auto* function = friend_decl->getFriendDecl()
-                                       ? friend_decl->getFriendDecl()->getAsFunction()
-                                       : nullptr;
-            return function && function->isThisDeclarationADefinition();
-        }
-
         const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);
-        if(!named || !is_supported(decl)) {
+        if(!named || !outline_lists(SymbolKind::from(named),
+                                    display::symbol_name(named).unnamed,
+                                    named->isTemplateParameter())) {
             return true;
         }
 
@@ -224,265 +865,182 @@ private:
         // (`~Widget`, `operator bool`, `operator==`); NameInfo covers them
         // all, while getLocation() is only the first one.
         clang::SourceRange name_range = named->getLocation();
+        bool definition = true;
         if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(named)) {
             name_range = function->getNameInfo().getSourceRange();
+            definition = function->isThisDeclarationADefinition();
+        } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(named)) {
+            definition = tag->isThisDeclarationADefinition();
         }
 
-        DocumentSymbol* symbol = add_symbol(*named, name_range, named->getSourceRange());
-        if(!symbol) {
-            // A fragment's members outline at its top level.
-            return unit.encloses_main_file(decl);
-        }
-
-        frames.push_back({subtree_end, cursor});
-        cursor = &symbol->children;
-        return true;
+        // A fragment's members outline at its top level.
+        return add(*named, name_range, decls::written_range(named), definition) ||
+               unit.encloses_main_file(decl);
     }
 
-    /// Appends the symbol at the cursor; nullptr when a range falls outside
-    /// the focus file.
-    auto add_symbol(const clang::NamedDecl& named,
-                    clang::SourceRange name_range,
-                    clang::SourceRange full_range) -> DocumentSymbol* {
+    /// Appends the entry; false when a range falls outside the focus file.
+    bool add(const clang::NamedDecl& named,
+             clang::SourceRange name_range,
+             clang::SourceRange full_range,
+             bool definition) {
         // Names spelled inside a macro argument (`DEFINE(name)`) select the
         // written spelling; names spelled in the macro body keep the
-        // invocation site.
+        // invocation site, and a name a macro spells part of its first
+        // token, as the index records them.
         auto& SM = unit.context().getSourceManager();
-        name_range = clang::SourceRange(SM.getFileLoc(name_range.getBegin()),
-                                        SM.getFileLoc(name_range.getEnd()));
-
-        // Clang leaves a bound it cannot locate unset, on valid code too:
-        // `short __attribute__((vector_size(16)))`, `Ts...[0]`, an unclosed
-        // `namespace a {`, the typeless `for(x : v)`.
-        if(full_range.getBegin().isInvalid()) {
-            full_range.setBegin(name_range.getBegin());
-        }
-        if(full_range.getEnd().isInvalid()) {
-            full_range.setEnd(name_range.getEnd());
-        }
+        auto location = SM.getFileLoc(name_range.getBegin());
+        bool from_macro = location != SM.getSpellingLoc(name_range.getBegin());
+        auto end = SM.getFileLoc(name_range.getEnd());
+        bool whole = !from_macro && end == SM.getSpellingLoc(name_range.getEnd()) &&
+                     SM.getFileID(end) == SM.getFileID(location) &&
+                     SM.getFileOffset(location) <= SM.getFileOffset(end);
+        name_range = clang::SourceRange(location, whole ? end : location);
 
         auto focus = unit.focus_file();
         auto selection_range = focus.written_range(name_range);
         auto range = focus.produced_range(full_range);
         if(!selection_range || !range || !selection_range->valid() || !range->valid()) {
-            return nullptr;
+            return false;
         }
 
-        // LSP requires the selection range to be contained in the full
-        // range; a macro invocation's expansion range may be narrower than
-        // the name spelled in its argument.
-        range->begin = std::min(range->begin, selection_range->begin);
-        range->end = std::max(range->end, selection_range->end);
-
-        auto& symbol = cursor->emplace_back();
-        symbol.kind = SymbolKind::from(&named);
-        symbol.name = display::name_of(&named);
-        symbol.detail = symbol_detail(unit.context(), named);
-        symbol.selection_range = *selection_range;
-        symbol.range = *range;
-        symbol.deprecated = named.isDeprecated();
-        return &symbol;
-    }
-
-    /// A `#define` written in this file, read from its text: the
-    /// preamble's have no preprocessor record in a compile under a PCH. The
-    /// AST walk never sees directives, so nesting runs by containment
-    /// instead: one spelled between class members outlines under the class.
-    void add_macro(LocalSourceRange directive) {
-        auto content = unit.focus_file().content();
-        auto lexer =
-            Lexer::from_line(content, directive.begin, {.lang_opts = &unit.lang_options()});
-        lexer.advance();
-        lexer.advance();
-        auto name = lexer.advance();
-        if(!name.is_identifier()) {
-            return;
-        }
-
-        auto spelling = [&](const Token& token) {
-            return unit.token_spelling(unit.focus_file().location(token.range.begin));
-        };
-
-        DocumentSymbol symbol;
-        symbol.kind = SymbolKind::Macro;
-        symbol.name = spelling(name);
-        symbol.selection_range = name.range;
-
-        auto token = lexer.advance();
-        if(token.kind == clang::tok::l_paren && token.range.begin == name.range.end) {
-            std::string detail = "(";
-            for(token = lexer.advance(); token.kind != clang::tok::r_paren && !token.is_eod();
-                token = lexer.advance()) {
-                detail += token.kind == clang::tok::comma ? ", " : spelling(token);
-            }
-            detail += ')';
-            symbol.detail = std::move(detail);
-        }
-        auto last = name;
-        for(; !token.is_eod() && !token.is_eof(); token = lexer.advance()) {
-            last = token;
-        }
-        symbol.range = {name.range.begin, last.range.end};
-
-        auto* level = &symbols;
-        for(bool descended = true; descended;) {
-            descended = false;
-            for(auto& candidate: *level) {
-                if(candidate.range.begin <= symbol.range.begin &&
-                   symbol.range.end <= candidate.range.end) {
-                    level = &candidate.children;
-                    descended = true;
-                    break;
-                }
-            }
-        }
-        level->push_back(std::move(symbol));
-    }
-
-    /// Xcode's sections, which clangd follows: `#pragma mark - Name` groups
-    /// the symbols of its scope after it, up to the scope's next mark or
-    /// its end; `#pragma mark Name` is an entry of its own.
-    void add_marks() {
-        llvm::SmallVector<LexicalInfo::PragmaMark> marks;
-        for(const auto& mark: unit.get<Semantics>().pragma_marks()) {
-            if(!inactive(mark.range.begin)) {
-                marks.push_back(mark);
-            }
-        }
-
-        auto content = unit.focus_file().content();
-        DocumentSymbol root{
-            .range = {0, static_cast<std::uint32_t>(content.size())},
-            .children = std::move(symbols),
-        };
-
-        auto child_containing = [](DocumentSymbol& scope,
-                                   LocalSourceRange range) -> DocumentSymbol* {
-            auto child = llvm::find_if(scope.children, [&](const DocumentSymbol& child) {
-                return child.range.contains(range);
-            });
-            return child == scope.children.end() ? nullptr : &*child;
-        };
-
-        for(auto [index, mark]: llvm::enumerate(marks)) {
-            auto* scope = &root;
-            while(auto* child = child_containing(*scope, mark.range)) {
-                scope = child;
-            }
-
-            DocumentSymbol symbol{
-                .kind = SymbolKind::Directive,
-                .range = mark.range,
-                .selection_range = mark.range,
-            };
-            auto text = content.slice(mark.text.begin, mark.text.end).trim();
-            auto group = text;
-            if(!group.consume_front("-") || (!group.empty() && group.ltrim() == group)) {
-                symbol.name = text.empty() ? "(unnamed mark)" : text.str();
-                scope->children.push_back(std::move(symbol));
-                continue;
-            }
-            symbol.name = group.empty() ? "(unnamed group)" : group.ltrim().str();
-
-            auto end = scope->range.end;
-            for(const auto& next: llvm::ArrayRef(marks).drop_front(index + 1)) {
-                if(!scope->range.contains(next.range)) {
-                    break;
-                }
-                if(!child_containing(*scope, next.range)) {
-                    end = next.range.begin;
-                    break;
-                }
-            }
-
-            auto& siblings = scope->children;
-            auto owned =
-                std::ranges::stable_partition(siblings, [&](const DocumentSymbol& sibling) {
-                    return sibling.range.begin < mark.range.begin || sibling.range.begin >= end;
-                });
-            for(auto& child: owned) {
-                symbol.range.end = std::max(symbol.range.end, child.range.end);
-                symbol.children.push_back(std::move(child));
-            }
-            siblings.erase(owned.begin(), owned.end());
-            siblings.push_back(std::move(symbol));
-        }
-
-        symbols = std::move(root.children);
-    }
-
-    /// The module or partition the unit defines.
-    void add_module(const LexicalInfo::ModuleDeclaration& module) {
-        if(module.kind != LexicalInfo::ModuleDeclaration::Kind::Declaration ||
-           !unit.defines_module()) {
-            return;
-        }
-        auto name = module.name_range();
-        symbols.push_back({
-            .name = unit.module_name().str(),
-            .kind = SymbolKind::Module,
-            .range = name,
-            .selection_range = name,
+        // The index describes an entity by its first declaration.
+        const auto* entity = decls::normalize(&named);
+        auto symbol_name = display::symbol_name(entity);
+        entries.push_back({
+            .name = std::move(symbol_name.text),
+            .detail = detail(named),
+            .kind = SymbolKind::from(entity),
+            .range = *range,
+            .selection_range = *selection_range,
+            .deprecated = named.getMostRecentDecl()->getAvailability() == clang::AR_Deprecated,
+            .entity = entities.entity(entity),
+            .parent = entities.parent(&named),
+            .definition = definition,
+            .unnamed = symbol_name.unnamed,
+            .from_macro = from_macro,
         });
+        return true;
     }
 
-    static bool is_supported(const clang::Decl* decl) {
-        switch(decl->getKind()) {
-            case clang::Decl::Namespace:
-            case clang::Decl::Enum:
-            case clang::Decl::EnumConstant:
-            case clang::Decl::Function:
-            case clang::Decl::CXXMethod:
-            case clang::Decl::CXXConstructor:
-            case clang::Decl::CXXDestructor:
-            case clang::Decl::CXXConversion:
-            case clang::Decl::CXXDeductionGuide:
-            case clang::Decl::Record:
-            case clang::Decl::CXXRecord:
-            case clang::Decl::ClassTemplateSpecialization:
-            case clang::Decl::ClassTemplatePartialSpecialization:
-            case clang::Decl::Field:
-            case clang::Decl::MSProperty:
-            case clang::Decl::Var:
-            case clang::Decl::VarTemplateSpecialization:
-            case clang::Decl::VarTemplatePartialSpecialization:
-            case clang::Decl::Binding:
-            case clang::Decl::Typedef:
-            case clang::Decl::TypeAlias:
-            case clang::Decl::Concept: return true;
-            default: return false;
+    /// What the outline shows beside a name: a function's signature with
+    /// `static`, `virtual` and `= 0`, a variable's type, a class's kind and
+    /// bases.
+    auto detail(const clang::NamedDecl& decl) -> std::string {
+        auto& context = unit.context();
+        display::Options options = {
+            .suppress_unwritten_scope = true,
+            .polish_for_declaration = true,
+            .suppress_ctor_template_args = true,
+            .clean_uglified = true,
+            .readable = &readable,
+            .scope = decl.getDeclContext(),
+        };
+        auto type = [&](clang::QualType type) {
+            return display::type(context, type, options).text;
+        };
+        // `int (int x)`, `Ops &(int)`, as a function type prints.
+        auto signature = [&](const clang::FunctionDecl& function) {
+            auto returned = type(function.getReturnType());
+            auto spaced = !llvm::StringRef(returned).ends_with("*") &&
+                          !llvm::StringRef(returned).ends_with("&");
+            return returned + (spaced ? " " : "") + display::call_signature(function, options);
+        };
+
+        llvm::SmallVector<std::string> parts;
+        if(decl.getDescribedTemplateParams()) {
+            parts.push_back("template");
         }
-    }
 
-    struct Frame {
-        std::uint32_t subtree_end;
-        std::vector<DocumentSymbol>* previous;
-    };
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(&decl)) {
+            const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(function);
+            if(method && method->isStatic()) {
+                parts.push_back("static");
+            }
+            if(method && method->isVirtual()) {
+                parts.push_back("virtual");
+            }
+            if(llvm::isa<clang::CXXConstructorDecl>(function)) {
+                parts.push_back(display::call_signature(*function, options));
+            } else if(!llvm::isa<clang::CXXDestructorDecl>(function)) {
+                parts.push_back(signature(*function));
+            }
+            if(function->isPureVirtual()) {
+                parts.push_back("= 0");
+            }
+        } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(&decl);
+                  // A binding of a declaration in error has no type.
+                  value && !value->getType().isNull()) {
+            if(const auto* var = llvm::dyn_cast<clang::VarDecl>(value);
+               var && var->isStaticDataMember()) {
+                parts.push_back("static");
+            }
+            // A lambda shows what calling it takes.
+            const auto* closure = value->getType().getNonReferenceType()->getAsCXXRecordDecl();
+            if(closure && closure->isLambda() && closure->getLambdaCallOperator()) {
+                const auto* call = closure->getLambdaCallOperator();
+                auto text = signature(*call);
+                text.resize(text.size() - display::method_qualifiers(*call).size());
+                parts.push_back(std::move(text));
+            } else {
+                parts.push_back(type(value->getType()));
+            }
+        } else if(const auto* tag = llvm::dyn_cast<clang::TagDecl>(&decl)) {
+            std::string text = tag->getKindName().str();
+            const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(tag);
+            if(record && record->isThisDeclarationADefinition() && record->getNumBases() != 0) {
+                llvm::SmallVector<std::string> bases;
+                for(const auto& base: record->bases()) {
+                    std::string written;
+                    if(base.isVirtual()) {
+                        written += "virtual ";
+                    }
+                    if(auto access = base.getAccessSpecifierAsWritten(); access != clang::AS_none) {
+                        written += clang::getAccessSpelling(access);
+                        written += " ";
+                    }
+                    written += type(base.getTypeSourceInfo()->getType());
+                    if(base.isPackExpansion()) {
+                        written += "...";
+                    }
+                    bases.push_back(std::move(written));
+                }
+                text += " : " + llvm::join(bases, ", ");
+            }
+            parts.push_back(std::move(text));
+        } else if(llvm::isa<clang::TypedefNameDecl>(&decl)) {
+            parts.push_back("type alias");
+        } else if(llvm::isa<clang::NamespaceAliasDecl>(&decl)) {
+            parts.push_back("namespace alias");
+        } else if(llvm::isa<clang::ConceptDecl>(&decl)) {
+            parts.push_back("concept");
+        }
+        return llvm::join(parts, " ");
+    }
 
     CompilationUnit& unit;
-    /// Sorted begin/end offset pairs.
-    llvm::ArrayRef<std::uint32_t> inactive_regions;
-    std::vector<DocumentSymbol> symbols;
-    std::vector<DocumentSymbol>* cursor = &symbols;
-    std::vector<Frame> frames;
+    EntityTable& entities;
+    display::ReadableTypes readable;
+    std::vector<OutlineEntry> entries;
 };
 
-void sort_symbols(std::vector<DocumentSymbol>& symbols) {
-    std::ranges::sort(symbols, [](const DocumentSymbol& lhs, const DocumentSymbol& rhs) {
-        if(lhs.range.begin != rhs.range.begin) {
-            return lhs.range.begin < rhs.range.begin;
-        }
-        return lhs.range.end < rhs.range.end;
-    });
-
-    for(auto& symbol: symbols) {
-        sort_symbols(symbol.children);
+/// The protocol's kind of a symbol, as the client takes kinds: clangd's
+/// stand-ins for one it lacks.
+auto client_kind(SymbolKind kind, const SymbolClient& client) -> protocol::SymbolKind {
+    auto result = to_protocol_symbol_kind(kind);
+    if(client.all_kinds || result <= protocol::SymbolKind::Array) {
+        return result;
+    }
+    switch(result) {
+        case protocol::SymbolKind::Struct: return protocol::SymbolKind::Class;
+        case protocol::SymbolKind::EnumMember: return protocol::SymbolKind::Enum;
+        default: return protocol::SymbolKind::String;
     }
 }
 
 auto to_protocol_symbol(const DocumentSymbol& symbol,
                         const PositionMap& map,
-                        PositionEncoding encoding) -> std::optional<protocol::DocumentSymbol> {
+                        PositionEncoding encoding,
+                        const SymbolClient& client) -> std::optional<protocol::DocumentSymbol> {
     auto range = map.range(symbol.range, encoding);
     auto selection_range = map.range(symbol.selection_range, encoding);
     if(!range || !selection_range)
@@ -490,7 +1048,7 @@ auto to_protocol_symbol(const DocumentSymbol& symbol,
 
     protocol::DocumentSymbol result{
         .name = symbol.name,
-        .kind = to_protocol_symbol_kind(symbol.kind),
+        .kind = client_kind(symbol.kind, client),
         .range = *range,
         .selection_range = *selection_range,
     };
@@ -507,7 +1065,7 @@ auto to_protocol_symbol(const DocumentSymbol& symbol,
         std::vector<protocol::DocumentSymbol> children;
         children.reserve(symbol.children.size());
         for(const auto& child: symbol.children) {
-            if(auto converted = to_protocol_symbol(child, map, encoding)) {
+            if(auto converted = to_protocol_symbol(child, map, encoding, client)) {
                 children.push_back(std::move(*converted));
             }
         }
@@ -517,40 +1075,94 @@ auto to_protocol_symbol(const DocumentSymbol& symbol,
     return result;
 }
 
-auto outline(CompilationUnit& unit, llvm::ArrayRef<std::uint32_t> inactive_regions)
-    -> std::vector<DocumentSymbol> {
-    auto result = Collector(unit, inactive_regions).collect();
-    sort_symbols(result);
-    return result;
-}
-
 }  // namespace
 
-auto document_symbols(CompilationUnit& unit) -> std::vector<DocumentSymbol> {
-    return outline(unit, inactive_regions(unit).regions);
+auto document_symbols(CompilationUnit& unit, const DocumentSymbolsOptions& options)
+    -> std::vector<DocumentSymbol> {
+    return document_symbols(unit, inactive_regions(unit).regions, options);
 }
 
 auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
-                      PositionEncoding encoding) -> std::vector<protocol::DocumentSymbol> {
-    return document_symbols_to_protocol(outline(unit, inactive_regions),
-                                        unit.focus_file().positions(),
-                                        encoding);
+                      const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol> {
+    auto inactive = [&](std::uint32_t offset) {
+        auto bounds = std::ranges::upper_bound(inactive_regions, offset) - inactive_regions.begin();
+        return bounds % 2 == 1;
+    };
+    auto& semantics = unit.get<Semantics>();
+    std::vector<LocalSourceRange> macros;
+    for(auto directive: semantics.macro_definitions()) {
+        if(!inactive(directive.begin)) {
+            macros.push_back(directive);
+        }
+    }
+    std::vector<LexicalInfo::PragmaMark> marks;
+    for(const auto& mark: semantics.pragma_marks()) {
+        if(!inactive(mark.range.begin)) {
+            marks.push_back(mark);
+        }
+    }
+    // The editor's text, without the line a header compiled in its
+    // includer's context gains; a copy, as the lexer reads past a slice.
+    auto focus = unit.focus_file();
+    auto text = focus.content().take_front(unit.text_end(focus.file())).str();
+    return outline(Collector(unit).collect(),
+                   macros,
+                   semantics.module_declarations(),
+                   marks,
+                   text,
+                   unit.lang_options(),
+                   options);
 }
 
 auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,
                                   const PositionMap& map,
-                                  PositionEncoding encoding)
+                                  PositionEncoding encoding,
+                                  const SymbolClient& client)
     -> std::vector<protocol::DocumentSymbol> {
     std::vector<protocol::DocumentSymbol> result;
     result.reserve(symbols.size());
 
     for(const auto& symbol: symbols) {
-        if(auto converted = to_protocol_symbol(symbol, map, encoding)) {
+        if(auto converted = to_protocol_symbol(symbol, map, encoding, client)) {
             result.push_back(std::move(*converted));
         }
     }
 
+    return result;
+}
+
+auto document_symbols_to_information(llvm::ArrayRef<DocumentSymbol> symbols,
+                                     const PositionMap& map,
+                                     PositionEncoding encoding,
+                                     const SymbolClient& client,
+                                     llvm::StringRef uri)
+    -> std::vector<protocol::SymbolInformation> {
+    std::vector<protocol::SymbolInformation> result;
+    auto flatten = [&](this auto& self,
+                       llvm::ArrayRef<DocumentSymbol> level,
+                       const DocumentSymbol* container) -> void {
+        for(const auto& symbol: level) {
+            auto range = map.range(symbol.range, encoding);
+            if(!range) {
+                continue;
+            }
+            protocol::SymbolInformation information{
+                .name = symbol.name,
+                .kind = client_kind(symbol.kind, client),
+                .location = {.uri = uri.str(), .range = *range},
+            };
+            if(symbol.deprecated) {
+                information.tags = std::vector{protocol::SymbolTag::Deprecated};
+            }
+            if(container) {
+                information.container_name = container->name;
+            }
+            result.push_back(std::move(information));
+            self(symbol.children, &symbol);
+        }
+    };
+    flatten(symbols, nullptr);
     return result;
 }
 

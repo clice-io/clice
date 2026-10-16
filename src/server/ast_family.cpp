@@ -45,8 +45,6 @@ CrashSubject crash_subject(std::uint8_t kind) {
             case Q::Hover: return {"computing hover for", "Hover is"};
             case Q::SemanticTokens:
                 return {"computing semantic highlighting for", "Semantic highlighting is"};
-            case Q::DocumentSymbol:
-                return {"computing document symbols for", "Document symbols are"};
         }
         std::unreachable();
     }
@@ -60,6 +58,8 @@ CrashSubject crash_subject(std::uint8_t kind) {
             return {"computing document links for", "Document links are"};
         case EvidenceKind::FoldingRange:
             return {"computing folding ranges for", "Folding ranges are"};
+        case EvidenceKind::DocumentSymbol:
+            return {"computing document symbols for", "Document symbols are"};
         case EvidenceKind::InlayHint: return {"computing inlay hints for", "Inlay hints are"};
         case EvidenceKind::CodeAction: return {"computing code actions for", "Code actions are"};
         case EvidenceKind::SelectionRange:

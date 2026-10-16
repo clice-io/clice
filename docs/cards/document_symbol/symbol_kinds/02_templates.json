@@ -3,9 +3,9 @@
   "topic": "document_symbol",
   "subtopic": "symbol_kinds",
   "title": "Templates",
-  "summary": "Class, function and variable templates read `template` in their detail, and concepts and abbreviated templates list too",
-  "prose": "A primary template's extent starts after its `template <...>` line, where\na specialization's includes it.",
-  "status": "partial",
+  "summary": "Class, function and variable templates read `template` in their detail, and their extent starts at the `template` keyword; concepts and abbreviated templates list too",
+  "prose": "",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -192,7 +192,7 @@
                         }
                       }
                     },
-                    "detail": "template void (Small auto)"
+                    "detail": "template void (Small auto x)"
                   }
                 ]
               }
@@ -202,7 +202,6 @@
         {
           "label": "extents",
           "value": {
-            "wrong": "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it",
             "document_symbols": [
               {
                 "name": "templates",
@@ -254,11 +253,11 @@
                       }
                     },
                     "range": {
-                      "$place": "⟦struct Box { … }⟧ (5 lines)",
+                      "$place": "⟦template <typename T> … }⟧ (6 lines) @-1",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 3,
+                          "line": 2,
                           "character": 0
                         },
                         "end": {
@@ -384,11 +383,11 @@
                       }
                     },
                     "range": {
-                      "$place": "⟦T zero() { … }⟧ (3 lines)",
+                      "$place": "⟦template <typename T> … }⟧ (4 lines)",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 13,
+                          "line": 12,
                           "character": 0
                         },
                         "end": {
@@ -416,11 +415,11 @@
                       }
                     },
                     "range": {
-                      "$place": "⟦constexpr T pi = T(3.14159)⟧;",
+                      "$place": "⟦template <typename T> … constexpr T pi = T(3.14159)⟧ (2 lines)",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 18,
+                          "line": 17,
                           "character": 0
                         },
                         "end": {

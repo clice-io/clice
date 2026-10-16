@@ -306,6 +306,34 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 
 <!-- END GENERATED CONFIG -->
 
+## `[document_symbols]`
+
+`[document_symbols]` 节控制文件大纲中列出哪些内容。
+
+<!-- BEGIN GENERATED CONFIG: document_symbols -->
+
+<div class="config-option">
+
+| 选项     | 类型   | 默认值 |
+| -------- | ------ | ------ |
+| `macros` | `bool` | `true` |
+
+列出文件中写出的 `#define`；头文件保护所用的宏始终不列出。
+
+</div>
+
+<div class="config-option">
+
+| 选项     | 类型   | 默认值 |
+| -------- | ------ | ------ |
+| `locals` | `bool` | `true` |
+
+列出函数体中声明的内容：其中的变量、类型和 Lambda，列在该函数之下。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[inlay_hints]`
 
 `[inlay_hints]` 节控制服务器生成哪些内联提示，以及提示最长可以有多长。修改在重启服务器后生效；此过程不涉及重新编译。

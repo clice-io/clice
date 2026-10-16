@@ -6,6 +6,7 @@ module clice;
 
 import :compile.compilation;
 import :feature.code_action.action;
+import :support.text;
 import :syntax.lexer;
 
 namespace clice::feature::action {
@@ -50,20 +51,6 @@ bool needs_space(clang::tok::TokenKind before,
                    isLiteral(before);
         default: return true;
     }
-}
-
-/// The length of the line splice `text` starts with: a backslash, the
-/// blanks clang tolerates after it, and a line break; zero for none.
-std::size_t splice_length(llvm::StringRef text) {
-    if(!text.starts_with('\\')) {
-        return 0;
-    }
-    auto rest = text.drop_front().ltrim(" \t\v\f");
-    auto skipped = text.size() - rest.size();
-    if(rest.starts_with("\r\n")) {
-        return skipped + 2;
-    }
-    return rest.starts_with('\n') || rest.starts_with('\r') ? skipped + 1 : 0;
 }
 
 /// Whether the text between two tokens ends a line: it breaks one outside

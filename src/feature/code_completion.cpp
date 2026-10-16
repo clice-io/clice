@@ -597,31 +597,6 @@ auto pattern_tail(const clang::CodeCompletionString& ccs) -> std::string {
     return tail;
 }
 
-/// The parameters a call of `function` passes arguments to, as every feature
-/// shows them — under their names, with their defaults — then the
-/// function's qualifiers: `(int x, float y = 1) const`. An explicit object
-/// parameter is the object the call is made on, no argument.
-auto call_signature(const clang::FunctionDecl& function, const display::Options& options)
-    -> std::string {
-    llvm::SmallVector<std::string> parameters;
-    for(unsigned index = function.hasCXXExplicitFunctionObjectParameter() ? 1 : 0;
-        index < function.getNumParams();
-        index += 1) {
-        parameters.push_back(display::parameter(*function.getParamDecl(index),
-                                                display::parameter_name(function, index),
-                                                options));
-    }
-    if(function.isVariadic()) {
-        parameters.push_back("...");
-    }
-    auto signature = "(" + llvm::join(parameters, ", ") + ")";
-    if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(&function);
-       method && !function.hasCXXExplicitFunctionObjectParameter()) {
-        signature += display::method_qualifiers(*method);
-    }
-    return signature;
-}
-
 /// Extract the return type from a CodeCompletionString.
 auto extract_return_type(const clang::CodeCompletionString& ccs) -> std::string {
     for(const auto& chunk: ccs) {
@@ -1745,7 +1720,7 @@ public:
             if(function && parameters != std::string::npos) {
                 item.signature.replace(parameters,
                                        std::string::npos,
-                                       call_signature(*function, display_options));
+                                       display::call_signature(*function, display_options));
             }
             if(!item.return_type.empty()) {
                 clang::QualType type;

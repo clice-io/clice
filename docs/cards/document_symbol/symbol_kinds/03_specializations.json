@@ -5,7 +5,7 @@
   "title": "Specializations and deduction guides",
   "summary": "Specializations list with their template arguments and their own members, and a deduction guide with the signature it deduces",
   "prose": "",
-  "status": "partial",
+  "status": "supported",
   "issues": [],
   "files": [
     {
@@ -100,7 +100,7 @@
                     "detail": "struct"
                   },
                   {
-                    "name": "Box<T *>",
+                    "name": "Box<T*>",
                     "kind": "Struct",
                     "at": {
                       "$place": "struct ⟦Box⟧<T*> {",
@@ -216,7 +216,7 @@
                     "detail": "const int"
                   },
                   {
-                    "name": "pi<T *>",
+                    "name": "pi<T*>",
                     "kind": "Variable",
                     "at": {
                       "$place": "constexpr T* ⟦pi⟧<T*> = nullptr;",
@@ -270,7 +270,7 @@
                             }
                           }
                         },
-                        "detail": "(T)"
+                        "detail": "(T raw)"
                       }
                     ]
                   },
@@ -291,7 +291,7 @@
                         }
                       }
                     },
-                    "detail": "template auto (T *) -> Deduced<T>"
+                    "detail": "template Deduced<T> (T *)"
                   },
                   {
                     "name": "instantiated",
@@ -358,7 +358,6 @@
         {
           "label": "extents",
           "value": {
-            "wrong": "a primary template's extent starts after its template header, where a specialization's and an out-of-line member's include it",
             "document_symbols": [
               {
                 "name": "spec",
@@ -410,11 +409,11 @@
                       }
                     },
                     "range": {
-                      "$place": "⟦struct Box { … }⟧ (3 lines)",
+                      "$place": "⟦template <typename T> … }⟧ (4 lines) @-1",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 3,
+                          "line": 2,
                           "character": 0
                         },
                         "end": {
@@ -491,7 +490,7 @@
                     }
                   },
                   {
-                    "name": "Box<T *>",
+                    "name": "Box<T*>",
                     "kind": "Struct",
                     "at": {
                       "$place": "struct ⟦Box⟧<T*> {",
@@ -574,11 +573,11 @@
                       }
                     },
                     "range": {
-                      "$place": "⟦T zero() { … }⟧ (3 lines)",
+                      "$place": "⟦template <typename T> … }⟧ (4 lines) @-1",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 16,
+                          "line": 15,
                           "character": 0
                         },
                         "end": {
@@ -638,11 +637,11 @@
                       }
                     },
                     "range": {
-                      "$place": "⟦constexpr T pi = T(3)⟧;",
+                      "$place": "⟦template <typename T> … constexpr T pi = T(3)⟧ (2 lines)",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 24,
+                          "line": 23,
                           "character": 0
                         },
                         "end": {
@@ -685,7 +684,7 @@
                     }
                   },
                   {
-                    "name": "pi<T *>",
+                    "name": "pi<T*>",
                     "kind": "Variable",
                     "at": {
                       "$place": "constexpr T* ⟦pi⟧<T*> = nullptr;",
@@ -734,11 +733,11 @@
                       }
                     },
                     "range": {
-                      "$place": "⟦struct Deduced { … }⟧ (3 lines)",
+                      "$place": "⟦template <typename T> … }⟧ (4 lines) @-1",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 33,
+                          "line": 32,
                           "character": 0
                         },
                         "end": {
@@ -800,11 +799,11 @@
                       }
                     },
                     "range": {
-                      "$place": "⟦Deduced(T*) -> Deduced<T>⟧;",
+                      "$place": "⟦template <typename T> … Deduced(T*) -> Deduced<T>⟧ (2 lines)",
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 38,
+                          "line": 37,
                           "character": 0
                         },
                         "end": {

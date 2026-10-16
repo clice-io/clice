@@ -1,3 +1,3 @@
 # Module declarations
 
-A module interface unit lists the module it declares
+A module unit lists the module it declares or belongs to

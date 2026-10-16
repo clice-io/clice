@@ -1,0 +1,4 @@
+[answers.outline]
+document_symbols = [
+    { name = "value", kind = "Variable", at = "int ⟦value⟧ = LIMIT;", detail = "int" },
+]

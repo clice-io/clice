@@ -14,8 +14,10 @@ namespace clice::decls {
 bool is_templated(const clang::Decl* decl);
 
 /// The source range the decl is written over: a template's from its
-/// `template` keyword, which the templated decl's own range leaves out; an
-/// instantiation's, its pattern's.
+/// `template` keyword and the attributes leading it, which the templated
+/// decl's own range leaves out; an instantiation's, its pattern's. A bound
+/// clang leaves unlocated is the decl's name, the end of a namespace left
+/// open the end of its file.
 auto written_range(const clang::Decl* decl) -> clang::SourceRange;
 
 /// Check whether the decl names an entity its module exports: declared at

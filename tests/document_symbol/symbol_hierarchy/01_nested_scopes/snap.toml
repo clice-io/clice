@@ -22,10 +22,10 @@ document_symbols = [
                 detail = "struct",
                 children = [
                     { name = "width", kind = "Field", at = "int ⟦width⟧;", detail = "int" },
-                    { name = "plant", kind = "Method", at = "void ⟦plant⟧(Season season);", detail = "void (Season)" },
+                    { name = "plant", kind = "Method", at = "void ⟦plant⟧(Season season);", detail = "void (Season season)" },
                 ],
             },
-            { name = "water", kind = "Function", at = "void ⟦water⟧(Bed& bed);", detail = "void (Bed &)" },
+            { name = "water", kind = "Function", at = "void ⟦water⟧(Bed& bed);", detail = "void (Bed &bed)" },
         ],
     },
 ]
