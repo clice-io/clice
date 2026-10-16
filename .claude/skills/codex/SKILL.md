@@ -120,8 +120,9 @@ only a fresh session recovers). Rules:
   unchanged to codex-authored code. Any run that may modify files gets its
   own git worktree — the main checkout is for analysis-only runs, or edits
   will race with this session's.
-- **Codex builds and runs suites on a box, never on this machine** — name
-  the build and test skills in its prompt. Never let it run the cases on a
+- **Codex builds and runs suites on a box, never on this machine** — its
+  prompt has it read `.claude/skills/build/SKILL.md` and
+  `.claude/skills/test/SKILL.md` first. Never let it run the cases on a
   box this session might also run them on: two full runs at once slow
   both. Either codex runs them and you don't, or codex analyzes and you
   verify.

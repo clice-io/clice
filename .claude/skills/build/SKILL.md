@@ -12,7 +12,7 @@ On a box, not on this machine: this machine hosts every agent's session, and one
 
 ```bash
 id=$(box up clice-io/clice)                     # ~1 min; only when the caller passed no id
-box push $id                                    # the working tree's tracked files
+box push $id                                    # tracked files only: `git add` new ones first
 box run $id 'pixi run build RelWithDebInfo'     # run_in_background
 ```
 

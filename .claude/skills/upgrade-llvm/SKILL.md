@@ -87,7 +87,7 @@ Strategy:
 1. Fix header/namespace changes first (mechanical). A header, name or macro clice now needs that `modules/` does not export goes into `demand.cpp`, and Step 4 runs again.
 2. Fix type system and signature changes (requires understanding semantics)
 3. Update the case outputs upstream changed: `UPDATE_SNAPSHOTS=1`, every changed block reviewed like code (the write-tests skill)
-4. Ensure `pixi run unit-test RelWithDebInfo` passes
+4. Ensure `pixi run -e test-run unit-test RelWithDebInfo` passes
 5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an Opus subagent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unittests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
 6. Bump `index_format_version` in `src/index/serialization.cppm`: entity hashes (`src/semantic/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
 7. A library clice starts using directly is added to `LLVM_LIBRARIES` in `bazel/BUILD.bazel`. xclang's libclang archives carry only the libraries clice uses: one they lack goes into xclang's `toolchain/cmake/caches/clang.cmake` (`LLVM_Development_DISTRIBUTION_COMPONENTS`) first, and needs a new xclang release

@@ -27,7 +27,7 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
    shows a capability a reader should see. A case that pins an edge or a
    fixed bug has no README.
 3. Run it alone, on the box the build ran on (the test skill):
-   `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run cases-test`.
+   `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run -e test-run cases-test`.
    `UPDATE_SNAPSHOTS=1` writes its `snap.toml` (and a documented case's card
    under `docs/cards/`) and prints what changed: review every block like
    code. They are written on the box: `box cp $id . <case dir> docs/cards`
