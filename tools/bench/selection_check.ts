@@ -701,10 +701,14 @@ async function main(): Promise<void> {
         const restart = async (server: Server) => {
             server.client.disposed = true;
             server.client.child.kill("SIGKILL");
+            const binary = server.name === "clice" ? opts.clice : (opts.clangd ?? "");
+            const next = await start(server.name, binary, opts.cdb);
+            next.millis = server.millis;
+            next.slowest = server.slowest;
             if (server.name === "clice") {
-                clice = await start("clice", opts.clice, opts.cdb);
-            } else if (opts.clangd !== null) {
-                clangd = await start("clangd", opts.clangd, opts.cdb);
+                clice = next;
+            } else {
+                clangd = next;
             }
         };
         const opened = await Promise.allSettled(
@@ -997,9 +1001,12 @@ async function main(): Promise<void> {
         }
     }
 
-    await stop(clice);
-    if (clangd !== null) {
-        await stop(clangd);
+    try {
+        await stop(clice);
+    } finally {
+        if (clangd !== null) {
+            await stop(clangd);
+        }
     }
 }
 

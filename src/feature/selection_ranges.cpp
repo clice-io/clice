@@ -785,8 +785,9 @@ const clang::Decl& last_declarator(const clang::Decl& decl) {
 }
 
 /// A function's signature — from its return type, or from the name a
-/// constructor's parameters follow, through the parameters and the rest
-/// of its type — and a constructor's initializer list.
+/// constructor's parameters follow, through the parameters, the rest of
+/// its type, `override`, `final` and a trailing `requires` clause — and a
+/// constructor's initializer list.
 void add_function(CompilationUnit& unit,
                   llvm::StringRef content,
                   llvm::ArrayRef<Token> tokens,
@@ -806,7 +807,21 @@ void add_function(CompilationUnit& unit,
                 token = token_before(tokens, begin)) {
                 begin = token->range.begin;
             }
-            steps.add({begin, written->end});
+            auto end = written->end;
+            auto extend = [&](clang::SourceRange range) {
+                if(auto after = focus_range(unit, range)) {
+                    end = std::max(end, after->end);
+                }
+            };
+            if(const auto* constraint = function.getTrailingRequiresClause().ConstraintExpr) {
+                extend(constraint->getSourceRange());
+            }
+            for(const auto* attr: function.attrs()) {
+                if(llvm::isa<clang::OverrideAttr, clang::FinalAttr>(attr) && !attr->isInherited()) {
+                    extend(attr->getRange());
+                }
+            }
+            steps.add({begin, end});
         }
     }
     const auto* constructor = llvm::dyn_cast<clang::CXXConstructorDecl>(&function);
