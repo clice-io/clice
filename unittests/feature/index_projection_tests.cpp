@@ -20,8 +20,6 @@ ZEST_SUITE(index_projection, Tester) {
 index::TUIndex tu;
 std::string bytes;
 feature::IndexEntries entries;
-std::vector<index::Occurrence> occurrences;
-std::vector<feature::IndexDecl> decls;
 
 void extract_entries() {
     bytes = index::build_tu_index(*unit);
@@ -29,8 +27,6 @@ void extract_entries() {
 
     auto main_id = tu.path_count() - 1;
     entries = feature::extract_index_entries(tu.shard_of(main_id));
-    occurrences = entries.occurrences;
-    decls = entries.decls;
 }
 
 std::optional<index::SymbolRef> resolve(index::SymbolHash hash) {
@@ -74,8 +70,8 @@ void expect_tokens_match_ast() {
     auto projected =
         feature::index_semantic_tokens(unit->focus_file().content(),
                                        feature::index_lang_options("main.cpp", false, "c++20"),
-                                       occurrences,
-                                       decls,
+                                       entries.occurrences,
+                                       entries.decls,
                                        resolver());
 
     // The index knows Declaration/Definition; every other AST modifier
@@ -296,7 +292,7 @@ int compute() {
     auto ast = feature::folding_ranges(*unit);
     auto projected = feature::index_folding_ranges(unit->focus_file().content(),
                                                    feature::index_lang_options("main.cpp", false),
-                                                   decls,
+                                                   entries.decls,
                                                    resolver());
 
     ZASSERT(!projected.empty());
@@ -344,7 +340,7 @@ typedef struct {
     auto ast = feature::folding_ranges(*unit);
     auto projected = feature::index_folding_ranges(unit->focus_file().content(),
                                                    feature::index_lang_options("main.cpp", false),
-                                                   decls,
+                                                   entries.decls,
                                                    resolver());
 
     ZASSERT(projected.size() == std::size_t(3));
@@ -373,7 +369,7 @@ int values[] =
 
     auto projected = feature::index_folding_ranges(unit->focus_file().content(),
                                                    feature::index_lang_options("main.cpp", false),
-                                                   decls,
+                                                   entries.decls,
                                                    resolver());
     ZASSERT(projected.size() == std::size_t(1));
     ZASSERT(!projected[0].lines.has_value());

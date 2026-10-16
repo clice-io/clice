@@ -37,3 +37,12 @@ TEST(Math, Subtracts) {
 #define HANDLER(name) void name()
 
 HANDLER(on_ready);
+
+#define STRONG_TYPEDEF(base, name)                      \
+    struct name {                                       \
+        name() = default;                               \
+        name(base raw) : value(raw) {}                  \
+        base value;                                     \
+    };
+
+STRONG_TYPEDEF(int, Meters)

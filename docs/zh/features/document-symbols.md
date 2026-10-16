@@ -365,7 +365,7 @@ tests/document_symbol/symbol_ranges/04_macro_arguments
 
 ## 符号标签
 
-标签用于标记符号已弃用，或描述其访问权限和存储属性。
+标签用于标记符号已弃用；成员的其他属性写在它的详细信息里。
 
 <!-- BEGIN GENERATED ITEMS: document_symbol/symbol_tags -->
 

@@ -1,6 +1,5 @@
-// An explicit instantiation of a function is named with the arguments it
-// writes, the deduced ones when it writes none; one after an explicit
-// specialization names it once.
+// An explicit instantiation of a function is named as written, with the
+// arguments it writes; one after an explicit specialization names it once.
 
 template <typename T, typename U = int>
 void convert(T value) {}

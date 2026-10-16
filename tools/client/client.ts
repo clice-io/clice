@@ -432,11 +432,17 @@ export class CliceClient {
             processId: process.pid,
             // Versioned workspace edits, like every editor client: code
             // action replies then carry the buffer version they apply to.
+            // Document symbols as a tree in every kind, as every editor
+            // takes them.
             capabilities: options.capabilities ?? {
                 workspace: { workspaceEdit: { documentChanges: true } },
                 textDocument: {
                     hover: { contentFormat: ["markdown", "plaintext"] },
                     rename: { prepareSupport: true },
+                    documentSymbol: {
+                        hierarchicalDocumentSymbolSupport: true,
+                        symbolKind: { valueSet: Object.values(proto.SymbolKind) },
+                    },
                 },
             },
             rootUri: options.folders?.length === 0 ? null : wsUri,

@@ -11,6 +11,7 @@ import :semantic.display;
 import :semantic.identity;
 import :semantic.semantics;
 import :semantic.symbol;
+import :support.text;
 import :syntax.lexer;
 import :syntax.lexical_scan;
 
@@ -94,10 +95,9 @@ std::string spelling(llvm::StringRef content, const Token& token) {
     auto text = token.text(content);
     std::string result;
     for(auto splice = text.find('\\'); splice != llvm::StringRef::npos; splice = text.find('\\')) {
-        auto rest = text.drop_front(splice + 1);
-        std::size_t newline = rest.starts_with("\r\n") ? 2 : rest.starts_with("\n") ? 1 : 0;
-        result += text.take_front(newline ? splice : splice + 1);
-        text = rest.drop_front(newline);
+        auto length = splice_length(text.drop_front(splice));
+        result += text.take_front(length != 0 ? splice : splice + 1);
+        text = text.drop_front(splice + std::max<std::size_t>(length, 1));
     }
     result += text;
     return result;
@@ -516,11 +516,15 @@ struct Node {
     std::optional<std::uint32_t> group;
     bool is_group = false;
 
+    /// Of a macro invocation node, the invocation's text.
+    LocalSourceRange invocation;
+
     std::vector<std::uint32_t> children;
 };
 
 /// Whether `outer` holds `inner` in the outline.
-bool holds(const Node& outer, std::uint32_t outer_index, const Node& inner) {
+bool holds(llvm::ArrayRef<Node> nodes, std::uint32_t outer_index, const Node& inner) {
+    const auto& outer = nodes[outer_index];
     if(outer.entry.range.begin > inner.entry.range.begin ||
        inner.entry.range.end > outer.entry.range.end) {
         return false;
@@ -528,15 +532,44 @@ bool holds(const Node& outer, std::uint32_t outer_index, const Node& inner) {
     if(inner.group == outer_index) {
         return true;
     }
-    if(outer.group && outer.group == inner.group) {
+    // What an invocation's arguments name lists beside what its body makes.
+    if(outer.group &&
+       (outer.group == inner.group || nodes[*outer.group].invocation.contains(inner.anchor))) {
         return false;
     }
     return outer.anchor.end <= inner.anchor.begin;
 }
 
+/// Whether a typedef names the tag written before its name, not a
+/// pointer, reference or array of it (`} *Ref;`, `} Point, *Ref;`,
+/// `} Grid[3];`).
+bool names_tag(llvm::StringRef content,
+               const clang::LangOptions& lang_opts,
+               const OutlineEntry& tag,
+               const OutlineEntry& alias) {
+    if(alias.range.end > alias.selection_range.end) {
+        return false;
+    }
+    Lexer lexer(content.slice(tag.range.end, alias.selection_range.begin),
+                {.lang_opts = &lang_opts});
+    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+        switch(token.kind) {
+            case clang::tok::star:
+            case clang::tok::amp:
+            case clang::tok::ampamp:
+            case clang::tok::caret:
+            case clang::tok::comma: return false;
+            default: break;
+        }
+    }
+    return true;
+}
+
 /// `typedef struct { ... } Point;`: the struct the typedef declares and
 /// names, unnamed or named alike, lists once, as the typedef's name.
-void merge_typedefs(std::vector<Node>& nodes) {
+void merge_typedefs(std::vector<Node>& nodes,
+                    llvm::StringRef content,
+                    const clang::LangOptions& lang_opts) {
     std::vector<std::uint32_t> tags;
     for(auto [index, node]: llvm::enumerate(nodes)) {
         if(is_tag(node.entry.kind)) {
@@ -561,7 +594,8 @@ void merge_typedefs(std::vector<Node>& nodes) {
                 break;
             }
             if(merged[*it] || tag.entry.range.end > alias.entry.selection_range.begin ||
-               (!tag.entry.unnamed && tag.entry.name != alias.entry.name)) {
+               (!tag.entry.unnamed && tag.entry.name != alias.entry.name) ||
+               !names_tag(content, lang_opts, tag.entry, alias.entry)) {
                 continue;
             }
             merged[*it] = true;
@@ -576,7 +610,11 @@ void merge_typedefs(std::vector<Node>& nodes) {
         }
     }
     std::uint32_t index = 0;
-    std::erase_if(nodes, [&](const Node&) { return merged[index++]; });
+    std::erase_if(nodes, [&](const Node&) {
+        bool erased = merged[index];
+        index += 1;
+        return erased;
+    });
 }
 
 }  // namespace
@@ -631,21 +669,22 @@ auto outline(std::vector<OutlineEntry> entries,
 
     // A merged index holds a declaration once per context it compiles in,
     // and an explicit instantiation's local once more: a written name is
-    // one entry, whatever entities the index gives it there.
+    // one entry, whatever entities the index gives it there, with the
+    // widest extent among them.
     auto key = [](const OutlineEntry& entry) {
-        return std::tuple(entry.range.begin,
-                          entry.range.end,
-                          entry.selection_range.begin,
+        return std::tuple(entry.selection_range.begin,
                           entry.selection_range.end,
                           entry.from_macro ? entry.entity : 0,
-                          llvm::StringRef(entry.name));
+                          std::string_view(entry.name),
+                          entry.kind.value());
+    };
+    auto width = [](const OutlineEntry& entry) {
+        return entry.range.end - entry.range.begin;
     };
     std::ranges::stable_sort(entries, [&](const OutlineEntry& lhs, const OutlineEntry& rhs) {
-        return key(lhs) < key(rhs);
+        return std::tuple(key(lhs), width(rhs)) < std::tuple(key(rhs), width(lhs));
     });
-    auto duplicates = std::ranges::unique(entries, [&](const auto& lhs, const auto& rhs) {
-        return lhs.kind == rhs.kind && key(lhs) == key(rhs);
-    });
+    auto duplicates = std::ranges::unique(entries, {}, key);
     entries.erase(duplicates.begin(), duplicates.end());
 
     std::vector<Node> nodes;
@@ -654,13 +693,10 @@ auto outline(std::vector<OutlineEntry> entries,
         auto anchor = entry.selection_range;
         nodes.push_back({.entry = std::move(entry), .anchor = anchor});
     }
-    merge_typedefs(nodes);
+    merge_typedefs(nodes, content, lang_opts);
 
-    // The members a macro invocation makes list under it, each declaration
-    // once: a declaration and its definition share the invocation.
+    // The members a macro invocation makes list under it.
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> groups;
-    std::map<std::pair<std::uint32_t, std::uint64_t>, std::uint32_t> members;
-    std::vector<bool> dropped(nodes.size(), false);
     auto count = static_cast<std::uint32_t>(nodes.size());
     for(std::uint32_t index = 0; index < count; index += 1) {
         if(!nodes[index].entry.from_macro) {
@@ -678,6 +714,7 @@ auto outline(std::vector<OutlineEntry> entries,
                           .definition = true},
                 .anchor = name,
                 .is_group = true,
+                .invocation = range,
             });
         }
         auto& node = nodes[index];
@@ -685,29 +722,10 @@ auto outline(std::vector<OutlineEntry> entries,
         invoked.entry.range.begin = std::min(invoked.entry.range.begin, node.entry.range.begin);
         invoked.entry.range.end = std::max(invoked.entry.range.end, node.entry.range.end);
         node.group = group->second;
-        if(node.entry.entity == 0) {
-            continue;
-        }
-        auto [member, inserted] = members.try_emplace({group->second, node.entry.entity}, index);
-        if(!inserted) {
-            auto& kept = nodes[member->second].entry.range;
-            auto& range = node.entry.range;
-            if(range.end - range.begin > kept.end - kept.begin) {
-                dropped[member->second] = true;
-                member->second = index;
-            } else {
-                dropped[index] = true;
-            }
-        }
     }
-    dropped.resize(nodes.size(), false);
 
-    std::vector<std::uint32_t> order;
-    for(std::uint32_t index = 0; index < nodes.size(); index += 1) {
-        if(!dropped[index]) {
-            order.push_back(index);
-        }
-    }
+    std::vector<std::uint32_t> order(nodes.size());
+    std::iota(order.begin(), order.end(), 0U);
     std::ranges::stable_sort(order, [&](std::uint32_t lhs, std::uint32_t rhs) {
         const auto& left = nodes[lhs];
         const auto& right = nodes[rhs];
@@ -732,7 +750,7 @@ auto outline(std::vector<OutlineEntry> entries,
     for(auto index: order) {
         auto& node = nodes[index];
         auto holder = std::find_if(open.rbegin(), open.rend(), [&](std::uint32_t candidate) {
-            return holds(nodes[candidate], candidate, node);
+            return holds(nodes, candidate, node);
         });
         auto* parent = holder == open.rend() ? nullptr : &nodes[*holder];
         std::erase_if(open, [&](std::uint32_t candidate) {
@@ -741,7 +759,7 @@ auto outline(std::vector<OutlineEntry> entries,
         // A friend declaration names an entity of the enclosing scope; only
         // a hidden friend's definition lives nowhere else in the outline.
         if(parent && is_record(parent->entry.kind) && !node.entry.definition &&
-           node.entry.entity != 0 && node.entry.parent != parent->entry.entity) {
+           node.entry.parent != parent->entry.entity) {
             continue;
         }
         (parent ? parent->children : roots).push_back(index);
@@ -768,8 +786,8 @@ auto outline(std::vector<OutlineEntry> entries,
         return symbols;
     };
     auto symbols = build(roots);
-    sort_symbols(symbols);
     add_marks(symbols, marks, content);
+    sort_symbols(symbols);
     return symbols;
 }
 
@@ -937,7 +955,9 @@ private:
             if(function->isPureVirtual()) {
                 parts.push_back("= 0");
             }
-        } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(&decl)) {
+        } else if(const auto* value = llvm::dyn_cast<clang::ValueDecl>(&decl);
+                  // A binding of a declaration in error has no type.
+                  value && !value->getType().isNull()) {
             if(const auto* var = llvm::dyn_cast<clang::VarDecl>(value);
                var && var->isStaticDataMember()) {
                 parts.push_back("static");

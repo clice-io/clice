@@ -542,7 +542,7 @@ struct DocumentSymbol {
     std::vector<DocumentSymbol> children;
 
     /// The entity it declares (EntityTable), the index's symbol hash; 0 for
-    /// a macro invocation, a mark and a module declaration.
+    /// a `#define`, a macro invocation, a mark and a module declaration.
     std::uint64_t entity = 0;
 };
 
@@ -707,14 +707,13 @@ auto document_symbols(CompilationUnit& unit,
                       llvm::ArrayRef<std::uint32_t> inactive_regions,
                       const DocumentSymbolsOptions& options) -> std::vector<DocumentSymbol>;
 
-/// How a client takes document symbols: as a tree, or flat
-/// (`SymbolInformation`) when it declares no
-/// hierarchicalDocumentSymbolSupport; in every kind when it declares a set
-/// of them (and so takes others gracefully), in the protocol's first 18
-/// otherwise.
+/// How a client takes document symbols: as a tree when it declares
+/// hierarchicalDocumentSymbolSupport, flat (`SymbolInformation`)
+/// otherwise; in every kind when it declares a set of them (and so takes
+/// others gracefully), in the protocol's first 18 otherwise.
 struct SymbolClient {
-    bool hierarchical = true;
-    bool all_kinds = true;
+    bool hierarchical = false;
+    bool all_kinds = false;
 };
 
 auto document_symbols_to_protocol(llvm::ArrayRef<DocumentSymbol> symbols,

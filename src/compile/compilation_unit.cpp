@@ -265,14 +265,17 @@ const SynthesizedOrigin* CompilationUnit::origin(clang::FileID fid) {
 
 auto CompilationUnit::text_end(clang::FileID fid) -> std::uint32_t {
     auto content = file_content(fid);
-    if(borrows_context() && fid == SM().getMainFileID()) {
-        auto& includes = directives()[fid].includes;
-        if(!includes.empty() && synthesized(includes.back().fid)) {
-            auto keyword = SM().getFileOffset(includes.back().location);
-            return static_cast<std::uint32_t>(content.rfind('\n', keyword));
-        }
+    auto size = static_cast<std::uint32_t>(content.size());
+    if(!borrows_context() || fid != SM().getMainFileID()) {
+        return size;
     }
-    return static_cast<std::uint32_t>(content.size());
+    auto it = directives().find(fid);
+    if(it == directives().end() || it->second.includes.empty() ||
+       !synthesized(it->second.includes.back().fid)) {
+        return size;
+    }
+    auto keyword = SM().getFileOffset(it->second.includes.back().location);
+    return static_cast<std::uint32_t>(content.rfind('\n', keyword));
 }
 
 bool CompilationUnit::synthesized(clang::FileID fid) {

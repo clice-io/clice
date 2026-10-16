@@ -168,22 +168,6 @@ std::optional<clang::tooling::stdlib::Header>
     return std::nullopt;
 }
 
-/// Where the text the user edits ends: a header compiled in its
-/// includer's context carries one line more, the include entering the
-/// synthesized rest of the includer.
-std::uint32_t text_end(CompilationUnit& unit) {
-    auto focus = unit.focus_file();
-    auto content = focus.content();
-    auto it = unit.directives().find(focus.file());
-    if(it != unit.directives().end() && !it->second.includes.empty()) {
-        const auto& last = it->second.includes.back();
-        if(last.fid.isValid() && unit.synthesized(last.fid)) {
-            return line_begin(content, unit.seen_at(last.location).offset);
-        }
-    }
-    return content.size();
-}
-
 /// The start of the line after the comments opening the file, up to the
 /// last one a blank line sets apart from what follows: a license header,
 /// not the comment of the first declaration. 0 when there is none.
@@ -216,7 +200,7 @@ std::uint32_t after_leading_comments(llvm::StringRef content, const clang::LangO
 /// are compiled into the PCH and never reach this AST.
 IncludeInsertion include_insertion(CompilationUnit& unit) {
     auto content = unit.focus_file().content();
-    auto end = text_end(unit);
+    auto end = unit.text_end(unit.focus_file().file());
 
     /// The anchors at one conditional depth: the file's own level, and
     /// the level directly inside the include guard.

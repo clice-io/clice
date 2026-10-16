@@ -365,7 +365,7 @@ tests/document_symbol/symbol_ranges/04_macro_arguments
 
 ## Symbol Tags
 
-Tags mark a symbol as deprecated or describe its access and storage.
+Tags mark a symbol as deprecated; what else a member is, its detail says.
 
 <!-- BEGIN GENERATED ITEMS: document_symbol/symbol_tags -->
 
