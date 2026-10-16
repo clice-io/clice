@@ -192,10 +192,13 @@ std::size_t number_suffix(llvm::StringRef text) {
         } else if((hex ? (c == 'p' || c == 'P') : (!binary && (c == 'e' || c == 'E'))) &&
                   i + 1 < text.size() &&
                   (llvm::isDigit(text[i + 1]) || text[i + 1] == '+' || text[i + 1] == '-')) {
+            // The exponent ends the digits: a hexadecimal one's `f` is a
+            // suffix.
             i += 2;
             while(i < text.size() && llvm::isDigit(text[i])) {
                 i += 1;
             }
+            return i;
         } else {
             break;
         }
@@ -609,10 +612,10 @@ private:
                 emit({at(segment), at(until)}, {{.kind = base}, false});
             }
         };
-        for(std::size_t i = open + 1; i < close && !raw;) {
+        for(std::size_t i = open + 1; i < close;) {
             std::size_t length = 0;
             Piece piece;
-            if(text[i] == '\\') {
+            if(!raw && text[i] == '\\') {
                 length = std::min(escape_length(text.substr(i)), close - i);
                 piece = {{.kind = Kind::Escape}, false};
             } else if(format == FormatStyle::Std && (text[i] == '{' || text[i] == '}') &&

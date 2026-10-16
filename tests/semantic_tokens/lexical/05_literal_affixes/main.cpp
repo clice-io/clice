@@ -9,5 +9,6 @@ auto hex = 0xFF;
 auto binary = 0b1010;
 auto unsigned_suffix = 42§(unsigned_suffix)u;
 auto float_suffix = 3.14§(float_suffix)f;
+auto hex_float_suffix = 0x1p4§(hex_float_suffix)f;
 auto separators = 1'000'000;
 auto udl = 4§(literal_operator_suffix)_kb;

@@ -532,6 +532,44 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 
 <!-- END GENERATED CONFIG -->
 
+## `[semantic_tokens]`
+
+`[semantic_tokens]` 节控制语义 Token 包含哪些内容，以及其种类和修饰符以什么名称发送。这些名称在编辑器连接时公布，因此修改在重启服务器后生效。
+
+<!-- BEGIN GENERATED CONFIG: semantic_tokens -->
+
+<div class="config-option">
+
+| 选项      | 类型   | 默认值 |
+| --------- | ------ | ------ |
+| `lexical` | `bool` | `true` |
+
+同时发送编辑器自身语法高亮也会着色的 Token：关键字、字面量、注释、运算符、预处理指令。关闭时只发送仅凭语法无法区分的内容：按所指实体着色的名称、重载运算符与声明符运算符、模板尖括号、格式说明符，以及预处理非活动代码中的 Token（不带种类）。
+
+</div>
+
+<div class="config-option">
+
+| 选项    | 类型              | 默认值 |
+| ------- | ----------------- | ------ |
+| `kinds` | `table of string` | `{}`   |
+
+客户端或主题所期望的 clice Token 种类名称，写作 `field = "property"`；名称为空则丢弃该种类，其 Token 不再发送；赋予同一名称的多个种类会合并。在服务器启动时读取。
+
+</div>
+
+<div class="config-option">
+
+| 选项        | 类型              | 默认值 |
+| ----------- | ----------------- | ------ |
+| `modifiers` | `table of string` | `{}`   |
+
+客户端或主题所期望的 clice Token 修饰符名称；名称为空则丢弃该修饰符，赋予同一名称的多个修饰符会合并。在服务器启动时读取。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[code_completion]`
 
 `[code_completion]` 段控制补全项的组装。

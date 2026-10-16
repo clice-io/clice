@@ -309,6 +309,7 @@ export async function activate(context: ExtensionContext) {
     const traceChannel = window.createOutputChannel("clice (LSP trace)");
     context.subscriptions.push(channel, traceChannel);
 
+    const inactive = registerInactiveRegions(() => client, context);
     const clientOptions: LanguageClientOptions = {
         documentSelector: [
             { scheme: "file", language: "cpp" },
@@ -318,7 +319,8 @@ export async function activate(context: ExtensionContext) {
         outputChannel: channel,
         traceOutputChannel: traceChannel,
         middleware: {
-            provideDocumentSemanticTokens: registerInactiveRegions(() => client, context),
+            provideDocumentSemanticTokens: inactive.full,
+            provideDocumentSemanticTokensEdits: inactive.edits,
             // Space triggers exist only for the module names after `import `
             // and `module `. This guard is intentionally stricter than the
             // server-side detection (exact single-space forms only): it

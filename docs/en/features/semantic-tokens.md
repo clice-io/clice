@@ -128,6 +128,55 @@ a change takes a server restart. See the
 [configuration guide](../guide/configuration.md#semantic-tokens) for details.
 
 <!-- BEGIN GENERATED ITEMS: semantic_tokens/options -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Lexical tokens**
+
+With `lexical` off, only what the editor's own grammar cannot tell is sent
+
+Keywords, literals, comments, built-in operators and directives are left
+to the editor's grammar. Names, template brackets, declarator operators and
+the code of untaken branches are still sent: an inactive token without a
+kind of its own is `plain`, so the grammar's color stays and only dims.
+
+```case
+tests/semantic_tokens/options/01_lexical_tokens
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Kind names**
+
+`kinds` renames the token kinds the server announces
+
+Two kinds given one name merge into it, and a kind renamed to `""` is not
+sent, leaving the editor's own color. The names are announced once, when the
+editor connects: a change takes a restart.
+
+```case
+tests/semantic_tokens/options/02_kind_names
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Modifier names**
+
+`modifiers` renames the token modifiers the server announces
+
+A modifier renamed to `""` is never set. Like the kinds, the names are
+announced once, when the editor connects.
+
+```case
+tests/semantic_tokens/options/03_modifier_names
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Lexical Tokens
@@ -140,7 +189,7 @@ Kinds derived from the token stream itself, independent of the AST.
 
 **Comments**
 
-Line, block and documentation comments receive comment tokens
+Line, block and documentation comments receive comment tokens, a documentation comment with the `documentation` modifier
 
 ```case
 tests/semantic_tokens/lexical/01_comments
@@ -164,7 +213,7 @@ tests/semantic_tokens/lexical/02_literals
 
 **Keywords**
 
-Alternative operator spellings and contextual specifiers retain keyword tokens
+Alternative operator spellings are operators, and contextual specifiers keep keyword tokens
 
 ```case
 tests/semantic_tokens/lexical/03_keywords
@@ -184,11 +233,14 @@ tests/semantic_tokens/lexical/04_primitive_types
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Literal prefixes and suffixes**
 
-Literal prefixes and suffixes do not receive tokens of their own yet
+A literal's prefix and suffix are tokens of their own, with the `affix` modifier
+
+They keep the kind of their literal; a user-defined literal's suffix also
+carries `userDefined`.
 
 ```case
 tests/semantic_tokens/lexical/05_literal_affixes
@@ -196,11 +248,11 @@ tests/semantic_tokens/lexical/05_literal_affixes
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Escape sequences**
 
-Escape sequences are not highlighted distinctly inside literals yet
+Escape sequences inside literals are `escape` tokens
 
 ```case
 tests/semantic_tokens/lexical/06_escape_sequences
@@ -208,11 +260,11 @@ tests/semantic_tokens/lexical/06_escape_sequences
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1421 -->
+<!-- BEGIN CAPABILITY: supported clangd#1421 -->
 
 **Declarator vs operator disambiguation**
 
-Declarator and expression operators do not receive distinct token kinds yet
+A declarator's `*`, `&` and `&&` carry the `declarator` modifier, apart from the same operators in expressions
 
 ```case
 tests/semantic_tokens/lexical/07_declarator_operators
@@ -220,11 +272,15 @@ tests/semantic_tokens/lexical/07_declarator_operators
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Bracket token types**
 
-Matching brackets do not receive pair-specific token kinds yet
+The angle brackets of template arguments and parameters are `bracket` tokens
+
+They are told apart from the comparisons an editor's grammar takes them
+for. Parentheses, square brackets and braces, which the editor matches
+itself, get no token.
 
 ```case
 tests/semantic_tokens/lexical/08_brackets
@@ -232,14 +288,50 @@ tests/semantic_tokens/lexical/08_brackets
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#2209 -->
+<!-- BEGIN CAPABILITY: supported clangd#2209 -->
 
 **Attribute names**
 
-Attribute names and their expressions do not receive semantic tokens yet
+Attribute names are `attribute` tokens, and their arguments keep their own kinds
 
 ```case
 tests/semantic_tokens/lexical/09_attributes
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Format strings**
+
+The placeholders of a format string are `formatSpecifier` tokens
+
+A string passed where a function takes a format string — a
+`basic_format_string` parameter as `std::format`, `std::print` and {fmt}
+declare it, or the argument a `format(printf, …)` attribute names — splits
+into its text and its placeholders: `{}` and `{:>8.2f}` in the first style,
+`%d` and `%-8.3f` in printf's. Escaped braces and `%%` stay text, and so does
+a string no function reads as a format.
+
+```case
+tests/semantic_tokens/lexical/12_format_strings
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Documentation comments**
+
+Commands in documentation comments are keywords, the names they document parameters
+
+Inside a `///` or `/** */` comment, a command such as `\param`, `@brief`
+or `@return` is a `keyword` and the name after `@param` a `parameter`,
+both with the `documentation` modifier; the rest of the comment stays a
+`comment`. An ordinary comment has no commands.
+
+```case
+tests/semantic_tokens/lexical/13_doc_comments
 ```
 
 <!-- END CAPABILITY -->
@@ -316,7 +408,7 @@ tests/semantic_tokens/declarations/05_variables
 
 **Templates**
 
-Template parameters receive type or variable kinds, and a declared template carries `templated`
+A type parameter is a `typeParameter`, a non-type one a `templateParameter`, and a template carries `template`
 
 ```case
 tests/semantic_tokens/declarations/06_templates
@@ -396,7 +488,7 @@ tests/semantic_tokens/references/02_using_declarations
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: partial clangd#154 clangd#297 -->
+<!-- BEGIN CAPABILITY: supported clangd#154 clangd#297 -->
 
 **Dependent names**
 
@@ -404,8 +496,8 @@ Dependent names resolve through known primary templates
 
 Dependent members of a known template (`Box<T>`) resolve to the primary
 template's declarations and keep their kinds. Members of a bare template
-parameter have no candidate declaration and currently get no token;
-heuristic coloring for such names remains open.
+parameter have no candidate declaration: they are `unknown`, or a type
+after `typename`. Every dependent name carries `dependent`.
 
 ```case
 tests/semantic_tokens/references/05_dependent_names
@@ -425,6 +517,23 @@ tests/semantic_tokens/references/06_lambda_captures
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported clangd#1390 clangd#1627 clangd#2235 clangd#2547 clangd#484 -->
+
+**Spelling forms**
+
+Names keep their kinds in the less common ways C++ spells them
+
+An `auto` parameter is a keyword, not a template parameter; `new` behind
+`::` an operator; the class of a pointer to member a class; the left
+operand of an overloaded `=` is modified like a built-in one's; a member
+template named after `template` is `unknown` until an instantiation.
+
+```case
+tests/semantic_tokens/references/14_spelling_forms
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Special Members
@@ -439,9 +548,8 @@ Constructors, destructors and operator functions read as the methods they are, w
 
 Constructors and destructors use method tokens with dedicated modifiers
 
-A destructor name renders as two tokens: the `~` carries the method
-kind and the declaration/definition modifiers, the class name after it
-stays a reference to the class.
+A destructor's whole name, the `~` and the class name, is one method
+token.
 
 ```case
 tests/semantic_tokens/special_members/01_constructors_destructors
@@ -499,8 +607,8 @@ tests/semantic_tokens/modifiers/02_static
 
 Const values and methods, plus enum members, carry the readonly modifier
 
-Readonly is currently value-based: a pointer to const counts as
-readonly even though the pointer itself can change.
+Readonly is about the object a name stands for: a reference to const and a
+const pointer are readonly, a pointer to const is not.
 
 ```case
 tests/semantic_tokens/modifiers/03_readonly
@@ -560,7 +668,7 @@ tests/semantic_tokens/modifiers/07_scopes
 
 **Mutable arguments**
 
-An argument the callee may modify, through a reference or a pointer to non-const, carries a modifier
+An argument the callee may modify, through a reference or a pointer to non-const, carries `modification`, as the target of an assignment does
 
 ```case
 tests/semantic_tokens/modifiers/08_mutable_arguments
@@ -576,6 +684,54 @@ A call to an overloaded operator is an operator token with the `userDefined` mod
 
 ```case
 tests/semantic_tokens/modifiers/10_overloaded_operators
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Callable variables**
+
+A variable, parameter or field whose type can be called is `callable`
+
+Function pointers, pointers to member functions, lambdas and objects of a
+class with an `operator()` all carry it, at their declaration and at every
+use.
+
+```case
+tests/semantic_tokens/modifiers/12_callable
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Templates**
+
+A class, alias, variable or function template is `template` wherever it is named
+
+So is a specialization of it, and the `<` and `>` around template arguments
+are `bracket` tokens, told apart from comparisons.
+
+```case
+tests/semantic_tokens/modifiers/13_templates
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Control flow**
+
+Keywords that transfer control and functions that never return are `controlFlow`
+
+`if`, `for`, `return` and the other statements that branch, loop or leave
+carry it, telling them apart from declaration keywords such as `int` or
+`const`. A `[[noreturn]]` function carries it too, as does a macro whose
+expansion can leave the function.
+
+```case
+tests/semantic_tokens/modifiers/14_control_flow
 ```
 
 <!-- END CAPABILITY -->
@@ -643,8 +799,8 @@ tests/semantic_tokens/preprocessor/02_header_names
 
 Tokens in untaken branches keep their lexical kinds and carry the `inactive` modifier
 
-Text with no kind of its own becomes a plain `identifier` token, so even a
-lone `}` line dims.
+Text with no kind of its own becomes a `plain` token, so even a lone `}`
+line dims.
 
 ```case
 tests/semantic_tokens/preprocessor/03_inactive_branches
@@ -656,7 +812,7 @@ tests/semantic_tokens/preprocessor/03_inactive_branches
 
 **Expansion sites and arguments**
 
-Expansion names are macros, written arguments keep their semantics, definition bodies stay lexical
+Expansion names are macros, written arguments keep their semantics, definition bodies stay lexical but for their parameters
 
 ```case
 tests/semantic_tokens/preprocessor/04_macro_expansions
@@ -664,14 +820,61 @@ tests/semantic_tokens/preprocessor/04_macro_expansions
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#2649 -->
+<!-- BEGIN CAPABILITY: supported clangd#2649 -->
 
 **Object-like vs function-like macros**
 
-Object-like and function-like macros do not receive distinct token kinds yet
+A function-like macro carries `callable`, an object-like one does not
 
 ```case
 tests/semantic_tokens/preprocessor/05_macro_kinds
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Empty and control-flow macros**
+
+A macro that expands to nothing is `empty`, one that can leave the function `controlFlow`
+
+Both modifiers mark the macro's name at its definition and at every
+expansion. The arguments an empty macro drops never reach the compiler
+and are `inactive`, like the code of an untaken branch.
+
+```case
+tests/semantic_tokens/preprocessor/08_empty_macros
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Macro names in conditions**
+
+A name a condition tests is a `macro`, defined or not
+
+`#ifdef`, `#ifndef`, `defined(…)` and `#undef` name macros whether or not
+one is defined; `defined` and `__has_include` are operators, and the file
+`__has_include` tests is a header name.
+
+```case
+tests/semantic_tokens/preprocessor/09_condition_operands
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Arguments a macro drops**
+
+The arguments of parameters a macro's definition never names are `inactive`
+
+Like the code of an untaken branch, they never reach the compiler: all of
+them for a macro that expands to nothing, the second one here for `FIRST`.
+
+```case
+tests/semantic_tokens/preprocessor/11_dropped_arguments
 ```
 
 <!-- END CAPABILITY -->

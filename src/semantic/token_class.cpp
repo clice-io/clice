@@ -165,9 +165,25 @@ bool is_static(const clang::NamedDecl* decl) {
     return false;
 }
 
+/// Whether the class or one of its bases declares an `operator()`.
+bool has_call_operator(const clang::CXXRecordDecl* record) {
+    if(!record->hasDefinition()) {
+        return false;
+    }
+    record = record->getDefinition();
+    auto call = record->getASTContext().DeclarationNames.getCXXOperatorName(clang::OO_Call);
+    if(!record->lookup(call).empty()) {
+        return true;
+    }
+    return llvm::any_of(record->bases(), [](const clang::CXXBaseSpecifier& base) {
+        const auto* type = base.getType()->getAsCXXRecordDecl();
+        return type && has_call_operator(type);
+    });
+}
+
 /// Whether a value of `type` can be called: a function pointer or
 /// reference, a pointer to member function, a lambda, a class with an
-/// `operator()`.
+/// `operator()` of its own or a base's.
 bool is_callable(clang::QualType type) {
     if(type.isNull() || type->isDependentType()) {
         return false;
@@ -178,11 +194,7 @@ bool is_callable(clang::QualType type) {
         return true;
     }
     const auto* record = type->getAsCXXRecordDecl();
-    if(!record || !record->hasDefinition()) {
-        return false;
-    }
-    auto call = record->getASTContext().DeclarationNames.getCXXOperatorName(clang::OO_Call);
-    return record->isLambda() || !record->lookup(call).empty();
+    return record && (record->isLambda() || has_call_operator(record));
 }
 
 bool is_constexpr(const clang::NamedDecl* decl) {

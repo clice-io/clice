@@ -532,6 +532,44 @@ Maximum length in characters of an `#endif` condition, cut with `…` past it; `
 
 <!-- END GENERATED CONFIG -->
 
+## `[semantic_tokens]`
+
+The `[semantic_tokens]` section controls what the semantic tokens hold and the names their kinds and modifiers are sent by. The names are announced when the editor connects, so changes take effect after a server restart.
+
+<!-- BEGIN GENERATED CONFIG: semantic_tokens -->
+
+<div class="config-option">
+
+| Option    | Type   | Default |
+| --------- | ------ | ------- |
+| `lexical` | `bool` | `true`  |
+
+Send the tokens an editor's own syntax highlighting colors as well: keywords, literals, comments, operators, preprocessor directives. When off, only what syntax cannot tell is sent: names by what they name, overloaded and declarator operators, template brackets, format specifiers, and the tokens of preprocessor-inactive code, kindless.
+
+</div>
+
+<div class="config-option">
+
+| Option  | Type              | Default |
+| ------- | ----------------- | ------- |
+| `kinds` | `table of string` | `{}`    |
+
+The names a client or theme expects for clice's token kinds, as `field = "property"`; an empty name drops the kind, whose tokens are then not sent, and kinds given one name merge. Read when the server starts.
+
+</div>
+
+<div class="config-option">
+
+| Option      | Type              | Default |
+| ----------- | ----------------- | ------- |
+| `modifiers` | `table of string` | `{}`    |
+
+The names a client or theme expects for clice's token modifiers; an empty name drops the modifier, and modifiers given one name merge. Read when the server starts.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[code_completion]`
 
 The `[code_completion]` section controls completion item assembly.

@@ -35,6 +35,7 @@ const MARKERS: RegionMarkers = {
 interface FieldSchema {
     type?: string;
     items?: FieldSchema;
+    additionalProperties?: FieldSchema | boolean;
     /// Untagged variant alternatives (a field accepting several shapes).
     anyOf?: FieldSchema[];
     minimum?: number;
@@ -101,6 +102,13 @@ function renderType(field: FieldSchema): string {
                 return "`array of table`";
             }
             throw new Error(`unhandled array item schema '${JSON.stringify(field.items)}'`);
+        }
+        case "object": {
+            const values = field.additionalProperties;
+            if (typeof values === "object" && values.type === "string") {
+                return "`table of string`";
+            }
+            throw new Error(`unhandled table value schema '${JSON.stringify(values)}'`);
         }
         default:
             throw new Error(`unhandled schema type '${field.type}'`);
