@@ -187,7 +187,7 @@ tests/folding_range/runs/03_using_declarations
 
 连续的 import 声明像 include 指令一样合为一组折叠
 
-`export import` 也会并入这一组。
+`export import` 也会并入这一组，import 之间的空行和注释行同样留在组内。
 
 ```case
 tests/folding_range/runs/04_import_declarations
@@ -230,6 +230,8 @@ tests/folding_range/raw_strings/01_raw_string_literals
 **预处理条件**
 
 预处理条件的每个分支都会形成折叠范围，止于结束该分支的指令之前，该指令保持可见
+
+若某个分支会与代码块或区段交叉，例如 C 头文件中 `#ifdef __cplusplus` 包在 `extern "C" {` 外围的情形，该分支就让位于代码块或区段，因此折叠总能保持嵌套。
 
 ```case
 tests/folding_range/conditionals/01_branches

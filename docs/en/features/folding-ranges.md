@@ -201,7 +201,8 @@ tests/folding_range/runs/03_using_declarations
 
 Consecutive import declarations fold as one run, like include directives
 
-`export import` joins the run too.
+`export import` joins the run too, and blank and comment lines between
+imports stay in it.
 
 ```case
 tests/folding_range/runs/04_import_declarations
@@ -246,6 +247,10 @@ Each branch of a conditional folds up to the directive that ends it, taken or no
 **Preprocessor conditionals**
 
 Each branch of a conditional forms a folding range up to the directive that ends it, which stays visible
+
+A branch that would cut across a block or a section, such as the
+`#ifdef __cplusplus` around `extern "C" {` in a C header, gives way to it, so
+the folds always nest.
 
 ```case
 tests/folding_range/conditionals/01_branches
