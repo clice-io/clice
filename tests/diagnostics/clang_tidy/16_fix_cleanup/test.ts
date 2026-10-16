@@ -9,5 +9,6 @@ test(async (t) => {
     await t.show("before", s.diagnostics("main.cpp"));
     await t.show("fixes", s.codeActions(t.marker("finding"), { only: ["quickfix"] }));
     await t.show("after", s.applyAction(t.marker("finding"), "remove 'name()'"));
+    await s.diagnostics("macro.cpp");
     await t.show("replacement", s.codeActions(t.marker("replaced"), { only: ["quickfix"] }));
 });
