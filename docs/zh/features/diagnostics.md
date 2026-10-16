@@ -157,6 +157,8 @@ tests/diagnostics/suppression/01_by_code
 ## 诊断操作
 
 - [x] 编译器和 clang-tidy 附在诊断上的修复，作为快速修复提供
+- [x] clang-tidy 的修复会像 `clang-tidy --fix` 那样做清理：删掉内容后不会留下悬空的 `,` 或 `:`
+- [x] 修复向模块单元添加的 include 放进其全局模块片段，片段只开一次
 
 ## 头文件诊断
 

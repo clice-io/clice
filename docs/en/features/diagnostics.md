@@ -157,6 +157,8 @@ tests/diagnostics/suppression/01_by_code
 ## Diagnostic Actions
 
 - [x] Fixes the compiler and clang-tidy attach to their diagnostics, offered as quick fixes
+- [x] A clang-tidy fix is cleaned up as `clang-tidy --fix` cleans it: no `,` or `:` left dangling by what it removes
+- [x] An include a fix adds to a module unit goes into its global module fragment, opened once
 
 ## Header Diagnostics
 
