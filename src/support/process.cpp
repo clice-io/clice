@@ -8,6 +8,7 @@ module;
 
 #ifdef _WIN32
 #include <io.h>
+#include <signal.h>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
