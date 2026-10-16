@@ -89,7 +89,7 @@ tests/document_symbol/symbol_hierarchy/06_access_sections
 
 **Members a macro declares**
 
-What one macro invocation declares under names written nowhere lists under the invocation, each declaration once: a test macro's test, the members a class macro adds; a name written in the macro's arguments lists as written
+What one macro invocation declares under names written nowhere lists under the invocation, with what it names in its arguments: a test macro's test, the members a class macro adds; an invocation that declares only names its arguments write lists them as written
 
 ```case
 tests/document_symbol/symbol_hierarchy/09_macro_members
@@ -193,7 +193,7 @@ tests/document_symbol/symbol_kinds/07_modules
 
 **Include directives**
 
-`#include` directives do not list in the outline, whose document links lead to the files they name
+`#include` directives do not list in the outline; their document links lead to the files they name
 
 ```case
 tests/document_symbol/symbol_kinds/10_includes
@@ -261,7 +261,7 @@ tests/document_symbol/symbol_detail/01_detail_signatures
 
 **Variable and field types**
 
-A variable or field shows its declared type as detail, a lambda what calling it takes
+A variable or field shows its declared type as detail, a lambda what calling it takes and returns
 
 ```case
 tests/document_symbol/symbol_detail/02_variable_types

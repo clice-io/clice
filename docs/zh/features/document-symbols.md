@@ -89,7 +89,7 @@ tests/document_symbol/symbol_hierarchy/06_access_sections
 
 **宏声明的成员**
 
-一次宏调用以代码中没有写出的名称声明的内容会列在该调用之下，每个声明只列一次，例如测试宏生成的测试、类宏添加的成员；写在宏实参中的名称则按书写形式列出
+一次宏调用以代码中没有写出的名称声明的内容会列在该调用之下，连同它在实参中命名的内容，例如测试宏生成的测试、类宏添加的成员；只声明实参中写出的名称的宏调用，则按书写形式列出这些名称
 
 ```case
 tests/document_symbol/symbol_hierarchy/09_macro_members
@@ -193,7 +193,7 @@ tests/document_symbol/symbol_kinds/07_modules
 
 **包含指令**
 
-`#include` 指令不会列在大纲中，它们的文档链接会跳转到所指的文件
+`#include` 指令不会列在大纲中；它们的文档链接会跳转到所指的文件
 
 ```case
 tests/document_symbol/symbol_kinds/10_includes
@@ -261,7 +261,7 @@ tests/document_symbol/symbol_detail/01_detail_signatures
 
 **变量和字段类型**
 
-变量或字段在详细信息中显示其声明类型，Lambda 则显示调用它时所接受的参数
+变量或字段在详细信息中显示其声明类型，Lambda 则显示调用它时所接受的参数和返回类型
 
 ```case
 tests/document_symbol/symbol_detail/02_variable_types
