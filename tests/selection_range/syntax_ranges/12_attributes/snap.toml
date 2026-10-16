@@ -1,0 +1,92 @@
+[answers.alignas]
+selection_ranges = [
+    "struct alignas(⟦16⟧) Vector {",
+    "struct alignas⟦(16)⟧ Vector {",
+    "struct ⟦alignas(16)⟧ Vector {",
+    "⟦struct alignas(16) Vector { … }⟧ (3 lines)",
+    "⟦struct alignas(16) Vector { … };⟧ (3 lines)",
+]
+
+[answers.message]
+selection_ranges = [
+    '[[deprecated("⟦use other⟧")]] int old_api();',
+    '[[deprecated(⟦"use other"⟧)]] int old_api();',
+    '[[deprecated⟦("use other")⟧]] int old_api();',
+    '[[⟦deprecated("use other")⟧]] int old_api();',
+    '⟦[[deprecated("use other")]]⟧ int old_api();',
+    '⟦[[deprecated("use other")]] int old_api()⟧;',
+    '⟦[[deprecated("use other")]] int old_api();⟧',
+]
+
+[answers.gnu]
+selection_ranges = [
+    "int counter __attribute__((⟦aligned⟧(8)));",
+    "int counter __attribute__((⟦aligned(8)⟧));",
+    "int counter ⟦__attribute__((aligned(8)))⟧;",
+    "⟦int counter __attribute__((aligned(8)))⟧;",
+    "⟦int counter __attribute__((aligned(8)));⟧",
+]
+
+[answers.using]
+selection_ranges = [
+    "[[using gnu: ⟦hot⟧]] void warm();",
+    "[[⟦using gnu: hot⟧]] void warm();",
+    "⟦[[using gnu: hot]]⟧ void warm();",
+    "⟦[[using gnu: hot]] void warm()⟧;",
+    "⟦[[using gnu: hot]] void warm();⟧",
+]
+
+[answers.second]
+selection_ranges = [
+    "int ignored __attribute__((unknown_name, ⟦aligned⟧(8)));",
+    "int ignored __attribute__((unknown_name, ⟦aligned(8)⟧));",
+    "int ignored __attribute__((⟦unknown_name, aligned(8)⟧));",
+    "int ignored ⟦__attribute__((unknown_name, aligned(8)))⟧;",
+    "⟦int ignored __attribute__((unknown_name, aligned(8)))⟧;",
+    "⟦int ignored __attribute__((unknown_name, aligned(8)));⟧",
+]
+
+[answers.macro]
+selection_ranges = [
+    "[[⟦UNUSED⟧]] int spare;",
+    "⟦[[UNUSED]]⟧ int spare;",
+    "⟦[[UNUSED]] int spare⟧;",
+    "⟦[[UNUSED]] int spare;⟧",
+]
+
+[answers.pragma]
+selection_ranges = ["void ⟦rarely⟧();", "⟦void rarely()⟧;", "⟦void rarely();⟧"]
+
+[answers.inherited]
+selection_ranges = ["void ⟦retired⟧() {}", "⟦void retired()⟧ {}", "⟦void retired() {}⟧"]
+
+[answers.argument]
+selection_ranges = [
+    "CXX(nodiscard) int ⟦make⟧();",
+    "CXX(nodiscard) ⟦int make()⟧;",
+    "⟦CXX(nodiscard) int make()⟧;",
+    "⟦CXX(nodiscard) int make();⟧",
+]
+
+[answers.alias]
+selection_ranges = [
+    "int ⟦plain⟧ __attribute((unused));",
+    "⟦int plain __attribute((unused))⟧;",
+    "⟦int plain __attribute((unused));⟧",
+]
+
+[answers.inner]
+selection_ranges = [
+    "[[maybe_unused]] int ⟦eight⟧ = 8;",
+    "⟦[[maybe_unused]] int eight = 8⟧;",
+    "⟦[[maybe_unused]] int eight = 8;⟧",
+    "⟦[[maybe_unused]] int eight = 8; … return eight;⟧ (2 lines)",
+    "int aligned_by __attribute__((aligned([] ⟦{ … }⟧ (4 lines)",
+    "int aligned_by __attribute__((aligned(⟦[] { … }⟧ (4 lines)",
+    "int aligned_by __attribute__((aligned(⟦[] { … }()⟧ (4 lines)",
+    "int aligned_by __attribute__((aligned⟦([] { … }())⟧ (4 lines)",
+    "int aligned_by __attribute__((⟦aligned([] { … }())⟧ (4 lines)",
+    "int aligned_by ⟦__attribute__((aligned([] { … }())))⟧ (4 lines)",
+    "⟦int aligned_by __attribute__((aligned([] { … }())))⟧ (4 lines)",
+    "⟦int aligned_by __attribute__((aligned([] { … }())));⟧ (4 lines)",
+]

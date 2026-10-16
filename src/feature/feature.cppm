@@ -5,6 +5,7 @@ module;
 module clice:feature.feature;
 
 import :compile.compilation;
+import :compile.diagnostic;
 import :index.manifest;
 import :index.query;
 import :index.shard;
@@ -232,6 +233,17 @@ struct DiagnosticsOptions {
                          "none. `NOLINT` comments also silence compiler warnings "
                          "only while this runs.")
     <bool> clang_tidy = true;
+
+    KOTATSU_ANNOTATE(defaulted = true,
+                     description =
+                         "Diagnostics open files do not show, by their code: a "
+                         "compiler warning's option (`-Wunused-variable`), "
+                         "clang's name for any other diagnostic "
+                         "(`err_undeclared_var_use`), or a clang-tidy check. "
+                         "For code clang gets wrong: everything else works on "
+                         "the file as before, and `clice lint` still reports "
+                         "them.")
+    <std::vector<std::string>> suppress;
 };
 
 /// The noun a hover card names an entity of `kind` with; empty for the
@@ -768,17 +780,66 @@ InactiveScan inactive_regions(CompilationUnit& unit,
                               std::uint32_t resume_offset = 0,
                               std::uint32_t end_offset = UINT32_MAX);
 
+/// Where a diagnostic shown on a file was raised, when not in the file's
+/// own text.
+enum class DiagnosticOrigin : std::uint8_t {
+    /// The file's text, or the command line.
+    File,
+
+    /// A template the file instantiates: shown where the file asks for the
+    /// instantiation.
+    Template,
+
+    /// A header the file includes: shown on its #include.
+    IncludedFile,
+
+    /// The includer's code a header's borrowed context compiles around it.
+    IncluderContext,
+};
+
+/// A place a diagnostic's note points at.
+struct DiagnosticNote {
+    std::string path;
+    protocol::Range range;
+    std::string message;
+};
+
+/// A diagnostic as shown on one file, in the file's positions: the
+/// compiler's and clang-tidy's of its compile, and clice's own about the
+/// file. Each client gets it in the shape it takes (to_protocol).
+struct FileDiagnostic {
+    protocol::Range range;
+    DiagnosticLevel level = DiagnosticLevel::Warning;
+    DiagnosticSource source = DiagnosticSource::Clice;
+
+    /// clang's ID of a compiler diagnostic; 0 for the others.
+    std::uint32_t id = 0;
+
+    /// See DiagnosticID::diagnostic_code.
+    std::string code;
+
+    /// The page documenting the code; empty for none.
+    std::string link;
+
+    /// The message as reported, without where it came from.
+    std::string message;
+
+    DiagnosticOrigin origin = DiagnosticOrigin::File;
+
+    std::vector<DiagnosticNote> notes;
+};
+
+/// The diagnostics a compile shows on its main file.
 auto diagnostics(CompilationUnit& unit, PositionEncoding encoding = PositionEncoding::UTF16)
-    -> std::vector<protocol::Diagnostic>;
+    -> std::vector<FileDiagnostic>;
 
 /// A warning from clice itself about the file as a whole, on its first
 /// character.
-protocol::Diagnostic file_warning(std::string message);
+FileDiagnostic file_warning(std::string message);
 
-/// Whether `diagnostic` was raised in the includer's code a header's
-/// borrowed context compiles around it, not in the header or what it
-/// includes.
-bool in_includer_context(const protocol::Diagnostic& diagnostic);
+/// The LSP form of `diagnostic`. A client that takes no related
+/// information gets the notes in the message.
+protocol::Diagnostic to_protocol(const FileDiagnostic& diagnostic, bool related_information);
 
 /// A name of another namespace unqualified completion may offer, found in
 /// the index: the completion looks it up to tell whether the file reaches
@@ -994,6 +1055,13 @@ auto assemble_definitions(llvm::ArrayRef<DefinitionPiece> pieces,
 /// formatting, the edits come back unchanged.
 auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<TextReplacement> edits)
     -> std::vector<TextReplacement>;
+
+/// `edits` cleaned up as clang-tidy cleans up the fixes it applies: on the
+/// lines they touch, a comma left after `(`, before `)` or doubled, a
+/// constructor's `:` with no initializer left, a namespace left empty.
+auto cleanup_edits(llvm::StringRef file,
+                   llvm::StringRef content,
+                   std::vector<TextReplacement> edits) -> std::vector<TextReplacement>;
 
 /// `text` reformatted as a standalone snippet with the style configured
 /// for `file`; unchanged without one.

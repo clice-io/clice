@@ -4,5 +4,5 @@
 DECLARE(§(declared)counter);
 
 int doubled() {
-    return TWICE(§(expr)counter + 1);
+    return TWICE(§(expr)counter + 1)§(closing);
 }

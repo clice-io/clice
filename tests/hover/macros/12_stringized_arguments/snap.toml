@@ -1,0 +1,9 @@
+[answers.argument.hover]
+markdown = '''
+**parameter** `count` · function `check`
+
+```cpp
+int count
+```
+'''
+range = "CHECK(⟦count⟧ > 0);"

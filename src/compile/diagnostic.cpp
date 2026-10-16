@@ -11,9 +11,12 @@ import :support.format;
 
 namespace clice {
 
-llvm::StringRef DiagnosticID::diagnostic_code() const {
+std::string DiagnosticID::diagnostic_code() const {
     if(source == DiagnosticSource::ClangTidy) {
-        return name;
+        return name.str();
+    }
+    if(!name.empty()) {
+        return std::format("-W{}", name);
     }
     switch(value) {
 #define DIAG(ENUM,                                                                                 \
@@ -42,7 +45,7 @@ llvm::StringRef DiagnosticID::diagnostic_code() const {
 #include "clang/Basic/DiagnosticSemaKinds.inc"
 #include "clang/Basic/DiagnosticSerializationKinds.inc"
 #undef DIAG
-        default: return llvm::StringRef();
+        default: return std::string();
     }
 }
 
@@ -128,6 +131,15 @@ public:
         }
         for(auto& hint: diagnostic.getFixItHints()) {
             if(auto local = file_range(hint.RemoveRange, fid); local && local->contains(offset)) {
+                // A fix removing whole lines (a duplicate include from the
+                // end of the line before) underlines the caret's line.
+                auto text = unit.file_content(fid);
+                auto line = text.take_front(offset).rfind('\n') + 1;
+                local->begin = std::max(local->begin, static_cast<std::uint32_t>(line));
+                while(local->end > offset + 1 &&
+                      (text[local->end - 1] == '\n' || text[local->end - 1] == '\r')) {
+                    local->end -= 1;
+                }
                 return std::pair{fid, *local};
             }
         }
@@ -202,8 +214,6 @@ public:
         return edits;
     }
 
-    void BeginSourceFile(const clang::LangOptions&, const clang::Preprocessor*) override {}
-
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
                           const clang::Diagnostic& raw_diagnostic) override {
         // The engine only marks a fatal error once another diagnostic
@@ -224,8 +234,6 @@ public:
         // reach the consumer in the middle of another, which it cannot take.
         unit.checker->findings.HandleDiagnostic(level, raw_diagnostic);
     }
-
-    void EndSourceFile() override {}
 
 private:
     /// Record a diagnostic, adjusted by the editor shape's checker when
@@ -285,16 +293,9 @@ private:
         diagnostic.id.value = raw.getID();
         diagnostic.id.level = diagnostic_level(level);
         diagnostic.id.source = DiagnosticSource::Clang;
-        diagnostic.error_by_default =
-            raw.getDiags()->getDiagnosticIDs()->isDefaultMappingAsError(raw.getID());
-
-        /// TODO:
-        // use DiagnosticEngine::SetArgToStringFn to set a custom function to convert arguments to
-        // strings. Support markdown diagnostic in LSP 3.18. allow complex type to display in
-        // markdown code block.
-        ///
-        /// auto& engine = src_mgr->getDiagnostics();
-        /// engine.SetArgToStringFn();
+        auto& ids = *raw.getDiags()->getDiagnosticIDs();
+        diagnostic.error_by_default = ids.isDefaultMappingAsError(raw.getID());
+        diagnostic.id.name = ids.getWarningOptionForDiag(raw.getID());
 
         // clang blames the header for not being declared a header unit;
         // clice builds none, whatever the build declares.

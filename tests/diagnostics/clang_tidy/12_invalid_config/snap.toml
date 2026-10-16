@@ -1,0 +1,14 @@
+[[test."main.cpp".diagnostics]]
+at = "⟦⟧double ratio(int total, int count) {"
+severity = "warning"
+message = '''
+clang-tidy does not run on this file until its configuration parses. Invalid .clang-tidy ${WS}/.clang-tidy:
+${WS}/.clang-tidy:2:21: error: Expected quote at end of scalar
+HeaderFilterRegex: [
+                    ^
+${WS}/.clang-tidy:1:1: error: Map value must not be empty
+Checks: "-*,bugprone-integer-division
+^~~~~~
+'''
+source = "clice"
+code = "invalid-clang-tidy-config"

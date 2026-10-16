@@ -1,7 +1,7 @@
 ["pushed before the includes"."pack.cpp"]
 wrong = "the pop after the includes is not seen: the push is reported unterminated, though the packing applies"
 diagnostics = [
-    { at = "#pragma ⟦pack⟧(push, 1)", severity = "warning", message = "unterminated '#pragma pack (push, ...)' at end of file", source = "clang", code = "warn_pragma_pack_no_pop_eof" },
+    { at = "#pragma ⟦pack⟧(push, 1)", severity = "warning", message = "unterminated '#pragma pack (push, ...)' at end of file", source = "clang", code = "-Wpragma-pack" },
 ]
 
 ["pushed before the includes"."attribute.cpp"]

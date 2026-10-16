@@ -1,0 +1,39 @@
+[answers.first]
+selection_ranges = [
+    "int ⟦width⟧ = 640, height = 480;",
+    "⟦int width = 640⟧, height = 480;",
+    "⟦int width = 640, height = 480⟧;",
+    "⟦int width = 640, height = 480;⟧",
+]
+
+[answers.attributed]
+selection_ranges = [
+    "int ⟦low⟧, high [[maybe_unused]];",
+    "⟦int low⟧, high [[maybe_unused]];",
+    "⟦int low, high [[maybe_unused]]⟧;",
+    "⟦int low, high [[maybe_unused]];⟧",
+]
+
+[answers.member]
+selection_ranges = [
+    "int ⟦rows⟧, columns;",
+    "⟦int rows⟧, columns;",
+    "⟦int rows, columns⟧;",
+    "⟦int rows, columns;⟧",
+    "struct Size ⟦{ … }⟧ (3 lines)",
+    "⟦struct Size { … }⟧ (3 lines)",
+    "⟦struct Size { … };⟧ (3 lines)",
+]
+
+[answers.binding]
+selection_ranges = [
+    "auto [⟦top⟧, bottom_half_of_the_size] = size;",
+    "auto [⟦top, bottom_half_of_the_size⟧] = size;",
+    "auto ⟦[top, bottom_half_of_the_size]⟧ = size;",
+    "⟦auto [top, bottom_half_of_the_size] = size⟧;",
+    "⟦auto [top, bottom_half_of_the_size] = size;⟧",
+    "⟦// Halves. … auto [top, bottom_half_of_the_size] = size;⟧ (2 lines)",
+    "⟦// Halves. … return top + bottom_half_of_the_size;⟧ (3 lines)",
+    "int total(Size size) ⟦{ … }⟧ (5 lines)",
+    "⟦int total(Size size) { … }⟧ (5 lines)",
+]

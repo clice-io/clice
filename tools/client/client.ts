@@ -107,8 +107,9 @@ export interface InitializeOptions {
     /// which stay spelled in one place: the C++ config initializers.
     testDefaults?: boolean | undefined;
     /// Client capabilities to advertise; by default versioned edits,
-    /// prepared renames and markdown hover cards alone, so servers see a
-    /// conservative client unless a test opts in.
+    /// prepared renames, markdown hover cards and diagnostics' related
+    /// information alone, so servers see a conservative client unless a
+    /// test opts in.
     capabilities?: proto.ClientCapabilities | undefined;
     /// The workspace folders to announce, workspace-relative; the
     /// workspace root alone when omitted, no root at all (neither folders
@@ -430,15 +431,17 @@ export class CliceClient {
         const wsUri = URI.file(ws.root).toString();
         const params: proto.InitializeParams = {
             processId: process.pid,
-            // Versioned workspace edits, like every editor client: code
-            // action replies then carry the buffer version they apply to.
-            // Document symbols as a tree in every kind, as every editor
-            // takes them.
+            // Versioned workspace edits and diagnostics' related
+            // information, like every editor client: code action replies
+            // then carry the buffer version they apply to, and a
+            // diagnostic's notes point at their places. Document symbols
+            // as a tree in every kind, as every editor takes them.
             capabilities: options.capabilities ?? {
                 workspace: { workspaceEdit: { documentChanges: true } },
                 textDocument: {
                     hover: { contentFormat: ["markdown", "plaintext"] },
                     rename: { prepareSupport: true },
+                    publishDiagnostics: { relatedInformation: true },
                     documentSymbol: {
                         hierarchicalDocumentSymbolSupport: true,
                         symbolKind: { valueSet: Object.values(proto.SymbolKind) },

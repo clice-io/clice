@@ -1,0 +1,4 @@
+Checks: "-*,modernize-make-unique"
+CheckOptions:
+  modernize-make-unique.MakeSmartPtrFunction: "mem::make_unique"
+  modernize-make-unique.MakeSmartPtrFunctionHeader: "make.h"

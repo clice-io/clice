@@ -229,6 +229,11 @@ public:
     /// cannot cover them.
     Signal<> on_serving_index_changed;
 
+    /// Emitted when what an open document's compile read changed on disk
+    /// (a header saved, its .clang-tidy edited): only a request recompiles
+    /// it, and only a refresh request makes the client send one.
+    Signal<> on_inputs_changed;
+
     /// Wakes subscribers after a new message arrived in notify_log. Pure
     /// wake-up per the Signal contract: subscribers keep a sequence cursor
     /// and read the messages from the log, so a late subscriber (or a

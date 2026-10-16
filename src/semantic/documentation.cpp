@@ -15,10 +15,14 @@ namespace clice {
 
 namespace {
 
-/// The comments documenting this one declaration, and the text of its
-/// file they are in.
-std::pair<llvm::StringRef, llvm::ArrayRef<LexicalInfo::Comment>>
-    documenting(CompilationUnit& unit, const clang::Decl* decl) {
+/// The comments documenting this one declaration, and the file they are in.
+struct Documenting {
+    clang::FileID file;
+    llvm::StringRef content;
+    llvm::ArrayRef<LexicalInfo::Comment> comments;
+};
+
+Documenting documenting(CompilationUnit& unit, const clang::Decl* decl) {
     if(decl->isImplicit()) {
         return {};
     }
@@ -35,7 +39,17 @@ std::pair<llvm::StringRef, llvm::ArrayRef<LexicalInfo::Comment>>
         unit.comments(fid),
         {.range = extent,
          .trailing = llvm::isa<clang::FieldDecl, clang::EnumConstantDecl, clang::VarDecl>(decl)});
-    return {content, run};
+    return {fid, content, run};
+}
+
+/// Namespaces often have too many redecls for any particular redecl
+/// comment to be useful, and file headers pass for their comments.
+bool takes_comments(const clang::Decl* decl) {
+    return !llvm::isa<clang::NamespaceDecl,
+                      clang::ParmVarDecl,
+                      clang::TemplateTypeParmDecl,
+                      clang::NonTypeTemplateParmDecl,
+                      clang::TemplateTemplateParmDecl>(decl);
 }
 
 }  // namespace
@@ -56,20 +70,14 @@ std::string doc_comment(CompilationUnit& unit, const clang::NamedDecl* decl, boo
         decl = template_decl->getTemplatedDecl();
     }
 
-    /// Namespaces often have too many redecls for any particular redecl
-    /// comment to be useful, and file headers pass for their comments.
-    if(llvm::isa<clang::NamespaceDecl,
-                 clang::ParmVarDecl,
-                 clang::TemplateTypeParmDecl,
-                 clang::NonTypeTemplateParmDecl,
-                 clang::TemplateTemplateParmDecl>(decl)) {
+    if(!takes_comments(decl)) {
         return {};
     }
 
     DocCommentChoice choice;
     for(const auto* redecl: decl->getCanonicalDecl()->redecls()) {
-        auto [content, run] = documenting(unit, redecl);
-        if(choice.offer(content, run)) {
+        auto found = documenting(unit, redecl);
+        if(choice.offer(found.content, found.comments)) {
             break;
         }
     }
@@ -83,6 +91,20 @@ std::string doc_comment(CompilationUnit& unit, const clang::NamedDecl* decl, boo
         }
     }
     return std::move(choice).take();
+}
+
+auto doc_comment_range(CompilationUnit& unit, const clang::Decl* decl)
+    -> std::optional<std::pair<clang::FileID, LocalSourceRange>> {
+    if(!takes_comments(decl)) {
+        return std::nullopt;
+    }
+    auto found = documenting(unit, decl);
+    if(found.comments.empty()) {
+        return std::nullopt;
+    }
+    return std::pair(
+        found.file,
+        LocalSourceRange{found.comments.front().range.begin, found.comments.back().range.end});
 }
 
 std::string doc_comment(CompilationUnit& unit, const clang::MacroInfo* macro) {

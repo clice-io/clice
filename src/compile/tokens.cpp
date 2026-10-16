@@ -208,6 +208,7 @@ void TokenMap::finish() {
     llvm::ArrayRef<clang::syntax::Token> stream = expanded_tokens;
     std::vector<std::pair<std::uint32_t, std::uint32_t>> runs(invocations.size());
     std::uint32_t cursor = 0;
+    ArgumentCopies arguments;
     clang::SourceLocation last_expansion;
     std::uint32_t invocation = none;
     std::uint32_t name = none;
@@ -260,8 +261,13 @@ void TokenMap::finish() {
                 }
             }
 
-            set_macro_origins(fid, index, end, name);
+            set_macro_origins(fid, index, end, name, arguments);
             index = end;
+        }
+    }
+    for(auto [written, index]: arguments.first) {
+        if(!arguments.picked.contains(written)) {
+            origins[index - origins_begin] = written;
         }
     }
 
@@ -290,7 +296,8 @@ void TokenMap::finish() {
 void TokenMap::set_macro_origins(clang::FileID fid,
                                  std::uint32_t begin,
                                  std::uint32_t end,
-                                 std::uint32_t name) {
+                                 std::uint32_t name,
+                                 ArgumentCopies& arguments) {
     std::ranges::fill(llvm::MutableArrayRef(origins).slice(begin - origins_begin, end - begin),
                       name);
     const auto& entry = SM.getSLocEntry(fid).getExpansion();
@@ -322,10 +329,16 @@ void TokenMap::set_macro_origins(clang::FileID fid,
         // One the macro expands more than once stands for itself only at the
         // expansion getMacroArgExpandedLocation picks, so a single node owns
         // it. The pick is per token: a nested macro rereading part of a
-        // `__VA_ARGS__` copy takes that part over.
+        // `__VA_ARGS__` copy takes that part over. A pick the stream never
+        // sees, the copy a nested macro stringizes (`__STRING(expr)` in an
+        // older glibc's `assert`), leaves the token to its first copy
+        // (finish).
         auto picked = SM.getMacroArgExpandedLocation(at);
         if(start <= picked && picked <= limit) {
             origins[index - origins_begin] = written;
+            arguments.picked.insert(written);
+        } else {
+            arguments.first.try_emplace(written, index);
         }
     }
 }

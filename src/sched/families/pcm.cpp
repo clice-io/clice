@@ -17,6 +17,10 @@ import :worker.protocol;
 
 namespace clice {
 
+/// Changes whenever a PCM build of the same command comes to write another
+/// BMI, so a blob an older clice stored is not taken for the new one.
+constexpr llvm::StringRef pcm_version = "2";
+
 PCMFamily::PCMFamily(TaskGraph& graph,
                      Project& project,
                      CommandResolver& commands,
@@ -218,6 +222,7 @@ kota::task<RoundOutcome> PCMFamily::run(RoundContext& ctx, Fid path_id) {
     auto pcm_key = std::format("{}-{}",
                                safe_module_name,
                                cache_key({clang::getClangFullVersion(),
+                                          pcm_version,
                                           project.build.active_configuration(),
                                           bp.directory,
                                           file_path,

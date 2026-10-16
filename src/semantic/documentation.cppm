@@ -5,6 +5,7 @@ module;
 module clice:semantic.documentation;
 
 import :compile.compilation;
+import :syntax.token;
 
 namespace clice {
 
@@ -15,6 +16,12 @@ namespace clice {
 /// compiler declares implicitly have none. With `inherit`, a method
 /// overriding another without one takes that method's.
 std::string doc_comment(CompilationUnit& unit, const clang::NamedDecl* decl, bool inherit);
+
+/// Where the comments documenting this one declaration are written
+/// (documenting_comments): their file and the extent of their run. None
+/// when no comment documents it, or for a kind doc_comment reads none of.
+auto doc_comment_range(CompilationUnit& unit, const clang::Decl* decl)
+    -> std::optional<std::pair<clang::FileID, LocalSourceRange>>;
 
 /// The text of the comment documenting a macro: above its `#define`, or
 /// after it on its line.

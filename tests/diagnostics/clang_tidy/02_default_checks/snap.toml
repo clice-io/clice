@@ -1,7 +1,7 @@
 [test."main.cpp"]
 diagnostics = [
     {
-        at = "⟦namespace geo = geometry; … ⟧ (2 lines)",
+        at = "⟦namespace geo = geometry;⟧",
         severity = "warning",
         message = "namespace alias decl 'geo' is unused",
         source = "clang-tidy",

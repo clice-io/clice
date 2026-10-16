@@ -4,6 +4,7 @@ module;
 
 module clice:server.context_service;
 
+import :feature.feature;
 import :server.ast_family;
 import :server.editor_context;
 import :server.extension;
@@ -21,7 +22,7 @@ namespace protocol = kota::ipc::protocol;
 /// ones; the self-containment trial runs when a header opens or its
 /// inputs change, never per edit, so one costs at most a compile under
 /// the includer's context.
-std::size_t missing_context_errors(llvm::ArrayRef<protocol::Diagnostic> diagnostics);
+std::size_t missing_context_errors(llvm::ArrayRef<feature::FileDiagnostic> diagnostics);
 
 /// The editor-facing context protocol (clice/queryContext, currentContext,
 /// switchContext) and session-coupled maintenance of context choices. The

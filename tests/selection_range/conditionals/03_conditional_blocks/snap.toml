@@ -1,0 +1,22 @@
+[answers.active]
+selection_ranges = [
+    "return ⟦value⟧;",
+    "⟦return value⟧;",
+    "⟦return value;⟧",
+    "⟦value *= 2; … return value;⟧ (2 lines)",
+    "⟦#if FAST … #endif⟧ (6 lines)",
+    "int pick(int value) ⟦{ … }⟧ (8 lines)",
+    "⟦int pick(int value) { … }⟧ (8 lines)",
+]
+
+[answers.skipped]
+selection_ranges = [
+    "return ⟦value⟧ + 1;",
+    "⟦return value + 1;⟧",
+    "⟦#if FAST … #endif⟧ (6 lines)",
+    "int pick(int value) ⟦{ … }⟧ (8 lines)",
+    "⟦int pick(int value) { … }⟧ (8 lines)",
+]
+
+[answers.directive]
+selection_ranges = ["#ifdef ⟦FAST⟧", "⟦#ifdef FAST⟧", "⟦#ifdef FAST … #endif⟧ (3 lines)"]

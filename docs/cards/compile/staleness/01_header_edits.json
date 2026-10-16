@@ -92,7 +92,7 @@
                 "severity": "error",
                 "message": "In included file: non-void function 'base' should return a value",
                 "source": "clang",
-                "code": "warn_return_missing_expr"
+                "code": "-Wreturn-mismatch"
               }
             ]
           }

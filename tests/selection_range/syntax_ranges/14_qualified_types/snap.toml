@@ -1,0 +1,28 @@
+[answers.argument]
+selection_ranges = [
+    "geometry::Box<⟦int⟧> box;",
+    "geometry::Box⟦<int>⟧ box;",
+    "⟦geometry::Box<int>⟧ box;",
+    "⟦geometry::Box<int> box⟧;",
+    "⟦geometry::Box<int> box;⟧",
+]
+
+[answers.member]
+selection_ranges = [
+    "typename geometry::Box<int>::⟦value_type⟧ size = 0;",
+    "⟦typename geometry::Box<int>::value_type⟧ size = 0;",
+    "⟦typename geometry::Box<int>::value_type size = 0⟧;",
+    "⟦typename geometry::Box<int>::value_type size = 0;⟧",
+]
+
+[answers.dependent]
+selection_ranges = [
+    "typename geometry::Box<T>::⟦value_type⟧ value{};",
+    "⟦typename geometry::Box<T>::value_type⟧ value{};",
+    "⟦typename geometry::Box<T>::value_type value{}⟧;",
+    "⟦typename geometry::Box<T>::value_type value{};⟧",
+    "⟦typename geometry::Box<T>::value_type value{}; … (void)value;⟧ (2 lines)",
+    "void fill() ⟦{ … }⟧ (4 lines)",
+    "⟦void fill() { … }⟧ (4 lines)",
+    "⟦template <class T> … }⟧ (5 lines)",
+]

@@ -4,6 +4,7 @@ module;
 
 module clice;
 
+import :feature.feature;
 import :sched.families.pch;
 import :sched.families.pcm;
 import :sched.graph;
@@ -201,11 +202,10 @@ ZEST_CASE(CrashPublishesNote) {
     // no AST stands behind them anymore.
     Stack stack;
     auto session = stack.open("/proj/poison.cpp", "int x;\n");
-    stack.ast.projections.set_output(
-        session->path_id,
-        CompileOutput{.version = 1,
-                      .source = CommandSource::CDBExact,
-                      .diagnostics = {protocol::Diagnostic{.message = "old"}}});
+    stack.ast.projections.set_output(session->path_id,
+                                     CompileOutput{.version = 1,
+                                                   .source = CommandSource::CDBExact,
+                                                   .diagnostics = {feature::file_warning("old")}});
 
     int emits = 0;
     auto conn = stack.ast.on_output.connect([&](const std::shared_ptr<Session>&) { emits += 1; });
@@ -218,10 +218,10 @@ ZEST_CASE(CrashPublishesNote) {
     ZASSERT((projection && projection->output.has_value()));
     ZEXPECT(projection->output->diagnostics.empty());
 
-    std::vector<protocol::Diagnostic> notes;
+    std::vector<feature::FileDiagnostic> notes;
     append_crash_notes(*session, notes);
     ZASSERT(notes.size() == 1u);
-    auto& message = std::get<std::string>(notes[0].message);
+    auto& message = notes[0].message;
     ZEXPECT(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
     ZEXPECT(message.contains("save it"));
 

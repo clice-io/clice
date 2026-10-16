@@ -1,10 +1,12 @@
 [test.pulled]
-wrong = "the command fails before parsing (an unknown target) and nothing says so: the file gets no diagnostic with the reason, only silence"
-diagnostics = []
+diagnostics = [
+    { at = "⟦⟧int main() { return 0; }", severity = "error", message = "unknown target triple 'bogus-unknown-none'", source = "clang", code = "err_target_unknown_triple" },
+]
 
 [test.hover]
 hover = {}
 
 [test."pulled again"]
-wrong = "the command fails before parsing (an unknown target) and nothing says so: the file gets no diagnostic with the reason, only silence"
-diagnostics = []
+diagnostics = [
+    { at = "⟦⟧int main() { return 0; }", severity = "error", message = "unknown target triple 'bogus-unknown-none'", source = "clang", code = "err_target_unknown_triple" },
+]

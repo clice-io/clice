@@ -44,6 +44,45 @@ std::string fix_title(llvm::StringRef content, const Diagnostic& diagnostic) {
     return title;
 }
 
+/// A fix's edits as the main file takes them. clang-tidy inserts an
+/// include into a file without one at its first byte, which in a module
+/// unit is before its declaration, where no directive may go: there it
+/// goes where an added include goes. And a check whose fix removes code
+/// counts on the cleanup clang-tidy does as it applies the fix.
+std::vector<TextReplacement> fix_edits(CompilationUnit& unit,
+                                       const Diagnostic& main,
+                                       llvm::ArrayRef<TextReplacement> fix) {
+    std::vector<TextReplacement> edits(fix.begin(), fix.end());
+    if(unit.is_named_module()) {
+        std::optional<IncludeInsertion> insertion;
+        for(auto& edit: edits) {
+            llvm::StringRef header = edit.text;
+            if(edit.range.begin == 0 && edit.range.length() == 0 &&
+               header.consume_front("#include ")) {
+                // The fragment the first include opens holds the others.
+                if(insertion) {
+                    insertion->opens_fragment = false;
+                } else {
+                    insertion = include_insertion(unit);
+                }
+                edit = {
+                    {insertion->offset, insertion->offset},
+                    insertion->text(header.trim())
+                };
+            }
+        }
+    }
+    // Only a removal leaves anything dangling: cleaning up after a mere
+    // replacement drops the comma of an empty macro argument on its line.
+    if(main.id.source != DiagnosticSource::ClangTidy ||
+       std::ranges::none_of(edits, [](const TextReplacement& edit) { return edit.text.empty(); })) {
+        return edits;
+    }
+    return cleanup_edits(unit.file_path(unit.focus_file().file()),
+                         unit.focus_file().content(),
+                         std::move(edits));
+}
+
 }  // namespace
 
 void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<CodeAction>& out) {
@@ -56,7 +95,7 @@ void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<Code
             out.push_back(CodeAction{
                 .title = fix_title(content, main),
                 .kind = protocol::CodeActionKind::QuickFix,
-                .edits = main.fix,
+                .edits = fix_edits(unit, main, main.fix),
             });
         }
         // A note's fix is an alternative the note itself describes.
@@ -65,7 +104,7 @@ void fix_its(CompilationUnit& unit, LocalSourceRange selection, std::vector<Code
                 out.push_back(CodeAction{
                     .title = note.message,
                     .kind = protocol::CodeActionKind::QuickFix,
-                    .edits = note.fix,
+                    .edits = fix_edits(unit, main, note.fix),
                 });
             }
         }

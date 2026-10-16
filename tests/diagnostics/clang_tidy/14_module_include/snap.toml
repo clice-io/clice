@@ -1,0 +1,19 @@
+[test."main.cppm"]
+diagnostics = [
+    { at = "export std::unique_ptr<int> make() { return ⟦std::unique_ptr⟧<int>(new int(1)); }", severity = "warning", message = "use mem::make_unique instead", source = "clang-tidy", code = "modernize-make-unique" },
+]
+
+[[test.fixes.code_actions]]
+kind = "quickfix"
+title = "use mem::make_unique instead"
+
+[test.fixes.code_actions.edits]
+"main.cppm" = '''
++module;
++#include "make.h"
+ export module shapes;
+ import mem;
+
+-export std::unique_ptr<int> make() { return std::unique_ptr<int>(new int(1)); }
++export std::unique_ptr<int> make() { return mem::make_unique<int>(1); }
+'''

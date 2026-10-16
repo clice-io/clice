@@ -27,13 +27,15 @@ bool is_inside_main_file(clang::SourceLocation loc, const clang::SourceManager& 
     return fid == sm.getMainFileID() || fid == sm.getPreambleFileID();
 }
 
-/// The #include directives of the main file's preamble, replayed to the
-/// tidy checks' callbacks: a compile against a PCH never preprocesses
-/// them. Include-aware checks look for them, and a fix inserting an
-/// include places it among them, or leaves out one the file already has.
-/// clangd's ReplayPreamble, read from the source: the preamble's inactive
-/// regions tell the directives the PCH never entered, and one naming its
-/// file through a macro has no filename to replay.
+/// The #include and #define directives of the main file's preamble,
+/// replayed to the tidy checks' callbacks: a compile against a PCH never
+/// preprocesses them. Include-aware checks look for them, and a fix
+/// inserting an include places it among them, or leaves out one the file
+/// already has; macro checks look at the names defined. clangd's
+/// ReplayPreamble, read from the source: the preamble's inactive regions
+/// tell the directives the PCH never entered, and one naming its file
+/// through a macro has no filename to replay. Conditionals are not
+/// replayed.
 class PreambleReplay : public clang::PPCallbacks {
 public:
     PreambleReplay(clang::Preprocessor& pp,
@@ -80,10 +82,14 @@ private:
             }
             clang::Token keyword;
             lexer.LexFromRawLexer(keyword);
-            if(keyword.is(clang::tok::raw_identifier) &&
-               llvm::is_contained({"include", "include_next", "import"},
+            if(keyword.isNot(clang::tok::raw_identifier)) {
+                continue;
+            }
+            if(llvm::is_contained({"include", "include_next", "import"},
                                   keyword.getRawIdentifier())) {
                 replay_include(hash, keyword, text);
+            } else if(keyword.getRawIdentifier() == "define") {
+                replay_define(lexer);
             }
         }
     }
@@ -151,6 +157,32 @@ private:
         }
     }
 
+    /// The macro is the one the PCH recorded at the name; the name is
+    /// where the main file spells it, as an include's is.
+    void replay_define(clang::Lexer& lexer) {
+        clang::Token name;
+        lexer.LexFromRawLexer(name);
+        if(name.isNot(clang::tok::raw_identifier)) {
+            return;
+        }
+        auto& sm = pp.getSourceManager();
+        auto offset = sm.getFileOffset(name.getLocation());
+        auto* identifier = pp.LookUpIdentifierInfo(name);
+        for(auto* directive = pp.getLocalMacroDirectiveHistory(identifier); directive;
+            directive = directive->getPrevious()) {
+            auto* define = llvm::dyn_cast<clang::DefMacroDirective>(directive);
+            if(!define) {
+                continue;
+            }
+            auto [fid, defined_at] =
+                sm.getDecomposedLoc(define->getMacroInfo()->getDefinitionLoc());
+            if(fid == sm.getPreambleFileID() && defined_at == offset) {
+                delegate.MacroDefined(name, define);
+                return;
+            }
+        }
+    }
+
     clang::Preprocessor& pp;
     clang::PPCallbacks& delegate;
     unsigned bound;
@@ -167,6 +199,14 @@ public:
     std::vector<DepFile> files;
 
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override {
+        // clang-tidy's walk up a Windows path ends at the bare drive (`c:`,
+        // the parent of `c:\`), which made absolute would name the current
+        // directory's path on that drive: it is the drive's root.
+        llvm::SmallString<256> storage;
+        auto spelled = path.toStringRef(storage);
+        if(!spelled.empty() && llvm::sys::path::root_name(spelled) == spelled) {
+            return ProxyFileSystem::status(spelled + llvm::sys::path::get_separator());
+        }
         auto status = ProxyFileSystem::status(path);
         if(!status && is_config(path)) {
             files.push_back({.path = path.str(), .absent = true});
@@ -317,8 +357,8 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
                          // clang-tidy.
                          "-misc-include-cleaner",
 
-                         // Check relies on seeing ifndef/define/endif directives,
-                         // which the preamble replay leaves out.
+                         // Check relies on seeing conditional directives, which
+                         // the preamble replay leaves out.
                          "-llvm-header-guard",
                          "-modernize-macro-to-enum",
                          "-cppcoreguidelines-macro-to-enum",
@@ -337,16 +377,17 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
     if(std::optional<std::string> user = llvm::sys::Process::GetEnv("USER")) {
         opts.User = user;
     }
-    // clang::clangd::provideDefaultChecks. A configuration's Checks extend
-    // clang-tidy's own default list in a batch run, as in clang-tidy: the
-    // compiler's warnings stay findings unless they say -*. (The static
-    // analyzer, the rest of that list, is not built in.)
-    if(params.checks.empty()) {
-        opts.Checks = default_checks;
-    } else if(batch) {
-        opts.Checks = "clang-diagnostic-*," + params.checks;
+    // A batch run is clang-tidy's: its default list, the compiler's
+    // warnings, which a configuration's Checks extend, so they stay
+    // findings unless it says -*. (The static analyzer, the rest of that
+    // list, is not built in.) The editor's is clangd's: its default checks
+    // (clang::clangd::provideDefaultChecks) without a configuration, which
+    // never gates the compiler's warnings.
+    if(batch) {
+        opts.Checks =
+            params.checks.empty() ? "clang-diagnostic-*" : "clang-diagnostic-*," + params.checks;
     } else {
-        opts.Checks = params.checks;
+        opts.Checks = params.checks.empty() ? default_checks : params.checks;
     }
     // clang::clangd::disableUnusableChecks, after the configuration's own
     // list so that no configuration enables them again. A batch run never

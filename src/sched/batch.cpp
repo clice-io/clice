@@ -397,7 +397,8 @@ kota::task<> lint_one(BatchStack& stack, bool with_index, Fid path_id, LintPass&
         case TURunFamily::Result::Failed: {
             // Skipped means no real compile command (the index path keeps
             // the last-known index then; lint has nothing to keep) — either way
-            // the TU went unchecked.
+            // the TU went unchecked. A command clang rejected says why.
+            std::ranges::move(outcome.tidy_diagnostics, std::back_inserter(pass.findings));
             failed = true;
             LOG_WARN("Lint failed for {}: {}",
                      file,

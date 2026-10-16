@@ -2,7 +2,7 @@ import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 const PULL = {
-    textDocument: { diagnostic: {} },
+    textDocument: { diagnostic: {}, publishDiagnostics: { relatedInformation: true } },
     workspace: { diagnostics: { refreshSupport: true } },
 };
 const REFRESH = "workspace/diagnostic/refresh";

@@ -1,0 +1,11 @@
+[answers.rarely.hover]
+markdown = '''
+**function** `rarely`
+
+Rarely runs.
+
+```cpp
+void rarely()
+```
+'''
+range = "void ⟦rarely⟧();"

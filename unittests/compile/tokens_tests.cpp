@@ -264,6 +264,18 @@ void f() {
     ZEXPECT(origin_offset("x", 3) == std::optional(point("both_x")));
 }
 
+ZEST_CASE(StringizedArguments) {
+    add_main("main.cpp", R"cpp(
+#define STR(x) #x
+#define CHECK(e) ((e) ? 0 : fail(STR(e)))
+int fail(const char*);
+int n;
+int v = CHECK(§(n)n);
+)cpp");
+    ZASSERT(compile());
+    ZEXPECT(origin_offset("n", 1) == std::optional(point("n")));
+}
+
 ZEST_CASE(HeaderOrigins) {
     add_file("header.h", R"cpp(
 #define HM int hm;

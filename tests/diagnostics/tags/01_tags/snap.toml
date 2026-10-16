@@ -5,7 +5,7 @@ diagnostics = [
         severity = "warning",
         message = "unused variable 'unused'",
         source = "clang",
-        code = "warn_unused_variable",
+        code = "-Wunused-variable",
         tags = ["Unnecessary"],
     },
     {
@@ -13,7 +13,7 @@ diagnostics = [
         severity = "warning",
         message = "'stale' is deprecated: use fresh",
         source = "clang",
-        code = "warn_deprecated_message",
+        code = "-Wdeprecated-declarations",
         tags = ["Deprecated"],
     },
 ]

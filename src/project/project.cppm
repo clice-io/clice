@@ -24,7 +24,7 @@ namespace clice {
 
 /// On-disk cache layout version (CacheStore root `cache/v{N}`).
 /// Bump to discard all cached artifacts after incompatible format changes.
-constexpr inline std::uint32_t cache_format_version = 14;
+constexpr inline std::uint32_t cache_format_version = 15;
 
 /// One dependency of a compilation artifact.
 ///

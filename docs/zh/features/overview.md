@@ -19,14 +19,14 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节介绍已
 | [签名帮助](./signature-help.md)      | 支持 18 项 · 部分支持 1 项 · 不支持 3 项  |
 | [代码导航](./navigation.md)          | 支持 96 项 · 部分支持 2 项 · 不支持 12 项 |
 | [重命名](./rename.md)                | 支持 4 项                                 |
-| [诊断](./diagnostics.md)             | 支持 9 项                                 |
+| [诊断](./diagnostics.md)             | 支持 10 项                                |
 | [代码操作](./code-action.md)         | 支持 38 项                                |
 | [语义 Token](./semantic-tokens.md)   | 支持 40 项 · 部分支持 2 项 · 不支持 5 项  |
 | [内联提示](./inlay-hints.md)         | 支持 35 项                                |
 | [文档链接](./document-links.md)      | 支持 7 项 · 部分支持 1 项                 |
 | [文档符号](./document-symbols.md)    | 支持 29 项                                |
 | [折叠范围](./folding-ranges.md)      | 支持 19 项                                |
-| [选择范围](./selection-ranges.md)    | 支持 10 项                                |
+| [选择范围](./selection-ranges.md)    | 支持 14 项                                |
 | [格式化](./formatting.md)            | 支持 4 项                                 |
 | [C++20 模块](./modules.md)           | 支持 7 项                                 |
 | [头文件上下文](./header-contexts.md) | 支持 5 项                                 |

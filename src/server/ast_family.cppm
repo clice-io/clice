@@ -4,6 +4,7 @@ module;
 
 module clice:server.ast_family;
 
+import :feature.feature;
 import :project.project;
 import :sched.families.pch;
 import :sched.families.pcm;
@@ -323,6 +324,6 @@ constexpr std::uint8_t evidence_kind(worker::QueryKind kind) {
 
 /// The diagnostics telling what of the document is paused by crashes, and
 /// how it comes back; appended to every publish of the document.
-void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic>& diagnostics);
+void append_crash_notes(const Session& session, std::vector<feature::FileDiagnostic>& diagnostics);
 
 }  // namespace clice

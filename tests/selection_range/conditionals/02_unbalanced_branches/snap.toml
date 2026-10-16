@@ -1,3 +1,13 @@
+[answers.crossing]
+selection_ranges = [
+    "int fast(int ⟦value⟧) {",
+    "int fast(⟦int value⟧) {",
+    "int fast⟦(int value)⟧ {",
+    "⟦int fast(int value)⟧ {",
+    "⟦int fast(int value) {⟧",
+    "⟦int fast(int value) { … }⟧ (6 lines)",
+]
+
 [answers.inside]
 selection_ranges = [
     "return ⟦value⟧ * 2;",

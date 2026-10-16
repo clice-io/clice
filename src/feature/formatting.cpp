@@ -162,6 +162,41 @@ auto format_edits(llvm::StringRef file, llvm::StringRef content, std::vector<Tex
     return to_edits(content, replacements.merge(formatted));
 }
 
+auto cleanup_edits(llvm::StringRef file,
+                   llvm::StringRef content,
+                   std::vector<TextReplacement> edits) -> std::vector<TextReplacement> {
+    // Insertions at one offset, such as two includes a fix adds, conflict
+    // as replacements: they join in their order.
+    llvm::SmallVector<tooling::Replacement> pieces;
+    llvm::DenseMap<std::uint32_t, std::string> insertions;
+    for(const auto& edit: edits) {
+        if(edit.range.length() == 0) {
+            insertions[edit.range.begin] += edit.text;
+        } else {
+            pieces.emplace_back(file, edit.range.begin, edit.range.length(), edit.text);
+        }
+    }
+    for(const auto& [offset, text]: insertions) {
+        pieces.emplace_back(file, offset, 0, text);
+    }
+
+    tooling::Replacements replacements;
+    for(const auto& piece: pieces) {
+        if(auto error = replacements.add(piece)) {
+            LOG_WARN("Overlapping edits in {}: {}", file, llvm::toString(std::move(error)));
+            return edits;
+        }
+    }
+    auto cleaned = clang::format::cleanupAroundReplacements(content,
+                                                            replacements,
+                                                            clang::format::getNoStyle());
+    if(!cleaned) {
+        LOG_WARN("Failed to clean up edits of {}: {}", file, llvm::toString(cleaned.takeError()));
+        return edits;
+    }
+    return to_edits(content, *cleaned);
+}
+
 auto format_snippet(llvm::StringRef file, llvm::StringRef text) -> std::string {
     auto style = file_style(file);
     if(!style || !style->configured || style->style.DisableFormat) {

@@ -1,0 +1,10 @@
+[answers.argument]
+selection_ranges = [
+    "CHECK(⟦count⟧ > 0);",
+    "CHECK(⟦count > 0⟧);",
+    "CHECK⟦(count > 0)⟧;",
+    "⟦CHECK(count > 0)⟧;",
+    "⟦CHECK(count > 0);⟧",
+    "void check(int count) ⟦{ … }⟧ (3 lines)",
+    "⟦void check(int count) { … }⟧ (3 lines)",
+]

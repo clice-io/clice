@@ -79,18 +79,12 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
        described && before(described->getBeginLoc(), range.getBegin())) {
         range.setBegin(described->getBeginLoc());
     }
-    // The first attribute written before the declaration; one a `#pragma
-    // clang attribute` applies is written on the pragma's line.
+    // The first attribute written before the declaration.
     const clang::Attr* leading = nullptr;
     for(const auto* attr: decl->attrs()) {
         auto begin = attr->getRange().getBegin();
         if(attr->isImplicit() || attr->isInherited() || begin.isInvalid() ||
-           !before(begin, range.getBegin())) {
-            continue;
-        }
-        auto [file, offset] = sources.getDecomposedExpansionLoc(begin);
-        auto content = sources.getBufferData(file);
-        if(content.substr(line_begin(content, offset)).ltrim(" \t").starts_with("#")) {
+           !before(begin, range.getBegin()) || applied_by_pragma(decl->getASTContext(), begin)) {
             continue;
         }
         if(!leading || before(begin, leading->getRange().getBegin())) {
@@ -112,6 +106,24 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
                          : decl->getLocation());
     }
     return range;
+}
+
+bool applied_by_pragma(const clang::ASTContext& context, clang::SourceLocation location) {
+    auto& sources = context.getSourceManager();
+    for(auto at = location; at.isMacroID();) {
+        at = sources.getImmediateExpansionRange(at).getBegin();
+        clang::Token token;
+        if(!clang::Lexer::getRawToken(sources.getSpellingLoc(at),
+                                      token,
+                                      sources,
+                                      context.getLangOpts()) &&
+           token.is(clang::tok::raw_identifier) && token.getRawIdentifier() == "_Pragma") {
+            return true;
+        }
+    }
+    auto [file, offset] = sources.getDecomposedLoc(sources.getExpansionLoc(location));
+    auto content = sources.getBufferData(file);
+    return content.slice(line_begin(content, offset), offset).ltrim().starts_with("#");
 }
 
 bool is_exported(const clang::Decl* decl) {

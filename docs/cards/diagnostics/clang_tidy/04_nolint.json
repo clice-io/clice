@@ -67,7 +67,7 @@
                 "severity": "warning",
                 "message": "unused variable 'unused'",
                 "source": "clang",
-                "code": "warn_unused_variable",
+                "code": "-Wunused-variable",
                 "tags": [
                   "Unnecessary"
                 ]

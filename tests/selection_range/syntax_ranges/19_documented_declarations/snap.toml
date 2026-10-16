@@ -1,0 +1,47 @@
+[answers.comment]
+selection_ranges = [
+    "/// ⟦The largest size a buffer takes.⟧",
+    "⟦/// The largest size a buffer takes.⟧",
+    "⟦/// The largest size a buffer takes. … constexpr int limit = 64;⟧ (2 lines)",
+]
+
+[answers.member]
+selection_ranges = [
+    "int ⟦used⟧ = 0; ///< Bytes in use.",
+    "⟦int used = 0⟧; ///< Bytes in use.",
+    "⟦int used = 0;⟧ ///< Bytes in use.",
+    "⟦int used = 0; ///< Bytes in use.⟧",
+    "struct Buffer ⟦{ … }⟧ (3 lines)",
+    "⟦struct Buffer { … }⟧ (3 lines)",
+    "⟦struct Buffer { … };⟧ (3 lines)",
+]
+
+[answers.line]
+selection_ranges = [
+    "* ⟦Copies the bytes over.⟧",
+    "⟦* Copies the bytes over. … * Returns how many it copied.⟧ (2 lines)",
+    "⟦/** … */⟧ (4 lines)",
+    "⟦/** … int copy(Buffer& to, const Buffer& from);⟧ (5 lines)",
+]
+
+[answers.parameter]
+selection_ranges = [
+    "int copy(Buffer& to, const Buffer& ⟦from⟧);",
+    "int copy(Buffer& to, ⟦const Buffer& from⟧);",
+    "int copy(⟦Buffer& to, const Buffer& from⟧);",
+    "int copy⟦(Buffer& to, const Buffer& from)⟧;",
+    "⟦int copy(Buffer& to, const Buffer& from)⟧;",
+    "⟦int copy(Buffer& to, const Buffer& from);⟧",
+    "⟦/** … int copy(Buffer& to, const Buffer& from);⟧ (5 lines)",
+]
+
+[answers.local]
+selection_ranges = [
+    "int ⟦left⟧ = limit - buffer.used;",
+    "⟦int left = limit - buffer.used⟧;",
+    "⟦int left = limit - buffer.used;⟧",
+    "⟦/// Bytes still free. … int left = limit - buffer.used;⟧ (2 lines)",
+    "⟦/// Bytes still free. … return left;⟧ (3 lines)",
+    "int spare(const Buffer& buffer) ⟦{ … }⟧ (5 lines)",
+    "⟦int spare(const Buffer& buffer) { … }⟧ (5 lines)",
+]

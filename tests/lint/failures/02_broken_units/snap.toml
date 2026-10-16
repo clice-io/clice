@@ -27,12 +27,13 @@ exit = 1
 
 ["missing source"."$ clice lint --jobs 2"]
 stdout = '''
+${WS}/ghost.cpp: error: error reading '${WS}/ghost.cpp': No such file or directory [clang-diagnostic-error]
 ${WS}/healthy.cpp:2:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
-Linted 1 translation unit in #s: 1 finding.
+Linted 1 translation unit in #s: 2 findings.
 1 translation unit failed to run (see the log); the report is partial.
 '''
 stderr = '''
 warning: Failed to read file for scanning: ${WS}/ghost.cpp
-warning: Lint failed for ${WS}/ghost.cpp: TU run compilation failed
+warning: Lint failed for ${WS}/ghost.cpp: error reading '${WS}/ghost.cpp': No such file or directory
 '''
 exit = 2

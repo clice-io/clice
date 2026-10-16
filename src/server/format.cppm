@@ -4,19 +4,18 @@ module;
 
 module clice:server.format;
 
+import :feature.feature;
 import :server.ast_projection;
 import :server.session;
 
 namespace clice {
 
-namespace protocol = kota::ipc::protocol;
-
-/// Format a materialized compile output into publishable diagnostics:
-/// deserialize the worker's raw diagnostics, drop phantom suffix-include
-/// lines, and — when the compile command was not an exact CDB match and
-/// the diagnostics contain file-not-found class errors — merge a file-top
-/// guidance diagnostic explaining the inferred command. Formatting is
-/// compile semantics; sending the result is the transport's job.
-std::vector<protocol::Diagnostic> format_diagnostics(const CompileOutput& output);
+/// The diagnostics a compile output shows on its file: those on the
+/// file's own lines (a borrowed context appends the includer's remainder
+/// past them) and not suppressed by `options`, behind a file-top warning
+/// when they can be explained by a guessed command or an includer context
+/// that could not be rebuilt. Sending them is the transport's job.
+std::vector<feature::FileDiagnostic> format_diagnostics(const CompileOutput& output,
+                                                        const feature::DiagnosticsOptions& options);
 
 }  // namespace clice

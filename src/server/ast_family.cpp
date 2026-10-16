@@ -8,6 +8,7 @@ module;
 module clice;
 
 import :command.argument_parser;
+import :compile.diagnostic;
 import :compile.tidy;
 import :feature.feature;
 import :index.tu_index;
@@ -74,7 +75,7 @@ CrashSubject crash_subject(std::uint8_t kind) {
 
 }  // namespace
 
-void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic>& diagnostics) {
+void append_crash_notes(const Session& session, std::vector<feature::FileDiagnostic>& diagnostics) {
     if(session.closed) {
         return;
     }
@@ -97,8 +98,8 @@ void append_crash_notes(const Session& session, std::vector<protocol::Diagnostic
 }
 
 /// The diagnostics the PCH's build raised in the preamble.
-static std::vector<protocol::Diagnostic> preamble_diagnostics(const index::TUIndex& preamble) {
-    std::vector<protocol::Diagnostic> diagnostics;
+static std::vector<feature::FileDiagnostic> preamble_diagnostics(const index::TUIndex& preamble) {
+    std::vector<feature::FileDiagnostic> diagnostics;
     [[maybe_unused]] auto status =
         kota::codec::json::from_string<kota::ipc::lsp_config>(preamble.preamble_diagnostics(),
                                                               diagnostics);
@@ -108,31 +109,27 @@ static std::vector<protocol::Diagnostic> preamble_diagnostics(const index::TUInd
 static bool kept_errors(const std::shared_ptr<index::TUIndex>& preamble) {
     return preamble &&
            std::ranges::any_of(preamble_diagnostics(*preamble), [](const auto& diagnostic) {
-               return diagnostic.severity == protocol::DiagnosticSeverity::Error;
+               return diagnostic.level >= DiagnosticLevel::Error;
            });
 }
 
 /// The compile's diagnostics behind the ones its PCH's build raised in the
 /// preamble, which the parse consuming the PCH never raises again — those
 /// of the command line it does, and they appear once. Files with one
-/// preamble share the PCH: related information the build placed in its
-/// own main file moves to `path`.
-static std::vector<protocol::Diagnostic> with_preamble(std::vector<protocol::Diagnostic> own,
-                                                       const index::TUIndex& preamble,
-                                                       llvm::StringRef path) {
+/// preamble share the PCH: notes the build placed in its own main file
+/// move to `path`.
+static std::vector<feature::FileDiagnostic> with_preamble(std::vector<feature::FileDiagnostic> own,
+                                                          const index::TUIndex& preamble,
+                                                          llvm::StringRef path) {
     auto merged = preamble_diagnostics(preamble);
     if(merged.empty()) {
         return own;
     }
-    auto builder = feature::to_uri(preamble.path(preamble.path_count() - 1));
-    auto uri = feature::to_uri(path);
+    auto builder = preamble.path(preamble.path_count() - 1);
     for(auto& diagnostic: merged) {
-        if(!diagnostic.related_information) {
-            continue;
-        }
-        for(auto& related: *diagnostic.related_information) {
-            if(related.location.uri == builder) {
-                related.location.uri = uri;
+        for(auto& note: diagnostic.notes) {
+            if(note.path == builder) {
+                note.path = path.str();
             }
         }
     }
@@ -140,7 +137,7 @@ static std::vector<protocol::Diagnostic> with_preamble(std::vector<protocol::Dia
     for(auto& diagnostic: own) {
         raised.insert(to_client_json(diagnostic, ""));
     }
-    std::erase_if(merged, [&](const protocol::Diagnostic& diagnostic) {
+    std::erase_if(merged, [&](const feature::FileDiagnostic& diagnostic) {
         return raised.contains(to_client_json(diagnostic, ""));
     });
     std::ranges::move(own, std::back_inserter(merged));
@@ -149,7 +146,7 @@ static std::vector<protocol::Diagnostic> with_preamble(std::vector<protocol::Dia
 
 /// clang reports the import of a module whose build failed as not found:
 /// the import says instead why the module did not build.
-static void explain_failed_imports(std::vector<protocol::Diagnostic>& diagnostics,
+static void explain_failed_imports(std::vector<feature::FileDiagnostic>& diagnostics,
                                    llvm::ArrayRef<Fid> imports,
                                    const PCMFamily& pcm,
                                    const DependencyGraph& modules) {
@@ -176,14 +173,14 @@ static void explain_failed_imports(std::vector<protocol::Diagnostic>& diagnostic
         }
         auto not_found = std::format("module '{}' not found", modules.module_of(module));
         for(auto& diagnostic: diagnostics) {
-            auto* code =
-                diagnostic.code ? std::get_if<protocol::string>(&*diagnostic.code) : nullptr;
-            auto* text = std::get_if<protocol::string>(&diagnostic.message);
-            if(code && *code == "err_module_not_found" && text && *text == not_found) {
+            if(diagnostic.id == clang::diag::err_module_not_found &&
+               diagnostic.message == not_found) {
                 diagnostic.message = message;
                 // As clang codes it: a cycle only where the imported module
                 // is on it, not built where the message starts with one
                 // that is not.
+                diagnostic.id = failure->cycle == 0 ? clang::diag::err_module_cycle
+                                                    : clang::diag::err_module_not_built;
                 diagnostic.code = failure->cycle == 0 ? "err_module_cycle" : "err_module_not_built";
             }
         }
@@ -810,9 +807,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     bool pch_licensed = session->quarantine->crashed(pch_kind);
     Quarantine::Attempt pch_attempt(*session->quarantine, pch_kind);
 
-    // clang-tidy runs where `clice lint` checks, unless a crash of its is
-    // on trial or bars it, or the compile retries a crash it is acquitted
-    // of (on a retracted preamble, or after the document's own). The places
+    // clang-tidy runs where `clice lint` checks, unless its configuration
+    // does not parse, which `clice lint` refuses too, a crash of its is on
+    // trial or bars it, or the compile retries a crash it is acquitted of
+    // (on a retracted preamble, or after the document's own). The places
     // resolving its configuration looked at join the deps either way: a
     // fix there is a change that retries a barred pass.
     auto tidy_kind = evidence_kind(EvidenceKind::Tidy);
@@ -821,10 +819,7 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     if(project.config.diagnostics.clang_tidy &&
        project.build.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
-        if(!tidy_config->error.empty()) {
-            LOG_WARN("{}", tidy_config->error);
-        }
-        if(!session->tidy_crash && session->crashed_pch.empty() &&
+        if(tidy_config->error.empty() && !session->tidy_crash && session->crashed_pch.empty() &&
            !session->quarantine->crashed(compile_kind) &&
            !session->quarantine->barred(tidy_kind, Quarantine::Clock::now())) {
             tidy_attempt.emplace(*session->quarantine, tidy_kind);
@@ -1165,25 +1160,29 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
 
         // A non-Done reply past the gate is a non-result: committing it
         // would freeze the document on a product that never existed —
-        // empty diagnostics, no index, an empty deps snapshot nothing can
-        // invalidate. Superseded rounds were already discarded at the
-        // validity gate above, so this round's inputs are broken in a
-        // way a PCH rebuild cannot fix.
+        // no index, an empty deps snapshot nothing can invalidate.
+        // Superseded rounds were already discarded at the validity gate
+        // above, so this round's inputs are broken in a way a PCH rebuild
+        // cannot fix.
         if(result.value().status != worker::CompileStatus::Done) {
             LOG_WARN("Compile produced no result for {} (status={})",
                      file_path,
                      static_cast<int>(result.value().status));
             // The projection stays non-current: the next request
-            // recompiles instead of trusting the phantom product. Publish
-            // the honest gap — versionless empty diagnostics rather than a
-            // stale list posing as current.
-            publish_output(session,
-                           CompileOutput{
-                               .version = std::nullopt,
-                               .source = source,
-                               .diagnostics = {},
-                               .line_limit = suffix_line_limit,
-                           });
+            // recompiles instead of trusting the phantom product. What is
+            // published is the honest gap: why the compile failed before
+            // parsing, of this text, else versionless empty diagnostics
+            // rather than a stale list posing as current.
+            bool setup_fail = result.value().status == worker::CompileStatus::SetupFail;
+            publish_output(
+                session,
+                CompileOutput{
+                    .version = setup_fail ? std::optional(session->version) : std::nullopt,
+                    .source = source,
+                    .diagnostics = std::move(result.value().diagnostics),
+                    .line_limit = suffix_line_limit,
+                    .failed = setup_fail,
+                });
             co_return RoundOutcome::Failed;
         }
 
@@ -1203,6 +1202,13 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
             diagnostics = with_preamble(std::move(diagnostics), *preamble_state, file_path);
         }
         explain_failed_imports(diagnostics, imports->resolved, pcm, project.dep_graph);
+        if(tidy_config && !tidy_config->error.empty()) {
+            auto warning = feature::file_warning(std::format(
+                "clang-tidy does not run on this file until its configuration parses. {}",
+                tidy_config->error));
+            warning.code = "invalid-clang-tidy-config";
+            diagnostics.insert(diagnostics.begin(), std::move(warning));
+        }
 
         // Self-containment trial result. Scored once per stable input
         // state: trial_done is reset whenever compile inputs change for

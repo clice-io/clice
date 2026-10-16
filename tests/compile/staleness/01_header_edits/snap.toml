@@ -5,7 +5,7 @@ errors = [
 
 ["transitive header edit".broken]
 errors = [
-    { at = '#include ⟦"pre.h"⟧', severity = "error", message = "In included file: non-void function 'base' should return a value", source = "clang", code = "warn_return_missing_expr" },
+    { at = '#include ⟦"pre.h"⟧', severity = "error", message = "In included file: non-void function 'base' should return a value", source = "clang", code = "-Wreturn-mismatch" },
 ]
 
 ["body header edit".renamed]

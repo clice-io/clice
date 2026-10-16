@@ -357,6 +357,9 @@ RequestResult<worker::CompileParams>
             } else {
                 result.status = unit->setup_fail() ? worker::CompileStatus::SetupFail
                                                    : worker::CompileStatus::Cancelled;
+                if(unit->setup_fail()) {
+                    result.diagnostics = feature::diagnostics(*unit);
+                }
                 LOG_WARN("Compile incomplete: path={}, {}ms, setup_fail={}",
                          params.path,
                          timer.ms(),

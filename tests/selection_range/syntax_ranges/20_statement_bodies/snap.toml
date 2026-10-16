@@ -1,0 +1,51 @@
+[answers.case_body]
+selection_ranges = [
+    "return ⟦code⟧; @+0",
+    "⟦return code⟧; @+0",
+    "⟦return code;⟧ @+0",
+    "⟦case 0: … return code;⟧ (2 lines)",
+    "⟦case 0: … break;⟧ (7 lines)",
+    "switch(code) ⟦{ … }⟧ (9 lines)",
+    "⟦switch(code) { … }⟧ (9 lines)",
+    "⟦switch(code) { … return code;⟧ (14 lines)",
+    "int classify(int code) ⟦{ … }⟧ (16 lines)",
+    "⟦int classify(int code) { … }⟧ (16 lines)",
+]
+
+[answers.attributed]
+selection_ranges = [
+    "code += ⟦1⟧;",
+    "⟦code += 1⟧;",
+    "⟦code += 1;⟧",
+    "[[likely]] ⟦case 1: … code += 1;⟧ (2 lines)",
+    "⟦[[likely]] case 1: … code += 1;⟧ (2 lines)",
+    "⟦[[likely]] case 1: … break;⟧ (3 lines)",
+    "⟦case 0: … break;⟧ (7 lines)",
+    "switch(code) ⟦{ … }⟧ (9 lines)",
+    "⟦switch(code) { … }⟧ (9 lines)",
+    "⟦switch(code) { … return code;⟧ (14 lines)",
+    "int classify(int code) ⟦{ … }⟧ (16 lines)",
+    "⟦int classify(int code) { … }⟧ (16 lines)",
+]
+
+[answers.if_body]
+selection_ranges = [
+    "if(code > 2) return ⟦code⟧;",
+    "if(code > 2) ⟦return code⟧;",
+    "if(code > 2) ⟦return code;⟧",
+    "⟦if(code > 2) return code;⟧",
+    "⟦switch(code) { … return code;⟧ (14 lines)",
+    "int classify(int code) ⟦{ … }⟧ (16 lines)",
+    "⟦int classify(int code) { … }⟧ (16 lines)",
+]
+
+[answers.labeled]
+selection_ranges = [
+    "code -= ⟦1⟧;",
+    "⟦code -= 1⟧;",
+    "⟦code -= 1;⟧",
+    "⟦retry: … code -= 1;⟧ (2 lines)",
+    "⟦switch(code) { … return code;⟧ (14 lines)",
+    "int classify(int code) ⟦{ … }⟧ (16 lines)",
+    "⟦int classify(int code) { … }⟧ (16 lines)",
+]

@@ -19,6 +19,8 @@ enum class DiagnosticLevel : std::uint8_t {
 enum class DiagnosticSource : std::uint8_t {
     Clang,
     ClangTidy,
+    /// clice's own, about a file as a whole; no compile reports one.
+    Clice,
 };
 
 struct DiagnosticID {
@@ -31,10 +33,13 @@ struct DiagnosticID {
     /// The source of diagnostic.
     DiagnosticSource source;
 
+    /// The clang-tidy check that reported it, or the compiler's warning
+    /// option that controls it (`unused-variable`); empty for neither.
     llvm::StringRef name;
 
-    /// Get the diagnostic code.
-    llvm::StringRef diagnostic_code() const;
+    /// The code an editor shows it by: the check, `-W` and the warning
+    /// option, else clang's name for it (`err_undeclared_var_use`).
+    std::string diagnostic_code() const;
 
     /// Whether this diagnostic reports a failure to read a prebuilt
     /// artifact (PCH/PCM) — clang's "AST Deserialization Issue" category.

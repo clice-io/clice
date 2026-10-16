@@ -1,7 +1,9 @@
 ["unrunnable command stays dirty".first]
-wrong = "a command clang cannot run (here an unknown target) leaves the file without diagnostics and without a word of why"
-diagnostics = []
+diagnostics = [
+    { at = "⟦⟧int main() {", severity = "error", message = "unknown target triple 'bogus-unknown-none'", source = "clang", code = "err_target_unknown_triple" },
+]
 
 ["unrunnable command stays dirty".retried]
-wrong = "a command clang cannot run (here an unknown target) leaves the file without diagnostics and without a word of why"
-diagnostics = []
+diagnostics = [
+    { at = "⟦⟧int main() {", severity = "error", message = "unknown target triple 'bogus-unknown-none'", source = "clang", code = "err_target_unknown_triple" },
+]

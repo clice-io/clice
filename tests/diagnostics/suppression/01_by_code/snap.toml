@@ -1,0 +1,14 @@
+[test."main.cpp"]
+diagnostics = [
+    { at = "return ⟦missing⟧;", severity = "error", message = "use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+]
+
+[test.hover.hover]
+markdown = '''
+**function** `report`
+
+```cpp
+void report(int value)
+```
+'''
+range = "⟦report⟧(1, 2);"

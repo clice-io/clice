@@ -7,13 +7,13 @@ selection_ranges = [
     "⟦int total = 0; … return total;⟧ (7 lines)",
     "int sum(const int* values, int count, bool ready) ⟦{ … }⟧ (9 lines)",
     "⟦int sum(const int* values, int count, bool ready) { … }⟧ (9 lines)",
+    "⟦// A condition, a loop header's parts and a subscript grow to the statement … }⟧ (11 lines)",
 ]
 
 [answers.bound]
 selection_ranges = [
     "for (int i = 0; i < ⟦count⟧; ++i) {",
     "for (int i = 0; ⟦i < count⟧; ++i) {",
-    "for (int i = 0; ⟦i < count;⟧ ++i) {",
     "for (⟦int i = 0; i < count; ++i⟧) {",
     "for ⟦(int i = 0; i < count; ++i)⟧ {",
     "⟦for (int i = 0; i < count; ++i) { … }⟧ (3 lines)",
@@ -22,6 +22,7 @@ selection_ranges = [
     "⟦int total = 0; … return total;⟧ (7 lines)",
     "int sum(const int* values, int count, bool ready) ⟦{ … }⟧ (9 lines)",
     "⟦int sum(const int* values, int count, bool ready) { … }⟧ (9 lines)",
+    "⟦// A condition, a loop header's parts and a subscript grow to the statement … }⟧ (11 lines)",
 ]
 
 [answers.index]
@@ -38,4 +39,5 @@ selection_ranges = [
     "⟦int total = 0; … return total;⟧ (7 lines)",
     "int sum(const int* values, int count, bool ready) ⟦{ … }⟧ (9 lines)",
     "⟦int sum(const int* values, int count, bool ready) { … }⟧ (9 lines)",
+    "⟦// A condition, a loop header's parts and a subscript grow to the statement … }⟧ (11 lines)",
 ]

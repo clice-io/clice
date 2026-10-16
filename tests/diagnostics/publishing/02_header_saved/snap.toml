@@ -1,0 +1,10 @@
+[test.opened]
+pushes = [[]]
+
+[test.saved]
+pushes = [
+    [],
+    [
+        { at = '#include ⟦"header.h"⟧', severity = "error", message = "In included file: use of undeclared identifier 'missing'", source = "clang", code = "err_undeclared_var_use" },
+    ],
+]

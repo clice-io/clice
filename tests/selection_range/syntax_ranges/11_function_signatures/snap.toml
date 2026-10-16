@@ -1,0 +1,55 @@
+[answers.method]
+selection_ranges = [
+    "[[nodiscard]] long ⟦elapsed⟧(int scale) const noexcept;",
+    "[[nodiscard]] ⟦long elapsed(int scale) const noexcept⟧;",
+    "⟦[[nodiscard]] long elapsed(int scale) const noexcept⟧;",
+    "⟦[[nodiscard]] long elapsed(int scale) const noexcept;⟧",
+    "⟦Timer(int ticks); … long now() const override { return 0; }⟧ (4 lines)",
+    "struct Timer : Clock ⟦{ … }⟧ (6 lines)",
+    "⟦struct Timer : Clock { … }⟧ (6 lines)",
+    "⟦struct Timer : Clock { … };⟧ (6 lines)",
+]
+
+[answers.qualified]
+selection_ranges = [
+    "const char* ⟦label⟧() const;",
+    "⟦const char* label() const⟧;",
+    "⟦const char* label() const;⟧",
+    "⟦Timer(int ticks); … long now() const override { return 0; }⟧ (4 lines)",
+    "struct Timer : Clock ⟦{ … }⟧ (6 lines)",
+    "⟦struct Timer : Clock { … }⟧ (6 lines)",
+    "⟦struct Timer : Clock { … };⟧ (6 lines)",
+]
+
+[answers.override]
+selection_ranges = [
+    "long ⟦now⟧() const override { return 0; }",
+    "⟦long now() const override⟧ { return 0; }",
+    "⟦long now() const override { return 0; }⟧",
+    "⟦Timer(int ticks); … long now() const override { return 0; }⟧ (4 lines)",
+    "struct Timer : Clock ⟦{ … }⟧ (6 lines)",
+    "⟦struct Timer : Clock { … }⟧ (6 lines)",
+    "⟦struct Timer : Clock { … };⟧ (6 lines)",
+]
+
+[answers.constructor]
+selection_ranges = [
+    "Timer::⟦Timer⟧(int ticks) {}",
+    "⟦Timer::Timer(int ticks)⟧ {}",
+    "⟦Timer::Timer(int ticks) {}⟧",
+]
+
+[answers.trailing]
+selection_ranges = [
+    "auto ⟦tick⟧(int step) -> long {",
+    "⟦auto tick(int step) -> long⟧ {",
+    "⟦auto tick(int step) -> long { … }⟧ (3 lines)",
+]
+
+[answers.constrained]
+selection_ranges = [
+    "T ⟦twice⟧(T value) requires (sizeof(T) > 1) {",
+    "⟦T twice(T value) requires (sizeof(T) > 1)⟧ {",
+    "⟦T twice(T value) requires (sizeof(T) > 1) { … }⟧ (3 lines)",
+    "⟦template <typename T> … }⟧ (4 lines)",
+]

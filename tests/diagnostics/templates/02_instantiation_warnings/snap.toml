@@ -3,10 +3,11 @@ diagnostics = [
     {
         at = "bool b = ⟦less⟧(-1, 1u);",
         severity = "warning",
-        message = "comparison of integers of different signs: 'int' and 'unsigned int'",
+        message = "In template: comparison of integers of different signs: 'int' and 'unsigned int'",
         source = "clang",
-        code = "warn_mixed_sign_comparison",
+        code = "-Wsign-compare",
         related = [
+            { at = "cmp.h │ return a ⟦<⟧ b;", message = "warning occurred here" },
             { at = "bool b = ⟦less⟧(-1, 1u);", message = "in instantiation of function template specialization 'less<int>' requested here" },
         ],
     },

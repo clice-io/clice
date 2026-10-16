@@ -4,12 +4,11 @@ module;
 
 module clice:server.ast_projection;
 
+import :feature.feature;
 import :index.tu_index;
 import :project.project;
 
 namespace clice {
-
-namespace protocol = kota::ipc::protocol;
 
 /// The publishable products of the most recent compilation (materialized
 /// whole-document feature results). The data lives in the projection; the
@@ -25,8 +24,9 @@ struct CompileOutput {
     /// guidance diagnostic when the command was guessed.
     CommandSource source;
 
-    /// Worker-produced raw diagnostics (unformatted); empty on failure.
-    std::vector<protocol::Diagnostic> diagnostics;
+    /// The compile's diagnostics, before format_diagnostics; on a failure
+    /// before parsing, why it failed.
+    std::vector<feature::FileDiagnostic> diagnostics;
 
     /// First phantom line introduced by suffix include injection —
     /// diagnostics at or past it describe text the user cannot see.
@@ -35,6 +35,10 @@ struct CompileOutput {
     /// The host whose includer context the compile needed but could not
     /// rebuild (Resolution::unmatched_host), as shown; empty otherwise.
     std::string unmatched_host;
+
+    /// The compile failed before parsing: its diagnostics say why, and
+    /// nothing else came of it.
+    bool failed = false;
 };
 
 /// One open document's compilation products, owned by the AST family and

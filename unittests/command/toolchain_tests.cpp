@@ -228,7 +228,8 @@ ZEST_CASE(ParseCC1DropsCodegen) {
 }
 
 /// Canned `-###` output covering version-skew hardening: an unknown future
-/// flag with a value, plus BMI emission flags that query() must strip.
+/// flag with a value, plus the module output query() must strip and the
+/// reduced BMI, which stays.
 constexpr static llvm::StringRef fake_cc1_line =
     R"( "/usr/bin/clang-22" "-cc1" "-triple" "x86_64-unknown-linux-gnu" "-fmodules-reduced-bmi" "-fmodule-output=/tmp/probe.pcm" "-clice-future-flag" "val" "-std=c++23")";
 
@@ -257,11 +258,12 @@ ZEST_CASE(QueryFakeDriver, skip = Windows) {
     auto result = Toolchain::query({driver->c_str()}, "/tmp/a.cpp");
     ZASSERT(result);
 
-    // Unknown flag + value dropped, BMI emission flags stripped, known kept.
+    // Unknown flag + value dropped, module output stripped, known kept.
     std::vector<std::string> expected = {"/usr/bin/clang-22",
                                          "-cc1",
                                          "-triple",
                                          "x86_64-unknown-linux-gnu",
+                                         "-fmodules-reduced-bmi",
                                          "-std=c++23"};
     ZEXPECT(*result == expected);
 }
@@ -612,6 +614,31 @@ ZEST_CASE(ResolveAttachesUserContent, skip = Windows) {
     ZEXPECT(has_include);
     ZEXPECT(has_define);
     ZEXPECT(has_main_file);
+}
+
+ZEST_CASE(ResolvePrecompileFullBMI, skip = Windows) {
+    auto driver = create_fake_clang(fake_cc1_line);
+    ZASSERT(driver);
+
+    // Whether the module unit's cc1 asks for a reduced BMI.
+    auto reduced = [&](llvm::ArrayRef<const char*> flags) {
+        std::vector<const char*> arguments = {driver->c_str()};
+        arguments.insert(arguments.end(), flags.begin(), flags.end());
+        arguments.push_back("/tmp/a.cppm");
+        Fixture f;
+        auto ref = f.add("/tmp", "/tmp/a.cppm", arguments);
+        return std::ranges::any_of(f.db.render(ref), [](llvm::StringRef arg) {
+            return arg == "-fmodules-reduced-bmi";
+        });
+    };
+
+    // --precompile writes the full BMI whatever the driver asks for, and the
+    // reduced one only to a module output the command names.
+    ZEXPECT(reduced({}));
+    ZEXPECT(!reduced({"--precompile"}));
+    ZEXPECT(reduced({"--precompile", "-fmodule-output"}));
+    ZEXPECT(reduced({"--precompile", "-fmodule-output=/tmp/a.pcm"}));
+    ZEXPECT(reduced({"--precompile-reduced-bmi"}));
 }
 
 ZEST_CASE(WarmDedupesProbes, skip = Windows) {

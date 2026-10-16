@@ -176,8 +176,7 @@ ZEST_CASE(UserFatalErrorSparesPCH) {
         ZEXPECT(result.value().status == worker::CompileStatus::Done);
         ZEXPECT(!result.value().pch_suspect);
         ZEXPECT(std::ranges::any_of(result.value().diagnostics, [](auto& diagnostic) {
-            auto* message = std::get_if<std::string>(&diagnostic.message);
-            return message && llvm::StringRef(*message).contains("module 'missing' not found");
+            return llvm::StringRef(diagnostic.message).contains("module 'missing' not found");
         }));
         done = true;
         sf.peer->close_output();

@@ -156,7 +156,7 @@ ZEST_CASE(Warning) {
     ZASSERT(unit->diagnostics().size() == 1);
 
     auto& diag = unit->diagnostics()[0];
-    ZEXPECT(diag.id.diagnostic_code() == "warn_unused_variable");
+    ZEXPECT(diag.id.diagnostic_code() == "-Wunused-variable");
     ZEXPECT(diag.id.level == DiagnosticLevel::Warning);
     ZEXPECT(diag.id.source == DiagnosticSource::Clang);
     ZEXPECT(diag.range.valid());
@@ -204,8 +204,8 @@ void foo() {}
 }
 
 ZEST_CASE(CommandLineNote) {
-    /// A macro-redefinition note points into <command line>; related
-    /// information must skip it instead of emitting an empty URI.
+    /// A macro-redefinition note points into <command line>, no file a
+    /// note can name: it is left out.
     DiagParams dp(R"(
 #define FOO 2
 int main() { return 0; }
@@ -218,13 +218,9 @@ int main() { return 0; }
     auto diagnostics = feature::diagnostics(*unit);
     bool redefined = false;
     for(auto& diag: diagnostics) {
-        if(auto* text = std::get_if<std::string>(&diag.message)) {
-            redefined |= text->find("macro redefined") != std::string::npos;
-        }
-        if(diag.related_information.has_value()) {
-            for(auto& related: *diag.related_information) {
-                ZASSERT(!related.location.uri.empty());
-            }
+        redefined |= diag.message.find("macro redefined") != std::string::npos;
+        for(auto& note: diag.notes) {
+            ZASSERT(!note.path.empty());
         }
     }
     ZASSERT(redefined);

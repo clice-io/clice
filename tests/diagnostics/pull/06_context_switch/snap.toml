@@ -1,0 +1,7 @@
+[test."int host"]
+diagnostics = []
+
+[test."bad host"]
+diagnostics = [
+    { at = "⟦VALUE_TYPE⟧ get_value();", severity = "error", message = "unknown type name 'missing_type'", source = "clang", code = "err_unknown_typename" },
+]

@@ -1485,27 +1485,6 @@ struct DeclarationPrinter {
         return trimmed.str();
     }
 
-    /// Whether a `#pragma clang attribute` region applies the attribute at
-    /// `location`, as a directive or as the `_Pragma` operator in a macro.
-    bool applied(clang::SourceLocation location) {
-        auto& sources = context.getSourceManager();
-        for(auto at = location; at.isMacroID();) {
-            at = sources.getImmediateExpansionRange(at).getBegin();
-            clang::Token token;
-            if(!clang::Lexer::getRawToken(sources.getSpellingLoc(at),
-                                          token,
-                                          sources,
-                                          context.getLangOpts()) &&
-               token.is(clang::tok::raw_identifier) && token.getRawIdentifier() == "_Pragma") {
-                return true;
-            }
-        }
-        auto [file, offset] = sources.getDecomposedLoc(sources.getExpansionLoc(location));
-        auto content = sources.getBufferData(file);
-        auto line = content.take_front(offset).rfind('\n') + 1;
-        return content.substr(line, offset - line).ltrim().starts_with("#");
-    }
-
     /// Whether the macros an attribute at `location` comes out of write
     /// nothing but attributes: one that also writes a specifier, as
     /// `#define FORCE_INLINE static inline __attribute__((always_inline))`
@@ -1588,7 +1567,7 @@ struct DeclarationPrinter {
             if(location.isInvalid()) {
                 location = name;
             }
-            if(applied(location)) {
+            if(decls::applied_by_pragma(context, location)) {
                 continue;
             }
             if(location.isMacroID()) {
