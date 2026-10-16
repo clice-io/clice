@@ -93,7 +93,7 @@ tests/refactor/edits/01_plan_then_write
 
 若输入的名称对应两个符号，会列出这两个符号，使用带作用域的名称或候选项的 `symbol` 即可选定其中一个
 
-名称有歧义时，不会执行任何重命名。每个候选项都带有一个 `symbol`，可将其原样传给 `--symbol`。
+名称有歧义时，不会执行任何重命名。每个候选项都带有一个 `symbol`，可将其原样传回。
 
 ```case
 tests/refactor/locators/02_ambiguous_name

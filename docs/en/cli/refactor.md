@@ -98,7 +98,7 @@ A name several symbols spell renames nothing until a locator picks one.
 A name two symbols spell lists both, and a scoped name or a candidate's `symbol` picks one
 
 Nothing is renamed while the name is ambiguous. Each candidate carries a
-`symbol` to pass back to `--symbol` as it is.
+`symbol` to pass back as it is.
 
 ```case
 tests/refactor/locators/02_ambiguous_name
