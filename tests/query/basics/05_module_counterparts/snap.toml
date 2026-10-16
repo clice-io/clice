@@ -46,3 +46,29 @@ stdout = '''
 }
 '''
 exit = 0
+
+[test."$ clice query --method documentSymbols --path store.cppm"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "store",
+        "kind": "Module",
+        "startLine": 1,
+        "endLine": 1,
+        "symbol": "#f11fe5b9d3ccb36d"
+      },
+      {
+        "name": "fetch",
+        "kind": "Function",
+        "startLine": 2,
+        "endLine": 2,
+        "symbol": "#f93f3d235f7796d6"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0

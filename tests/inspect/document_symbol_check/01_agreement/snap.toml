@@ -5,8 +5,8 @@ stdout = '''
   "files": {
     "main.cpp": {
       "result": {
-        "ast": 50,
-        "index": 50,
+        "ast": 48,
+        "index": 48,
         "differences": []
       },
       "markers": null,

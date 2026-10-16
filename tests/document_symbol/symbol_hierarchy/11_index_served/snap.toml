@@ -32,12 +32,11 @@ document_symbols = [
             },
             { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {", range = "⟦template <typename T> … }⟧ (5 lines)" },
             { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", range = "⟦template struct Box<int>⟧;" },
-            { name = "Size", kind = "Class", at = "} ⟦Size⟧;", range = "⟦typedef struct { … } Size⟧ (3 lines)" },
             {
-                name = "(anonymous struct)",
+                name = "Size",
                 kind = "Struct",
-                at = "typedef ⟦struct⟧ {",
-                range = "typedef ⟦struct { … }⟧ (3 lines)",
+                at = "} ⟦Size⟧;",
+                range = "⟦typedef struct { … } Size⟧ (3 lines)",
                 children = [
                     { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
                 ],
@@ -90,12 +89,11 @@ document_symbols = [
             },
             { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {", range = "⟦template <typename T> … }⟧ (5 lines)" },
             { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", range = "⟦template struct Box<int>⟧;" },
-            { name = "Size", kind = "Class", at = "} ⟦Size⟧;", range = "⟦typedef struct { … } Size⟧ (3 lines)" },
             {
-                name = "(anonymous struct)",
+                name = "Size",
                 kind = "Struct",
-                at = "typedef ⟦struct⟧ {",
-                range = "typedef ⟦struct { … }⟧ (3 lines)",
+                at = "} ⟦Size⟧;",
+                range = "⟦typedef struct { … } Size⟧ (3 lines)",
                 children = [
                     { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
                 ],
@@ -143,11 +141,10 @@ document_symbols = [
             },
             { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {" },
             { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;" },
-            { name = "Size", kind = "Class", at = "} ⟦Size⟧;" },
             {
-                name = "(anonymous struct)",
+                name = "Size",
                 kind = "Struct",
-                at = "typedef ⟦struct⟧ {",
+                at = "} ⟦Size⟧;",
                 children = [
                     { name = "width", kind = "Field", at = "int ⟦width⟧;" },
                 ],
