@@ -40,16 +40,12 @@ exit = 0
 
 [records."$ clice index symbol geo.h:4:5"]
 stdout = '''
-symbol #03f26c0a76f19d73  kind=Parameter  name=width  args=  qualified=geo::area::width  flags=HasDefinition  form=Identifier
-  parent #410bf4404641a3b4  kind=Function  name=area
+symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
   parent #b8d40a731e70f055  kind=Namespace  name=geo
-  scope=local (not in the global table)
-  ${WS}/geo.h: definitions=1 declarations=0 references=0
-symbol #fe1adf0868b4d70d  kind=Parameter  name=height  args=  qualified=geo::area::height  flags=HasDefinition  form=Identifier
-  parent #410bf4404641a3b4  kind=Function  name=area
-  parent #b8d40a731e70f055  kind=Namespace  name=geo
-  scope=local (not in the global table)
-  ${WS}/geo.h: definitions=1 declarations=0 references=0
+  scope=External  file=${WS}/geo.cpp  reference files=3
+  ${WS}/geo.cpp: definitions=1 declarations=0 references=0
+  ${WS}/geo.h: definitions=0 declarations=1 references=0
+  ${WS}/main.cpp: definitions=0 declarations=0 references=1
 '''
 exit = 0
 
