@@ -146,15 +146,19 @@ auto CompilationUnit::produced_range(clang::SourceRange range) -> FileRange {
     auto begin = decompose(SM, SM.getExpansionLoc(range.getBegin()));
     auto last = SM.getExpansionRange(range.getEnd());
     auto end = decompose(SM, last.getEnd());
+    auto text = text_end(begin.file);
     if(end.file != begin.file) {
         return {
             begin.file,
-            {begin.offset, text_end(begin.file)}
+            {begin.offset, text}
         };
     }
+    // A scope left open in a header compiled in its includer's context
+    // ends past its text, after the includer's remainder.
+    auto stop = end.offset + (last.isTokenRange() ? token_length(last.getEnd()) : 0);
     return {
         begin.file,
-        {begin.offset, end.offset + (last.isTokenRange() ? token_length(last.getEnd()) : 0)}
+        {begin.offset, std::min(stop, text)}
     };
 }
 

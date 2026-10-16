@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct Shape {};\n\nstruct Circle : Shape {\n    double radius;\n};\n",
+      "text": "struct Shape {};\nstruct Tagged {};\n\nstruct Circle : Shape {\n    double radius;\n};\n\nclass Square : public Shape, private Tagged {};\n\nstruct Shared : virtual Shape {};\n",
       "markers": []
     }
   ],
@@ -44,6 +44,25 @@
                 "detail": "struct"
               },
               {
+                "name": "Tagged",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Tagged⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "struct"
+              },
+              {
                 "name": "Circle",
                 "kind": "Struct",
                 "at": {
@@ -51,11 +70,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 2,
+                      "line": 3,
                       "character": 7
                     },
                     "end": {
-                      "line": 2,
+                      "line": 3,
                       "character": 13
                     }
                   }
@@ -70,11 +89,11 @@
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 3,
+                          "line": 4,
                           "character": 11
                         },
                         "end": {
-                          "line": 3,
+                          "line": 4,
                           "character": 17
                         }
                       }
@@ -82,6 +101,44 @@
                     "detail": "double"
                   }
                 ]
+              },
+              {
+                "name": "Square",
+                "kind": "Class",
+                "at": {
+                  "$place": "class ⟦Square⟧ : public Shape, private Tagged {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 12
+                    }
+                  }
+                },
+                "detail": "class : public Shape, private Tagged"
+              },
+              {
+                "name": "Shared",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Shared⟧ : virtual Shape {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 13
+                    }
+                  }
+                },
+                "detail": "struct : virtual Shape"
               }
             ]
           }
@@ -123,6 +180,38 @@
                 }
               },
               {
+                "name": "Tagged",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Tagged⟧ {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 13
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦struct Tagged {}⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 16
+                    }
+                  }
+                }
+              },
+              {
                 "name": "Circle",
                 "kind": "Struct",
                 "at": {
@@ -130,11 +219,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 2,
+                      "line": 3,
                       "character": 7
                     },
                     "end": {
-                      "line": 2,
+                      "line": 3,
                       "character": 13
                     }
                   }
@@ -144,11 +233,11 @@
                   "path": "main.cpp",
                   "range": {
                     "start": {
-                      "line": 2,
+                      "line": 3,
                       "character": 0
                     },
                     "end": {
-                      "line": 4,
+                      "line": 5,
                       "character": 1
                     }
                   }
@@ -162,11 +251,11 @@
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 3,
+                          "line": 4,
                           "character": 11
                         },
                         "end": {
-                          "line": 3,
+                          "line": 4,
                           "character": 17
                         }
                       }
@@ -176,17 +265,81 @@
                       "path": "main.cpp",
                       "range": {
                         "start": {
-                          "line": 3,
+                          "line": 4,
                           "character": 4
                         },
                         "end": {
-                          "line": 3,
+                          "line": 4,
                           "character": 17
                         }
                       }
                     }
                   }
                 ]
+              },
+              {
+                "name": "Square",
+                "kind": "Class",
+                "at": {
+                  "$place": "class ⟦Square⟧ : public Shape, private Tagged {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 6
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 12
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦class Square : public Shape, private Tagged {}⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 7,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 46
+                    }
+                  }
+                }
+              },
+              {
+                "name": "Shared",
+                "kind": "Struct",
+                "at": {
+                  "$place": "struct ⟦Shared⟧ : virtual Shape {};",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 13
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦struct Shared : virtual Shape {}⟧;",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 9,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 9,
+                      "character": 32
+                    }
+                  }
+                }
               }
             ]
           }

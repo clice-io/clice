@@ -21,30 +21,42 @@
       ]
     },
     {
+      "path": "limits.h",
+      "text": "#ifndef LIMIT\n#define LIMIT 64\n#endif\n\nint limited();\n",
+      "markers": [
+        {
+          "name": "limits",
+          "begin": 43,
+          "end": 43,
+          "range": false
+        }
+      ]
+    },
+    {
       "path": "main.cpp",
-      "text": "#include \"widget.h\"\n#include \"defined.h\"\n#include \"unguarded.h\"\n\nint count = WIDGET_LIMIT + SETTING;\n",
+      "text": "#include \"widget.h\"\n#include \"defined.h\"\n#include \"unguarded.h\"\n#include \"limits.h\"\n\nint count = WIDGET_LIMIT + SETTING + LIMIT;\n",
       "markers": []
     },
     {
       "path": "unguarded.h",
-      "text": "// A macro defined under a condition that leaves code outside it guards\n// nothing.\n\nint before();\n\n#ifndef SETTING\n#define SETTING 1\n#endif\n",
+      "text": "int before();\n\n#ifndef SETTING\n#define SETTING 1\n#endif\n",
       "markers": [
         {
           "name": "unguarded",
-          "begin": 89,
-          "end": 89,
+          "begin": 4,
+          "end": 4,
           "range": false
         }
       ]
     },
     {
       "path": "widget.h",
-      "text": "// The guard's macro is how the header keeps itself from being read twice,\n// nothing it declares.\n\n#ifndef WIDGET_H\n#define WIDGET_H\n\n#define WIDGET_LIMIT 8\n\nstruct Widget {\n    int size;\n};\n\n#endif  // WIDGET_H\n",
+      "text": "#ifndef WIDGET_H\n#define WIDGET_H\n\n#define WIDGET_LIMIT 8\n\nstruct Widget {\n    int size;\n};\n\n#endif  // WIDGET_H\n",
       "markers": [
         {
           "name": "widget",
-          "begin": 166,
-          "end": 166,
+          "begin": 66,
+          "end": 66,
           "range": false
         }
       ]
@@ -66,11 +78,11 @@
                   "path": "widget.h",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 3,
                       "character": 8
                     },
                     "end": {
-                      "line": 6,
+                      "line": 3,
                       "character": 20
                     }
                   }
@@ -84,11 +96,11 @@
                   "path": "widget.h",
                   "range": {
                     "start": {
-                      "line": 8,
+                      "line": 5,
                       "character": 7
                     },
                     "end": {
-                      "line": 8,
+                      "line": 5,
                       "character": 13
                     }
                   }
@@ -103,11 +115,11 @@
                       "path": "widget.h",
                       "range": {
                         "start": {
-                          "line": 9,
+                          "line": 6,
                           "character": 8
                         },
                         "end": {
-                          "line": 9,
+                          "line": 6,
                           "character": 12
                         }
                       }
@@ -157,11 +169,11 @@
                   "path": "unguarded.h",
                   "range": {
                     "start": {
-                      "line": 3,
+                      "line": 0,
                       "character": 4
                     },
                     "end": {
-                      "line": 3,
+                      "line": 0,
                       "character": 10
                     }
                   }
@@ -176,15 +188,59 @@
                   "path": "unguarded.h",
                   "range": {
                     "start": {
-                      "line": 6,
+                      "line": 3,
                       "character": 8
                     },
                     "end": {
-                      "line": 6,
+                      "line": 3,
                       "character": 15
                     }
                   }
                 }
+              }
+            ]
+          }
+        },
+        {
+          "label": "limits.h",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "LIMIT",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦LIMIT⟧ 64",
+                  "path": "limits.h",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 13
+                    }
+                  }
+                }
+              },
+              {
+                "name": "limited",
+                "kind": "Function",
+                "at": {
+                  "$place": "int ⟦limited⟧();",
+                  "path": "limits.h",
+                  "range": {
+                    "start": {
+                      "line": 4,
+                      "character": 4
+                    },
+                    "end": {
+                      "line": 4,
+                      "character": 11
+                    }
+                  }
+                },
+                "detail": "int ()"
               }
             ]
           }

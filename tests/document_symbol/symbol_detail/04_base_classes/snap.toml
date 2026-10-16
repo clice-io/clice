@@ -1,6 +1,7 @@
 [answers.outline]
 document_symbols = [
     { name = "Shape", kind = "Struct", at = "struct ⟦Shape⟧ {};", detail = "struct" },
+    { name = "Tagged", kind = "Struct", at = "struct ⟦Tagged⟧ {};", detail = "struct" },
     {
         name = "Circle",
         kind = "Struct",
@@ -10,11 +11,14 @@ document_symbols = [
             { name = "radius", kind = "Field", at = "double ⟦radius⟧;", detail = "double" },
         ],
     },
+    { name = "Square", kind = "Class", at = "class ⟦Square⟧ : public Shape, private Tagged {};", detail = "class : public Shape, private Tagged" },
+    { name = "Shared", kind = "Struct", at = "struct ⟦Shared⟧ : virtual Shape {};", detail = "struct : virtual Shape" },
 ]
 
 [answers.extents]
 document_symbols = [
     { name = "Shape", kind = "Struct", at = "struct ⟦Shape⟧ {};", range = "⟦struct Shape {}⟧;" },
+    { name = "Tagged", kind = "Struct", at = "struct ⟦Tagged⟧ {};", range = "⟦struct Tagged {}⟧;" },
     {
         name = "Circle",
         kind = "Struct",
@@ -24,4 +28,6 @@ document_symbols = [
             { name = "radius", kind = "Field", at = "double ⟦radius⟧;", range = "⟦double radius⟧;" },
         ],
     },
+    { name = "Square", kind = "Class", at = "class ⟦Square⟧ : public Shape, private Tagged {};", range = "⟦class Square : public Shape, private Tagged {}⟧;" },
+    { name = "Shared", kind = "Struct", at = "struct ⟦Shared⟧ : virtual Shape {};", range = "⟦struct Shared : virtual Shape {}⟧;" },
 ]

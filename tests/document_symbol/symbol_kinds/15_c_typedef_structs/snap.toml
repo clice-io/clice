@@ -1,28 +1,31 @@
 [answers.outline]
 document_symbols = [
+    { name = "Point", kind = "Class", at = "} ⟦Point⟧;", detail = "type alias" },
     {
-        name = "Point",
+        name = "(anonymous struct)",
         kind = "Struct",
-        at = "} ⟦Point⟧;",
+        at = "typedef ⟦struct⟧ { @3",
         detail = "struct",
         children = [
             { name = "x", kind = "Field", at = "int ⟦x⟧;", detail = "int" },
             { name = "y", kind = "Field", at = "int ⟦y⟧;", detail = "int" },
         ],
     },
+    { name = "Node", kind = "Class", at = "} ⟦Node⟧;", detail = "type alias" },
     {
         name = "Node",
         kind = "Struct",
-        at = "} ⟦Node⟧;",
+        at = "typedef struct ⟦Node⟧ {",
         detail = "struct",
         children = [
             { name = "next", kind = "Field", at = "struct Node* ⟦next⟧;", detail = "struct Node *" },
         ],
     },
+    { name = "Color", kind = "Class", at = "typedef enum { Red, Green } ⟦Color⟧;", detail = "type alias" },
     {
-        name = "Color",
+        name = "(anonymous enum)",
         kind = "Enum",
-        at = "typedef enum { Red, Green } ⟦Color⟧;",
+        at = "typedef ⟦enum⟧ { Red, Green } Color;",
         detail = "enum",
         children = [
             { name = "Red", kind = "EnumMember", at = "typedef enum { ⟦Red⟧, Green } Color;", detail = "int" },
@@ -39,34 +42,57 @@ document_symbols = [
             { name = "z", kind = "Field", at = "int ⟦z⟧;", detail = "int" },
         ],
     },
+    { name = "Handle", kind = "Class", at = "} *⟦Handle⟧;", detail = "type alias" },
+    {
+        name = "(anonymous struct)",
+        kind = "Struct",
+        at = "typedef ⟦struct⟧ { @18",
+        detail = "struct",
+        children = [
+            { name = "value", kind = "Field", at = "int ⟦value⟧;", detail = "int" },
+        ],
+    },
+    { name = "Grid", kind = "Class", at = "} ⟦Grid⟧[3];", detail = "type alias" },
+    {
+        name = "(anonymous struct)",
+        kind = "Struct",
+        at = "typedef ⟦struct⟧ { @22",
+        detail = "struct",
+        children = [
+            { name = "cell", kind = "Field", at = "int ⟦cell⟧;", detail = "int" },
+        ],
+    },
 ]
 
 [answers.extents]
 document_symbols = [
+    { name = "Point", kind = "Class", at = "} ⟦Point⟧;", range = "⟦typedef struct { … } Point⟧ (4 lines)" },
     {
-        name = "Point",
+        name = "(anonymous struct)",
         kind = "Struct",
-        at = "} ⟦Point⟧;",
-        range = "⟦typedef struct { … } Point⟧ (4 lines)",
+        at = "typedef ⟦struct⟧ { @3",
+        range = "typedef ⟦struct { … }⟧ (4 lines)",
         children = [
             { name = "x", kind = "Field", at = "int ⟦x⟧;", range = "⟦int x⟧;" },
             { name = "y", kind = "Field", at = "int ⟦y⟧;", range = "⟦int y⟧;" },
         ],
     },
+    { name = "Node", kind = "Class", at = "} ⟦Node⟧;", range = "⟦typedef struct Node { … } Node⟧ (3 lines)" },
     {
         name = "Node",
         kind = "Struct",
-        at = "} ⟦Node⟧;",
-        range = "⟦typedef struct Node { … } Node⟧ (3 lines)",
+        at = "typedef struct ⟦Node⟧ {",
+        range = "typedef ⟦struct Node { … }⟧ (3 lines)",
         children = [
             { name = "next", kind = "Field", at = "struct Node* ⟦next⟧;", range = "⟦struct Node* next⟧;" },
         ],
     },
+    { name = "Color", kind = "Class", at = "typedef enum { Red, Green } ⟦Color⟧;", range = "⟦typedef enum { Red, Green } Color⟧;" },
     {
-        name = "Color",
+        name = "(anonymous enum)",
         kind = "Enum",
-        at = "typedef enum { Red, Green } ⟦Color⟧;",
-        range = "⟦typedef enum { Red, Green } Color⟧;",
+        at = "typedef ⟦enum⟧ { Red, Green } Color;",
+        range = "typedef ⟦enum { Red, Green }⟧ Color;",
         children = [
             { name = "Red", kind = "EnumMember", at = "typedef enum { ⟦Red⟧, Green } Color;", range = "typedef enum { ⟦Red⟧, Green } Color;" },
             { name = "Green", kind = "EnumMember", at = "typedef enum { Red, ⟦Green⟧ } Color;", range = "typedef enum { Red, ⟦Green⟧ } Color;" },
@@ -80,6 +106,26 @@ document_symbols = [
         range = "typedef ⟦struct Point3 { … }⟧ (3 lines)",
         children = [
             { name = "z", kind = "Field", at = "int ⟦z⟧;", range = "⟦int z⟧;" },
+        ],
+    },
+    { name = "Handle", kind = "Class", at = "} *⟦Handle⟧;", range = "⟦typedef struct { … } *Handle⟧ (3 lines)" },
+    {
+        name = "(anonymous struct)",
+        kind = "Struct",
+        at = "typedef ⟦struct⟧ { @18",
+        range = "typedef ⟦struct { … }⟧ (3 lines) @+0",
+        children = [
+            { name = "value", kind = "Field", at = "int ⟦value⟧;", range = "⟦int value⟧;" },
+        ],
+    },
+    { name = "Grid", kind = "Class", at = "} ⟦Grid⟧[3];", range = "⟦typedef struct { … } Grid[3]⟧ (3 lines)" },
+    {
+        name = "(anonymous struct)",
+        kind = "Struct",
+        at = "typedef ⟦struct⟧ { @22",
+        range = "typedef ⟦struct { … }⟧ (3 lines) @+0",
+        children = [
+            { name = "cell", kind = "Field", at = "int ⟦cell⟧;", range = "⟦int cell⟧;" },
         ],
     },
 ]

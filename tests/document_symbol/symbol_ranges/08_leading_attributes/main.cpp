@@ -19,3 +19,8 @@ template <typename U>
 U Holder<T>::as() const {
     return U();
 }
+
+struct Ring {
+    char pad[64];
+    alignas(64) int tail;
+};

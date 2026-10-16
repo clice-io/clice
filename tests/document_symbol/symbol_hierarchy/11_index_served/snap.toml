@@ -1,4 +1,4 @@
-[test.index]
+[outline.index]
 document_symbols = [
     { name = "LIMIT", kind = "Constant", at = "#define ⟦LIMIT⟧ 8", range = "#define ⟦LIMIT 8⟧" },
     { name = "FIELDS", kind = "Constant", at = "#define ⟦FIELDS⟧ int generated_a; int generated_b;", range = "#define ⟦FIELDS int generated_a; int generated_b;⟧" },
@@ -32,11 +32,12 @@ document_symbols = [
             },
             { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {", range = "⟦template <typename T> … }⟧ (5 lines)" },
             { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", range = "⟦template struct Box<int>⟧;" },
+            { name = "Size", kind = "Class", at = "} ⟦Size⟧;", range = "⟦typedef struct { … } Size⟧ (3 lines)" },
             {
-                name = "Size",
+                name = "(anonymous struct)",
                 kind = "Struct",
-                at = "} ⟦Size⟧;",
-                range = "⟦typedef struct { … } Size⟧ (3 lines)",
+                at = "typedef ⟦struct⟧ {",
+                range = "typedef ⟦struct { … }⟧ (3 lines)",
                 children = [
                     { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
                 ],
@@ -55,7 +56,7 @@ document_symbols = [
     },
 ]
 
-[test.ast]
+[outline.ast]
 document_symbols = [
     { name = "LIMIT", kind = "Constant", at = "#define ⟦LIMIT⟧ 8", range = "#define ⟦LIMIT 8⟧" },
     { name = "FIELDS", kind = "Constant", at = "#define ⟦FIELDS⟧ int generated_a; int generated_b;", range = "#define ⟦FIELDS int generated_a; int generated_b;⟧" },
@@ -89,11 +90,12 @@ document_symbols = [
             },
             { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {", range = "⟦template <typename T> … }⟧ (5 lines)" },
             { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;", range = "⟦template struct Box<int>⟧;" },
+            { name = "Size", kind = "Class", at = "} ⟦Size⟧;", range = "⟦typedef struct { … } Size⟧ (3 lines)" },
             {
-                name = "Size",
+                name = "(anonymous struct)",
                 kind = "Struct",
-                at = "} ⟦Size⟧;",
-                range = "⟦typedef struct { … } Size⟧ (3 lines)",
+                at = "typedef ⟦struct⟧ {",
+                range = "typedef ⟦struct { … }⟧ (3 lines)",
                 children = [
                     { name = "width", kind = "Field", at = "int ⟦width⟧;", range = "⟦int width⟧;" },
                 ],
@@ -108,6 +110,50 @@ document_symbols = [
                     { name = "doubled", kind = "Variable", at = "int ⟦doubled⟧ = value * LIMIT;", range = "⟦int doubled = value * LIMIT⟧;" },
                 ],
             },
+        ],
+    },
+]
+
+[options.index]
+document_symbols = [
+    {
+        name = "app",
+        kind = "Namespace",
+        at = "namespace ⟦app⟧ {",
+        children = [
+            {
+                name = "Box",
+                kind = "Struct",
+                at = "struct ⟦Box⟧ {",
+                children = [
+                    { name = "value", kind = "Field", at = "T ⟦value⟧;" },
+                    { name = "first", kind = "Field", at = "int ⟦first⟧, second;" },
+                    { name = "second", kind = "Field", at = "int first, ⟦second⟧;" },
+                    {
+                        name = "FIELDS",
+                        kind = "Constant",
+                        at = "⟦FIELDS⟧",
+                        children = [
+                            { name = "generated_a", kind = "Field", at = "⟦FIELDS⟧" },
+                            { name = "generated_b", kind = "Field", at = "⟦FIELDS⟧" },
+                        ],
+                    },
+                    { name = "convert", kind = "Method", at = "U ⟦convert⟧() const;" },
+                ],
+            },
+            { name = "Box<T>::convert", kind = "Method", at = "U Box<T>::⟦convert⟧() const {" },
+            { name = "Box<int>", kind = "Struct", at = "template struct ⟦Box⟧<int>;" },
+            { name = "Size", kind = "Class", at = "} ⟦Size⟧;" },
+            {
+                name = "(anonymous struct)",
+                kind = "Struct",
+                at = "typedef ⟦struct⟧ {",
+                children = [
+                    { name = "width", kind = "Field", at = "int ⟦width⟧;" },
+                ],
+            },
+            { name = "alias", kind = "Namespace", at = "namespace ⟦alias⟧ = app;" },
+            { name = "scale", kind = "Function", at = "[[nodiscard]] int ⟦scale⟧(int value) {" },
         ],
     },
 ]

@@ -39,7 +39,7 @@ auto attribute_begin(const clang::Attr& attr,
                      const clang::SourceManager& sources,
                      const clang::LangOptions& lang_opts) -> clang::SourceLocation {
     auto begin = attr.getRange().getBegin();
-    if(begin.isMacroID() || !attr.isStandardAttributeSyntax()) {
+    if(begin.isMacroID() || !attr.isStandardAttributeSyntax() || attr.isAlignas()) {
         return sources.getExpansionLoc(begin);
     }
     auto at = begin;
@@ -51,7 +51,7 @@ auto attribute_begin(const clang::Attr& attr,
         at = previous->getLocation();
         if(previous->is(clang::tok::l_square)) {
             auto outer = clang::Lexer::findPreviousToken(at, sources, lang_opts, false);
-            return outer && outer->is(clang::tok::l_square) ? outer->getLocation() : at;
+            return outer && outer->is(clang::tok::l_square) ? outer->getLocation() : begin;
         }
     }
     return begin;

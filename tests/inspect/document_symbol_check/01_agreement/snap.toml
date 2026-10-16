@@ -5,9 +5,44 @@ stdout = '''
   "files": {
     "main.cpp": {
       "result": {
-        "ast": 48,
-        "index": 48,
+        "ast": 50,
+        "index": 50,
         "differences": []
+      },
+      "markers": null,
+      "error": null,
+      "diagnostics": null
+    }
+  }
+}
+'''
+exit = 0
+
+[test."$ clice inspect document_symbol_check marks.cpp"]
+stdout = '''
+{
+  "feature": "document_symbol_check",
+  "files": {
+    "marks.cpp": {
+      "result": {
+        "ast": 3,
+        "index": 4,
+        "differences": [
+          {
+            "line": 6,
+            "column": 1,
+            "field": "only_index",
+            "ast": "",
+            "index": "File Disabled"
+          },
+          {
+            "line": 9,
+            "column": 5,
+            "field": "parent",
+            "ast": "(top level)",
+            "index": "Disabled"
+          }
+        ]
       },
       "markers": null,
       "error": null,

@@ -387,7 +387,12 @@ std::pair<std::string, LocalSourceRange> invocation(llvm::StringRef content,
     constexpr std::size_t limit = 80;
     auto written = joined(content, arguments);
     if(written.size() > limit) {
-        written.resize(limit);
+        // At a character's first byte, not inside a UTF-8 sequence.
+        auto cut = limit;
+        while(cut > 0 && (static_cast<unsigned char>(written[cut]) & 0xC0) == 0x80) {
+            cut -= 1;
+        }
+        written.resize(cut);
         written += "...)";
     }
     return {text + written, range};
@@ -550,9 +555,13 @@ bool names_tag(llvm::StringRef content,
     if(alias.range.end > alias.selection_range.end) {
         return false;
     }
-    Lexer lexer(content.slice(tag.range.end, alias.selection_range.begin),
-                {.lang_opts = &lang_opts});
-    for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
+    auto lexer = Lexer::from_line(content, tag.range.end, {.lang_opts = &lang_opts});
+    for(auto token = lexer.advance();
+        !token.is_eof() && token.range.begin < alias.selection_range.begin;
+        token = lexer.advance()) {
+        if(token.range.begin < tag.range.end) {
+            continue;
+        }
         switch(token.kind) {
             case clang::tok::star:
             case clang::tok::amp:
@@ -1090,11 +1099,15 @@ auto document_symbols(CompilationUnit& unit,
             marks.push_back(mark);
         }
     }
+    // The editor's text, without the line a header compiled in its
+    // includer's context gains; a copy, as the lexer reads past a slice.
+    auto focus = unit.focus_file();
+    auto text = focus.content().take_front(unit.text_end(focus.file())).str();
     return outline(Collector(unit).collect(),
                    macros,
                    semantics.module_declarations(),
                    marks,
-                   unit.focus_file().content(),
+                   text,
                    unit.lang_options(),
                    options);
 }

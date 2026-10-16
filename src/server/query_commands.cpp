@@ -534,17 +534,19 @@ Outcome<DocumentSymbolsResult> document_symbols(Context& ctx, const Spelling& pa
                                                    entries,
                                                    resolve,
                                                    {.locals = false});
-    // A macro's entry is its `#define`, where its symbol is declared.
-    llvm::DenseMap<std::uint32_t, index::SymbolHash> macros;
+    // The entry of a `#define` or a module declaration is where its symbol
+    // is declared.
+    llvm::DenseMap<std::uint32_t, index::SymbolHash> declared;
     for(const auto& decl: entries.decls) {
-        if(auto info = resolve(decl.symbol); info && info->kind == SymbolKind::Macro) {
-            macros.try_emplace(decl.range.begin, decl.symbol);
+        if(auto info = resolve(decl.symbol);
+           info && (info->kind == SymbolKind::Macro || info->kind == SymbolKind::Module)) {
+            declared.try_emplace(decl.range.begin, decl.symbol);
         }
     }
     auto list = [&](this auto& self, llvm::ArrayRef<feature::DocumentSymbol> symbols) -> void {
         for(const auto& symbol: symbols) {
             auto hash =
-                symbol.entity != 0 ? symbol.entity : macros.lookup(symbol.selection_range.begin);
+                symbol.entity != 0 ? symbol.entity : declared.lookup(symbol.selection_range.begin);
             if(auto info = hash != 0 ? resolve(hash) : std::nullopt) {
                 auto extent = source->site(symbol.range);
                 auto name = source->site(symbol.selection_range);

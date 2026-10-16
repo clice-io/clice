@@ -12,7 +12,7 @@
   "files": [
     {
       "path": "main.cpp",
-      "text": "struct MetaObject {};\n\n#define OBJECT                                          \\\npublic:                                                 \\\n    static const MetaObject staticMetaObject;           \\\n    virtual const MetaObject* metaObject() const;       \\\n                                                        \\\nprivate:                                                \\\n    static void static_metacall(int, void**);\n\nclass Window {\n    OBJECT\npublic:\n    void show();\n};\n\n#define TEST(suite, name)                               \\\n    class suite##_##name##_Test {                       \\\n    public:                                             \\\n        suite##_##name##_Test() = default;              \\\n                                                        \\\n    private:                                            \\\n        void TestBody();                                \\\n        static const int test_info_;                    \\\n    };                                                  \\\n    const int suite##_##name##_Test::test_info_ = 0;    \\\n    void suite##_##name##_Test::TestBody()\n\nTEST(Math, Adds) {\n    int sum = 1 + 1;\n}\n\nTEST(Math, Subtracts) {\n    int difference = 2 - 1;\n}\n\n#define HANDLER(name) void name()\n\nHANDLER(on_ready);\n",
+      "text": "struct MetaObject {};\n\n#define OBJECT                                          \\\npublic:                                                 \\\n    static const MetaObject staticMetaObject;           \\\n    virtual const MetaObject* metaObject() const;       \\\n                                                        \\\nprivate:                                                \\\n    static void static_metacall(int, void**);\n\nclass Window {\n    OBJECT\npublic:\n    void show();\n};\n\n#define TEST(suite, name)                               \\\n    class suite##_##name##_Test {                       \\\n    public:                                             \\\n        suite##_##name##_Test() = default;              \\\n                                                        \\\n    private:                                            \\\n        void TestBody();                                \\\n        static const int test_info_;                    \\\n    };                                                  \\\n    const int suite##_##name##_Test::test_info_ = 0;    \\\n    void suite##_##name##_Test::TestBody()\n\nTEST(Math, Adds) {\n    int sum = 1 + 1;\n}\n\nTEST(Math, Subtracts) {\n    int difference = 2 - 1;\n}\n\n#define HANDLER(name) void name()\n\nHANDLER(on_ready);\n\n#define STRONG_TYPEDEF(base, name)                      \\\n    struct name {                                       \\\n        name() = default;                               \\\n        name(base raw) : value(raw) {}                  \\\n        base value;                                     \\\n    };\n\nSTRONG_TYPEDEF(int, Meters)\n",
       "markers": []
     }
   ],
@@ -468,6 +468,102 @@
                   }
                 },
                 "detail": "void ()"
+              },
+              {
+                "name": "STRONG_TYPEDEF",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦STRONG_TYPEDEF⟧(base, name)                      \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 40,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 40,
+                      "character": 22
+                    }
+                  }
+                },
+                "detail": "(base, name)"
+              },
+              {
+                "name": "STRONG_TYPEDEF(int, Meters)",
+                "kind": "Constant",
+                "at": {
+                  "$place": "⟦STRONG_TYPEDEF⟧(int, Meters)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 47,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 47,
+                      "character": 14
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Meters",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "STRONG_TYPEDEF(int, ⟦Meters⟧)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 20
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 26
+                        }
+                      }
+                    },
+                    "detail": "struct"
+                  },
+                  {
+                    "name": "Meters",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "STRONG_TYPEDEF(int, ⟦Meters⟧)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 20
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 26
+                        }
+                      }
+                    },
+                    "detail": "()"
+                  },
+                  {
+                    "name": "value",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "⟦STRONG_TYPEDEF⟧(int, Meters)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 14
+                        }
+                      }
+                    },
+                    "detail": "int"
+                  }
+                ]
               }
             ]
           }
@@ -1223,6 +1319,168 @@
                     }
                   }
                 }
+              },
+              {
+                "name": "STRONG_TYPEDEF",
+                "kind": "Constant",
+                "at": {
+                  "$place": "#define ⟦STRONG_TYPEDEF⟧(base, name)                      \\",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 40,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 40,
+                      "character": 22
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "#define ⟦STRONG_TYPEDEF(base, name)                      \\ … };⟧ (6 lines)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 40,
+                      "character": 8
+                    },
+                    "end": {
+                      "line": 45,
+                      "character": 6
+                    }
+                  }
+                }
+              },
+              {
+                "name": "STRONG_TYPEDEF(int, Meters)",
+                "kind": "Constant",
+                "at": {
+                  "$place": "⟦STRONG_TYPEDEF⟧(int, Meters)",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 47,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 47,
+                      "character": 14
+                    }
+                  }
+                },
+                "range": {
+                  "$place": "⟦STRONG_TYPEDEF(int, Meters)⟧",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 47,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 47,
+                      "character": 27
+                    }
+                  }
+                },
+                "children": [
+                  {
+                    "name": "Meters",
+                    "kind": "Struct",
+                    "at": {
+                      "$place": "STRONG_TYPEDEF(int, ⟦Meters⟧)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 20
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 26
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦STRONG_TYPEDEF(int, Meters)⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 27
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "Meters",
+                    "kind": "Method",
+                    "at": {
+                      "$place": "STRONG_TYPEDEF(int, ⟦Meters⟧)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 20
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 26
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦STRONG_TYPEDEF(int, Meters)⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 27
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "name": "value",
+                    "kind": "Field",
+                    "at": {
+                      "$place": "⟦STRONG_TYPEDEF⟧(int, Meters)",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 14
+                        }
+                      }
+                    },
+                    "range": {
+                      "$place": "⟦STRONG_TYPEDEF(int, Meters)⟧",
+                      "path": "main.cpp",
+                      "range": {
+                        "start": {
+                          "line": 47,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 47,
+                          "character": 27
+                        }
+                      }
+                    }
+                  }
+                ]
               }
             ]
           }

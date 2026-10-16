@@ -22,3 +22,9 @@ document_symbols = [
     { name = "before", kind = "Function", at = "int ⟦before⟧();", detail = "int ()" },
     { name = "SETTING", kind = "Constant", at = "#define ⟦SETTING⟧ 1" },
 ]
+
+[answers."limits.h"]
+document_symbols = [
+    { name = "LIMIT", kind = "Constant", at = "#define ⟦LIMIT⟧ 64" },
+    { name = "limited", kind = "Function", at = "int ⟦limited⟧();", detail = "int ()" },
+]

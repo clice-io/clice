@@ -1,6 +1,6 @@
 [test."$ clice index"]
 stdout = '''
-Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.
+Indexed 1 translation unit in #s: 2 file shards (# KB), 7 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -65,31 +65,38 @@ stdout = '''
   "result": {
     "symbols": [
       {
-        "name": "Point",
-        "kind": "Struct",
+        "name": "API_VERSION",
+        "kind": "Macro",
         "startLine": 3,
         "endLine": 3,
+        "symbol": "#73b66f848912e0e6"
+      },
+      {
+        "name": "Point",
+        "kind": "Struct",
+        "startLine": 5,
+        "endLine": 5,
         "symbol": "#00fc195501113d53"
       },
       {
         "name": "twice",
         "kind": "Function",
-        "startLine": 5,
-        "endLine": 5,
+        "startLine": 7,
+        "endLine": 7,
         "symbol": "#54d7b1312102e8e6"
       },
       {
         "name": "geo",
         "kind": "Namespace",
-        "startLine": 7,
-        "endLine": 9,
+        "startLine": 9,
+        "endLine": 11,
         "symbol": "#b8d40a731e70f055"
       },
       {
         "name": "area",
         "kind": "Function",
-        "startLine": 8,
-        "endLine": 8,
+        "startLine": 10,
+        "endLine": 10,
         "symbol": "#bb577830b310f5fe"
       }
     ]

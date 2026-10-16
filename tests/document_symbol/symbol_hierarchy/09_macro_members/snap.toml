@@ -62,6 +62,17 @@ document_symbols = [
     },
     { name = "HANDLER", kind = "Constant", at = "#define ⟦HANDLER⟧(name) void name()", detail = "(name)" },
     { name = "on_ready", kind = "Function", at = "HANDLER(⟦on_ready⟧);", detail = "void ()" },
+    { name = "STRONG_TYPEDEF", kind = "Constant", at = '#define ⟦STRONG_TYPEDEF⟧(base, name)                      \', detail = "(base, name)" },
+    {
+        name = "STRONG_TYPEDEF(int, Meters)",
+        kind = "Constant",
+        at = "⟦STRONG_TYPEDEF⟧(int, Meters)",
+        children = [
+            { name = "Meters", kind = "Struct", at = "STRONG_TYPEDEF(int, ⟦Meters⟧)", detail = "struct" },
+            { name = "Meters", kind = "Method", at = "STRONG_TYPEDEF(int, ⟦Meters⟧)", detail = "()" },
+            { name = "value", kind = "Field", at = "⟦STRONG_TYPEDEF⟧(int, Meters)", detail = "int" },
+        ],
+    },
 ]
 
 [answers.extents]
@@ -131,4 +142,16 @@ document_symbols = [
     },
     { name = "HANDLER", kind = "Constant", at = "#define ⟦HANDLER⟧(name) void name()", range = "#define ⟦HANDLER(name) void name()⟧" },
     { name = "on_ready", kind = "Function", at = "HANDLER(⟦on_ready⟧);", range = "⟦HANDLER(on_ready)⟧;" },
+    { name = "STRONG_TYPEDEF", kind = "Constant", at = '#define ⟦STRONG_TYPEDEF⟧(base, name)                      \', range = '#define ⟦STRONG_TYPEDEF(base, name)                      \ … };⟧ (6 lines)' },
+    {
+        name = "STRONG_TYPEDEF(int, Meters)",
+        kind = "Constant",
+        at = "⟦STRONG_TYPEDEF⟧(int, Meters)",
+        range = "⟦STRONG_TYPEDEF(int, Meters)⟧",
+        children = [
+            { name = "Meters", kind = "Struct", at = "STRONG_TYPEDEF(int, ⟦Meters⟧)", range = "⟦STRONG_TYPEDEF(int, Meters)⟧" },
+            { name = "Meters", kind = "Method", at = "STRONG_TYPEDEF(int, ⟦Meters⟧)", range = "⟦STRONG_TYPEDEF(int, Meters)⟧" },
+            { name = "value", kind = "Field", at = "⟦STRONG_TYPEDEF⟧(int, Meters)", range = "⟦STRONG_TYPEDEF(int, Meters)⟧" },
+        ],
+    },
 ]

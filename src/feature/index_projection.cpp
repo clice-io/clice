@@ -358,6 +358,7 @@ auto index_document_symbols(llvm::StringRef content,
 
     std::vector<OutlineEntry> declarations;
     std::vector<std::uint32_t> macro_names;
+    llvm::DenseSet<std::uint32_t> module_names;
     auto add = [&](const IndexDecl& decl) {
         if(!decl.extent.valid() || decl.extent.begin >= decl.extent.end) {
             return;
@@ -368,6 +369,10 @@ auto index_document_symbols(llvm::StringRef content,
         }
         if(info->kind == SymbolKind::Macro) {
             macro_names.push_back(decl.range.begin);
+            return;
+        }
+        if(info->kind == SymbolKind::Module) {
+            module_names.insert(decl.range.begin);
             return;
         }
         auto flag = [&](index::SymbolFlags bit) {
@@ -408,9 +413,18 @@ auto index_document_symbols(llvm::StringRef content,
             macros.push_back(directive);
         }
     }
+    // The module declarations the compile took for one: a raw scan also
+    // reads C code such as `module AP_MODULE_DECLARE_DATA example = {`.
+    std::vector<LexicalInfo::ModuleDeclaration> modules;
+    for(const auto& module: lexical.modules) {
+        if(module.kind == LexicalInfo::ModuleDeclaration::Kind::Declaration &&
+           module_names.contains(module.name_range().begin)) {
+            modules.push_back(module);
+        }
+    }
     return outline(std::move(declarations),
                    macros,
-                   lexical.modules,
+                   modules,
                    lexical.pragma_marks,
                    content,
                    lang_opts,
