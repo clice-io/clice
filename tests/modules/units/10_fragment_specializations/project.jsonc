@@ -1,0 +1,6 @@
+{
+  // Built the way clice's own build builds its modules: a full BMI keeps
+  // the specializations the global module fragment declares, which nothing
+  // in the purview names.
+  "units": { "pairs.cppm": ["-fno-modules-reduced-bmi"], "main.cpp": [] }
+}
