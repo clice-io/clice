@@ -1,3 +1,4 @@
+import { expect } from "vitest";
 import { answers, test } from "@clice/tools/testing";
 
 // The headers, each opened in the context of the source that includes it;
@@ -19,4 +20,5 @@ test("in its includer's context", async (t) => {
     s.open("needs_host.h");
     await s.sync();
     await t.show("needs_host.h", s.documentSymbols("needs_host.h"));
+    expect((await s.stats()).synthesizedContexts).toBe(1);
 });

@@ -34,8 +34,20 @@
     },
     {
       "path": "main.cpp",
-      "text": "#include \"widget.h\"\n#include \"defined.h\"\n#include \"unguarded.h\"\n#include \"limits.h\"\n\nint count = WIDGET_LIMIT + SETTING + LIMIT;\n",
+      "text": "#include \"widget.h\"\n#include \"defined.h\"\n#include \"unguarded.h\"\n#include \"limits.h\"\n#include \"needs_host.h\"\n\nint count = WIDGET_LIMIT + SETTING + LIMIT;\n",
       "markers": []
+    },
+    {
+      "path": "needs_host.h",
+      "text": "#ifndef NEEDS_HOST_H\n#define NEEDS_HOST_H\n\nWidget make_widget();\n\n#endif\n",
+      "markers": [
+        {
+          "name": "needs_host",
+          "begin": 50,
+          "end": 50,
+          "range": false
+        }
+      ]
     },
     {
       "path": "unguarded.h",
@@ -64,7 +76,7 @@
   ],
   "tests": [
     {
-      "name": "answers",
+      "name": "headers",
       "blocks": [
         {
           "label": "widget.h",
@@ -241,6 +253,36 @@
                   }
                 },
                 "detail": "int ()"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "in its includer's context",
+      "blocks": [
+        {
+          "label": "needs_host.h",
+          "value": {
+            "document_symbols": [
+              {
+                "name": "make_widget",
+                "kind": "Function",
+                "at": {
+                  "$place": "Widget ⟦make_widget⟧();",
+                  "path": "needs_host.h",
+                  "range": {
+                    "start": {
+                      "line": 3,
+                      "character": 7
+                    },
+                    "end": {
+                      "line": 3,
+                      "character": 18
+                    }
+                  }
+                }
               }
             ]
           }
