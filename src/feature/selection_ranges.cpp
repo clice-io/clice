@@ -549,47 +549,53 @@ LocalSourceRange attribute_range(llvm::ArrayRef<Token> tokens,
 
 /// Where an attribute is written: with its argument list and the `[[ ]]`,
 /// `__attribute__(( ))` or `__declspec( )` around it.
-LocalSourceRange attribute_extent(llvm::StringRef content,
-                                  llvm::ArrayRef<Token> tokens,
-                                  const TextSteps& text,
-                                  LocalSourceRange range) {
-    range = attribute_range(tokens, text, range);
-    llvm::SmallVector<const Token*, 3> before;
-    auto it = std::ranges::lower_bound(tokens, range.begin, {}, [](const Token& t) {
+std::optional<LocalSourceRange> attribute_extent(CompilationUnit& unit,
+                                                 llvm::StringRef content,
+                                                 llvm::ArrayRef<Token> tokens,
+                                                 const TextSteps& text,
+                                                 const clang::Attr& attr) {
+    auto& context = unit.context();
+    auto begin = decls::attribute_begin(attr, context.getSourceManager(), context.getLangOpts());
+    auto range = focus_range(unit, clang::SourceRange(begin, attr.getRange().getEnd()));
+    if(!range) {
+        return std::nullopt;
+    }
+    *range = attribute_range(tokens, text, *range);
+    auto it = std::ranges::lower_bound(tokens, range->begin, {}, [](const Token& t) {
         return t.range.begin;
     });
-    while(it != tokens.begin() && before.size() < 3) {
-        it = std::prev(it);
-        if(it->kind != clang::tok::comment) {
-            before.push_back(&*it);
+    const Token* opener = nullptr;
+    if(it != tokens.end() && it->range.begin == range->begin && it->kind == clang::tok::l_square) {
+        opener = &*it;
+    } else {
+        llvm::SmallVector<const Token*, 3> before;
+        while(it != tokens.begin() && before.size() < 3) {
+            it = std::prev(it);
+            if(it->kind != clang::tok::comment) {
+                before.push_back(&*it);
+            }
+        }
+        auto is = [&](std::size_t back, TokenKind kind) {
+            return back < before.size() && before[back]->kind == kind;
+        };
+        auto spelled = [&](std::size_t back, llvm::StringRef word) {
+            return back < before.size() && before[back]->text(content) == word;
+        };
+        if(is(0, clang::tok::l_paren) && is(1, clang::tok::l_paren) &&
+           spelled(2, "__attribute__")) {
+            opener = before[1];
+            range->begin = before[2]->range.begin;
+        } else if(is(0, clang::tok::l_paren) && spelled(1, "__declspec")) {
+            opener = before[0];
+            range->begin = before[1]->range.begin;
         }
     }
-    auto is = [&](std::size_t back, TokenKind kind) {
-        return back < before.size() && before[back]->kind == kind;
-    };
-    auto spelled = [&](std::size_t back, llvm::StringRef word) {
-        return back < before.size() && before[back]->text(content) == word;
-    };
-    const Token* opener = nullptr;
-    const Token* first = nullptr;
-    if(is(0, clang::tok::l_square) && is(1, clang::tok::l_square)) {
-        opener = first = before[1];
-    } else if(is(0, clang::tok::l_paren) && is(1, clang::tok::l_paren) &&
-              spelled(2, "__attribute__")) {
-        opener = before[1];
-        first = before[2];
-    } else if(is(0, clang::tok::l_paren) && spelled(1, "__declspec")) {
-        opener = before[0];
-        first = before[1];
+    if(opener) {
+        if(auto close = text.closers.find(opener->range.begin); close != text.closers.end()) {
+            range->end = std::max(range->end, close->second);
+        }
     }
-    if(!opener) {
-        return range;
-    }
-    auto close = text.closers.find(opener->range.begin);
-    if(close == text.closers.end() || close->second < range.end) {
-        return range;
-    }
-    return {first->range.begin, close->second};
+    return range;
 }
 
 /// A node's step: a type's with its qualifier, a declaration's with the
@@ -618,8 +624,8 @@ std::optional<LocalSourceRange> node_range(CompilationUnit& unit,
                decls::applied_by_pragma(decl->getASTContext(), written.getBegin())) {
                 continue;
             }
-            if(auto focused = focus_range(unit, written)) {
-                range = hull(*range, attribute_extent(content, tokens, text, *focused));
+            if(auto extent = attribute_extent(unit, content, tokens, text, *attr)) {
+                range = hull(*range, *extent);
             }
         }
     } else if(node.get<clang::Attr>()) {

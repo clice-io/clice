@@ -30,11 +30,6 @@ bool is_templated(const clang::Decl* decl) {
     return false;
 }
 
-namespace {
-
-/// Where the attribute specifier holding `attr`, the first attribute of
-/// it, is written: at the `[[` its range leaves out (`[[using gnu: hot]]`
-/// starts at the namespace), a macro spelling it at the macro's name.
 auto attribute_begin(const clang::Attr& attr,
                      const clang::SourceManager& sources,
                      const clang::LangOptions& lang_opts) -> clang::SourceLocation {
@@ -56,8 +51,6 @@ auto attribute_begin(const clang::Attr& attr,
     }
     return begin;
 }
-
-}  // namespace
 
 auto written_range(const clang::Decl* decl) -> clang::SourceRange {
     if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(decl);

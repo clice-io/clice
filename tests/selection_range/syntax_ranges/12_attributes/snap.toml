@@ -28,3 +28,13 @@ selection_ranges = [
     "⟦int counter __attribute__((aligned(8)))⟧;",
     "⟦int counter __attribute__((aligned(8)));⟧",
 ]
+
+[answers.using]
+selection_ranges = [
+    "[[using gnu: ⟦hot⟧]] void warm();",
+    "[[⟦using gnu: hot⟧]] void warm();",
+    "[⟦[using gnu: hot]⟧] void warm();",
+    "⟦[[using gnu: hot]]⟧ void warm();",
+    "⟦[[using gnu: hot]] void warm()⟧;",
+    "⟦[[using gnu: hot]] void warm();⟧",
+]

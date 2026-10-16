@@ -102,9 +102,9 @@ auto doc_comment_range(CompilationUnit& unit, const clang::Decl* decl)
     if(found.comments.empty()) {
         return std::nullopt;
     }
-    return std::pair(found.file,
-                     LocalSourceRange{found.comments.front().range.begin,
-                                      found.comments.back().range.end});
+    return std::pair(
+        found.file,
+        LocalSourceRange{found.comments.front().range.begin, found.comments.back().range.end});
 }
 
 std::string doc_comment(CompilationUnit& unit, const clang::MacroInfo* macro) {
