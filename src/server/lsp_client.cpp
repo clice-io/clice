@@ -833,6 +833,7 @@ void LSPClient::register_language_features() {
             return holding(project,
                            project->features.document_symbol(Ticket::take(session),
                                                              symbol_client,
+                                                             params.text_document.uri,
                                                              ctx.cancellation));
         });
 

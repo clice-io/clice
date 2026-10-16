@@ -794,6 +794,7 @@ Features::RawResult Features::folding_range(Ticket ticket,
 
 Features::RawResult Features::document_symbol(Ticket ticket,
                                               feature::SymbolClient client,
+                                              std::string uri,
                                               kota::cancellation_token token) {
     auto& session = ticket.session;
     auto convert = [&](llvm::ArrayRef<feature::DocumentSymbol> symbols) {
@@ -808,7 +809,7 @@ Features::RawResult Features::document_symbol(Ticket ticket,
             session->positions(),
             PositionEncoding::UTF16,
             client,
-            feature::to_uri(project.file_table.display(session->path_id))));
+            uri));
     };
     std::optional<index::IndexSource> source;
     switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
