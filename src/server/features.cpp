@@ -804,15 +804,14 @@ Features::RawResult Features::document_symbol(Ticket ticket,
                                                                 PositionEncoding::UTF16,
                                                                 client));
         }
-        return to_raw(feature::document_symbols_to_information(
-            symbols,
-            session->positions(),
-            PositionEncoding::UTF16,
-            client,
-            uri));
+        return to_raw(feature::document_symbols_to_information(symbols,
+                                                               session->positions(),
+                                                               PositionEncoding::UTF16,
+                                                               client,
+                                                               uri));
     };
     std::optional<index::IndexSource> source;
-    switch(co_await pick_route(ticket, {.await_cold_attempt = true}, &source)) {
+    switch(co_await pick_route(ticket, {.full_lex = true, .await_cold_attempt = true}, &source)) {
         case Route::Superseded: co_await kota::fail(content_modified());
         case Route::Index: {
             auto symbols = feature::index_document_symbols(

@@ -89,10 +89,9 @@ bool outline_lists(SymbolKind kind, bool unnamed, bool template_parameter) {
 
 namespace {
 
-/// A token's text without its line splices: `SPLIT_\<newline>LIMIT` spells
+/// Source text without its line splices: `SPLIT_\<newline>LIMIT` spells
 /// `SPLIT_LIMIT`.
-std::string spelling(llvm::StringRef content, const Token& token) {
-    auto text = token.text(content);
+std::string unspliced(llvm::StringRef text) {
     std::string result;
     for(auto splice = text.find('\\'); splice != llvm::StringRef::npos; splice = text.find('\\')) {
         auto length = splice_length(text.drop_front(splice));
@@ -101,6 +100,10 @@ std::string spelling(llvm::StringRef content, const Token& token) {
     }
     result += text;
     return result;
+}
+
+std::string spelling(llvm::StringRef content, const Token& token) {
+    return unspliced(token.text(content));
 }
 
 bool is_word(const Token& token) {
@@ -401,9 +404,9 @@ std::pair<std::string, LocalSourceRange> invocation(llvm::StringRef content,
 /// The name a module declaration writes: `app.core:detail`.
 std::string module_name(llvm::StringRef content, const LexicalInfo::ModuleDeclaration& module) {
     auto dotted = [&](llvm::ArrayRef<LocalSourceRange> parts) {
-        llvm::SmallVector<llvm::StringRef> names;
+        llvm::SmallVector<std::string> names;
         for(auto part: parts) {
-            names.push_back(content.slice(part.begin, part.end));
+            names.push_back(unspliced(content.slice(part.begin, part.end)));
         }
         return llvm::join(names, ".");
     };

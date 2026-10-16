@@ -1178,11 +1178,13 @@ auto parameter_name(const clang::FunctionDecl& function, unsigned index) -> llvm
 
 auto call_signature(const clang::FunctionDecl& function, const Options& options) -> std::string {
     llvm::SmallVector<std::string> parameters;
-    for(unsigned index = function.hasCXXExplicitFunctionObjectParameter() ? 1 : 0;
+    bool object = function.hasCXXExplicitFunctionObjectParameter();
+    for(unsigned index = object && !options.polish_for_declaration ? 1 : 0;
         index < function.getNumParams();
         index += 1) {
-        parameters.push_back(
-            parameter(*function.getParamDecl(index), parameter_name(function, index), options));
+        auto written =
+            parameter(*function.getParamDecl(index), parameter_name(function, index), options);
+        parameters.push_back(object && index == 0 ? "this " + written : std::move(written));
     }
     if(function.isVariadic()) {
         parameters.push_back("...");

@@ -266,7 +266,9 @@ auto method_qualifiers(const clang::CXXMethodDecl& method) -> std::string;
 /// The parameters a call of `function` passes arguments to, as every feature
 /// shows them — under their names, with their defaults — then the
 /// function's qualifiers: `(int x, float y = 1) const`. An explicit object
-/// parameter is the object the call is made on, no argument.
+/// parameter is the object the call is made on, no argument; printed as a
+/// declaration (options.polish_for_declaration), it leads the list as
+/// written, `(this Widget& self)`.
 auto call_signature(const clang::FunctionDecl& function, const Options& options) -> std::string;
 
 /// Render a function parameter with its default value, under the first name

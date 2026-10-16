@@ -277,7 +277,7 @@ private:
 
     struct RouteOptions {
         /// The projection raw-lexes the whole buffer (semantic tokens,
-        /// folds): it follows the investment policy once the buffer is
+        /// folds, the outline): it follows the investment policy once the buffer is
         /// oversized, while index- and cursor-backed answers serve at any
         /// size.
         bool full_lex = false;
