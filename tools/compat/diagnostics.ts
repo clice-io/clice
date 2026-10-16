@@ -151,19 +151,31 @@ function checkArguments(args: string[]): string[] {
 const COMPILER_LINE =
     /^(.*?):(\d+):(\d+): (error|fatal error|warning|remark|note): (.*?)(?: \[([^\]]+)\])?$/;
 
-async function clangFindings(opts: Options, entry: DatabaseEntry): Promise<Finding[]> {
+/// What clang reports in the file, or why it did not check all of it: the
+/// command does not run (a module file the build has not left on disk), or
+/// a fatal error stops it.
+async function clangFindings(opts: Options, entry: DatabaseEntry): Promise<Finding[] | string> {
     const file = entrySource(entry);
     const ran = await run(opts.clang, checkArguments(entryArguments(entry)), {
         cwd: entry.directory,
         env: systemEnv(),
     });
+    if (ran.status === null) {
+        return ran.error ?? "clang did not run";
+    }
     const findings: Finding[] = [];
     for (const text of ran.stderr.split("\n")) {
         const match = COMPILER_LINE.exec(text);
         if (match === null) {
+            if (text.includes("error: ")) {
+                return text;
+            }
             continue;
         }
         const [, where = "", line = "0", , level = "", message = "", flags = ""] = match;
+        if (level === "fatal error") {
+            return text;
+        }
         if (level === "note" || path.resolve(entry.directory, where) !== file) {
             continue;
         }
@@ -350,6 +362,7 @@ function report(
     root: string,
     entries: DatabaseEntry[],
     found: Partial<Record<Tool, Map<string, Finding[]>>>,
+    unchecked: Map<string, string>,
 ) {
     const all: Difference[] = [];
     for (const entry of entries) {
@@ -357,7 +370,7 @@ function report(
         const by: Partial<Record<Tool, Finding[]>> = {};
         for (const tool of TOOLS) {
             const map = found[tool];
-            if (map !== undefined) {
+            if (map !== undefined && !(tool === "clang" && unchecked.has(file))) {
                 by[tool] = map.get(file) ?? [];
             }
         }
@@ -375,6 +388,13 @@ function report(
         "(reported by, count, kind; then up to three places)",
         "",
     ];
+    if (unchecked.size > 0) {
+        out.push(`clang did not check ${unchecked.size} files, compared without it:`);
+        for (const [file, reason] of [...unchecked].slice(0, 3)) {
+            out.push(`         ${path.relative(root, file)}: ${reason}`);
+        }
+        out.push("");
+    }
     for (const [key, list] of sorted) {
         out.push(`${String(list.length).padStart(5)}  ${key}`);
         for (const difference of list.slice(0, 3)) {
@@ -396,11 +416,17 @@ async function main() {
 
     const found: Partial<Record<Tool, Map<string, Finding[]>>> = {};
     const clang = new Map<string, Finding[]>();
+    const unchecked = new Map<string, string>();
     const queue = [...entries];
     await Promise.all(
         Array.from({ length: opts.jobs }, async () => {
             for (let entry = queue.shift(); entry !== undefined; entry = queue.shift()) {
-                clang.set(entrySource(entry), await clangFindings(opts, entry));
+                const findings = await clangFindings(opts, entry);
+                if (typeof findings === "string") {
+                    unchecked.set(entrySource(entry), findings);
+                } else {
+                    clang.set(entrySource(entry), findings);
+                }
             }
         }),
     );
@@ -418,6 +444,7 @@ async function main() {
             const file = entrySource(entry);
             return {
                 file: URI.file(file).toString(),
+                clangNotChecked: unchecked.get(file),
                 ...Object.fromEntries(
                     TOOLS.filter((tool) => found[tool] !== undefined).map((tool) => [
                         tool,
@@ -428,7 +455,7 @@ async function main() {
         });
         fs.writeFileSync(opts.json, JSON.stringify(files, null, 2));
     }
-    process.stdout.write(`${report(opts.workspace, entries, found)}\n`);
+    process.stdout.write(`${report(opts.workspace, entries, found, unchecked)}\n`);
 }
 
 await main();
