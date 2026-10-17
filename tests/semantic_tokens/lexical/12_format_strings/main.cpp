@@ -8,6 +8,7 @@ void report(Logger logger, int count, double ratio, const char* name) {
     log_line(R"(%d raw \n)", count);
     log_line("%2$s: %1$*3$d\n", count, name, 8);
     log_line(COUNT_FORMAT, count);
+    log_line("%b flags\n", count);
     fmt::print(R"({:\<8})", count);
     fmt::print(R"{}({} items){}", count);
     logger.log("%d member", count);

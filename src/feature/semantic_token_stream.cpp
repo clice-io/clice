@@ -191,7 +191,7 @@ std::size_t printf_conversion_length(llvm::StringRef text) {
         }
     }
     cursor.skip("hljztLqI0123456789");
-    return cursor.end("diouxXeEfFgGaAcspnCSm");
+    return cursor.end("diouxXbBeEfFgGaAcspnCSm");
 }
 
 /// The length of the scanf conversion specification at `text[0]`, a `%`:
@@ -211,7 +211,7 @@ std::size_t scanf_conversion_length(llvm::StringRef text) {
         auto close = text.find(']', cursor.i);
         return close == llvm::StringRef::npos ? 0 : close + 1;
     }
-    return cursor.end("diouxXeEfFgGaAcspnCS");
+    return cursor.end("diouxXbeEfFgGaAcspnCS");
 }
 
 /// Whether `name` is a check clang evaluates in a condition, whose operand
@@ -276,6 +276,7 @@ public:
                 comment(token.range);
                 continue;
             }
+            doc_closer.clear();
             classify(lexer, token);
         }
         return std::move(tokens);
@@ -741,6 +742,7 @@ private:
     void comment(LocalSourceRange range) {
         auto text = content.slice(range.begin, range.end);
         if(!is_doc_comment(text)) {
+            doc_closer.clear();
             emit(range, {{.kind = Kind::Comment}, false});
             return;
         }
@@ -749,10 +751,35 @@ private:
             return range.begin + static_cast<std::uint32_t>(offset);
         };
         std::size_t segment = 0;
+        auto mark = [&](std::size_t begin, std::size_t end, Kind kind, bool semantic) {
+            emit(
+                {
+                    at(segment),
+                    at(begin)
+            },
+                {{.kind = Kind::Comment, .modifiers = documentation}, false});
+            emit(
+                {
+                    at(begin),
+                    at(end)
+            },
+                {{.kind = kind, .modifiers = documentation}, semantic});
+            segment = end;
+        };
         // The comment's text starts a word right past its marker, `///` or
         // a trailing one, `///<`.
         std::size_t payload = text.size() > 3 && text[3] == '<' ? 4 : 3;
         for(std::size_t i = payload; i < text.size(); i += 1) {
+            if(!doc_closer.empty()) {
+                auto close = text.find(doc_closer, i);
+                if(close == llvm::StringRef::npos) {
+                    break;
+                }
+                mark(close, close + doc_closer.size(), Kind::Keyword, false);
+                doc_closer.clear();
+                i = segment - 1;
+                continue;
+            }
             if((text[i] != '@' && text[i] != '\\') ||
                (i > payload && !at_doc_word_start(text, i))) {
                 continue;
@@ -761,26 +788,18 @@ private:
             if(name.empty() || !is_doc_command(name)) {
                 continue;
             }
-            auto name_end = i + 1 + name.size();
-            emit(
-                {
-                    at(segment),
-                    at(i)
-            },
-                {{.kind = Kind::Comment, .modifiers = documentation}, false});
-            emit(
-                {
-                    at(i),
-                    at(name_end)
-            },
-                {{.kind = Kind::Keyword, .modifiers = documentation}, false});
-            segment = name_end;
-            i = name_end - 1;
+            auto marker = text[i];
+            mark(i, i + 1 + name.size(), Kind::Keyword, false);
+            i = segment - 1;
+            if(auto closer = doc_raw_end(name); !closer.empty()) {
+                doc_closer = (llvm::Twine(marker) + closer).str();
+                continue;
+            }
             if(name != "param" && name != "tparam") {
                 continue;
             }
             // `@param[in] name`, `@param name`.
-            auto word = name_end;
+            auto word = segment;
             if(word < text.size() && text[word] == '[') {
                 auto close = text.find(']', word);
                 word = close == llvm::StringRef::npos ? text.size() : close + 1;
@@ -796,21 +815,8 @@ private:
             if(word_end == word) {
                 continue;
             }
-            emit(
-                {
-                    at(segment),
-                    at(word)
-            },
-                {{.kind = Kind::Comment, .modifiers = documentation}, false});
-            auto kind = name == "param" ? Kind::Parameter : Kind::TypeParameter;
-            emit(
-                {
-                    at(word),
-                    at(word_end)
-            },
-                {{.kind = kind, .modifiers = documentation}, true});
-            segment = word_end;
-            i = word_end - 1;
+            mark(word, word_end, name == "param" ? Kind::Parameter : Kind::TypeParameter, true);
+            i = segment - 1;
         }
         emit(
             {
@@ -889,6 +895,11 @@ private:
     std::optional<std::size_t> definition;
     bool definition_empty = true;
     bool definition_control = false;
+
+    /// The command closing the raw text — code, a formula, hidden text — a
+    /// documentation comment opened, which may end on a later line of a
+    /// `///` block (`@endcode`).
+    std::string doc_closer;
 
     std::size_t next_span = 0;
     std::vector<SemanticToken> tokens;

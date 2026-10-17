@@ -135,6 +135,13 @@ semantic_tokens = [
     { at = "⟦log_line⟧(COUNT_FORMAT, count);", type = "function", modifiers = ["global"] },
     { at = "log_line(⟦COUNT_FORMAT⟧, count);", type = "macro" },
     { at = "log_line(COUNT_FORMAT, ⟦count⟧);", type = "parameter", modifiers = ["local"] },
+    { at = '⟦log_line⟧("%b flags\n", count);', type = "function", modifiers = ["global"] },
+    { at = 'log_line(⟦"⟧%b flags\n", count);', type = "string" },
+    { at = 'log_line("⟦%b⟧ flags\n", count);', type = "formatSpecifier" },
+    { at = 'log_line("%b⟦ flags⟧\n", count);', type = "string" },
+    { at = 'log_line("%b flags⟦\n⟧", count);', type = "escape" },
+    { at = 'log_line("%b flags\n⟦"⟧, count);', type = "string" },
+    { at = 'log_line("%b flags\n", ⟦count⟧);', type = "parameter", modifiers = ["local"] },
     { at = '⟦fmt⟧::print(R"({:\<8})", count);', type = "namespace", modifiers = ["global"] },
     {
         at = 'fmt::⟦print⟧(R"({:\<8})", count);',

@@ -188,6 +188,37 @@ ZEST_CASE(MergePicksOneSpelling) {
     }
 }
 
+ZEST_CASE(DefinitionDecidesTokenKind) {
+    // A unit that sees only `struct S;` and one that defines `class S {}`
+    // must leave the definition's kind whichever merges first.
+    TUIndexMirror declares;
+    declares.paths = {"/proj/main.cpp"};
+    declares.add_symbol(42, {.name = "S", .token_class = {.kind = SemanticTokenKind::Struct}});
+    TUIndexMirror defines;
+    defines.paths = {"/proj/main.cpp"};
+    defines.add_symbol(42,
+                       {
+                           .name = "S",
+                           .flags = index::SymbolFlags::HasDefinition,
+                           .token_class = {.kind = SemanticTokenKind::Class},
+                       });
+    auto declares_bytes = declares.bytes();
+    auto defines_bytes = defines.bytes();
+
+    clice::FileTable pool;
+    for(auto [first, second]: {
+            std::pair{&declares_bytes, &defines_bytes },
+            std::pair{&defines_bytes,  &declares_bytes}
+    }) {
+        index::ProjectIndex project;
+        auto first_view = index::TUIndex::from_bytes(*first);
+        auto second_view = index::TUIndex::from_bytes(*second);
+        project.merge(first_view, intern_paths(first_view, pool));
+        project.merge(second_view, intern_paths(second_view, pool));
+        ZASSERT(project.identity_of(42)->token_class.kind == SemanticTokenKind::Class);
+    }
+}
+
 ZEST_CASE(FileVersionInterning) {
     clice::FileTable pool;
     auto a = pool.intern_version(Fid{7}, 0x1111);

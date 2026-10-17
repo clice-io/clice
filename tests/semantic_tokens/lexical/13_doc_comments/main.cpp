@@ -19,4 +19,10 @@ int width; ///<@brief How wide.
 /// Kept within @f$ [0, 1] @f$.
 int clamp(int value);
 
+/// Doubles a value.
+/// @code
+/// twice(2); // @param here is example text
+/// @endcode
+int twice(int value);
+
 // @param plain comments have no commands

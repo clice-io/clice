@@ -88,6 +88,11 @@ llvm::StringRef doc_command_name(llvm::StringRef text);
 /// `C:\path` show.
 bool at_doc_word_start(llvm::StringRef line, std::size_t index);
 
+/// The command closing the raw text a documentation command opens — a
+/// block's code (`@code` … `@endcode`), hidden text, an inline formula —
+/// in which no command is read; empty for any other command.
+llvm::StringRef doc_raw_end(llvm::StringRef name);
+
 /// A name as `@copydoc` writes it: `name`, `Class::member`,
 /// `Class#member`, `::name`, and for one overload of a function its
 /// parameter types, `f(int, const char*)`.

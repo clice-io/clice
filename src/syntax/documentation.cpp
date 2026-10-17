@@ -1150,6 +1150,16 @@ bool at_doc_word_start(llvm::StringRef line, std::size_t index) {
            llvm::StringRef("([{\"'*_").contains(line[index - 1]);
 }
 
+llvm::StringRef doc_raw_end(llvm::StringRef name) {
+    auto it = commands().find(name);
+    if(it == commands().end()) {
+        return {};
+    }
+    auto kind = it->second.kind;
+    return kind == Kind::Code || kind == Kind::Hidden || kind == Kind::Formula ? it->second.end
+                                                                               : llvm::StringRef();
+}
+
 bool is_doc_command(llvm::StringRef name) {
     return commands().contains(name);
 }

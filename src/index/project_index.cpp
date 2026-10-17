@@ -634,9 +634,15 @@ void ProjectIndex::merge(const TUIndex& index,
         bool known = identity_of(hash).has_value();
         auto& target = touch(hash);
         bool symbol_changed = !known;
+        bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
         if(target.name.empty() && !identity.name.empty()) {
             target.parent = identity.parent;
             target.kind = identity.kind;
+            target.token_class.kind = identity.token_class.kind;
+            symbol_changed = true;
+        } else if(defines && target.token_class.kind != identity.token_class.kind) {
+            // A declaration may say `struct` where the definition says
+            // `class`: the definition's word stands, whatever merges first.
             target.token_class.kind = identity.token_class.kind;
             symbol_changed = true;
         }
@@ -646,7 +652,6 @@ void ProjectIndex::merge(const TUIndex& index,
         // retracts a unit's earlier report, so an old definition bit must
         // not pin the file after the definition moved. Declarations only
         // fill an empty slot.
-        bool defines = has_flag(identity.flags, SymbolFlags::HasDefinition);
         if(identity.file != no_file && (target.file == no_file || defines)) {
             auto file = file_ids_map[identity.file].raw;
             symbol_changed = symbol_changed || target.file != file;
