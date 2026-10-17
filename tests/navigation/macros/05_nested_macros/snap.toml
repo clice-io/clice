@@ -1,4 +1,3 @@
 [answers.width]
-wrong = "the two WIDTH in the body of AREA should be among the references (clangd#346)"
 definition = ["#define ⟦WIDTH⟧ 100"]
-references = ["#define ⟦WIDTH⟧ 100"]
+references = ["#define ⟦WIDTH⟧ 100", "#define AREA (⟦WIDTH⟧ * WIDTH)", "#define AREA (WIDTH * ⟦WIDTH⟧)"]

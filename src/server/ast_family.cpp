@@ -340,9 +340,10 @@ ASTFamily::ASTFamily(Project& project,
                      PCMFamily& pcm,
                      PCHFamily& pch,
                      WorkerPool& pool,
-                     SessionStore& sessions) :
+                     SessionStore& sessions,
+                     IndexStore& index) :
     project(project), contexts(contexts), graph(graph), pcm(pcm), pch(pch), pool(pool),
-    sessions(sessions) {}
+    sessions(sessions), index(index) {}
 
 void ASTFamily::register_runner() {
     graph.register_family(Family::AST, [this](RoundContext& ctx, NodeId id) {
@@ -867,8 +868,10 @@ kota::task<RoundOutcome> ASTFamily::run(RoundContext& ctx, Fid path_id) {
     // prefix. The trial's diagnostics are never published.
     bool artifact_retried = false;
     std::size_t trial_misses = 0;
+    auto known_instantiations = index.known_instantiations(path_id);
     for(int attempt = 0; attempt < 2; attempt += 1) {
         worker::CompileParams params;
+        params.known_instantiations = known_instantiations;
         params.path = file_path;
         params.version = session->version;
         params.text = session->text;

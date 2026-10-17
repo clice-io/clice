@@ -10,10 +10,18 @@ errors = [
 ]
 
 ["checkout updates workspace"."v1 alpha"]
-references = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦alpha⟧() { return 1; }"]
+references = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "#define TARGET ⟦alpha⟧",
+    "inline int ⟦alpha⟧() { return 1; }",
+]
 
 ["checkout updates workspace".v2]
-beta = ["closed.cpp │ int use_target() { return ⟦TARGET⟧(); }", "inline int ⟦beta⟧() { return 2; }"]
+beta = [
+    "closed.cpp │ int use_target() { return ⟦TARGET⟧(); }",
+    "#define TARGET ⟦beta⟧",
+    "inline int ⟦beta⟧() { return 2; }",
+]
 added = [
     { name = "checkout_added()", kind = "Function", at = "closed.cpp │ int ⟦checkout_added⟧() { return 3; }" },
 ]

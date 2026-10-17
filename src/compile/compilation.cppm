@@ -91,12 +91,13 @@ enum class CompilationKind : std::uint8_t {
 
     /// Parse an open file, over a preamble PCH when one is given: the main
     /// file's tokens and top-level declarations are collected for the
-    /// features, and clang-tidy runs in the editor shape.
+    /// features, the instantiations Sema made for the index, and clang-tidy
+    /// runs in the editor shape.
     Content,
 
     /// Parse the whole translation unit for the index and lint: nothing is
-    /// collected beyond directives and diagnostics, and clang-tidy runs in
-    /// the batch shape.
+    /// collected beyond directives, diagnostics and the instantiations Sema
+    /// made, and clang-tidy runs in the batch shape.
     Whole,
 
     /// Run code completion at the point CompilationParams::completion
@@ -427,6 +428,14 @@ public:
 
     auto top_level_decls() -> llvm::ArrayRef<clang::Decl*>;
 
+    /// The definitions a Whole or Content compile instantiated from
+    /// templates, implicitly or for an explicit instantiation — function
+    /// bodies, variable initializers and classes — in the order Sema
+    /// finished them; empty for every other kind. A Content compile behind
+    /// a preamble sees the function bodies the preamble left pending, not
+    /// the classes it instantiated.
+    auto instantiations() -> llvm::ArrayRef<const clang::Decl*>;
+
     std::chrono::milliseconds build_at();
 
     clang::LangOptions& lang_options();
@@ -595,6 +604,8 @@ private:
     std::vector<Diagnostic> collected_diagnostics;
 
     std::vector<clang::Decl*> collected_decls;
+
+    std::vector<const clang::Decl*> collected_instantiations;
 
     std::unique_ptr<tidy::ClangTidyChecker> checker;
 };

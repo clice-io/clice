@@ -286,8 +286,12 @@ ZEST_CASE(FileVersionInterning) {
 ZEST_CASE(ManifestContributions) {
     clice::FileTable pool;
     index::ProjectIndex project;
-    auto fv_a = pool.intern_version(Fid{1}, 0xa);
-    auto fv_b = pool.intern_version(Fid{2}, 0xb);
+    auto a = pool.intern(Spelling::absolute("/proj/a.h"));
+    auto b = pool.intern(Spelling::absolute("/proj/b.h"));
+    auto tu1 = pool.intern(Spelling::absolute("/proj/tu1.cpp"));
+    auto tu2 = pool.intern(Spelling::absolute("/proj/tu2.cpp"));
+    auto fv_a = pool.intern_version(a, 0xa);
+    auto fv_b = pool.intern_version(b, 0xb);
 
     auto manifest_for =
         [&](VersionID tu_fv,
@@ -298,57 +302,63 @@ ZEST_CASE(ManifestContributions) {
             return manifest;
         };
 
-    auto tu1_fv = pool.intern_version(Fid{10}, 0x1);
-    auto tu2_fv = pool.intern_version(Fid{11}, 0x2);
+    auto tu1_fv = pool.intern_version(tu1, 0x1);
+    auto tu2_fv = pool.intern_version(tu2, 0x2);
 
     // TU 1 contributes h1 to file 1 and h2 to file 2.
     auto affected = project.apply_manifest(pool,
-                                           Fid{
-                                               10
-    },
-                                           manifest_for(tu1_fv, {{fv_a, 100}, {fv_b, 200}}));
+                                           tu1,
+                                           manifest_for(tu1_fv,
+                                                        {
+                                                            {fv_a, 100},
+                                                            {fv_b, 200}
+    }));
     ZASSERT(affected.size() == std::size_t(2));
-    ZASSERT(project.live_variants(Fid{1}).size() == std::size_t(1));
+    ZASSERT(project.live_variants(a).size() == std::size_t(1));
 
     // TU 2 shares file 1's variant: the live set does not grow.
     project.apply_manifest(pool,
-                           Fid{
-                               11
-    },
-                           manifest_for(tu2_fv, {{fv_a, 100}}));
-    ZASSERT(project.live_variants(Fid{1}).size() == std::size_t(1));
+                           tu2,
+                           manifest_for(tu2_fv,
+                                        {
+                                            {fv_a, 100}
+    }));
+    ZASSERT(project.live_variants(a).size() == std::size_t(1));
 
     // TU 1 re-indexes with a new variant for file 1 and drops file 2: both
     // hashes stay live on file 1 (TU 2 still holds the old one), file 2
     // loses its only contribution.
     project.apply_manifest(pool,
-                           Fid{
-                               10
-    },
-                           manifest_for(tu1_fv, {{fv_a, 300}}));
-    ZASSERT(project.live_variants(Fid{1}).size() == std::size_t(2));
-    ZASSERT(project.live_variants(Fid{2}).empty());
+                           tu1,
+                           manifest_for(tu1_fv,
+                                        {
+                                            {fv_a, 300}
+    }));
+    ZASSERT(project.live_variants(a).size() == std::size_t(2));
+    ZASSERT(project.live_variants(b).empty());
 
-    project.remove_manifest(pool, Fid{11});
-    auto live = project.live_variants(Fid{1});
+    project.remove_manifest(pool, tu2);
+    auto live = project.live_variants(a);
     ZASSERT(live.size() == std::size_t(1));
     ZASSERT(live.front() == 300u);
 
-    project.remove_manifest(pool, Fid{10});
+    project.remove_manifest(pool, tu1);
     ZASSERT(project.contributions.empty());
 }
 
 ZEST_CASE(RepeatedAbsentPlace) {
     clice::FileTable pool;
     index::ProjectIndex project;
-    auto place = pool.intern_version(Fid{1}, 0);
+    auto header = pool.intern(Spelling::absolute("/proj/a.h"));
+    auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
+    auto place = pool.intern_version(header, 0);
     index::TUManifest manifest;
-    manifest.tu_fv = pool.intern_version(Fid{10}, 0x1);
+    manifest.tu_fv = pool.intern_version(tu, 0x1);
     manifest.absent = {place, place};
 
-    project.apply_manifest(pool, Fid{10}, std::move(manifest));
-    ZASSERT(project.manifests[Fid{10}].absent.size() == std::size_t(1));
-    project.remove_manifest(pool, Fid{10});
+    project.apply_manifest(pool, tu, std::move(manifest));
+    ZASSERT(project.manifests[tu].absent.size() == std::size_t(1));
+    project.remove_manifest(pool, tu);
     ZASSERT(project.probed.empty());
 }
 
@@ -356,13 +366,15 @@ ZEST_CASE(TwoImportedVersions) {
     // Modules built at different times read two versions of one header.
     clice::FileTable pool;
     index::ProjectIndex project;
+    auto header = pool.intern(Spelling::absolute("/proj/a.h"));
+    auto tu = pool.intern(Spelling::absolute("/proj/tu.cpp"));
     index::TUManifest manifest;
-    manifest.tu_fv = pool.intern_version(Fid{10}, 0x1);
-    manifest.imports = {pool.intern_version(Fid{1}, 0x2), pool.intern_version(Fid{1}, 0x3)};
+    manifest.tu_fv = pool.intern_version(tu, 0x1);
+    manifest.imports = {pool.intern_version(header, 0x2), pool.intern_version(header, 0x3)};
 
-    project.apply_manifest(pool, Fid{10}, std::move(manifest));
-    ZASSERT(project.importers[Fid{1}].contains(Fid{10}));
-    project.remove_manifest(pool, Fid{10});
+    project.apply_manifest(pool, tu, std::move(manifest));
+    ZASSERT(project.importers[header].contains(tu));
+    project.remove_manifest(pool, tu);
     ZASSERT(project.importers.empty());
 }
 

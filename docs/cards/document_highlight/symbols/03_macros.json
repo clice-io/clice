@@ -4,7 +4,7 @@
   "subtopic": "symbols",
   "title": "Macro names and arguments",
   "summary": "A macro highlights at its definition, its expansions, the conditionals testing it and its `#undef`",
-  "prose": "A name written in a macro argument highlights where it is written; a name the macro's replacement spells highlights the whole invocation. A macro used in another macro's replacement highlights neither there nor at that macro's invocations.",
+  "prose": "A name written in a macro argument highlights where it is written; a name the macro's replacement spells highlights the whole invocation. A macro used in another macro's replacement highlights there, as a plain text occurrence, but not at that macro's invocations.",
   "status": "supported",
   "issues": [],
   "files": [
@@ -60,6 +60,40 @@
                     "end": {
                       "line": 0,
                       "character": 13
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "#define CLAMP(v) ((v) > ⟦LIMIT⟧ ? LIMIT : (v))",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 29
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "#define CLAMP(v) ((v) > LIMIT ? ⟦LIMIT⟧ : (v))",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 32
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 37
                     }
                   }
                 },
@@ -124,6 +158,23 @@
           "marker": "total",
           "value": {
             "highlights": [
+              {
+                "at": {
+                  "$place": "#define RESET_TOTAL ⟦total⟧ = 0",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 25
+                    }
+                  }
+                },
+                "kind": "text"
+              },
               {
                 "at": {
                   "$place": "int ⟦total⟧;",
@@ -200,6 +251,23 @@
           "marker": "arg",
           "value": {
             "highlights": [
+              {
+                "at": {
+                  "$place": "#define RESET_TOTAL ⟦total⟧ = 0",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 20
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 25
+                    }
+                  }
+                },
+                "kind": "text"
+              },
               {
                 "at": {
                   "$place": "int ⟦total⟧;",
@@ -288,6 +356,40 @@
                     "end": {
                       "line": 0,
                       "character": 13
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "#define CLAMP(v) ((v) > ⟦LIMIT⟧ ? LIMIT : (v))",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 24
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 29
+                    }
+                  }
+                },
+                "kind": "text"
+              },
+              {
+                "at": {
+                  "$place": "#define CLAMP(v) ((v) > LIMIT ? ⟦LIMIT⟧ : (v))",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 32
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 37
                     }
                   }
                 },

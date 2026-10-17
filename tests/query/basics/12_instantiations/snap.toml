@@ -1,0 +1,101 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 8 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query references Box::open"]
+stdout = '''
+{
+  "result": {
+    "name": "open",
+    "kind": "Method",
+    "symbol": "#66ed736b7a4ce853",
+    "references": [
+      {
+        "file": "${WS}/main.cpp",
+        "line": 9,
+        "context": "    item.open();",
+        "via": "instantiation"
+      },
+      {
+        "file": "${WS}/main.cpp",
+        "line": 10,
+        "context": "    box.open();"
+      },
+      {
+        "file": "${WS}/measure.h",
+        "line": 5,
+        "context": "    item.open();",
+        "via": "instantiation"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query call-graph Box::open --direction callers"]
+stdout = '''
+{
+  "result": {
+    "root": {
+      "name": "open",
+      "kind": "Method",
+      "file": "${WS}/main.cpp",
+      "line": 3,
+      "symbol": "#66ed736b7a4ce853"
+    },
+    "callers": [
+      {
+        "name": "measure",
+        "kind": "Function",
+        "file": "${WS}/measure.h",
+        "line": 4,
+        "symbol": "#64a3c7bc5112a824",
+        "via": "instantiation"
+      },
+      {
+        "name": "twice",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 8,
+        "symbol": "#395c652bed3c1db9"
+      }
+    ],
+    "callees": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query references reset"]
+stdout = '''
+{
+  "result": {
+    "name": "reset",
+    "kind": "Function",
+    "symbol": "#e241f31da004350a",
+    "references": [
+      {
+        "file": "${WS}/box.h",
+        "line": 9,
+        "context": "#define RESET_ALL reset()",
+        "via": "expansion"
+      },
+      {
+        "file": "${WS}/use.cpp",
+        "line": 6,
+        "context": "    RESET_ALL;"
+      }
+    ],
+    "total": 2
+  },
+  "stale": []
+}
+'''
+exit = 0

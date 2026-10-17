@@ -255,6 +255,24 @@ static bool implicitly_instantiated(const clang::Decl* decl) {
     return kind == clang::TSK_ImplicitInstantiation;
 }
 
+/// Whether Sema made `decl` from a template: the body of a function or the
+/// initializer of a variable, implicitly or for an explicit instantiation,
+/// a declaration's included (an inline function's body is still
+/// instantiated under one); or the definition of a class.
+static bool instantiated(const clang::Decl* decl) {
+    if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+        return clang::isTemplateInstantiation(function->getTemplateSpecializationKind()) &&
+               function->doesThisDeclarationHaveABody();
+    }
+    if(auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+        return clang::isTemplateInstantiation(var->getTemplateSpecializationKind());
+    }
+    if(auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+        return clang::isTemplateInstantiation(record->getTemplateSpecializationKind());
+    }
+    return false;
+}
+
 /// A wrapper ast consumer, so that we can cancel the ast parse
 class CompilationUnit::ParseConsumer final : public clang::MultiplexConsumer {
 public:
@@ -289,15 +307,28 @@ public:
         unit.collected_decls.push_back(decl);
     }
 
+    /// Sema hands every definition it instantiates to the consumer: a
+    /// function's or a variable template's here, a static data member's
+    /// through HandleCXXStaticMemberVarInstantiation, a class's through
+    /// HandleTagDeclDefinition. An explicit instantiation hands over again
+    /// what an earlier use already instantiated.
+    void collect_instantiation(clang::Decl* decl) {
+        if(unit.params.kind != CompilationKind::Whole &&
+           unit.params.kind != CompilationKind::Content) {
+            return;
+        }
+        if(!instantiated(decl) || !instantiations.insert(decl).second) {
+            return;
+        }
+        unit.collected_instantiations.push_back(decl);
+    }
+
     auto HandleTopLevelDecl(clang::DeclGroupRef group) -> bool final {
-        if(unit.params.kind == CompilationKind::Content) {
-            if(group.isDeclGroup()) {
-                for(auto decl: group) {
-                    collect_decl(decl);
-                }
-            } else {
-                collect_decl(group.getSingleDecl());
+        for(auto decl: group) {
+            if(unit.params.kind == CompilationKind::Content) {
+                collect_decl(decl);
             }
+            collect_instantiation(decl);
         }
 
         /// TODO: check atomic variable after the parse of each declaration
@@ -307,6 +338,16 @@ public:
         }
 
         return clang::MultiplexConsumer::HandleTopLevelDecl(group);
+    }
+
+    void HandleCXXStaticMemberVarInstantiation(clang::VarDecl* decl) final {
+        collect_instantiation(decl);
+        clang::MultiplexConsumer::HandleCXXStaticMemberVarInstantiation(decl);
+    }
+
+    void HandleTagDeclDefinition(clang::TagDecl* decl) final {
+        collect_instantiation(decl);
+        clang::MultiplexConsumer::HandleTagDeclDefinition(decl);
     }
 
     // Sema adds an explicit instantiation directive's decl to its declaration
@@ -336,6 +377,7 @@ public:
 private:
     CompilationUnit& unit;
     llvm::SmallPtrSet<const clang::Decl*, 8> collected;
+    llvm::DenseSet<const clang::Decl*> instantiations;
 };
 
 class CompilationUnit::ParseAction final : public clang::WrapperFrontendAction {

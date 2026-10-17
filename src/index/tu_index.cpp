@@ -7,6 +7,7 @@ module;
 module clice;
 
 import :compile.compilation;
+import :index.instantiation_shard;
 import :index.serialization;
 import :index.shard;
 import :index.tu_index;
@@ -93,6 +94,17 @@ struct FileSection {
     std::vector<std::uint8_t> blob;
 };
 
+/// One file's instantiations in the TU index: the instantiation blob of what
+/// the run resolved there, empty when it resolved nothing, and the known keys
+/// whose definition the file holds that the run skipped, ascending.
+struct InstantiationSection {
+    std::uint32_t path_id = 0;
+
+    std::vector<std::uint8_t> blob;
+
+    std::vector<std::uint64_t> skipped;
+};
+
 /// The TU index's serialized layout. Only the builder below ever materializes
 /// it; every consumer reads the bytes through the TUIndex reader.
 struct TUIndexBlob {
@@ -136,8 +148,17 @@ struct TUIndexBlob {
     std::vector<std::uint32_t> sym_reference_ends;
     std::vector<std::uint32_t> sym_references;
 
+    /// Per symbol, the files whose instantiation section names it, back to
+    /// back as path ids.
+    std::vector<std::uint32_t> sym_instantiation_ends;
+    std::vector<std::uint32_t> sym_instantiations;
+
     /// One entry per file with an index, ascending by path id.
     std::vector<FileSection> sections;
+
+    /// One entry per file the run's instantiations or macro expansions
+    /// resolve something in or skipped a known key of, ascending by path id.
+    std::vector<InstantiationSection> instantiations;
 
     /// Preamble ride-alongs, empty on ordinary TU indexes: identity of the
     /// exact preamble text the PCH was built from (matches_prefix), and
@@ -360,8 +381,9 @@ public:
     Projector(CompilationUnit& unit, const TUIndexOptions& options) :
         unit(unit), focus_only(unit.kind() == CompilationKind::Content && !options.all_files),
         known_variants(options.known_variants),
-        resolver(unit.context(), {.only_instantiation = unit.kind() == CompilationKind::Content}),
-        readable(unit.context(), {}) {}
+        resolver(unit.context(), {.only_instantiation = false}),
+        readable(unit.context(), {}),
+        known_instantiations(options.known_instantiations) {}
 
     /// The only gate through which entries enter `file_indices`. With
     /// focus_only, the index covers just the focus file and the
@@ -372,6 +394,9 @@ public:
     /// preamble's own index, so they are dropped here. So are the entries
     /// of a header's borrowed includer context: its host indexes them.
     FileIndex* file_index(clang::FileID fid) {
+        if(space) {
+            return &(*space)[fid];
+        }
         if((focus_only && fid != unit.focus_file().file() && !module_files.contains(fid)) ||
            unit.from_context(fid)) {
             return nullptr;
@@ -383,6 +408,9 @@ public:
     /// writer: name lookups need the entry even when a symbol has only
     /// relations.
     index::SymbolHash ensure_symbol(const clang::NamedDecl* decl) {
+        if(space) {
+            decl = in_pattern(decl);
+        }
         auto hash = unit.get<EntityTable>().entity(decl);
         auto [it, success] = symbols.try_emplace(hash);
         if(success) {
@@ -785,7 +813,7 @@ public:
         for(auto p: path) {
             enclosing_cache.try_emplace(p, result);
         }
-        return result;
+        return result ? result : space_function;
     }
 
     /// The namespace-scope declaration node `index` lies in, null outside
@@ -1116,6 +1144,9 @@ public:
     void project_placeholder(const Semantics& semantics, std::uint32_t index) {
         const auto& entry = semantics.node(index);
         clang::SourceRange keyword;
+        // An abbreviated template's `auto` names a type only once an
+        // instantiation substitutes one.
+        clang::QualType substituted;
         if(const auto* loc = entry.node.get<clang::TypeLoc>()) {
             if(auto auto_loc = loc->getAs<clang::AutoTypeLoc>()) {
                 keyword = auto_loc.isDecltypeAuto()
@@ -1123,9 +1154,10 @@ public:
                               : clang::SourceRange(auto_loc.getNameLoc());
             } else if(auto decltype_loc = loc->getAs<clang::DecltypeTypeLoc>()) {
                 keyword = decltype_loc.getDecltypeLoc();
-            } else if(auto param_loc = loc->getAs<clang::TemplateTypeParmTypeLoc>();
-                      param_loc && param_loc.getDecl()->isImplicit()) {
-                keyword = param_loc.getNameLoc();
+            } else if(auto subst_loc = loc->getAs<clang::SubstTemplateTypeParmTypeLoc>();
+                      subst_loc && subst_loc.getTypePtr()->getReplacedParameter()->isImplicit()) {
+                keyword = subst_loc.getNameLoc();
+                substituted = subst_loc.getTypePtr()->getReplacementType();
             }
         } else if(const auto* function = entry.node.get<clang::FunctionDecl>()) {
             if(const auto* proto = function->getType()->getAs<clang::FunctionProtoType>();
@@ -1133,7 +1165,7 @@ public:
                 keyword = function->getTypeSpecStartLoc();
             }
         }
-        if(keyword.isInvalid() || entry.flags.in_instantiation) {
+        if(keyword.isInvalid() || (entry.flags.in_instantiation && !space)) {
             return;
         }
         auto& SM = unit.context().getSourceManager();
@@ -1152,7 +1184,8 @@ public:
             owner = semantics.node(owner).parent;
         }
         const auto* decl = semantics.node(owner).node.get<clang::Decl>();
-        auto type = types::deduced_type(entry.node.dyn_typed(), decl);
+        auto type =
+            substituted.isNull() ? types::deduced_type(entry.node.dyn_typed(), decl) : substituted;
         if(type.isNull()) {
             return;
         }
@@ -1189,13 +1222,16 @@ public:
         // Macro-generated names anchor at written source, following
         // clang's file-location rule: argument tokens at their
         // spelling in the invocation, body and pasted tokens at the
-        // invocation point. Nothing may anchor inside a `#define`
-        // body — those tokens have no meaning of their own, each
-        // expansion assigns one, and projecting a TU's expansion
-        // back into the shared definition is deliberately banned.
+        // invocation point. No written entry anchors inside a
+        // `#define` body — those tokens have no meaning of their own,
+        // each expansion assigns one: what a body names is a resolution of
+        // its expansion (project_expansions).
         auto& SM = unit.context().getSourceManager();
         auto location = SM.getFileLoc(occurrence.location);
         auto spelled = location == SM.getSpellingLoc(occurrence.location);
+        if(!space && occurrence.location.isMacroID()) {
+            body_names.push_back({occurrence.decl, occurrence.kind, occurrence.location});
+        }
 
         // A name of several tokens spans them all where they are
         // written in one file; a macro that spells part of it
@@ -1257,48 +1293,422 @@ public:
         }
     }
 
-    void project_semantics(const Semantics& semantics) {
-        auto entries = semantics.node_entries();
-
-        for(std::uint32_t i = 0; i < entries.size(); i += 1) {
-            const SemanticNode& node = entries[i].node;
-            // Macros are projected from the directives below; includes and
-            // imports have their own pipelines.
-            if(!node.is_ast()) {
+    void project_node(const Semantics& semantics, std::uint32_t i) {
+        // What an instantiation resolves are the calls and member accesses
+        // its body's expressions make and the types its placeholders
+        // deduce; it declares nothing its template does not, and the types
+        // it substitutes are no references.
+        if(space && !semantics.node(i).node.get<clang::Stmt>()) {
+            project_placeholder(semantics, i);
+            if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
+                add_deduced_type(value);
+            }
+            return;
+        }
+        for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
+            auto name = add_name(occurrence);
+            if(space) {
                 continue;
             }
 
-            for(auto& occurrence: resolve_occurrences(semantics, i, &resolver)) {
-                auto name = add_name(occurrence);
-
-                if(occurrence.kind.is_one_of(RelationKind::Reference)) {
-                    // What an instantiation passes differs from one
-                    // instantiation to the next: the written code only.
-                    if(!entries[i].flags.in_instantiation && is_written(semantics, i)) {
-                        add_self_relation(occurrence.decl, RelationKind::Write, name);
-                    }
-                    add_specialized_type(occurrence.decl, name);
+            if(occurrence.kind.is_one_of(RelationKind::Reference)) {
+                // What an instantiation passes differs from one
+                // instantiation to the next: the written code only.
+                if(!semantics.node(i).flags.in_instantiation && is_written(semantics, i)) {
+                    add_self_relation(occurrence.decl, RelationKind::Write, name);
                 }
-                if(occurrence.kind.is_one_of(RelationKind::Reference,
-                                             RelationKind::WeakReference) &&
-                   names_member_qualified(node)) {
-                    if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(occurrence.decl);
-                       method && method->isVirtual()) {
-                        add_self_relation(occurrence.decl, RelationKind::Direct, name);
-                    }
-                }
-
-                if(!occurrence.kind.is_one_of(RelationKind::Declaration,
-                                              RelationKind::Definition,
-                                              RelationKind::WeakReference)) {
-                    add_pasted_relation(occurrence.decl,
-                                        enclosing_top_level(semantics, i),
-                                        name.getBegin());
+                add_specialized_type(occurrence.decl, name);
+            }
+            if(occurrence.kind.is_one_of(RelationKind::Reference, RelationKind::WeakReference) &&
+               names_member_qualified(semantics.node(i).node)) {
+                if(const auto* method = llvm::dyn_cast<clang::CXXMethodDecl>(occurrence.decl);
+                   method && method->isVirtual()) {
+                    add_self_relation(occurrence.decl, RelationKind::Direct, name);
                 }
             }
 
-            project_placeholder(semantics, i);
-            project_relations(semantics, i);
+            if(!occurrence.kind.is_one_of(RelationKind::Declaration,
+                                          RelationKind::Definition,
+                                          RelationKind::WeakReference)) {
+                add_pasted_relation(occurrence.decl,
+                                    enclosing_top_level(semantics, i),
+                                    name.getBegin());
+            }
+        }
+
+        project_placeholder(semantics, i);
+        project_relations(semantics, i);
+    }
+
+    /// In an instantiation, a variable or a parameter its template declares
+    /// with a placeholder type (`auto x`, an abbreviated template's `auto`
+    /// parameter): the types go-to-type-definition reaches from it, at its
+    /// name — beside the template's own, which carries none.
+    void add_deduced_type(const clang::ValueDecl* decl) {
+        if(!llvm::isa<clang::VarDecl>(decl)) {
+            return;
+        }
+        const auto* pattern = llvm::cast<clang::ValueDecl>(in_pattern(decl));
+        auto declared = pattern->getType();
+        const auto* parameter = types::unwrap(declared)->getAs<clang::TemplateTypeParmType>();
+        if(pattern == decl ||
+           (!declared->getContainedDeducedType() &&
+            !(parameter && parameter->getDecl() && parameter->getDecl()->isImplicit()))) {
+            return;
+        }
+        auto type = types::unwrap(value_type(decl));
+        auto* target = types::decl_of(type);
+        // A name a macro body spells is written nowhere.
+        auto written = unit.written_range(decl->getLocation());
+        if(!target || !written) {
+            return;
+        }
+        auto [fid, range] = *written;
+        auto* index = file_index(fid);
+        auto symbol = ensure_symbol(decls::normalize(decl));
+        auto add = [&](const clang::NamedDecl* type_decl) {
+            Relation relation{.kind = RelationKind::TypeDefinition,
+                              .range = range,
+                              .target_symbol = ensure_symbol(decls::normalize(type_decl))};
+            index->relations[symbol].emplace_back(relation);
+        };
+        add(target);
+        // A smart pointer leads on to its pointee, as add_type_definitions.
+        if(llvm::isa<clang::CXXRecordDecl>(target)) {
+            if(auto* pointed = types::decl_of(types::unwrap(resolver.arrow_pointee(type)))) {
+                add(pointed);
+            }
+        }
+    }
+
+    /// The pattern's own declaration of a parameter or a local an
+    /// instantiated body declares: instantiation copies its location.
+    const clang::NamedDecl* in_pattern(const clang::NamedDecl* decl) {
+        const auto* function =
+            llvm::dyn_cast_if_present<clang::FunctionDecl>(decl->getParentFunctionOrMethod());
+        const auto* pattern = function ? function->getTemplateInstantiationPattern() : nullptr;
+        if(!pattern || pattern == function) {
+            return decl;
+        }
+        auto key = [](const clang::NamedDecl* named) {
+            return std::pair(named->getLocation().getRawEncoding(),
+                             static_cast<unsigned>(named->getKind()));
+        };
+        auto [it, fresh] = pattern_locals.try_emplace(pattern);
+        if(fresh) {
+            // A member template's body can be written outside its class,
+            // in a redeclaration of the pattern.
+            for(const auto* redecl: pattern->redecls()) {
+                for(const auto* param: redecl->parameters()) {
+                    it->second.try_emplace(key(param), param);
+                }
+                for(const auto* local: redecl->decls()) {
+                    if(const auto* named = llvm::dyn_cast<clang::NamedDecl>(local)) {
+                        it->second.try_emplace(key(named), named);
+                    }
+                }
+            }
+        }
+        auto found = it->second.find(key(decl));
+        return found != it->second.end() ? found->second : decl;
+    }
+
+    /// The file holding the definition an instantiation was made from: what
+    /// it resolves lies there. The pattern clang answers for a function or
+    /// a variable can be a declaration the unit's lookup met (`std::min`
+    /// redeclared in algorithmfwd.h after its definition), which varies
+    /// with the unit; the definition does not.
+    clang::FileID home_of(const clang::Decl* decl) {
+        const clang::Decl* pattern = nullptr;
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            if(const auto* found = function->getTemplateInstantiationPattern()) {
+                const auto* definition = found->getDefinition();
+                pattern = definition ? definition : found;
+            }
+        } else if(const auto* var = llvm::dyn_cast<clang::VarDecl>(decl)) {
+            if(const auto* found = var->getTemplateInstantiationPattern()) {
+                const auto* definition = found->getDefinition();
+                pattern = definition ? definition : found;
+            }
+        } else if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+            pattern = record->getTemplateInstantiationPattern();
+        }
+        auto& SM = unit.context().getSourceManager();
+        return SM.getFileID(SM.getFileLoc((pattern ? pattern : decl)->getLocation()));
+    }
+
+    /// Whether a file's instantiations belong to this run's index: not to
+    /// a borrowed includer context, whose host indexes them.
+    bool resolves_in(clang::FileID fid) {
+        return fid.isValid() && !unit.from_context(fid);
+    }
+
+    /// The function and variable instantiations to walk; the known ones a
+    /// file holds go to its skipped keys.
+    std::vector<const clang::Decl*> walked_instantiations() {
+        std::vector<const clang::Decl*> walked;
+        for(const auto* decl: unit.instantiations()) {
+            if(llvm::isa<clang::CXXRecordDecl>(decl)) {
+                continue;
+            }
+            auto home = home_of(decl);
+            if(!resolves_in(home)) {
+                continue;
+            }
+            auto key = unit.get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl));
+            if(std::ranges::binary_search(known_instantiations, key)) {
+                resolved[home].skipped.push_back(key);
+                continue;
+            }
+            walked.push_back(decl);
+        }
+        return walked;
+    }
+
+    /// The written relations of one file, by what a record would say: an
+    /// instantiation resolves only what its template's own entries leave
+    /// open there. Empty for a file this run does not index — a Content
+    /// compile's headers, whose records then stand alone.
+    using WrittenKey =
+        std::tuple<SymbolHash, std::uint32_t, std::uint32_t, std::uint32_t, SymbolHash>;
+
+    static WrittenKey written_key(SymbolHash symbol, const Relation& relation) {
+        // A weak reference already names what the reference would.
+        RelationKind kind = relation.kind;
+        auto kind_class = kind.isReference() ? RelationKind::Reference : kind.value();
+        return {symbol,
+                kind_class,
+                relation.range.begin,
+                relation.range.end,
+                kind.carries_extent() ? 0 : relation.target_symbol};
+    }
+
+    const llvm::DenseSet<WrittenKey>& written_in(clang::FileID fid) {
+        auto [it, fresh] = written.try_emplace(fid);
+        if(fresh) {
+            if(auto found = file_indices.find(fid); found != file_indices.end()) {
+                for(auto& [symbol, relations]: found->second.relations) {
+                    for(auto& relation: relations) {
+                        it->second.insert(written_key(symbol, relation));
+                    }
+                }
+            }
+        }
+        return it->second;
+    }
+
+    /// The records one instantiation's entries in its home file amount to,
+    /// beyond what the written entries there say.
+    std::vector<InstantiationRecord> records_of(clang::FileID home, const FileIndex& entries) {
+        const auto& known = written_in(home);
+        std::vector<InstantiationRecord> records;
+        for(auto& [symbol, relations]: entries.relations) {
+            for(auto& relation: relations) {
+                RelationKind kind = relation.kind;
+                InstantiationRecord record{.range = relation.range, .target = symbol};
+                if(kind.isReference()) {
+                    record.kind = InstantiationKind::Reference;
+                } else if(kind.is_one_of(RelationKind::Deduced)) {
+                    record.kind = InstantiationKind::Deduced;
+                } else if(kind.is_one_of(RelationKind::Implied)) {
+                    record.kind = InstantiationKind::Implied;
+                } else if(kind.is_one_of(RelationKind::Callee)) {
+                    record.kind = InstantiationKind::Call;
+                    record.target = relation.target_symbol;
+                    record.from = symbol;
+                } else if(kind.is_one_of(RelationKind::TypeDefinition) && relation.range.valid()) {
+                    record.kind = InstantiationKind::TypeDefinition;
+                    record.target = relation.target_symbol;
+                    record.from = symbol;
+                } else {
+                    continue;
+                }
+                if(!known.contains(written_key(symbol, relation))) {
+                    records.push_back(record);
+                }
+            }
+        }
+        return records;
+    }
+
+    /// One walked instantiation: its key in its home file, and the resolution
+    /// its records make there, if any.
+    void add_walked(clang::FileID home,
+                    const clang::NamedDecl* decl,
+                    std::vector<InstantiationRecord> records) {
+        auto& file = resolved[home].walked;
+        FileInstantiations::Key key{
+            .key = unit.get<EntityTable>().entity(decl),
+            .pattern = ensure_symbol(decls::normalize(decl)),
+        };
+        if(!records.empty()) {
+            key.resolution = static_cast<std::uint32_t>(file.resolutions.size());
+            file.resolutions.push_back(std::move(records));
+        }
+        file.keys.push_back(key);
+    }
+
+    void project_instantiations(const Semantics& semantics) {
+        // The memos are by node index, which a focus compile's build of
+        // its instantiations numbers anew.
+        enclosing_cache.clear();
+        top_level_cache.clear();
+        for(const auto& root: semantics.instantiation_roots()) {
+            const auto* decl = llvm::cast<clang::NamedDecl>(root.decl);
+            auto home = home_of(decl);
+            llvm::DenseMap<clang::FileID, FileIndex> entries;
+            space = &entries;
+            space_function = llvm::dyn_cast<clang::FunctionDecl>(decl);
+            for(auto i = root.begin; i < root.end; i += 1) {
+                if(semantics.node(i).node.is_ast()) {
+                    project_node(semantics, i);
+                }
+            }
+            space = nullptr;
+            space_function = nullptr;
+            std::vector<InstantiationRecord> records;
+            if(auto it = entries.find(home); it != entries.end()) {
+                records = records_of(home, it->second);
+            }
+            // A body that includes a fragment (`#include "Instruction.def"`
+            // in a switch) resolves names in the fragment's file too, which
+            // a skipped key could not stand for: such an instantiation keeps
+            // no key, every unit walks it, and each file holds its records
+            // as a resolution of its own.
+            bool spilled = false;
+            for(auto& [fid, index]: entries) {
+                if(fid == home || !resolves_in(fid)) {
+                    continue;
+                }
+                if(auto fragment = records_of(fid, index); !fragment.empty()) {
+                    resolved[fid].walked.resolutions.push_back(std::move(fragment));
+                    spilled = true;
+                }
+            }
+            if(!spilled) {
+                add_walked(home, decl, std::move(records));
+            } else if(!records.empty()) {
+                resolved[home].walked.resolutions.push_back(std::move(records));
+            }
+        }
+    }
+
+    /// A class instantiation's bases, where its template's base specifiers
+    /// depend on the arguments (`struct D : T`): no key, the resolution alone —
+    /// computing them costs less than looking one up.
+    void project_bases(const clang::CXXRecordDecl* record) {
+        const auto* pattern = record->getTemplateInstantiationPattern();
+        if(!pattern || !record->hasDefinition() ||
+           llvm::none_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
+               return base.getType()->isDependentType();
+           })) {
+            return;
+        }
+        auto home = home_of(record);
+        if(!resolves_in(home)) {
+            return;
+        }
+        const auto& known = written_in(home);
+        auto derived = ensure_symbol(decls::normalize(record));
+        std::vector<InstantiationRecord> records;
+        for(const auto& base: record->bases()) {
+            const auto* target = types::decl_of(base.getType().getCanonicalType());
+            if(!target) {
+                continue;
+            }
+            auto written =
+                unit.written_range(base.getTypeSourceInfo()->getTypeLoc().getSourceRange());
+            if(!written || written->file != home) {
+                continue;
+            }
+            auto symbol = ensure_symbol(decls::normalize(target));
+            Relation relation{.kind = RelationKind::Base, .target_symbol = symbol};
+            if(known.contains(written_key(derived, relation))) {
+                continue;
+            }
+            records.push_back({.range = written->range,
+                               .kind = InstantiationKind::Base,
+                               .target = symbol,
+                               .from = derived});
+        }
+        if(!records.empty()) {
+            resolved[home].walked.resolutions.push_back(std::move(records));
+        }
+    }
+
+    /// What one expansion's `#define` body spells — the names of the
+    /// declarations and macros it reaches, in the body's text — a resolution
+    /// of the macro's file without a key: the same body resolves differently
+    /// from one expansion to the next (`LLVM_DEBUG` and each file's
+    /// `DEBUG_TYPE`).
+    void project_expansions() {
+        auto& SM = unit.context().getSourceManager();
+        auto& entities = unit.get<EntityTable>();
+
+        // By the expansion the body token came out of; an argument or a
+        // pasted token is spelled in no body.
+        llvm::MapVector<clang::FileID, std::pair<clang::FileID, std::vector<InstantiationRecord>>>
+            expansions;
+        auto add = [&](clang::SourceLocation location, SymbolHash target, InstantiationKind kind) {
+            auto expansion = location;
+            while(location.isMacroID()) {
+                expansion = location;
+                location = SM.getImmediateSpellingLoc(location);
+            }
+            auto& info = SM.getSLocEntry(SM.getFileID(expansion)).getExpansion();
+            if(info.isMacroArgExpansion() || SM.isWrittenInScratchSpace(location)) {
+                return;
+            }
+            auto [fid, offset] = SM.getDecomposedLoc(location);
+            if(!resolves_in(fid)) {
+                return;
+            }
+            auto length = clang::Lexer::MeasureTokenLength(location, SM, unit.lang_options());
+            auto& [home, records] = expansions[SM.getFileID(expansion)];
+            home = fid;
+            records.push_back({
+                .range = {offset, offset + length},
+                .kind = kind,
+                .target = target,
+                .expansion = true
+            });
+        };
+        for(auto& directive: llvm::make_second_range(unit.directives())) {
+            for(auto& macro: directive.macros) {
+                if(macro.kind == MacroRef::Ref && macro.loc.isMacroID()) {
+                    add(macro.loc, entities.entity(macro.macro), InstantiationKind::Reference);
+                }
+            }
+        }
+        // What a body declares is each expansion's own: its uses alone.
+        for(auto& name: body_names) {
+            std::optional<InstantiationKind> kind;
+            if(name.kind.isReference()) {
+                kind = InstantiationKind::Reference;
+            } else if(name.kind.is_one_of(RelationKind::Deduced)) {
+                kind = InstantiationKind::Deduced;
+            } else if(name.kind.is_one_of(RelationKind::Implied)) {
+                kind = InstantiationKind::Implied;
+            }
+            if(kind) {
+                add(name.location, ensure_symbol(decls::normalize(name.decl)), *kind);
+            }
+        }
+        for(auto& [home, records]: llvm::make_second_range(expansions)) {
+            resolved[home].walked.resolutions.push_back(std::move(records));
+        }
+    }
+
+    void project_semantics(const Semantics& semantics) {
+        auto entries = semantics.node_entries();
+        auto roots = semantics.instantiation_roots();
+        auto written_end = roots.empty() ? entries.size() : roots.front().begin;
+        for(std::uint32_t i = 0; i < written_end; i += 1) {
+            // Macros are projected from the directives below; includes and
+            // imports have their own pipelines.
+            if(entries[i].node.is_ast()) {
+                project_node(semantics, i);
+            }
         }
 
         for(auto& [fid, directive]: unit.directives()) {
@@ -1321,12 +1731,18 @@ public:
 
     std::string build(const PreambleExtras* extras) {
         ScopedTimer semantics_timer;
+        auto walked = walked_instantiations();
         // The focus-only shape is the one features share, cached on the
         // unit; the whole-TU shape is transient — projected and dropped.
-        // Both phases below share the one build.
+        // Both phases below share the one build. A focus compile walks its
+        // instantiations in a build of their own.
         std::optional<Semantics> full;
         if(!focus_only) {
-            full.emplace(Semantics::build(unit, {.all_files = true}));
+            full.emplace(Semantics::build(unit, {.all_files = true, .instantiations = walked}));
+        } else if(!walked.empty()) {
+            full.emplace(Semantics::build(
+                unit,
+                {.all_files = true, .instantiations = walked, .only_instantiations = true}));
         }
         const Semantics& semantics = focus_only ? unit.get<Semantics>() : *full;
         auto semantics_ms = semantics_timer.ms_f();
@@ -1338,14 +1754,35 @@ public:
         project_imported();
         auto project_ms = project_timer.ms_f();
 
+        ScopedTimer instantiations_timer;
+        if(full) {
+            project_instantiations(*full);
+        }
+        for(const auto* decl: unit.instantiations()) {
+            if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+                project_bases(record);
+            }
+        }
+        // A preamble's expansions are its unit's to index, and its index
+        // serves no instantiations.
+        if(!extras) {
+            project_expansions();
+        }
+        auto instantiations_ms = instantiations_timer.ms_f();
+
         ScopedTimer finish_timer;
         // Build the include graph from what the index actually recorded:
         // every fid keying `file_indices` gets its include chain resolved
         // through the SourceManager, so the lookups below cannot miss.
         llvm::SmallVector<clang::FileID, 16> indexed_fids;
-        indexed_fids.reserve(file_indices.size());
+        indexed_fids.reserve(file_indices.size() + resolved.size());
         for(auto& [fid, index]: file_indices) {
             indexed_fids.push_back(fid);
+        }
+        for(auto fid: llvm::make_first_range(resolved)) {
+            if(!file_indices.contains(fid)) {
+                indexed_fids.push_back(fid);
+            }
         }
         tree = IncludeTree::from(unit, indexed_fids);
 
@@ -1384,6 +1821,56 @@ public:
 
         for(auto& file_index: llvm::make_second_range(by_path)) {
             drop_nested(file_index.occurrences);
+        }
+
+        // Instantiations by path alike: what each FileID of a header resolves
+        // is one set of resolutions and keys.
+        // A `#define` of the main file's preamble lies in the PCH's copy of
+        // the file, at the offsets the buffer has.
+        auto& SM = unit.context().getSourceManager();
+        llvm::DenseMap<std::uint32_t, Resolved> resolved_by_path;
+        for(auto& [fid, file]: resolved) {
+            auto home = fid == SM.getPreambleFileID() ? unit.focus_file().file() : fid;
+            if(home != unit.focus_file().file() && tree.node_of(home) == no_node) {
+                continue;
+            }
+            auto path_id = tree.path_id(home);
+            path_fids.try_emplace(path_id, home);
+            auto& into = resolved_by_path[path_id];
+            auto offset = static_cast<std::uint32_t>(into.walked.resolutions.size());
+            for(auto& resolution: file.walked.resolutions) {
+                into.walked.resolutions.push_back(std::move(resolution));
+            }
+            for(auto key: file.walked.keys) {
+                if(key.resolution) {
+                    *key.resolution += offset;
+                }
+                into.walked.keys.push_back(key);
+            }
+            llvm::append_range(into.skipped, file.skipped);
+        }
+        // An external symbol lists the files whose instantiations name it on
+        // their own; an internal one reaches them as its reference files.
+        auto named_in = [&](SymbolHash hash, std::uint32_t path_id) {
+            auto it = symbols.find(hash);
+            if(it == symbols.end()) {
+                return;
+            }
+            if(it->second.scope == SymbolScope::External) {
+                it->second.instantiation_files.add(path_id);
+            } else if(it->second.scope == SymbolScope::TULocal) {
+                it->second.reference_files.add(path_id);
+            }
+        };
+        for(auto& [path_id, file]: resolved_by_path) {
+            for(auto& resolution: file.walked.resolutions) {
+                for(auto& record: resolution) {
+                    named_in(record.target, path_id);
+                    if(has_from(record.kind)) {
+                        named_in(record.from, path_id);
+                    }
+                }
+            }
         }
 
         // The canonical file is decided across every file's relations: a
@@ -1457,6 +1944,27 @@ public:
             sections.push_back(
                 {path_id, hash, std::vector<std::uint8_t>(bytes.begin(), bytes.end())});
         }
+        std::vector<InstantiationSection> instantiation_sections;
+        llvm::SmallVector<std::uint32_t> resolved_paths(llvm::make_first_range(resolved_by_path));
+        llvm::sort(resolved_paths);
+        for(auto path_id: resolved_paths) {
+            auto& file = resolved_by_path[path_id];
+            InstantiationSection section{.path_id = path_id};
+            if(!file.walked.empty()) {
+                auto content = unit.file_content(path_fids[path_id]);
+                std::string bytes;
+                llvm::raw_string_ostream os(bytes);
+                write_instantiations(file.walked,
+                                     llvm::xxh3_64bits(content),
+                                     static_cast<std::uint32_t>(content.size()),
+                                     os);
+                section.blob.assign(bytes.begin(), bytes.end());
+            }
+            llvm::sort(file.skipped);
+            file.skipped.erase(llvm::unique(file.skipped), file.skipped.end());
+            section.skipped = std::move(file.skipped);
+            instantiation_sections.push_back(std::move(section));
+        }
         auto encode_ms = encode_timer.ms_f();
 
         TUIndexBlob blob;
@@ -1472,6 +1980,7 @@ public:
                 continue;
             }
             if(symbol.scope == SymbolScope::External && !symbol.reference_files.isEmpty() &&
+               symbol.instantiation_files.isEmpty() &&
                llvm::all_of(symbol.reference_files,
                             [&](std::uint32_t path_id) { return known_paths.test(path_id); })) {
                 continue;
@@ -1501,8 +2010,14 @@ public:
             }
             blob.sym_reference_ends.push_back(
                 static_cast<std::uint32_t>(blob.sym_references.size()));
+            for(auto file: symbol.instantiation_files) {
+                blob.sym_instantiations.push_back(file);
+            }
+            blob.sym_instantiation_ends.push_back(
+                static_cast<std::uint32_t>(blob.sym_instantiations.size()));
         }
         blob.sections = std::move(sections);
+        blob.instantiations = std::move(instantiation_sections);
         if(extras) {
             blob.preamble_hash = extras->hash;
             blob.preamble_size = extras->size;
@@ -1518,11 +2033,15 @@ public:
         serialize_blob(blob, os);
 
         LOG_PERF("index_detail",
-                 "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} finish_ms={:.2f} "
+                 "op=build scope={} semantics_ms={:.2f} project_ms={:.2f} "
+                 "instantiations_ms={:.2f} instantiations={} walked={} finish_ms={:.2f} "
                  "encode_ms={:.2f} pack_ms={:.2f}",
                  focus_only ? "focus" : "full",
                  semantics_ms,
                  project_ms,
+                 instantiations_ms,
+                 unit.instantiations().size(),
+                 walked.size(),
                  finish_ms,
                  encode_ms,
                  pack_timer.ms_f());
@@ -1549,6 +2068,45 @@ private:
     llvm::DenseSet<clang::FileID> module_files;
     llvm::DenseMap<std::uint32_t, const clang::NamedDecl*> enclosing_cache;
     llvm::DenseMap<std::uint32_t, const clang::Decl*> top_level_cache;
+
+    /// The keys of the instantiations the receiver already holds
+    /// (TUIndexOptions::known_instantiations).
+    llvm::ArrayRef<std::uint64_t> known_instantiations;
+
+    /// What this run's instantiations and macro expansions resolve in each
+    /// file, and the known keys whose definition the file holds.
+    struct Resolved {
+        FileInstantiations walked;
+        std::vector<SymbolHash> skipped;
+    };
+
+    llvm::DenseMap<clang::FileID, Resolved> resolved;
+
+    /// Per file, its written relations as records would say them
+    /// (written_in).
+    llvm::DenseMap<clang::FileID, llvm::DenseSet<WrittenKey>> written;
+
+    /// While an instantiation's nodes project, the entries they make:
+    /// file_index hands these out instead of the files' own. The
+    /// definition, when it is a function, is the caller of its calls.
+    llvm::DenseMap<clang::FileID, FileIndex>* space = nullptr;
+    const clang::FunctionDecl* space_function = nullptr;
+
+    /// Per pattern function, its parameters and locals by location and kind.
+    llvm::DenseMap<
+        const clang::FunctionDecl*,
+        llvm::DenseMap<std::pair<clang::SourceLocation::UIntTy, unsigned>, const clang::NamedDecl*>>
+        pattern_locals;
+
+    /// The names the written code spells through a macro: the ones a
+    /// `#define` body spells make the expansions' resolutions.
+    struct BodyName {
+        const clang::NamedDecl* decl;
+        RelationKind kind;
+        clang::SourceLocation location;
+    };
+
+    std::vector<BodyName> body_names;
 };
 
 }  // namespace
@@ -1607,6 +2165,8 @@ struct SymbolColumns {
     llvm::ArrayRef<std::uint32_t> files;
     llvm::ArrayRef<std::uint32_t> reference_ends;
     llvm::ArrayRef<std::uint32_t> references;
+    llvm::ArrayRef<std::uint32_t> instantiation_ends;
+    llvm::ArrayRef<std::uint32_t> instantiations;
 
     static SymbolColumns of(TUIndexView root) {
         return {
@@ -1626,6 +2186,8 @@ struct SymbolColumns {
             .files = to_array_ref(root[&TUIndexBlob::sym_files]),
             .reference_ends = to_array_ref(root[&TUIndexBlob::sym_reference_ends]),
             .references = to_array_ref(root[&TUIndexBlob::sym_references]),
+            .instantiation_ends = to_array_ref(root[&TUIndexBlob::sym_instantiation_ends]),
+            .instantiations = to_array_ref(root[&TUIndexBlob::sym_instantiations]),
         };
     }
 
@@ -1654,6 +2216,10 @@ struct SymbolColumns {
 
     llvm::ArrayRef<std::uint32_t> references_of(std::uint32_t entry) const {
         return back_to_back(references, reference_ends, entry);
+    }
+
+    llvm::ArrayRef<std::uint32_t> instantiations_of(std::uint32_t entry) const {
+        return back_to_back(instantiations, instantiation_ends, entry);
     }
 };
 
@@ -1700,10 +2266,12 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
        symbols.flags.size() != symbol_count || symbols.token_kinds.size() != symbol_count ||
        symbols.token_modifiers.size() != symbol_count || !all_token_kinds(symbols.token_kinds) ||
        symbols.files.size() != symbol_count || symbols.reference_ends.size() != symbol_count ||
+       symbols.instantiation_ends.size() != symbol_count ||
        !monotone_ends(symbols.name_ends, symbols.names.size()) ||
        !monotone_ends(symbols.args_ends, symbols.args.size()) ||
        !monotone_ends(symbols.signature_ends, symbols.signatures.size()) ||
-       !monotone_ends(symbols.reference_ends, symbols.references.size())) {
+       !monotone_ends(symbols.reference_ends, symbols.references.size()) ||
+       !monotone_ends(symbols.instantiation_ends, symbols.instantiations.size())) {
         LOG_DEBUG("Rejecting TU index: malformed symbol columns");
         return {};
     }
@@ -1725,7 +2293,11 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
             return {};
         }
     }
-    if(llvm::any_of(symbols.references, [&](std::uint32_t file) { return file >= count; })) {
+    auto past_paths = [&](std::uint32_t file) {
+        return file >= count;
+    };
+    if(llvm::any_of(symbols.references, past_paths) ||
+       llvm::any_of(symbols.instantiations, past_paths)) {
         LOG_DEBUG("Rejecting TU index: reference file past the path table");
         return {};
     }
@@ -1738,6 +2310,20 @@ TUIndex TUIndex::from_bytes(llvm::StringRef data) {
         auto path_id = sections.at(i)[&FileSection::path_id];
         if(path_id >= count || (i != 0 && path_id <= previous_path_id)) {
             LOG_DEBUG("Rejecting TU index: section path ids are not strictly ascending");
+            return {};
+        }
+        previous_path_id = path_id;
+    }
+    // The merge maps skipped keys through their file's stored keys by
+    // binary search.
+    auto instantiations = root[&TUIndexBlob::instantiations];
+    for(std::size_t i = 0; i < instantiations.size(); i += 1) {
+        auto section = instantiations.at(i);
+        auto path_id = section[&InstantiationSection::path_id];
+        if(path_id >= count || (i != 0 && path_id <= previous_path_id) ||
+           !std::ranges::is_sorted(to_array_ref(section[&InstantiationSection::skipped]),
+                                   std::less_equal{})) {
+            LOG_DEBUG("Rejecting TU index: instantiation sections are not strictly ascending");
             return {};
         }
         previous_path_id = path_id;
@@ -1860,6 +2446,63 @@ bool TUIndex::shards_verify() const {
         }
     }
     return true;
+}
+
+std::uint32_t TUIndex::instantiation_count() const {
+    return loaded()
+               ? static_cast<std::uint32_t>(blob_root(data)[&TUIndexBlob::instantiations].size())
+               : 0;
+}
+
+std::uint32_t TUIndex::instantiation_path(std::uint32_t i) const {
+    return blob_root(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::path_id];
+}
+
+llvm::StringRef TUIndex::instantiation_blob(std::uint32_t i) const {
+    auto blob = to_array_ref(
+        blob_root(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::blob]);
+    return llvm::StringRef(reinterpret_cast<const char*>(blob.data()), blob.size());
+}
+
+llvm::ArrayRef<std::uint64_t> TUIndex::skipped_instantiations(std::uint32_t i) const {
+    return to_array_ref(
+        blob_root(data)[&TUIndexBlob::instantiations].at(i)[&InstantiationSection::skipped]);
+}
+
+const InstantiationShard& TUIndex::instantiation_shard(std::uint32_t i) const {
+    if(instantiation_shards.empty()) {
+        instantiation_shards.resize(instantiation_count());
+    }
+    auto& slot = instantiation_shards[i];
+    if(!slot.loaded() && !instantiation_blob(i).empty()) {
+        slot = InstantiationShard::from_bytes(instantiation_blob(i));
+    }
+    return slot;
+}
+
+std::optional<std::uint32_t> TUIndex::instantiation_section_of(std::uint32_t path_id) const {
+    auto sections = std::views::iota(std::uint32_t(0), instantiation_count());
+    auto it = std::ranges::lower_bound(sections, path_id, {}, [&](std::uint32_t i) {
+        return instantiation_path(i);
+    });
+    if(it == sections.end() || instantiation_path(*it) != path_id) {
+        return std::nullopt;
+    }
+    return *it;
+}
+
+void TUIndex::iterate_instantiation_files(
+    llvm::function_ref<bool(SymbolHash, llvm::ArrayRef<std::uint32_t>)> callback) const {
+    if(!loaded()) {
+        return;
+    }
+    auto symbols = SymbolColumns::of(blob_root(data));
+    for(std::uint32_t entry = 0; entry < symbols.hashes.size(); entry += 1) {
+        auto files = symbols.instantiations_of(entry);
+        if(!files.empty() && !callback(symbols.hashes[entry], files)) {
+            return;
+        }
+    }
 }
 
 void TUIndex::iterate_symbols(

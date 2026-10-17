@@ -439,7 +439,9 @@ static worker::TURunResult handle_turun(const worker::TURunParams& params,
     ScopedTimer index_timer;
     std::size_t index_bytes = 0;
     if(params.index) {
-        auto blob = index::build_tu_index(*unit, {.known_variants = params.known_variants});
+        auto blob = index::build_tu_index(*unit,
+                                          {.known_variants = params.known_variants,
+                                           .known_instantiations = params.known_instantiations});
         index_bytes = blob.size();
         if(auto error = hand_over_index(std::move(blob), params.index_output_path, result)) {
             return {false, std::move(*error)};

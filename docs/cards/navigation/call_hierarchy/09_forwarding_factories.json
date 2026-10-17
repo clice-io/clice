@@ -3,7 +3,7 @@
   "topic": "navigation",
   "subtopic": "call_hierarchy",
   "title": "Constructor calls through forwarding functions",
-  "summary": "Incoming calls of a constructor do not include the call sites that reach it through a perfect-forwarding factory",
+  "summary": "Incoming calls of a constructor include the perfect-forwarding factory that runs it, not the call sites that reach it through the factory",
   "prose": "",
   "status": "unsupported",
   "issues": [
@@ -53,7 +53,42 @@
                 "detail": "Widget::Widget(int w, int h)"
               }
             ],
-            "incoming_calls": [],
+            "incoming_calls": [
+              {
+                "name": "make",
+                "kind": "Function",
+                "at": {
+                  "$place": "T ⟦make⟧(Args&&... args) {",
+                  "path": "main.cpp",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 2
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 6
+                    }
+                  }
+                },
+                "sites": [
+                  {
+                    "$place": "return T⟦(⟧static_cast<Args&&>(args)...);",
+                    "path": "main.cpp",
+                    "range": {
+                      "start": {
+                        "line": 2,
+                        "character": 12
+                      },
+                      "end": {
+                        "line": 2,
+                        "character": 13
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
             "outgoing_calls": []
           }
         }

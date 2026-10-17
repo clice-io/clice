@@ -152,6 +152,9 @@ struct CompileParams {
     /// See TURunParams::index_output_path.
     std::string index_output_path;
 
+    /// See TURunParams::known_instantiations.
+    std::vector<std::uint64_t> known_instantiations;
+
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
 };
@@ -265,6 +268,10 @@ struct TURunParams {
     /// Variant identities the master stores for the files this TU is
     /// expected to include, sorted (see index::TUIndexOptions).
     std::vector<std::uint64_t> known_variants;
+
+    /// The keys of the instantiations the master holds for those files,
+    /// sorted (see index::TUIndexOptions).
+    std::vector<std::uint64_t> known_instantiations;
 
     /// Where the worker writes an index too large for an IPC message: a
     /// transfer path of the master's store, empty when it has none.

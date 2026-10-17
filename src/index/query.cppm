@@ -4,6 +4,7 @@ module;
 
 module clice:index.query;
 
+import :index.instantiation_shard;
 import :index.manifest;
 import :index.project_index;
 import :index.site;
@@ -40,6 +41,15 @@ struct IndexSource {
     const Shard* shard;
     PositionMap positions;
 
+    /// What the instantiations and macro expansions of the text resolve,
+    /// beside the shard: an open buffer's own compile's, and the stored
+    /// ones while the buffer is the stored text; empty when none serves.
+    llvm::SmallVector<const InstantiationShard*, 2> instantiations;
+
+    /// What the entries handed out with the source come from: the shard's
+    /// are written, `instantiations`' records are not.
+    SiteOrigin origin = SiteOrigin::Written;
+
     /// The site of an entry's range; nullopt for a range outside the text.
     std::optional<Site> site(LocalSourceRange range) const {
         if(range.end > positions.size()) {
@@ -51,6 +61,7 @@ struct IndexSource {
             .range = range,
             .begin = *line_column(positions, range.begin),
             .end = *line_column(positions, range.end),
+            .origin = origin,
         };
     }
 };
@@ -136,8 +147,17 @@ bool declares(const Shard& shard, SymbolHash hash);
 
 /// Cross-source dedup: an entry present in both a disk shard and a PCH
 /// overlay (or in two overlays sharing a preamble, or in two projects'
-/// indexes) comes out identical.
+/// indexes) comes out identical; one an instantiation resolves where the
+/// written code says the same comes out as written.
 void dedup_sites(std::vector<Site>& sites);
+
+/// The relations of `kind` for `symbol` the live records of an
+/// instantiation shard make (InstantiationKind says which), each with
+/// whether a macro expansion resolves it; false once the visitor stopped.
+bool resolved_relations(const InstantiationShard& shard,
+                        SymbolHash symbol,
+                        RelationKind kind,
+                        llvm::function_ref<bool(const Relation&, bool expansion)> visit);
 
 /// Whether a relation's site spells the name a cursor stands on: a relation spans
 /// the whole written name, an occurrence only the tokens the name owns
@@ -161,7 +181,9 @@ std::optional<Named> named_at(const Shard& shard,
 
 /// How the code at a highlighted name accesses its symbol.
 enum class HighlightKind : std::uint8_t {
-    /// A declaration or definition.
+    /// A declaration or definition, a use of a symbol nothing reads or
+    /// writes, or a use only an instantiation or a macro expansion
+    /// resolves, which records no access.
     Text,
     Read,
     Write,
@@ -172,14 +194,17 @@ struct Highlight {
     HighlightKind kind;
 };
 
-/// The relations of `symbols` in the shards of one text, one highlight per
-/// range in range order: a declaration or definition Text; a reference of a
-/// variable, field or parameter Read, a Write relation Write; a reference of
-/// any other symbol Text — the strongest of them where several relations
+/// The relations of `symbols` in the shards of one text, and the uses of
+/// them the text's instantiations and macro expansions resolve, one
+/// highlight per range in range order: a declaration or definition Text; a
+/// reference of a variable, field or parameter Read, a Write relation Write;
+/// a reference of any other symbol, or a use only an instantiation or a
+/// macro expansion resolves, Text — the strongest of them where several
 /// share a range. A class's name also highlights where its constructors
 /// are declared. `kind_of` is a symbol's kind, when known.
 std::vector<Highlight>
     highlights(llvm::ArrayRef<const Shard*> shards,
+               llvm::ArrayRef<const InstantiationShard*> instantiations,
                llvm::ArrayRef<SymbolHash> symbols,
                llvm::function_ref<std::optional<SymbolKind>(SymbolHash)> kind_of);
 
@@ -241,6 +266,15 @@ public:
                FileTable& files,
                const FreshnessGate* gate,
                const LiveSources* live);
+
+    /// The same queries over the written code alone, without what
+    /// instantiations and macro expansions resolve: a rename edits names
+    /// as the text spells them.
+    IndexQuery written_only() const {
+        auto query = *this;
+        query.resolved = false;
+        return query;
+    }
 
     /// The freshness contract's single arbitration: the index serving
     /// `file` right now, with the coordinates it is expressed in.
@@ -682,6 +716,9 @@ private:
                                  RelationKind kind,
                                  RelationVisitor visitor) const;
 
+    /// The file's instantiation shard when it resolves in the shard's text.
+    const InstantiationShard* instantiations_of(Fid file, const Shard& shard) const;
+
     /// The text a source's offsets index: the buffer, the blob's stored
     /// text, or the disk re-read for pure-ASCII blobs (kept alive in
     /// `storage`), verified against the index's content hash.
@@ -692,6 +729,9 @@ private:
     FileTable& files;
     const FreshnessGate* gate;
     const LiveSources* live;
+
+    /// Whether answers take in what instantiations resolve (written_only).
+    bool resolved = true;
 };
 
 }  // namespace clice::index

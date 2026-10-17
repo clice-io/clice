@@ -2,10 +2,10 @@
 definition = ["struct ⟦Node⟧ {"]
 
 [answers.dependent_member]
-definition = ["struct ⟦Widget⟧ {};"]
+definition = ["template <typename ⟦T⟧> @-3", "struct ⟦Widget⟧ {};"]
 
 [answers.several_instantiations]
-definition = ["template <typename ⟦T⟧> @-2"]
+definition = ["template <typename ⟦T⟧> @-2", "struct ⟦Widget⟧ {};", "struct ⟦Gadget⟧ {};"]
 
 [answers.class_template]
-definition = ["struct ⟦Gadget⟧ {};"]
+definition = ["struct ⟦Gadget⟧ {};", "template <typename ⟦T⟧> @-3"]

@@ -313,6 +313,8 @@ struct GlobalBlobMirror {
     std::vector<std::uint32_t> sym_reference_counts;
     std::vector<std::uint32_t> sym_bitmap_ends;
     std::vector<std::uint8_t> sym_bitmaps;
+    std::vector<std::uint32_t> sym_instantiation_ends;
+    std::vector<std::uint8_t> sym_instantiations;
     std::vector<std::uint32_t> manifest_fvs;
     std::vector<std::uint64_t> manifest_gens;
     std::uint64_t search_generation = 0;
@@ -341,6 +343,7 @@ struct GlobalBlobMirror {
             sym_bitmaps.push_back(static_cast<std::uint8_t>(byte));
         }
         sym_bitmap_ends.push_back(static_cast<std::uint32_t>(sym_bitmaps.size()));
+        sym_instantiation_ends.push_back(static_cast<std::uint32_t>(sym_instantiations.size()));
     }
 };
 

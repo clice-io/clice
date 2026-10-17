@@ -190,8 +190,9 @@ std::optional<ScannedText> scan_text(std::string text, const llvm::StringSet<>& 
     return scanned;
 }
 
-std::expected<RenameTarget, std::string> rename_target(const IndexQuery& query,
+std::expected<RenameTarget, std::string> rename_target(const IndexQuery& serving,
                                                        const IndexQuery::Located& named) {
+    auto query = serving.written_only();
     auto& symbol = named.symbol;
     if(symbol.kind == SymbolKind::Macro) {
         return std::unexpected("renaming a macro is not supported yet");
@@ -275,11 +276,20 @@ std::expected<RenameTarget, std::string> rename_target(const IndexQuery& query,
     return target;
 }
 
-std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
-                                                   const IndexQuery::Cursor& cursor) {
+std::expected<CursorRename, std::string> rename_at(const IndexQuery& serving,
+                                                   const IndexQuery::Cursor& resolved) {
+    auto query = serving.written_only();
+    // A name only instantiations resolve (`value.print()` in a template)
+    // spells no symbol of its own.
+    auto cursor = query.symbol_at(resolved.site.file, resolved.site.range.begin);
+    if(!cursor) {
+        return std::unexpected(
+            "what the name here refers to differs from one instantiation or macro expansion to "
+            "the next; rename from a declaration");
+    }
     std::optional<RenameTarget> found;
     std::string refused;
-    for(auto& named: query.resolve_at(cursor)) {
+    for(auto& named: query.resolve_at(*cursor)) {
         auto target = rename_target(query, named);
         if(!target) {
             refused = std::move(target.error());
@@ -295,7 +305,7 @@ std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
         return std::unexpected(refused.empty() ? "no symbol here to rename" : refused);
     }
 
-    auto& site = cursor.site;
+    auto& site = cursor->site;
     auto text = query.serving_text(site.file);
     if(!text) {
         return std::unexpected(std::format("{} changed since it was indexed", site.path));
@@ -310,12 +320,13 @@ std::expected<CursorRename, std::string> rename_at(const IndexQuery& query,
     return CursorRename{.target = std::move(*found), .token = std::move(token)};
 }
 
-RenamePlan plan_rename(const IndexQuery& query,
+RenamePlan plan_rename(const IndexQuery& serving,
                        FileTable& files,
                        const RenameTarget& target,
                        llvm::StringRef new_name,
                        const RenameScope& scope,
                        const RenameBatch& batch) {
+    auto query = serving.written_only();
     auto& root = target.symbol.symbol;
     RenamePlan plan{.old_name = root.name, .new_name = new_name.str()};
     llvm::StringRef old_name = plan.old_name;

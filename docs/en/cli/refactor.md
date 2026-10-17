@@ -39,7 +39,7 @@ The answer is one JSON object, `{"result": ..., "stale": [...]}`, like a query's
 
 - `renames` has one entry per rename asked for, with its `line` in the list, its `locator` as written, the symbol it found — `name`, `kind`, `symbol` — its `newName` and how many tokens it `edits`. An `error` says why its locator names no symbol to rename, with `candidates` when it names several. Its `warnings` are made anyway: the new name overloads a function of the same scope, or is reserved for the implementation. Its `conflicts` stop it: the new name is declared in the same scope already, is a macro, names a parameter or label of the same function, a member of a base or derived class, the class the renamed member belongs to or a member of the renamed class; the rename would edit a file outside the workspace; two namespaces would merge; an earlier line renames the symbol to another name; a token it changes also names a symbol another line renames to another name.
 - `files` lists the tokens replaced in each file, with a 1-based line and byte column and the `name` and `newName` each trades. `heuristic` marks one reached through a name the index resolved by heuristics — a call in a template whose callee depends on a template parameter — worth a look.
-- `unconfirmed` lists the places spelling an old `name` that the renames leave alone because the index cannot say what they name: the body of a `#define`, a macro whose expansion spells the name, an inactive `#if` branch, a file no unit of the build compiles, a token that also names another symbol of the old name — under another build configuration, or as another overload a call in a template may pick. Read them before building.
+- `unconfirmed` lists the places spelling an old `name` that the renames leave alone because no written code says what they name: the body of a `#define`, which names something else in another expansion, a macro whose expansion spells the name, an inactive `#if` branch, a file no unit of the build compiles, a token that also names another symbol of the old name — under another build configuration, or as another overload a call in a template may pick. Read them before building.
 - `conflicts` stop all the renames together: a token two of them would change to different names, or a file that could not be rewritten.
 - `stale` lists the files the renames edit, or that spell an old or a new name, whose indexed rows are not current — changed since they were indexed, or never indexed while some unit of the build still is not. They stop the renames as well; `--fresh` reindexes them first.
 
@@ -73,7 +73,7 @@ A dry run lists the edits without writing them, and a run without it rewrites th
 
 `--dry-run` answers with every name the rename would change, file by file, and
 with the places it leaves alone for you to check: the body of `CALL` spells
-`compute`, but the index cannot tell what a macro body names. Without
+`compute`, but a macro body names what each expansion makes of it. Without
 `--dry-run` the files are rewritten. Renaming a class renames its constructors
 with it.
 

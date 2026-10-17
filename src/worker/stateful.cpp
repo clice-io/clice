@@ -338,8 +338,11 @@ RequestResult<worker::CompileParams>
                 result.build_at = unit->build_at().count();
                 result.deps = unit->deps();
 
-                index_error =
-                    hand_over_index(index::build_tu_index(*unit), params.index_output_path, result);
+                index_error = hand_over_index(
+                    index::build_tu_index(*unit,
+                                          {.known_instantiations = params.known_instantiations}),
+                    params.index_output_path,
+                    result);
             }
 
             if(unit->completed()) {

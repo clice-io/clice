@@ -301,11 +301,28 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Located>
     return entries;
 }
 
+/// What a site's `via` says.
+std::string via_of(index::SiteOrigin origin) {
+    switch(origin) {
+        case index::SiteOrigin::Written: return "";
+        case index::SiteOrigin::Instantiation: return "instantiation";
+        case index::SiteOrigin::Expansion: return "expansion";
+    }
+    std::unreachable();
+}
+
 std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Edge> edges) {
     std::vector<GraphEntry> entries;
     entries.reserve(edges.size());
     for(auto& edge: edges) {
-        entries.push_back(graph_entry<GraphEntry>(edge.symbol));
+        auto& entry = entries.emplace_back(graph_entry<GraphEntry>(edge.symbol));
+        // An edge is a call: only an instantiation makes one the written
+        // code does not.
+        bool instantiated = std::ranges::all_of(edge.sites, [](const index::Site& site) {
+            return site.origin == index::SiteOrigin::Instantiation;
+        });
+        entry.via =
+            via_of(instantiated ? index::SiteOrigin::Instantiation : index::SiteOrigin::Written);
     }
     return entries;
 }
@@ -623,6 +640,7 @@ Outcome<ReferencesResult> references(Context& ctx,
             .file = std::string(site.path),
             .line = lines_of(site).start,
             .context = std::move(context),
+            .via = via_of(site.origin),
         };
         if(!function.empty()) {
             entry.function = std::move(function);

@@ -44,6 +44,12 @@ struct ManifestBlob {
     std::vector<std::uint64_t> local_symbols;
     std::vector<std::uint32_t> local_file_ends;
     std::vector<std::uint32_t> local_files;
+
+    /// TUManifest::instantiations as columns: per file its version, and its
+    /// resolutions back to back.
+    std::vector<std::uint32_t> instantiation_files;
+    std::vector<std::uint32_t> instantiation_ends;
+    std::vector<std::uint64_t> instantiation_resolutions;
 };
 
 void write_varint(std::vector<std::uint8_t>& out, std::uint64_t value) {
@@ -113,6 +119,13 @@ void serialize_manifest(const TUManifest& manifest, llvm::raw_ostream& os) {
         blob.local_symbols.push_back(fanout.symbol);
         blob.local_files.insert(blob.local_files.end(), fanout.files.begin(), fanout.files.end());
         blob.local_file_ends.push_back(static_cast<std::uint32_t>(blob.local_files.size()));
+    }
+
+    for(auto& use: manifest.instantiations) {
+        blob.instantiation_files.push_back(use.file.raw);
+        llvm::append_range(blob.instantiation_resolutions, use.resolutions);
+        blob.instantiation_ends.push_back(
+            static_cast<std::uint32_t>(blob.instantiation_resolutions.size()));
     }
 
     serialize_blob(blob, os);
@@ -217,6 +230,22 @@ std::optional<TUManifest> deserialize_manifest(llvm::StringRef data) {
             .files = {blob.local_files.begin() + begin, blob.local_files.begin() + end},
         });
         begin = end;
+    }
+
+    if(blob.instantiation_ends.size() != blob.instantiation_files.size() ||
+       !monotone_ends(blob.instantiation_ends, blob.instantiation_resolutions.size()) ||
+       (!blob.instantiation_ends.empty() &&
+        blob.instantiation_ends.back() != blob.instantiation_resolutions.size())) {
+        return std::nullopt;
+    }
+    llvm::ArrayRef<std::uint64_t> resolutions(blob.instantiation_resolutions);
+    for(std::size_t i = 0; i < blob.instantiation_files.size(); i += 1) {
+        auto used =
+            back_to_back(resolutions, blob.instantiation_ends, static_cast<std::uint32_t>(i));
+        manifest.instantiations.push_back({
+            .file = VersionID{blob.instantiation_files[i]},
+            .resolutions = {used.begin(), used.end()},
+        });
     }
 
     return manifest;

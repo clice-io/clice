@@ -1,0 +1,296 @@
+module;
+
+#include "modules/prelude.h"
+
+module clice;
+
+import :index.instantiation_shard;
+import :index.tu_index;
+import :unittests.utils;
+import :unittests.utils.tester;
+
+namespace clice::testing {
+namespace {
+
+/// One record of what a TU's instantiations resolve in its main file, as
+/// text: what it spans, its kind, and the names it relates.
+struct Resolved {
+    std::string text;
+    index::InstantiationKind kind;
+    std::string target;
+    std::string from{};
+    bool expansion = false;
+
+    bool operator==(const Resolved&) const = default;
+};
+
+ZEST_SUITE(InstantiationIndex, Tester) {
+
+index::TUIndex view;
+
+std::string name_of(index::SymbolHash hash) {
+    auto identity = view.find_symbol(hash);
+    return identity ? identity->name.str() : "?";
+}
+
+void build(llvm::StringRef code,
+           llvm::ArrayRef<std::uint64_t> known = {},
+           CompilationKind compilation = CompilationKind::Whole) {
+    kind = compilation;
+    add_main("main.cpp", code);
+    ZASSERT(compile());
+    view = index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
+        index::build_tu_index(*unit, {.known_instantiations = known})));
+    ZASSERT(view.loaded());
+}
+
+std::optional<std::uint32_t> main_section() {
+    return view.instantiation_section_of(view.path_count() - 1);
+}
+
+/// The instantiation section of the file whose path ends with `name`.
+std::optional<std::uint32_t> section_of(llvm::StringRef name) {
+    for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
+        if(view.path(i).ends_with(name)) {
+            return view.instantiation_section_of(i);
+        }
+    }
+    return std::nullopt;
+}
+
+const index::InstantiationShard& main_shard() {
+    const static index::InstantiationShard none;
+    auto section = main_section();
+    return section ? view.instantiation_shard(*section) : none;
+}
+
+/// Every record of the main file, in stored order.
+std::vector<Resolved> resolved() {
+    llvm::StringRef content = sources.all_files[src_path].content;
+    std::vector<Resolved> records;
+    main_shard().for_each_record([&](const index::InstantiationRecord& record) {
+        records.push_back({
+            .text = content.slice(record.range.begin, record.range.end).str(),
+            .kind = record.kind,
+            .target = name_of(record.target),
+            .from = record.from != 0 ? name_of(record.from) : "",
+            .expansion = record.expansion,
+        });
+        return true;
+    });
+    return records;
+}
+
+std::vector<index::InstantiationShard::Key> keys() {
+    std::vector<index::InstantiationShard::Key> found;
+    main_shard().for_each_key([&](const index::InstantiationShard::Key& key) {
+        found.push_back(key);
+        return true;
+    });
+    return found;
+}
+
+using enum index::InstantiationKind;
+
+ZEST_CASE(DependentCallsResolved) {
+    build(R"(
+        struct A { void go(); int size; };
+        template <typename T>
+        int run(T t) {
+            t.go();
+            return t.size;
+        }
+        int use() { return run(A{}); }
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"go", Reference, "go"},
+                              {"go", Call, "go", "run"},
+                              {"size", Reference, "size"},
+    });
+    auto found = keys();
+    ZASSERT(found.size() == 1u);
+    ZEXPECT(name_of(found.front().pattern) == "run");
+    ZEXPECT(found.front().resolution.has_value());
+    ZEXPECT(!found.front().producer.has_value());
+}
+
+ZEST_CASE(FocusCompileCallers) {
+    // An open file's compile walks its instantiations in a build of their
+    // own, whose nodes the written code's callers know nothing of.
+    build(R"(
+        void leaf();
+        void unrelated() { leaf(); }
+        struct A { void go(); };
+        template <typename T>
+        void run(T t) { { t.go(); } }
+        void use() { run(A{}); }
+    )",
+          {},
+          CompilationKind::Content);
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"go", Reference, "go"},
+                              {"go", Call, "go", "run"},
+    });
+}
+
+ZEST_CASE(IncludedFragmentResolved) {
+    add_file("body.inc", "t.go();");
+    build(R"(
+        struct A { void go(); };
+        template <typename T>
+        void run(T t) {
+        #include "body.inc"
+        }
+        void use() { run(A{}); }
+    )");
+    // No key could stand for the fragment's records: every unit walks it.
+    ZEXPECT(keys().empty());
+    auto fragment = section_of("body.inc");
+    ZASSERT(fragment);
+    ZEXPECT(view.instantiation_shard(*fragment).resolutions().size() == 1u);
+}
+
+ZEST_CASE(HomeIsTheDefinition) {
+    // A redeclaration after the definition is what the unit's lookup
+    // meets; the instantiation's records stay with the definition's file.
+    add_file("def.h", R"(
+        struct A { void go(); };
+        template <typename T>
+        void run(T t) { t.go(); }
+    )");
+    add_file("fwd.h", "template <typename T> void run(T t);");
+    build(R"(
+        #include "def.h"
+        #include "fwd.h"
+        void use() { run(A{}); }
+    )");
+    auto definition = section_of("def.h");
+    ZASSERT(definition);
+    ZEXPECT(view.instantiation_shard(*definition).keys().size() == 1u);
+}
+
+ZEST_CASE(EachInstantiationItsResolution) {
+    build(R"(
+        struct A { void go(); };
+        struct B { void go(); };
+        template <typename T>
+        void run(T t) { t.go(); }
+        void use() {
+            run(A{});
+            run(B{});
+        }
+    )");
+    ZEXPECT(main_shard().resolutions().size() == 2u);
+    ZEXPECT(keys().size() == 2u);
+    // Both `go`s are named at the one place, each by its own resolution.
+    ZEXPECT(resolved().size() == 4u);
+}
+
+ZEST_CASE(NothingResolvedKeepsTheKey) {
+    build(R"(
+        template <typename T>
+        T same(T value) { return value; }
+        int use() { return same(1); }
+    )");
+    ZEXPECT(resolved().empty());
+    auto found = keys();
+    ZASSERT(found.size() == 1u);
+    ZEXPECT(!found.front().resolution);
+}
+
+ZEST_CASE(KnownKeysSkipped) {
+    llvm::StringRef code = R"(
+        struct A { void go(); };
+        template <typename T>
+        void run(T t) { t.go(); }
+        void use() { run(A{}); }
+    )";
+    build(code);
+    auto found = keys();
+    ZASSERT(found.size() == 1u);
+    auto key = found.front().key;
+
+    build(code, {key});
+    auto section = main_section();
+    ZASSERT(section);
+    ZEXPECT(view.instantiation_blob(*section).empty());
+    ZEXPECT(view.skipped_instantiations(*section) == llvm::ArrayRef<std::uint64_t>{key});
+    // The written code still names the template's own entries.
+    ZEXPECT(view.section_count() != 0u);
+}
+
+ZEST_CASE(DependentBaseResolved) {
+    build(R"(
+        struct A {};
+        template <typename T>
+        struct Derived : T {};
+        Derived<A> value;
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"T", Base, "A", "Derived"},
+    });
+}
+
+ZEST_CASE(AbbreviatedParameterDeduced) {
+    build(R"(
+        struct A {};
+        void take(auto value) {}
+        void use() { take(A{}); }
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"auto", Deduced, "A"},
+                              {"value", TypeDefinition, "A", "value"},
+    });
+}
+
+ZEST_CASE(MacroDeclaredAutoUnwritten) {
+    build(R"(
+        struct A {};
+        struct Maker { A get(); };
+        #define TAKE auto made = maker.get()
+        template <typename T>
+        void make(T maker) { TAKE; }
+        void use() { make(Maker{}); }
+    )");
+    ZEXPECT(std::ranges::none_of(resolved(), [](const Resolved& record) {
+        return record.kind == TypeDefinition;
+    }));
+}
+
+ZEST_CASE(MacroBodyNamesResolved) {
+    build(R"(
+        #define WIDTH 3
+        #define AREA (WIDTH * WIDTH)
+        int area = AREA;
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"WIDTH", Reference, "WIDTH", "", true},
+                              {"WIDTH", Reference, "WIDTH", "", true},
+    });
+    // An expansion has a resolution, no key.
+    ZEXPECT(keys().empty());
+}
+
+ZEST_CASE(SymbolsNameTheirFiles) {
+    build(R"(
+        struct A { void go(); };
+        template <typename T>
+        void run(T t) { t.go(); }
+        void use() { run(A{}); }
+    )");
+    auto main_path = view.path_count() - 1;
+    bool named = false;
+    view.iterate_instantiation_files(
+        [&](index::SymbolHash hash, llvm::ArrayRef<std::uint32_t> files) {
+            if(name_of(hash) == "go") {
+                named = files == llvm::ArrayRef<std::uint32_t>{main_path};
+            }
+            return true;
+        });
+    ZEXPECT(named);
+}
+
+};  // ZEST_SUITE(InstantiationIndex)
+
+}  // namespace
+}  // namespace clice::testing

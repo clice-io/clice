@@ -27,6 +27,17 @@ struct LocalFanout {
     friend bool operator==(const LocalFanout&, const LocalFanout&) = default;
 };
 
+/// The instantiation resolutions a TU uses in one file: the ones it walked and
+/// the ones the known keys it skipped there stand for.
+struct InstantiationUse {
+    VersionID file;
+
+    /// Ascending.
+    std::vector<std::uint64_t> resolutions;
+
+    friend bool operator==(const InstantiationUse&, const InstantiationUse&) = default;
+};
+
 /// What one TU's indexing produced, replaced wholesale by its next reindex:
 /// the include tree over file versions (the TU index's nodes with their
 /// path ids remapped, which with `absent` and `imports` is the TU's
@@ -69,6 +80,10 @@ struct TUManifest {
 
     /// Sorted by symbol.
     std::vector<LocalFanout> local_fanout;
+
+    /// One entry per file holding instantiation resolutions the TU uses: what
+    /// keeps those resolutions alive.
+    std::vector<InstantiationUse> instantiations;
 
     friend bool operator==(const TUManifest&, const TUManifest&) = default;
 };

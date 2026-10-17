@@ -27,7 +27,7 @@ namespace clice {
 ProjectServer::ProjectServer(MasterServer& server, CanonicalPath root) :
     server(server), loop(server.loop), root(std::move(root)), project(server.files),
     sched(loop, project, commands, server.pool),
-    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions),
+    ast(project, contexts, sched.graph, sched.pcm, sched.pch, server.pool, sessions, sched.store),
     dispatcher(project, contexts, ast, server.pool),
     live_sources(project, sched.pch, sessions, ast.projections),
     index_query(project.project_index, project.file_table, &freshness, &live_sources),

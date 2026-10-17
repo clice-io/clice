@@ -21,6 +21,16 @@ struct LineColumn {
     std::uint32_t utf16_column = 0;
 };
 
+/// What a site's entry comes from.
+enum class SiteOrigin : std::uint8_t {
+    /// The code as written.
+    Written,
+    /// An instantiation of the template the site lies in.
+    Instantiation,
+    /// An expansion of the macro whose body the site lies in.
+    Expansion,
+};
+
 /// One entry's site: the file, the entry's byte range in the text the index
 /// was built from, and the range's ends as positions. `path` names the
 /// file as the user knows it (FileTable::display).
@@ -30,6 +40,8 @@ struct Site {
     LocalSourceRange range;
     LineColumn begin;
     LineColumn end;
+
+    SiteOrigin origin = SiteOrigin::Written;
 };
 
 /// The position of an offset with both its columns, counted at once: a

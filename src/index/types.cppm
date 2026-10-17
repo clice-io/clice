@@ -225,8 +225,14 @@ struct Symbol {
 
     /// All files that referenced this symbol; for an internal-linkage one
     /// also the files whose relations target it (a structured binding's
-    /// TypeDefinition relation naming a type the file never spells).
+    /// TypeDefinition relation naming a type the file never spells), and
+    /// the ones whose instantiations name it.
     Bitmap reference_files;
+
+    /// For an external symbol, the files whose instantiation shards name
+    /// it, which the questions about its references, calls, definitions
+    /// and type hierarchy read, not rename or the name search.
+    Bitmap instantiation_files;
 
     /// The identity a reader hands out for this entry; the strings borrow it.
     SymbolIdentity identity() const {

@@ -6,6 +6,7 @@ module clice:index.tu_index;
 
 import :compile.compilation;
 import :index.include_tree;
+import :index.instantiation_shard;
 import :index.manifest;
 import :index.shard;
 import :index.types;
@@ -28,6 +29,11 @@ struct TUIndexOptions {
     /// symbol only such sections name stays out of the table: the
     /// receiver took both in with the variant.
     llvm::ArrayRef<std::uint64_t> known_variants;
+
+    /// The keys of the instantiations the receiver already holds, sorted:
+    /// an instantiation whose key is among them is not walked, and its
+    /// file's section lists the key as skipped.
+    llvm::ArrayRef<std::uint64_t> known_instantiations;
 };
 
 /// Index one TU and encode the result as its TU index blob: the include
@@ -138,6 +144,33 @@ public:
     /// entries or nothing.
     bool shards_verify() const;
 
+    /// The files the run's instantiations or macro expansions resolve
+    /// something in or skipped a known key of, ascending by path id.
+    std::uint32_t instantiation_count() const;
+
+    std::uint32_t instantiation_path(std::uint32_t i) const;
+
+    /// What the run resolved in section `i`'s file, borrowing the TU index;
+    /// empty when it only skipped keys there.
+    llvm::StringRef instantiation_blob(std::uint32_t i) const;
+
+    /// The known keys of section `i`'s file the run skipped, ascending.
+    llvm::ArrayRef<std::uint64_t> skipped_instantiations(std::uint32_t i) const;
+
+    /// A reader over section `i`'s blob, wrapped on first use and cached
+    /// like section_shard; an empty shard when the blob is empty or fails
+    /// verification.
+    const InstantiationShard& instantiation_shard(std::uint32_t i) const;
+
+    /// The instantiation section of `path_id`, or nullopt.
+    std::optional<std::uint32_t> instantiation_section_of(std::uint32_t path_id) const;
+
+    /// Visit every symbol of the table that instantiation sections name, in
+    /// ascending hash order, with those sections' path ids. Return false
+    /// to stop.
+    void iterate_instantiation_files(
+        llvm::function_ref<bool(SymbolHash, llvm::ArrayRef<std::uint32_t> files)> callback) const;
+
     /// Visit every symbol of the table in ascending hash order: hash,
     /// identity, and its reference files as path ids. The table leaves out
     /// file-local symbols (see find_symbol) and the external symbols only
@@ -194,6 +227,7 @@ private:
     /// Lazily wrapped per-section readers; the TU index is immutable for
     /// the reader's lifetime, so the cache never invalidates.
     mutable std::vector<Shard> shards;
+    mutable std::vector<InstantiationShard> instantiation_shards;
 };
 
 }  // namespace clice::index

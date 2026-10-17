@@ -1460,7 +1460,7 @@ tests/navigation/type_hierarchy/04_template_bases
 
 ## Document Highlight
 
-Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`). Highlights come from the same index as Find References, so they cover the same names and work in read-only mode too; a variable, a field or a parameter is marked written or read where the code writes or reads it; every other highlight is plain.
+Highlight all references to the symbol under cursor within the current file (`textDocument/documentHighlight`). Highlights come from the same index as Find References, so they cover the same names and work in read-only mode too; a variable, a field or a parameter is marked written or read where the code writes or reads it; every other highlight is plain, as is a use only an instantiation or a macro expansion resolves.
 
 ### Declarations and Uses
 
