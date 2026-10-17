@@ -15,7 +15,7 @@ document_symbols = [
         name = "detail",
         kind = "Namespace",
         at = "namespace ⟦detail⟧ {",
-        range = "⟦namespace detail { … template <class T> T helper() { return T{}; }⟧ (2 lines)",
+        range = "⟦namespace detail { … ⟧ (3 lines)",
         children = [
             {
                 name = "helper",
